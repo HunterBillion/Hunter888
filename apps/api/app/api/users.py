@@ -116,6 +116,7 @@ async def change_password(
         )
 
     user.hashed_password = hash_password(body.new_password)
+    user.must_change_password = False
     db.add(user)
     # commit handled by get_db context manager
 

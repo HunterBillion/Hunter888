@@ -54,7 +54,9 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
 
-    return _create_tokens(str(user.id))
+    tokens = _create_tokens(str(user.id))
+    tokens.must_change_password = user.must_change_password
+    return tokens
 
 
 @router.post("/refresh", response_model=TokenResponse)

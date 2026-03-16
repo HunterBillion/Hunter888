@@ -21,7 +21,11 @@ export default function LoginPage() {
     try {
       const data = await api.post("/auth/login", { email, password });
       setTokens(data.access_token, data.refresh_token);
-      router.push("/");
+      if (data.must_change_password) {
+        router.push("/change-password");
+      } else {
+        router.push("/");
+      }
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Ошибка входа";

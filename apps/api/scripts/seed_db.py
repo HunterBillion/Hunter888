@@ -24,7 +24,7 @@ async def seed():
     async with async_session() as db:
         await _seed_team_and_admin(db)
         script = await _seed_script(db)
-        character = await _seed_character(db)
+        character = await _seed_characters(db)
         await _seed_scenario(db, character.id, script.id)
         await _seed_objections(db)
         await db.commit()
@@ -121,11 +121,11 @@ async def _seed_script(db: AsyncSession) -> Script:
     return script
 
 
-async def _seed_character(db: AsyncSession) -> Character:
-    character = Character(
-        name="Алексей Михайлов",
+async def _seed_characters(db: AsyncSession) -> Character:
+    skeptic = Character(
+        name="Андрей Петрович",
         slug="skeptic",
-        description="Скептичный владелец бизнеса, 42 года. Не доверяет холодным звонкам.",
+        description="Скептичный владелец строительного бизнеса, 47 лет. Не доверяет банкам после негативного опыта.",
         personality_traits={
             "trust": 0.2,
             "patience": 0.4,
@@ -135,12 +135,42 @@ async def _seed_character(db: AsyncSession) -> Character:
         initial_emotion=EmotionState.cold,
         difficulty=5,
         prompt_version="v1",
-        prompt_path="prompts/characters/skeptic_v1.md",
+        prompt_path="prompts/skeptic_v1.md",
     )
-    db.add(character)
+    anxious = Character(
+        name="Елена Сергеевна",
+        slug="anxious",
+        description="Тревожная бухгалтер, 35 лет. Боится финансовых рисков, нуждается в поддержке.",
+        personality_traits={
+            "trust": 0.3,
+            "patience": 0.7,
+            "openness": 0.4,
+            "emotional": 0.8,
+        },
+        initial_emotion=EmotionState.cold,
+        difficulty=3,
+        prompt_version="v1",
+        prompt_path="prompts/anxious_v1.md",
+    )
+    aggressive = Character(
+        name="Дмитрий Игоревич",
+        slug="aggressive",
+        description="Агрессивный директор логистической компании, 52 года. Давит авторитетом, ценит время.",
+        personality_traits={
+            "trust": 0.1,
+            "patience": 0.2,
+            "openness": 0.2,
+            "emotional": 0.7,
+        },
+        initial_emotion=EmotionState.cold,
+        difficulty=8,
+        prompt_version="v1",
+        prompt_path="prompts/aggressive_v1.md",
+    )
+    db.add_all([skeptic, anxious, aggressive])
     await db.flush()
-    print(f"  Created character: {character.name}")
-    return character
+    print(f"  Created characters: {skeptic.name}, {anxious.name}, {aggressive.name}")
+    return skeptic
 
 
 async def _seed_scenario(db: AsyncSession, character_id: uuid.UUID, script_id: uuid.UUID):
