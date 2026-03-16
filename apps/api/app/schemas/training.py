@@ -25,8 +25,15 @@ class SessionResponse(BaseModel):
     status: str
     started_at: datetime
     ended_at: datetime | None = None
+    duration_seconds: int | None = None
+    score_script_adherence: float | None = None
+    score_objection_handling: float | None = None
+    score_communication: float | None = None
+    score_emotional: float | None = None
+    score_result: float | None = None
     score_total: float | None = None
     scoring_details: dict | None = None
+    emotion_timeline: list | None = None
     feedback_text: str | None = None
 
     model_config = {"from_attributes": True}

@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -15,6 +16,9 @@ from app.schemas.training import (
     SessionResultResponse,
     SessionStartRequest,
 )
+from app.services.scoring import calculate_scores
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -80,6 +84,19 @@ async def end_session(
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active session not found")
+
+    # Calculate scores before closing
+    try:
+        scores = await calculate_scores(session_id, db)
+        session.score_script_adherence = scores.script_adherence
+        session.score_objection_handling = scores.objection_handling
+        session.score_communication = scores.communication
+        session.score_emotional = scores.emotional
+        session.score_result = scores.result
+        session.score_total = scores.total
+        session.scoring_details = scores.details
+    except Exception:
+        logger.exception("Failed to calculate scores for session %s", session_id)
 
     session.status = SessionStatus.completed
     await db.flush()

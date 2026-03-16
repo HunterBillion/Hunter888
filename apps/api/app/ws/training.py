@@ -40,11 +40,88 @@ from app.services.session_manager import (
     start_session,
     update_activity,
 )
+from app.services.llm import LLMError, generate_response
+from app.services.scoring import calculate_scores
 from app.services.stt import STTError, transcribe_audio
 
 logger = logging.getLogger(__name__)
 
 SILENCE_TIMEOUT_SEC = 30
+
+
+async def _generate_character_reply(
+    ws: WebSocket,
+    session_id: uuid.UUID,
+    state: dict,
+) -> None:
+    """Build message history, call LLM, send character.response, update emotion."""
+    current_emotion = await get_emotion(session_id)
+
+    # Build conversation history from Redis/DB
+    history = await get_message_history(session_id)
+    messages = [
+        {"role": m["role"], "content": m["content"]}
+        for m in history
+        if m["role"] in ("user", "assistant")
+    ]
+
+    prompt_path = state.get("character_prompt_path")
+
+    try:
+        llm_result = await generate_response(
+            system_prompt="",
+            messages=messages,
+            emotion_state=current_emotion.value,
+            character_prompt_path=prompt_path,
+        )
+    except LLMError as e:
+        logger.error("LLM failed for session %s: %s", session_id, e)
+        await _send(ws, "character.response", {
+            "content": "Извините, не расслышал. Повторите, пожалуйста.",
+            "emotion": current_emotion.value,
+            "is_fallback": True,
+        })
+        return
+
+    # Save assistant message to DB
+    async with async_session() as db:
+        await add_message(
+            session_id=session_id,
+            role=MessageRole.assistant,
+            content=llm_result.content,
+            db=db,
+            emotion_state=current_emotion.value,
+            llm_model=llm_result.model,
+            llm_latency_ms=llm_result.latency_ms,
+        )
+        # Log API usage
+        from app.models.analytics import ApiLog
+        api_log = ApiLog(
+            service="llm",
+            model=llm_result.model,
+            request_tokens=llm_result.input_tokens,
+            response_tokens=llm_result.output_tokens,
+            latency_ms=llm_result.latency_ms,
+            session_id=session_id,
+        )
+        db.add(api_log)
+        await db.commit()
+
+    # Update emotion based on conversation flow
+    new_emotion = await transition_emotion(session_id, "good_response")
+
+    await _send(ws, "character.response", {
+        "content": llm_result.content,
+        "emotion": new_emotion.value,
+        "model": llm_result.model,
+        "latency_ms": llm_result.latency_ms,
+    })
+
+    if new_emotion.value != current_emotion.value:
+        await _send(ws, "emotion.update", {
+            "previous": current_emotion.value,
+            "current": new_emotion.value,
+        })
 
 
 async def _send(ws: WebSocket, msg_type: str, data: dict) -> None:
@@ -314,13 +391,8 @@ async def _handle_audio_chunk(
         )
         await db.commit()
 
-    # TODO: In Phase 2, send transcribed text to LLM for character response
-    # For now, echo back a stub character response
-    await _send(ws, "character.response", {
-        "content": f"[STT OK] Received: {stt_result.text[:100]}",
-        "emotion": current_emotion.value,
-        "is_stub": True,
-    })
+    # Generate LLM character response
+    await _generate_character_reply(ws, session_id, state)
 
 
 async def _handle_text_message(
@@ -361,21 +433,8 @@ async def _handle_text_message(
         )
         await db.commit()
 
-    # TODO: In Phase 2, integrate with LLM for real character response
-    # For now, return a stub response and update emotion
-    new_emotion = await transition_emotion(session_id, "good_response")
-
-    await _send(ws, "character.response", {
-        "content": f"[Stub] Received: {content[:100]}",
-        "emotion": new_emotion.value,
-        "is_stub": True,
-    })
-
-    if new_emotion.value != current_emotion.value:
-        await _send(ws, "emotion.update", {
-            "previous": current_emotion.value,
-            "current": new_emotion.value,
-        })
+    # Generate LLM character response
+    await _generate_character_reply(ws, session_id, state)
 
 
 async def _handle_session_end(
@@ -383,14 +442,33 @@ async def _handle_session_end(
     data: dict,
     state: dict,
 ) -> None:
-    """Handle session.end: finalize session, save to DB, cleanup Redis."""
+    """Handle session.end: calculate scores, finalize session, save to DB, cleanup Redis."""
     session_id = state.get("session_id")
     if not session_id:
         await _send_error(ws, "No active session", "no_session")
         return
 
+    # Calculate scores before ending (needs messages still in DB)
+    scores = None
+    try:
+        async with async_session() as db:
+            scores = await calculate_scores(session_id, db)
+    except Exception:
+        logger.exception("Failed to calculate scores for session %s", session_id)
+
     async with async_session() as db:
         session = await end_session(session_id, db, status=SessionStatus.completed)
+
+        # Save scores to session record
+        if session and scores:
+            session.score_script_adherence = scores.script_adherence
+            session.score_objection_handling = scores.objection_handling
+            session.score_communication = scores.communication
+            session.score_emotional = scores.emotional
+            session.score_result = scores.result
+            session.score_total = scores.total
+            session.scoring_details = scores.details
+
         await db.commit()
 
     state["active"] = False
@@ -403,6 +481,15 @@ async def _handle_session_end(
             "duration_seconds": session.duration_seconds,
             "status": session.status.value,
         })
+        if scores:
+            result_data["scores"] = {
+                "script_adherence": scores.script_adherence,
+                "objection_handling": scores.objection_handling,
+                "communication": scores.communication,
+                "emotional": scores.emotional,
+                "result": scores.result,
+                "total": scores.total,
+            }
 
     await _send(ws, "session.ended", result_data)
 

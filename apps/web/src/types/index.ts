@@ -13,7 +13,14 @@ export interface TrainingSession {
   status: "active" | "completed" | "abandoned" | "error";
   started_at: string;
   ended_at: string | null;
+  duration_seconds: number | null;
+  score_script_adherence: number | null;
+  score_objection_handling: number | null;
+  score_communication: number | null;
+  score_emotional: number | null;
+  score_result: number | null;
   score_total: number | null;
+  emotion_timeline: Array<{ state: string; timestamp: number }> | null;
 }
 
 export interface ChatMessage {
