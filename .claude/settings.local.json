@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Read(//opt/homebrew/Cellar/node@20/20.20.1/bin/**)",
+      "Bash(brew list:*)",
+      "Bash(docker --version)"
+    ]
+  }
+}
