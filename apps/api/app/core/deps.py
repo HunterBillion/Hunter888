@@ -36,8 +36,13 @@ async def get_current_user(
     return user
 
 
-async def require_role(*roles: str):
-    def checker(user: User = Depends(get_current_user)) -> User:
+def require_role(*roles: str):
+    """FastAPI dependency factory: returns a dependency that checks user role.
+
+    Usage: Depends(require_role("admin", "rop"))
+    """
+
+    async def checker(user: User = Depends(get_current_user)) -> User:
         if user.role.value not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

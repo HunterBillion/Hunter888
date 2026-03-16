@@ -27,6 +27,20 @@ services:
       timeout: 5s
       retries: 5
 
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cpu
+    ports:
+      - "8001:8000"
+    environment:
+      WHISPER__MODEL: Systran/faster-whisper-small
+      WHISPER__LANGUAGE: ru
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   api:
     build:
       context: ./apps/api
@@ -38,10 +52,13 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-trainer}:${POSTGRES_PASSWORD:-trainer_pass}@postgres:5432/${POSTGRES_DB:-trainer_db}
       REDIS_URL: redis://redis:6379/0
+      WHISPER_URL: http://whisper:8000
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      whisper:
         condition: service_healthy
 
   web:

@@ -26,7 +26,7 @@ export default function RegisterPage() {
         full_name: fullName,
       });
       setTokens(data.access_token, data.refresh_token);
-      router.push("/training");
+      router.push("/");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Ошибка регистрации";

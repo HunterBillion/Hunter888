@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.consent import check_consent_accepted
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.training import Message, SessionStatus, TrainingSession
@@ -21,7 +22,7 @@ router = APIRouter()
 @router.post("/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 async def start_session(
     body: SessionStartRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(check_consent_accepted),
     db: AsyncSession = Depends(get_db),
 ):
     session = TrainingSession(

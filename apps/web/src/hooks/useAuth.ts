@@ -4,13 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { clearTokens, getToken } from "@/lib/auth";
-
-interface User {
-  id: string;
-  email: string;
-  full_name: string;
-  role: string;
-}
+import type { User } from "@/types";
 
 export function useAuth() {
   const router = useRouter();

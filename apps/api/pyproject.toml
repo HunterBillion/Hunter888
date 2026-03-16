@@ -19,6 +19,7 @@ dependencies = [
     "openai>=1.58.0",
     "python-multipart>=0.0.12",
     "pgvector>=0.3.6",
+    "aiofiles>=24.1.0",
 ]
 
 [project.optional-dependencies]
