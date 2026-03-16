@@ -1,0 +1,16 @@
+services:
+  api:
+    build:
+      target: development
+    volumes:
+      - ./apps/api:/app
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+  web:
+    build:
+      target: development
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
