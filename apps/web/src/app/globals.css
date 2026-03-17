@@ -1,3 +1,50 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-vh-black text-white antialiased;
+    font-family: "Space Grotesk", system-ui, sans-serif;
+  }
+
+  ::selection {
+    background-color: rgba(138, 43, 226, 0.4);
+    color: white;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #0a0a0a;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #8a2be2;
+    border-radius: 3px;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl;
+  }
+
+  .vh-input {
+    @apply w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-gray-500 transition-colors focus:border-vh-purple focus:outline-none focus:ring-1 focus:ring-vh-purple;
+  }
+
+  .vh-label {
+    @apply mb-1 block font-mono text-xs uppercase tracking-wider text-gray-400;
+  }
+
+  .vh-btn-primary {
+    @apply rounded-lg bg-gradient-to-r from-vh-purple to-vh-magenta px-6 py-3 font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50;
+  }
+
+  .vh-btn-outline {
+    @apply rounded-lg border border-vh-purple/30 px-6 py-3 font-semibold text-white transition-all hover:bg-vh-purple/10;
+  }
+}

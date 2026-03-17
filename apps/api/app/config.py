@@ -1,3 +1,6 @@
+import secrets
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -15,6 +18,9 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_days: int = 7
 
+    # CSRF
+    csrf_secret: str = ""
+
     # LLM
     claude_api_key: str = ""
     openai_api_key: str = ""
@@ -23,10 +29,14 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = 5
     llm_max_history_messages: int = 20
 
+    # Embeddings (sentence-transformers microservice)
+    embeddings_service_url: str = "http://localhost:8002"
+
     # STT
     whisper_url: str = "http://localhost:8001"
     whisper_model: str = "large-v3"
     whisper_language: str = "ru"
+    whisper_timeout_seconds: int = 30
 
     # App
     app_env: str = "development"
@@ -40,6 +50,24 @@ class Settings(BaseSettings):
     max_sessions_per_day: int = 10
     max_session_duration_minutes: int = 30
     max_messages_per_session: int = 200
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def validate_jwt_secret(cls, v: str, info) -> str:
+        values = info.data
+        env = values.get("app_env", "development")
+        if env == "production" and v in ("change-me-in-production", ""):
+            raise ValueError("JWT_SECRET must be set to a secure value in production")
+        if env == "production" and len(v) < 32:
+            raise ValueError("JWT_SECRET must be at least 32 characters in production")
+        return v
+
+    @field_validator("csrf_secret")
+    @classmethod
+    def validate_csrf_secret(cls, v: str) -> str:
+        if not v:
+            return secrets.token_hex(32)
+        return v
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
