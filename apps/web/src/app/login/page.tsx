@@ -37,21 +37,23 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-8">
+      <div className="glass-panel w-full max-w-md p-8 space-y-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold">AI Тренажер Продаж</h1>
-          <p className="mt-2 text-gray-600">Войдите в свой аккаунт</p>
+          <h1 className="text-3xl font-display font-bold text-vh-purple tracking-wider">
+            VIBEHUNTER
+          </h1>
+          <p className="mt-2 text-gray-400 text-sm">Войдите в свой аккаунт</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
-            <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+            <div className="rounded-md bg-vh-red/10 border border-vh-red/30 p-3 text-sm text-vh-red">
               {error}
             </div>
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium">
+            <label htmlFor="email" className="vh-label">
               Email
             </label>
             <input
@@ -60,12 +62,13 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="vh-input"
+              placeholder="you@example.com"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium">
+            <label htmlFor="password" className="vh-label">
               Пароль
             </label>
             <input
@@ -74,22 +77,23 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="vh-input"
+              placeholder="••••••••"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-primary-600 px-4 py-2 text-white hover:bg-primary-700 disabled:opacity-50"
+            className="vh-btn-primary w-full"
           >
             {loading ? "Вход..." : "Войти"}
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-600">
+        <p className="text-center text-sm text-gray-500">
           Нет аккаунта?{" "}
-          <Link href="/register" className="text-primary-600 hover:underline">
+          <Link href="/register" className="text-vh-purple hover:text-vh-magenta transition-colors">
             Зарегистрироваться
           </Link>
         </p>

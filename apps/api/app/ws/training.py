@@ -1,12 +1,21 @@
 """WebSocket handler for real-time training sessions.
 
-Protocol (from TZ section 7.8):
-- Client sends: session.start, audio.chunk, text.message, session.end
-- Server sends: session.ready, session.started, transcription.result,
-                character.response, emotion.update, session.ended, error
+Protocol (TZ section 7.8):
+- Auth: JWT token sent in FIRST message (not URL query param)
+- Client sends: auth, session.start, audio.chunk, audio.end, text.message, session.end, ping
+- Server sends: session.ready, auth.success, auth.error, session.started,
+                avatar.typing, transcription.result, character.response,
+                emotion.update, score.update, session.ended,
+                silence.warning, silence.timeout, error
 
-Full implementation with STT, session management, emotion tracking, and
-reconnection/timeout handling.
+Edge cases (TZ 3.1.3):
+- LLM timeout → retry 1x → fallback → pause phrase
+- STT fail x3 → "check microphone" warning
+- Silence > 30s → avatar "Алло?"
+- Silence > 60s → modal "Continue?"
+- Not Russian → "Простите, не понял"
+- "Ты бот?" → in-character response (from guardrails)
+- Disconnect → reconnect + restore
 """
 
 import asyncio
@@ -46,7 +55,76 @@ from app.services.stt import STTError, transcribe_audio
 
 logger = logging.getLogger(__name__)
 
-SILENCE_TIMEOUT_SEC = 30
+SILENCE_WARNING_SEC = 30  # Avatar says "Алло?"
+SILENCE_TIMEOUT_SEC = 60  # Modal "Continue?"
+MAX_STT_FAILURES = 3
+
+# Phrases for silence handling
+SILENCE_AVATAR_PHRASES = [
+    "Алло? Вы ещё здесь?",
+    "Алло? Вы слышите меня?",
+    "Мне кажется, связь прервалась...",
+]
+
+
+async def _send(ws: WebSocket, msg_type: str, data: dict) -> None:
+    """Helper to send a typed JSON message to the client."""
+    try:
+        await ws.send_json({"type": msg_type, "data": data})
+    except Exception:
+        logger.debug("Failed to send message type=%s", msg_type)
+
+
+async def _send_error(ws: WebSocket, message: str, code: str = "error") -> None:
+    await _send(ws, "error", {"message": message, "code": code})
+
+
+async def _authenticate_first_message(ws: WebSocket, raw: str) -> uuid.UUID | None:
+    """Authenticate via first WS message containing JWT token.
+
+    Expected format: {"type": "auth", "data": {"token": "..."}}
+    Returns user_id or None.
+    """
+    try:
+        message = json.loads(raw)
+    except json.JSONDecodeError:
+        await _send(ws, "auth.error", {"message": "Invalid JSON"})
+        return None
+
+    if message.get("type") != "auth":
+        await _send(ws, "auth.error", {"message": "First message must be auth"})
+        return None
+
+    token = message.get("data", {}).get("token")
+    if not token:
+        await _send(ws, "auth.error", {"message": "Token is required"})
+        return None
+
+    payload = decode_token(token)
+    if payload is None or payload.get("type") != "access":
+        await _send(ws, "auth.error", {"message": "Invalid or expired token"})
+        return None
+
+    user_id_str = payload.get("sub")
+    if not user_id_str:
+        await _send(ws, "auth.error", {"message": "Invalid token payload"})
+        return None
+
+    try:
+        user_id = uuid.UUID(user_id_str)
+    except ValueError:
+        await _send(ws, "auth.error", {"message": "Invalid user ID in token"})
+        return None
+
+    # Verify user exists and is active
+    async with async_session() as db:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user is None or not user.is_active:
+            await _send(ws, "auth.error", {"message": "User not found or inactive"})
+            return None
+
+    return user_id
 
 
 async def _generate_character_reply(
@@ -55,9 +133,11 @@ async def _generate_character_reply(
     state: dict,
 ) -> None:
     """Build message history, call LLM, send character.response, update emotion."""
+    # Send avatar.typing indicator
+    await _send(ws, "avatar.typing", {"is_typing": True})
+
     current_emotion = await get_emotion(session_id)
 
-    # Build conversation history from Redis/DB
     history = await get_message_history(session_id)
     messages = [
         {"role": m["role"], "content": m["content"]}
@@ -76,12 +156,16 @@ async def _generate_character_reply(
         )
     except LLMError as e:
         logger.error("LLM failed for session %s: %s", session_id, e)
+        await _send(ws, "avatar.typing", {"is_typing": False})
         await _send(ws, "character.response", {
-            "content": "Извините, не расслышал. Повторите, пожалуйста.",
+            "content": "Секунду... мне нужно собраться с мыслями.",
             "emotion": current_emotion.value,
             "is_fallback": True,
         })
         return
+
+    # Stop typing indicator
+    await _send(ws, "avatar.typing", {"is_typing": False})
 
     # Save assistant message to DB
     async with async_session() as db:
@@ -107,14 +191,19 @@ async def _generate_character_reply(
         db.add(api_log)
         await db.commit()
 
-    # Update emotion based on conversation flow
-    new_emotion = await transition_emotion(session_id, "good_response")
+    # Determine response quality for emotion transition
+    response_quality = "good_response"
+    if llm_result.is_fallback:
+        response_quality = "bad_response"
+
+    new_emotion = await transition_emotion(session_id, response_quality)
 
     await _send(ws, "character.response", {
         "content": llm_result.content,
         "emotion": new_emotion.value,
         "model": llm_result.model,
         "latency_ms": llm_result.latency_ms,
+        "is_fallback": llm_result.is_fallback,
     })
 
     if new_emotion.value != current_emotion.value:
@@ -124,43 +213,69 @@ async def _generate_character_reply(
         })
 
 
-async def _send(ws: WebSocket, msg_type: str, data: dict) -> None:
-    """Helper to send a typed JSON message to the client."""
-    try:
-        await ws.send_json({"type": msg_type, "data": data})
-    except Exception:
-        logger.debug("Failed to send message type=%s", msg_type)
-
-
-async def _send_error(ws: WebSocket, message: str, code: str = "error") -> None:
-    await _send(ws, "error", {"message": message, "code": code})
-
-
 async def _silence_watchdog(
     ws: WebSocket,
     session_id: uuid.UUID,
+    state: dict,
     stop_event: asyncio.Event,
 ) -> None:
-    """Background task: detect prolonged silence and warn/close."""
+    """Background task: detect prolonged silence.
+
+    - 30s silence → avatar says "Алло?" (character.response)
+    - 60s silence → send silence.timeout for modal "Continue?"
+    """
+    warned = False
+
     while not stop_event.is_set():
         await asyncio.sleep(5)
         if stop_event.is_set():
             break
 
-        from app.services.session_manager import check_silence_timeout
+        from app.services.session_manager import get_last_activity_time
 
-        timed_out = await check_silence_timeout(session_id, SILENCE_TIMEOUT_SEC)
-        if timed_out:
-            await _send(ws, "session.timeout", {
-                "message": "No activity detected. Session will close.",
+        last_activity = await get_last_activity_time(session_id)
+        if last_activity is None:
+            continue
+
+        elapsed = time.time() - last_activity
+
+        if elapsed >= SILENCE_TIMEOUT_SEC and not stop_event.is_set():
+            # 60s — send timeout modal
+            await _send(ws, "silence.timeout", {
+                "message": "Вы давно молчите. Хотите продолжить тренировку?",
                 "timeout_seconds": SILENCE_TIMEOUT_SEC,
             })
-            # End the session due to timeout
+            # End session due to inactivity
             async with async_session() as db:
                 await end_session(session_id, db, status=SessionStatus.abandoned)
                 await db.commit()
+            state["active"] = False
             stop_event.set()
             break
+
+        elif elapsed >= SILENCE_WARNING_SEC and not warned:
+            # 30s — avatar says "Алло?"
+            import random
+            phrase = random.choice(SILENCE_AVATAR_PHRASES)
+            await _send(ws, "character.response", {
+                "content": phrase,
+                "emotion": "cold",
+                "is_silence_prompt": True,
+            })
+            # Save as assistant message
+            async with async_session() as db:
+                await add_message(
+                    session_id=session_id,
+                    role=MessageRole.assistant,
+                    content=phrase,
+                    db=db,
+                    emotion_state="cold",
+                )
+                await db.commit()
+            warned = True
+
+        elif elapsed < SILENCE_WARNING_SEC:
+            warned = False  # Reset if user spoke again
 
 
 async def _handle_session_start(
@@ -168,16 +283,10 @@ async def _handle_session_start(
     data: dict,
     state: dict,
 ) -> None:
-    """Handle session.start: resume existing session or create a new one.
-
-    Accepts either:
-    - session_id: Resume session created via REST POST /training/sessions
-    - scenario_id + user_id: Create a new session via WebSocket
-    """
+    """Handle session.start: resume existing or create new session."""
     session_id_str = data.get("session_id")
 
     if session_id_str:
-        # Resume existing session created via REST
         try:
             session_id = uuid.UUID(session_id_str)
         except ValueError:
@@ -193,7 +302,6 @@ async def _handle_session_start(
                 await _send_error(ws, "Session not found", "not_found")
                 return
 
-            # Load scenario + character
             scenario_result = await db.execute(
                 select(Scenario).where(Scenario.id == session.scenario_id)
             )
@@ -210,10 +318,9 @@ async def _handle_session_start(
             if character and character.initial_emotion:
                 initial_emotion = character.initial_emotion
 
-            # Initialize emotion in Redis for this session
             await init_emotion(session.id, initial_emotion)
 
-            # Initialize Redis session state
+            # Init Redis session state
             r = aioredis.from_url(settings.redis_url, decode_responses=True)
             try:
                 state_key = f"session:{session.id}:state"
@@ -227,16 +334,16 @@ async def _handle_session_start(
                 })
                 await r.set(state_key, redis_state, ex=3600)
             except Exception:
-                logger.warning("Failed to init Redis for resumed session %s", session.id)
+                logger.warning("Failed to init Redis for session %s", session.id)
             finally:
                 await r.aclose()
 
-            # Update handler state
             state["session_id"] = session.id
             state["user_id"] = session.user_id
             state["scenario_id"] = session.scenario_id
             state["character_prompt_path"] = character.prompt_path if character else None
             state["active"] = True
+            state["stt_failure_count"] = 0
 
         await _send(ws, "session.started", {
             "session_id": str(session.id),
@@ -246,7 +353,7 @@ async def _handle_session_start(
         })
         return
 
-    # Create new session via WS (original flow with scenario_id + user_id)
+    # Create new session
     scenario_id_str = data.get("scenario_id")
     if not scenario_id_str:
         await _send_error(ws, "scenario_id or session_id is required", "missing_field")
@@ -258,15 +365,9 @@ async def _handle_session_start(
         await _send_error(ws, "Invalid scenario_id format", "invalid_field")
         return
 
-    user_id_str = data.get("user_id")
-    if not user_id_str:
-        await _send_error(ws, "user_id is required", "missing_field")
-        return
-
-    try:
-        user_id = uuid.UUID(user_id_str)
-    except ValueError:
-        await _send_error(ws, "Invalid user_id format", "invalid_field")
+    user_id = state.get("user_id")
+    if not user_id:
+        await _send_error(ws, "Not authenticated", "auth_error")
         return
 
     async with async_session() as db:
@@ -309,6 +410,7 @@ async def _handle_session_start(
     state["scenario_id"] = scenario_id
     state["character_prompt_path"] = character.prompt_path if character else None
     state["active"] = True
+    state["stt_failure_count"] = 0
 
     await _send(ws, "session.started", {
         "session_id": str(session.id),
@@ -331,7 +433,6 @@ async def _handle_audio_chunk(
 
     await update_activity(session_id)
 
-    # Audio is sent as base64-encoded bytes
     audio_b64 = data.get("audio")
     if not audio_b64:
         await _send_error(ws, "audio field is required (base64-encoded)", "missing_field")
@@ -343,7 +444,6 @@ async def _handle_audio_chunk(
         await _send_error(ws, "Invalid base64 audio data", "invalid_data")
         return
 
-    # Check message limit
     try:
         await check_message_limit(session_id)
     except RateLimitError as e:
@@ -353,18 +453,42 @@ async def _handle_audio_chunk(
     # Transcribe via STT
     try:
         stt_result = await transcribe_audio(audio_bytes)
+        state["stt_failure_count"] = 0  # Reset on success
     except STTError as e:
-        logger.warning("STT unavailable for session %s: %s", session_id, e)
-        await _send(ws, "stt.unavailable", {
-            "message": "Распознавание речи недоступно. Используйте текстовый ввод.",
-        })
+        state["stt_failure_count"] = state.get("stt_failure_count", 0) + 1
+        logger.warning(
+            "STT failure %d for session %s: %s",
+            state["stt_failure_count"], session_id, e,
+        )
+
+        if state["stt_failure_count"] >= MAX_STT_FAILURES:
+            await _send(ws, "stt.error", {
+                "message": "Не удаётся распознать речь. Проверьте микрофон или используйте текстовый ввод.",
+                "failure_count": state["stt_failure_count"],
+                "suggest_text_input": True,
+            })
+        else:
+            await _send(ws, "stt.unavailable", {
+                "message": "Не удалось распознать. Попробуйте ещё раз.",
+                "failure_count": state["stt_failure_count"],
+            })
         return
 
+    # Check for non-Russian / empty
     if not stt_result.text.strip():
         await _send(ws, "transcription.result", {
             "text": "",
             "confidence": 0.0,
             "is_empty": True,
+        })
+        return
+
+    if stt_result.confidence < 0.3:
+        await _send(ws, "transcription.result", {
+            "text": stt_result.text,
+            "confidence": stt_result.confidence,
+            "is_low_confidence": True,
+            "message": "Не удалось чётко распознать. Повторите, пожалуйста.",
         })
         return
 
@@ -377,7 +501,7 @@ async def _handle_audio_chunk(
         "is_empty": False,
     })
 
-    # Save user message to DB
+    # Save user message
     current_emotion = await get_emotion(session_id)
     async with async_session() as db:
         await add_message(
@@ -391,8 +515,18 @@ async def _handle_audio_chunk(
         )
         await db.commit()
 
-    # Generate LLM character response
+    # Generate character response
     await _generate_character_reply(ws, session_id, state)
+
+
+async def _handle_audio_end(
+    ws: WebSocket,
+    data: dict,
+    state: dict,
+) -> None:
+    """Handle audio.end: process complete audio recording."""
+    # Same as audio.chunk but for complete recordings (Push-to-Talk)
+    await _handle_audio_chunk(ws, data, state)
 
 
 async def _handle_text_message(
@@ -413,7 +547,6 @@ async def _handle_text_message(
         await _send_error(ws, "content field is required", "missing_field")
         return
 
-    # Check message limit
     try:
         await check_message_limit(session_id)
     except RateLimitError as e:
@@ -422,7 +555,6 @@ async def _handle_text_message(
 
     current_emotion = await get_emotion(session_id)
 
-    # Save user message
     async with async_session() as db:
         await add_message(
             session_id=session_id,
@@ -433,7 +565,6 @@ async def _handle_text_message(
         )
         await db.commit()
 
-    # Generate LLM character response
     await _generate_character_reply(ws, session_id, state)
 
 
@@ -442,13 +573,12 @@ async def _handle_session_end(
     data: dict,
     state: dict,
 ) -> None:
-    """Handle session.end: calculate scores, finalize session, save to DB, cleanup Redis."""
+    """Handle session.end: calculate scores, finalize, cleanup."""
     session_id = state.get("session_id")
     if not session_id:
         await _send_error(ws, "No active session", "no_session")
         return
 
-    # Calculate scores before ending (needs messages still in DB)
     scores = None
     try:
         async with async_session() as db:
@@ -459,12 +589,11 @@ async def _handle_session_end(
     async with async_session() as db:
         session = await end_session(session_id, db, status=SessionStatus.completed)
 
-        # Save scores to session record
         if session and scores:
             session.score_script_adherence = scores.script_adherence
             session.score_objection_handling = scores.objection_handling
             session.score_communication = scores.communication
-            session.score_emotional = scores.emotional
+            session.score_anti_patterns = scores.anti_patterns
             session.score_result = scores.result
             session.score_total = scores.total
             session.scoring_details = scores.details
@@ -486,7 +615,7 @@ async def _handle_session_end(
                 "script_adherence": scores.script_adherence,
                 "objection_handling": scores.objection_handling,
                 "communication": scores.communication,
-                "emotional": scores.emotional,
+                "anti_patterns": scores.anti_patterns,
                 "result": scores.result,
                 "total": scores.total,
             }
@@ -494,49 +623,29 @@ async def _handle_session_end(
     await _send(ws, "session.ended", result_data)
 
 
-async def _authenticate_ws(websocket: WebSocket) -> uuid.UUID | None:
-    """Validate JWT token from query parameter. Returns user_id or None."""
-    token = websocket.query_params.get("token")
-    if not token:
-        return None
-
-    payload = decode_token(token)
-    if payload is None or payload.get("type") != "access":
-        return None
-
-    user_id_str = payload.get("sub")
-    if not user_id_str:
-        return None
-
-    try:
-        user_id = uuid.UUID(user_id_str)
-    except ValueError:
-        return None
-
-    # Verify user exists and is active
-    async with async_session() as db:
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
-        if user is None or not user.is_active:
-            return None
-
-    return user_id
-
-
 async def training_websocket(websocket: WebSocket) -> None:
     """Handle a training session WebSocket connection.
 
-    Protocol:
-    - Client sends JSON: {"type": "...", "data": {...}}
-    - Server sends JSON: {"type": "...", "data": {...}}
+    Auth flow: accept first, then authenticate via first message (not URL).
     """
-    # Authenticate before accepting
-    user_id = await _authenticate_ws(websocket)
+    await websocket.accept()
+
+    # Wait for auth message (10s timeout)
+    try:
+        raw = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
+    except asyncio.TimeoutError:
+        await _send(websocket, "auth.error", {"message": "Auth timeout"})
+        await websocket.close(code=http_status.WS_1008_POLICY_VIOLATION)
+        return
+    except WebSocketDisconnect:
+        return
+
+    user_id = await _authenticate_first_message(websocket, raw)
     if user_id is None:
         await websocket.close(code=http_status.WS_1008_POLICY_VIOLATION)
         return
 
-    await websocket.accept()
+    await _send(websocket, "auth.success", {"user_id": str(user_id)})
 
     # Connection state
     state: dict = {
@@ -545,38 +654,35 @@ async def training_websocket(websocket: WebSocket) -> None:
         "scenario_id": None,
         "character_prompt_path": None,
         "active": False,
+        "stt_failure_count": 0,
     }
 
     watchdog_task: asyncio.Task | None = None
     stop_event = asyncio.Event()
 
     try:
-        # Send ready signal
         await _send(websocket, "session.ready", {
-            "message": "WebSocket connected. Send session.start to begin.",
+            "message": "Authenticated. Send session.start to begin.",
         })
 
         while True:
-            # Receive message with timeout for cleanup
             try:
                 raw = await asyncio.wait_for(
                     websocket.receive_text(),
-                    timeout=SILENCE_TIMEOUT_SEC + 10,
+                    timeout=SILENCE_TIMEOUT_SEC + 30,
                 )
             except asyncio.TimeoutError:
-                # Hard timeout — close connection
                 if state.get("session_id"):
                     async with async_session() as db:
                         await end_session(
                             state["session_id"], db, status=SessionStatus.abandoned
                         )
                         await db.commit()
-                await _send(websocket, "session.timeout", {
+                await _send(websocket, "silence.timeout", {
                     "message": "Connection timed out due to inactivity",
                 })
                 break
 
-            # Check if watchdog triggered closure
             if stop_event.is_set():
                 break
 
@@ -591,14 +697,16 @@ async def training_websocket(websocket: WebSocket) -> None:
 
             if msg_type == "session.start":
                 await _handle_session_start(websocket, msg_data, state)
-                # Start silence watchdog after session starts
                 if state.get("session_id") and watchdog_task is None:
                     watchdog_task = asyncio.create_task(
-                        _silence_watchdog(websocket, state["session_id"], stop_event)
+                        _silence_watchdog(websocket, state["session_id"], state, stop_event)
                     )
 
             elif msg_type == "audio.chunk":
                 await _handle_audio_chunk(websocket, msg_data, state)
+
+            elif msg_type == "audio.end":
+                await _handle_audio_end(websocket, msg_data, state)
 
             elif msg_type == "text.message":
                 await _handle_text_message(websocket, msg_data, state)
@@ -609,10 +717,14 @@ async def training_websocket(websocket: WebSocket) -> None:
                 break
 
             elif msg_type == "ping":
-                # Keep-alive / reconnection probe
                 if state.get("session_id"):
                     await update_activity(state["session_id"])
                 await _send(websocket, "pong", {})
+
+            elif msg_type == "silence.continue":
+                # User chose to continue after silence modal
+                if state.get("session_id"):
+                    await update_activity(state["session_id"])
 
             else:
                 await _send_error(
@@ -623,7 +735,6 @@ async def training_websocket(websocket: WebSocket) -> None:
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected for session %s", state.get("session_id"))
-        # Clean up abandoned session
         if state.get("session_id"):
             try:
                 async with async_session() as db:
@@ -647,7 +758,6 @@ async def training_websocket(websocket: WebSocket) -> None:
             except Exception:
                 logger.error("Failed to mark session %s as error", state.get("session_id"))
     finally:
-        # Cancel watchdog
         stop_event.set()
         if watchdog_task and not watchdog_task.done():
             watchdog_task.cancel()

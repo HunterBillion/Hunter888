@@ -17,7 +17,7 @@ export interface TrainingSession {
   score_script_adherence: number | null;
   score_objection_handling: number | null;
   score_communication: number | null;
-  score_emotional: number | null;
+  score_anti_patterns: number | null;
   score_result: number | null;
   score_total: number | null;
   emotion_timeline: Array<{ state: string; timestamp: number }> | null;

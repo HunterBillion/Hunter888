@@ -45,7 +45,7 @@ class TrainingSession(Base):
     score_script_adherence: Mapped[float | None] = mapped_column(Float)
     score_objection_handling: Mapped[float | None] = mapped_column(Float)
     score_communication: Mapped[float | None] = mapped_column(Float)
-    score_emotional: Mapped[float | None] = mapped_column(Float)
+    score_anti_patterns: Mapped[float | None] = mapped_column(Float)
     score_result: Mapped[float | None] = mapped_column(Float)
     score_total: Mapped[float | None] = mapped_column(Float)
 

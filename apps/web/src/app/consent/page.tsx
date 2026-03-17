@@ -44,10 +44,10 @@ export default function ConsentPage() {
   if (declined) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
-        <div className="w-full max-w-lg space-y-6 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+        <div className="glass-panel w-full max-w-lg p-8 space-y-6 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-vh-red/20">
             <svg
-              className="h-8 w-8 text-red-600"
+              className="h-8 w-8 text-vh-red"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth="1.5"
@@ -60,25 +60,24 @@ export default function ConsentPage() {
               />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Согласие необходимо
+          <h1 className="text-2xl font-display font-bold text-vh-red">
+            СОГЛАСИЕ НЕОБХОДИМО
           </h1>
-          <p className="text-gray-600">
-            Для использования платформы AI Тренажер Продаж необходимо дать
-            согласие на обработку персональных данных в соответствии с
-            Федеральным законом N 152-ФЗ. Без этого согласия работа с
-            платформой невозможна.
+          <p className="text-gray-400">
+            Для использования платформы VibeHunter необходимо дать согласие на
+            обработку персональных данных в соответствии с Федеральным законом
+            N 152-ФЗ.
           </p>
           <div className="flex justify-center gap-4">
             <button
               onClick={() => setDeclined(false)}
-              className="rounded-md border border-gray-300 bg-white px-6 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="vh-btn-outline"
             >
               Вернуться
             </button>
             <button
               onClick={handleLogout}
-              className="rounded-md bg-red-600 px-6 py-2 text-sm font-medium text-white hover:bg-red-700"
+              className="rounded-lg bg-vh-red/20 border border-vh-red/40 px-6 py-2 text-sm font-medium text-vh-red hover:bg-vh-red/30 transition-colors"
             >
               Выйти
             </button>
@@ -90,30 +89,29 @@ export default function ConsentPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-8">
-      <div className="w-full max-w-2xl space-y-6">
+      <div className="glass-panel w-full max-w-2xl p-8 space-y-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900">
-            Согласие на обработку персональных данных
+          <h1 className="text-2xl font-display font-bold text-vh-purple">
+            СОГЛАСИЕ НА ОБРАБОТКУ ДАННЫХ
           </h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="mt-2 text-sm text-gray-400">
             В соответствии с Федеральным законом от 27.07.2006 N 152-ФЗ
             &laquo;О персональных данных&raquo;
           </p>
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <div className="max-h-80 overflow-y-auto pr-2 text-sm leading-relaxed text-gray-700">
+        <div className="rounded-lg border border-white/10 bg-white/5 p-6">
+          <div className="max-h-80 overflow-y-auto pr-2 text-sm leading-relaxed text-gray-300">
             <p className="mb-3">
               Настоящим я, субъект персональных данных, в соответствии с
               Федеральным законом от 27 июля 2006 года N 152-ФЗ &laquo;О
               персональных данных&raquo;, свободно, своей волей и в своем
               интересе даю согласие на обработку моих персональных данных
-              оператору платформы AI Тренажер Продаж (далее &mdash; Оператор).
+              оператору платформы VibeHunter (далее &mdash; Оператор).
             </p>
 
-            <p className="mb-3 font-semibold">
-              Перечень персональных данных, на обработку которых дается
-              согласие:
+            <p className="mb-3 font-semibold text-gray-200">
+              Перечень персональных данных:
             </p>
             <ul className="mb-3 list-inside list-disc space-y-1">
               <li>Фамилия, имя, отчество</li>
@@ -124,30 +122,14 @@ export default function ConsentPage() {
               <li>Сведения о должности и подразделении</li>
             </ul>
 
-            <p className="mb-3 font-semibold">Цели обработки:</p>
+            <p className="mb-3 font-semibold text-gray-200">Цели обработки:</p>
             <ul className="mb-3 list-inside list-disc space-y-1">
-              <li>
-                Проведение тренировочных сессий с AI-персонажами для развития
-                навыков продаж
-              </li>
+              <li>Проведение тренировочных сессий с AI-персонажами</li>
               <li>Распознавание речи и преобразование в текст</li>
-              <li>
-                Оценка качества коммуникации и формирование обратной связи
-              </li>
-              <li>
-                Формирование статистики обучения и отчетов для руководителя
-              </li>
+              <li>Оценка качества коммуникации и формирование обратной связи</li>
+              <li>Формирование статистики обучения и отчетов</li>
               <li>Улучшение качества работы платформы</li>
             </ul>
-
-            <p className="mb-3 font-semibold">Способы обработки:</p>
-            <p className="mb-3">
-              Сбор, запись, систематизация, накопление, хранение, уточнение
-              (обновление, изменение), извлечение, использование, передача
-              (предоставление, доступ), обезличивание, блокирование, удаление,
-              уничтожение персональных данных с использованием средств
-              автоматизации и без использования таких средств.
-            </p>
 
             <p className="mb-3">
               Согласие действует с момента его предоставления и до момента его
@@ -156,16 +138,14 @@ export default function ConsentPage() {
             </p>
 
             <p>
-              Я подтверждаю, что ознакомлен(а) с правами субъекта
-              персональных данных, предусмотренными главой 3 Федерального
-              закона от 27.07.2006 N 152-ФЗ &laquo;О персональных
-              данных&raquo;.
+              Я подтверждаю, что ознакомлен(а) с правами субъекта персональных
+              данных, предусмотренными главой 3 ФЗ N 152-ФЗ.
             </p>
           </div>
         </div>
 
         {error && (
-          <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+          <div className="rounded-md bg-vh-red/10 border border-vh-red/30 p-3 text-sm text-vh-red">
             {error}
           </div>
         )}
@@ -176,9 +156,9 @@ export default function ConsentPage() {
               type="checkbox"
               checked={accepted}
               onChange={(e) => setAccepted(e.target.checked)}
-              className="mt-0.5 h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="mt-0.5 h-5 w-5 rounded border-white/20 bg-white/10 text-vh-purple focus:ring-vh-purple"
             />
-            <span className="text-sm text-gray-700">
+            <span className="text-sm text-gray-300">
               Я даю согласие на обработку персональных данных
             </span>
           </label>
@@ -187,13 +167,13 @@ export default function ConsentPage() {
             <button
               onClick={handleAccept}
               disabled={!accepted || loading}
-              className="flex-1 rounded-md bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="vh-btn-primary flex-1"
             >
               {loading ? "Сохранение..." : "Подтвердить"}
             </button>
             <button
               onClick={handleDecline}
-              className="flex-1 rounded-md border border-gray-300 bg-white px-6 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="vh-btn-outline flex-1"
             >
               Отклонить
             </button>

@@ -44,23 +44,25 @@ export default function ChangePasswordPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-8">
+      <div className="glass-panel w-full max-w-md p-8 space-y-8">
         <div className="text-center">
-          <h1 className="text-2xl font-bold">Смена пароля</h1>
-          <p className="mt-2 text-gray-600">
+          <h1 className="text-2xl font-display font-bold text-vh-purple">
+            СМЕНА ПАРОЛЯ
+          </h1>
+          <p className="mt-2 text-gray-400 text-sm">
             Для продолжения работы необходимо сменить пароль
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
-            <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+            <div className="rounded-md bg-vh-red/10 border border-vh-red/30 p-3 text-sm text-vh-red">
               {error}
             </div>
           )}
 
           <div>
-            <label htmlFor="oldPassword" className="block text-sm font-medium">
+            <label htmlFor="oldPassword" className="vh-label">
               Текущий пароль
             </label>
             <input
@@ -69,12 +71,12 @@ export default function ChangePasswordPage() {
               value={oldPassword}
               onChange={(e) => setOldPassword(e.target.value)}
               required
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="vh-input"
             />
           </div>
 
           <div>
-            <label htmlFor="newPassword" className="block text-sm font-medium">
+            <label htmlFor="newPassword" className="vh-label">
               Новый пароль
             </label>
             <input
@@ -84,15 +86,13 @@ export default function ChangePasswordPage() {
               onChange={(e) => setNewPassword(e.target.value)}
               required
               minLength={8}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="vh-input"
+              placeholder="Минимум 8 символов"
             />
           </div>
 
           <div>
-            <label
-              htmlFor="confirmPassword"
-              className="block text-sm font-medium"
-            >
+            <label htmlFor="confirmPassword" className="vh-label">
               Подтвердите новый пароль
             </label>
             <input
@@ -102,14 +102,14 @@ export default function ChangePasswordPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               minLength={8}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="vh-input"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-primary-600 px-4 py-2 text-white hover:bg-primary-700 disabled:opacity-50"
+            className="vh-btn-primary w-full"
           >
             {loading ? "Сохранение..." : "Сменить пароль"}
           </button>

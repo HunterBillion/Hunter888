@@ -37,7 +37,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
         {/* Avatar for AI */}
         {!isUser && (
           <div className="mb-1 flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-300 text-xs font-bold text-gray-600">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-vh-purple/20 border border-vh-purple/30 text-xs font-bold text-vh-purple">
               AI
             </div>
             {message.emotion && (
@@ -52,8 +52,8 @@ export default function ChatMessage({ message }: ChatMessageProps) {
         <div
           className={`rounded-2xl px-4 py-2.5 ${
             isUser
-              ? "rounded-tr-sm bg-blue-600 text-white"
-              : "rounded-tl-sm bg-gray-100 text-gray-900"
+              ? "rounded-tr-sm bg-vh-purple text-white"
+              : "rounded-tl-sm bg-white/5 border border-white/10 text-gray-200"
           }`}
         >
           <p className="whitespace-pre-wrap text-sm leading-relaxed">
@@ -63,7 +63,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
 
         {/* Timestamp on hover */}
         <div
-          className={`mt-0.5 text-xs text-gray-400 transition-opacity duration-200 ${
+          className={`mt-0.5 text-xs text-gray-600 transition-opacity duration-200 ${
             isUser ? "text-right" : "text-left"
           } ${showTimestamp ? "opacity-100" : "opacity-0"}`}
         >

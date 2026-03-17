@@ -1,14 +1,18 @@
 """LLM abstraction: Claude primary, GPT-4o-mini fallback.
 
-Phase 2 (Week 7): Full implementation.
+Phase 2: Full implementation with output filtering.
 - Route requests to Claude API with configurable timeout
-- Fallback to OpenAI on timeout/error
-- Track token usage and latency in api_logs
+- Retry 1x on timeout, then fallback to OpenAI
+- If both fail, return a pause phrase ("Клиент задумался...")
+- Output filtering: profanity, PII, role breaks
+- Track token usage and latency
 - Enforce max_history_messages window
 - Load character prompts from file
 """
 
 import logging
+import random
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +26,76 @@ logger = logging.getLogger(__name__)
 
 _claude_client: anthropic.AsyncAnthropic | None = None
 _openai_client: openai.AsyncOpenAI | None = None
+
+# ─── Output filtering patterns ───────────────────────────────────────────────
+
+_PROFANITY_PATTERNS = [
+    r"\bбля[дт]?\w*\b",
+    r"\bсук[аи]\w*\b",
+    r"\bхуй?\w*\b",
+    r"\bпизд\w*\b",
+    r"\bеб[аоу]\w*\b",
+    r"\bмуда[кч]\w*\b",
+    r"\bгандон\w*\b",
+    r"\bшлюх\w*\b",
+    r"\bдерьм\w*\b",
+    r"\bзасранец\w*\b",
+]
+
+_ROLE_BREAK_PATTERNS = [
+    r"я\s+(языковая\s+модель|искусственный\s+интеллект|ии|нейросеть|чат-?бот)",
+    r"как\s+языковая\s+модель",
+    r"я\s+не\s+могу\s+(чувствовать|испытывать\s+эмоции)",
+    r"я\s+был\s+создан",
+    r"anthropic|openai|gpt|claude",
+    r"мой\s+промпт|system\s+prompt|инструкция",
+]
+
+_PII_PATTERNS = [
+    r"\b\d{4}\s?\d{4}\s?\d{4}\s?\d{4}\b",  # Card numbers
+    r"\b\d{3}-\d{3}-\d{3}\s?\d{2}\b",  # SNILS-like
+    r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",  # Email
+    r"\b\d{2}\s?\d{2}\s?\d{6}\b",  # Passport
+]
+
+FALLBACK_PHRASES = [
+    "Хм, дайте подумать...",
+    "Секунду... мне нужно собраться с мыслями.",
+    "Так... подождите минутку.",
+    "Дайте мне минуту...",
+    "Мне нужно подумать над вашими словами...",
+]
+
+
+def _filter_output(text: str) -> tuple[str, list[str]]:
+    """Check LLM output for forbidden content.
+
+    Returns:
+        (filtered_text, list_of_violations)
+        If violations found, returns a safe fallback phrase instead.
+    """
+    violations = []
+
+    for pattern in _PROFANITY_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            violations.append("profanity")
+            break
+
+    for pattern in _ROLE_BREAK_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            violations.append("role_break")
+            break
+
+    for pattern in _PII_PATTERNS:
+        if re.search(pattern, text):
+            violations.append("pii_leak")
+            break
+
+    if violations:
+        logger.warning("Output filter triggered: %s", violations)
+        return random.choice(FALLBACK_PHRASES), violations
+
+    return text, []
 
 
 def _get_claude_client() -> anthropic.AsyncAnthropic | None:
@@ -45,6 +119,8 @@ class LLMResponse:
     input_tokens: int
     output_tokens: int
     latency_ms: int
+    is_fallback: bool = False
+    filter_violations: list[str] | None = None
 
 
 class LLMError(Exception):
@@ -165,11 +241,11 @@ async def generate_response(
 ) -> LLMResponse:
     """Generate character response with Claude primary + OpenAI fallback.
 
-    Args:
-        system_prompt: Pre-built system prompt (used if character_prompt_path is None)
-        messages: Conversation history [{"role": "user"/"assistant", "content": "..."}]
-        emotion_state: Current emotion state of the character
-        character_prompt_path: Path to character prompt file (relative to apps/api/)
+    Flow:
+    1. Try Claude (with retry on timeout)
+    2. Fallback to OpenAI
+    3. If both fail, return a pause phrase
+    4. Filter output for profanity, PII, role breaks
     """
     if character_prompt_path:
         character_prompt = load_prompt(character_prompt_path)
@@ -181,16 +257,26 @@ async def generate_response(
     trimmed = _trim_history(messages, settings.llm_max_history_messages)
     timeout = float(settings.llm_timeout_seconds)
 
-    # Try Claude first
-    try:
-        response = await _call_claude(full_system, trimmed, timeout)
-        logger.info(
-            "Claude: %d tokens, %dms, model=%s",
-            response.output_tokens, response.latency_ms, response.model,
-        )
-        return response
-    except LLMError as e:
-        logger.warning("Claude failed, falling back to OpenAI: %s", e)
+    # Try Claude first (with 1 retry on timeout)
+    for attempt in range(2):
+        try:
+            response = await _call_claude(full_system, trimmed, timeout)
+            logger.info(
+                "Claude (attempt %d): %d tokens, %dms, model=%s",
+                attempt + 1, response.output_tokens, response.latency_ms, response.model,
+            )
+            # Apply output filter
+            filtered_content, violations = _filter_output(response.content)
+            if violations:
+                response.content = filtered_content
+                response.filter_violations = violations
+            return response
+        except LLMError as e:
+            if attempt == 0 and "timeout" in str(e).lower():
+                logger.warning("Claude timeout, retrying (attempt 2): %s", e)
+                continue
+            logger.warning("Claude failed, falling back to OpenAI: %s", e)
+            break
 
     # Fallback to OpenAI
     try:
@@ -199,7 +285,24 @@ async def generate_response(
             "OpenAI fallback: %d tokens, %dms, model=%s",
             response.output_tokens, response.latency_ms, response.model,
         )
+        response.is_fallback = True
+        # Apply output filter
+        filtered_content, violations = _filter_output(response.content)
+        if violations:
+            response.content = filtered_content
+            response.filter_violations = violations
         return response
     except LLMError as e:
         logger.error("Both LLM providers failed: %s", e)
-        raise
+
+    # Both failed — return pause phrase
+    pause_phrase = random.choice(FALLBACK_PHRASES)
+    logger.warning("All LLMs failed, using pause phrase: %s", pause_phrase)
+    return LLMResponse(
+        content=pause_phrase,
+        model="fallback",
+        input_tokens=0,
+        output_tokens=0,
+        latency_ms=0,
+        is_fallback=True,
+    )

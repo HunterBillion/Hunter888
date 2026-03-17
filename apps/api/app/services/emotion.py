@@ -1,8 +1,12 @@
 """Character emotion engine with Redis-backed state management.
 
-States: cold -> warming -> open
-Transitions depend on manager's communication quality.
-Emotion state and timeline are stored in Redis per session for fast access.
+States (per TZ):
+- cold (Нейтральный/Скептичный): Default state, guarded
+- warming (Теплеет): Starting to engage, more open
+- open (Готов говорить): Willing to listen, share details
+
+Triggers: empathy, facts, pressure, good_response, bad_response
+Emotion state and timeline stored in Redis per session with 2h TTL.
 """
 
 import json
@@ -19,15 +23,24 @@ logger = logging.getLogger(__name__)
 
 TRANSITIONS = {
     EmotionState.cold: {
+        "empathy": EmotionState.warming,
+        "facts": EmotionState.warming,
         "good_response": EmotionState.warming,
+        "pressure": EmotionState.cold,
         "bad_response": EmotionState.cold,
     },
     EmotionState.warming: {
+        "empathy": EmotionState.open,
+        "facts": EmotionState.open,
         "good_response": EmotionState.open,
+        "pressure": EmotionState.cold,
         "bad_response": EmotionState.cold,
     },
     EmotionState.open: {
+        "empathy": EmotionState.open,
+        "facts": EmotionState.open,
         "good_response": EmotionState.open,
+        "pressure": EmotionState.warming,
         "bad_response": EmotionState.warming,
     },
 }
@@ -35,7 +48,7 @@ TRANSITIONS = {
 # Redis key patterns
 _EMOTION_KEY = "session:{session_id}:emotion"
 _TIMELINE_KEY = "session:{session_id}:emotion_timeline"
-_KEY_TTL = 3600  # 1 hour TTL for session emotion data
+_KEY_TTL = 7200  # 2 hour TTL (> max session duration)
 
 
 def _redis() -> aioredis.Redis:

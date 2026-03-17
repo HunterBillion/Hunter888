@@ -164,6 +164,14 @@ async def check_silence_timeout(session_id: uuid.UUID, timeout_sec: int = 30) ->
     return (time.time() - last_activity) > timeout_sec
 
 
+async def get_last_activity_time(session_id: uuid.UUID) -> float | None:
+    """Get the last activity timestamp for a session from Redis."""
+    state = await get_session_state(session_id)
+    if state is None:
+        return None
+    return state.get("last_activity")
+
+
 async def check_message_limit(session_id: uuid.UUID) -> None:
     """Check if the session has reached its message limit.
 

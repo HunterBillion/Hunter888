@@ -54,7 +54,7 @@ export default function AuthLayout({
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-700 border-t-vh-purple" />
           <span className="text-sm text-gray-500">
             {state === "loading" ? "Проверка авторизации..." : "Перенаправление..."}
           </span>

@@ -6,12 +6,24 @@ with confidence. Gracefully handles Whisper unavailability.
 
 import io
 import logging
+import re
 import time
 from dataclasses import dataclass
 
 import httpx
 
 from app.config import settings
+
+_MIN_AUDIO_SIZE = 100
+
+_BFL_CORRECTIONS = {
+    r"\bбэ\s*фэ\s*эл\b": "БФЛ",
+    r"\bбанкрот\s+физ\s*лиц\b": "банкротство физических лиц",
+    r"\bарбитражн\w*\s+управля\w*\b": "арбитражный управляющий",
+    r"\bфин\s*управля\w*\b": "финансовый управляющий",
+    r"\bреструктуриз\w*\b": "реструктуризация",
+    r"\bсубсиди[ая]рн\w*\b": "субсидиарная ответственность",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +38,17 @@ class STTResult:
 
 class STTError(Exception):
     """Raised when the STT service is unavailable or returns an error."""
+
+
+def _validate_audio(audio_bytes: bytes) -> None:
+    if len(audio_bytes) < _MIN_AUDIO_SIZE:
+        raise STTError(f"Audio too short ({len(audio_bytes)} bytes)")
+
+
+def _postprocess_bfl_terms(text: str) -> str:
+    for pattern, replacement in _BFL_CORRECTIONS.items():
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return text
 
 
 async def transcribe_audio(
@@ -63,9 +86,11 @@ async def transcribe_audio(
         "response_format": "verbose_json",
     }
 
+    _validate_audio(audio_bytes)
+
     start_ts = time.monotonic()
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=float(settings.whisper_timeout_seconds)) as client:
             response = await client.post(url, files=files, data=data)
     except httpx.ConnectError:
         logger.error("STT service unavailable at %s", url)
@@ -103,6 +128,8 @@ async def transcribe_audio(
         confidence = 0.0 if not text else 0.5
 
     detected_language = body.get("language", lang)
+
+    text = _postprocess_bfl_terms(text)
 
     return STTResult(
         text=text,
