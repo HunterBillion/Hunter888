@@ -23,36 +23,42 @@ depends_on: Union[str, None] = None
 
 def upgrade() -> None:
     # ── Enums ──────────────────────────────────────────────────────────────
-    client_status = postgresql.ENUM(
+    client_status_type = postgresql.ENUM(
         "new", "contacted", "interested", "consultation", "thinking",
         "consent_given", "contract_signed", "in_process", "paused",
         "completed", "lost", "consent_revoked",
-        name="clientstatus", create_type=False,
+        name="clientstatus",
     )
-    consent_channel = postgresql.ENUM(
+    consent_channel_type = postgresql.ENUM(
         "phone_call", "sms_link", "web_form", "whatsapp", "in_person", "email_link",
-        name="consentchannel", create_type=False,
+        name="consentchannel",
     )
-    interaction_type = postgresql.ENUM(
+    interaction_type_type = postgresql.ENUM(
         "outbound_call", "inbound_call", "sms_sent", "whatsapp_sent",
         "email_sent", "meeting", "status_change", "consent_event", "note", "system",
-        name="interactiontype", create_type=False,
+        name="interactiontype",
     )
-    notification_channel = postgresql.ENUM(
+    notification_channel_type = postgresql.ENUM(
         "in_app", "push", "sms", "whatsapp", "email",
-        name="notificationchannel", create_type=False,
+        name="notificationchannel",
     )
-    notification_status = postgresql.ENUM(
+    notification_status_type = postgresql.ENUM(
         "pending", "sent", "delivered", "read", "failed",
-        name="notificationstatus", create_type=False,
+        name="notificationstatus",
     )
 
+    client_status = postgresql.ENUM(name="clientstatus", create_type=False)
+    consent_channel = postgresql.ENUM(name="consentchannel", create_type=False)
+    interaction_type = postgresql.ENUM(name="interactiontype", create_type=False)
+    notification_channel = postgresql.ENUM(name="notificationchannel", create_type=False)
+    notification_status = postgresql.ENUM(name="notificationstatus", create_type=False)
+
     # Create enums first
-    client_status.create(op.get_bind(), checkfirst=True)
-    consent_channel.create(op.get_bind(), checkfirst=True)
-    interaction_type.create(op.get_bind(), checkfirst=True)
-    notification_channel.create(op.get_bind(), checkfirst=True)
-    notification_status.create(op.get_bind(), checkfirst=True)
+    client_status_type.create(op.get_bind(), checkfirst=True)
+    consent_channel_type.create(op.get_bind(), checkfirst=True)
+    interaction_type_type.create(op.get_bind(), checkfirst=True)
+    notification_channel_type.create(op.get_bind(), checkfirst=True)
+    notification_status_type.create(op.get_bind(), checkfirst=True)
 
     # ── real_clients ───────────────────────────────────────────────────────
     op.create_table(
