@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings  # noqa: F401
 from app.core.security import hash_password
-from app.database import async_session, engine, Base
+from app.database import async_session
 from app.models import *  # noqa: F401,F403
 from app.models.character import Character, EmotionState, Objection, ObjectionCategory
 from app.models.scenario import Scenario, ScenarioType
@@ -19,9 +19,6 @@ from app.models.user import Team, User, UserConsent, UserRole
 
 
 async def seed():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
     async with async_session() as db:
         # Check if users already exist (idempotent seed)
         existing = await db.execute(text("SELECT count(*) FROM users"))

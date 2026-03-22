@@ -15,7 +15,6 @@ from decimal import Decimal
 from sqlalchemy import (
     Boolean,
     DateTime,
-    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -26,7 +25,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -124,6 +123,17 @@ class AuditAction(str, enum.Enum):
     bulk_reassign = "bulk_reassign"
 
 
+client_status_enum = PgEnum(ClientStatus, name="clientstatus", create_type=False)
+consent_channel_enum = PgEnum(ConsentChannel, name="consentchannel", create_type=False)
+interaction_type_enum = PgEnum(InteractionType, name="interactiontype", create_type=False)
+notification_channel_enum = PgEnum(
+    NotificationChannel, name="notificationchannel", create_type=False
+)
+notification_status_enum = PgEnum(
+    NotificationStatus, name="notificationstatus", create_type=False
+)
+
+
 # ── Таблица допустимых переходов (ТЗ v2, раздел 3.1) ────────────────────────
 
 
@@ -179,7 +189,7 @@ class RealClient(Base):
     phone: Mapped[str | None] = mapped_column(String(20), index=True)
     email: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[ClientStatus] = mapped_column(
-        Enum(ClientStatus), default=ClientStatus.new, nullable=False, index=True
+        client_status_enum, default=ClientStatus.new, nullable=False, index=True
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, index=True
@@ -255,7 +265,7 @@ class ClientConsent(Base):
         UUID(as_uuid=True), ForeignKey("real_clients.id"), nullable=False, index=True
     )
     consent_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    channel: Mapped[ConsentChannel | None] = mapped_column(Enum(ConsentChannel))
+    channel: Mapped[ConsentChannel | None] = mapped_column(consent_channel_enum)
 
     # ТЗ v2: версия юридического текста согласия
     legal_text_version: Mapped[str | None] = mapped_column(String(20))
@@ -338,7 +348,7 @@ class ClientInteraction(Base):
         UUID(as_uuid=True), ForeignKey("users.id")
     )
     interaction_type: Mapped[InteractionType] = mapped_column(
-        Enum(InteractionType), nullable=False
+        interaction_type_enum, nullable=False
     )
     content: Mapped[str | None] = mapped_column(Text)
     result: Mapped[str | None] = mapped_column(String(200))
@@ -390,7 +400,7 @@ class ClientNotification(Base):
         UUID(as_uuid=True), ForeignKey("real_clients.id")
     )
     channel: Mapped[NotificationChannel] = mapped_column(
-        Enum(NotificationChannel), nullable=False
+        notification_channel_enum, nullable=False
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     body: Mapped[str | None] = mapped_column(Text)
@@ -399,7 +409,7 @@ class ClientNotification(Base):
     template_id: Mapped[str | None] = mapped_column(String(50))
 
     status: Mapped[NotificationStatus] = mapped_column(
-        Enum(NotificationStatus), default=NotificationStatus.pending, nullable=False
+        notification_status_enum, default=NotificationStatus.pending, nullable=False
     )
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # ТЗ v2: delivered отдельно от sent

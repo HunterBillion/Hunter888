@@ -27,24 +27,24 @@ def upgrade() -> None:
         "new", "contacted", "interested", "consultation", "thinking",
         "consent_given", "contract_signed", "in_process", "paused",
         "completed", "lost", "consent_revoked",
-        name="clientstatus", create_type=True,
+        name="clientstatus", create_type=False,
     )
     consent_channel = postgresql.ENUM(
         "phone_call", "sms_link", "web_form", "whatsapp", "in_person", "email_link",
-        name="consentchannel", create_type=True,
+        name="consentchannel", create_type=False,
     )
     interaction_type = postgresql.ENUM(
         "outbound_call", "inbound_call", "sms_sent", "whatsapp_sent",
         "email_sent", "meeting", "status_change", "consent_event", "note", "system",
-        name="interactiontype", create_type=True,
+        name="interactiontype", create_type=False,
     )
     notification_channel = postgresql.ENUM(
         "in_app", "push", "sms", "whatsapp", "email",
-        name="notificationchannel", create_type=True,
+        name="notificationchannel", create_type=False,
     )
     notification_status = postgresql.ENUM(
         "pending", "sent", "delivered", "read", "failed",
-        name="notificationstatus", create_type=True,
+        name="notificationstatus", create_type=False,
     )
 
     # Create enums first
