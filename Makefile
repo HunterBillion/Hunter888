@@ -5,7 +5,7 @@ dev:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 dev-db:
-	docker compose up postgres redis -d
+	docker compose -f docker-compose.pilot.yml up -d
 
 dev-api:
 	cd apps/api && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

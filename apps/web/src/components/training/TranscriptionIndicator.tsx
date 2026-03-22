@@ -26,7 +26,6 @@ export default function TranscriptionIndicator({
       setDisplayText(state.partial || "");
     } else if (state.status === "done") {
       setDisplayText(state.final);
-      // Fade out after showing final text
       const timer = setTimeout(() => {
         setVisible(false);
       }, 2000);
@@ -42,34 +41,39 @@ export default function TranscriptionIndicator({
         visible ? "opacity-100" : "opacity-0"
       }`}
     >
-      <div className="flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2">
+      <div
+        className="flex items-start gap-2 rounded-lg px-3 py-2"
+        style={{
+          background: "var(--input-bg)",
+          border: "1px solid var(--border-color)",
+        }}
+      >
         {state.status === "transcribing" && (
           <div className="mt-0.5 flex items-center gap-1">
-            <span
-              className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-blue-500"
-              style={{ animationDelay: "0ms" }}
-            />
-            <span
-              className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-blue-500"
-              style={{ animationDelay: "150ms" }}
-            />
-            <span
-              className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-blue-500"
-              style={{ animationDelay: "300ms" }}
-            />
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="inline-block h-1.5 w-1.5 animate-bounce rounded-full"
+                style={{
+                  background: "var(--accent)",
+                  animationDelay: `${i * 150}ms`,
+                }}
+              />
+            ))}
           </div>
         )}
         <div className="min-w-0 flex-1">
           {state.status === "transcribing" && !displayText && (
-            <span className="text-xs text-gray-500">
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
               Распознавание речи...
             </span>
           )}
           {displayText && (
             <p
-              className={`text-sm ${
-                state.status === "done" ? "text-gray-900" : "text-gray-600"
-              }`}
+              className="text-sm"
+              style={{
+                color: state.status === "done" ? "var(--text-primary)" : "var(--text-secondary)",
+              }}
             >
               {displayText}
             </p>

@@ -1,3 +1,209 @@
+// ============================================================================
+// Hunter888 / VibeHunter — Complete Type Definitions
+// 1:1 mapping with backend Pydantic schemas + SQLAlchemy models
+// ============================================================================
+
+// ─── Enums & Literal Types ─────────────────────────────────────────────────
+
+export type UserRole = "manager" | "rop" | "methodologist" | "admin";
+
+/**
+ * Full 10-state emotion system (synced with backend EmotionState enum).
+ * Backend still sends LEGACY_MAP (5-state) via WS for backward compat,
+ * but frontend now supports all 10 for display.
+ */
+export type EmotionState =
+  | "cold" | "guarded" | "curious" | "considering" | "negotiating"
+  | "deal" | "testing" | "callback" | "hostile" | "hangup"
+  // Legacy aliases (backward compat with old WS messages)
+  | "skeptical" | "warming" | "open";
+
+export type ObjectionCategory = "price" | "trust" | "need" | "timing" | "competitor";
+
+export type ArchetypeCode =
+  | "skeptic" | "anxious" | "aggressive" | "passive" | "pragmatic"
+  | "manipulator" | "delegator" | "avoidant" | "paranoid" | "ashamed"
+  | "hostile" | "blamer" | "sarcastic" | "know_it_all" | "negotiator"
+  | "shopper" | "desperate" | "crying" | "grateful" | "overwhelmed"
+  | "returner" | "referred" | "rushed" | "lawyer_client" | "couple";
+
+export type ScenarioType =
+  | "cold_ad" | "cold_base" | "cold_referral" | "cold_partner"
+  | "warm_callback" | "warm_noanswer" | "warm_refused" | "warm_dropped"
+  | "in_website" | "in_hotline" | "in_social"
+  | "upsell" | "rescue" | "couple_call" | "vip_debtor";
+
+export type LeadSource =
+  | "cold_base" | "website_form" | "referral" | "social_media"
+  | "repeat_call" | "incoming" | "partner" | "chatbot" | "webinar" | "churned";
+
+export type ProfessionCategory =
+  | "budget" | "government" | "military" | "pensioner" | "entrepreneur"
+  | "worker" | "it_office" | "trade_service" | "homemaker" | "special";
+
+export type TrapCategory =
+  | "legal" | "emotional" | "manipulative" | "expert"
+  | "price" | "provocative" | "professional" | "procedural";
+
+export type MasteryLevel = "untrained" | "beginner" | "intermediate" | "advanced" | "mastered";
+
+// ─── Emotion UI Config ─────────────────────────────────────────────────────
+
+interface EmotionConfig {
+  label: string;
+  labelRu: string;
+  color: string;
+  glow: string;
+  value: number;
+}
+
+/**
+ * Full 10-state + 3 legacy alias emotion map.
+ * Values are ordered 0→100 for thermometer/timeline display.
+ */
+export const EMOTION_MAP: Record<string, EmotionConfig> = {
+  // ── 10 backend states (ordered by emotional progression) ──
+  cold:         { label: "COLD",        labelRu: "Холодный",      color: "#8A2BE2", glow: "rgba(138,43,226,0.4)",  value: 5  },
+  hostile:      { label: "HOSTILE",     labelRu: "Враждебный",    color: "#FF3333", glow: "rgba(255,51,51,0.4)",   value: 0  },
+  hangup:       { label: "HANGUP",      labelRu: "Бросил трубку", color: "#666666", glow: "rgba(102,102,102,0.4)", value: 0  },
+  guarded:      { label: "GUARDED",     labelRu: "Настороже",     color: "#3B82F6", glow: "rgba(59,130,246,0.4)",  value: 20 },
+  testing:      { label: "TESTING",     labelRu: "Проверяет",     color: "#F59E0B", glow: "rgba(245,158,11,0.4)",  value: 25 },
+  curious:      { label: "CURIOUS",     labelRu: "Любопытен",     color: "#FFD700", glow: "rgba(255,215,0,0.4)",   value: 40 },
+  callback:     { label: "CALLBACK",    labelRu: "Перезвонит",    color: "#60A5FA", glow: "rgba(96,165,250,0.4)",  value: 45 },
+  considering:  { label: "CONSIDERING", labelRu: "Обдумывает",    color: "#BF55EC", glow: "rgba(191,85,236,0.4)",  value: 60 },
+  negotiating:  { label: "NEGOTIATING", labelRu: "Торгуется",     color: "#A78BFA", glow: "rgba(167,139,250,0.4)", value: 75 },
+  deal:         { label: "DEAL SYNC",   labelRu: "Сделка",        color: "#00FF94", glow: "rgba(0,255,148,0.4)",   value: 95 },
+
+  // ── Legacy aliases (backend LEGACY_MAP sends these) ──
+  skeptical:    { label: "SKEPTICAL",   labelRu: "Скептичный",    color: "#3B82F6", glow: "rgba(59,130,246,0.4)",  value: 20 },
+  warming:      { label: "WARMING",     labelRu: "Теплеет",       color: "#FFD700", glow: "rgba(255,215,0,0.4)",   value: 40 },
+  open:         { label: "OPEN",        labelRu: "Открытый",      color: "#BF55EC", glow: "rgba(191,85,236,0.4)",  value: 60 },
+};
+
+// ─── Auth ──────────────────────────────────────────────────────────────────
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  full_name: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  must_change_password: boolean;
+}
+
+export interface PasswordChangeRequest {
+  old_password: string;
+  new_password: string;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  new_password: string;
+}
+
+// ─── User ──────────────────────────────────────────────────────────────────
+
+export interface User {
+  id: string;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  is_active: boolean;
+  avatar_url?: string | null;
+  preferences?: Record<string, unknown> | null;
+  onboarding_completed?: boolean;
+  google_id?: string | null;
+  yandex_id?: string | null;
+  team?: string;
+}
+
+export interface UserProfileResponse {
+  id: string;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  team_name: string | null;
+  is_active: boolean;
+  avatar_url: string | null;
+  created_at: string;
+  total_sessions: number;
+  avg_score: number | null;
+}
+
+export interface UserStatsResponse {
+  total_sessions: number;
+  completed_sessions: number;
+  avg_score: number | null;
+  best_score: number | null;
+  sessions_this_week: number;
+  total_duration_minutes: number;
+  achievements_count: number;
+}
+
+export interface UserPreferences {
+  team: string | null;
+  experience_level: string | null;
+  tts_enabled: boolean;
+  notifications: boolean;
+  training_mode: string | null;
+}
+
+export interface UserListItem {
+  id: string;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  team_name?: string | null;
+  is_active: boolean;
+  avatar_url?: string | null;
+  created_at: string;
+}
+
+export interface FriendItem {
+  friendship_id: string;
+  user_id: string;
+  full_name: string;
+  email: string;
+  avatar_url?: string | null;
+  role: UserRole;
+  status: "accepted" | "pending" | "none";
+  direction: "incoming" | "outgoing" | "none";
+  created_at: string;
+  accepted_at: string | null;
+}
+
+export interface FriendSearchResponse {
+  items: FriendItem[];
+}
+
+// ─── Consent ───────────────────────────────────────────────────────────────
+
+export interface ConsentStatus {
+  all_accepted: boolean;
+  consents: Array<{
+    consent_type: string;
+    version: string;
+    accepted: boolean;
+    created_at: string;
+  }>;
+  missing: string[];
+}
+
+// ─── Scenario & Character ──────────────────────────────────────────────────
+
 export interface Scenario {
   id: string;
   title: string;
@@ -5,7 +211,30 @@ export interface Scenario {
   scenario_type: string;
   difficulty: number;
   estimated_duration_minutes: number;
+  character_name?: string | null;
 }
+
+export interface ScenarioDetail extends Scenario {
+  character: {
+    id: string;
+    name: string;
+    slug: string;
+    description: string;
+    difficulty: number;
+    initial_emotion: string;
+  };
+  script: {
+    id: string;
+    title: string;
+    checkpoints: Array<{
+      order: number;
+      description: string;
+      weight: number;
+    }>;
+  };
+}
+
+// ─── Training Session ──────────────────────────────────────────────────────
 
 export interface TrainingSession {
   id: string;
@@ -20,7 +249,59 @@ export interface TrainingSession {
   score_anti_patterns: number | null;
   score_result: number | null;
   score_total: number | null;
+  scoring_details: Record<string, unknown> | null;
   emotion_timeline: Array<{ state: string; timestamp: number }> | null;
+  feedback_text: string | null;
+  client_story_id?: string | null;
+  call_number_in_story?: number | null;
+  custom_params?: Record<string, unknown> | null;
+}
+
+export interface StoryCallSummary {
+  session_id: string;
+  call_number: number;
+  status: "active" | "completed" | "abandoned" | "error";
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  score_total: number | null;
+  score_human_factor: number | null;
+  score_narrative: number | null;
+  score_legal: number | null;
+}
+
+export interface StorySummary {
+  id: string;
+  story_name: string;
+  total_calls_planned: number;
+  current_call_number: number;
+  is_completed: boolean;
+  game_status: string;
+  tension: number;
+  tension_curve: number[];
+  pacing: string | null;
+  next_twist: string | null;
+  active_factors: Array<Record<string, unknown>>;
+  between_call_events: Array<Record<string, unknown>>;
+  consequences: Array<Record<string, unknown>>;
+  started_at: string | null;
+  ended_at: string | null;
+  created_at: string | null;
+  completed_calls: number;
+  avg_score: number | null;
+  best_score: number | null;
+  latest_session_id: string | null;
+}
+
+export interface HistoryEntry {
+  kind: "story" | "session";
+  sort_at: string;
+  latest_session: TrainingSession;
+  story: StorySummary | null;
+  sessions: StoryCallSummary[];
+  calls_completed: number;
+  avg_score: number | null;
+  best_score: number | null;
 }
 
 export interface ChatMessage {
@@ -32,31 +313,418 @@ export interface ChatMessage {
   created_at: string;
 }
 
-export interface User {
-  id: string;
-  email: string;
+export interface TrapResultItem {
+  name: string;
+  caught: boolean;
+  bonus: number | null;
+  penalty: number | null;
+}
+
+export interface SoftSkillsResult {
+  avg_response_time_sec: number;
+  talk_listen_ratio: number;
+  name_usage_count: number;
+  interruptions: number;
+  avg_message_length: number;
+}
+
+export interface CheckpointResultItem {
+  name: string;
+  hit: boolean;
+  time?: string;
+}
+
+export interface ScoreBreakdown {
+  script_adherence?: {
+    score: number;
+    checkpoints?: CheckpointResultItem[];
+  };
+  objection_handling?: {
+    score: number;
+    details?: Record<string, unknown>;
+  };
+  communication?: {
+    score: number;
+    details?: Record<string, unknown>;
+  };
+  anti_patterns?: {
+    score: number;
+    triggered?: string[];
+  };
+  result?: {
+    score: number;
+    details?: Record<string, unknown>;
+  };
+}
+
+export interface SessionResultResponse {
+  session: TrainingSession;
+  messages: ChatMessage[];
+  score_breakdown: ScoreBreakdown | null;
+  trap_results: TrapResultItem[] | null;
+  soft_skills: SoftSkillsResult | null;
+  client_card: ClientProfile | null;
+  story: StorySummary | null;
+  story_calls: StoryCallSummary[];
+}
+
+// ─── Client Profile (CRM card) ────────────────────────────────────────────
+
+export interface Creditor {
+  name: string;
+  amount: number;
+}
+
+export interface ClientProfile {
   full_name: string;
+  age: number;
+  gender: string;
+  city: string;
+  archetype_code: string;
+  profession_name?: string;
+  education_level: string;
+  legal_literacy: number;
+  total_debt: number;
+  creditors: Creditor[];
+  income: number | null;
+  income_type: string;
+  property_list: Array<{ type: string; status: string }>;
+  lead_source: string;
+  call_history: Array<{ event: string; date?: string; note?: string }>;
+  crm_notes: string | null;
+  // Hidden fields (revealed post-session via ClientReveal)
+  fears?: string[];
+  soft_spot?: string | null;
+  breaking_point?: string | null;
+  hidden_objections?: string[];
+  trust_level?: number;
+  resistance_level?: number;
+}
+
+// ─── Trap Events (WS) ─────────────────────────────────────────────────────
+
+export interface TrapEvent {
+  trap_name: string;
+  category: TrapCategory;
+  status: "fell" | "dodged" | "partial" | "not_activated";
+  score_delta: number;
+  wrong_keywords: string[];
+  correct_keywords: string[];
+  client_phrase: string;
+  correct_example: string;
+}
+
+// ─── Objection Hint (WS) ──────────────────────────────────────────────────
+
+export interface ObjectionHint {
+  category: ObjectionCategory;
+  message: string;
+}
+
+// ─── Checkpoint Hint (WS) ──────────────────────────────────────────────────
+
+export interface CheckpointHint {
+  checkpoint: string;
+  status: "not_reached" | "in_progress";
+}
+
+// ─── Score Update (WS) ────────────────────────────────────────────────────
+
+export interface ScoreUpdate {
+  script_score: number;
+  checkpoints_hit: number;
+  checkpoints_total: number;
+  checkpoints: Array<{
+    name: string;
+    reached: boolean;
+  }>;
+}
+
+// ─── Soft Skills Update (WS) ──────────────────────────────────────────────
+
+export interface SoftSkillsUpdate {
+  talk_ratio: number;
+  avg_response_time: number;
+  name_count: number;
+}
+
+// ─── Assigned Training ─────────────────────────────────────────────────────
+
+export interface AssignedTraining {
+  id: string;
+  user_id: string;
+  scenario_id: string;
+  scenario_title?: string;
+  assigned_by: string;
+  deadline: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface AssignTrainingRequest {
+  user_id: string;
+  scenario_id: string;
+  deadline?: string | null;
+}
+
+// ─── Analytics ─────────────────────────────────────────────────────────────
+
+export interface WeakSpot {
+  skill: string;
+  sub_skill: string | null;
+  avg_score: number;
+  max_possible: number;
+  pct: number;
+  trend: string;
+  trend_delta: number;
+  archetype: string | null;
+  recommendation: string;
+}
+
+export interface ProgressPoint {
+  period_start: string;
+  period_end: string;
+  sessions_count: number;
+  avg_total: number;
+  avg_script: number;
+  avg_objection: number;
+  avg_communication: number;
+  avg_anti_patterns: number;
+  avg_result: number;
+  best_score: number;
+  worst_score: number;
+}
+
+export interface ArchetypeScore {
+  archetype_slug: string;
+  archetype_name: string;
+  sessions_count: number;
+  avg_score: number;
+  best_score: number;
+  worst_score: number;
+  avg_script: number;
+  avg_objection: number;
+  avg_communication: number;
+  avg_anti_patterns: number;
+  avg_result: number;
+  last_played: string | null;
+  mastery_level: MasteryLevel;
+}
+
+export interface Recommendation {
+  scenario_id: string;
+  scenario_title: string;
+  archetype_slug: string;
+  scenario_type: string;
+  difficulty: number;
+  reason: string;
+  priority: number;
+}
+
+export interface AnalyticsSnapshot {
+  weak_spots: WeakSpot[];
+  progress: ProgressPoint[];
+  archetype_scores: ArchetypeScore[];
+  recommendations: Recommendation[];
+  insights: string[];
+  meta: Record<string, unknown>;
+}
+
+// ─── Gamification ──────────────────────────────────────────────────────────
+
+export interface Achievement {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  icon_url?: string | null;
+  earned_at?: string | null;
+}
+
+export interface GamificationProgress {
+  total_xp: number;
+  level: number;
+  xp_current_level: number;
+  xp_next_level: number;
+  streak_days: number;
+  achievements: Achievement[];
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  user_id: string;
+  full_name: string;
+  avatar_url?: string | null;
+  sessions_count: number;
+  total_score: number;
+  avg_score: number;
+}
+
+export interface DailyChallenge {
+  challenge: {
+    type: string;
+    title: string;
+    description: string;
+    xp_bonus: number;
+    target?: number;
+  };
+  scenario: Scenario;
+  date: string;
+}
+
+// ─── Dashboard ─────────────────────────────────────────────────────────────
+
+export interface ManagerStats {
+  total_sessions: number;
+  completed_sessions: number;
+  avg_score: number | null;
+  best_score: number | null;
+  sessions_this_week: number;
+  total_duration_minutes: number;
+}
+
+export interface RecentSession {
+  id: string;
+  status: string;
+  score_total: number | null;
+  started_at: string | null;
+  duration_seconds: number | null;
+}
+
+export interface DashboardRecommendation {
+  scenario_id: string;
+  title: string;
+  archetype: string;
+  difficulty: number;
+  reason: string;
+  tags: string[];
+}
+
+export interface DashboardAssignment {
+  id: string;
+  scenario_title: string;
+  deadline: string | null;
+}
+
+export interface DashboardTournament {
+  id: string;
+  title: string;
+  scenario_id: string;
+  week_end: string;
+  leaderboard: TournamentLeaderboardEntry[];
+}
+
+export interface DashboardManager {
+  stats: ManagerStats;
+  recent_sessions: RecentSession[];
+  gamification: {
+    total_xp: number;
+    level: number;
+    xp_current_level: number;
+    xp_next_level: number;
+    streak_days: number;
+  };
+  recommendations: DashboardRecommendation[];
+  assignments: DashboardAssignment[];
+  tournament: DashboardTournament | null;
+}
+
+export interface TeamStats {
+  team_name: string;
+  total_members: number;
+  active_members: number;
+  total_sessions: number;
+  avg_score: number | null;
+  best_performer: string | null;
+  sessions_this_week: number;
+}
+
+export interface TeamMember {
+  id: string;
+  full_name: string;
+  email: string;
   role: UserRole;
   is_active: boolean;
-  team?: string;
+  avatar_url?: string | null;
+  total_sessions: number;
+  avg_score: number | null;
+  best_score: number | null;
+  sessions_this_week: number;
 }
 
-export type UserRole = "manager" | "rop" | "methodologist" | "admin";
-
-// Emotion states for character
-export type EmotionState = "cold" | "warming" | "open";
-
-// Consent
-export interface ConsentStatus {
-  accepted: boolean;
-  accepted_at: string | null;
+export interface DashboardROP {
+  team: {
+    name: string;
+    total_members: number;
+    active_members: number;
+  };
+  stats: {
+    total_sessions: number;
+    avg_score: number | null;
+    active_this_week: number;
+    best_performer: string | null;
+  };
+  members: TeamMember[];
+  tournament: DashboardTournament | null;
 }
 
-// Profile / password change
-export interface PasswordChangeRequest {
-  old_password: string;
-  new_password: string;
+// ─── Tournament ────────────────────────────────────────────────────────────
+
+export interface Tournament {
+  id: string;
+  title: string;
+  description: string;
+  scenario_id: string;
+  week_start: string;
+  week_end: string;
+  is_active: boolean;
+  max_attempts: number;
+  bonus_xp_first: number;
+  bonus_xp_second: number;
+  bonus_xp_third: number;
 }
+
+export interface TournamentLeaderboardEntry {
+  rank: number;
+  user_id: string;
+  full_name: string;
+  avatar_url?: string | null;
+  best_score: number;
+  attempts: number;
+  is_podium: boolean;
+}
+
+export interface TournamentResponse {
+  tournament: Tournament;
+  leaderboard: TournamentLeaderboardEntry[];
+}
+
+export interface ActiveTournamentResponse {
+  tournament: (Omit<Tournament, "bonus_xp_first" | "bonus_xp_second" | "bonus_xp_third" | "is_active"> & { bonus_xp: [number, number, number] }) | null;
+  leaderboard: TournamentLeaderboardEntry[];
+}
+
+export interface TournamentSubmitResponse {
+  entry_id: string;
+  attempt: number;
+  score: number;
+}
+
+// ─── Custom Client Profile (Character Builder) ────────────────────────────
+
+export interface CustomClientProfile {
+  id: string;
+  name: string;
+  archetype_code: ArchetypeCode;
+  profession_code: string;
+  lead_source: LeadSource;
+  difficulty: number;
+  financial_profile: Record<string, unknown>;
+  custom_traits: Record<string, unknown>;
+  created_at?: string;
+}
+
+// ─── Training Stats (legacy, used in profile) ─────────────────────────────
 
 export interface TrainingStats {
   total_sessions: number;
@@ -66,7 +734,241 @@ export interface TrainingStats {
   total_duration_minutes: number;
 }
 
-// WebSocket message types
+// ─── CRM Client ───────────────────────────────────────────────────────────
+
+export type ClientStatus =
+  | "new" | "contacted" | "interested" | "consultation"
+  | "thinking" | "consent_given" | "contract_signed"
+  | "in_process" | "paused" | "completed"
+  | "lost" | "consent_revoked";
+
+export const CLIENT_STATUS_LABELS: Record<ClientStatus, string> = {
+  new: "Новый",
+  contacted: "Контакт",
+  interested: "Интерес",
+  consultation: "Консультация",
+  thinking: "Думает",
+  consent_given: "Согласие",
+  contract_signed: "Договор",
+  in_process: "В процессе",
+  paused: "Пауза",
+  completed: "Завершён",
+  lost: "Потерян",
+  consent_revoked: "Отзыв согласия",
+};
+
+export const CLIENT_STATUS_COLORS: Record<ClientStatus, string> = {
+  new: "#9CA3AF",
+  contacted: "#FFD700",
+  interested: "#3B82F6",
+  consultation: "#8B5CF6",
+  thinking: "#A78BFA",
+  consent_given: "#10B981",
+  contract_signed: "#F97316",
+  in_process: "#7C3AED",
+  paused: "#6B7280",
+  completed: "#00FF66",
+  lost: "#FF3333",
+  consent_revoked: "#EF4444",
+};
+
+/** Active pipeline statuses shown on Kanban board (excludes terminal/special). */
+export const PIPELINE_STATUSES: ClientStatus[] = [
+  "new", "contacted", "interested", "consultation",
+  "thinking", "consent_given", "contract_signed",
+  "in_process", "completed",
+];
+
+/** Allowed status transitions per backend ALLOWED_STATUS_TRANSITIONS. */
+export const ALLOWED_TRANSITIONS: Record<ClientStatus, ClientStatus[]> = {
+  new: ["contacted", "lost"],
+  contacted: ["interested", "consultation", "lost"],
+  interested: ["consultation", "lost"],
+  consultation: ["consent_given", "thinking", "lost"],
+  thinking: ["consent_given", "lost"],
+  consent_given: ["contract_signed", "consent_revoked"],
+  contract_signed: ["in_process", "consent_revoked"],
+  in_process: ["completed", "paused"],
+  paused: ["in_process", "lost"],
+  completed: [],
+  lost: ["contacted"],
+  consent_revoked: ["thinking", "lost"],
+};
+
+// ─── CRM Enums ────────────────────────────────────────────────────────────
+
+export type InteractionType =
+  | "outbound_call" | "inbound_call" | "sms_sent" | "whatsapp_sent"
+  | "email_sent" | "meeting" | "status_change" | "consent_event"
+  | "note" | "system";
+
+export const INTERACTION_TYPE_LABELS: Record<InteractionType, string> = {
+  outbound_call: "Исходящий звонок",
+  inbound_call: "Входящий звонок",
+  sms_sent: "SMS",
+  whatsapp_sent: "WhatsApp",
+  email_sent: "Email",
+  meeting: "Встреча",
+  status_change: "Смена статуса",
+  consent_event: "Событие согласия",
+  note: "Заметка",
+  system: "Системное",
+};
+
+export type ConsentType =
+  | "data_processing" | "contact_allowed" | "consultation_agreed"
+  | "bfl_procedure" | "marketing";
+
+export const CONSENT_TYPE_LABELS: Record<ConsentType, string> = {
+  data_processing: "Обработка данных",
+  contact_allowed: "Разрешение на связь",
+  consultation_agreed: "Согласие на консультацию",
+  bfl_procedure: "Процедура БФЛ",
+  marketing: "Маркетинг",
+};
+
+export type ConsentChannel =
+  | "phone_call" | "sms_link" | "web_form" | "whatsapp"
+  | "in_person" | "email_link";
+
+export const CONSENT_CHANNEL_LABELS: Record<ConsentChannel, string> = {
+  phone_call: "Телефонный звонок",
+  sms_link: "SMS-ссылка",
+  web_form: "Веб-форма",
+  whatsapp: "WhatsApp",
+  in_person: "Лично",
+  email_link: "Email-ссылка",
+};
+
+// ─── CRM Client Interfaces ───────────────────────────────────────────────
+
+export interface CRMClient {
+  id: string;
+  manager_id: string | null;
+  manager_name: string | null;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  status: ClientStatus;
+  is_active: boolean;
+  debt_amount: number | null;
+  debt_details: Record<string, unknown> | null;
+  source: string | null;
+  notes: string | null;
+  next_contact_at: string | null;
+  lost_reason: string | null;
+  lost_count: number;
+  last_status_change_at: string | null;
+  created_at: string;
+  updated_at: string;
+  active_consents?: ClientConsent[];
+  recent_interactions?: ClientInteraction[];
+}
+
+export interface CRMClientDetail extends CRMClient {
+  interactions: ClientInteraction[];
+  consents: ClientConsent[];
+  creditors: Creditor[];
+  income: number | null;
+  city: string | null;
+  tags: string[];
+}
+
+export interface ClientInteraction {
+  id: string;
+  client_id: string;
+  manager_id: string | null;
+  manager_name: string | null;
+  interaction_type: InteractionType;
+  content: string | null;
+  result: string | null;
+  duration_seconds: number | null;
+  old_status: string | null;
+  new_status: string | null;
+  created_at: string;
+}
+
+export interface ClientConsent {
+  id: string;
+  client_id: string;
+  consent_type: ConsentType | string;
+  channel: ConsentChannel | string | null;
+  legal_text_version: string | null;
+  granted_at: string;
+  revoked_at: string | null;
+  revoked_reason: string | null;
+  recorded_by: string | null;
+  recorder_name: string | null;
+  evidence_url: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ClientListParams {
+  status?: ClientStatus;
+  search?: string;
+  assigned_to?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface ClientListResponse {
+  items: CRMClient[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
+export interface PipelineStats {
+  status: ClientStatus;
+  count: number;
+  total_debt: number;
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────
+
+export type NotificationType =
+  | "reminder" | "assignment" | "achievement" | "system"
+  | "status_change" | "consent" | "overdue";
+
+export type NotificationChannel = "in_app" | "push" | "sms" | "whatsapp" | "email";
+
+export type NotificationStatus = "pending" | "sent" | "delivered" | "read" | "failed";
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  body: string | null;
+  channel: NotificationChannel;
+  status: NotificationStatus;
+  client_id: string | null;
+  client_name: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  items: AppNotification[];
+  total: number;
+  unread_count: number;
+}
+
+export interface ReminderItem {
+  id: string;
+  manager_id: string;
+  client_id: string;
+  client_name: string | null;
+  remind_at: string;
+  message: string | null;
+  is_completed: boolean;
+  completed_at: string | null;
+  auto_generated: boolean;
+  created_at: string;
+}
+
+// ─── WebSocket ─────────────────────────────────────────────────────────────
+
 export type WSConnectionState = "connecting" | "connected" | "disconnected" | "error";
 
 export interface WSMessage {
@@ -74,15 +976,18 @@ export interface WSMessage {
   data: Record<string, unknown>;
 }
 
-// Microphone
+// ─── Microphone ────────────────────────────────────────────────────────────
+
 export type MicrophonePermissionState = "prompt" | "granted" | "denied" | "error";
 
 export type RecordingState = "idle" | "recording" | "processing";
 
-// Training session UI state
-export type SessionState = "connecting" | "ready" | "completed";
+// ─── Training Session UI State ─────────────────────────────────────────────
 
-// Chat message for UI (lighter than full ChatMessage)
+export type SessionState = "connecting" | "briefing" | "ready" | "completed";
+
+// ─── Chat UI ───────────────────────────────────────────────────────────────
+
 export interface ChatBubble {
   id: string;
   role: "user" | "assistant";
@@ -91,9 +996,304 @@ export interface ChatBubble {
   timestamp: string;
 }
 
-// Transcription
+// ─── Transcription ─────────────────────────────────────────────────────────
+
 export interface TranscriptionState {
   status: "idle" | "transcribing" | "done";
   partial: string;
   final: string;
+}
+
+// ─── WS Event Payloads (typed helpers for switch/case in training page) ───
+
+export interface WSSessionStarted {
+  session_id: string;
+  scenario: Scenario;
+  character: {
+    name: string;
+    slug: string;
+    description: string;
+  };
+  client_profile: ClientProfile;
+  initial_emotion: EmotionState;
+}
+
+export interface WSCharacterResponse {
+  content: string;
+  emotion: EmotionState;
+  model?: string;
+  latency_ms?: number;
+  is_fallback?: boolean;
+  is_silence_prompt?: boolean;
+}
+
+export interface WSTranscriptionResult {
+  text: string;
+  confidence: number;
+  is_final: boolean;
+  language: string;
+}
+
+export interface WSTtsAudio {
+  audio_b64: string;
+  format: string;
+  text: string;
+  emotion?: string;
+  voice_params?: Record<string, unknown>;
+  duration_ms?: number;
+}
+
+export interface WSTtsCoupleAudio {
+  utterances: Array<{
+    speaker: string;
+    audio_b64: string;
+    text: string;
+  }>;
+}
+
+export interface WSEmotionUpdate {
+  previous: EmotionState;
+  current: EmotionState;
+}
+
+export interface WSSilenceTimeout {
+  message: string;
+  timeout_seconds: number;
+}
+
+export interface WSError {
+  message: string;
+  code: "error" | "rate_limit" | "session_not_found" | "auth_error";
+}
+
+// ─── Game CRM (Agent 7, spec 10.1-10.3) ──────────────────────────────────
+
+export type GameEventType = "call" | "message" | "consequence" | "storylet" | "status_change" | "callback";
+
+export type GameClientStatus =
+  | "new" | "contacted" | "interested" | "thinking"
+  | "consent_given" | "documents" | "contract_signed"
+  | "in_process" | "completed" | "lost";
+
+export const GAME_STATUS_LABELS: Record<GameClientStatus, string> = {
+  new: "Новый",
+  contacted: "Контакт",
+  interested: "Интерес",
+  thinking: "Думает",
+  consent_given: "Согласие",
+  documents: "Документы",
+  contract_signed: "Договор",
+  in_process: "В процессе",
+  completed: "Завершён",
+  lost: "Потерян",
+};
+
+export const GAME_STATUS_COLORS: Record<GameClientStatus, string> = {
+  new: "#9CA3AF",
+  contacted: "#FFD700",
+  interested: "#3B82F6",
+  thinking: "#A78BFA",
+  consent_given: "#10B981",
+  documents: "#F59E0B",
+  contract_signed: "#F97316",
+  in_process: "#7C3AED",
+  completed: "#00FF66",
+  lost: "#FF3333",
+};
+
+export const GAME_EVENT_ICONS: Record<GameEventType, string> = {
+  call: "📞",
+  message: "💬",
+  consequence: "⚡",
+  storylet: "📖",
+  status_change: "🔄",
+  callback: "📅",
+};
+
+export const GAME_EVENT_LABELS: Record<GameEventType, string> = {
+  call: "Звонок",
+  message: "Сообщение",
+  consequence: "Последствие",
+  storylet: "Событие",
+  status_change: "Смена статуса",
+  callback: "Обратный звонок",
+};
+
+export interface GameTimelineEvent {
+  id: string;
+  timestamp: string;
+  type: GameEventType;
+  source: string;
+  title: string;
+  content: string | null;
+  payload: Record<string, unknown>;
+  severity: number | null;
+  narrative_date: string | null;
+  session_id: string | null;
+  is_read: boolean;
+}
+
+export interface GameStory {
+  id: string;
+  story_name: string;
+  total_calls_planned: number;
+  current_call_number: number;
+  is_completed: boolean;
+  game_status: GameClientStatus;
+  tension: number;
+  event_count: number;
+  calls_completed: number;
+  avg_score: number | null;
+  best_score: number | null;
+  created_at: string | null;
+  started_at: string | null;
+}
+
+export interface GameStoryDetail extends GameStory {
+  user_id: string;
+  client_profile_id: string | null;
+  tension_curve: number[];
+  pacing: string;
+  next_twist: string | null;
+  active_factors: unknown[];
+  between_call_events: unknown[];
+  consequences: unknown[];
+  calls_completed: number;
+  avg_score: number | null;
+  best_score: number | null;
+  personality_profile: Record<string, unknown>;
+  ended_at: string | null;
+}
+
+export interface GamePortfolioStats {
+  total_stories: number;
+  completed: number;
+  active: number;
+  avg_score: number;
+  total_calls: number;
+  avg_calls_per_story: number;
+  status_breakdown: Record<string, number>;
+  recent_events: GameTimelineEvent[];
+  trend: {
+    direction: "up" | "down" | "stable";
+    change_pct: number;
+  };
+  period: string;
+}
+
+// ─── PvP Arena ───────────────────────────────────────────────────────────────
+
+export type PvPRankTier = "unranked" | "bronze" | "silver" | "gold" | "platinum" | "diamond";
+
+export type DuelStatus =
+  | "pending" | "round_1" | "swap" | "round_2"
+  | "judging" | "completed" | "cancelled" | "disputed";
+
+export type DuelDifficulty = "easy" | "medium" | "hard";
+
+export const PVP_RANK_LABELS: Record<PvPRankTier, string> = {
+  unranked: "Без ранга",
+  bronze: "Бронза",
+  silver: "Серебро",
+  gold: "Золото",
+  platinum: "Платина",
+  diamond: "Алмаз",
+};
+
+export const PVP_RANK_COLORS: Record<PvPRankTier, string> = {
+  unranked: "#9CA3AF",
+  bronze: "#CD7F32",
+  silver: "#C0C0C0",
+  gold: "#FFD700",
+  platinum: "#7DD3FC",
+  diamond: "#A78BFA",
+};
+
+export const PVP_DIFFICULTY_LABELS: Record<DuelDifficulty, string> = {
+  easy: "Лёгкий",
+  medium: "Средний",
+  hard: "Сложный",
+};
+
+export interface PvPRating {
+  user_id: string;
+  rating: number;
+  rd: number;
+  volatility: number;
+  rank_tier: PvPRankTier;
+  rank_display: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  total_duels: number;
+  placement_done: boolean;
+  placement_count: number;
+  peak_rating: number;
+  peak_tier: PvPRankTier;
+  current_streak: number;
+  best_streak: number;
+  last_played: string | null;
+}
+
+export interface PvPDuel {
+  id: string;
+  player1_id: string;
+  player2_id: string;
+  status: DuelStatus;
+  difficulty: DuelDifficulty;
+  round_number: number;
+  player1_total: number;
+  player2_total: number;
+  winner_id: string | null;
+  is_draw: boolean;
+  is_pve: boolean;
+  duration_seconds: number;
+  round_1_data: Record<string, unknown> | null;
+  round_2_data: Record<string, unknown> | null;
+  anti_cheat_flags: Record<string, unknown>[] | null;
+  replay_url: string | null;
+  player1_rating_delta: number;
+  player2_rating_delta: number;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface PvPLeaderboardEntry {
+  rank: number;
+  user_id: string;
+  username: string;
+  avatar_url?: string | null;
+  rating: number;
+  rank_tier: PvPRankTier;
+  rank_display: string;
+  wins: number;
+  losses: number;
+  total_duels: number;
+  current_streak: number;
+}
+
+export interface PvPLeaderboardResponse {
+  season: string | null;
+  entries: PvPLeaderboardEntry[];
+  total_players: number;
+}
+
+export interface PvPSeason {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  rewards: Record<string, unknown> | null;
+}
+
+export interface DuelBrief {
+  duel_id: string;
+  your_role: "seller" | "client";
+  archetype: string | null;
+  human_factors: Record<string, unknown> | null;
+  difficulty: DuelDifficulty;
+  scenario_title: string | null;
+  round_number: number;
+  time_limit_seconds: number;
 }

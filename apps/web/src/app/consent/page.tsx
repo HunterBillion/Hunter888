@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { Shield, AlertTriangle, Check, X, ArrowRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { clearTokens } from "@/lib/auth";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 export default function ConsentPage() {
   const router = useRouter();
@@ -32,9 +35,7 @@ export default function ConsentPage() {
     }
   };
 
-  const handleDecline = () => {
-    setDeclined(true);
-  };
+  const handleDecline = () => setDeclined(true);
 
   const handleLogout = () => {
     clearTokens();
@@ -43,74 +44,107 @@ export default function ConsentPage() {
 
   if (declined) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4">
-        <div className="glass-panel w-full max-w-lg p-8 space-y-6 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-vh-red/20">
-            <svg
-              className="h-8 w-8 text-vh-red"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth="1.5"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
-              />
-            </svg>
+      <div className="flex min-h-screen items-center justify-center px-4" style={{ background: "var(--bg-primary)" }}>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-panel w-full max-w-lg p-8 text-center"
+        >
+          <div
+            className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
+            style={{ background: "rgba(239, 68, 68, 0.1)" }}
+          >
+            <AlertTriangle size={28} style={{ color: "var(--danger)" }} />
           </div>
-          <h1 className="text-2xl font-display font-bold text-vh-red">
+          <h1 className="font-display text-2xl font-bold" style={{ color: "var(--danger)" }}>
             СОГЛАСИЕ НЕОБХОДИМО
           </h1>
-          <p className="text-gray-400">
-            Для использования платформы VibeHunter необходимо дать согласие на
-            обработку персональных данных в соответствии с Федеральным законом
-            N 152-ФЗ.
+          <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
+            Для использования платформы X Hunter необходимо дать согласие на
+            обработку персональных данных в соответствии с ФЗ N 152-ФЗ.
           </p>
-          <div className="flex justify-center gap-4">
-            <button
+          <div className="mt-6 flex justify-center gap-3">
+            <motion.button
               onClick={() => setDeclined(false)}
               className="vh-btn-outline"
+              whileTap={{ scale: 0.97 }}
             >
               Вернуться
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               onClick={handleLogout}
-              className="rounded-lg bg-vh-red/20 border border-vh-red/40 px-6 py-2 text-sm font-medium text-vh-red hover:bg-vh-red/30 transition-colors"
+              className="rounded-xl px-6 py-3 text-sm font-semibold transition-colors"
+              style={{
+                background: "rgba(239, 68, 68, 0.1)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                color: "var(--danger)",
+              }}
+              whileTap={{ scale: 0.97 }}
             >
               Выйти
-            </button>
+            </motion.button>
           </div>
-        </div>
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-8">
-      <div className="glass-panel w-full max-w-2xl p-8 space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-display font-bold text-vh-purple">
+    <div
+      className="flex min-h-screen items-center justify-center px-4 py-8"
+      style={{ background: "var(--bg-primary)" }}
+    >
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="glass-panel w-full max-w-2xl p-8"
+      >
+        <div className="mb-6 text-center">
+          <motion.div
+            initial={{ scale: 0.8 }}
+            animate={{ scale: 1 }}
+            transition={{ type: "spring", stiffness: 300, delay: 0.1 }}
+            className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl"
+            style={{ background: "var(--accent-muted)" }}
+          >
+            <Shield size={24} style={{ color: "var(--accent)" }} />
+          </motion.div>
+          <h1
+            className="font-display text-2xl font-bold tracking-wider"
+            style={{ color: "var(--text-primary)" }}
+          >
             СОГЛАСИЕ НА ОБРАБОТКУ ДАННЫХ
           </h1>
-          <p className="mt-2 text-sm text-gray-400">
+          <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
             В соответствии с Федеральным законом от 27.07.2006 N 152-ФЗ
-            &laquo;О персональных данных&raquo;
           </p>
         </div>
 
-        <div className="rounded-lg border border-white/10 bg-white/5 p-6">
-          <div className="max-h-80 overflow-y-auto pr-2 text-sm leading-relaxed text-gray-300">
+        <div
+          className="rounded-xl p-5"
+          style={{
+            background: "var(--input-bg)",
+            border: "1px solid var(--border-color)",
+          }}
+        >
+          <div
+            className="max-h-72 overflow-y-auto pr-2 text-sm leading-relaxed"
+            style={{ color: "var(--text-secondary)" }}
+          >
             <p className="mb-3">
               Настоящим я, субъект персональных данных, в соответствии с
               Федеральным законом от 27 июля 2006 года N 152-ФЗ &laquo;О
               персональных данных&raquo;, свободно, своей волей и в своем
               интересе даю согласие на обработку моих персональных данных
-              оператору платформы VibeHunter (далее &mdash; Оператор).
+              оператору платформы X Hunter (далее &mdash; Оператор).
             </p>
 
-            <p className="mb-3 font-semibold text-gray-200">
+            <p className="mb-2 font-semibold" style={{ color: "var(--text-primary)" }}>
               Перечень персональных данных:
             </p>
             <ul className="mb-3 list-inside list-disc space-y-1">
@@ -122,18 +156,20 @@ export default function ConsentPage() {
               <li>Сведения о должности и подразделении</li>
             </ul>
 
-            <p className="mb-3 font-semibold text-gray-200">Цели обработки:</p>
+            <p className="mb-2 font-semibold" style={{ color: "var(--text-primary)" }}>
+              Цели обработки:
+            </p>
             <ul className="mb-3 list-inside list-disc space-y-1">
               <li>Проведение тренировочных сессий с AI-персонажами</li>
               <li>Распознавание речи и преобразование в текст</li>
               <li>Оценка качества коммуникации и формирование обратной связи</li>
-              <li>Формирование статистики обучения и отчетов</li>
+              <li>Формирование статистики обучения и отчётов</li>
               <li>Улучшение качества работы платформы</li>
             </ul>
 
             <p className="mb-3">
               Согласие действует с момента его предоставления и до момента его
-              отзыва. Отзыв согласия может быть осуществлен путем направления
+              отзыва. Отзыв согласия может быть осуществлён путём направления
               письменного заявления Оператору.
             </p>
 
@@ -144,42 +180,75 @@ export default function ConsentPage() {
           </div>
         </div>
 
-        {error && (
-          <div className="rounded-md bg-vh-red/10 border border-vh-red/30 p-3 text-sm text-vh-red">
-            {error}
-          </div>
-        )}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mt-4 flex items-center gap-2 rounded-xl p-3 text-sm"
+              style={{
+                background: "rgba(239, 68, 68, 0.08)",
+                border: "1px solid rgba(239, 68, 68, 0.2)",
+                color: "var(--danger)",
+              }}
+            >
+              <AlertTriangle size={16} />
+              {error}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        <div className="space-y-4">
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={accepted}
-              onChange={(e) => setAccepted(e.target.checked)}
-              className="mt-0.5 h-5 w-5 rounded border-white/20 bg-white/10 text-vh-purple focus:ring-vh-purple"
-            />
-            <span className="text-sm text-gray-300">
+        <div className="mt-6 space-y-4">
+          <label className="flex cursor-pointer items-start gap-3">
+            <div className="relative mt-0.5">
+              <input
+                type="checkbox"
+                checked={accepted}
+                onChange={(e) => setAccepted(e.target.checked)}
+                className="peer sr-only"
+              />
+              <div
+                className="flex h-5 w-5 items-center justify-center rounded-md transition-all"
+                style={{
+                  background: accepted ? "var(--accent)" : "var(--input-bg)",
+                  border: `1px solid ${accepted ? "var(--accent)" : "var(--border-color)"}`,
+                }}
+              >
+                {accepted && <Check size={14} className="text-white" />}
+              </div>
+            </div>
+            <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
               Я даю согласие на обработку персональных данных
             </span>
           </label>
 
-          <div className="flex gap-4">
-            <button
+          <div className="flex gap-3">
+            <motion.button
               onClick={handleAccept}
               disabled={!accepted || loading}
-              className="vh-btn-primary flex-1"
+              className="vh-btn-primary flex flex-1 items-center justify-center gap-2"
+              whileTap={{ scale: 0.98 }}
             >
-              {loading ? "Сохранение..." : "Подтвердить"}
-            </button>
-            <button
+              {loading ? (
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : (
+                <>
+                  Подтвердить
+                  <ArrowRight size={16} />
+                </>
+              )}
+            </motion.button>
+            <motion.button
               onClick={handleDecline}
               className="vh-btn-outline flex-1"
+              whileTap={{ scale: 0.98 }}
             >
               Отклонить
-            </button>
+            </motion.button>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

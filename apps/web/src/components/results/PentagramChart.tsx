@@ -1,142 +1,106 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
+import {
+  Chart as ChartJS,
+  RadialLinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+} from "chart.js";
+import { Radar } from "react-chartjs-2";
+
+ChartJS.register(RadialLinearScale, PointElement, LineElement, Filler, Tooltip);
 
 interface PentagramData {
   labels: string[];
-  values: number[]; // 0-100 each
+  values: number[];
+  previousValues?: number[];
 }
 
-interface PentagramChartProps {
-  data: PentagramData;
-  size?: number;
-}
-
-export default function PentagramChart({ data, size = 280 }: PentagramChartProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
+function useIsDark() {
+  const [isDark, setIsDark] = useState(true);
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const check = () => setIsDark(document.documentElement.classList.contains("dark"));
+    check();
+    const obs = new MutationObserver(check);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+  return isDark;
+}
 
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = size * dpr;
-    canvas.height = size * dpr;
-    ctx.scale(dpr, dpr);
+export default function PentagramChart({ data }: { data: PentagramData }) {
+  const isDark = useIsDark();
 
-    const cx = size / 2;
-    const cy = size / 2;
-    const maxR = size * 0.38;
-    const n = data.labels.length;
-    const angleStep = (Math.PI * 2) / n;
-    const startAngle = -Math.PI / 2;
+  const gridColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
+  const labelColor = isDark ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.75)";
+  const tooltipBg = isDark ? "rgba(5,5,5,0.9)" : "rgba(255,255,255,0.95)";
+  const tooltipText = isDark ? "#fff" : "#1a1a1a";
+  const pointBorder = isDark ? "#fff" : "#1a1a1a";
 
-    ctx.clearRect(0, 0, size, size);
+  const datasets = [
+    {
+      label: "Текущая сессия",
+      data: data.values,
+      backgroundColor: "rgba(138, 43, 226, 0.3)",
+      borderColor: "var(--accent)",
+      pointBackgroundColor: "#BF55EC",
+      pointBorderColor: pointBorder,
+      pointHoverBackgroundColor: pointBorder,
+      pointHoverBorderColor: "#BF55EC",
+      borderWidth: 2,
+    },
+  ];
 
-    // Grid rings
-    for (let ring = 1; ring <= 4; ring++) {
-      const r = (ring / 4) * maxR;
-      ctx.beginPath();
-      for (let i = 0; i <= n; i++) {
-        const angle = startAngle + i * angleStep;
-        const x = cx + r * Math.cos(angle);
-        const y = cy + r * Math.sin(angle);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.closePath();
-      ctx.strokeStyle = "rgba(255,255,255,0.06)";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
+  if (data.previousValues?.length === data.values.length) {
+    datasets.push({
+      label: "Предыдущая сессия",
+      data: data.previousValues,
+      backgroundColor: "rgba(138, 43, 226, 0.05)",
+      borderColor: "rgba(138, 43, 226, 0.25)",
+      pointBackgroundColor: "transparent",
+      pointBorderColor: "transparent",
+      pointHoverBackgroundColor: "transparent",
+      pointHoverBorderColor: "transparent",
+      borderWidth: 1,
+    });
+  }
 
-    // Axis lines
-    for (let i = 0; i < n; i++) {
-      const angle = startAngle + i * angleStep;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + maxR * Math.cos(angle), cy + maxR * Math.sin(angle));
-      ctx.strokeStyle = "rgba(255,255,255,0.08)";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-
-    // Data polygon fill
-    ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const angle = startAngle + i * angleStep;
-      const r = (data.values[i] / 100) * maxR;
-      const x = cx + r * Math.cos(angle);
-      const y = cy + r * Math.sin(angle);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-
-    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxR);
-    gradient.addColorStop(0, "rgba(138, 43, 226, 0.3)");
-    gradient.addColorStop(1, "rgba(138, 43, 226, 0.05)");
-    ctx.fillStyle = gradient;
-    ctx.fill();
-
-    // Data polygon stroke
-    ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const angle = startAngle + i * angleStep;
-      const r = (data.values[i] / 100) * maxR;
-      const x = cx + r * Math.cos(angle);
-      const y = cy + r * Math.sin(angle);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-    ctx.strokeStyle = "#8A2BE2";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Data points
-    for (let i = 0; i < n; i++) {
-      const angle = startAngle + i * angleStep;
-      const r = (data.values[i] / 100) * maxR;
-      const x = cx + r * Math.cos(angle);
-      const y = cy + r * Math.sin(angle);
-
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = "#8A2BE2";
-      ctx.fill();
-      ctx.strokeStyle = "rgba(138, 43, 226, 0.5)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-
-    // Labels
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = "10px 'JetBrains Mono', monospace";
-
-    for (let i = 0; i < n; i++) {
-      const angle = startAngle + i * angleStep;
-      const labelR = maxR + 24;
-      const x = cx + labelR * Math.cos(angle);
-      const y = cy + labelR * Math.sin(angle);
-
-      ctx.fillStyle = "rgba(255,255,255,0.4)";
-      ctx.fillText(data.labels[i], x, y - 6);
-      ctx.fillStyle = "rgba(138, 43, 226, 0.8)";
-      ctx.font = "bold 11px 'JetBrains Mono', monospace";
-      ctx.fillText(`${Math.round(data.values[i])}`, x, y + 8);
-      ctx.font = "10px 'JetBrains Mono', monospace";
-    }
-  }, [data, size]);
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      r: {
+        angleLines: { color: gridColor },
+        grid: { color: gridColor },
+        pointLabels: {
+          font: { family: "'Rajdhani', sans-serif", size: 13, weight: "bold" as const },
+          color: labelColor,
+        },
+        ticks: { display: false },
+        min: 0,
+        max: 100,
+      },
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: tooltipBg,
+        titleColor: tooltipText,
+        bodyColor: tooltipText,
+        borderColor: "#8A2BE2",
+        borderWidth: 1,
+        titleFont: { family: "Rajdhani", size: 14 },
+        bodyFont: { family: "Space Grotesk", size: 13 },
+      },
+    },
+  };
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ width: size, height: size }}
-      className="mx-auto"
-    />
+    <div className="relative w-full" style={{ minHeight: 300 }}>
+      <Radar data={{ labels: data.labels, datasets }} options={options} />
+    </div>
   );
 }

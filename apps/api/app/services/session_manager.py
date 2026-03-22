@@ -43,8 +43,17 @@ class SessionNotFoundError(SessionError):
     """Session does not exist or is not active."""
 
 
+_pool: aioredis.ConnectionPool | None = None
+
+
 def _redis() -> aioredis.Redis:
-    return aioredis.from_url(settings.redis_url, decode_responses=True)
+    """Get a Redis client using a shared connection pool."""
+    global _pool
+    if _pool is None:
+        _pool = aioredis.ConnectionPool.from_url(
+            settings.redis_url, decode_responses=True, max_connections=20
+        )
+    return aioredis.Redis(connection_pool=_pool)
 
 
 async def check_rate_limit(user_id: uuid.UUID, db: AsyncSession) -> None:
@@ -111,8 +120,6 @@ async def start_session(
         await r.set(state_key, json.dumps(state), ex=_KEY_TTL)
     except Exception:
         logger.warning("Failed to init Redis state for session %s", session.id)
-    finally:
-        await r.aclose()
 
     # Initialize emotion in Redis
     await init_emotion(session.id, initial_emotion)
@@ -132,8 +139,6 @@ async def get_session_state(session_id: uuid.UUID) -> dict | None:
     except Exception:
         logger.warning("Failed to get session state from Redis for %s", session_id)
         return None
-    finally:
-        await r.aclose()
 
 
 async def update_activity(session_id: uuid.UUID) -> None:
@@ -148,8 +153,6 @@ async def update_activity(session_id: uuid.UUID) -> None:
             await r.set(key, json.dumps(state), ex=_KEY_TTL)
     except Exception:
         logger.warning("Failed to update activity for session %s", session_id)
-    finally:
-        await r.aclose()
 
 
 async def check_silence_timeout(session_id: uuid.UUID, timeout_sec: int = 30) -> bool:
@@ -203,24 +206,23 @@ async def add_message(
 
     Also increments the session message counter and updates last_activity.
     """
-    # Get current message count for sequence number
+    # Atomic message counter via Redis INCR (prevents race conditions)
     r = _redis()
+    counter_key = f"session:{session_id}:msg_count"
     try:
+        seq = await r.incr(counter_key)
+        await r.expire(counter_key, _KEY_TTL)
+        # Update last_activity in session state
         state_key = _SESSION_KEY.format(session_id=session_id)
         raw = await r.get(state_key)
         if raw:
             state = json.loads(raw)
-            seq = state.get("message_count", 0) + 1
             state["message_count"] = seq
             state["last_activity"] = time.time()
             await r.set(state_key, json.dumps(state), ex=_KEY_TTL)
-        else:
-            seq = 1
     except Exception:
         logger.warning("Failed to update message count in Redis for session %s", session_id)
         seq = 1
-    finally:
-        await r.aclose()
 
     # Save to DB
     msg = Message(
@@ -254,8 +256,6 @@ async def add_message(
         await pipe.execute()
     except Exception:
         logger.warning("Failed to cache message in Redis for session %s", session_id)
-    finally:
-        await r2.aclose()
 
     return msg
 
@@ -273,8 +273,6 @@ async def get_message_history(session_id: uuid.UUID) -> list[dict]:
     except Exception:
         logger.warning("Failed to get message history from Redis for session %s", session_id)
         return []
-    finally:
-        await r.aclose()
 
 
 async def end_session(
@@ -327,7 +325,5 @@ async def end_session(
         await r.delete(state_key, messages_key)
     except Exception:
         logger.warning("Failed to cleanup Redis for session %s", session_id)
-    finally:
-        await r.aclose()
 
     return session

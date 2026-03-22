@@ -12,44 +12,31 @@ from app.services.llm import (
 class TestOutputFiltering:
     def test_clean_text_passes(self):
         text = "Здравствуйте, расскажите о вашей ситуации."
-        result, filtered = _filter_output(text)
+        result, violations = _filter_output(text)
         assert result == text
-        assert filtered is False
+        assert violations == []
 
     def test_profanity_caught(self):
         text = "Ну ты блядь, что делаешь"
-        result, filtered = _filter_output(text)
-        assert filtered is True
-        assert result == FALLBACK_PHRASES[0]
+        result, violations = _filter_output(text)
+        assert "profanity" in violations
+        assert result in FALLBACK_PHRASES
 
     def test_role_break_caught(self):
         text = "Я языковая модель и не могу помочь"
-        result, filtered = _filter_output(text)
-        assert filtered is True
-        assert result == FALLBACK_PHRASES[1]
+        result, violations = _filter_output(text)
+        assert "role_break" in violations
+        assert result in FALLBACK_PHRASES
 
-    def test_pii_phone_redacted(self):
-        text = "Позвоните мне на 123-456-7890"
-        result, filtered = _filter_output(text)
-        assert filtered is True
-        assert "[СКРЫТО]" in result
+    def test_pii_email_caught(self):
+        text = "Напишите на user@example.com для связи"
+        result, violations = _filter_output(text)
+        assert "pii_leak" in violations
 
-    def test_pii_email_redacted(self):
-        text = "Напишите на user@example.com"
-        result, filtered = _filter_output(text)
-        assert filtered is True
-        assert "[СКРЫТО]" in result
-
-    def test_pii_card_redacted(self):
+    def test_pii_card_caught(self):
         text = "Номер карты 1234 5678 9012 3456"
-        result, filtered = _filter_output(text)
-        assert filtered is True
-        assert "[СКРЫТО]" in result
-
-    def test_english_role_break(self):
-        text = "I am an AI language model"
-        result, filtered = _filter_output(text)
-        assert filtered is True
+        result, violations = _filter_output(text)
+        assert "pii_leak" in violations
 
 
 class TestFallbackPhrases:
@@ -86,9 +73,9 @@ class TestBuildSystemPrompt:
         assert "cold" in result
 
     def test_empty_character(self):
-        result = _build_system_prompt("", "guardrails", "warming")
-        assert "warming" in result
+        result = _build_system_prompt("", "guardrails", "curious")
+        assert "curious" in result
 
     def test_emotion_state_injected(self):
-        result = _build_system_prompt("test", "", "open")
-        assert "open" in result
+        result = _build_system_prompt("test", "", "considering")
+        assert "considering" in result

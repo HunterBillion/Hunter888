@@ -1,38 +1,40 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
-import { clearTokens, getToken } from "@/lib/auth";
-import type { User } from "@/types";
+import { useAuthStore } from "@/stores/useAuthStore";
+import { getToken } from "@/lib/auth";
 
+/**
+ * Thin wrapper over useAuthStore for backward compatibility.
+ * All state lives in Zustand; this hook adds router-based redirects.
+ */
 export function useAuth() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, loading, fetchUser, logout: storeLogout } = useAuthStore();
 
   useEffect(() => {
     const token = getToken();
     if (!token) {
-      setLoading(false);
       router.replace("/login");
       return;
     }
 
-    api
-      .get("/auth/me")
-      .then(setUser)
-      .catch(() => {
-        clearTokens();
-        router.replace("/login");
-      })
-      .finally(() => setLoading(false));
-  }, [router]);
+    // Store handles dedup via TTL cache — safe to call on every mount
+    fetchUser().then((u) => {
+      if (!u) router.replace("/login");
+    });
+  }, [fetchUser, router]);
 
-  const logout = () => {
-    clearTokens();
+  const logout = useCallback(async () => {
+    await storeLogout();
     router.replace("/login");
-  };
+  }, [router, storeLogout]);
 
   return { user, loading, logout };
+}
+
+/** @deprecated Use useAuthStore().invalidate() directly */
+export function invalidateUserCache() {
+  useAuthStore.getState().invalidate();
 }

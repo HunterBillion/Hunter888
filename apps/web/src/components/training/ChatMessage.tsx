@@ -1,75 +1,92 @@
 "use client";
 
-import { useState } from "react";
-import type { ChatBubble, EmotionState } from "@/types";
-import EmotionIndicator from "./EmotionIndicator";
+import { motion } from "framer-motion";
+import { type EmotionState, EMOTION_MAP, type ChatBubble } from "@/types";
+import { sanitizeText } from "@/lib/sanitize";
+
+function emotionColors(emotion: EmotionState) {
+  const e = EMOTION_MAP[emotion] || EMOTION_MAP.cold;
+  return {
+    text: e.color,
+    bg: e.color + "1A", // 10% opacity hex
+    border: e.color + "33", // 20% opacity hex
+  };
+}
+
+const KEYWORDS = [
+  "ROI", "рентабельность", "контракт", "договор", "цена", "стоимость",
+  "бюджет", "скидка", "условия", "предложение", "выгода", "прибыль",
+  "инвестиция", "окупаемость", "результат", "гарантия",
+];
+
+function highlightKeywords(text: string): React.ReactNode[] {
+  // Sanitize before rendering to prevent XSS
+  const safe = sanitizeText(text);
+  const regex = new RegExp(`(${KEYWORDS.join("|")})`, "gi");
+  const parts = safe.split(regex);
+  return parts.map((part, i) => {
+    if (KEYWORDS.some((kw) => kw.toLowerCase() === part.toLowerCase())) {
+      return (
+        <span key={i} className="kw-highlight">
+          {part}
+        </span>
+      );
+    }
+    return part;
+  });
+}
 
 interface ChatMessageProps {
   message: ChatBubble;
 }
 
 export default function ChatMessage({ message }: ChatMessageProps) {
-  const [showTimestamp, setShowTimestamp] = useState(false);
   const isUser = message.role === "user";
-
-  const formattedTime = (() => {
-    try {
-      const date = new Date(message.timestamp);
-      return date.toLocaleTimeString("ru-RU", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
-    } catch {
-      return "";
-    }
-  })();
+  const ec = message.emotion ? emotionColors(message.emotion) : null;
 
   return (
-    <div
-      className={`flex ${isUser ? "justify-end" : "justify-start"}`}
-      onMouseEnter={() => setShowTimestamp(true)}
-      onMouseLeave={() => setShowTimestamp(false)}
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`flex flex-col ${isUser ? "items-end" : "items-start"} w-full`}
     >
-      <div
-        className={`relative max-w-[80%] ${isUser ? "order-2" : "order-1"}`}
+      <span
+        className="font-mono text-[10px] mb-1 tracking-wider"
+        style={{
+          color: isUser ? "var(--accent)" : (ec?.text || "var(--text-muted)"),
+        }}
       >
-        {/* Avatar for AI */}
-        {!isUser && (
-          <div className="mb-1 flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-vh-purple/20 border border-vh-purple/30 text-xs font-bold text-vh-purple">
-              AI
-            </div>
-            {message.emotion && (
-              <EmotionIndicator
-                emotion={message.emotion as EmotionState}
-              />
-            )}
-          </div>
-        )}
+        {isUser ? "YOU" : "AI-CLIENT"}
+        <span className="ml-2 opacity-50">
+          [{new Date(message.timestamp).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}]
+        </span>
+      </span>
 
-        {/* Message bubble */}
-        <div
-          className={`rounded-2xl px-4 py-2.5 ${
-            isUser
-              ? "rounded-tr-sm bg-vh-purple text-white"
-              : "rounded-tl-sm bg-white/5 border border-white/10 text-gray-200"
-          }`}
-        >
-          <p className="whitespace-pre-wrap text-sm leading-relaxed">
-            {message.content}
-          </p>
-        </div>
-
-        {/* Timestamp on hover */}
-        <div
-          className={`mt-0.5 text-xs text-gray-600 transition-opacity duration-200 ${
-            isUser ? "text-right" : "text-left"
-          } ${showTimestamp ? "opacity-100" : "opacity-0"}`}
-        >
-          {formattedTime}
-        </div>
+      <div
+        className={`max-w-[85%] rounded-xl p-3 text-sm leading-relaxed ${
+          isUser ? "rounded-tr-none" : "rounded-tl-none"
+        }`}
+        style={{
+          background: isUser ? "var(--accent-muted)" : (ec?.bg || "var(--input-bg)"),
+          border: `1px solid ${isUser ? "var(--border-hover)" : (ec?.border || "var(--border-color)")}`,
+          color: "var(--text-primary)",
+        }}
+      >
+        {highlightKeywords(message.content)}
       </div>
-    </div>
+
+      {message.emotion && (
+        <span
+          className="mt-1 rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider"
+          style={{
+            background: ec?.bg,
+            color: ec?.text,
+            border: `1px solid ${ec?.border}`,
+          }}
+        >
+          {EMOTION_MAP[message.emotion]?.label || message.emotion}
+        </span>
+      )}
+    </motion.div>
   );
 }

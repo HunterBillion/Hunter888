@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { logger } from "@/lib/logger";
 import { createWebSocket } from "@/lib/ws";
 import type { WSConnectionState, WSMessage } from "@/types";
 
@@ -105,7 +106,7 @@ export function useWebSocket({
           if (data.type === "pong") return;
           onMessageRef.current?.(data);
         } catch {
-          console.error("Failed to parse WebSocket message");
+          logger.error("Failed to parse WebSocket message");
         }
       };
 

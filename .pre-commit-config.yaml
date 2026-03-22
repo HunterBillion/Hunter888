@@ -1,0 +1,42 @@
+repos:
+  # Prevent secrets from being committed
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+
+  # Standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+        exclude: tsconfig\.json$
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: no-commit-to-branch
+        args: ['--branch', 'main']
+      - id: detect-private-key
+
+  # Python linting (ruff)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^apps/api/
+      - id: ruff-format
+        files: ^apps/api/
+
+  # Check for duplicate files by content hash
+  - repo: local
+    hooks:
+      - id: no-duplicate-prompts
+        name: Check for duplicate prompt files
+        entry: bash -c 'duplicates=$(find apps/api/prompts -name "*.md" -exec md5 -r {} + | sort | uniq -d -w 32); if [ -n "$duplicates" ]; then echo "Duplicate prompt files found:" && echo "$duplicates" && exit 1; fi'
+        language: system
+        pass_filenames: false
+        files: '\.md$'

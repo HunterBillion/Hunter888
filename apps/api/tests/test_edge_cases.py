@@ -6,17 +6,17 @@ class TestWSConstants:
         from app.ws.training import SILENCE_WARNING_SEC
         assert SILENCE_WARNING_SEC == 30
 
-    def test_silence_modal_sec(self):
-        from app.ws.training import SILENCE_MODAL_SEC
-        assert SILENCE_MODAL_SEC == 60
+    def test_silence_timeout_sec(self):
+        from app.ws.training import SILENCE_TIMEOUT_SEC
+        assert SILENCE_TIMEOUT_SEC == 60
 
-    def test_auth_timeout_sec(self):
-        from app.ws.training import AUTH_TIMEOUT_SEC
-        assert AUTH_TIMEOUT_SEC == 10
+    def test_max_stt_failures(self):
+        from app.ws.training import MAX_STT_FAILURES
+        assert MAX_STT_FAILURES == 3
 
-    def test_silence_modal_greater_than_warning(self):
-        from app.ws.training import SILENCE_MODAL_SEC, SILENCE_WARNING_SEC
-        assert SILENCE_MODAL_SEC > SILENCE_WARNING_SEC
+    def test_silence_timeout_greater_than_warning(self):
+        from app.ws.training import SILENCE_TIMEOUT_SEC, SILENCE_WARNING_SEC
+        assert SILENCE_TIMEOUT_SEC > SILENCE_WARNING_SEC
 
 
 class TestSTTConstants:
@@ -30,10 +30,11 @@ class TestSTTConstants:
 
 
 class TestConfigValidation:
-    def test_settings_have_embeddings_url(self):
+    def test_settings_have_embeddings_config(self):
         from app.config import Settings
         s = Settings()
         assert hasattr(s, "embeddings_service_url")
+        assert hasattr(s, "gemini_embedding_api_key")
 
     def test_settings_have_llm_config(self):
         from app.config import Settings
@@ -41,9 +42,9 @@ class TestConfigValidation:
         assert hasattr(s, "claude_api_key")
         assert hasattr(s, "openai_api_key")
         assert hasattr(s, "llm_primary_model")
-        assert hasattr(s, "llm_fallback_model")
-        assert hasattr(s, "llm_timeout_seconds")
-        assert hasattr(s, "llm_max_history_messages")
+        assert hasattr(s, "local_llm_url")
+        assert hasattr(s, "local_llm_enabled")
+        assert hasattr(s, "local_llm_api_key")
 
     def test_rate_limit_defaults(self):
         from app.config import Settings

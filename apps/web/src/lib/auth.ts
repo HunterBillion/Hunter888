@@ -1,51 +1,61 @@
 /**
- * Auth utilities — cookie-based approach.
+ * Auth utilities — dual storage: in-memory (primary) + localStorage (persistence).
  *
- * Tokens are stored in httpOnly cookies by the API.
- * Frontend only needs to check auth status via /auth/me.
- * For WS auth, we get a short-lived token from /auth/ws-token.
+ * In-memory cache avoids reading localStorage on every request.
+ * localStorage ensures tokens survive page navigation and refreshes.
+ *
+ * For maximum security in production, switch to httpOnly cookies
+ * set by the backend — then localStorage can be removed entirely.
  */
 
 const ACCESS_TOKEN_KEY = "ai_trainer_access_token";
 const REFRESH_TOKEN_KEY = "ai_trainer_refresh_token";
 
-// Legacy localStorage support (for migration period)
+// In-memory cache (fast reads, avoids localStorage on every call)
+let _accessToken: string | null = null;
+let _refreshToken: string | null = null;
+
 export function getToken(): string | null {
+  if (_accessToken) return _accessToken;
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(ACCESS_TOKEN_KEY);
+  try {
+    const stored = localStorage.getItem(ACCESS_TOKEN_KEY);
+    if (stored) {
+      _accessToken = stored;
+      _refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+    }
+  } catch {}
+  return _accessToken;
 }
 
 export function getRefreshToken(): string | null {
+  if (_refreshToken) return _refreshToken;
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
+  try {
+    return localStorage.getItem(REFRESH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export function setTokens(accessToken: string, refreshToken: string): void {
-  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  _accessToken = accessToken;
+  _refreshToken = refreshToken;
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+      localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+    } catch {}
+  }
 }
 
 export function clearTokens(): void {
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
-}
-
-/**
- * Check if user is authenticated by calling /auth/me.
- * Returns true if the API responds with user data.
- */
-export async function checkAuth(): Promise<boolean> {
-  const token = getToken();
-  if (!token) return false;
-
-  try {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const res = await fetch(`${API_URL}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: "include",
-    });
-    return res.ok;
-  } catch {
-    return false;
+  _accessToken = null;
+  _refreshToken = null;
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+    } catch {}
   }
 }

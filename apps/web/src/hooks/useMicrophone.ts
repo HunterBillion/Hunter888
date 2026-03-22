@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { logger } from "@/lib/logger";
 import type { MicrophonePermissionState, RecordingState } from "@/types";
 
 const NOISE_GATE_THRESHOLD = 30; // dB threshold
@@ -137,7 +138,7 @@ export function useMicrophone(
       setPermissionState("granted");
       return true;
     } catch (err) {
-      console.error("Microphone permission denied:", err);
+      logger.error("Microphone permission denied:", err);
       if (
         err instanceof DOMException &&
         (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")
@@ -208,7 +209,7 @@ export function useMicrophone(
       // Start audio monitoring loop
       animFrameRef.current = requestAnimationFrame(monitorAudio);
     } catch (err) {
-      console.error("Failed to start recording:", err);
+      logger.error("Failed to start recording:", err);
       if (
         err instanceof DOMException &&
         (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")
