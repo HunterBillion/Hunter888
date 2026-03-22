@@ -5,8 +5,11 @@ WORKDIR /app
 RUN pip install --no-cache-dir \
     fastapi==0.115.* \
     uvicorn[standard]==0.34.* \
-    sentence-transformers==3.* \
-    torch --index-url https://download.pytorch.org/whl/cpu
+    sentence-transformers==3.*
+
+RUN pip install --no-cache-dir \
+    torch \
+    --index-url https://download.pytorch.org/whl/cpu
 
 COPY app.py .
 
