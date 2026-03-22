@@ -18,7 +18,8 @@ interface UseMicrophoneReturn {
   recordingState: RecordingState;
   permissionState: MicrophonePermissionState;
   audioLevel: number; // 0-100 scale for visual indicator
-  startRecording: () => Promise<void>;
+  isSupported: boolean;
+  startRecording: () => Promise<boolean>;
   stopRecording: () => Blob | null;
   requestPermission: () => Promise<boolean>;
 }
@@ -30,6 +31,11 @@ export function useMicrophone(
   const [permissionState, setPermissionState] =
     useState<MicrophonePermissionState>("prompt");
   const [audioLevel, setAudioLevel] = useState(0);
+  const isSupported =
+    typeof window !== "undefined" &&
+    typeof navigator !== "undefined" &&
+    !!navigator.mediaDevices?.getUserMedia &&
+    typeof MediaRecorder !== "undefined";
 
   const optionsRef = useRef(options);
   optionsRef.current = options;
@@ -152,6 +158,11 @@ export function useMicrophone(
   }, []);
 
   const startRecording = useCallback(async () => {
+    if (!isSupported) {
+      setPermissionState("error");
+      return false;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -208,6 +219,7 @@ export function useMicrophone(
 
       // Start audio monitoring loop
       animFrameRef.current = requestAnimationFrame(monitorAudio);
+      return true;
     } catch (err) {
       logger.error("Failed to start recording:", err);
       if (
@@ -218,8 +230,10 @@ export function useMicrophone(
       } else {
         setPermissionState("error");
       }
+      setRecordingState("idle");
+      return false;
     }
-  }, [computeAudioLevel, monitorAudio]);
+  }, [computeAudioLevel, isSupported, monitorAudio]);
 
   const stopRecording = useCallback((): Blob | null => {
     cancelAnimationFrame(animFrameRef.current);
@@ -267,6 +281,7 @@ export function useMicrophone(
     recordingState,
     permissionState,
     audioLevel,
+    isSupported,
     startRecording,
     stopRecording,
     requestPermission,

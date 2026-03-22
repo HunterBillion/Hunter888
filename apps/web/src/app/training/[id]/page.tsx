@@ -16,6 +16,7 @@ import {
   Lightbulb,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { useMicrophone } from "@/hooks/useMicrophone";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useTTS } from "@/hooks/useTTS";
 import { MicCheck } from "@/components/training/MicCheck";
@@ -61,6 +62,27 @@ function stripStageDirections(text: string): string {
     .replace(/  +/g, ' ')
     .replace(/\n\s*\n/g, '\n')
     .trim();
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("Audio conversion failed"));
+        return;
+      }
+      const [, base64 = ""] = result.split(",");
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Audio conversion failed"));
+    reader.readAsDataURL(blob);
+  });
 }
 
 const Avatar3D = dynamic(
@@ -125,6 +147,9 @@ export default function TrainingSessionPage() {
 
   // TTS — ElevenLabs (primary) + browser speechSynthesis (fallback)
   const tts = useTTS({ lang: "ru-RU", rate: 0.95, pitch: 1.0 });
+  const microphone = useMicrophone({
+    onSilenceTimeout: () => s.setShowSilenceModal(true),
+  });
 
   const { sendMessage, connectionState } = useWebSocket({
     onMessage: (data) => {
@@ -493,15 +518,58 @@ export default function TrainingSessionPage() {
 
   const handleEnd = () => sendMessage({ type: "session.end", data: {} });
 
-  const handleMicPress = () => {
+  const handleMicPress = async () => {
     if (s.sessionState === "ready" && s.sttAvailable) {
       if (tts.speaking) tts.stop();
-      speech.startListening();
-      s.setMicActive(true);
+      if (microphone.isSupported) {
+        const started = await microphone.startRecording();
+        if (started) {
+          s.setMicActive(true);
+          return;
+        }
+      }
+
+      if (speech.isSupported) {
+        speech.startListening();
+        s.setMicActive(true);
+        return;
+      }
+
+      s.setTextMode(true);
+      s.setSttAvailable(false);
     }
   };
 
-  const handleMicRelease = () => {
+  const handleMicRelease = async () => {
+    if (microphone.recordingState === "recording") {
+      const blob = microphone.stopRecording();
+      s.setMicActive(false);
+      if (blob && blob.size > 0) {
+        try {
+          s.setTranscription({ status: "transcribing", partial: "", final: "" });
+          const audio = await blobToBase64(blob);
+          sendMessage({
+            type: "audio.end",
+            data: {
+              audio,
+              mime_type: blob.type || "audio/webm",
+            },
+          });
+        } catch {
+          s.setTranscription({ status: "idle", partial: "", final: "" });
+          if (speech.isSupported) {
+            speech.startListening();
+            s.setMicActive(true);
+            return;
+          }
+          s.setTextMode(true);
+        }
+      } else {
+        s.setTranscription({ status: "idle", partial: "", final: "" });
+      }
+      return;
+    }
+
     if (speech.status === "listening") {
       speech.stopListening();
       s.setMicActive(false);
@@ -527,6 +595,51 @@ export default function TrainingSessionPage() {
   }, [s.sessionState, s.micActive, s.isTyping, tts.speaking, s]);
 
   const talkPercent = s.talkTime + s.listenTime > 0 ? Math.round((s.talkTime / (s.talkTime + s.listenTime)) * 100) : 50;
+  const emotionValue = EMOTION_MAP[s.emotion]?.value ?? 10;
+  const emotionLabel = EMOTION_MAP[s.emotion]?.labelRu ?? "Нейтральный";
+  const rawTrust = (s.clientCard as unknown as { trust_level?: number } | null)?.trust_level;
+  const rawResistance = (s.clientCard as unknown as { resistance_level?: number } | null)?.resistance_level;
+  const negativeFactorPenalty = s.humanFactors.reduce((sum, factor) => {
+    if (["distrust", "fear", "anger", "stress", "fatigue", "sadness"].includes(factor.factor)) {
+      return sum + factor.intensity * 9;
+    }
+    return sum;
+  }, 0);
+  const positiveFactorBoost = s.humanFactors.reduce((sum, factor) => {
+    if (factor.factor === "empathy") {
+      return sum + factor.intensity * 8;
+    }
+    return sum;
+  }, 0);
+  const trustScore = rawTrust ?? Math.round(emotionValue / 10);
+  const resistanceScore = rawResistance ?? clamp(10 - Math.round(emotionValue / 12), 1, 10);
+  const consequencePenalty = s.consequences.reduce((sum, consequence) => sum + consequence.severity * 7, 0);
+  const acceptanceScore = clamp(
+    Math.round(
+      emotionValue * 0.45 +
+      trustScore * 3.2 +
+      (10 - resistanceScore) * 2.4 +
+      positiveFactorBoost -
+      negativeFactorPenalty -
+      consequencePenalty
+    ),
+    0,
+    100
+  );
+  const acceptanceLabel =
+    acceptanceScore >= 80 ? "Готов к сделке" :
+    acceptanceScore >= 60 ? "Сильный интерес" :
+    acceptanceScore >= 40 ? "Осторожный интерес" :
+    acceptanceScore >= 20 ? "Сомневается" :
+    "Закрыт";
+  const pressureScore = clamp(
+    Math.round(
+      s.consequences.reduce((sum, consequence) => sum + consequence.severity * 18, 0) +
+      s.humanFactors.reduce((sum, factor) => sum + factor.intensity * 12, 0)
+    ),
+    0,
+    100
+  );
 
   // ── Connecting gate ──
   if (s.sessionState === "connecting" && !s.showPreCallBrief && !storyCallReport) {
@@ -712,40 +825,130 @@ export default function TrainingSessionPage() {
 
       {/* ── 3-Column Layout ─────────────────────────────────── */}
       <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 md:p-6 min-h-0 z-20">
-        {/* LEFT: Live Transcript */}
-        <aside className="hidden lg:flex lg:col-span-3 glass-panel rounded-xl flex-col overflow-hidden" style={{ borderLeft: "2px solid rgba(139,92,246,0.3)" }}>
-          <div className="p-4 border-b flex justify-between items-center shrink-0" style={{ borderColor: "var(--border-color)", background: "rgba(0,0,0,0.2)" }}>
-            <h2 className="font-display tracking-widest text-sm flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
-              <Radio size={14} style={{ color: "var(--accent)" }} /> LIVE TRANSCRIPT
-            </h2>
-            <span className="flex gap-1 items-center">
-              <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ background: "var(--accent)" }} />
-              <span className="text-[10px] font-mono" style={{ color: "var(--accent)" }}>REC</span>
-            </span>
+        {/* LEFT: Client Signal + Transcript */}
+        <aside className="hidden lg:flex lg:col-span-3 flex-col gap-4 min-h-0">
+          <div className="glass-panel rounded-xl p-4" style={{ borderLeft: "2px solid rgba(139,92,246,0.3)" }}>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.22em]" style={{ color: "var(--accent)" }}>
+                  CLIENT SIGNAL
+                </div>
+                <div className="mt-2 font-display text-lg font-bold tracking-[0.08em]" style={{ color: "var(--text-primary)" }}>
+                  {s.characterName}
+                </div>
+                <div className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                  Состояние клиента и вероятность движения к сделке.
+                </div>
+              </div>
+              <div className="rounded-lg px-2 py-1 text-[10px] font-mono uppercase tracking-widest" style={{ background: "rgba(139,92,246,0.12)", color: "var(--accent)" }}>
+                {emotionLabel}
+              </div>
+            </div>
+
+            <VibeMeter emotion={s.emotion} />
+
+            <div className="mt-4 rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                <span>Принятие сделки</span>
+                <span style={{ color: "var(--accent)" }}>{acceptanceScore}/100</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full" style={{ background: "var(--input-bg)" }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${acceptanceScore}%`,
+                    background: acceptanceScore >= 60 ? "linear-gradient(90deg, #22c55e, #00FF94)" : "linear-gradient(90deg, #F59E0B, #8B5CF6)",
+                    boxShadow: acceptanceScore >= 60 ? "0 0 16px rgba(0,255,148,0.28)" : "0 0 16px rgba(139,92,246,0.2)",
+                  }}
+                />
+              </div>
+              <div className="mt-2 text-xs" style={{ color: "var(--text-secondary)" }}>{acceptanceLabel}</div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              {[
+                { label: "Доверие", value: trustScore, max: 10, color: "#3B82F6" },
+                { label: "Сопротивление", value: resistanceScore, max: 10, color: "#F59E0B" },
+                { label: "Давление", value: pressureScore, max: 100, color: "#EF4444" },
+                { label: "Скрипт", value: Math.round(s.scriptScore), max: 100, color: "#8B5CF6" },
+              ].map((item) => (
+                <div key={item.label} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{item.label}</div>
+                  <div className="mt-1 text-lg font-bold" style={{ color: item.color }}>{item.value}<span className="ml-1 text-[11px]" style={{ color: "var(--text-muted)" }}>/ {item.max}</span></div>
+                </div>
+              ))}
+            </div>
+
+            {(s.humanFactors.length > 0 || s.consequences.length > 0) && (
+              <div className="mt-4 space-y-3">
+                {s.humanFactors.length > 0 && (
+                  <div>
+                    <div className="mb-2 text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                      Human Factors
+                    </div>
+                    <HumanFactorIcons factors={s.humanFactors} />
+                  </div>
+                )}
+                {s.consequences.length > 0 && (
+                  <div>
+                    <div className="mb-2 text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                      Последствия
+                    </div>
+                    <div className="space-y-2">
+                      {s.consequences.slice(-3).reverse().map((consequence, index) => (
+                        <div key={`${consequence.call}-${consequence.type}-${index}`} className="rounded-lg px-3 py-2 text-xs" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.16)", color: "var(--text-secondary)" }}>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "#F87171" }}>
+                              {consequence.type.replace(/_/g, " ")}
+                            </span>
+                            <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+                              call {consequence.call}
+                            </span>
+                          </div>
+                          <div className="mt-1">{consequence.detail}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="flex-1 p-4 overflow-y-auto space-y-3 flex flex-col justify-end">
-            {s.messages.length === 0 && s.sessionState === "ready" && (
-              <p className="py-8 text-center text-xs" style={{ color: "var(--text-muted)" }}>Начните диалог</p>
-            )}
+          <div className="glass-panel rounded-xl flex min-h-0 flex-1 flex-col overflow-hidden" style={{ borderLeft: "2px solid rgba(139,92,246,0.18)" }}>
+            <div className="p-4 border-b flex justify-between items-center shrink-0" style={{ borderColor: "var(--border-color)", background: "rgba(0,0,0,0.2)" }}>
+              <h2 className="font-display tracking-widest text-sm flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
+                <Radio size={14} style={{ color: "var(--accent)" }} /> LIVE TRANSCRIPT
+              </h2>
+              <span className="flex gap-1 items-center">
+                <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ background: "var(--accent)" }} />
+                <span className="text-[10px] font-mono" style={{ color: "var(--accent)" }}>REC</span>
+              </span>
+            </div>
 
-            {s.messages.map((msg) => (
-              <ChatMessage key={msg.id} message={msg} />
-            ))}
+            <div className="flex-1 p-4 overflow-y-auto space-y-3 flex flex-col justify-end">
+              {s.messages.length === 0 && s.sessionState === "ready" && (
+                <p className="py-8 text-center text-xs" style={{ color: "var(--text-muted)" }}>Начните диалог</p>
+              )}
 
-            {s.isTyping && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 py-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                <div className="flex gap-0.5">
-                  {[0, 1, 2].map((i) => (
-                    <motion.span key={i} className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} animate={{ y: [0, -4, 0] }} transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.15 }} />
-                  ))}
-                </div>
-                {s.characterName} печатает...
-              </motion.div>
-            )}
+              {s.messages.map((msg) => (
+                <ChatMessage key={msg.id} message={msg} />
+              ))}
 
-            {s.transcription.status !== "idle" && <TranscriptionIndicator state={s.transcription} />}
-            <div ref={messagesEndRef} />
+              {s.isTyping && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 py-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                  <div className="flex gap-0.5">
+                    {[0, 1, 2].map((i) => (
+                      <motion.span key={i} className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} animate={{ y: [0, -4, 0] }} transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.15 }} />
+                    ))}
+                  </div>
+                  {s.characterName} печатает...
+                </motion.div>
+              )}
+
+              {s.transcription.status !== "idle" && <TranscriptionIndicator state={s.transcription} />}
+              <div ref={messagesEndRef} />
+            </div>
           </div>
         </aside>
 
@@ -798,8 +1001,8 @@ export default function TrainingSessionPage() {
             />
             <Avatar3D
               emotion={s.emotion}
-              isSpeaking={tts.speaking || speech.status === "listening"}
-              audioLevel={tts.speaking ? tts.audioLevel : speech.audioLevel}
+              isSpeaking={tts.speaking || s.micActive}
+              audioLevel={tts.speaking ? tts.audioLevel : microphone.audioLevel || speech.audioLevel}
               className="absolute inset-0 z-20"
             />
           </div>
@@ -835,13 +1038,13 @@ export default function TrainingSessionPage() {
               </div>
             ) : (
               <CrystalMic
-                isRecording={speech.status === "listening"}
-                isProcessing={s.transcription.status === "transcribing"}
-                audioLevel={speech.audioLevel}
+                isRecording={microphone.recordingState === "recording" || speech.status === "listening"}
+                isProcessing={microphone.recordingState === "processing" || s.transcription.status === "transcribing"}
+                audioLevel={microphone.audioLevel || speech.audioLevel}
                 onPress={handleMicPress}
                 onRelease={handleMicRelease}
                 onTextMode={() => s.setTextMode(true)}
-                disabled={s.sessionState !== "ready" || !s.sttAvailable}
+                disabled={s.sessionState !== "ready" || (!s.sttAvailable && !speech.isSupported)}
               />
             )}
           </div>
@@ -859,32 +1062,9 @@ export default function TrainingSessionPage() {
 
         {/* RIGHT: Stats Panel — progressive reveal per ТЗ */}
         <aside className="col-span-1 lg:col-span-3 flex flex-col gap-4">
-          {/* VibeMeter: appears after 3 minutes */}
-          <AnimatePresence>
-            {s.elapsed >= 180 && (
-              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5 }}>
-                <VibeMeter emotion={s.emotion} />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <ScriptAdherence progress={s.scriptScore} checkpointsHit={s.checkpointsHit} checkpointsTotal={s.checkpointsTotal} checkpoints={s.checkpoints} highlightCheckpoint={s.checkpointHint?.checkpoint ?? null} />
 
-          {/* ScriptAdherence: appears after 5 minutes */}
-          <AnimatePresence>
-            {s.elapsed >= 300 && (
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5 }}>
-                <ScriptAdherence progress={s.scriptScore} checkpointsHit={s.checkpointsHit} checkpointsTotal={s.checkpointsTotal} checkpoints={s.checkpoints} highlightCheckpoint={s.checkpointHint?.checkpoint ?? null} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* TalkListenRatio: appears after 5 minutes */}
-          <AnimatePresence>
-            {s.elapsed >= 300 && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.2 }}>
-                <TalkListenRatio talkPercent={talkPercent} />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <TalkListenRatio talkPercent={talkPercent} />
 
           {/* TrapSummary: always visible (traps can appear any time) */}
           <TrapSummaryBadge fell={s.trapsFell} dodged={s.trapsDodged} netScore={s.trapNetScore} />
