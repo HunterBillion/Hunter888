@@ -314,10 +314,10 @@ function ScenariosTab({
               AI STORY MODE
             </div>
             <h2 className="mt-3 font-display text-2xl font-bold tracking-[0.08em]" style={{ color: "var(--text-primary)" }}>
-              ЖИВОЙ КЛИЕНТ НА НЕСКОЛЬКО ЗВОНКОВ
+              ИСТОРИЯ КЛИЕНТА НА НЕСКОЛЬКО ЗВОНКОВ
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-              Здесь клиент не обнуляется после разговора. Он помнит прошлые обещания, копит последствия, переносит сомнения и меняет поведение от звонка к звонку.
+              Этот режим показывает развитие одного кейса в динамике: сохраняется контекст прошлых разговоров, меняются приоритеты клиента, а ваши решения влияют на следующий контакт.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">

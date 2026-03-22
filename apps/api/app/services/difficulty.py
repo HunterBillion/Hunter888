@@ -155,6 +155,7 @@ async def get_archetype_usage(
             func.max(TrainingSession.started_at).label("last_played"),
             func.avg(TrainingSession.score_total).label("avg_score"),
         )
+        .select_from(TrainingSession)
         .join(Scenario, Scenario.id == TrainingSession.scenario_id)
         .join(Character, Character.id == Scenario.character_id)
         .where(
@@ -234,6 +235,7 @@ async def get_recommended_scenarios(
     # Get last played archetype to avoid repeating
     last_result = await db.execute(
         select(Character.slug)
+        .select_from(TrainingSession)
         .join(Scenario, Scenario.id == TrainingSession.scenario_id)
         .join(Character, Character.id == Scenario.character_id)
         .where(
