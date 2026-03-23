@@ -66,8 +66,9 @@ function PvPLobbyContent() {
           }, 2000);
           break;
         case "pve.offer":
-          store.setQueueStatus("idle");
-          store.setPvEOffer((data.data?.message as string) ?? null);
+          store.setQueueStatus("matched");
+          store.setPvEOffer(null);
+          sendMessage({ type: "pve.accept" });
           break;
         case "queue.left":
           store.resetQueue();
@@ -288,7 +289,7 @@ function PvPLobbyContent() {
         )}
       </AnimatePresence>
 
-      {/* PvE offer modal — после 60 сек без соперника */}
+      {/* PvE offer modal — legacy fallback */}
       <AnimatePresence>
         {store.pvEOffer && (
           <motion.div

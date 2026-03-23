@@ -16,7 +16,7 @@ from app.models.pvp import DuelStatus, PvPDuel
 from app.models.user import User
 from app.services import pvp_matchmaker as matchmaker
 from app.services.llm import generate_response
-from app.services.pvp_judge import judge_full_duel
+from app.services.pvp_judge import judge_full_duel, judge_round
 from app.services.rag_legal import retrieve_legal_context
 from app.services.anti_cheat import run_anti_cheat, save_anti_cheat_result
 from app.services.glicko2 import update_rating_after_duel
@@ -399,6 +399,42 @@ async def _advance_round(duel_id: uuid.UUID) -> None:
     if not session or session["completed"]:
         return
 
+    round_number = session["round"]
+    round_messages = _duel_messages.get(duel_id, {}).get(round_number, [])
+    seller_id = session["player1_id"] if round_number == 1 else session["player2_id"]
+    client_id = session["player2_id"] if round_number == 1 else session["player1_id"]
+    seller_name = session["player_names"].get(seller_id, "Seller")
+    client_name = session["player_names"].get(client_id, "Client")
+
+    try:
+        async with async_session() as db:
+            seller_score, client_score = await judge_round(
+                dialog=round_messages,
+                seller_id=seller_id,
+                client_id=client_id,
+                seller_name=seller_name,
+                client_name=client_name,
+                archetype="skeptic",
+                difficulty=session["difficulty"],
+                round_number=round_number,
+                db=db,
+            )
+        round_score_payload = {
+            "round": round_number,
+            "selling_score": seller_score.selling_score,
+            "acting_score": client_score.acting_score,
+            "legal_accuracy": seller_score.legal_accuracy,
+            "summary": {
+                "seller_flags": seller_score.flags,
+                "legal_details": seller_score.legal_details,
+            },
+        }
+        for participant_id in [session["player1_id"], session["player2_id"]]:
+            if participant_id != BOT_ID:
+                await _send_to_user(participant_id, "judge.score", round_score_payload)
+    except Exception as exc:
+        logger.warning("Round judge failed: duel=%s round=%s error=%s", duel_id, round_number, exc)
+
     if session["round"] == 1:
         await _update_duel_row(duel_id, status=DuelStatus.swap)
         for user_id in [session["player1_id"], session["player2_id"]]:
@@ -730,8 +766,13 @@ async def pvp_websocket(websocket: WebSocket) -> None:
                     continue
 
                 if isinstance(match, dict) and match.get("status") == "timed_out":
-                    await _send(websocket, "pve.offer", {
-                        "message": "Противник не найден за 60 секунд. Предлагаем дуэль с AI-ботом по RAG.",
+                    async with async_session() as db:
+                        duel = await matchmaker.create_pve_duel(user_id, db)
+                        await db.commit()
+                    await _send(websocket, "match.found", {
+                        "duel_id": str(duel.id),
+                        "difficulty": duel.difficulty.value,
+                        "is_pve": True,
                     })
                     continue
 
@@ -753,8 +794,13 @@ async def pvp_websocket(websocket: WebSocket) -> None:
                     continue
 
                 if isinstance(match, dict) and match.get("status") == "timed_out":
-                    await _send(websocket, "pve.offer", {
-                        "message": "Противник не найден за 60 секунд. Предлагаем дуэль с AI-ботом по RAG.",
+                    async with async_session() as db:
+                        duel = await matchmaker.create_pve_duel(user_id, db)
+                        await db.commit()
+                    await _send(websocket, "match.found", {
+                        "duel_id": str(duel.id),
+                        "difficulty": duel.difficulty.value,
+                        "is_pve": True,
                     })
                     continue
 

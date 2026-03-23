@@ -43,6 +43,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
 
   const displayRemaining = status === "searching" ? live.remaining : 0;
   const displayWait = status === "searching" ? live.wait : 0;
+  const progress = Math.min(100, Math.round((displayWait / MATCH_TIMEOUT) * 100));
 
   return (
     <motion.div
@@ -79,22 +80,27 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
             </div>
 
             <h2 className="font-display text-xl font-bold" style={{ color: "var(--text-primary)" }}>
-              ПОИСК СОПЕРНИКА
+              ИЩЕМ СОПЕРНИКА
             </h2>
-            <div className="mt-4 space-y-2 font-mono" style={{ color: "var(--text-muted)" }}>
-              {position > 0 && <p className="text-xs">Игроков в очереди: {position}</p>}
-              <motion.div
-                key={displayRemaining}
-                initial={{ scale: 1.1, opacity: 0.8 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="flex items-center justify-center gap-2"
-              >
-                <span className="text-3xl font-bold tabular-nums" style={{ color: "var(--accent)" }}>
-                  {displayRemaining}
+            <div className="mt-3 text-xs leading-5 font-mono" style={{ color: "var(--text-muted)" }}>
+              Если за 60 секунд игрок не найден, арена автоматически запускает бой с AI.
+            </div>
+            <div className="mt-5 space-y-3 font-mono" style={{ color: "var(--text-muted)" }}>
+              {position > 0 && <p className="text-xs">Активных игроков в очереди: {position}</p>}
+              <div className="flex items-end justify-center gap-2">
+                <span className="text-4xl font-bold tabular-nums" style={{ color: "var(--accent)" }}>
+                  {displayWait}
                 </span>
-                <span className="text-xs">сек осталось</span>
-              </motion.div>
-              <p className="text-[10px] opacity-70">Прошло: {displayWait} сек</p>
+                <span className="pb-1 text-xs">сек в поиске</span>
+              </div>
+              <div className="mx-auto h-2 w-full overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
+                <motion.div
+                  className="h-full rounded-full"
+                  style={{ background: "linear-gradient(90deg, var(--accent), #FFD700)" }}
+                  animate={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="text-[10px] opacity-70">Готовим автоматический PvE, если живой соперник не подключится</p>
             </div>
 
             <motion.button
@@ -119,11 +125,15 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
             </motion.div>
 
             <h2 className="font-display text-xl font-bold" style={{ color: "#00FF66" }}>
-              СОПЕРНИК НАЙДЕН!
+              {opponentRating ? "СОПЕРНИК НАЙДЕН!" : "АРЕНА ГОТОВА!"}
             </h2>
-            {opponentRating && (
+            {opponentRating ? (
               <p className="mt-2 font-mono text-sm" style={{ color: "var(--text-muted)" }}>
                 Рейтинг: {Math.round(opponentRating)}
+              </p>
+            ) : (
+              <p className="mt-2 font-mono text-sm" style={{ color: "var(--text-muted)" }}>
+                Запускаем бой против AI-клиента
               </p>
             )}
             <div className="mt-4 flex items-center justify-center gap-2">

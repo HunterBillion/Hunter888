@@ -11,6 +11,7 @@ interface Props {
 
 export function RatingCard({ rating: r }: Props) {
   const winRate = r.total_duels > 0 ? Math.round((r.wins / r.total_duels) * 100) : 0;
+  const placementLeft = Math.max(0, 10 - r.placement_count);
   const streakIcon = r.current_streak > 0
     ? <TrendingUp size={14} style={{ color: "var(--neon-green)" }} />
     : r.current_streak < 0
@@ -21,18 +22,46 @@ export function RatingCard({ rating: r }: Props) {
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="glass-panel p-6"
+      className="glass-panel overflow-hidden p-0"
     >
-      <div className="flex items-center justify-between mb-4">
-        <RankBadge tier={r.rank_tier} rating={r.rating} size="lg" />
-        {!r.placement_done && (
-          <span className="font-mono text-[10px] px-2 py-1 rounded-lg" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
-            Калибровка: {r.placement_count}/10
-          </span>
-        )}
+      <div
+        className="p-6"
+        style={{ background: "linear-gradient(135deg, rgba(255,215,0,0.14), rgba(59,130,246,0.08) 45%, rgba(0,0,0,0) 100%)" }}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.24em]" style={{ color: "var(--text-muted)" }}>
+              Arena Rating
+            </div>
+            <div className="mt-2 flex items-end gap-3">
+              <div className="font-display text-5xl font-black leading-none" style={{ color: "var(--text-primary)" }}>
+                {Math.round(r.rating)}
+              </div>
+              <div className="pb-1 text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                RD {Math.round(r.rd)}
+              </div>
+            </div>
+            <div className="mt-3">
+              <RankBadge tier={r.rank_tier} rating={r.rating} size="lg" />
+            </div>
+          </div>
+          {!r.placement_done && (
+            <div className="rounded-2xl px-4 py-3 text-right" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                Калибровка
+              </div>
+              <div className="mt-1 text-2xl font-bold" style={{ color: "var(--accent)" }}>
+                {r.placement_count}/10
+              </div>
+              <div className="mt-1 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                Осталось {placementLeft}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4 mt-4">
+      <div className="grid grid-cols-2 gap-4 p-6 md:grid-cols-4">
         <div className="text-center">
           <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Побед</div>
           <div className="font-display text-2xl font-bold" style={{ color: "var(--neon-green)" }}>{r.wins}</div>
@@ -57,7 +86,7 @@ export function RatingCard({ rating: r }: Props) {
       </div>
 
       {/* Peak info */}
-      <div className="mt-4 flex items-center justify-between font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+      <div className="flex items-center justify-between border-t px-6 py-4 font-mono text-[10px]" style={{ color: "var(--text-muted)", borderColor: "rgba(255,255,255,0.06)" }}>
         <span className="flex items-center gap-1">
           <Flame size={10} style={{ color: "#FFD700" }} />
           Лучший streak: {r.best_streak}
