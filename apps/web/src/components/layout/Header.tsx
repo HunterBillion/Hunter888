@@ -19,7 +19,7 @@ import {
   Swords,
   ShieldCheck,
   FileBarChart,
-  Brain,
+
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { sanitizeText } from "@/lib/sanitize";
@@ -38,7 +38,6 @@ type OpenPanel = "none" | "user" | "notifications" | "mobile";
 const NAV_ITEMS: NavItem[] = [
   { href: "/home", label: "Центр", icon: Home },
   { href: "/training", label: "Тренировка", icon: Crosshair },
-  { href: "/knowledge", label: "Знания", icon: Brain },
   { href: "/clients", label: "Клиенты", icon: Users, roles: ["admin", "rop", "manager", "methodologist"] },
   { href: "/history", label: "История", icon: History },
   { href: "/leaderboard", label: "Лидерборд", icon: Trophy },

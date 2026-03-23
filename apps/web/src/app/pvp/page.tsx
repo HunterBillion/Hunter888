@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Swords, ArrowRight, Loader2, Trophy, Zap } from "lucide-react";
+import { Swords, ArrowRight, Loader2, Trophy, Zap, BookOpen, Brain, Clock, Target } from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -27,7 +27,10 @@ function PvPLobbyContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const store = usePvPStore();
-  const [tab, setTab] = useState<"arena" | "history">("arena");
+  const [tab, setTab] = useState<"arena" | "knowledge" | "history">("arena");
+  const [quizMode, setQuizMode] = useState<"free_dialog" | "blitz" | "themed" | null>(null);
+  const [quizCategory, setQuizCategory] = useState<string | null>(null);
+  const [quizStarting, setQuizStarting] = useState(false);
   const [pveAccepting, setPveAccepting] = useState(false);
   const inviteSentRef = useRef(false);
   const autoPvERef = useRef(false);
@@ -224,7 +227,7 @@ function PvPLobbyContent() {
 
               {/* Tabs */}
               <div className="flex gap-1 rounded-xl p-1" style={{ background: "var(--input-bg)" }}>
-                {(["arena", "history"] as const).map((t) => (
+                {(["arena", "knowledge", "history"] as const).map((t) => (
                   <button
                     key={t}
                     onClick={() => setTab(t)}
@@ -239,11 +242,108 @@ function PvPLobbyContent() {
                       />
                     )}
                     <span className="relative z-10">
-                      {t === "arena" ? "Арена" : "История дуэлей"}
+                      {t === "arena" ? "Дуэли" : t === "knowledge" ? "Знания ФЗ-127" : "История"}
                     </span>
                   </button>
                 ))}
               </div>
+
+              {/* Knowledge ФЗ-127 */}
+              <AnimatePresence mode="wait">
+                {tab === "knowledge" && (
+                  <motion.div key="knowledge" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                    <div className="space-y-4">
+                      {/* Mode selection */}
+                      <div className="grid grid-cols-3 gap-3">
+                        {([
+                          { mode: "free_dialog" as const, icon: BookOpen, label: "Свободный диалог", desc: "Без ограничений", color: "#6366F1" },
+                          { mode: "blitz" as const, icon: Clock, label: "Блиц", desc: "20 × 60 сек", color: "#F59E0B" },
+                          { mode: "themed" as const, icon: Target, label: "По теме", desc: "10 категорий", color: "#10B981" },
+                        ]).map(({ mode, icon: Icon, label, desc, color }) => (
+                          <motion.button
+                            key={mode}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => { setQuizMode(mode); setQuizCategory(null); }}
+                            className="glass-panel rounded-xl p-4 text-left transition-all"
+                            style={{
+                              borderColor: quizMode === mode ? color : "var(--glass-border)",
+                              borderWidth: quizMode === mode ? 2 : 1,
+                            }}
+                          >
+                            <Icon size={20} style={{ color }} />
+                            <p className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>{label}</p>
+                            <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>{desc}</p>
+                          </motion.button>
+                        ))}
+                      </div>
+
+                      {/* Category selection for themed mode */}
+                      {quizMode === "themed" && (
+                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}>
+                          <p className="text-xs font-mono mb-2" style={{ color: "var(--text-secondary)" }}>ВЫБЕРИТЕ КАТЕГОРИЮ:</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { id: "eligibility", label: "Условия подачи" },
+                              { id: "procedure", label: "Порядок процедуры" },
+                              { id: "property", label: "Имущество" },
+                              { id: "consequences", label: "Последствия" },
+                              { id: "costs", label: "Расходы" },
+                              { id: "creditors", label: "Кредиторы" },
+                              { id: "documents", label: "Документы" },
+                              { id: "timeline", label: "Сроки" },
+                              { id: "court", label: "Суд" },
+                              { id: "rights", label: "Права должника" },
+                            ].map((cat) => (
+                              <button
+                                key={cat.id}
+                                onClick={() => setQuizCategory(cat.id)}
+                                className="rounded-lg px-3 py-2 text-left text-xs font-mono transition-all"
+                                style={{
+                                  background: quizCategory === cat.id ? "rgba(16,185,129,0.15)" : "var(--input-bg)",
+                                  color: quizCategory === cat.id ? "#10B981" : "var(--text-secondary)",
+                                  border: quizCategory === cat.id ? "1px solid rgba(16,185,129,0.3)" : "1px solid transparent",
+                                }}
+                              >
+                                {cat.label}
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+
+                      {/* Start quiz button */}
+                      {quizMode && (quizMode !== "themed" || quizCategory) && (
+                        <motion.button
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          whileTap={{ scale: 0.98 }}
+                          disabled={quizStarting}
+                          className="vh-btn-primary w-full flex items-center justify-center gap-2 py-3"
+                          onClick={async () => {
+                            setQuizStarting(true);
+                            try {
+                              const res = await api.post("/knowledge/sessions", {
+                                mode: quizMode,
+                                category: quizCategory,
+                              }) as { id?: string; session_id?: string };
+                              const sid = res?.id || res?.session_id;
+                              if (sid) router.push(`/pvp/quiz/${sid}`);
+                            } catch (e) {
+                              console.error("Failed to start quiz:", e);
+                            } finally {
+                              setQuizStarting(false);
+                            }
+                          }}
+                        >
+                          {quizStarting ? <Loader2 size={16} className="animate-spin" /> : <Brain size={16} />}
+                          Начать тест
+                        </motion.button>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* History */}
               <AnimatePresence mode="wait">
