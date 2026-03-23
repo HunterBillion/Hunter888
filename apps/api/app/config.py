@@ -172,6 +172,10 @@ class Settings(BaseSettings):
     def web_push_configured(self) -> bool:
         return bool(self.vapid_public_key and self.vapid_private_key and self.vapid_subject)
 
+    # Pagination — default/max limits for list endpoints; overridden in .env
+    pagination_default_limit: int = 50
+    pagination_max_limit: int = 200
+
     # Rate Limits — safe defaults; overridden in .env
     max_sessions_per_day: int = 10
     max_session_duration_minutes: int = 30

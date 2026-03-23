@@ -44,13 +44,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core import errors as err
 from app.core.security import decode_token
 from app.database import async_session
 from app.models.character import Character, EmotionState, LEGACY_MAP
 from app.models.scenario import Scenario
 from app.models.training import MessageRole, SessionStatus, TrainingSession
 from app.models.user import User
-import redis.asyncio as aioredis
 
 from app.services.emotion import (
     get_emotion, init_emotion, init_emotion_v3,
@@ -182,32 +182,32 @@ async def _authenticate_first_message(ws: WebSocket, raw: str) -> uuid.UUID | No
     try:
         message = json.loads(raw)
     except json.JSONDecodeError:
-        await _send(ws, "auth.error", {"message": "Invalid JSON"})
+        await _send(ws, "auth.error", {"message": err.WS_INVALID_JSON})
         return None
 
     if message.get("type") != "auth":
-        await _send(ws, "auth.error", {"message": "First message must be auth"})
+        await _send(ws, "auth.error", {"message": err.WS_FIRST_MESSAGE_AUTH})
         return None
 
     token = message.get("data", {}).get("token")
     if not token:
-        await _send(ws, "auth.error", {"message": "Token is required"})
+        await _send(ws, "auth.error", {"message": err.WS_TOKEN_REQUIRED})
         return None
 
     payload = decode_token(token)
     if payload is None or payload.get("type") != "access":
-        await _send(ws, "auth.error", {"message": "Invalid or expired token"})
+        await _send(ws, "auth.error", {"message": err.WS_INVALID_OR_EXPIRED_TOKEN})
         return None
 
     user_id_str = payload.get("sub")
     if not user_id_str:
-        await _send(ws, "auth.error", {"message": "Invalid token payload"})
+        await _send(ws, "auth.error", {"message": err.WS_INVALID_TOKEN_PAYLOAD})
         return None
 
     try:
         user_id = uuid.UUID(user_id_str)
     except ValueError:
-        await _send(ws, "auth.error", {"message": "Invalid user ID in token"})
+        await _send(ws, "auth.error", {"message": err.WS_INVALID_USER_ID})
         return None
 
     # Verify user exists and is active
@@ -215,13 +215,13 @@ async def _authenticate_first_message(ws: WebSocket, raw: str) -> uuid.UUID | No
         result = await db.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
         if user is None or not user.is_active:
-            await _send(ws, "auth.error", {"message": "User not found or inactive"})
+            await _send(ws, "auth.error", {"message": err.WS_USER_NOT_FOUND})
             return None
 
     # Check if user was logged out (token blacklisted)
     from app.core.deps import _is_user_blacklisted
     if await _is_user_blacklisted(user_id_str):
-        await _send(ws, "auth.error", {"message": "Token has been revoked"})
+        await _send(ws, "auth.error", {"message": err.WS_TOKEN_REVOKED})
         return None
 
     return user_id
@@ -552,6 +552,7 @@ async def _silence_watchdog(
     session_id: uuid.UUID,
     state: dict,
     stop_event: asyncio.Event,
+    state_lock: asyncio.Lock | None = None,
 ) -> None:
     """Background task: detect prolonged silence.
 
@@ -583,7 +584,11 @@ async def _silence_watchdog(
             async with async_session() as db:
                 await end_session(session_id, db, status=SessionStatus.abandoned)
                 await db.commit()
-            state["active"] = False
+            if state_lock:
+                async with state_lock:
+                    state["active"] = False
+            else:
+                state["active"] = False
             stop_event.set()
             break
 
@@ -641,6 +646,7 @@ async def _hint_scheduler(
     session_id: uuid.UUID,
     state: dict,
     stop_event: asyncio.Event,
+    state_lock: asyncio.Lock | None = None,
 ) -> None:
     """Background task: send progressive hints to the frontend.
 
@@ -741,6 +747,7 @@ async def _soft_skills_tracker(
     session_id: uuid.UUID,
     state: dict,
     stop_event: asyncio.Event,
+    state_lock: asyncio.Lock | None = None,
 ) -> None:
     """Background task: send soft_skills.update every 2 minutes.
 
@@ -1609,7 +1616,7 @@ async def _handle_session_end(
     state["active"] = False
     state["session_id"] = None
 
-    result_data = {"message": "Session ended successfully"}
+    result_data = {"message": err.WS_SESSION_ENDED}
     if session:
         result_data.update({
             "session_id": str(session.id),
@@ -1932,9 +1939,13 @@ async def _handle_story_call_end(
                 if call_number >= 3:
                     mgr = get_context_budget_manager()
                     # Get message history for older calls
-                    # (simplified — in production, load from CallRecord)
+                    call_messages = await get_message_history(session_id)
+                    call_msg_list = [
+                        {"role": m["role"], "content": m["content"]}
+                        for m in call_messages
+                    ]
                     story.compressed_history = await mgr.compress_old_calls(
-                        [], story.compressed_history
+                        call_msg_list, story.compressed_history
                     )
 
                 if call_number >= state.get("total_calls", 3):
@@ -2080,7 +2091,7 @@ async def training_websocket(websocket: WebSocket) -> None:
     try:
         raw = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
     except asyncio.TimeoutError:
-        await _send(websocket, "auth.error", {"message": "Auth timeout"})
+        await _send(websocket, "auth.error", {"message": err.WS_AUTH_TIMEOUT})
         await websocket.close(code=http_status.WS_1008_POLICY_VIOLATION)
         return
     except WebSocketDisconnect:
@@ -2102,6 +2113,7 @@ async def training_websocket(websocket: WebSocket) -> None:
         "active": False,
         "stt_failure_count": 0,
     }
+    state_lock = asyncio.Lock()
 
     watchdog_task: asyncio.Task | None = None
     hint_task: asyncio.Task | None = None
@@ -2110,7 +2122,7 @@ async def training_websocket(websocket: WebSocket) -> None:
 
     try:
         await _send(websocket, "session.ready", {
-            "message": "Authenticated. Send session.start to begin.",
+            "message": err.WS_AUTHENTICATED,
         })
 
         while True:
@@ -2127,7 +2139,7 @@ async def training_websocket(websocket: WebSocket) -> None:
                         )
                         await db.commit()
                 await _send(websocket, "silence.timeout", {
-                    "message": "Connection timed out due to inactivity",
+                    "message": err.WS_INACTIVITY_TIMEOUT,
                 })
                 break
 
@@ -2137,7 +2149,7 @@ async def training_websocket(websocket: WebSocket) -> None:
             try:
                 message = json.loads(raw)
             except json.JSONDecodeError:
-                await _send_error(websocket, "Invalid JSON", "parse_error")
+                await _send_error(websocket, err.WS_INVALID_JSON, "parse_error")
                 continue
 
             msg_type = message.get("type")
@@ -2148,13 +2160,13 @@ async def training_websocket(websocket: WebSocket) -> None:
                 if state.get("session_id") and watchdog_task is None:
                     sid = state["session_id"]
                     watchdog_task = asyncio.create_task(
-                        _silence_watchdog(websocket, sid, state, stop_event)
+                        _silence_watchdog(websocket, sid, state, stop_event, state_lock)
                     )
                     hint_task = asyncio.create_task(
-                        _hint_scheduler(websocket, sid, state, stop_event)
+                        _hint_scheduler(websocket, sid, state, stop_event, state_lock)
                     )
                     soft_skills_task = asyncio.create_task(
-                        _soft_skills_tracker(websocket, sid, state, stop_event)
+                        _soft_skills_tracker(websocket, sid, state, stop_event, state_lock)
                     )
 
             elif msg_type == "audio.chunk":

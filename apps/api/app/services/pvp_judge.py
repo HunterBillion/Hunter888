@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import errors as err
 from app.models.pvp import DuelDifficulty, DIFFICULTY_MULTIPLIERS
 from app.services.llm import generate_response
 from app.services.rag_legal import retrieve_legal_context, RAGContext
@@ -380,7 +381,7 @@ async def run_calibration() -> dict:
         {"drift_detected": bool, "avg_deviation": float, "details": [...]}
     """
     if not CALIBRATION_DIALOGS:
-        return {"drift_detected": False, "avg_deviation": 0.0, "details": [], "message": "No calibration data loaded."}
+        return {"drift_detected": False, "avg_deviation": 0.0, "details": [], "message": err.NO_CALIBRATION_DATA}
 
     # TODO: implement calibration against reference scores
     logger.info("Calibration check: %d reference dialogs", len(CALIBRATION_DIALOGS))

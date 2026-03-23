@@ -1,7 +1,13 @@
+"""JWT token creation/verification and password hashing.
+
+Uses PyJWT (``jwt``) — the actively maintained JWT library.
+Migrated from python-jose which is in maintenance mode since 2024.
+"""
+
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
-from jose import JWTError, jwt
+import jwt
 
 from app.config import settings
 
@@ -34,5 +40,5 @@ def decode_token(token: str) -> dict | None:
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         return payload
-    except JWTError:
+    except (jwt.InvalidTokenError, jwt.ExpiredSignatureError, jwt.DecodeError):
         return None

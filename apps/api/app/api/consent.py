@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import errors as err
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.user import User, UserConsent
@@ -69,7 +70,7 @@ async def accept_consent(
     if existing.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This consent has already been accepted",
+            detail=err.CONSENT_ALREADY_ACCEPTED,
         )
 
     # Determine client IP
@@ -159,7 +160,7 @@ async def check_consent_accepted(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
-                    "message": "Required consent not accepted",
+                    "message": err.REQUIRED_CONSENT_NOT_ACCEPTED,
                     "missing_consent": req,
                     "redirect": "/consent",
                 },

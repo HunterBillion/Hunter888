@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
+from app.core import errors as err
 from app.core.deps import get_current_user, require_role
 from app.core.redis_pool import get_redis
 from app.database import get_db
@@ -230,7 +231,7 @@ async def rop_dashboard(
     Cached for 30 seconds per team.
     """
     if not user.team_id:
-        return {"error": "No team assigned"}
+        return {"error": err.NO_TEAM_ASSIGNED}
 
     cache_key = f"dashboard:rop:{user.team_id}"
     cached = await _cache_get(cache_key)

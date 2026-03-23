@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import errors as err
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
@@ -107,7 +108,7 @@ def _resolve_user_id(
     if current_user.role.value not in ("rop", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only view your own analytics",
+            detail=err.OWN_ANALYTICS_ONLY,
         )
     return target_user_id
 

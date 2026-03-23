@@ -14,8 +14,8 @@ dependencies = [
     # Validation
     "pydantic>=2.10.0,<3.0.0",
     "pydantic-settings>=2.7.0,<3.0.0",
-    # Auth
-    "python-jose[cryptography]>=3.3.0,<4.0.0",
+    # Auth (PyJWT — actively maintained; migrated from python-jose)
+    "PyJWT>=2.8.0,<3.0.0",
     "passlib[bcrypt]>=1.7.4,<2.0.0",
     "bcrypt>=4.0.0,<5.0.0",
     # Redis / HTTP

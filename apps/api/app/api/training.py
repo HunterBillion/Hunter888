@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.consent import check_consent_accepted
+from app.core import errors as err
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.core.deps import require_role
@@ -28,6 +29,12 @@ from app.schemas.training import (
 )
 from app.services.gamification import check_and_award_achievements
 from app.services.scoring import calculate_scores, generate_recommendations
+from app.services.session_manager import (
+    check_rate_limit as sm_check_rate_limit,
+    end_session as sm_end_session,
+    RateLimitError as SmRateLimitError,
+)
+from app.services.emotion import init_emotion as sm_init_emotion
 
 logger = logging.getLogger(__name__)
 
@@ -214,7 +221,7 @@ async def start_session(
         if fallback is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No active scenarios available. Run seed_db first.",
+                detail=err.NO_ACTIVE_SCENARIOS,
             )
         scenario_id = fallback.id
     elif scenario_id is None:
@@ -241,6 +248,12 @@ async def start_session(
         if not custom_params:
             custom_params = None
 
+    # Check rate limit before creating session
+    try:
+        await sm_check_rate_limit(user.id, db)
+    except SmRateLimitError as e:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
+
     session = TrainingSession(
         user_id=user.id,
         scenario_id=scenario_id,
@@ -248,6 +261,32 @@ async def start_session(
     )
     db.add(session)
     await db.flush()
+
+    # Initialize Redis state and emotion (mirrors session_manager.start_session)
+    try:
+        from app.models.character import EmotionState
+        await sm_init_emotion(session.id, EmotionState.cold)
+    except Exception:
+        logger.warning("Failed to init emotion for session %s via REST", session.id)
+
+    try:
+        import json as _json
+        import time as _time
+        from app.services.session_manager import _redis, _SESSION_KEY, _KEY_TTL
+        r = _redis()
+        state_key = _SESSION_KEY.format(session_id=session.id)
+        redis_state = {
+            "user_id": str(user.id),
+            "scenario_id": str(scenario_id),
+            "status": "active",
+            "started_at": _time.time(),
+            "message_count": 0,
+            "last_activity": _time.time(),
+        }
+        await r.set(state_key, _json.dumps(redis_state), ex=_KEY_TTL)
+    except Exception:
+        logger.warning("Failed to init Redis state for session %s via REST", session.id)
+
     return session
 
 
@@ -265,7 +304,7 @@ async def get_session(
     )
     session = result.scalar_one_or_none()
     if not session:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.SESSION_NOT_FOUND)
     return await _build_session_result(session, user=user, db=db)
 
 
@@ -284,7 +323,7 @@ async def end_session(
     )
     session = result.scalar_one_or_none()
     if not session:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active session not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.ACTIVE_SESSION_NOT_FOUND)
 
     # Calculate scores before closing
     scores = None
@@ -323,8 +362,14 @@ async def end_session(
     except Exception:
         logger.exception("Failed to generate recommendations for session %s", session_id)
 
-    session.status = SessionStatus.completed
-    await db.flush()
+    # Finalize via session_manager (duration, emotion timeline, Redis cleanup)
+    try:
+        await sm_end_session(session_id, db, status=SessionStatus.completed)
+    except Exception:
+        logger.warning("Failed to end session via manager for %s", session_id)
+        # Fallback: set status manually if session_manager failed
+        session.status = SessionStatus.completed
+        await db.flush()
 
     # Award achievements after session completion
     try:
@@ -486,7 +531,7 @@ class AssignTrainingRequest(BaseModel):
         try:
             datetime.fromisoformat(v)
         except ValueError:
-            raise ValueError("deadline must be ISO 8601 format (e.g. 2026-03-25T14:00:00)")
+            raise ValueError(err.DEADLINE_FORMAT_ERROR)
         return v
 
 
@@ -514,7 +559,7 @@ async def assign_training(
     # Verify target user exists
     target = await db.execute(select(User).where(User.id == body.user_id))
     if target.scalar_one_or_none() is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target user not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.TARGET_USER_NOT_FOUND)
 
     assignment = AssignedTraining(
         user_id=body.user_id,
@@ -525,7 +570,7 @@ async def assign_training(
     db.add(assignment)
     await db.flush()
 
-    return {"id": str(assignment.id), "message": "Training assigned successfully"}
+    return {"id": str(assignment.id), "message": err.TRAINING_ASSIGNED}
 
 
 @router.get("/assigned")

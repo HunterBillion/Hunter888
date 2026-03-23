@@ -29,6 +29,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.core import errors as err
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["emotion", "traps", "chains"])
@@ -511,7 +513,7 @@ async def emotion_get(session_id: str):
     engine = await get_emotion_engine()
     state = await engine.get_state(session_id)
     if state is None:
-        raise HTTPException(404, detail="Emotion state not found")
+        raise HTTPException(404, detail=err.EMOTION_STATE_NOT_FOUND)
 
     display = state.fake_display_state if state.fake_active else state.current_state
     mood = (

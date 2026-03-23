@@ -28,6 +28,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import errors as err
 from app.models.scenario import ScenarioCode, ScenarioTemplate
 from app.models.reputation import ReputationTier, TIER_MIN_DIFFICULTY
 from app.services.reputation import (
@@ -207,7 +208,7 @@ async def select_scenario(
         templates = list(result.scalars().all())
 
     if not templates:
-        raise ValueError("No active scenario templates found in database")
+        raise ValueError(err.NO_SCENARIO_TEMPLATES)
 
     # Weighted random selection by difficulty proximity to manager level
     weights = []

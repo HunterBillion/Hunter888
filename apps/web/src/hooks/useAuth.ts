@@ -35,6 +35,6 @@ export function useAuth() {
 }
 
 /** @deprecated Use useAuthStore().invalidate() directly */
-export function invalidateUserCache() {
+export function invalidateUserCache(): void {
   useAuthStore.getState().invalidate();
 }

@@ -12,6 +12,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core import errors as err
 from app.core.deps import get_current_user, require_role
 from app.core.security import hash_password, verify_password
 from app.database import get_db
@@ -160,7 +161,7 @@ async def get_my_profile(
     )
     user_with_team = result.scalar_one_or_none()
     if not user_with_team:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.USER_NOT_FOUND)
 
     # Basic stats
     stats_result = await db.execute(
@@ -399,7 +400,7 @@ async def change_password(
     if not verify_password(body.old_password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Current password is incorrect",
+            detail=err.CURRENT_PASSWORD_INCORRECT,
         )
 
     user.hashed_password = hash_password(body.new_password)
@@ -411,7 +412,7 @@ async def change_password(
 @router.get("/", response_model=list[UserListItem])
 async def list_users(
     skip: int = 0,
-    limit: int = 50,
+    limit: int = Query(default=None, ge=1),
     role: str | None = None,
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
@@ -419,13 +420,16 @@ async def list_users(
     """List all users. Only accessible by ROP and admin roles.
 
     Optional filter: ?role=manager to get only managers.
+    Limit defaults to settings.pagination_default_limit, capped at settings.pagination_max_limit.
     """
+    from app.config import settings
+    effective_limit = min(limit or settings.pagination_default_limit, settings.pagination_max_limit)
     query = (
         select(User)
         .options(selectinload(User.team))
         .order_by(User.created_at.desc())
         .offset(skip)
-        .limit(min(limit, 200))
+        .limit(effective_limit)
     )
     # Filter by role if specified
     if role:
@@ -471,13 +475,13 @@ async def get_user_stats(
     if current_user.id != user_id and current_user.role.value not in ("rop", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only view your own stats",
+            detail=err.OWN_STATS_ONLY,
         )
 
     # Verify target user exists
     target = await db.execute(select(User).where(User.id == user_id))
     if target.scalar_one_or_none() is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.USER_NOT_FOUND)
 
     # Aggregate session stats
     stats_result = await db.execute(
@@ -689,13 +693,13 @@ async def get_team_stats(
     from app.models.user import Team
 
     if not user.team_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has no team")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err.NO_TEAM_ASSIGNED)
 
     # Team info
     team_result = await db.execute(select(Team).where(Team.id == user.team_id))
     team = team_result.scalar_one_or_none()
     if not team:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.TEAM_NOT_FOUND)
 
     # Team members
     members_result = await db.execute(

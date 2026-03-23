@@ -64,7 +64,7 @@ async function handleTokenRefresh(): Promise<boolean> {
   return _refreshPromise;
 }
 
-async function request(path: string, options: RequestInit = {}) {
+async function request(path: string, options: RequestInit = {}): Promise<unknown> {
   const token = getToken();
 
   const headers: Record<string, string> = {
@@ -138,7 +138,7 @@ async function request(path: string, options: RequestInit = {}) {
   return response.json();
 }
 
-async function uploadFile(path: string, file: File) {
+async function uploadFile(path: string, file: File): Promise<unknown> {
   const formData = new FormData();
   formData.append("file", file);
 

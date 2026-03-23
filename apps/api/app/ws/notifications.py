@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from app.core import errors as err
 from app.core.security import decode_token
 from app.database import async_session
 
@@ -269,7 +270,7 @@ async def notification_websocket(websocket: WebSocket) -> None:
                 else:
                     await websocket.send_json({
                         "type": "error",
-                        "message": "channel is required for subscribe",
+                        "message": err.WS_CHANNEL_REQUIRED,
                     })
 
             elif msg_type == "unsubscribe":

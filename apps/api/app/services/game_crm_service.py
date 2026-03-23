@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import settings
+from app.core import errors as err
 from app.models.game_crm import GameClientEvent, GameClientStatus, GameEventType
 from app.models.roleplay import ClientProfile, ClientStory, EpisodicMemory, ObjectionChain, Trap
 from app.models.training import TrainingSession
@@ -543,7 +544,7 @@ class GameCRMService:
 
         if not story:
             from fastapi import HTTPException
-            raise HTTPException(status_code=404, detail="Story not found")
+            raise HTTPException(status_code=404, detail=err.STORY_NOT_FOUND)
 
         ds = story.director_state or {}
 
@@ -680,7 +681,7 @@ class GameCRMService:
         story = result.scalar_one_or_none()
         if not story:
             from fastapi import HTTPException
-            raise HTTPException(status_code=404, detail="Story not found or access denied")
+            raise HTTPException(status_code=404, detail=err.STORY_NOT_FOUND_OR_ACCESS_DENIED)
         return story
 
     async def _generate_ai_client_reply(

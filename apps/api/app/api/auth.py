@@ -11,6 +11,7 @@ limiter = Limiter(key_func=get_remote_address)
 import redis.asyncio as aioredis
 
 from app.config import settings
+from app.core import errors as err
 from app.core.redis_pool import get_redis
 
 _logger = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ def _clear_auth_cookies(response: JSONResponse) -> JSONResponse:
 async def register(request: Request, body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=err.EMAIL_ALREADY_REGISTERED)
 
     user = User(
         email=body.email,
@@ -106,11 +107,11 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
 
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=err.INVALID_CREDENTIALS
         )
 
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=err.ACCOUNT_DISABLED)
 
     # Clear any blacklist from previous logout so new login works
     try:
@@ -129,7 +130,7 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
 async def refresh(body: RefreshRequest):
     payload = decode_token(body.refresh_token)
     if payload is None or payload.get("type") != "refresh":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=err.INVALID_REFRESH_TOKEN)
 
     user_id = payload["sub"]
 
@@ -138,7 +139,7 @@ async def refresh(body: RefreshRequest):
     if await _is_user_blacklisted(user_id):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has been revoked. Please login again.",
+            detail=err.TOKEN_REVOKED_RELOGIN,
         )
 
     tokens = _create_tokens(user_id)
@@ -265,7 +266,7 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest, db: Asy
             _logger.error("Redis error storing reset token: %s", exc)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Service temporarily unavailable",
+                detail=err.SERVICE_TEMPORARILY_UNAVAILABLE,
             )
 
         reset_url = f"{settings.frontend_url}/reset-password?token={reset_token}"
@@ -287,7 +288,7 @@ async def reset_password(request: Request, body: ResetPasswordRequest, db: Async
             await r.delete(f"reset_token:{body.token}")  # One-time use
     except aioredis.RedisError as exc:
         _logger.error("Redis error during password reset: %s", exc)
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=err.SERVICE_TEMPORARILY_UNAVAILABLE)
 
     if not user_id_str:
         raise HTTPException(
@@ -299,7 +300,7 @@ async def reset_password(request: Request, body: ResetPasswordRequest, db: Async
     result = await db.execute(select(User).where(User.id == uuid.UUID(user_id_str)))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err.USER_NOT_FOUND)
 
     user.hashed_password = hash_password(body.new_password)
     user.must_change_password = False
@@ -348,7 +349,7 @@ async def google_login():
         await r.setex(f"oauth_state:{state_key}", 300, "1")
     except aioredis.RedisError as exc:
         _logger.error("Redis error storing Google OAuth state: %s", exc)
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=err.SERVICE_TEMPORARILY_UNAVAILABLE)
 
     redirect_uri = settings.google_redirect_uri or f"{settings.frontend_url}/auth/callback"
     params = {
@@ -373,16 +374,16 @@ async def google_callback(request: Request, body: OAuthCallbackRequest, db: Asyn
 
     # Validate OAuth state to prevent CSRF
     if not body.state:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing OAuth state parameter")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err.MISSING_OAUTH_STATE)
     try:
         r = get_redis()
         stored = await r.get(f"oauth_state:{body.state}")
         await r.delete(f"oauth_state:{body.state}")
     except aioredis.RedisError as exc:
         _logger.error("Redis error validating Google OAuth state: %s", exc)
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=err.SERVICE_TEMPORARILY_UNAVAILABLE)
     if not stored:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OAuth state (possible CSRF)")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err.INVALID_OAUTH_STATE)
 
     redirect_uri = settings.google_redirect_uri or f"{settings.frontend_url}/auth/callback"
 
@@ -438,7 +439,7 @@ async def yandex_login():
         await r.setex(f"oauth_state:{state_key}", 300, "1")
     except aioredis.RedisError as exc:
         _logger.error("Redis error storing Yandex OAuth state: %s", exc)
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=err.SERVICE_TEMPORARILY_UNAVAILABLE)
 
     redirect_uri = settings.yandex_redirect_uri or f"{settings.frontend_url}/auth/callback"
     params = {
@@ -460,16 +461,16 @@ async def yandex_callback(request: Request, body: OAuthCallbackRequest, db: Asyn
 
     # Validate OAuth state to prevent CSRF
     if not body.state:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing OAuth state parameter")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err.MISSING_OAUTH_STATE)
     try:
         r = get_redis()
         stored = await r.get(f"oauth_state:{body.state}")
         await r.delete(f"oauth_state:{body.state}")
     except aioredis.RedisError as exc:
         _logger.error("Redis error validating Yandex OAuth state: %s", exc)
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=err.SERVICE_TEMPORARILY_UNAVAILABLE)
     if not stored:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OAuth state (possible CSRF)")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err.INVALID_OAUTH_STATE)
 
     redirect_uri = settings.yandex_redirect_uri or f"{settings.frontend_url}/auth/callback"
 

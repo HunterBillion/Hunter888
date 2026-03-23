@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core import errors as err
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.character import Character
@@ -77,7 +78,7 @@ async def get_scenario(
     )
     scenario = result.scalar_one_or_none()
     if not scenario:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scenario not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.SCENARIO_NOT_FOUND)
 
     # Get character
     char_result = await db.execute(select(Character).where(Character.id == scenario.character_id))

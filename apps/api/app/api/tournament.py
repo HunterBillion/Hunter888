@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import errors as err
 from app.core.deps import get_current_user, require_role
 from app.database import get_db
 from app.models.user import User
@@ -83,7 +84,7 @@ async def submit(
     """Submit a training session score to the active tournament."""
     t = await get_active_tournament(db)
     if not t:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active tournament")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.NO_ACTIVE_TOURNAMENT)
 
     entry = await submit_entry(
         tournament_id=t.id,
@@ -94,7 +95,7 @@ async def submit(
     )
 
     if not entry:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Max attempts reached or tournament ended")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err.TOURNAMENT_MAX_ATTEMPTS)
 
     return {
         "entry_id": str(entry.id),
@@ -121,5 +122,5 @@ async def create_weekly(
     """Admin: manually create this week's tournament."""
     t = await create_weekly_tournament(db)
     if not t:
-        return {"message": "Tournament already exists for this week or no scenarios available"}
+        return {"message": err.TOURNAMENT_ALREADY_EXISTS}
     return {"id": str(t.id), "title": t.title, "week_start": t.week_start.isoformat()}

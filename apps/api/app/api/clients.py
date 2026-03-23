@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core import errors as err
 from app.core.deps import get_current_user, require_role
 from app.database import get_db
 from app.models.client import (
@@ -884,7 +885,7 @@ async def api_push_subscribe(
     auth = keys.get("auth")
 
     if not endpoint or not p256dh or not auth:
-        raise HTTPException(status_code=400, detail="Missing subscription data")
+        raise HTTPException(status_code=400, detail=err.MISSING_SUBSCRIPTION_DATA)
 
     sub = await save_subscription(
         db,
@@ -911,7 +912,7 @@ async def api_push_unsubscribe(
     body = await request.json()
     endpoint = body.get("endpoint")
     if not endpoint:
-        raise HTTPException(status_code=400, detail="Missing endpoint")
+        raise HTTPException(status_code=400, detail=err.MISSING_ENDPOINT)
 
     removed = await remove_subscription(db, user_id=user.id, endpoint=endpoint)
     await db.commit()
@@ -1190,7 +1191,7 @@ async def get_manager_recommendations(
     result = await db.execute(select(User).where(User.id == manager_id))
     manager = result.scalar_one_or_none()
     if not manager:
-        raise HTTPException(status_code=404, detail="Manager not found")
+        raise HTTPException(status_code=404, detail=err.MANAGER_NOT_FOUND)
 
     engine = RecommendationEngine(period_days=period_days)
     report = await engine.generate_report(

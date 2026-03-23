@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import errors as err
 from app.core.deps import get_current_user, require_role
 from app.database import get_db
 from app.models.pvp import (
@@ -90,7 +91,7 @@ async def get_user_rating(
     rating = result.scalar_one_or_none()
 
     if not rating:
-        raise HTTPException(status_code=404, detail="Rating not found")
+        raise HTTPException(status_code=404, detail=err.RATING_NOT_FOUND)
 
     return RatingResponse(
         user_id=rating.user_id,
@@ -243,12 +244,12 @@ async def get_duel(
     duel = result.scalar_one_or_none()
 
     if not duel:
-        raise HTTPException(status_code=404, detail="Duel not found")
+        raise HTTPException(status_code=404, detail=err.DUEL_NOT_FOUND)
 
     # Only participants or admins can view
     if duel.player1_id != user.id and duel.player2_id != user.id:
         if not hasattr(user, 'role') or user.role.value != 'admin':
-            raise HTTPException(status_code=403, detail="Not a participant")
+            raise HTTPException(status_code=403, detail=err.NOT_A_PARTICIPANT)
 
     return DuelResponse(
         id=duel.id,
@@ -405,7 +406,7 @@ async def resolve_anti_cheat_flag(
     )
     log = result.scalar_one_or_none()
     if not log:
-        raise HTTPException(status_code=404, detail="Flag not found")
+        raise HTTPException(status_code=404, detail=err.FLAG_NOT_FOUND)
 
     log.resolution = resolution
     log.resolved_by = admin.id
