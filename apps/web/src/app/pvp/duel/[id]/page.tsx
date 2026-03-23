@@ -158,6 +158,19 @@ export default function DuelPage() {
   }, [connectionState, duelId, sendMessage]);
 
   useEffect(() => {
+    if (connectionState !== "connected") return;
+    if (store.duelBrief || store.duelResult) return;
+
+    const id = setInterval(() => {
+      if (!usePvPStore.getState().duelBrief && !usePvPStore.getState().duelResult) {
+        sendMessage({ type: "duel.ready", duel_id: duelId });
+      }
+    }, 1500);
+
+    return () => clearInterval(id);
+  }, [connectionState, duelId, sendMessage, store.duelBrief, store.duelResult]);
+
+  useEffect(() => {
     api.get(`/pvp/duels/${duelId}`)
       .then((data) => setDuelMeta(data as PvPDuel))
       .catch(() => null);

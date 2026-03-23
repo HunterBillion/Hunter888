@@ -30,6 +30,8 @@ function PvPLobbyContent() {
   const [tab, setTab] = useState<"arena" | "history">("arena");
   const [pveAccepting, setPveAccepting] = useState(false);
   const inviteSentRef = useRef(false);
+  const autoPvERef = useRef(false);
+  const searchStartedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     store.fetchRating();
@@ -44,6 +46,8 @@ function PvPLobbyContent() {
     onMessage: (data) => {
       switch (data.type) {
         case "queue.joined":
+          autoPvERef.current = false;
+          searchStartedAtRef.current = Date.now();
           store.setQueueStatus("searching");
           if (typeof data.data.position === "number") {
             store.setQueuePosition(data.data.position as number, store.estimatedWait);
@@ -56,6 +60,8 @@ function PvPLobbyContent() {
           );
           break;
         case "match.found":
+          autoPvERef.current = false;
+          searchStartedAtRef.current = null;
           store.setQueueStatus("matched");
           store.setMatchedOpponentRating(
             typeof data.data.opponent_rating === "number" ? (data.data.opponent_rating as number) : null,
@@ -68,9 +74,10 @@ function PvPLobbyContent() {
         case "pve.offer":
           store.setQueueStatus("matched");
           store.setPvEOffer(null);
-          sendMessage({ type: "pve.accept" });
           break;
         case "queue.left":
+          autoPvERef.current = false;
+          searchStartedAtRef.current = null;
           store.resetQueue();
           break;
       }
@@ -78,11 +85,15 @@ function PvPLobbyContent() {
   });
 
   const handleFindMatch = useCallback(() => {
+    autoPvERef.current = false;
+    searchStartedAtRef.current = Date.now();
     store.setQueueStatus("searching");
     sendMessage({ type: "queue.join" });
   }, [sendMessage, store]);
 
   const handleCancelQueue = useCallback(() => {
+    autoPvERef.current = false;
+    searchStartedAtRef.current = null;
     sendMessage({ type: "queue.leave" });
     store.resetQueue();
   }, [sendMessage, store]);
@@ -92,10 +103,42 @@ function PvPLobbyContent() {
   useEffect(() => {
     if (!acceptParam || inviteSentRef.current || connectionState !== "connected") return;
     inviteSentRef.current = true;
+    autoPvERef.current = false;
+    searchStartedAtRef.current = Date.now();
     store.setQueueStatus("searching");
     sendMessage({ type: "queue.join", invitation_challenger_id: acceptParam });
     router.replace("/pvp", { scroll: false });
   }, [acceptParam, connectionState, sendMessage, router, store]);
+
+  useEffect(() => {
+    if (store.queueStatus !== "searching") return;
+    const startedAt = searchStartedAtRef.current;
+    if (!startedAt || Date.now() - startedAt < 58_000) return;
+    if (store.estimatedWait > 0) return;
+    if (autoPvERef.current) return;
+
+    autoPvERef.current = true;
+    setPveAccepting(true);
+
+    api.post("/pvp/accept-pve", {})
+      .then((data) => {
+        const duelId = (data as { duel_id?: string })?.duel_id;
+        if (!duelId) {
+          autoPvERef.current = false;
+          setPveAccepting(false);
+          return;
+        }
+        store.resetQueue();
+        store.setQueueStatus("matched");
+        router.push(`/pvp/duel/${duelId}`);
+      })
+      .catch(() => {
+        autoPvERef.current = false;
+      })
+      .finally(() => {
+        setPveAccepting(false);
+      });
+  }, [store.queueStatus, store.estimatedWait, router, store]);
 
   const formatTime = (iso: string) => {
     const d = new Date(iso);
