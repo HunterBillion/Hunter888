@@ -41,7 +41,7 @@ export function BulkReassignModal({ open, clientIds, onClose, onDone }: BulkReas
     try {
       await api.post("/clients/bulk/reassign", {
         client_ids: clientIds,
-        manager_id: selectedManager,
+        new_manager_id: selectedManager,
       });
       onDone();
     } catch (err) {

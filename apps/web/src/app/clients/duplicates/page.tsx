@@ -52,9 +52,11 @@ export default function DuplicatesPage() {
   const handleMerge = async (phone: string, targetId: string, sourceIds: string[]) => {
     setMerging(phone);
     try {
-      await api.post(`/clients/${targetId}/merge`, {
-        source_ids: sourceIds,
-      });
+      for (const sourceId of sourceIds) {
+        await api.post(`/clients/${targetId}/merge`, {
+          duplicate_id: sourceId,
+        });
+      }
       // Remove merged group
       setGroups((prev) => prev.filter((g) => g.phone !== phone));
     } catch { /* ignore */ }

@@ -196,18 +196,21 @@ async def list_clients(
 ) -> tuple[list[RealClient], int]:
     """
     Список клиентов с фильтрацией (ТЗ v2, раздел 5.2).
-    Видимость: manager — свои, rop — команда, admin — все.
+    Видимость: manager — свои, rop — команда, admin/methodologist — все.
     """
     query = select(RealClient).where(RealClient.is_active == True)  # noqa: E712
 
     # ── Фильтр по роли ──
     if user.role == UserRole.manager:
         query = query.where(RealClient.manager_id == user.id)
-    elif user.role == UserRole.rop and user.team_id:
-        # РОП видит клиентов своей команды
-        team_members = select(User.id).where(User.team_id == user.team_id)
-        query = query.where(RealClient.manager_id.in_(team_members))
-    # admin видит всех
+    elif user.role == UserRole.rop:
+        if not user.team_id:
+            query = query.where(False)
+        else:
+            # РОП видит клиентов своей команды
+            team_members = select(User.id).where(User.team_id == user.team_id)
+            query = query.where(RealClient.manager_id.in_(team_members))
+    # admin и methodologist видят всех
 
     # ── Фильтры ──
     if status_filter:
@@ -795,9 +798,12 @@ async def get_pipeline(
         .where(RealClient.is_active == True)  # noqa: E712
     )
 
-    if user.role == UserRole.rop and user.team_id:
-        team_members = select(User.id).where(User.team_id == user.team_id)
-        query = query.where(RealClient.manager_id.in_(team_members))
+    if user.role == UserRole.rop:
+        if not user.team_id:
+            query = query.where(False)
+        else:
+            team_members = select(User.id).where(User.team_id == user.team_id)
+            query = query.where(RealClient.manager_id.in_(team_members))
     elif user.role == UserRole.manager:
         query = query.where(RealClient.manager_id == user.id)
 
@@ -836,13 +842,24 @@ async def get_client_stats(
 
     if not anonymized:
         # Средний цикл сделки (от created_at до completed)
-        avg_result = await db.execute(
-            select(
-                func.avg(
-                    func.extract("epoch", RealClient.updated_at - RealClient.created_at) / 86400
-                )
-            ).where(RealClient.status == ClientStatus.completed)
+        avg_query = select(
+            func.avg(
+                func.extract("epoch", RealClient.updated_at - RealClient.created_at) / 86400
+            )
+        ).where(
+            RealClient.status == ClientStatus.completed,
+            RealClient.is_active == True,  # noqa: E712
         )
+        if user.role == UserRole.rop:
+            if not user.team_id:
+                avg_query = avg_query.where(False)
+            else:
+                team_members = select(User.id).where(User.team_id == user.team_id)
+                avg_query = avg_query.where(RealClient.manager_id.in_(team_members))
+        elif user.role == UserRole.manager:
+            avg_query = avg_query.where(RealClient.manager_id == user.id)
+
+        avg_result = await db.execute(avg_query)
         stats["avg_cycle_days"] = round(avg_result.scalar() or 0, 1)
 
     return stats
@@ -880,21 +897,29 @@ async def find_duplicates(
     user: User,
 ) -> list[dict]:
     """GET /clients/duplicates — найти дубли по телефону."""
-    subquery = (
+    if user.role == UserRole.rop and not user.team_id:
+        return []
+
+    phone_query = (
         select(RealClient.phone)
         .where(
             RealClient.is_active == True,  # noqa: E712
             RealClient.phone.isnot(None),
         )
-        .group_by(RealClient.phone)
-        .having(func.count() > 1)
     )
 
-    result = await db.execute(
-        select(RealClient)
-        .where(RealClient.phone.in_(subquery))
-        .order_by(RealClient.phone, RealClient.created_at)
-    )
+    if user.role == UserRole.rop and user.team_id:
+        team_members = select(User.id).where(User.team_id == user.team_id)
+        phone_query = phone_query.where(RealClient.manager_id.in_(team_members))
+
+    subquery = phone_query.group_by(RealClient.phone).having(func.count() > 1)
+
+    query = select(RealClient).where(RealClient.phone.in_(subquery))
+    if user.role == UserRole.rop and user.team_id:
+        team_members = select(User.id).where(User.team_id == user.team_id)
+        query = query.where(RealClient.manager_id.in_(team_members))
+
+    result = await db.execute(query.order_by(RealClient.phone, RealClient.created_at))
 
     clients = list(result.scalars().all())
 
@@ -921,12 +946,12 @@ async def _check_client_access(
     - admin → всё
     - manager → только свои клиенты
     - rop → клиенты своей команды (join к users.team_id)
-    - methodologist → запрещён
+    - methodologist → read-only доступ ко всем клиентам
     """
     if user.role == UserRole.admin:
         return
     if user.role == UserRole.methodologist:
-        raise HTTPException(status_code=403, detail="Методолог не имеет доступа к клиентам")
+        return
     if user.role == UserRole.manager:
         if client.manager_id != user.id:
             raise HTTPException(status_code=403, detail="Нет доступа к этому клиенту")

@@ -58,7 +58,7 @@ export default function DashboardPage() {
       .catch((err) => setError(err.message || "Ошибка загрузки"))
       .finally(() => setLoading(false));
 
-    api.get("/clients/stats")
+    api.get("/clients/pipeline/stats")
       .then((stats: PipelineStats[]) => setPipelineStats(stats))
       .catch(() => {});
   }, [user]);

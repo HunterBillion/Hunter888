@@ -39,11 +39,11 @@ interface ManagerOption {
 }
 
 interface CreateResponse {
-  id: string;
-  duplicate_warning?: {
-    message: string;
-    duplicate_ids: string[];
-  } | null;
+  client: {
+    id: string;
+  };
+  duplicate_warning?: string | null;
+  duplicate_ids?: string[] | null;
 }
 
 export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModalProps) {
@@ -121,15 +121,16 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
         body.initial_consent_type = consentType;
         body.initial_consent_channel = consentChannel;
       }
-      if (isAdmin && managerId) body.manager_id = managerId;
-
       const resp: CreateResponse = await api.post("/clients", body);
 
       if (resp.duplicate_warning) {
-        setDupWarning(resp.duplicate_warning);
+        setDupWarning({
+          message: resp.duplicate_warning,
+          duplicate_ids: resp.duplicate_ids || [],
+        });
       }
 
-      onCreated(resp.id);
+      onCreated(resp.client.id);
       resetForm();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка создания");

@@ -33,6 +33,7 @@ from app.schemas.client import (
     ClientCreateRequest,
     ClientCreateResponse,
     ClientDuplicateResponse,
+    ClientExportRequest,
     ClientListResponse,
     ClientMergeRequest,
     ClientResponse,
@@ -144,7 +145,7 @@ async def api_list_clients(
     sort_order: str = "desc",
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    user: User = Depends(require_role("manager", "rop", "admin")),
+    user: User = Depends(require_role("manager", "rop", "admin", "methodologist")),
     db: AsyncSession = Depends(get_db),
 ):
     """Список клиентов с фильтрацией и пагинацией."""
@@ -174,7 +175,7 @@ async def api_list_clients(
 
 @router.get("/pipeline", response_model=list[PipelineResponse])
 async def api_get_pipeline(
-    user: User = Depends(require_role("manager", "rop", "admin")),
+    user: User = Depends(require_role("manager", "rop", "admin", "methodologist")),
     db: AsyncSession = Depends(get_db),
 ):
     """Воронка: count по статусам для канбан-доски."""
@@ -184,7 +185,7 @@ async def api_get_pipeline(
 
 @router.get("/pipeline/stats")
 async def api_get_pipeline_stats(
-    user: User = Depends(require_role("manager", "rop", "admin")),
+    user: User = Depends(require_role("manager", "rop", "admin", "methodologist")),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -266,12 +267,23 @@ async def api_bulk_reassign(
 
 @router.post("/bulk/export")
 async def api_bulk_export(
+    body: ClientExportRequest | None = None,
     user: User = Depends(require_role("rop", "admin", "methodologist")),
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
-    """Экспорт клиентов CSV/XLSX (без ПДн для методолога)."""
-    clients, total = await list_clients(db, user=user, per_page=10000)
+    """Экспорт выбранных клиентов в JSON."""
+    selected_ids = body.client_ids if body and body.client_ids else []
+    if selected_ids:
+        clients: list[RealClient] = []
+        for client_id in selected_ids:
+            try:
+                clients.append(await get_client(db, client_id=client_id, user=user))
+            except HTTPException:
+                continue
+    else:
+        clients, _ = await list_clients(db, user=user, per_page=10000)
+    total = len(clients)
 
     await write_audit_log(
         db,
@@ -282,25 +294,35 @@ async def api_bulk_export(
         request=request,
     )
 
-    # Для методолога — без ПДн
-    if user.role == UserRole.methodologist:
-        return [
-            {"status": c.status.value, "source": c.source, "debt_range": _debt_range(c.debt_amount)}
-            for c in clients
-        ]
-
-    return [_client_to_response(c).model_dump() for c in clients]
+    return {
+        "items": [_client_to_response(c).model_dump(mode="json") for c in clients],
+        "count": total,
+        "role": user.role.value,
+    }
 
 
 @router.get("/{client_id}", response_model=ClientResponse)
 async def api_get_client(
     client_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_role("manager", "rop", "admin")),
+    user: User = Depends(require_role("manager", "rop", "admin", "methodologist")),
     db: AsyncSession = Depends(get_db),
 ):
     """Детали клиента + история + согласия."""
     client = await get_client(db, client_id=client_id, user=user, request=request)
+    consents_result = await db.execute(
+        select(ClientConsent)
+        .where(ClientConsent.client_id == client.id)
+        .order_by(ClientConsent.created_at.desc())
+    )
+    interactions_result = await db.execute(
+        select(ClientInteraction)
+        .where(ClientInteraction.client_id == client.id)
+        .order_by(ClientInteraction.created_at.desc())
+        .limit(200)
+    )
+    client.consents = list(consents_result.scalars().all())
+    client.interactions = list(interactions_result.scalars().all())
     return _client_to_response(client, include_details=True)
 
 
@@ -1016,6 +1038,10 @@ async def api_delete_reminder(
 
 
 def _client_to_response(client: RealClient, include_details: bool = False) -> ClientResponse:
+    debt_details = client.debt_details or {}
+    creditors = debt_details.get("creditors")
+    tags = debt_details.get("tags")
+
     resp = ClientResponse(
         id=client.id,
         manager_id=client.manager_id,
@@ -1035,11 +1061,19 @@ def _client_to_response(client: RealClient, include_details: bool = False) -> Cl
         last_status_change_at=client.last_status_change_at,
         created_at=client.created_at,
         updated_at=client.updated_at,
+        city=debt_details.get("city"),
+        income=debt_details.get("income"),
+        creditors=creditors if isinstance(creditors, list) else [],
+        tags=tags if isinstance(tags, list) else [],
     )
-    if include_details and client.consents:
+    if include_details and getattr(client, "consents", None):
         resp.active_consents = [
             _consent_to_response(c) for c in client.consents if c.revoked_at is None
         ]
+        resp.consents = [_consent_to_response(c) for c in client.consents]
+    if include_details and getattr(client, "interactions", None):
+        resp.recent_interactions = [_interaction_to_response(i) for i in client.interactions[:10]]
+        resp.interactions = [_interaction_to_response(i) for i in client.interactions]
     return resp
 
 
@@ -1248,16 +1282,23 @@ from app.models.client import ALLOWED_STATUS_TRANSITIONS
 @router.get("/graph-data")
 async def api_get_graph_data(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "rop")),
+    current_user: User = Depends(require_role("manager", "admin", "rop", "methodologist")),
 ):
     """
-    Данные для D3.js force-directed graph.
-    Ноды: клиенты + менеджеры. Связи: клиент→менеджер, клиенты одного статуса.
+    Данные для lifecycle-графа клиентов и статусных переходов.
     """
     # ── Все активные клиенты ──
-    rows = await db.execute(
-        select(RealClient).where(RealClient.is_active.is_(True))
-    )
+    query = select(RealClient).where(RealClient.is_active.is_(True))
+    if current_user.role == UserRole.manager:
+        query = query.where(RealClient.manager_id == current_user.id)
+    elif current_user.role == UserRole.rop:
+        if not current_user.team_id:
+            query = query.where(False)
+        else:
+            team_members = select(User.id).where(User.team_id == current_user.team_id)
+            query = query.where(RealClient.manager_id.in_(team_members))
+
+    rows = await db.execute(query)
     clients = list(rows.scalars().all())
 
     # ── Менеджеры ──

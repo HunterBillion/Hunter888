@@ -25,12 +25,7 @@ export default function ClientDetailPage() {
   const router = useRouter();
   const id = params.id as string;
 
-  // F4.4: Methodologist redirect
-  useEffect(() => {
-    if (user && user.role === "methodologist") {
-      router.replace("/home");
-    }
-  }, [user, router]);
+  const isReadOnly = user?.role === "methodologist";
 
   const [client, setClient] = useState<CRMClientDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -153,7 +148,9 @@ export default function ClientDetailPage() {
               </div>
             </div>
 
-            <StatusTransition currentStatus={client.status} onTransition={handleStatusChange} />
+            {!isReadOnly && (
+              <StatusTransition currentStatus={client.status} onTransition={handleStatusChange} />
+            )}
           </div>
         </motion.div>
 
@@ -202,14 +199,16 @@ export default function ClientDetailPage() {
                   <Calendar size={14} style={{ color: "var(--accent)" }} />
                   <span className="text-xs font-mono" style={{ color: "var(--accent)" }}>СЛЕДУЮЩИЙ КОНТАКТ</span>
                 </div>
-                <motion.button
-                  onClick={() => setShowReminderModal(true)}
-                  className="text-xs flex items-center gap-1"
-                  style={{ color: "var(--accent)" }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <Bell size={12} /> Напомнить
-                </motion.button>
+                {!isReadOnly && (
+                  <motion.button
+                    onClick={() => setShowReminderModal(true)}
+                    className="text-xs flex items-center gap-1"
+                    style={{ color: "var(--accent)" }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Bell size={12} /> Напомнить
+                  </motion.button>
+                )}
               </div>
               {client.next_contact_at ? (
                 <p className="text-sm" style={{ color: "var(--text-primary)" }}>
@@ -231,17 +230,19 @@ export default function ClientDetailPage() {
                   <ShieldCheck size={14} style={{ color: "var(--accent)" }} />
                   <span className="text-xs font-mono tracking-wider" style={{ color: "var(--accent)" }}>СОГЛАСИЯ</span>
                 </div>
-                <motion.button
-                  onClick={() => setShowConsentForm(!showConsentForm)}
-                  className="text-xs flex items-center gap-1"
-                  style={{ color: "var(--accent)" }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <Plus size={12} /> Добавить
-                </motion.button>
+                {!isReadOnly && (
+                  <motion.button
+                    onClick={() => setShowConsentForm(!showConsentForm)}
+                    className="text-xs flex items-center gap-1"
+                    style={{ color: "var(--accent)" }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Plus size={12} /> Добавить
+                  </motion.button>
+                )}
               </div>
 
-              {showConsentForm && (
+              {!isReadOnly && showConsentForm && (
                 <div className="mb-3 pb-3 border-b" style={{ borderColor: "var(--border-color)" }}>
                   <ConsentForm clientId={id} onSubmit={handleConsentSubmit} />
                 </div>
@@ -256,7 +257,7 @@ export default function ClientDetailPage() {
               </div>
 
               {/* SMS consent link */}
-              {client.phone && (
+              {!isReadOnly && client.phone && (
                 <motion.button
                   onClick={() => handleSendSmsLink("data_processing")}
                   disabled={smsLoading}
@@ -306,34 +307,40 @@ export default function ClientDetailPage() {
               <h3 className="text-xs font-mono tracking-wider" style={{ color: "var(--accent)" }}>
                 ИСТОРИЯ ВЗАИМОДЕЙСТВИЙ
               </h3>
-              <motion.button
-                onClick={() => setShowInteractionModal(true)}
-                className="text-xs flex items-center gap-1"
-                style={{ color: "var(--accent)" }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Plus size={12} /> Записать
-              </motion.button>
+              {!isReadOnly && (
+                <motion.button
+                  onClick={() => setShowInteractionModal(true)}
+                  className="text-xs flex items-center gap-1"
+                  style={{ color: "var(--accent)" }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Plus size={12} /> Записать
+                </motion.button>
+              )}
             </div>
             <ClientTimeline interactions={client.interactions} />
           </motion.div>
         </div>
       </div>
 
-      <InteractionCreateModal
-        open={showInteractionModal}
-        clientId={id}
-        onClose={() => setShowInteractionModal(false)}
-        onCreated={() => { setShowInteractionModal(false); refreshClient(); }}
-      />
+      {!isReadOnly && (
+        <InteractionCreateModal
+          open={showInteractionModal}
+          clientId={id}
+          onClose={() => setShowInteractionModal(false)}
+          onCreated={() => { setShowInteractionModal(false); refreshClient(); }}
+        />
+      )}
 
-      <ReminderCreateModal
-        open={showReminderModal}
-        clientId={id}
-        clientName={client.full_name}
-        onClose={() => setShowReminderModal(false)}
-        onCreated={refreshClient}
-      />
+      {!isReadOnly && (
+        <ReminderCreateModal
+          open={showReminderModal}
+          clientId={id}
+          clientName={client.full_name}
+          onClose={() => setShowReminderModal(false)}
+          onCreated={refreshClient}
+        />
+      )}
       </div>
     </AuthLayout>
   );

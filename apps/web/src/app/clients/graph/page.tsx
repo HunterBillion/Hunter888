@@ -1,670 +1,535 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  Network,
-  Loader2,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-  X,
-} from "lucide-react";
-import * as d3 from "d3";
+import { ArrowRight, GitBranch, Loader2, Network, RotateCcw, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { isManager } from "@/lib/guards";
 import AuthLayout from "@/components/layout/AuthLayout";
+import type { ClientStatus } from "@/types";
+import { CLIENT_STATUS_COLORS, CLIENT_STATUS_LABELS } from "@/types";
 
-/* ─── Types ─── */
-
-interface GraphNode extends d3.SimulationNodeDatum {
-  id: string;
-  type: "client" | "manager";
-  label: string;
-  // client fields
-  status?: string;
-  debt_amount?: number;
-  source?: string;
-  created_at?: string | null;
-  // manager fields
-  role?: string;
-  client_count?: number;
-}
-
-interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
-  source: string | GraphNode;
-  target: string | GraphNode;
-  type: string;
+interface GraphTransition {
+  from: ClientStatus;
+  to: ClientStatus;
 }
 
 interface GraphData {
-  nodes: GraphNode[];
-  links: GraphLink[];
-  status_counts: Record<string, number>;
-  transitions: { from: string; to: string }[];
+  status_counts: Partial<Record<ClientStatus, number>>;
+  transitions: GraphTransition[];
   total_clients: number;
   total_managers: number;
 }
 
-/* ─── Status color map ─── */
-
-const STATUS_COLORS: Record<string, string> = {
-  new: "#60A5FA",
-  contacted: "#818CF8",
-  interested: "#A78BFA",
-  consultation: "#C084FC",
-  thinking: "#FBBF24",
-  consent_given: "#34D399",
-  contract_signed: "#10B981",
-  in_process: "#06B6D4",
-  paused: "#94A3B8",
-  completed: "#00FF66",
-  lost: "#F87171",
-  consent_revoked: "#FB923C",
+type StageMeta = {
+  x: number;
+  y: number;
+  kind: "primary" | "branch";
+  description: string;
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  new: "Новый",
-  contacted: "Контакт",
-  interested: "Интерес",
-  consultation: "Консультация",
-  thinking: "Думает",
-  consent_given: "Согласие",
-  contract_signed: "Договор",
-  in_process: "В процессе",
-  paused: "Пауза",
-  completed: "Завершён",
-  lost: "Потерян",
-  consent_revoked: "Отзыв",
+const STAGE_LAYOUT: Record<ClientStatus, StageMeta> = {
+  new: {
+    x: 7,
+    y: 16,
+    kind: "primary",
+    description: "Карточка создана, контакт ещё не подтверждён.",
+  },
+  contacted: {
+    x: 20,
+    y: 16,
+    kind: "primary",
+    description: "Первичный контакт состоялся, клиент в активной обработке.",
+  },
+  interested: {
+    x: 33,
+    y: 16,
+    kind: "primary",
+    description: "Интерес подтверждён, клиент готов двигаться дальше.",
+  },
+  consultation: {
+    x: 46,
+    y: 16,
+    kind: "primary",
+    description: "Назначена или проведена консультация по делу клиента.",
+  },
+  thinking: {
+    x: 59,
+    y: 16,
+    kind: "primary",
+    description: "Клиент на стадии решения, ожидания документов или обратной связи.",
+  },
+  consent_given: {
+    x: 46,
+    y: 46,
+    kind: "primary",
+    description: "Получено согласие на дальнейшую работу и обработку данных.",
+  },
+  contract_signed: {
+    x: 59,
+    y: 46,
+    kind: "primary",
+    description: "Договорный этап завершён, клиент формально подтверждён.",
+  },
+  in_process: {
+    x: 72,
+    y: 46,
+    kind: "primary",
+    description: "Клиент находится в активной юридической работе.",
+  },
+  completed: {
+    x: 85,
+    y: 46,
+    kind: "primary",
+    description: "Основной путь клиента завершён успешно.",
+  },
+  lost: {
+    x: 33,
+    y: 78,
+    kind: "branch",
+    description: "Клиент потерян: отказ, недозвон, прекращение диалога.",
+  },
+  consent_revoked: {
+    x: 59,
+    y: 78,
+    kind: "branch",
+    description: "Клиент отозвал согласие и требует отдельной обработки.",
+  },
+  paused: {
+    x: 72,
+    y: 78,
+    kind: "branch",
+    description: "Работа временно приостановлена, но клиент может вернуться в поток.",
+  },
 };
 
-const MANAGER_COLOR = "#FFD700";
+const STAGE_ORDER: ClientStatus[] = [
+  "new",
+  "contacted",
+  "interested",
+  "consultation",
+  "thinking",
+  "consent_given",
+  "contract_signed",
+  "in_process",
+  "completed",
+  "lost",
+  "consent_revoked",
+  "paused",
+];
 
-/* ─── Main Component ─── */
+const branchStages = new Set<ClientStatus>(["lost", "consent_revoked", "paused"]);
+
+function formatCount(value: number): string {
+  return new Intl.NumberFormat("ru-RU").format(value);
+}
 
 export default function ClientGraphPage() {
-  const router = useRouter();
   const { user } = useAuth();
-  const svgRef = useRef<SVGSVGElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
   const [data, setData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>("");
+  const [selectedStage, setSelectedStage] = useState<ClientStatus>("contacted");
 
-  const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null);
-  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
-
-  /* ── Fetch data ── */
   useEffect(() => {
     if (!user) return;
-    if (!isManager(user)) {
-      setError("Доступ ограничен");
-      setLoading(false);
-      return;
-    }
 
     api
       .get("/clients/graph-data")
-      .then((resp: GraphData) => setData(resp))
+      .then((resp: GraphData) => {
+        setData(resp);
+        const firstActive = STAGE_ORDER.find((status) => (resp.status_counts[status] || 0) > 0);
+        if (firstActive) {
+          setSelectedStage(firstActive);
+        }
+      })
       .catch((err: Error) => setError(err.message || "Ошибка загрузки"))
       .finally(() => setLoading(false));
   }, [user]);
 
-  /* ── Build D3 graph ── */
-  const buildGraph = useCallback(() => {
-    if (!data || !svgRef.current || !containerRef.current) return;
+  const selectedCount = data?.status_counts[selectedStage] || 0;
+  const totalClients = data?.total_clients || 0;
+  const selectedShare = totalClients > 0 ? Math.round((selectedCount / totalClients) * 100) : 0;
+  const maxCount = Math.max(...STAGE_ORDER.map((status) => data?.status_counts[status] || 0), 1);
 
-    const svg = d3.select(svgRef.current);
-    svg.selectAll("*").remove();
-
-    const rect = containerRef.current.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
-
-    svg.attr("width", width).attr("height", height);
-
-    // Filter nodes by status
-    let filteredNodes = [...data.nodes];
-    let filteredLinks = [...data.links];
-
-    if (filterStatus) {
-      const clientIds = new Set(
-        filteredNodes
-          .filter((n) => n.type === "client" && n.status === filterStatus)
-          .map((n) => n.id)
-      );
-      // Include managers connected to filtered clients
-      const managerIds = new Set(
-        filteredLinks
-          .filter((l) => clientIds.has(typeof l.source === "string" ? l.source : (l.source as GraphNode).id))
-          .map((l) => (typeof l.target === "string" ? l.target : (l.target as GraphNode).id))
-      );
-      filteredNodes = filteredNodes.filter(
-        (n) => clientIds.has(n.id) || managerIds.has(n.id)
-      );
-      const allIds = new Set(filteredNodes.map((n) => n.id));
-      filteredLinks = filteredLinks.filter((l) => {
-        const sid = typeof l.source === "string" ? l.source : (l.source as GraphNode).id;
-        const tid = typeof l.target === "string" ? l.target : (l.target as GraphNode).id;
-        return allIds.has(sid) && allIds.has(tid);
-      });
-    }
-
-    // Create container group for zoom
-    const g = svg.append("g");
-
-    // Zoom behavior
-    const zoom = d3
-      .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 5])
-      .on("zoom", (event) => g.attr("transform", event.transform));
-
-    svg.call(zoom);
-    zoomRef.current = zoom;
-
-    // Defs for arrow markers
-    svg
-      .append("defs")
-      .append("marker")
-      .attr("id", "arrowhead")
-      .attr("viewBox", "0 0 10 10")
-      .attr("refX", 20)
-      .attr("refY", 5)
-      .attr("markerWidth", 6)
-      .attr("markerHeight", 6)
-      .attr("orient", "auto")
-      .append("path")
-      .attr("d", "M0,0L10,5L0,10Z")
-      .attr("fill", "var(--text-muted)");
-
-    // Force simulation
-    const simulation = d3
-      .forceSimulation<GraphNode>(filteredNodes)
-      .force(
-        "link",
-        d3
-          .forceLink<GraphNode, GraphLink>(filteredLinks)
-          .id((d) => d.id)
-          .distance((d) => {
-            return d.type === "managed_by" ? 120 : 80;
-          })
-          .strength(0.4)
-      )
-      .force("charge", d3.forceManyBody().strength(-200).distanceMax(400))
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force(
-        "collision",
-        d3.forceCollide<GraphNode>().radius((d) => (d.type === "manager" ? 30 : 14))
-      )
-      .force("x", d3.forceX(width / 2).strength(0.03))
-      .force("y", d3.forceY(height / 2).strength(0.03));
-
-    simulationRef.current = simulation;
-
-    // Links
-    const link = g
-      .append("g")
-      .selectAll<SVGLineElement, GraphLink>("line")
-      .data(filteredLinks)
-      .join("line")
-      .attr("stroke", "var(--border-color)")
-      .attr("stroke-opacity", 0.4)
-      .attr("stroke-width", 1)
-      .attr("marker-end", "url(#arrowhead)");
-
-    // Node groups
-    const node = g
-      .append("g")
-      .selectAll<SVGGElement, GraphNode>("g")
-      .data(filteredNodes)
-      .join("g")
-      .style("cursor", "pointer")
-      .call(
-        d3
-          .drag<SVGGElement, GraphNode>()
-          .on("start", (event, d) => {
-            if (!event.active) simulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-          })
-          .on("drag", (event, d) => {
-            d.fx = event.x;
-            d.fy = event.y;
-          })
-          .on("end", (event, d) => {
-            if (!event.active) simulation.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
-          })
-      );
-
-    // Manager nodes: larger golden circles
-    node
-      .filter((d) => d.type === "manager")
-      .append("circle")
-      .attr("r", 22)
-      .attr("fill", MANAGER_COLOR)
-      .attr("fill-opacity", 0.15)
-      .attr("stroke", MANAGER_COLOR)
-      .attr("stroke-width", 2.5);
-
-    node
-      .filter((d) => d.type === "manager")
-      .append("text")
-      .text("M")
-      .attr("text-anchor", "middle")
-      .attr("dy", "0.35em")
-      .attr("fill", MANAGER_COLOR)
-      .attr("font-size", "14px")
-      .attr("font-weight", "bold");
-
-    // Client nodes: colored by status
-    node
-      .filter((d) => d.type === "client")
-      .append("circle")
-      .attr("r", (d) => {
-        const debt = d.debt_amount || 0;
-        return Math.max(6, Math.min(16, 6 + debt / 200000));
-      })
-      .attr("fill", (d) => STATUS_COLORS[d.status || "new"] || "#94A3B8")
-      .attr("fill-opacity", 0.7)
-      .attr("stroke", (d) => STATUS_COLORS[d.status || "new"] || "#94A3B8")
-      .attr("stroke-width", 1.5);
-
-    // Click handler
-    node.on("click", (event, d) => {
-      event.stopPropagation();
-      setSelectedNode(d);
-    });
-
-    // Hover effects
-    node
-      .on("mouseenter", function (event, d) {
-        d3.select(this).select("circle").attr("stroke-width", 3);
-
-        // Highlight connected links
-        link
-          .attr("stroke-opacity", (l) => {
-            const sid = typeof l.source === "object" ? (l.source as GraphNode).id : l.source;
-            const tid = typeof l.target === "object" ? (l.target as GraphNode).id : l.target;
-            return sid === d.id || tid === d.id ? 0.9 : 0.1;
-          })
-          .attr("stroke-width", (l) => {
-            const sid = typeof l.source === "object" ? (l.source as GraphNode).id : l.source;
-            const tid = typeof l.target === "object" ? (l.target as GraphNode).id : l.target;
-            return sid === d.id || tid === d.id ? 2 : 1;
-          })
-          .attr("stroke", (l) => {
-            const sid = typeof l.source === "object" ? (l.source as GraphNode).id : l.source;
-            const tid = typeof l.target === "object" ? (l.target as GraphNode).id : l.target;
-            return sid === d.id || tid === d.id ? "var(--accent)" : "var(--border-color)";
-          });
-      })
-      .on("mouseleave", function () {
-        d3.select(this).select("circle").attr("stroke-width", (d: unknown) => (d as GraphNode).type === "manager" ? 2.5 : 1.5);
-        link
-          .attr("stroke-opacity", 0.4)
-          .attr("stroke-width", 1)
-          .attr("stroke", "var(--border-color)");
-      });
-
-    // Labels for managers
-    node
-      .filter((d) => d.type === "manager")
-      .append("text")
-      .text((d) => d.label)
-      .attr("dy", 36)
-      .attr("text-anchor", "middle")
-      .attr("fill", "var(--text-muted)")
-      .attr("font-size", "10px")
-      .attr("pointer-events", "none");
-
-    // Tick
-    simulation.on("tick", () => {
-      link
-        .attr("x1", (d) => ((d.source as GraphNode).x ?? 0))
-        .attr("y1", (d) => ((d.source as GraphNode).y ?? 0))
-        .attr("x2", (d) => ((d.target as GraphNode).x ?? 0))
-        .attr("y2", (d) => ((d.target as GraphNode).y ?? 0));
-
-      node.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
-    });
-
-    // Click on background to deselect
-    svg.on("click", () => setSelectedNode(null));
-
-    // Initial zoom to fit
-    setTimeout(() => {
-      svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity.translate(0, 0).scale(0.85));
-    }, 300);
-  }, [data, filterStatus]);
-
-  useEffect(() => {
-    buildGraph();
-    const handleResize = () => buildGraph();
-    window.addEventListener("resize", handleResize);
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      simulationRef.current?.stop();
+  const stageFlows = useMemo(() => {
+    const transitions = data?.transitions || [];
+    return {
+      incoming: transitions.filter((item) => item.to === selectedStage),
+      outgoing: transitions.filter((item) => item.from === selectedStage),
     };
-  }, [buildGraph]);
+  }, [data?.transitions, selectedStage]);
 
-  /* ── Zoom controls ── */
-  const handleZoom = (direction: "in" | "out" | "reset") => {
-    if (!svgRef.current || !zoomRef.current) return;
-    const svg = d3.select(svgRef.current);
-    if (direction === "reset") {
-      svg.transition().duration(300).call(zoomRef.current.transform, d3.zoomIdentity);
-    } else {
-      svg.transition().duration(300).call(zoomRef.current.scaleBy, direction === "in" ? 1.5 : 0.67);
-    }
-  };
+  const summary = useMemo(() => {
+    const counts = data?.status_counts || {};
+    const completed = counts.completed || 0;
+    const lost = counts.lost || 0;
+    const paused = counts.paused || 0;
+    const revoked = counts.consent_revoked || 0;
+    return {
+      activePath: Math.max(totalClients - completed - lost, 0),
+      recoveryPool: lost + paused + revoked,
+      completed,
+      managers: data?.total_managers || 0,
+    };
+  }, [data?.status_counts, data?.total_managers, totalClients]);
 
   return (
     <AuthLayout>
-      <div className="panel-grid-bg" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 72px)" }}>
-        {/* ── Header bar ── */}
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between flex-wrap gap-3"
-          style={{ padding: "16px 20px", borderBottom: "1px solid var(--border-color)" }}
-        >
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-lg"
-              style={{ background: "var(--accent)", color: "#000" }}
-            >
-              <Network size={18} />
-            </div>
-            <div>
-              <h1
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: 20,
-                  fontWeight: 700,
-                  color: "var(--text-primary)",
-                  margin: 0,
-                }}
-              >
-                Граф клиентов
-              </h1>
-              {data && (
-                <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0 }}>
-                  {data.total_clients} клиентов · {data.total_managers} менеджеров
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Status filter */}
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 8,
-                background: "var(--glass-bg)",
-                color: "var(--text-primary)",
-                border: "1px solid var(--glass-border)",
-                fontSize: 12,
-              }}
-            >
-              <option value="">Все статусы</option>
-              {Object.entries(STATUS_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label} {data?.status_counts[key] ? `(${data.status_counts[key]})` : ""}
-                </option>
-              ))}
-            </select>
-
-            {/* Zoom controls */}
-            <div className="flex gap-1">
-              <button
-                onClick={() => handleZoom("in")}
-                className="flex h-8 w-8 items-center justify-center rounded-lg"
-                style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", cursor: "pointer", color: "var(--text-primary)" }}
-                title="Приблизить"
-              >
-                <ZoomIn size={14} />
-              </button>
-              <button
-                onClick={() => handleZoom("out")}
-                className="flex h-8 w-8 items-center justify-center rounded-lg"
-                style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", cursor: "pointer", color: "var(--text-primary)" }}
-                title="Отдалить"
-              >
-                <ZoomOut size={14} />
-              </button>
-              <button
-                onClick={() => handleZoom("reset")}
-                className="flex h-8 w-8 items-center justify-center rounded-lg"
-                style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", cursor: "pointer", color: "var(--text-primary)" }}
-                title="Сбросить"
-              >
-                <Maximize2 size={14} />
-              </button>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* ── Main area ── */}
-        <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden" }}>
-          {/* Error */}
-          {error && (
-            <div className="flex items-center justify-center" style={{ position: "absolute", inset: 0, zIndex: 10 }}>
-              <div className="glass-panel rounded-xl" style={{ padding: 32, textAlign: "center", color: "#F87171" }}>
-                {error}
-              </div>
-            </div>
-          )}
-
-          {/* Loading */}
-          {loading && (
-            <div className="flex items-center justify-center" style={{ position: "absolute", inset: 0, zIndex: 10 }}>
-              <Loader2 size={32} className="animate-spin" style={{ color: "var(--accent)" }} />
-            </div>
-          )}
-
-          {/* SVG container */}
-          <div ref={containerRef} style={{ flex: 1, position: "relative" }}>
-            <svg
-              ref={svgRef}
-              style={{
-                width: "100%",
-                height: "100%",
-                background: "var(--bg-primary)",
-              }}
-            />
-          </div>
-
-          {/* ── Legend ── */}
+      <div className="panel-grid-bg min-h-screen">
+        <div className="mx-auto max-w-7xl px-4 py-8">
           <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.3 }}
-            className="glass-panel rounded-xl"
-            style={{
-              position: "absolute",
-              bottom: 16,
-              left: 16,
-              padding: "12px 16px",
-              fontSize: 11,
-              maxWidth: 200,
-            }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"
           >
-            <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: 8 }}>Легенда</div>
-
-            <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
-              <div
-                style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: "50%",
-                  border: `2px solid ${MANAGER_COLOR}`,
-                  background: `${MANAGER_COLOR}22`,
-                }}
-              />
-              <span style={{ color: "var(--text-secondary)" }}>Менеджер</span>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 8px" }}>
-              {Object.entries(STATUS_LABELS).map(([key, label]) => (
-                <div key={key} className="flex items-center gap-1.5">
-                  <div
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: STATUS_COLORS[key],
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span style={{ color: "var(--text-muted)", fontSize: 10 }}>{label}</span>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl"
+                  style={{ background: "var(--accent)", color: "#050505" }}
+                >
+                  <Network size={20} />
                 </div>
-              ))}
+                <div>
+                  <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
+                    Lifecycle Graph
+                  </h1>
+                  <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                    Карта этапов клиента, а не оргструктура менеджеров.
+                  </p>
+                </div>
+              </div>
+              <p className="max-w-3xl text-sm" style={{ color: "var(--text-secondary)" }}>
+                Экран показывает единый маршрут клиента, ветки потерь и возврата, а также фактическое распределение
+                текущих карточек по этапам.
+              </p>
             </div>
 
-            <div style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 10 }}>
-              Размер узла = сумма долга
-            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedStage("contacted")}
+              className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-mono"
+              style={{
+                background: "var(--input-bg)",
+                border: "1px solid var(--border-color)",
+                color: "var(--text-secondary)",
+              }}
+            >
+              <RotateCcw size={14} />
+              Сбросить фокус
+            </button>
           </motion.div>
 
-          {/* ── Selected node details ── */}
-          {selectedNode && (
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="glass-panel rounded-xl"
-              style={{
-                position: "absolute",
-                top: 16,
-                right: 16,
-                padding: 16,
-                width: 260,
-                zIndex: 20,
-              }}
-            >
-              <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
-                <span style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: 14 }}>
-                  {selectedNode.type === "manager" ? "Менеджер" : "Клиент"}
-                </span>
-                <button
-                  onClick={() => setSelectedNode(null)}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}
+          <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Карточек в модуле", value: formatCount(totalClients), icon: Users, color: "var(--accent)" },
+              { label: "В активном пути", value: formatCount(summary.activePath), icon: ArrowRight, color: "#3B82F6" },
+              { label: "Зона возврата", value: formatCount(summary.recoveryPool), icon: GitBranch, color: "#F97316" },
+              { label: "Видимых менеджеров", value: formatCount(summary.managers), icon: Network, color: "#10B981" },
+            ].map((card, index) => {
+              const Icon = card.icon;
+              return (
+                <motion.div
+                  key={card.label}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="glass-panel p-4"
                 >
-                  <X size={14} />
-                </button>
+                  <Icon size={16} style={{ color: card.color }} />
+                  <div className="mt-2 text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
+                    {card.value}
+                  </div>
+                  <div className="text-[10px] font-mono tracking-wider" style={{ color: "var(--text-muted)" }}>
+                    {card.label.toUpperCase()}
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+
+          <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass-panel overflow-hidden p-4 sm:p-5"
+            >
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-mono tracking-[0.2em]" style={{ color: "var(--accent)" }}>
+                    CLIENT PATH MAP
+                  </h2>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    Основной путь сверху, ветки риска и возврата снизу.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-[10px] font-mono">
+                  <span
+                    className="rounded-full px-2 py-1"
+                    style={{ background: "rgba(59,130,246,0.12)", color: "#3B82F6", border: "1px solid rgba(59,130,246,0.25)" }}
+                  >
+                    Основной путь
+                  </span>
+                  <span
+                    className="rounded-full px-2 py-1"
+                    style={{ background: "rgba(249,115,22,0.12)", color: "#F97316", border: "1px solid rgba(249,115,22,0.25)" }}
+                  >
+                    Ветви риска
+                  </span>
+                </div>
               </div>
 
-              <div className="space-y-2 text-xs">
-                <div>
-                  <span style={{ color: "var(--text-muted)" }}>Имя: </span>
-                  <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{selectedNode.label}</span>
+              {error && (
+                <div className="rounded-2xl p-6 text-sm" style={{ background: "rgba(239,68,68,0.12)", color: "#FCA5A5" }}>
+                  {error}
+                </div>
+              )}
+
+              {loading && (
+                <div className="flex min-h-[520px] items-center justify-center">
+                  <Loader2 size={28} className="animate-spin" style={{ color: "var(--accent)" }} />
+                </div>
+              )}
+
+              {!loading && !error && (
+                <div
+                  className="relative overflow-hidden rounded-[28px] border"
+                  style={{
+                    minHeight: 540,
+                    background:
+                      "radial-gradient(circle at top, rgba(255,212,0,0.08), transparent 32%), linear-gradient(180deg, rgba(8,8,12,0.94), rgba(6,7,10,0.98))",
+                    borderColor: "rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1000 600" preserveAspectRatio="none">
+                    <defs>
+                      <marker id="graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                        <path d="M0 0L10 5L0 10Z" fill="rgba(255,255,255,0.35)" />
+                      </marker>
+                    </defs>
+                    {(data?.transitions || []).map((transition) => {
+                      const from = STAGE_LAYOUT[transition.from];
+                      const to = STAGE_LAYOUT[transition.to];
+                      if (!from || !to) {
+                        return null;
+                      }
+                      const isSelected = selectedStage === transition.from || selectedStage === transition.to;
+                      const edgeColor = isSelected ? "rgba(255,212,0,0.75)" : "rgba(255,255,255,0.18)";
+                      return (
+                        <line
+                          key={`${transition.from}-${transition.to}`}
+                          x1={from.x * 10}
+                          y1={from.y * 6}
+                          x2={to.x * 10}
+                          y2={to.y * 6}
+                          stroke={edgeColor}
+                          strokeWidth={isSelected ? 3 : 1.5}
+                          strokeDasharray={branchStages.has(transition.to) ? "8 7" : undefined}
+                          markerEnd="url(#graph-arrow)"
+                        />
+                      );
+                    })}
+                  </svg>
+
+                  <div className="relative min-h-[540px]">
+                    {STAGE_ORDER.map((status) => {
+                      const meta = STAGE_LAYOUT[status];
+                      const count = data?.status_counts[status] || 0;
+                      const color = CLIENT_STATUS_COLORS[status];
+                      const isSelected = selectedStage === status;
+                      const width = 108 + Math.round((count / maxCount) * 44);
+
+                      return (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => setSelectedStage(status)}
+                          className="absolute rounded-[24px] px-4 py-3 text-left transition-all"
+                          style={{
+                            left: `${meta.x}%`,
+                            top: `${meta.y}%`,
+                            width,
+                            transform: "translate(-50%, -50%)",
+                            background: isSelected ? `${color}22` : "rgba(255,255,255,0.03)",
+                            border: `1px solid ${isSelected ? color : "rgba(255,255,255,0.08)"}`,
+                            boxShadow: isSelected ? `0 0 0 1px ${color}44, 0 18px 45px rgba(0,0,0,0.28)` : "0 14px 30px rgba(0,0,0,0.18)",
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-[10px] font-mono tracking-[0.18em]" style={{ color: isSelected ? color : "var(--text-muted)" }}>
+                                {meta.kind === "primary" ? "PRIMARY" : "BRANCH"}
+                              </div>
+                              <div className="mt-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                                {CLIENT_STATUS_LABELS[status]}
+                              </div>
+                            </div>
+                            <div
+                              className="flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-sm font-semibold"
+                              style={{ background: `${color}22`, color }}
+                            >
+                              {formatCount(count)}
+                            </div>
+                          </div>
+                          <div className="mt-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
+                            {count > 0 ? `${Math.round((count / Math.max(totalClients, 1)) * 100)}% видимых карточек` : "Пока нет карточек"}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+
+            <motion.aside
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="space-y-4"
+            >
+              <div className="glass-panel p-5">
+                <div className="text-xs font-mono tracking-[0.2em]" style={{ color: "var(--accent)" }}>
+                  ВЫБРАННЫЙ ЭТАП
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
+                      {CLIENT_STATUS_LABELS[selectedStage]}
+                    </h3>
+                    <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
+                      {STAGE_LAYOUT[selectedStage].description}
+                    </p>
+                  </div>
+                  <div
+                    className="rounded-2xl px-3 py-2 text-right"
+                    style={{
+                      background: `${CLIENT_STATUS_COLORS[selectedStage]}18`,
+                      border: `1px solid ${CLIENT_STATUS_COLORS[selectedStage]}33`,
+                    }}
+                  >
+                    <div className="text-xl font-bold" style={{ color: CLIENT_STATUS_COLORS[selectedStage] }}>
+                      {formatCount(selectedCount)}
+                    </div>
+                    <div className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                      {selectedShare}% от видимых
+                    </div>
+                  </div>
                 </div>
 
-                {selectedNode.type === "manager" && (
-                  <>
-                    <div>
-                      <span style={{ color: "var(--text-muted)" }}>Роль: </span>
-                      <span style={{ color: "var(--text-secondary)" }}>{selectedNode.role}</span>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
+                    <div className="text-[10px] font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                      ТИП ЭТАПА
                     </div>
-                    <div>
-                      <span style={{ color: "var(--text-muted)" }}>Клиентов: </span>
-                      <span style={{ color: "var(--accent)", fontWeight: 600 }}>{selectedNode.client_count}</span>
+                    <div className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                      {STAGE_LAYOUT[selectedStage].kind === "primary" ? "Основной путь" : "Служебная ветка"}
                     </div>
-                  </>
-                )}
+                  </div>
+                  <div className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
+                    <div className="text-[10px] font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                      РИСК
+                    </div>
+                    <div className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                      {branchStages.has(selectedStage) ? "Нужен контроль" : "Нормальный поток"}
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-                {selectedNode.type === "client" && (
-                  <>
-                    <div>
-                      <span style={{ color: "var(--text-muted)" }}>Статус: </span>
-                      <span
-                        className="inline-flex rounded-full px-2 py-0.5"
-                        style={{
-                          background: `${STATUS_COLORS[selectedNode.status || "new"]}22`,
-                          color: STATUS_COLORS[selectedNode.status || "new"],
-                          border: `1px solid ${STATUS_COLORS[selectedNode.status || "new"]}44`,
-                          fontSize: 10,
-                        }}
-                      >
-                        {STATUS_LABELS[selectedNode.status || "new"] || selectedNode.status}
-                      </span>
+              <div className="glass-panel p-5">
+                <div className="text-xs font-mono tracking-[0.2em]" style={{ color: "var(--accent)" }}>
+                  ПЕРЕХОДЫ
+                </div>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <div className="mb-2 text-[10px] font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                      МОЖНО ПРИЙТИ ИЗ
                     </div>
-                    {selectedNode.debt_amount !== undefined && selectedNode.debt_amount > 0 && (
-                      <div>
-                        <span style={{ color: "var(--text-muted)" }}>Долг: </span>
-                        <span style={{ color: "#FBBF24", fontWeight: 500 }}>
-                          {new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(selectedNode.debt_amount)}
+                    <div className="flex flex-wrap gap-2">
+                      {stageFlows.incoming.length > 0 ? (
+                        stageFlows.incoming.map((item) => (
+                          <button
+                            key={`${item.from}-${item.to}-in`}
+                            type="button"
+                            onClick={() => setSelectedStage(item.from)}
+                            className="rounded-full px-2.5 py-1 text-xs"
+                            style={{
+                              background: `${CLIENT_STATUS_COLORS[item.from]}18`,
+                              color: CLIENT_STATUS_COLORS[item.from],
+                              border: `1px solid ${CLIENT_STATUS_COLORS[item.from]}2f`,
+                            }}
+                          >
+                            {CLIENT_STATUS_LABELS[item.from]}
+                          </button>
+                        ))
+                      ) : (
+                        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                          Начальная точка маршрута
                         </span>
-                      </div>
-                    )}
-                    {selectedNode.source && (
-                      <div>
-                        <span style={{ color: "var(--text-muted)" }}>Источник: </span>
-                        <span style={{ color: "var(--text-secondary)" }}>{selectedNode.source}</span>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </motion.div>
-          )}
+                      )}
+                    </div>
+                  </div>
 
-          {/* ── Status summary bar ── */}
-          {data && !loading && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="glass-panel rounded-xl"
-              style={{
-                position: "absolute",
-                bottom: 16,
-                right: 16,
-                padding: "10px 14px",
-                fontSize: 11,
-              }}
-            >
-              <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: 6 }}>
-                Воронка
+                  <div>
+                    <div className="mb-2 text-[10px] font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                      МОЖНО УЙТИ В
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {stageFlows.outgoing.length > 0 ? (
+                        stageFlows.outgoing.map((item) => (
+                          <button
+                            key={`${item.from}-${item.to}-out`}
+                            type="button"
+                            onClick={() => setSelectedStage(item.to)}
+                            className="rounded-full px-2.5 py-1 text-xs"
+                            style={{
+                              background: `${CLIENT_STATUS_COLORS[item.to]}18`,
+                              color: CLIENT_STATUS_COLORS[item.to],
+                              border: `1px solid ${CLIENT_STATUS_COLORS[item.to]}2f`,
+                            }}
+                          >
+                            {CLIENT_STATUS_LABELS[item.to]}
+                          </button>
+                        ))
+                      ) : (
+                        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                          Финальная точка маршрута
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="flex gap-1.5" style={{ alignItems: "flex-end", height: 50 }}>
-                {Object.entries(data.status_counts)
-                  .sort(([a], [b]) => {
-                    const order = Object.keys(STATUS_LABELS);
-                    return order.indexOf(a) - order.indexOf(b);
-                  })
-                  .map(([status, count]) => {
-                    const maxCount = Math.max(...Object.values(data.status_counts));
-                    const barHeight = Math.max(4, (count / maxCount) * 40);
-                    return (
-                      <div
-                        key={status}
-                        title={`${STATUS_LABELS[status] || status}: ${count}`}
-                        style={{
-                          width: 14,
-                          height: barHeight,
-                          borderRadius: 3,
-                          background: STATUS_COLORS[status] || "#94A3B8",
-                          opacity: filterStatus && filterStatus !== status ? 0.3 : 1,
-                          cursor: "pointer",
-                          transition: "opacity 0.2s",
-                        }}
-                        onClick={() => setFilterStatus(filterStatus === status ? "" : status)}
-                      />
-                    );
-                  })}
+
+              <div className="glass-panel p-5">
+                <div className="text-xs font-mono tracking-[0.2em]" style={{ color: "var(--accent)" }}>
+                  СТАТУСНЫЕ АКЦЕНТЫ
+                </div>
+                <div className="mt-3 space-y-2">
+                  {(["lost", "consent_revoked", "paused"] as ClientStatus[]).map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => setSelectedStage(status)}
+                      className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left"
+                      style={{
+                        background: selectedStage === status ? `${CLIENT_STATUS_COLORS[status]}18` : "rgba(255,255,255,0.03)",
+                        border: `1px solid ${selectedStage === status ? CLIENT_STATUS_COLORS[status] : "rgba(255,255,255,0.08)"}`,
+                      }}
+                    >
+                      <span className="text-sm" style={{ color: "var(--text-primary)" }}>
+                        {CLIENT_STATUS_LABELS[status]}
+                      </span>
+                      <span className="text-sm font-semibold" style={{ color: CLIENT_STATUS_COLORS[status] }}>
+                        {formatCount(data?.status_counts[status] || 0)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </motion.div>
-          )}
+            </motion.aside>
+          </div>
         </div>
       </div>
     </AuthLayout>

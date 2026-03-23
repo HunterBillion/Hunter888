@@ -10,7 +10,7 @@ import AuthLayout from "@/components/layout/AuthLayout";
 import { CRMClientCard } from "@/components/clients/CRMClientCard";
 import { ClientStats } from "@/components/clients/ClientStats";
 import type { CRMClient, ClientStatus, PipelineStats, ClientListResponse, UserRole } from "@/types";
-import { CLIENT_STATUS_LABELS, PIPELINE_STATUSES } from "@/types";
+import { CLIENT_STATUS_LABELS } from "@/types";
 import { ClientCreateModal } from "@/components/clients/ClientCreateModal";
 import { BulkReassignModal } from "@/components/clients/BulkReassignModal";
 import Link from "next/link";
@@ -26,13 +26,8 @@ export default function ClientsPage() {
   const router = useRouter();
   const userRole = user?.role as UserRole | undefined;
   const isAdminOrRop = userRole === "admin" || userRole === "rop";
-
-  // F4.4: Methodologist redirect
-  useEffect(() => {
-    if (user && user.role === "methodologist") {
-      router.replace("/home");
-    }
-  }, [user, router]);
+  const isReadOnly = userRole === "methodologist";
+  const canExportSelected = userRole === "admin" || userRole === "rop" || userRole === "methodologist";
 
   const [createOpen, setCreateOpen] = useState(false);
   const [clients, setClients] = useState<CRMClient[]>([]);
@@ -87,7 +82,7 @@ export default function ClientsPage() {
       if (statusFilter) params.set("status", statusFilter);
       if (managerFilter) params.set("manager_id", managerFilter);
       params.set("page", String(page));
-      params.set("limit", String(limit));
+      params.set("per_page", String(limit));
 
       const data: ClientListResponse = await api.get(`/clients?${params}`);
       setClients(data.items);
@@ -98,7 +93,7 @@ export default function ClientsPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const data: PipelineStats[] = await api.get("/clients/stats");
+      const data: PipelineStats[] = await api.get("/clients/pipeline/stats");
       setStats(data);
     } catch { /* ignore */ }
   }, []);
@@ -139,11 +134,14 @@ export default function ClientsPage() {
         },
       );
       if (resp.ok) {
-        const blob = await resp.blob();
+        const payload = await resp.json();
+        const blob = new Blob([JSON.stringify(payload, null, 2)], {
+          type: "application/json",
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `clients_export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        a.download = `clients_export_${new Date().toISOString().slice(0, 10)}.json`;
         a.click();
         URL.revokeObjectURL(url);
       }
@@ -165,6 +163,15 @@ export default function ClientsPage() {
               </h1>
             </div>
             <div className="flex items-center gap-2">
+              <Link href="/clients/graph">
+                <motion.button
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
+                  style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  <Users size={12} /> Граф
+                </motion.button>
+              </Link>
               {isAdminOrRop && (
                 <Link href="/clients/duplicates">
                   <motion.button
@@ -185,24 +192,15 @@ export default function ClientsPage() {
                   <Filter size={12} /> Воронка
                 </motion.button>
               </Link>
-              {isAdminOrRop && (
-                <Link href="/clients/graph">
-                  <motion.button
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
-                    style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" }}
-                    whileTap={{ scale: 0.97 }}
-                  >
-                    <Users size={12} /> Граф
-                  </motion.button>
-                </Link>
+              {!isReadOnly && (
+                <motion.button
+                  onClick={() => setCreateOpen(true)}
+                  className="vh-btn-primary flex items-center gap-1.5 text-xs"
+                  whileTap={{ scale: 0.97 }}
+                >
+                  <Plus size={14} /> Добавить
+                </motion.button>
               )}
-              <motion.button
-                onClick={() => setCreateOpen(true)}
-                className="vh-btn-primary flex items-center gap-1.5 text-xs"
-                whileTap={{ scale: 0.97 }}
-              >
-                <Plus size={14} /> Добавить
-              </motion.button>
             </div>
           </div>
         </motion.div>
@@ -370,7 +368,7 @@ export default function ClientsPage() {
         </motion.div>
 
         {/* F6.3: Bulk toolbar */}
-        {isAdminOrRop && selected.size > 0 && (
+        {canExportSelected && selected.size > 0 && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -380,14 +378,16 @@ export default function ClientsPage() {
             <span className="text-xs font-mono" style={{ color: "var(--accent)" }}>
               {selected.size} выбрано
             </span>
-            <motion.button
-              onClick={() => setShowReassign(true)}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-mono"
-              style={{ background: "var(--accent)", color: "white" }}
-              whileTap={{ scale: 0.97 }}
-            >
-              <UserCheck size={12} /> Переназначить
-            </motion.button>
+            {isAdminOrRop && (
+              <motion.button
+                onClick={() => setShowReassign(true)}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-mono"
+                style={{ background: "var(--accent)", color: "white" }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <UserCheck size={12} /> Переназначить
+              </motion.button>
+            )}
             <motion.button
               onClick={handleExport}
               disabled={exporting}
@@ -412,7 +412,7 @@ export default function ClientsPage() {
         {/* Client list */}
         <div className="mt-6 space-y-2">
           {/* Select all for admin/rop */}
-          {isAdminOrRop && clients.length > 0 && !loading && (
+          {canExportSelected && clients.length > 0 && !loading && (
             <div className="flex items-center gap-2 mb-2">
               <motion.button
                 onClick={toggleSelectAll}
@@ -449,7 +449,7 @@ export default function ClientsPage() {
                 transition={{ delay: 0.02 * i }}
                 className="flex items-center gap-2"
               >
-                {isAdminOrRop && (
+                {canExportSelected && (
                   <motion.button
                     onClick={() => toggleSelect(c.id)}
                     className="w-4 h-4 rounded border flex items-center justify-center shrink-0"

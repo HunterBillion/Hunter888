@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useKanbanDrag } from "@/hooks/useKanbanDrag";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -24,14 +23,6 @@ import { PIPELINE_STATUSES, CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@
 
 export default function PipelinePage() {
   const { user } = useAuth();
-  const router = useRouter();
-
-  // F4.4: Methodologist redirect
-  useEffect(() => {
-    if (user && user.role === "methodologist") {
-      router.replace("/home");
-    }
-  }, [user, router]);
 
   const [clients, setClients] = useState<CRMClient[]>([]);
   const [stats, setStats] = useState<PipelineStats[]>([]);
@@ -50,7 +41,7 @@ export default function PipelinePage() {
   // ── Data fetching ──
   const fetchClients = useCallback(async () => {
     try {
-      const data = await api.get("/clients?limit=500");
+      const data = await api.get("/clients?per_page=500");
       setClients(data.items || []);
     } catch {
       /* API may not exist yet */
@@ -60,7 +51,7 @@ export default function PipelinePage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const data: PipelineStats[] = await api.get("/clients/stats");
+      const data: PipelineStats[] = await api.get("/clients/pipeline/stats");
       setStats(data);
     } catch {
       /* ignore */

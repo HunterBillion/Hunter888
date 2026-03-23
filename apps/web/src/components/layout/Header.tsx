@@ -37,7 +37,7 @@ type OpenPanel = "none" | "user" | "notifications" | "mobile";
 const NAV_ITEMS: NavItem[] = [
   { href: "/home", label: "Центр", icon: Home },
   { href: "/training", label: "Тренировка", icon: Crosshair },
-  { href: "/clients", label: "Клиенты", icon: Users, roles: ["admin", "rop", "manager"] },
+  { href: "/clients", label: "Клиенты", icon: Users, roles: ["admin", "rop", "manager", "methodologist"] },
   { href: "/history", label: "История", icon: History },
   { href: "/leaderboard", label: "Лидерборд", icon: Trophy },
   { href: "/pvp", label: "Арена", icon: Swords },
@@ -83,16 +83,23 @@ export default function Header() {
   }, []);
 
   const displayName = sanitizeText(user?.full_name || "Пользователь");
-  const roleLabel = user?.role === "admin" ? "Администратор" : user?.role === "rop" ? "РОП" : "Менеджер";
+  const roleLabel =
+    user?.role === "admin"
+      ? "Администратор"
+      : user?.role === "rop"
+        ? "РОП"
+        : user?.role === "methodologist"
+          ? "Методолог"
+          : "Менеджер";
   const userMenuOpen = openPanel === "user";
   const notificationOpen = openPanel === "notifications";
   const mobileOpen = openPanel === "mobile";
 
   return (
-    <header className="sticky top-0 z-30 px-3 py-3 sm:px-4">
+    <header className="sticky top-0 z-30 py-3">
       <div
         ref={shellRef}
-        className="mx-auto max-w-[1600px] overflow-visible rounded-[30px] border px-4 py-4 sm:px-5"
+        className="app-shell overflow-visible rounded-[30px] border py-4"
         style={{
           background: "linear-gradient(180deg, rgba(3,3,6,0.98), rgba(7,7,10,0.94))",
           borderColor: "rgba(255,255,255,0.08)",
@@ -276,7 +283,7 @@ export default function Header() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.18 }}
-            className="mx-auto mt-3 max-w-[1600px] overflow-hidden rounded-[28px] border xl:hidden"
+            className="app-shell mx-auto mt-3 overflow-hidden rounded-[28px] border xl:hidden"
             style={{
               background: "linear-gradient(180deg, rgba(5,5,8,0.98), rgba(10,12,18,0.96))",
               borderColor: "rgba(255,255,255,0.08)",

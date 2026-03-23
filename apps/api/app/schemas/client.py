@@ -77,6 +77,12 @@ class ClientResponse(BaseModel):
     # Вложенные данные (опционально)
     active_consents: list["ConsentResponse"] | None = None
     recent_interactions: list["InteractionResponse"] | None = None
+    consents: list["ConsentResponse"] | None = None
+    interactions: list["InteractionResponse"] | None = None
+    city: str | None = None
+    income: Decimal | None = None
+    creditors: list[dict] | None = None
+    tags: list[str] | None = None
 
     model_config = {"from_attributes": True}
 
@@ -148,6 +154,12 @@ class ClientMergeRequest(BaseModel):
 
     duplicate_id: uuid.UUID
     # ID дубля, который будет поглощён основной карточкой
+
+
+class ClientExportRequest(BaseModel):
+    """POST /api/clients/bulk/export — экспорт выбранных клиентов"""
+
+    client_ids: list[uuid.UUID] = Field(default_factory=list, max_length=1000)
 
 
 # ── Consents ─────────────────────────────────────────────────────────────────

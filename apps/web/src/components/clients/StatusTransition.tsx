@@ -8,7 +8,7 @@ import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, ALLOWED_TRANSITIONS } from 
 
 interface StatusTransitionProps {
   currentStatus: ClientStatus;
-  onTransition: (newStatus: ClientStatus) => Promise<void>;
+  onTransition: (newStatus: ClientStatus, reason?: string) => Promise<void>;
 }
 
 export function StatusTransition({ currentStatus, onTransition }: StatusTransitionProps) {
@@ -22,7 +22,16 @@ export function StatusTransition({ currentStatus, onTransition }: StatusTransiti
     setTransitioning(true);
     setOpen(false);
     try {
-      await onTransition(status);
+      let reason: string | undefined;
+      if (status === "lost" || status === "consent_revoked") {
+        const value = window.prompt("Укажите причину перехода")?.trim();
+        if (!value) {
+          setTransitioning(false);
+          return;
+        }
+        reason = value;
+      }
+      await onTransition(status, reason);
     } finally {
       setTransitioning(false);
     }
