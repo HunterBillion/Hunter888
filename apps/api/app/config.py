@@ -155,10 +155,36 @@ class Settings(BaseSettings):
     def web_push_configured(self) -> bool:
         return bool(self.vapid_public_key and self.vapid_private_key and self.vapid_subject)
 
-    # Rate Limits
+    # Rate Limits — safe defaults; overridden in .env
     max_sessions_per_day: int = 10
     max_session_duration_minutes: int = 30
     max_messages_per_session: int = 200
+
+    @field_validator("max_sessions_per_day")
+    @classmethod
+    def clamp_sessions_limit(cls, v: int, info) -> int:
+        env = info.data.get("app_env", "development")
+        if env == "production" and v > 500:
+            import logging
+            logging.getLogger(__name__).error(
+                "max_sessions_per_day=%d is dangerously high for production — "
+                "clamping to 500 to prevent abuse. Check your .env.", v
+            )
+            return 500
+        return v
+
+    @field_validator("max_messages_per_session")
+    @classmethod
+    def clamp_messages_limit(cls, v: int, info) -> int:
+        env = info.data.get("app_env", "development")
+        if env == "production" and v > 1000:
+            import logging
+            logging.getLogger(__name__).error(
+                "max_messages_per_session=%d is dangerously high for production — "
+                "clamping to 1000 to prevent abuse. Check your .env.", v
+            )
+            return 1000
+        return v
 
     @field_validator("jwt_secret")
     @classmethod

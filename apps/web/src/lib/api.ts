@@ -15,25 +15,38 @@ class ApiError extends Error {
   }
 }
 
-let isRefreshing = false;
-let refreshPromise: Promise<boolean> | null = null;
+/**
+ * Token refresh mutex — ensures only ONE refresh request is in-flight at a time.
+ * All concurrent 401 handlers (from request(), uploadFile(), etc.) wait for the
+ * same promise instead of firing parallel refresh calls.
+ *
+ * Includes a 10-second timeout to prevent deadlocks if the refresh hangs.
+ */
+let _refreshPromise: Promise<boolean> | null = null;
 
-async function tryRefreshToken(): Promise<boolean> {
+async function _doRefresh(): Promise<boolean> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+
     const res = await fetch(`${apiPrefix()}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken }),
       credentials: "include",
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     if (!res.ok) return false;
 
     const data = await res.json();
     setTokens(data.access_token, data.refresh_token);
+    try { useAuthStore.getState().invalidate(); } catch { /* store may not be mounted */ }
     return true;
   } catch {
     return false;
@@ -41,26 +54,14 @@ async function tryRefreshToken(): Promise<boolean> {
 }
 
 async function handleTokenRefresh(): Promise<boolean> {
-  // Deduplicate concurrent refresh attempts
-  if (isRefreshing && refreshPromise) {
-    return refreshPromise;
-  }
+  // If a refresh is already in-flight, piggyback on its promise
+  if (_refreshPromise) return _refreshPromise;
 
-  isRefreshing = true;
-  refreshPromise = tryRefreshToken()
-    .then((success) => {
-      // Invalidate auth store cache after token refresh so next fetchUser gets fresh data
-      if (success) {
-        try { useAuthStore.getState().invalidate(); } catch {}
-      }
-      return success;
-    })
-    .finally(() => {
-      isRefreshing = false;
-      refreshPromise = null;
-    });
+  _refreshPromise = _doRefresh().finally(() => {
+    _refreshPromise = null;
+  });
 
-  return refreshPromise;
+  return _refreshPromise;
 }
 
 async function request(path: string, options: RequestInit = {}) {

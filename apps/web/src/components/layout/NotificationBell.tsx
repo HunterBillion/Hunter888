@@ -53,7 +53,7 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  }, [open, setOpen]);
 
   // Mark read — try REST API, update store
   const handleMarkRead = useCallback((id: string) => {

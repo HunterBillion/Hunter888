@@ -2,14 +2,13 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Pin exact versions for reproducible builds
 RUN pip install --no-cache-dir \
-    fastapi==0.115.* \
-    uvicorn[standard]==0.34.* \
-    sentence-transformers==3.*
-
-RUN pip install --no-cache-dir \
-    torch \
-    --index-url https://download.pytorch.org/whl/cpu
+    torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir \
+    fastapi==0.115.6 \
+    uvicorn[standard]==0.34.0 \
+    sentence-transformers==3.3.1
 
 COPY app.py .
 

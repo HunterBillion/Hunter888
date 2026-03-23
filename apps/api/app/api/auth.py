@@ -222,7 +222,7 @@ async def _send_reset_email(to_email: str, user_name: str, reset_url: str) -> No
         _auth_logger.info("Fallback — reset link for %s: %s", to_email, reset_url)
 
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -232,6 +232,12 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str = Field(..., min_length=10)
     new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        from app.schemas.auth import _check_password_strength
+        return _check_password_strength(v)
 
 
 @router.post("/forgot-password")

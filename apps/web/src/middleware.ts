@@ -33,7 +33,7 @@ function isPublicRoute(pathname: string): boolean {
 }
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, searchParams } = request.nextUrl;
 
   // Skip public routes, static files, API routes
   if (
@@ -51,10 +51,24 @@ export function middleware(request: NextRequest) {
   const hasMarker = request.cookies.get("vh_authenticated");
 
   if (!hasAccessToken && !hasMarker) {
-    // Redirect to login for protected routes
+    // GUARD: Prevent infinite redirect loops.
+    // If the client was ALREADY redirected once (indicated by ?redirect= param
+    // pointing at /login), don't redirect again — break the loop.
+    const redirectTarget = searchParams.get("redirect");
+    if (redirectTarget === "/login" || pathname === "/login") {
+      return NextResponse.next();
+    }
+
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(loginUrl);
+    const response = NextResponse.redirect(loginUrl);
+
+    // Clear potentially stale/invalid auth cookies that might cause loops
+    // (e.g., expired access_token still present as a cookie)
+    response.cookies.delete("access_token");
+    response.cookies.delete("vh_authenticated");
+
+    return response;
   }
 
   return NextResponse.next();

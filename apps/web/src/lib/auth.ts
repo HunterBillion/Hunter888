@@ -58,6 +58,12 @@ export function clearTokens(): void {
       localStorage.removeItem(ACCESS_TOKEN_KEY);
       localStorage.removeItem(REFRESH_TOKEN_KEY);
     } catch {}
+    // Clear the JS-readable marker cookie to prevent redirect loops.
+    // The httpOnly access_token/refresh_token cookies can only be cleared
+    // by the server (via Set-Cookie), so we clear what we can.
+    try {
+      document.cookie = "vh_authenticated=; path=/; max-age=0; samesite=lax";
+    } catch {}
   }
 }
 
