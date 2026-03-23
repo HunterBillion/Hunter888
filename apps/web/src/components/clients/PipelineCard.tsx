@@ -5,12 +5,21 @@ import Link from "next/link";
 import type { CRMClient, UserRole } from "@/types";
 import { CLIENT_STATUS_COLORS } from "@/types";
 
+export type PipelineCardField =
+  | "phone"
+  | "debt"
+  | "next_contact"
+  | "manager"
+  | "updated"
+  | "source";
+
 interface PipelineCardProps {
   client: CRMClient;
   userRole?: UserRole;
   readOnly?: boolean;
   onQuickNote?: (client: CRMClient) => void;
   onReminder?: (client: CRMClient) => void;
+  visibleFields?: PipelineCardField[];
 }
 
 const formatDebt = (amount: number) => {
@@ -41,8 +50,10 @@ export function PipelineCard({
   readOnly = false,
   onQuickNote,
   onReminder,
+  visibleFields = ["debt", "phone", "next_contact", "updated"],
 }: PipelineCardProps) {
   const color = CLIENT_STATUS_COLORS[client.status];
+  const showField = (field: PipelineCardField) => visibleFields.includes(field);
   const overdue = isOverdue(client.next_contact_at);
   const nextContactLabel = client.next_contact_at
     ? (() => {
@@ -88,7 +99,7 @@ export function PipelineCard({
 
         {/* Meta row */}
         <div className="mt-2 flex items-center gap-3 flex-wrap">
-          {(client.debt_amount ?? 0) > 0 && (
+          {showField("debt") && (client.debt_amount ?? 0) > 0 && (
             <span
               className="flex items-center gap-0.5 text-[10px] font-mono"
               style={{ color: "var(--text-muted)" }}
@@ -97,7 +108,7 @@ export function PipelineCard({
               {formatDebt(client.debt_amount ?? 0)} ₽
             </span>
           )}
-          {client.phone && (
+          {showField("phone") && client.phone && (
             <span
               className="flex items-center gap-0.5 text-[10px] font-mono"
               style={{ color: "var(--text-muted)" }}
@@ -106,10 +117,18 @@ export function PipelineCard({
               {client.phone.replace(/(\d{1})\d{5}(\d{4})/, "$1•••••$2")}
             </span>
           )}
+          {showField("source") && client.source && (
+            <span
+              className="text-[10px] font-mono"
+              style={{ color: "var(--text-muted)" }}
+            >
+              {client.source}
+            </span>
+          )}
         </div>
 
         {/* Next contact */}
-        {nextContactLabel && (
+        {showField("next_contact") && nextContactLabel && (
           <div className="mt-2 flex items-center gap-1">
             <Calendar size={10} style={{ color: overdue ? "var(--neon-red, #FF3333)" : color }} />
             <span
@@ -122,7 +141,7 @@ export function PipelineCard({
         )}
 
         {/* Manager name for admin/rop */}
-        {(userRole === "admin" || userRole === "rop") && client.manager_name && (
+        {showField("manager") && (userRole === "admin" || userRole === "rop") && client.manager_name && (
           <div className="mt-1.5">
             <span
               className="text-[9px] font-mono"
@@ -134,7 +153,7 @@ export function PipelineCard({
         )}
 
         {/* Updated time */}
-        {client.updated_at && (
+        {showField("updated") && client.updated_at && (
           <div className="mt-1.5">
             <span
               className="text-[9px] font-mono"

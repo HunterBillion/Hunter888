@@ -4,7 +4,7 @@ import { useCallback, forwardRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { CRMClient, ClientStatus, UserRole } from "@/types";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
-import { PipelineCard } from "./PipelineCard";
+import { PipelineCard, type PipelineCardField } from "./PipelineCard";
 
 interface PipelineColumnProps {
   status: ClientStatus;
@@ -13,6 +13,8 @@ interface PipelineColumnProps {
   activeId: string | null;
   userRole?: UserRole;
   readOnly?: boolean;
+  layoutMode?: "grid" | "board";
+  visibleFields?: PipelineCardField[];
   onQuickNote?: (client: CRMClient) => void;
   onReminder?: (client: CRMClient) => void;
   // HTML5 DnD handlers (desktop)
@@ -36,6 +38,8 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
       activeId,
       userRole,
       readOnly = false,
+      layoutMode = "grid",
+      visibleFields,
       onQuickNote,
       onReminder,
       onDragOver,
@@ -78,8 +82,8 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
         ref={ref}
         className="flex flex-col rounded-xl transition-all duration-200"
         style={{
-          width: "100%",
-          minWidth: 0,
+          width: layoutMode === "board" ? "300px" : "100%",
+          minWidth: layoutMode === "board" ? "300px" : 0,
           maxHeight: "min(70vh, calc(100vh - 220px))",
           background: isOver
             ? `color-mix(in srgb, ${color} 6%, var(--bg-secondary))`
@@ -189,6 +193,7 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
                   client={client}
                   userRole={userRole}
                   readOnly={readOnly}
+                  visibleFields={visibleFields}
                   onQuickNote={onQuickNote}
                   onReminder={onReminder}
                 />

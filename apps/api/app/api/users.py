@@ -59,6 +59,8 @@ class UserPreferencesRequest(BaseModel):
     training_mode: str | None = Field(None, pattern="^(voice|text|mixed|structured|freestyle|challenge)$")
     # UI customization
     pipeline_columns: list[str] | None = None
+    pipeline_layout: str | None = Field(None, pattern="^(grid|board)$")
+    pipeline_card_fields: list[str] | None = None
     compact_mode: bool | None = None
     accent_color: str | None = Field(None, pattern="^(violet|blue|emerald|amber|rose)$")
 

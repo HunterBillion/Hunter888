@@ -10,18 +10,33 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
+  LayoutGrid,
+  Plus,
+  SlidersHorizontal,
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useKanbanDrag } from "@/hooks/useKanbanDrag";
+import { useAuthStore } from "@/stores/useAuthStore";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { ClientCreateModal } from "@/components/clients/ClientCreateModal";
 import { InteractionCreateModal } from "@/components/clients/InteractionCreateModal";
 import { PipelineColumn } from "@/components/clients/PipelineColumn";
-import { PipelineCard } from "@/components/clients/PipelineCard";
+import { PipelineCard, type PipelineCardField } from "@/components/clients/PipelineCard";
 import { ReminderCreateModal } from "@/components/clients/ReminderCreateModal";
 import type { CRMClient, ClientStatus, PipelineStats, UserRole } from "@/types";
 import { PIPELINE_STATUSES, CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
+
+const DEFAULT_CARD_FIELDS: PipelineCardField[] = ["debt", "phone", "next_contact", "updated"];
+const CARD_FIELD_OPTIONS: Array<{ key: PipelineCardField; label: string }> = [
+  { key: "phone", label: "Телефон" },
+  { key: "debt", label: "Долг" },
+  { key: "next_contact", label: "След. контакт" },
+  { key: "manager", label: "Менеджер" },
+  { key: "updated", label: "Обновлено" },
+  { key: "source", label: "Источник" },
+];
 
 export default function PipelinePage() {
   const { user } = useAuth();
@@ -36,6 +51,12 @@ export default function PipelinePage() {
   const [error, setError] = useState<string | null>(null);
   const [noteClient, setNoteClient] = useState<CRMClient | null>(null);
   const [reminderClient, setReminderClient] = useState<CRMClient | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [showCustomize, setShowCustomize] = useState(false);
+  const [savingPrefs, setSavingPrefs] = useState(false);
+  const [layoutMode, setLayoutMode] = useState<"grid" | "board">("grid");
+  const [cardFields, setCardFields] = useState<PipelineCardField[]>(DEFAULT_CARD_FIELDS);
+  const [pipelineColumns, setPipelineColumns] = useState<ClientStatus[]>([...PIPELINE_STATUSES]);
 
   // ── Column refs for touch hit-testing ──
   const columnRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -128,17 +149,48 @@ export default function PipelinePage() {
     handleTouchEnd,
   } = useKanbanDrag({ onDrop: handleDrop, columnRefs });
 
+  useEffect(() => {
+    const prefs = (user as { preferences?: Record<string, unknown> } | null)?.preferences;
+    const savedCols = Array.isArray(prefs?.pipeline_columns) ? (prefs.pipeline_columns as ClientStatus[]) : null;
+    const savedLayout = prefs?.pipeline_layout === "board" ? "board" : "grid";
+    const savedFields = Array.isArray(prefs?.pipeline_card_fields)
+      ? (prefs.pipeline_card_fields.filter((item): item is PipelineCardField =>
+          ["phone", "debt", "next_contact", "manager", "updated", "source"].includes(String(item)),
+        ))
+      : null;
+
+    setPipelineColumns(savedCols && savedCols.length >= 2 ? savedCols : [...PIPELINE_STATUSES]);
+    setLayoutMode(savedLayout);
+    setCardFields(savedFields && savedFields.length > 0 ? savedFields : DEFAULT_CARD_FIELDS);
+  }, [user]);
+
+  const persistPipelinePrefs = useCallback(
+    async (patch: {
+      pipeline_columns?: ClientStatus[];
+      pipeline_layout?: "grid" | "board";
+      pipeline_card_fields?: PipelineCardField[];
+    }) => {
+      setSavingPrefs(true);
+      setError(null);
+      try {
+        await api.post("/users/me/preferences", patch);
+        useAuthStore.getState().updatePreferences(patch as Record<string, unknown>);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Не удалось сохранить настройки канбана");
+      } finally {
+        setSavingPrefs(false);
+      }
+    },
+    [],
+  );
+
   // ── Grouped clients by status (respects user pipeline_columns preference) ──
   const visibleStatuses = useMemo(() => {
-    const prefs = (user as { preferences?: Record<string, unknown> } | null)?.preferences;
-    const savedCols = Array.isArray(prefs?.pipeline_columns) ? prefs.pipeline_columns as string[] : null;
-    const base: ClientStatus[] = savedCols
-      ? PIPELINE_STATUSES.filter((s) => savedCols.includes(s))
-      : [...PIPELINE_STATUSES];
+    const base: ClientStatus[] = pipelineColumns.length >= 2 ? [...pipelineColumns] : [...PIPELINE_STATUSES];
     if (base.length < 2) return [...PIPELINE_STATUSES]; // fallback: show all if too few
     if (showLost) base.push("lost");
     return base;
-  }, [showLost, user]);
+  }, [pipelineColumns, showLost]);
 
   const grouped = useMemo(() => {
     return visibleStatuses.reduce(
@@ -256,6 +308,34 @@ export default function PipelinePage() {
                     className={refreshing ? "animate-spin" : ""}
                   />
                 </motion.button>
+                {!isReadOnly && (
+                  <motion.button
+                    onClick={() => setCreateOpen(true)}
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[10px] font-mono"
+                    style={{
+                      background: "var(--accent)",
+                      border: "1px solid var(--accent)",
+                      color: "#050505",
+                    }}
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    <Plus size={11} />
+                    Новая карточка
+                  </motion.button>
+                )}
+                <motion.button
+                  onClick={() => setShowCustomize((prev) => !prev)}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[10px] font-mono"
+                  style={{
+                    background: showCustomize ? "var(--accent-muted)" : "var(--input-bg)",
+                    border: `1px solid ${showCustomize ? "var(--accent)" : "var(--border-color)"}`,
+                    color: showCustomize ? "var(--accent)" : "var(--text-muted)",
+                  }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  <SlidersHorizontal size={11} />
+                  Конструктор
+                </motion.button>
               </div>
             </div>
 
@@ -323,6 +403,140 @@ export default function PipelinePage() {
                   })}
               </motion.div>
             )}
+
+            <AnimatePresence>
+              {showCustomize && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="mt-4 rounded-2xl border p-4"
+                  style={{
+                    background: "rgba(255,255,255,0.03)",
+                    borderColor: "var(--border-color)",
+                  }}
+                >
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <LayoutGrid size={14} style={{ color: "var(--accent)" }} />
+                        <span className="text-xs font-mono tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+                          LEGO НАСТРОЙКА КАНБАНА
+                        </span>
+                      </div>
+                      <p className="max-w-2xl text-xs" style={{ color: "var(--text-muted)" }}>
+                        Каждый пользователь собирает свою доску сам: режим раскладки, видимые этапы и состав карточки.
+                        Настройка сохраняется в профиле и влияет только на ваш аккаунт.
+                      </p>
+                    </div>
+                    <span
+                      className="rounded-lg px-3 py-1 text-[10px] font-mono"
+                      style={{
+                        background: "var(--input-bg)",
+                        border: "1px solid var(--border-color)",
+                        color: savingPrefs ? "var(--accent)" : "var(--text-muted)",
+                      }}
+                    >
+                      {savingPrefs ? "Сохраняю..." : "Сохранение авто"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-4 xl:grid-cols-3">
+                    <div>
+                      <div className="mb-2 text-[10px] font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                        РАСКЛАДКА
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {(["grid", "board"] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => {
+                              setLayoutMode(mode);
+                              void persistPipelinePrefs({ pipeline_layout: mode });
+                            }}
+                            className="rounded-lg px-3 py-2 text-[11px] font-mono"
+                            style={{
+                              background: layoutMode === mode ? "var(--accent-muted)" : "var(--input-bg)",
+                              border: `1px solid ${layoutMode === mode ? "var(--accent)" : "var(--border-color)"}`,
+                              color: layoutMode === mode ? "var(--accent)" : "var(--text-secondary)",
+                            }}
+                          >
+                            {mode === "grid" ? "Ряды" : "Доска"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-2 text-[10px] font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                        ПОЛЯ КАРТОЧКИ
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {CARD_FIELD_OPTIONS.map((field) => {
+                          const active = cardFields.includes(field.key);
+                          return (
+                            <button
+                              key={field.key}
+                              type="button"
+                              onClick={() => {
+                                const next = active
+                                  ? cardFields.filter((item) => item !== field.key)
+                                  : [...cardFields, field.key];
+                                const finalFields = next.length > 0 ? next : DEFAULT_CARD_FIELDS;
+                                setCardFields(finalFields);
+                                void persistPipelinePrefs({ pipeline_card_fields: finalFields });
+                              }}
+                              className="rounded-lg px-3 py-2 text-[11px] font-mono"
+                              style={{
+                                background: active ? "var(--accent-muted)" : "var(--input-bg)",
+                                border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
+                                color: active ? "var(--accent)" : "var(--text-secondary)",
+                              }}
+                            >
+                              {field.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-2 text-[10px] font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                        ВИДИМЫЕ ЭТАПЫ
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {PIPELINE_STATUSES.map((status) => {
+                          const active = pipelineColumns.includes(status);
+                          return (
+                            <button
+                              key={status}
+                              type="button"
+                              onClick={() => {
+                                const next = active
+                                  ? pipelineColumns.filter((item) => item !== status)
+                                  : [...pipelineColumns, status];
+                                if (next.length < 2) return;
+                                setPipelineColumns(next);
+                                void persistPipelinePrefs({ pipeline_columns: next });
+                              }}
+                              className="rounded-lg px-3 py-2 text-[11px] font-mono"
+                              style={{
+                                background: active ? "var(--accent-muted)" : "var(--input-bg)",
+                                border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
+                                color: active ? "var(--accent)" : "var(--text-secondary)",
+                              }}
+                            >
+                              {CLIENT_STATUS_LABELS[status]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </motion.div>
 
@@ -340,7 +554,11 @@ export default function PipelinePage() {
             ref={(el) => {
               scrollContainerRef.current = el;
             }}
-            className="flex-1 overflow-y-auto px-4 pb-4"
+            className={
+              layoutMode === "board"
+                ? "flex-1 overflow-x-auto overflow-y-hidden px-4 pb-4"
+                : "flex-1 overflow-y-auto px-4 pb-4"
+            }
             style={{ scrollbarWidth: "thin" }}
           >
             {error && (
@@ -359,7 +577,11 @@ export default function PipelinePage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.1 }}
-              className="mx-auto grid max-w-[1600px] gap-3 pb-6 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+              className={
+                layoutMode === "board"
+                  ? "mx-auto flex min-w-max gap-3 pb-6"
+                  : "mx-auto grid max-w-[1600px] gap-3 pb-6 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+              }
             >
               {visibleStatuses.map((status, i) => (
                 <motion.div
@@ -377,6 +599,8 @@ export default function PipelinePage() {
                     activeId={dragState.activeId}
                     userRole={userRole}
                     readOnly={isReadOnly}
+                    layoutMode={layoutMode}
+                    visibleFields={cardFields}
                     onQuickNote={isReadOnly ? undefined : setNoteClient}
                     onReminder={isReadOnly ? undefined : setReminderClient}
                     onDragOver={handleDragOver}
@@ -412,10 +636,22 @@ export default function PipelinePage() {
                 filter: "drop-shadow(0 8px 24px rgba(0,0,0,0.4))",
               }}
             >
-              <PipelineCard client={draggedClient} userRole={userRole} readOnly />
+              <PipelineCard client={draggedClient} userRole={userRole} readOnly visibleFields={cardFields} />
             </motion.div>
           )}
         </AnimatePresence>
+
+        {!isReadOnly && (
+          <ClientCreateModal
+            open={createOpen}
+            onClose={() => setCreateOpen(false)}
+            onCreated={() => {
+              setCreateOpen(false);
+              fetchClients();
+              fetchStats();
+            }}
+          />
+        )}
 
         {!isReadOnly && noteClient && (
           <InteractionCreateModal
