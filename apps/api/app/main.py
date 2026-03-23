@@ -86,8 +86,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
             response.headers["Content-Security-Policy"] = (
                 "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline'; "
-                "style-src 'self' 'unsafe-inline'; "
+                "script-src 'self'; "
+                "style-src 'self' https://fonts.googleapis.com; "
                 "img-src 'self' data: blob:; "
                 "connect-src 'self' wss: ws:; "
                 "font-src 'self' https://fonts.gstatic.com; "
@@ -110,6 +110,32 @@ app.add_middleware(
 
 app.include_router(api_router, prefix="/api")
 
+
+# ── WebSocket origin validation ──────────────────────────────────────────────
+import re as _re
+
+_WS_ALLOWED_ORIGIN_RE = _re.compile(
+    r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|"
+    r"^https?://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$|"
+    r"^https?://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$|"
+    r"^https?://172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$"
+)
+
+
+def _validate_ws_origin(websocket: WebSocket) -> bool:
+    """Validate WebSocket Origin header to prevent cross-site WebSocket hijacking."""
+    origin = websocket.headers.get("origin", "")
+    if not origin:
+        return True  # Non-browser clients may not send Origin
+    # Check explicit CORS origins
+    allowed_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    if origin in allowed_origins:
+        return True
+    # Check LAN pattern
+    if _WS_ALLOWED_ORIGIN_RE.match(origin):
+        return True
+    return False
+
 # Serve uploaded avatars
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path as _Path
@@ -128,22 +154,34 @@ except ImportError:
 
 @app.websocket("/ws/training")
 async def ws_training(websocket: WebSocket):
+    if not _validate_ws_origin(websocket):
+        await websocket.close(code=4003)
+        return
     await training_websocket(websocket)
 
 
 @app.websocket("/ws/notifications")
 async def ws_notifications(websocket: WebSocket):
     """WebSocket для real-time уведомлений (Agent 7 — Client Communication)."""
+    if not _validate_ws_origin(websocket):
+        await websocket.close(code=4003)
+        return
     await notification_websocket(websocket)
 
 
 @app.websocket("/ws/pvp")
 async def ws_pvp(websocket: WebSocket):
     """WebSocket для PvP-дуэлей (Agent 8 — PvP Battle)."""
+    if not _validate_ws_origin(websocket):
+        await websocket.close(code=4003)
+        return
     await pvp_websocket(websocket)
 
 
 @app.websocket("/ws/game-crm")
 async def ws_game_crm(websocket: WebSocket):
     """WebSocket для текстового чата AI-клиента в CRM-панели."""
+    if not _validate_ws_origin(websocket):
+        await websocket.close(code=4003)
+        return
     await game_crm_websocket(websocket)

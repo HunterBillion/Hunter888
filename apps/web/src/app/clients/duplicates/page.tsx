@@ -45,7 +45,7 @@ export default function DuplicatesPage() {
   useEffect(() => {
     api.get("/clients/duplicates")
       .then((data: DuplicateGroup[]) => setGroups(Array.isArray(data) ? data : []))
-      .catch(() => {})
+      .catch((err) => { console.error("Failed to load duplicate clients:", err); })
       .finally(() => setLoading(false));
   }, []);
 

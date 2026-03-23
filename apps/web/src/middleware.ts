@@ -46,17 +46,15 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for token in cookie (set by client after login)
-  // Since we use localStorage, tokens aren't in cookies by default.
-  // This middleware serves as a structural guard — actual auth is in AuthLayout.
-  // We check for the presence of a marker cookie that client sets on login.
-  const hasToken = request.cookies.get("vh_authenticated");
+  // Check for httpOnly access_token cookie OR marker cookie
+  const hasAccessToken = request.cookies.get("access_token");
+  const hasMarker = request.cookies.get("vh_authenticated");
 
-  if (!hasToken) {
-    // Don't hard-redirect — let client-side AuthLayout handle it.
-    // This prevents SSR/hydration mismatch issues.
-    // The middleware just ensures the response headers are clean.
-    return NextResponse.next();
+  if (!hasAccessToken && !hasMarker) {
+    // Redirect to login for protected routes
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("redirect", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
   return NextResponse.next();

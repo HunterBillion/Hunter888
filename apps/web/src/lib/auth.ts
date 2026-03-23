@@ -1,21 +1,21 @@
 /**
- * Auth utilities — dual storage: in-memory (primary) + localStorage (persistence).
+ * Auth utilities — httpOnly cookies (primary) + localStorage (fallback for migration).
  *
- * In-memory cache avoids reading localStorage on every request.
- * localStorage ensures tokens survive page navigation and refreshes.
- *
- * For maximum security in production, switch to httpOnly cookies
- * set by the backend — then localStorage can be removed entirely.
+ * In production, tokens are stored in httpOnly cookies set by the backend.
+ * The frontend only needs to know IF the user is authenticated (via `vh_authenticated` cookie).
+ * Tokens in localStorage are kept temporarily for backward compatibility.
  */
 
 const ACCESS_TOKEN_KEY = "ai_trainer_access_token";
 const REFRESH_TOKEN_KEY = "ai_trainer_refresh_token";
 
-// In-memory cache (fast reads, avoids localStorage on every call)
+// In-memory cache (for backward compat during migration)
 let _accessToken: string | null = null;
 let _refreshToken: string | null = null;
 
 export function getToken(): string | null {
+  // httpOnly cookies can't be read by JS — that's the point.
+  // For Bearer header fallback, check in-memory / localStorage.
   if (_accessToken) return _accessToken;
   if (typeof window === "undefined") return null;
   try {
@@ -41,6 +41,7 @@ export function getRefreshToken(): string | null {
 export function setTokens(accessToken: string, refreshToken: string): void {
   _accessToken = accessToken;
   _refreshToken = refreshToken;
+  // Still persist to localStorage for backward compat (will be removed in next release)
   if (typeof window !== "undefined") {
     try {
       localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
@@ -58,4 +59,15 @@ export function clearTokens(): void {
       localStorage.removeItem(REFRESH_TOKEN_KEY);
     } catch {}
   }
+}
+
+/**
+ * Check if user appears authenticated (via marker cookie or localStorage).
+ * This does NOT validate the token — just a fast presence check.
+ */
+export function isAuthenticated(): boolean {
+  if (typeof document !== "undefined" && document.cookie.includes("vh_authenticated=")) {
+    return true;
+  }
+  return !!getToken();
 }

@@ -124,7 +124,7 @@ export default function SettingsPage() {
 
     api.get("/auth/oauth/status")
       .then((data: { google: boolean; yandex: boolean }) => setOauthStatus(data))
-      .catch(() => {});
+      .catch((err) => { console.error("Failed to load OAuth status:", err); });
   }, [user]);
 
   // Apply accent color + compact mode immediately (live preview via store)

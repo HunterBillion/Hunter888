@@ -43,11 +43,28 @@ class SessionNotFoundError(SessionError):
     """Session does not exist or is not active."""
 
 
+import asyncio as _asyncio
+
 _pool: aioredis.ConnectionPool | None = None
+_pool_lock = _asyncio.Lock()
+
+
+async def _ensure_pool() -> aioredis.ConnectionPool:
+    global _pool
+    if _pool is None:
+        async with _pool_lock:
+            if _pool is None:
+                _pool = aioredis.ConnectionPool.from_url(
+                    settings.redis_url, decode_responses=True, max_connections=20
+                )
+    return _pool
 
 
 def _redis() -> aioredis.Redis:
-    """Get a Redis client using a shared connection pool."""
+    """Get a Redis client using a shared connection pool.
+
+    Note: call _ensure_pool() at startup or first use to initialize safely.
+    """
     global _pool
     if _pool is None:
         _pool = aioredis.ConnectionPool.from_url(

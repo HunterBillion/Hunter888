@@ -71,7 +71,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
     if (!isAdmin || !open) return;
     api.get("/users?role=manager&limit=100")
       .then((data: ManagerOption[]) => setManagers(Array.isArray(data) ? data : []))
-      .catch(() => {});
+      .catch((err) => { console.error("Failed to load managers for client creation:", err); });
   }, [isAdmin, open]);
 
   const resetForm = () => {

@@ -67,7 +67,7 @@ export default function LeaderboardPage() {
     api
       .get(`/gamification/leaderboard?period=${period}`)
       .then((data: GamificationEntry[]) => setEntries(data))
-      .catch(() => setEntries([]))
+      .catch((err) => { console.error("Failed to load leaderboard:", err); setEntries([]); })
       .finally(() => setLoading(false));
   }, [period]);
 
@@ -80,10 +80,10 @@ export default function LeaderboardPage() {
           // Fetch full leaderboard (top 20)
           api.get(`/tournament/leaderboard/${data.tournament.id}`)
             .then((lb: TournamentLeaderboardEntry[]) => setTournamentEntries(lb))
-            .catch(() => setTournamentEntries(data.leaderboard));
+            .catch((err) => { console.error("Failed to load tournament leaderboard:", err); setTournamentEntries(data.leaderboard); });
         }
       })
-      .catch(() => {})
+      .catch((err) => { console.error("Failed to load active tournament:", err); })
       .finally(() => setTournamentLoading(false));
   }, []);
 
@@ -266,10 +266,10 @@ export default function LeaderboardPage() {
                   if (data.tournament) {
                     api.get(`/tournament/leaderboard/${data.tournament.id}`)
                       .then((lb: TournamentLeaderboardEntry[]) => setTournamentEntries(lb))
-                      .catch(() => {});
+                      .catch((err) => { console.error("Failed to reload tournament leaderboard:", err); });
                   }
                 })
-                .catch(() => {});
+                .catch((err) => { console.error("Failed to reload tournament data:", err); });
             }}
           />
         )}
@@ -292,7 +292,7 @@ function CreateTournamentModal({ onClose, onCreated }: { onClose: () => void; on
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.get("/scenarios/").then(setScenarios).catch(() => {});
+    api.get("/scenarios/").then(setScenarios).catch((err) => { console.error("Failed to load scenarios:", err); });
   }, []);
 
   const handleCreate = async () => {

@@ -167,7 +167,7 @@ export default function GameClientPanelPage() {
     if (events.length > 0 && storyId) {
       const unread = events.filter((e) => !e.is_read).map((e) => e.id);
       if (unread.length > 0) {
-        api.post(`/game/clients/stories/${storyId}/read`, { event_ids: unread }).catch(() => {});
+        api.post(`/game/clients/stories/${storyId}/read`, { event_ids: unread }).catch((err) => { console.error("Failed to mark events as read:", err); });
       }
     }
   }, [events, storyId]);

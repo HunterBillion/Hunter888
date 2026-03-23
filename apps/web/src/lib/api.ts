@@ -27,6 +27,7 @@ async function tryRefreshToken(): Promise<boolean> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken }),
+      credentials: "include",
     });
 
     if (!res.ok) return false;
@@ -79,6 +80,7 @@ async function request(path: string, options: RequestInit = {}) {
     response = await fetch(`${apiPrefix()}${path}`, {
       ...options,
       headers,
+      credentials: "include", // Send httpOnly cookies
     });
   } catch {
     throw new ApiError("Сервер недоступен. Проверьте подключение.", 0);
@@ -96,6 +98,7 @@ async function request(path: string, options: RequestInit = {}) {
       response = await fetch(`${apiPrefix()}${path}`, {
         ...options,
         headers,
+        credentials: "include",
       });
     }
 
@@ -148,6 +151,7 @@ async function uploadFile(path: string, file: File) {
       method: "POST",
       headers,
       body: formData,
+      credentials: "include",
     });
   } catch {
     throw new ApiError("Сервер недоступен. Проверьте подключение.", 0);
@@ -162,6 +166,7 @@ async function uploadFile(path: string, file: File) {
         method: "POST",
         headers,
         body: formData,
+        credentials: "include",
       });
     }
     if (response.status === 401) {

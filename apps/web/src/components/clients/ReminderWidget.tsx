@@ -20,7 +20,7 @@ export function ReminderWidget() {
         });
         setReminders(today);
       })
-      .catch(() => {})
+      .catch((err) => { console.error("Failed to load reminders:", err); })
       .finally(() => setLoading(false));
   }, []);
 

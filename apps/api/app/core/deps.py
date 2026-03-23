@@ -13,7 +13,7 @@ from app.database import get_db
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 _blacklist_pool: aioredis.ConnectionPool | None = None
@@ -51,11 +51,29 @@ async def _is_user_blacklisted(user_id: str) -> bool:
         return True
 
 
+from fastapi import Cookie, Request
+
+
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: AsyncSession = Depends(get_db),
+    access_token: str | None = Cookie(default=None),
 ) -> User:
-    payload = decode_token(credentials.credentials)
+    # Try Bearer header first, then httpOnly cookie
+    token = None
+    if credentials:
+        token = credentials.credentials
+    elif access_token:
+        token = access_token
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
+    payload = decode_token(token)
     if payload is None or payload.get("type") != "access":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

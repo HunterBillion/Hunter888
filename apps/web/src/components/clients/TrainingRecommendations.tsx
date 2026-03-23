@@ -33,7 +33,7 @@ export function TrainingRecommendations({ managerId }: TrainingRecommendationsPr
 
     api.get(endpoint)
       .then((resp: RecommendationsResponse) => setData(resp.patterns || []))
-      .catch(() => {})
+      .catch((err) => { console.error("Failed to load training recommendations:", err); })
       .finally(() => setLoading(false));
   }, [managerId]);
 

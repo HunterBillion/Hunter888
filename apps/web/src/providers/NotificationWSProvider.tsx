@@ -155,7 +155,7 @@ export function NotificationWSProvider({ children }: { children: React.ReactNode
           useNotificationStore.getState().setUnread(unread);
         }
       })
-      .catch(() => {});
+      .catch((err) => { console.error("Failed to fetch initial notifications:", err); });
   }, []);
 
   useEffect(() => {

@@ -71,6 +71,12 @@ async def _auth_websocket(ws: WebSocket) -> tuple[uuid.UUID, str] | None:
             return None
         username = user.full_name or user.email or str(user_id)[:8]
 
+    # Check if user was logged out (token blacklisted)
+    from app.core.deps import _is_user_blacklisted
+    if await _is_user_blacklisted(str(user_id)):
+        await _send(ws, "auth.error", {"detail": "Token has been revoked"})
+        return None
+
     await _send(ws, "auth.success", {"user_id": str(user_id), "username": username})
     return user_id, username
 

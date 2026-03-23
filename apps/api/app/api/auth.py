@@ -19,6 +19,8 @@ from app.core.security import (
 )
 from app.database import get_db
 from app.models.user import User
+from fastapi.responses import JSONResponse
+
 from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
@@ -28,6 +30,47 @@ from app.schemas.auth import (
 )
 
 router = APIRouter()
+
+
+def _set_auth_cookies(response: JSONResponse, tokens: TokenResponse) -> JSONResponse:
+    """Set httpOnly cookies for access and refresh tokens."""
+    is_prod = settings.app_env == "production"
+    response.set_cookie(
+        key="access_token",
+        value=tokens.access_token,
+        httponly=True,
+        secure=is_prod,
+        samesite="lax",
+        max_age=settings.jwt_access_token_expire_minutes * 60,
+        path="/",
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=tokens.refresh_token,
+        httponly=True,
+        secure=is_prod,
+        samesite="lax",
+        max_age=settings.jwt_refresh_token_expire_days * 86400,
+        path="/api/auth/refresh",
+    )
+    # Marker cookie for middleware/JS — NOT httpOnly so frontend can check presence
+    response.set_cookie(
+        key="vh_authenticated",
+        value="1",
+        httponly=False,
+        secure=is_prod,
+        samesite="lax",
+        max_age=settings.jwt_refresh_token_expire_days * 86400,
+        path="/",
+    )
+    return response
+
+
+def _clear_auth_cookies(response: JSONResponse) -> JSONResponse:
+    """Clear auth cookies on logout."""
+    for key in ("access_token", "refresh_token", "vh_authenticated"):
+        response.delete_cookie(key=key, path="/")
+    return response
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -46,7 +89,8 @@ async def register(request: Request, body: RegisterRequest, db: AsyncSession = D
     await db.flush()
 
     tokens = _create_tokens(str(user.id))
-    return tokens
+    response = JSONResponse(content=tokens.model_dump(), status_code=201)
+    return _set_auth_cookies(response, tokens)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -73,7 +117,8 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
 
     tokens = _create_tokens(str(user.id))
     tokens.must_change_password = user.must_change_password
-    return tokens
+    response = JSONResponse(content=tokens.model_dump())
+    return _set_auth_cookies(response, tokens)
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -92,7 +137,9 @@ async def refresh(body: RefreshRequest):
             detail="Token has been revoked. Please login again.",
         )
 
-    return _create_tokens(user_id)
+    tokens = _create_tokens(user_id)
+    response = JSONResponse(content=tokens.model_dump())
+    return _set_auth_cookies(response, tokens)
 
 
 @router.get("/me", response_model=UserResponse)
@@ -111,7 +158,8 @@ async def logout(user: User = Depends(get_current_user)):
         await redis.aclose()
     except Exception:
         pass  # Logout should not fail even if Redis is down
-    return None
+    response = JSONResponse(content=None, status_code=204)
+    return _clear_auth_cookies(response)
 
 
 def _create_tokens(user_id: str) -> TokenResponse:
@@ -249,6 +297,7 @@ async def reset_password(request: Request, body: ResetPasswordRequest, db: Async
     user.hashed_password = hash_password(body.new_password)
     user.must_change_password = False
     db.add(user)
+    await db.commit()
 
     return {"message": "Пароль успешно изменён. Войдите с новым паролем."}
 
@@ -284,25 +333,49 @@ async def google_login():
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Google OAuth не настроен")
 
     state = _secrets.token_urlsafe(32)
+    state_key = f"google:{state}"
+
+    # Store state in Redis for CSRF validation (5 min TTL)
+    try:
+        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        await r.setex(f"oauth_state:{state_key}", 300, "1")
+        await r.aclose()
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
+
     redirect_uri = settings.google_redirect_uri or f"{settings.frontend_url}/auth/callback"
     params = {
         "client_id": settings.google_client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": "openid email profile",
-        "state": f"google:{state}",
+        "state": state_key,
         "access_type": "offline",
         "prompt": "consent",
     }
     url = "https://accounts.google.com/o/oauth2/v2/auth?" + "&".join(f"{k}={v}" for k, v in params.items())
-    return {"url": url, "state": f"google:{state}"}
+    return {"url": url, "state": state_key}
 
 
 @router.post("/google/callback", response_model=TokenResponse)
-async def google_callback(body: OAuthCallbackRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def google_callback(request: Request, body: OAuthCallbackRequest, db: AsyncSession = Depends(get_db)):
     """Exchange Google auth code for tokens, find or create user."""
     if not settings.google_oauth_configured:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Google OAuth не настроен")
+
+    # Validate OAuth state to prevent CSRF
+    if not body.state:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing OAuth state parameter")
+    try:
+        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        stored = await r.get(f"oauth_state:{body.state}")
+        await r.delete(f"oauth_state:{body.state}")
+        await r.aclose()
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
+    if not stored:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OAuth state (possible CSRF)")
 
     redirect_uri = settings.google_redirect_uri or f"{settings.frontend_url}/auth/callback"
 
@@ -350,22 +423,46 @@ async def yandex_login():
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Yandex OAuth не настроен")
 
     state = _secrets.token_urlsafe(32)
+    state_key = f"yandex:{state}"
+
+    # Store state in Redis for CSRF validation (5 min TTL)
+    try:
+        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        await r.setex(f"oauth_state:{state_key}", 300, "1")
+        await r.aclose()
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
+
     redirect_uri = settings.yandex_redirect_uri or f"{settings.frontend_url}/auth/callback"
     params = {
         "client_id": settings.yandex_client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "state": f"yandex:{state}",
+        "state": state_key,
     }
     url = "https://oauth.yandex.ru/authorize?" + "&".join(f"{k}={v}" for k, v in params.items())
-    return {"url": url, "state": f"yandex:{state}"}
+    return {"url": url, "state": state_key}
 
 
 @router.post("/yandex/callback", response_model=TokenResponse)
-async def yandex_callback(body: OAuthCallbackRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def yandex_callback(request: Request, body: OAuthCallbackRequest, db: AsyncSession = Depends(get_db)):
     """Exchange Yandex auth code for tokens, find or create user."""
     if not settings.yandex_oauth_configured:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Yandex OAuth не настроен")
+
+    # Validate OAuth state to prevent CSRF
+    if not body.state:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing OAuth state parameter")
+    try:
+        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        stored = await r.get(f"oauth_state:{body.state}")
+        await r.delete(f"oauth_state:{body.state}")
+        await r.aclose()
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
+    if not stored:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OAuth state (possible CSRF)")
 
     redirect_uri = settings.yandex_redirect_uri or f"{settings.frontend_url}/auth/callback"
 

@@ -201,6 +201,16 @@ async def notification_websocket(websocket: WebSocket) -> None:
             await websocket.close(code=4001)
             return
 
+        # Check if user was logged out (token blacklisted)
+        from app.core.deps import _is_user_blacklisted
+        if await _is_user_blacklisted(user_id):
+            await websocket.send_json({
+                "type": "auth.error",
+                "message": "Токен отозван. Войдите заново.",
+            })
+            await websocket.close(code=4003)
+            return
+
         # ── Получаем unread count + user preferences ──
         unread_count = 0
         user_prefs: dict = {}

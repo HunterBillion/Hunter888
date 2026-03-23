@@ -67,7 +67,7 @@ export default function ClientsPage() {
     if (!isAdminOrRop) return;
     api.get("/users?role=manager&limit=100")
       .then((data: ManagerOption[]) => setManagers(Array.isArray(data) ? data : []))
-      .catch(() => {});
+      .catch((err) => { console.error("Failed to load managers:", err); });
   }, [isAdminOrRop]);
 
   // Close dropdowns on outside click

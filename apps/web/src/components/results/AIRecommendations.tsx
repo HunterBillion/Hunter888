@@ -34,6 +34,8 @@ export default function AIRecommendations({ text }: AIRecommendationsProps) {
         style={{ color: "var(--text-secondary)" }}
       >
         <Markdown
+          skipHtml
+          allowedElements={["h1", "h2", "h3", "p", "ul", "ol", "li", "strong", "em", "a", "br", "code", "pre", "blockquote"]}
           components={{
             h1: ({ children }) => (
               <h3 className="font-display text-base font-semibold mt-4 mb-2" style={{ color: "var(--text-primary)" }}>

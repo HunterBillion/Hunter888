@@ -18,12 +18,14 @@ services:
       -c effective_cache_size=512MB
       -c wal_buffers=16MB
       -c checkpoint_completion_target=0.9
-    # Without -d, pg_isready defaults DB name = user → looks for "trainer", but DB is POSTGRES_DB (trainer_db)
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trainer} -d postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trainer} -d ${POSTGRES_DB:-trainer_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    networks:
+      - backend
     deploy:
       resources:
         limits:
@@ -48,6 +50,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    networks:
+      - backend
     deploy:
       resources:
         limits:
@@ -109,6 +114,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend
     # FIX: 512MB too low for 4 workers + WebSocket sessions + TTS cache
     # Each worker ~100-150MB + in-memory caches
     deploy:
@@ -131,6 +139,20 @@ services:
       HOSTNAME: "0.0.0.0"
     depends_on:
       - api
+    restart: unless-stopped
+    networks:
+      - frontend
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
 
 volumes:
   pgdata:

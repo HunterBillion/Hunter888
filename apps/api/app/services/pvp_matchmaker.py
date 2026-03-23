@@ -45,7 +45,10 @@ logger = logging.getLogger(__name__)
 # Redis connection
 # ---------------------------------------------------------------------------
 
+import asyncio as _asyncio
+
 _pool: aioredis.ConnectionPool | None = None
+_pool_lock = _asyncio.Lock()
 
 QUEUE_KEY = "pvp:queue"
 QUEUE_META_KEY = "pvp:queue:{user_id}"
@@ -102,20 +105,29 @@ async def join_queue(
     """
     r = _redis()
 
-    # Check if already in queue
-    existing = await r.zscore(QUEUE_KEY, str(user_id))
-    if existing is not None:
-        return {
-            "status": "already_queued",
-            "rating": existing,
-            "position": await r.zcard(QUEUE_KEY),
-        }
+    # Acquire lock to prevent race condition (two concurrent joins for same user)
+    lock_key = f"pvp:queue:lock:{user_id}"
+    acquired = await r.set(lock_key, "1", nx=True, ex=10)
+    if not acquired:
+        return {"status": "already_queued", "rating": 0, "position": 0}
 
-    # Get player rating
-    rating = await get_or_create_rating(user_id, db)
+    try:
+        # Check if already in queue
+        existing = await r.zscore(QUEUE_KEY, str(user_id))
+        if existing is not None:
+            return {
+                "status": "already_queued",
+                "rating": existing,
+                "position": await r.zcard(QUEUE_KEY),
+            }
 
-    # Add to sorted set (score = rating for range queries)
-    await r.zadd(QUEUE_KEY, {str(user_id): rating.rating})
+        # Get player rating
+        rating = await get_or_create_rating(user_id, db)
+
+        # Add to sorted set (score = rating for range queries)
+        await r.zadd(QUEUE_KEY, {str(user_id): rating.rating})
+    finally:
+        await r.delete(lock_key)
 
     # Store metadata
     meta_key = QUEUE_META_KEY.format(user_id=user_id)

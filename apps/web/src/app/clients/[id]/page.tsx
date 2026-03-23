@@ -37,7 +37,7 @@ export default function ClientDetailPage() {
   useEffect(() => {
     api.get(`/clients/${id}`)
       .then((data: CRMClientDetail) => setClient(data))
-      .catch(() => {})
+      .catch((err) => { console.error("Failed to load client details:", err); })
       .finally(() => setLoading(false));
   }, [id]);
 

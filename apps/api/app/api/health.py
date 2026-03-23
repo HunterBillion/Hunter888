@@ -106,11 +106,10 @@ async def prometheus_metrics(_user=Depends(require_role("admin"))):
 
 
 @router.get("/tts/debug")
-async def tts_debug():
-    """Public TTS diagnostic — check if ElevenLabs is configured and working.
+async def tts_debug(_user=Depends(require_role("admin"))):
+    """TTS diagnostic — admin only. Check if ElevenLabs is configured and working.
 
-    Returns detailed status of each TTS component. No auth required
-    so you can test quickly: GET http://localhost:8000/api/tts/debug
+    Returns detailed status of each TTS component.
     """
     import os
     from app.services.tts import (

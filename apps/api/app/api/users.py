@@ -152,6 +152,33 @@ async def get_my_profile(
     result = await db.execute(
         select(User).options(selectinload(User.team)).where(User.id == user.id)
     )
+    user_with_team = result.scalar_one_or_none()
+    if not user_with_team:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Basic stats
+    stats_result = await db.execute(
+        select(
+            func.count(TrainingSession.id),
+            func.avg(TrainingSession.total_score),
+        ).where(TrainingSession.user_id == user.id)
+    )
+    row = stats_result.one()
+    total_sessions = row[0] or 0
+    avg_score = round(float(row[1]), 1) if row[1] else None
+
+    return UserProfileResponse(
+        id=user_with_team.id,
+        email=user_with_team.email,
+        full_name=user_with_team.full_name,
+        role=user_with_team.role.value,
+        team_name=user_with_team.team.name if user_with_team.team else None,
+        is_active=user_with_team.is_active,
+        avatar_url=user_with_team.avatar_url,
+        created_at=user_with_team.created_at,
+        total_sessions=total_sessions,
+        avg_score=avg_score,
+    )
 
 
 @router.get("/friends", response_model=list[FriendItemResponse])
@@ -536,6 +563,30 @@ async def upload_avatar(
 
     max_size = MAX_VIDEO_SIZE if is_video else MAX_IMAGE_SIZE
     data = await file.read()
+
+    # Validate file magic bytes to prevent content-type spoofing
+    _MAGIC_BYTES = {
+        b"\xff\xd8\xff": "image/jpeg",
+        b"\x89PNG": "image/png",
+        b"RIFF": "image/webp",  # WebP starts with RIFF
+        b"GIF8": "image/gif",
+        b"\x00\x00\x00": "video",  # MP4/WebM ftyp box
+    }
+    header = data[:8]
+    magic_match = False
+    for magic, expected in _MAGIC_BYTES.items():
+        if header.startswith(magic):
+            if expected == "video" and is_video:
+                magic_match = True
+            elif expected == content_type:
+                magic_match = True
+            break
+    if not magic_match:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Содержимое файла не соответствует заявленному формату",
+        )
+
     if len(data) > max_size:
         limit_mb = max_size // (1024 * 1024)
         raise HTTPException(

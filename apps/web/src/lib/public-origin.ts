@@ -32,6 +32,17 @@ function isBakedDefaultWsUrl(url: string | undefined): boolean {
 export function getApiBaseUrl(): string {
   const baked = process.env.NEXT_PUBLIC_API_URL?.trim();
 
+  // Warn if using HTTP in production (insecure)
+  if (typeof window !== "undefined" && process.env.NODE_ENV === "production") {
+    const url = baked || DEFAULT_API_BASE;
+    if (url.startsWith("http://") && !url.includes("localhost") && !url.includes("127.0.0.1")) {
+      console.warn(
+        "[SECURITY] API URL uses HTTP in production. This is insecure — use HTTPS. URL:",
+        url,
+      );
+    }
+  }
+
   if (typeof window !== "undefined") {
     if (baked && !isBakedDefaultApiUrl(baked)) {
       return stripTrailingSlash(baked);

@@ -218,6 +218,12 @@ async def _authenticate_first_message(ws: WebSocket, raw: str) -> uuid.UUID | No
             await _send(ws, "auth.error", {"message": "User not found or inactive"})
             return None
 
+    # Check if user was logged out (token blacklisted)
+    from app.core.deps import _is_user_blacklisted
+    if await _is_user_blacklisted(user_id_str):
+        await _send(ws, "auth.error", {"message": "Token has been revoked"})
+        return None
+
     return user_id
 
 

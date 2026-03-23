@@ -60,7 +60,7 @@ export default function DashboardPage() {
 
     api.get("/clients/pipeline/stats")
       .then((stats: PipelineStats[]) => setPipelineStats(stats))
-      .catch(() => {});
+      .catch((err) => { console.error("Failed to load pipeline stats:", err); });
   }, [user]);
 
   return (

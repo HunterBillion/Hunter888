@@ -96,7 +96,7 @@ export default function ResultsPage() {
     // Check active tournament
     api.get("/tournament/active")
       .then((data: ActiveTournamentResponse) => setTournament(data))
-      .catch(() => {});
+      .catch((err) => { console.error("Failed to load active tournament:", err); });
   }, [params.id]);
 
   const submitToTournament = async () => {

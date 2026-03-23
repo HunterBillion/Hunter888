@@ -58,7 +58,7 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
   // Mark read — try REST API, update store
   const handleMarkRead = useCallback((id: string) => {
     storeMarkRead(id);
-    api.post(`/notifications/${id}/read`, {}).catch(() => {});
+    api.post(`/notifications/${id}/read`, {}).catch((err) => { console.error("Failed to mark notification as read:", err); });
   }, [storeMarkRead]);
 
   const formatTime = (iso: string) => {
