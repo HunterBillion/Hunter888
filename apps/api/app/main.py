@@ -21,6 +21,7 @@ from contextlib import asynccontextmanager
 from app.api.router import api_router
 from app.config import settings
 from app.services.scheduler import reminder_scheduler
+from app.ws.game_crm import game_crm_websocket
 from app.ws.training import training_websocket
 from app.ws.notifications import notification_websocket
 from app.ws.pvp import pvp_websocket
@@ -140,3 +141,9 @@ async def ws_notifications(websocket: WebSocket):
 async def ws_pvp(websocket: WebSocket):
     """WebSocket для PvP-дуэлей (Agent 8 — PvP Battle)."""
     await pvp_websocket(websocket)
+
+
+@app.websocket("/ws/game-crm")
+async def ws_game_crm(websocket: WebSocket):
+    """WebSocket для текстового чата AI-клиента в CRM-панели."""
+    await game_crm_websocket(websocket)

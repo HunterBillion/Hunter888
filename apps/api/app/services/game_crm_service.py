@@ -25,15 +25,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.game_crm import GameClientEvent, GameClientStatus, GameEventType
-from app.models.roleplay import ClientStory, EpisodicMemory
+from app.models.roleplay import ClientProfile, ClientStory, EpisodicMemory
 from app.models.training import TrainingSession
 from app.models.user import User
+from app.services.llm import generate_response
+from app.services.rag_legal import retrieve_legal_context
 from app.services.timeline_aggregator import TimelineAggregator, create_game_event
 
 logger = logging.getLogger(__name__)
 
 # Redis cache TTL
 PORTFOLIO_CACHE_TTL = 300  # 5 минут
+
+MAX_CHAT_HISTORY_EVENTS = 12
+MAX_MEMORY_ITEMS = 8
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -386,7 +391,7 @@ class GameCRMService:
         """
         story = await self._get_story(story_id, owner_id)
 
-        event = await create_game_event(
+        manager_event = await create_game_event(
             self.db,
             story_id=story_id,
             user_id=actor_id,
@@ -395,8 +400,26 @@ class GameCRMService:
             title="Сообщение клиенту",
             content=content,
             narrative_date=narrative_date,
-            payload={"story_name": story.story_name},
+            payload={"story_name": story.story_name, "role": "manager"},
             severity=0.3,
+        )
+
+        ai_reply_text = await self._safe_generate_ai_client_reply(story, manager_message=content)
+        ai_event = await create_game_event(
+            self.db,
+            story_id=story_id,
+            user_id=story.user_id,
+            event_type=GameEventType.message,
+            source="ai_client",
+            title="Ответ AI-клиента",
+            content=ai_reply_text,
+            narrative_date=narrative_date,
+            payload={
+                "story_name": story.story_name,
+                "role": "ai_client",
+                "reply_to_event_id": str(manager_event.id),
+            },
+            severity=0.55,
         )
 
         try:
@@ -406,17 +429,26 @@ class GameCRMService:
                 event_type="game_crm.message_sent",
                 data={
                     "story_id": str(story_id),
-                    "event_id": str(event.id),
+                    "event_id": str(manager_event.id),
                     "content": content[:100],
+                    "reply_event_id": str(ai_event.id),
+                    "reply_preview": ai_reply_text[:140],
                 },
             )
         except Exception:
             logger.debug("WS notification failed for game message")
 
         return {
-            "event_id": str(event.id),
+            "event_id": str(manager_event.id),
             "content": content,
-            "timestamp": event.created_at.isoformat() if event.created_at else None,
+            "timestamp": manager_event.created_at.isoformat() if manager_event.created_at else None,
+            "event": manager_event.to_timeline_dict(),
+            "reply": {
+                "event_id": str(ai_event.id),
+                "content": ai_reply_text,
+                "timestamp": ai_event.created_at.isoformat() if ai_event.created_at else None,
+                "event": ai_event.to_timeline_dict(),
+            },
         }
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -641,3 +673,217 @@ class GameCRMService:
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Story not found or access denied")
         return story
+
+    async def _generate_ai_client_reply(
+        self,
+        story: ClientStory,
+        *,
+        manager_message: str,
+    ) -> str:
+        recent_messages = await self._get_recent_chat_history(story.id)
+        memories = await self._get_story_memories(story.id)
+        legal_context = await retrieve_legal_context(
+            "\n".join(
+                [msg.get("content", "") for msg in recent_messages[-6:]] + [manager_message]
+            ),
+            self.db,
+            top_k=6,
+        )
+
+        profile = None
+        if story.client_profile_id:
+            profile_result = await self.db.execute(
+                select(ClientProfile).where(ClientProfile.id == story.client_profile_id)
+            )
+            profile = profile_result.scalar_one_or_none()
+
+        system_prompt = self._build_ai_client_system_prompt(
+            story,
+            profile=profile,
+            memories=memories,
+            legal_context=legal_context.to_prompt_context() if legal_context.has_results else "",
+        )
+        messages = [*recent_messages, {"role": "user", "content": manager_message}]
+
+        response = await generate_response(
+            system_prompt=system_prompt,
+            messages=messages,
+            emotion_state=self._resolve_story_emotion(story),
+            user_id=str(story.user_id),
+        )
+        return response.content.strip()
+        
+    async def _safe_generate_ai_client_reply(
+        self,
+        story: ClientStory,
+        *,
+        manager_message: str,
+    ) -> str:
+        try:
+            return await self._generate_ai_client_reply(story, manager_message=manager_message)
+        except Exception as exc:
+            logger.warning("Game CRM AI reply fallback: story=%s error=%s", story.id, exc)
+            return (
+                "Я вас услышал, но у меня пока слишком много сомнений. "
+                "Объясните проще: почему в моей ситуации это вообще законно и что со мной реально будет дальше?"
+            )
+
+    async def _get_recent_chat_history(self, story_id: uuid.UUID) -> list[dict[str, str]]:
+        result = await self.db.execute(
+            select(GameClientEvent)
+            .where(
+                GameClientEvent.story_id == story_id,
+                GameClientEvent.event_type == GameEventType.message,
+            )
+            .order_by(desc(GameClientEvent.created_at))
+            .limit(MAX_CHAT_HISTORY_EVENTS)
+        )
+        rows = list(reversed(result.scalars().all()))
+        messages: list[dict[str, str]] = []
+        for row in rows:
+            if not row.content:
+                continue
+            role = "assistant" if row.source == "ai_client" else "user"
+            messages.append({"role": role, "content": row.content})
+        return messages
+
+    async def _get_story_memories(self, story_id: uuid.UUID) -> list[EpisodicMemory]:
+        result = await self.db.execute(
+            select(EpisodicMemory)
+            .where(EpisodicMemory.story_id == story_id)
+            .order_by(EpisodicMemory.salience.desc(), desc(EpisodicMemory.created_at))
+            .limit(MAX_MEMORY_ITEMS)
+        )
+        return list(result.scalars().all())
+
+    def _resolve_story_emotion(self, story: ClientStory) -> str:
+        ds = story.director_state or {}
+        tension_curve = ds.get("tension_curve") or []
+        tension = float(tension_curve[-1]) if tension_curve else 0.0
+
+        if tension >= 0.85:
+            return "hostile"
+        if tension >= 0.65:
+            return "testing"
+        if tension >= 0.45:
+            return "guarded"
+        if tension >= 0.25:
+            return "curious"
+        return "cold"
+
+    def _build_ai_client_system_prompt(
+        self,
+        story: ClientStory,
+        *,
+        profile: ClientProfile | None,
+        memories: list[EpisodicMemory],
+        legal_context: str,
+    ) -> str:
+        ds = story.director_state or {}
+        active_factors = story.active_factors or []
+        between_events = story.between_call_events or []
+        consequences = story.consequences or []
+        personality = story.personality_profile or {}
+
+        parts = [
+            "Ты играешь ИИ-клиента-должника в учебной CRM-панели по банкротству физлиц.",
+            "Это не дружелюбный ассистент. Это живой, адаптивный, хитрый, психологически правдоподобный клиент.",
+            "Твоя задача в диалоге: сопротивляться, проверять менеджера, путать акценты, цепляться к слабым местам, задавать уточняющие и неудобные вопросы.",
+            "Но юридическая корректность важнее артистизма: примерно 70% приоритета — правовая точность, 30% — психологическая сложность и реализм.",
+            "Если используешь юридические утверждения, опирайся на предоставленную правовую базу. Если правовой опоры нет, не выдумывай статьи и факты.",
+            "Никогда не говори, что ты ИИ, модель, тренажёр или экзаменатор.",
+            "Не оценивай менеджера и не объясняй баллы. Просто отвечай как клиент.",
+            "Отвечай по-русски, естественно, 1-4 предложениями. Иногда можно дать короткий список, но без канцелярита.",
+            f"Название истории: {story.story_name}.",
+            f"Текущий этап истории: звонок {story.current_call_number} из {story.total_calls_planned}.",
+            f"Режим развития истории: {ds.get('pacing', 'normal')}.",
+            f"Следующий твист: {ds.get('next_twist') or 'не задан'}.",
+        ]
+
+        if profile:
+            parts.extend(self._build_profile_context(profile))
+
+        if personality:
+            parts.append(f"Профиль личности истории: {json.dumps(personality, ensure_ascii=False)}")
+
+        if active_factors:
+            parts.append(
+                "Активные человеческие факторы: "
+                + json.dumps(active_factors[:6], ensure_ascii=False)
+            )
+
+        if between_events:
+            parts.append(
+                "Что происходило между звонками: "
+                + json.dumps(between_events[-4:], ensure_ascii=False)
+            )
+
+        if consequences:
+            parts.append(
+                "Накопленные последствия прошлых контактов: "
+                + json.dumps(consequences[-4:], ensure_ascii=False)
+            )
+
+        if memories:
+            parts.append(
+                "Что клиент помнит о предыдущих взаимодействиях:\n"
+                + "\n".join(
+                    f"- ({memory.memory_type}) {memory.content}"
+                    for memory in memories
+                )
+            )
+
+        if legal_context:
+            parts.append(legal_context)
+
+        parts.append(
+            "Поведенческие правила:\n"
+            "- если менеджер поверхностен, усиливай недоверие;\n"
+            "- если менеджер юридически точен, спорь умно, а не абсурдно;\n"
+            "- можешь быть эмоциональным, но не ломай правдоподобие;\n"
+            "- не соглашайся слишком быстро;\n"
+            "- если менеджер задел важный страх или мягкую точку, можешь немного смягчиться."
+        )
+
+        return "\n\n".join(parts)
+
+    def _build_profile_context(self, profile: ClientProfile) -> list[str]:
+        parts = [
+            (
+                "Скрытый профиль клиента: "
+                f"{profile.full_name}, {profile.age} лет, {profile.city}, "
+                f"архетип={profile.archetype_code}, долг={profile.total_debt}."
+            ),
+            (
+                "Уровни доверия/сопротивления: "
+                f"trust={profile.trust_level}/10, resistance={profile.resistance_level}/10."
+            ),
+        ]
+
+        if profile.fears:
+            parts.append("Главные страхи: " + ", ".join(str(item) for item in profile.fears[:5]))
+        if profile.soft_spot:
+            parts.append(f"Мягкая точка: {profile.soft_spot}.")
+        if profile.breaking_point:
+            parts.append(f"Точка перелома: {profile.breaking_point}.")
+        if profile.hidden_objections:
+            parts.append(
+                "Скрытые возражения: "
+                + ", ".join(str(item) for item in profile.hidden_objections[:5])
+            )
+        if profile.creditors:
+            parts.append(
+                "Кредиторы: "
+                + json.dumps(profile.creditors[:4], ensure_ascii=False)
+            )
+        if profile.property_list:
+            parts.append(
+                "Имущество: "
+                + json.dumps(profile.property_list[:4], ensure_ascii=False)
+            )
+        if profile.income:
+            parts.append(
+                f"Доход: {profile.income} руб/мес, тип дохода: {profile.income_type or 'unknown'}."
+            )
+
+        return parts

@@ -39,6 +39,15 @@ const EVENT_COLORS: Record<GameEventType, string> = {
   callback: "#F97316",
 };
 
+const SOURCE_LABELS: Record<string, string> = {
+  manager: "Менеджер",
+  ai_client: "AI-клиент",
+  game_director: "Director",
+  scheduler: "Scheduler",
+  memory: "Memory",
+  system: "System",
+};
+
 function formatTime(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -143,6 +152,16 @@ export function GameTimeline({
                       }}
                     >
                       {GAME_EVENT_LABELS[event.type]}
+                    </span>
+                    <span
+                      className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                      style={{
+                        background: "rgba(255,255,255,0.06)",
+                        color: "var(--text-secondary)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      {SOURCE_LABELS[event.source] || event.source}
                     </span>
                     {event.narrative_date && (
                       <span

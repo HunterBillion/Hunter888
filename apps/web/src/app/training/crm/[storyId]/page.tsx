@@ -24,6 +24,7 @@ import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { GameTimeline } from "@/components/game-crm/GameTimeline";
+import { useWebSocket } from "@/hooks/useWebSocket";
 import type {
   GameStoryDetail,
   GameTimelineEvent,
@@ -48,6 +49,28 @@ export default function GameClientPanelPage() {
   const [sending, setSending] = useState(false);
 
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+
+  const { sendMessage, connectionState } = useWebSocket({
+    path: "/ws/game-crm",
+    autoConnect: true,
+    onMessage: (msg) => {
+      switch (msg.type) {
+        case "story.subscribed":
+          break;
+        case "game_crm.message.created": {
+          const managerEvent = msg.data?.manager_event as GameTimelineEvent | undefined;
+          const aiEvent = msg.data?.ai_event as GameTimelineEvent | undefined;
+          setEvents((prev) => [aiEvent, managerEvent, ...prev].filter(Boolean) as GameTimelineEvent[]);
+          setTotalEvents((prev) => prev + (managerEvent ? 1 : 0) + (aiEvent ? 1 : 0));
+          setSending(false);
+          break;
+        }
+        case "error":
+          setSending(false);
+          break;
+      }
+    },
+  });
 
   // ── Fetch story detail ──
   const fetchStory = useCallback(async () => {
@@ -84,23 +107,40 @@ export default function GameClientPanelPage() {
     fetchTimeline();
   }, [fetchStory]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (connectionState === "connected" && storyId) {
+      sendMessage({ type: "story.subscribe", data: { story_id: storyId } });
+    }
+  }, [connectionState, storyId, sendMessage]);
+
   // ── Send message ──
   const handleSendMessage = useCallback(async () => {
     if (!messageText.trim() || sending) return;
     setSending(true);
+    const trimmed = messageText.trim();
     try {
-      await api.post(`/game/clients/stories/${storyId}/message`, {
-        content: messageText.trim(),
-      });
+      if (connectionState === "connected") {
+        sendMessage({
+          type: "story.message",
+          data: {
+            story_id: storyId,
+            content: trimmed,
+          },
+        });
+      } else {
+        await api.post(`/game/clients/stories/${storyId}/message`, {
+          content: trimmed,
+        });
+        setEventsLoading(true);
+        await fetchTimeline();
+        setSending(false);
+      }
       setMessageText("");
-      // Refresh timeline
-      setEventsLoading(true);
-      await fetchTimeline();
     } catch {
       /* ignore */
+      setSending(false);
     }
-    setSending(false);
-  }, [messageText, storyId, sending, fetchTimeline]);
+  }, [messageText, storyId, sending, fetchTimeline, connectionState, sendMessage]);
 
   // ── Schedule callback ──
   const handleScheduleCallback = useCallback(async () => {
@@ -339,13 +379,13 @@ export default function GameClientPanelPage() {
                   className="text-[10px] font-mono font-semibold uppercase tracking-wider block mb-2"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  Сообщение клиенту
+                  Сообщение AI-клиенту
                 </span>
                 <textarea
                   ref={messageInputRef}
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
-                  placeholder="Написать сообщение..."
+                  placeholder="Написать должнику и проверить его реакцию..."
                   rows={3}
                   className="w-full text-xs font-mono rounded-lg p-2 resize-none"
                   style={{
@@ -370,8 +410,8 @@ export default function GameClientPanelPage() {
                     opacity: messageText.trim() && !sending ? 1 : 0.5,
                   }}
                 >
-                  <Send size={10} />
-                  Отправить
+                  {sending ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />}
+                  {sending ? "Диалог..." : "Отправить"}
                 </button>
               </div>
 
