@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 import redis.asyncio as aioredis
 
 from app.config import settings
+from app.core.redis_pool import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -516,10 +517,9 @@ async def analyze_response(
 async def _get_cascade_state(session_id: uuid.UUID) -> dict:
     """Get cascade state from Redis: which traps were triggered via cascades."""
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         key = _CASCADE_STATE_KEY.format(session_id=session_id)
         raw = await r.get(key)
-        await r.aclose()
         if raw:
             return json.loads(raw)
     except Exception:
@@ -530,10 +530,9 @@ async def _get_cascade_state(session_id: uuid.UUID) -> dict:
 async def _save_cascade_state(session_id: uuid.UUID, state: dict) -> None:
     """Save cascade state to Redis."""
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         key = _CASCADE_STATE_KEY.format(session_id=session_id)
         await r.set(key, json.dumps(state), ex=_TRAP_STATE_TTL)
-        await r.aclose()
     except Exception:
         logger.warning("Failed to save cascade state for session %s", session_id)
 
@@ -700,7 +699,7 @@ async def _persist_trap_results(
 ) -> None:
     """Append trap results to Redis for session-level tracking."""
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         key = _TRAP_STATE_KEY.format(session_id=session_id)
 
         for result in results:
@@ -726,7 +725,6 @@ async def _persist_trap_results(
             await r.rpush(key, entry)
 
         await r.expire(key, _TRAP_STATE_TTL)
-        await r.aclose()
     except Exception:
         logger.warning("Failed to persist trap results for session %s", session_id)
 
@@ -739,14 +737,13 @@ async def get_session_trap_state(session_id: uuid.UUID) -> TrapSessionState:
     state = TrapSessionState()
 
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         key = _TRAP_STATE_KEY.format(session_id=session_id)
         entries = await r.lrange(key, 0, -1)
 
         # Also load cascade state
         cascade_key = _CASCADE_STATE_KEY.format(session_id=session_id)
         cascade_raw = await r.get(cascade_key)
-        await r.aclose()
 
         if cascade_raw:
             cascade_data = json.loads(cascade_raw)
@@ -801,11 +798,10 @@ async def get_session_trap_state(session_id: uuid.UUID) -> TrapSessionState:
 async def cleanup_trap_state(session_id: uuid.UUID) -> None:
     """Remove trap state and cascade state from Redis (called at session end)."""
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         trap_key = _TRAP_STATE_KEY.format(session_id=session_id)
         cascade_key = _CASCADE_STATE_KEY.format(session_id=session_id)
         await r.delete(trap_key, cascade_key)
-        await r.aclose()
     except Exception:
         logger.debug("Trap cleanup failed for session %s", session_id)
 

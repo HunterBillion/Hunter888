@@ -165,13 +165,39 @@ class Settings(BaseSettings):
     def validate_jwt_secret(cls, v: str, info) -> str:
         values = info.data
         env = values.get("app_env", "development")
-        if env == "production" and (not v or v == "change-me-in-production"):
-            raise ValueError("JWT_SECRET must be set to a secure value in production")
-        if env == "production" and len(v) < 32:
-            raise ValueError("JWT_SECRET must be at least 32 characters in production")
-        # Auto-generate for development if not set
-        if not v:
-            return secrets.token_hex(32)
+
+        # Known insecure placeholders that MUST be changed before production
+        _INSECURE_PLACEHOLDERS = {
+            "",
+            "change-me-in-production",
+            "change-me-in-production-use-openssl-rand-hex-32",
+            "secret",
+            "jwt_secret",
+            "your-secret-here",
+        }
+
+        if env == "production":
+            if not v or v.lower().strip() in _INSECURE_PLACEHOLDERS:
+                raise ValueError(
+                    "CRITICAL: JWT_SECRET is not set or is using a placeholder value. "
+                    "Generate a secure secret with: openssl rand -hex 32"
+                )
+            if len(v) < 32:
+                raise ValueError(
+                    "JWT_SECRET must be at least 32 characters in production "
+                    f"(current: {len(v)} chars). Generate with: openssl rand -hex 32"
+                )
+        else:
+            # Development: warn about placeholder, auto-generate if empty
+            if v and v.lower().strip() in _INSECURE_PLACEHOLDERS:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "JWT_SECRET is using a placeholder value — auto-generating a random secret. "
+                    "Set a proper JWT_SECRET in .env before deploying to production."
+                )
+                return secrets.token_hex(32)
+            if not v:
+                return secrets.token_hex(32)
         return v
 
     @field_validator("csrf_secret")
@@ -183,5 +209,53 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": _ENV_FILES or [".env", "../../.env"], "env_file_encoding": "utf-8", "extra": "ignore"}
 
+    def validate_production_readiness(self) -> list[str]:
+        """Check all critical settings for production. Returns list of warnings/errors.
+
+        Call during startup to surface configuration issues early.
+        """
+        import logging
+        _log = logging.getLogger(__name__)
+        issues: list[str] = []
+
+        if self.app_env == "production":
+            # Database credentials
+            if "trainer_pass" in self.database_url or "localhost" in self.database_url:
+                issues.append("CRITICAL: database_url contains default/localhost credentials")
+
+            # Redis credentials
+            if "localhost" in self.redis_url and "production" in self.app_env:
+                issues.append("WARNING: redis_url points to localhost in production")
+
+            # Rate limits sanity check
+            if self.max_sessions_per_day > 1000:
+                issues.append(
+                    f"WARNING: max_sessions_per_day={self.max_sessions_per_day} — "
+                    "looks like test values leaked to production"
+                )
+            if self.max_messages_per_session > 1000:
+                issues.append(
+                    f"WARNING: max_messages_per_session={self.max_messages_per_session} — "
+                    "looks like test values leaked to production"
+                )
+
+            # Debug mode
+            if self.app_debug:
+                issues.append("WARNING: app_debug=True in production — Swagger UI and debug info exposed")
+
+        # Always warn about missing LLM keys
+        if not self.gemini_api_key and not self.claude_api_key and not self.openai_api_key:
+            issues.append("WARNING: No LLM API key configured — AI features will not work")
+
+        for issue in issues:
+            if issue.startswith("CRITICAL"):
+                _log.error(issue)
+            else:
+                _log.warning(issue)
+
+        return issues
+
 
 settings = Settings()
+# Run startup validation
+settings.validate_production_readiness()

@@ -7,11 +7,11 @@
 
 import time
 
-import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 
 from app.config import settings
 from app.core.deps import get_current_user, require_role
+from app.core.redis_pool import get_redis, redis_health_check
 from app.database import async_session
 
 from sqlalchemy import text
@@ -55,14 +55,11 @@ async def health_check_detail(_user=Depends(require_role("admin"))):
         checks["postgres"] = f"error: {type(e).__name__}"
         overall = "degraded"
 
-    # Check Redis
+    # Check Redis (uses shared pool)
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
-        try:
-            await r.ping()
-            checks["redis"] = "ok"
-        finally:
-            await r.aclose()
+        r = get_redis()
+        await r.ping()
+        checks["redis"] = "ok"
     except Exception as e:
         checks["redis"] = f"error: {type(e).__name__}"
         overall = "degraded"

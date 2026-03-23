@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.security import decode_token
+from app.core.redis_pool import get_redis
 from app.database import get_db
 from app.models.user import User
 
@@ -16,38 +17,22 @@ logger = logging.getLogger(__name__)
 security = HTTPBearer(auto_error=False)
 
 
-_blacklist_pool: aioredis.ConnectionPool | None = None
-
-
-def _get_blacklist_redis() -> aioredis.Redis:
-    """Get a Redis client using a shared connection pool for blacklist checks.
-
-    FIX: Previously created a new connection per request, causing connection leaks
-    under load (~1000 users/day = thousands of leaked connections).
-    """
-    global _blacklist_pool
-    if _blacklist_pool is None:
-        _blacklist_pool = aioredis.ConnectionPool.from_url(
-            settings.redis_url, decode_responses=True, max_connections=10
-        )
-    return aioredis.Redis(connection_pool=_blacklist_pool)
-
-
 async def _is_user_blacklisted(user_id: str) -> bool:
     """Check if user's tokens were invalidated via logout.
 
+    Uses the central Redis connection pool (app.core.redis_pool).
     SECURITY: Fails CLOSED — if Redis is down, deny access.
     This prevents logged-out users from using revoked tokens.
     """
     try:
-        redis = _get_blacklist_redis()
-        result = await redis.get(f"blacklist:user:{user_id}")
+        r = get_redis()
+        result = await r.get(f"blacklist:user:{user_id}")
         return result is not None
     except aioredis.ConnectionError:
         logger.error("Redis unavailable for blacklist check — DENYING access (fail-closed)")
         return True
     except Exception:
-        logger.error("Unexpected error in blacklist check — DENYING access")
+        logger.error("Unexpected error in blacklist check — DENYING access", exc_info=True)
         return True
 
 

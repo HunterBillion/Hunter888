@@ -36,6 +36,7 @@ import uuid
 import redis.asyncio as aioredis
 
 from app.config import settings
+from app.core.redis_pool import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ async def init_chain(
     """
     meta = chain_meta or {}
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         key = _CHAIN_STATE_KEY.format(session_id=session_id)
         state = json.dumps({
             "chain_id": str(chain_id),
@@ -134,7 +135,6 @@ async def init_chain(
             "max_score": meta.get("max_score", 10),
         })
         await r.set(key, state, ex=_CHAIN_STATE_TTL)
-        await r.aclose()
         logger.info(
             "Chain initialized for session %s: %d steps (chain %s)", session_id, len(steps), chain_id
         )
@@ -145,10 +145,9 @@ async def init_chain(
 async def get_chain_state(session_id: uuid.UUID) -> dict | None:
     """Get current chain state from Redis."""
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         key = _CHAIN_STATE_KEY.format(session_id=session_id)
         raw = await r.get(key)
-        await r.aclose()
         if raw:
             return json.loads(raw)
     except Exception:
@@ -501,10 +500,9 @@ def build_chain_system_prompt(steps: list[dict]) -> str:
 async def cleanup_chain(session_id: uuid.UUID) -> None:
     """Remove chain state from Redis."""
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         key = _CHAIN_STATE_KEY.format(session_id=session_id)
         await r.delete(key)
-        await r.aclose()
     except Exception:
         logger.debug("Chain cleanup failed for session %s", session_id)
 
@@ -512,9 +510,8 @@ async def cleanup_chain(session_id: uuid.UUID) -> None:
 async def _save_chain_state(session_id: uuid.UUID, state: dict) -> None:
     """Persist chain state to Redis."""
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         key = _CHAIN_STATE_KEY.format(session_id=session_id)
         await r.set(key, json.dumps(state), ex=_CHAIN_STATE_TTL)
-        await r.aclose()
     except Exception:
         logger.warning("Failed to save chain state for session %s", session_id)

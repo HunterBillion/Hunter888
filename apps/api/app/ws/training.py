@@ -708,7 +708,8 @@ async def _hint_scheduler(
 
     try:
         # Check which checkpoints are not yet reached
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        from app.core.redis_pool import get_redis as _get_redis_pool
+        r = _get_redis_pool()
         try:
             script_key = f"session:{session_id}:script_progress"
             progress_raw = await r.get(script_key)
@@ -724,8 +725,8 @@ async def _hint_scheduler(
                         checkpoint_name = cp.get("name", "Следующий этап")
                         break
                     checkpoint_status = "in_progress"
-        finally:
-            await r.aclose()
+        except Exception:
+            pass  # Checkpoint hint is non-critical
 
         await _send(ws, "hint.checkpoint", {
             "checkpoint": checkpoint_name,
@@ -943,9 +944,10 @@ async def _handle_session_start(
 
             await init_emotion(session.id, initial_emotion)
 
-            # Init Redis session state
-            r = aioredis.from_url(settings.redis_url, decode_responses=True)
+            # Init Redis session state (uses shared pool)
             try:
+                from app.core.redis_pool import get_redis as _get_redis_pool2
+                r = _get_redis_pool2()
                 state_key = f"session:{session.id}:state"
                 redis_state = json.dumps({
                     "user_id": str(session.user_id),
@@ -958,8 +960,6 @@ async def _handle_session_start(
                 await r.set(state_key, redis_state, ex=3600)
             except Exception:
                 logger.warning("Failed to init Redis for session %s", session.id)
-            finally:
-                await r.aclose()
 
             # Check for custom_params from CharacterBuilder
             custom_params = session.custom_params or {}

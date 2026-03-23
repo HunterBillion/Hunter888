@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +11,9 @@ limiter = Limiter(key_func=get_remote_address)
 import redis.asyncio as aioredis
 
 from app.config import settings
+from app.core.redis_pool import get_redis
+
+_logger = logging.getLogger(__name__)
 from app.core.deps import get_current_user
 from app.core.security import (
     create_access_token,
@@ -109,11 +114,10 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
 
     # Clear any blacklist from previous logout so new login works
     try:
-        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-        await redis.delete(f"blacklist:user:{user.id}")
-        await redis.aclose()
-    except Exception:
-        pass  # Non-blocking — login should work even if Redis hiccups
+        r = get_redis()
+        await r.delete(f"blacklist:user:{user.id}")
+    except aioredis.RedisError as exc:
+        _logger.warning("Redis error clearing blacklist on login for user %s: %s", user.id, exc)
 
     tokens = _create_tokens(str(user.id))
     tokens.must_change_password = user.must_change_password
@@ -151,13 +155,12 @@ async def me(user: User = Depends(get_current_user)):
 async def logout(user: User = Depends(get_current_user)):
     """Invalidate the current user's refresh token by blacklisting in Redis."""
     try:
-        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         # Blacklist the user's tokens for the duration of refresh token lifetime
         ttl = settings.jwt_refresh_token_expire_days * 86400
-        await redis.setex(f"blacklist:user:{user.id}", ttl, "1")
-        await redis.aclose()
-    except Exception:
-        pass  # Logout should not fail even if Redis is down
+        await r.setex(f"blacklist:user:{user.id}", ttl, "1")
+    except aioredis.RedisError as exc:
+        _logger.error("Redis error during logout blacklist for user %s: %s", user.id, exc)
     response = JSONResponse(content=None, status_code=204)
     return _clear_auth_cookies(response)
 
@@ -171,9 +174,7 @@ def _create_tokens(user_id: str) -> TokenResponse:
 
 # ─── Password reset ─────────────────────────────────────────────────────────
 
-import logging as _logging
-
-_auth_logger = _logging.getLogger(__name__)
+_auth_logger = _logger  # alias for backward compat within this module
 
 
 async def _send_reset_email(to_email: str, user_name: str, reset_url: str) -> None:
@@ -252,10 +253,10 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest, db: Asy
 
         # Store in Redis: token → user_id, 1 hour TTL
         try:
-            redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-            await redis.setex(f"reset_token:{reset_token}", 3600, str(user.id))
-            await redis.aclose()
-        except Exception:
+            r = get_redis()
+            await r.setex(f"reset_token:{reset_token}", 3600, str(user.id))
+        except aioredis.RedisError as exc:
+            _logger.error("Redis error storing reset token: %s", exc)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Service temporarily unavailable",
@@ -274,12 +275,12 @@ async def reset_password(request: Request, body: ResetPasswordRequest, db: Async
     """Reset password using token from email link."""
     # Look up token in Redis
     try:
-        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-        user_id_str = await redis.get(f"reset_token:{body.token}")
+        r = get_redis()
+        user_id_str = await r.get(f"reset_token:{body.token}")
         if user_id_str:
-            await redis.delete(f"reset_token:{body.token}")  # One-time use
-        await redis.aclose()
-    except Exception:
+            await r.delete(f"reset_token:{body.token}")  # One-time use
+    except aioredis.RedisError as exc:
+        _logger.error("Redis error during password reset: %s", exc)
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
 
     if not user_id_str:
@@ -337,10 +338,10 @@ async def google_login():
 
     # Store state in Redis for CSRF validation (5 min TTL)
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         await r.setex(f"oauth_state:{state_key}", 300, "1")
-        await r.aclose()
-    except Exception:
+    except aioredis.RedisError as exc:
+        _logger.error("Redis error storing Google OAuth state: %s", exc)
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
 
     redirect_uri = settings.google_redirect_uri or f"{settings.frontend_url}/auth/callback"
@@ -368,11 +369,11 @@ async def google_callback(request: Request, body: OAuthCallbackRequest, db: Asyn
     if not body.state:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing OAuth state parameter")
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         stored = await r.get(f"oauth_state:{body.state}")
         await r.delete(f"oauth_state:{body.state}")
-        await r.aclose()
-    except Exception:
+    except aioredis.RedisError as exc:
+        _logger.error("Redis error validating Google OAuth state: %s", exc)
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
     if not stored:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OAuth state (possible CSRF)")
@@ -427,10 +428,10 @@ async def yandex_login():
 
     # Store state in Redis for CSRF validation (5 min TTL)
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         await r.setex(f"oauth_state:{state_key}", 300, "1")
-        await r.aclose()
-    except Exception:
+    except aioredis.RedisError as exc:
+        _logger.error("Redis error storing Yandex OAuth state: %s", exc)
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
 
     redirect_uri = settings.yandex_redirect_uri or f"{settings.frontend_url}/auth/callback"
@@ -455,11 +456,11 @@ async def yandex_callback(request: Request, body: OAuthCallbackRequest, db: Asyn
     if not body.state:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing OAuth state parameter")
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         stored = await r.get(f"oauth_state:{body.state}")
         await r.delete(f"oauth_state:{body.state}")
-        await r.aclose()
-    except Exception:
+    except aioredis.RedisError as exc:
+        _logger.error("Redis error validating Yandex OAuth state: %s", exc)
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service temporarily unavailable")
     if not stored:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OAuth state (possible CSRF)")
@@ -537,11 +538,10 @@ async def _oauth_find_or_create(
 
     # Clear blacklist for fresh login
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         await r.delete(f"blacklist:user:{user.id}")
-        await r.aclose()
-    except Exception:
-        pass
+    except aioredis.RedisError as exc:
+        _logger.warning("Redis error clearing blacklist during OAuth for user %s: %s", user.id, exc)
 
     return _create_tokens(str(user.id))
 

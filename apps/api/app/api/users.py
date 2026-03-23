@@ -379,31 +379,8 @@ async def remove_friend(
     if friendship.requester_id != user.id and friendship.addressee_id != user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     await db.delete(friendship)
-    user_with_team = result.scalar_one()
-
-    # Basic stats
-    sessions_result = await db.execute(
-        select(
-            func.count(TrainingSession.id),
-            func.avg(TrainingSession.score_total),
-        ).where(TrainingSession.user_id == user.id)
-    )
-    row = sessions_result.one()
-    total_sessions = row[0] or 0
-    avg_score = round(float(row[1]), 2) if row[1] is not None else None
-
-    return UserProfileResponse(
-        id=user_with_team.id,
-        email=user_with_team.email,
-        full_name=user_with_team.full_name,
-        role=user_with_team.role.value,
-        team_name=user_with_team.team.name if user_with_team.team else None,
-        is_active=user_with_team.is_active,
-        avatar_url=user_with_team.avatar_url,
-        created_at=user_with_team.created_at,
-        total_sessions=total_sessions,
-        avg_score=avg_score,
-    )
+    await db.flush()
+    # 204 No Content — nothing to return
 
 
 @router.put("/me/password", status_code=status.HTTP_204_NO_CONTENT)

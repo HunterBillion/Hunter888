@@ -20,6 +20,7 @@ from contextlib import asynccontextmanager
 
 from app.api.router import api_router
 from app.config import settings
+from app.core.redis_pool import close_redis_pool
 from app.services.scheduler import reminder_scheduler
 from app.ws.game_crm import game_crm_websocket
 from app.ws.training import training_websocket
@@ -50,6 +51,7 @@ async def lifespan(application: FastAPI):
     yield
     # ── Shutdown ──
     reminder_scheduler.stop()
+    await close_redis_pool()
     logger.info("Lifespan: shutdown complete")
 
 

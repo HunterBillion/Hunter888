@@ -14,10 +14,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-import redis.asyncio as aioredis
-
 from app.config import settings
 from app.core.deps import get_current_user, require_role
+from app.core.redis_pool import get_redis
 from app.database import get_db
 from app.models.training import SessionStatus, TrainingSession
 from app.models.user import Team, User
@@ -30,11 +29,10 @@ CACHE_TTL = 30  # seconds
 
 
 async def _cache_get(key: str) -> dict | None:
-    """Get cached dashboard data from Redis."""
+    """Get cached dashboard data from Redis (shared pool)."""
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         raw = await r.get(key)
-        await r.aclose()
         if raw:
             return json.loads(raw)
     except Exception:
@@ -43,13 +41,12 @@ async def _cache_get(key: str) -> dict | None:
 
 
 async def _cache_set(key: str, data: dict) -> None:
-    """Cache dashboard data in Redis."""
+    """Cache dashboard data in Redis (shared pool)."""
     try:
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        r = get_redis()
         await r.set(key, json.dumps(data, default=str), ex=CACHE_TTL)
-        await r.aclose()
     except Exception:
-        logger.debug("Dashboard sub-query failed", exc_info=True)
+        logger.debug("Dashboard cache set failed for key %s", key, exc_info=True)
 
 
 @router.get("/manager")
