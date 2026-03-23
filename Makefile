@@ -1,6 +1,6 @@
-.PHONY: dev dev-api dev-web test lint migrate seed setup clean
+.PHONY: dev dev-api dev-web test lint migrate seed setup clean prod prod-build prod-logs backup
 
-# Development
+# ── Development ──────────────────────────────────────────────────────
 dev:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
@@ -13,17 +13,37 @@ dev-api:
 dev-web:
 	cd apps/web && npm run dev
 
-# Database
+# ── Production ───────────────────────────────────────────────────────
+prod:
+	docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production up -d
+
+prod-build:
+	docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production up -d --build
+
+prod-logs:
+	docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+
+prod-down:
+	docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+
+# ── Database ─────────────────────────────────────────────────────────
 migrate:
 	cd apps/api && uv run alembic upgrade head
 
 migrate-new:
 	cd apps/api && uv run alembic revision --autogenerate -m "$(msg)"
 
+migrate-rollback:
+	cd apps/api && uv run alembic downgrade -1
+
 seed:
 	cd apps/api && uv run python -m scripts.seed_db
 
-# Testing
+# ── Backups ──────────────────────────────────────────────────────────
+backup:
+	docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm backup /backup-db.sh
+
+# ── Testing ──────────────────────────────────────────────────────────
 test:
 	cd apps/api && uv run pytest -v
 	cd apps/web && npm test -- --passWithNoTests
@@ -34,7 +54,7 @@ test-api:
 test-web:
 	cd apps/web && npm test -- --passWithNoTests
 
-# Linting
+# ── Linting ──────────────────────────────────────────────────────────
 lint:
 	cd apps/api && uv run ruff check . && uv run ruff format --check .
 	cd apps/web && npm run lint
@@ -43,9 +63,9 @@ lint-fix:
 	cd apps/api && uv run ruff check --fix . && uv run ruff format .
 	cd apps/web && npm run lint -- --fix
 
-# Setup
+# ── Setup ────────────────────────────────────────────────────────────
 setup:
-	@echo "=== Installing dependencies ==="
+	@echo "=== Hunter888 Setup ==="
 	@echo "1. Install Homebrew (if not installed):"
 	@echo "   /bin/bash -c \"\$$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
 	@echo "2. Install tools:"
@@ -59,6 +79,12 @@ setup:
 	@echo "   cp .env.example .env"
 	@echo "6. Start services:"
 	@echo "   make dev"
+	@echo ""
+	@echo "=== Production Deploy ==="
+	@echo "1. cp .env.production.example .env.production"
+	@echo "2. Fill in all credentials in .env.production"
+	@echo "3. Place TLS certs in nginx/certs/"
+	@echo "4. make prod-build"
 
 clean:
 	docker compose down -v

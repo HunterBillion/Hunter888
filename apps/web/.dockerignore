@@ -9,3 +9,12 @@ dist
 build
 coverage
 *.md
+*.log
+.github
+docker-compose*
+Makefile
+scripts
+backups
+nginx
+.turbo
+.nyc_output

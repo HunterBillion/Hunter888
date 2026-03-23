@@ -146,6 +146,10 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3000"
     cors_origins: str = "http://localhost:3000"
 
+    # Logging
+    log_level: str = "info"
+    log_format: str = "text"  # "text" for dev, "json" for production (docker logs)
+
     @field_validator("cors_origins")
     @classmethod
     def validate_cors_origins(cls, v: str, info) -> str:

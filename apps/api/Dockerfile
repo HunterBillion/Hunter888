@@ -1,9 +1,9 @@
-# Development stage
+# ── Development stage ─────────────────────────────────────────────────
 FROM python:3.12-slim AS development
 
 WORKDIR /app
 
-RUN pip install uv
+RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml .
 RUN uv pip install --system -e ".[dev]"
@@ -12,27 +12,35 @@ COPY . .
 
 CMD ["uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
 
-# Production stage
+# ── Production stage ─────────────────────────────────────────────────
 FROM python:3.12-slim AS production
 
+# Security: install deps as root, then drop privileges
 WORKDIR /app
 
-RUN pip install uv
+RUN pip install --no-cache-dir uv \
+    && groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser \
+    && mkdir -p /app/uploads && chown -R appuser:appuser /app
 
 COPY pyproject.toml .
 RUN uv pip install --system .
 
-COPY . .
+COPY --chown=appuser:appuser . .
 
 # Run migrations on startup, then start gunicorn
-COPY docker-entrypoint.sh /docker-entrypoint.sh
+COPY --chown=appuser:appuser docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
-ENTRYPOINT ["/docker-entrypoint.sh"]
+
+# Drop to non-root user
+USER appuser
 
 EXPOSE 8000
 
-# FIX: Use gunicorn with uvicorn workers for proper process management in production.
-# gunicorn handles worker lifecycle (restart on OOM, graceful shutdown) unlike bare uvicorn.
+ENTRYPOINT ["/docker-entrypoint.sh"]
+
+# Worker count: configurable via WEB_CONCURRENCY env var (default: 4)
 # --timeout 120: allow long WebSocket training sessions
 # --graceful-timeout 30: wait 30s for WS connections to close on deploy
-CMD ["gunicorn", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--graceful-timeout", "30", "--access-logfile", "-"]
+ENV WEB_CONCURRENCY=4
+
+CMD ["gunicorn", "app.main:app", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--graceful-timeout", "30", "--access-logfile", "-"]

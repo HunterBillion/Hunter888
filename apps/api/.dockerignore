@@ -17,3 +17,10 @@ htmlcov
 dist
 build
 *.md
+*.log
+.github
+docker-compose*
+Makefile
+scripts
+backups
+nginx

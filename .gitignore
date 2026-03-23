@@ -35,6 +35,15 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+.env.production
+
+# Backups (never commit DB dumps)
+backups/
+*.sql.gz
+*.sql.bak
+
+# TLS certificates
+nginx/certs/
 
 # Test / Coverage
 htmlcov/

@@ -1,12 +1,12 @@
 import logging
-import sys
 
-# Configure root logger so app.* loggers (TTS, training WS, etc.) output to stdout
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s | %(message)s",
-    stream=sys.stdout,
-)
+from app.config import settings
+from app.core.logging_config import setup_logging
+
+# Centralized logging — uses JSON format in production, text in development
+setup_logging(log_level=settings.log_level, log_format=settings.log_format)
+
+import uuid
 
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +19,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 
 from app.api.router import api_router
-from app.config import settings
 from app.core.redis_pool import close_redis_pool
 from app.services.scheduler import reminder_scheduler
 from app.ws.game_crm import game_crm_websocket
@@ -99,7 +98,20 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+# Request ID middleware — attaches unique ID to every request for distributed tracing.
+# Reads X-Request-ID from reverse proxy (nginx/LB) or generates a new one.
+# The ID is available in log records via logging_config.py extra fields.
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:16]
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestIDMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

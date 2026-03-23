@@ -26,6 +26,11 @@ services:
     restart: unless-stopped
     networks:
       - backend
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
     deploy:
       resources:
         limits:
@@ -109,6 +114,12 @@ services:
     volumes:
       # Persist uploaded avatars across container restarts
       - api_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,6 +128,11 @@ services:
     restart: unless-stopped
     networks:
       - backend
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
     # FIX: 512MB too low for 4 workers + WebSocket sessions + TTS cache
     # Each worker ~100-150MB + in-memory caches
     deploy:
@@ -137,6 +153,12 @@ services:
     environment:
       # Keep runtime env for reference (used by standalone server.js hostname binding)
       HOSTNAME: "0.0.0.0"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
       - api
     restart: unless-stopped
