@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { api } from "@/lib/api";
 import { clearTokens, getToken } from "@/lib/auth";
+import { resetConsentCache } from "@/components/layout/AuthLayout";
 import type { User } from "@/types";
 
 const ACCENT_CLASSES = ["accent-blue", "accent-emerald", "accent-amber", "accent-rose"];
@@ -135,6 +136,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try { await api.post("/auth/logout", {}); } catch {}
     set({ user: null, loading: false, _fetchPromise: null, _fetchTs: 0, _prefsVersion: 0 });
     clearTokens();
+    resetConsentCache();
     try {
       localStorage.removeItem("vh-accent");
       localStorage.removeItem("vh-compact");

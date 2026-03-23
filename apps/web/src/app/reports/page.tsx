@@ -233,9 +233,9 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                 className="grid gap-3"
                 style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", marginBottom: 16 }}
               >
-                <StatCard icon={Target} label="Ср. балл" value={report.average_score?.toFixed(0) ?? "—"} color={scoreColor(report.average_score)} />
-                <StatCard icon={Star} label="Лучший" value={report.best_score?.toString() ?? "—"} color="#FFD700" />
-                <StatCard icon={Trophy} label="Win rate" value={report.win_rate !== null ? `${report.win_rate.toFixed(0)}%` : "—"} color="#34D399" />
+                <StatCard icon={Target} label="Ср. балл" value={report.average_score != null ? Number(report.average_score).toFixed(0) : "—"} color={scoreColor(report.average_score)} />
+                <StatCard icon={Star} label="Лучший" value={report.best_score != null ? String(report.best_score) : "—"} color="#FFD700" />
+                <StatCard icon={Trophy} label="Win rate" value={report.win_rate != null ? `${Number(report.win_rate).toFixed(0)}%` : "—"} color="#34D399" />
                 <StatCard icon={Zap} label="XP" value={`+${report.xp_earned}`} color="var(--accent)" />
                 <StatCard icon={Clock} label="Время" value={`${report.total_time_minutes} мин`} color="#60A5FA" />
                 <StatCard
@@ -299,9 +299,9 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                     <Award size={13} /> Достижения недели
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {report.new_achievements.map((a, i) => (
+                    {report.new_achievements.map((a) => (
                       <span
-                        key={i}
+                        key={a.code}
                         className="rounded-full px-3 py-1 text-xs font-medium"
                         style={{ background: "#FFD70022", color: "#FFD700", border: "1px solid #FFD70044" }}
                       >
@@ -319,9 +319,9 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                     <AlertTriangle size={13} /> Слабые места
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {report.weak_points.map((wp, i) => (
+                    {report.weak_points.map((wp) => (
                       <span
-                        key={i}
+                        key={wp.skill}
                         className="rounded-full px-3 py-1 text-xs"
                         style={{
                           background: wp.priority === "critical" ? "#F8717122" : "#FBBF2422",
@@ -345,7 +345,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                   <div className="space-y-2">
                     {report.recommendations.map((rec, i) => (
                       <div
-                        key={i}
+                        key={`rec-${i}-${rec.slice(0, 20)}`}
                         className="rounded-lg px-3 py-2 text-xs"
                         style={{ background: "var(--input-bg)", color: "var(--text-secondary)", lineHeight: 1.5 }}
                       >

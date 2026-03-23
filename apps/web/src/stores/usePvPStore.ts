@@ -152,7 +152,10 @@ export const usePvPStore = create<PvPState>((set, get) => ({
     try {
       const data = await api.get("/pvp/season/active");
       set({ activeSeason: data || null });
-    } catch {}
+    } catch (err) {
+      console.warn("[PvP] Failed to fetch active season:", err);
+      set({ activeSeason: null });
+    }
   },
 
   setQueueStatus: (queueStatus) => set({ queueStatus }),

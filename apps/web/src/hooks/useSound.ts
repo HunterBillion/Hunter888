@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 type SoundName = "success" | "epic" | "legendary" | "fail" | "levelup";
 
@@ -27,17 +27,28 @@ export function useSound() {
   const cacheRef = useRef<Map<string, AudioBuffer>>(new Map());
 
   const getContext = useCallback(() => {
-    if (!ctxRef.current) {
+    if (!ctxRef.current || ctxRef.current.state === "closed") {
       ctxRef.current = new AudioContext();
     }
     return ctxRef.current;
+  }, []);
+
+  // Cleanup: close AudioContext on unmount to prevent resource leak
+  useEffect(() => {
+    return () => {
+      if (ctxRef.current && ctxRef.current.state !== "closed") {
+        ctxRef.current.close().catch(() => {});
+        ctxRef.current = null;
+      }
+      cacheRef.current.clear();
+    };
   }, []);
 
   const playSound = useCallback(async (name: SoundName, volume = 0.5) => {
     // Check mute
     try {
       if (localStorage.getItem("vh-sounds-muted") === "1") return;
-    } catch {}
+    } catch { /* localStorage may throw in private browsing */ }
 
     const path = SOUND_PATHS[name];
     if (!path) return;
@@ -73,7 +84,7 @@ export function useSound() {
   const setMuted = useCallback((muted: boolean) => {
     try {
       localStorage.setItem("vh-sounds-muted", muted ? "1" : "0");
-    } catch {}
+    } catch { /* localStorage may throw in private browsing */ }
   }, []);
 
   const isMuted = useCallback(() => {

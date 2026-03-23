@@ -72,8 +72,17 @@ interface AuthLayoutProps {
 }
 
 // Module-level consent cache (avoids re-fetching on every page nav)
+// Keyed by user token hash to prevent cross-user cache leakage
 let _consentChecked = false;
 let _consentOk = false;
+let _consentUserToken: string | null = null;
+
+/** Reset consent cache — MUST be called on logout to prevent cross-user leakage */
+export function resetConsentCache() {
+  _consentChecked = false;
+  _consentOk = false;
+  _consentUserToken = null;
+}
 
 export default function AuthLayout({
   children,
@@ -101,6 +110,13 @@ export default function AuthLayout({
       router.replace("/login");
       return;
     }
+
+    // Invalidate consent cache if user changed (prevents cross-user leakage)
+    if (_consentUserToken && _consentUserToken !== token) {
+      _consentChecked = false;
+      _consentOk = false;
+    }
+    _consentUserToken = token;
 
     if (!requireConsent || _consentOk) {
       setState("ready");

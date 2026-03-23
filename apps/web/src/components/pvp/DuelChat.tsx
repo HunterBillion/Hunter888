@@ -1,8 +1,24 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Send } from "lucide-react";
+
+/**
+ * Defense-in-depth text sanitizer for PvP chat messages.
+ * React JSX auto-escapes, but since messages come from other users via WS,
+ * we strip any embedded HTML/script tags and limit length as extra protection.
+ */
+const MAX_MESSAGE_LENGTH = 2000;
+function sanitizeMessageText(text: string): string {
+  if (!text || typeof text !== "string") return "";
+  // Strip HTML tags (defense-in-depth — React doesn't render them, but belt-and-suspenders)
+  const stripped = text.replace(/<[^>]*>/g, "");
+  // Truncate excessively long messages
+  return stripped.length > MAX_MESSAGE_LENGTH
+    ? stripped.slice(0, MAX_MESSAGE_LENGTH) + "…"
+    : stripped;
+}
 
 interface Message {
   id: string;
@@ -23,6 +39,12 @@ interface Props {
 
 export function DuelChat({ messages, myRole, input, onInputChange, onSend, disabled }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
+
+  // Pre-sanitize all messages (memoized to avoid re-processing on every render)
+  const sanitizedMessages = useMemo(
+    () => messages.map((msg) => ({ ...msg, text: sanitizeMessageText(msg.text) })),
+    [messages],
+  );
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -66,9 +88,9 @@ export function DuelChat({ messages, myRole, input, onInputChange, onSend, disab
 
       <div className="pvp-pyramid-grid flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="space-y-4">
-          {messages.map((msg, index) => {
+          {sanitizedMessages.map((msg, index) => {
             const isMine = msg.sender_role === myRole;
-            const previousRound = index > 0 ? messages[index - 1]?.round : null;
+            const previousRound = index > 0 ? sanitizedMessages[index - 1]?.round : null;
 
             return (
               <div key={msg.id}>

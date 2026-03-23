@@ -35,7 +35,7 @@ const CONSENT_TYPE_LABELS: Record<string, string> = {
 
 export default function ConsentVerifyPage() {
   const params = useParams();
-  const token = params.token as string;
+  const token = typeof params.token === "string" ? params.token : String(params.token ?? "");
 
   const [state, setState] = useState<PageState>("loading");
   const [consent, setConsent] = useState<ConsentData | null>(null);
@@ -46,8 +46,13 @@ export default function ConsentVerifyPage() {
   useEffect(() => {
     if (!token) return;
 
-    fetch(`${getApiBaseUrl()}/api/clients/consents/verify/${token}`)
+    const controller = new AbortController();
+
+    fetch(`${getApiBaseUrl()}/api/clients/consents/verify/${token}`, {
+      signal: controller.signal,
+    })
       .then(async (res) => {
+        if (controller.signal.aborted) return;
         if (res.status === 410) {
           setState("expired");
           return;
@@ -65,10 +70,13 @@ export default function ConsentVerifyPage() {
           setState("ready");
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
         setState("error");
         setError("Ошибка соединения с сервером");
       });
+
+    return () => controller.abort();
   }, [token]);
 
   // ── Подтвердить согласие ──

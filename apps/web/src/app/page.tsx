@@ -702,7 +702,7 @@ export default function Home() {
                           onClick={async () => {
                             try {
                               const data = await api.get("/auth/google/login");
-                              window.location.href = data.url;
+                              if (data?.url) window.location.href = data.url;
                             } catch (err: unknown) {
                               setError(err instanceof Error ? err.message : "Google OAuth недоступен");
                             }
@@ -720,7 +720,7 @@ export default function Home() {
                           onClick={async () => {
                             try {
                               const data = await api.get("/auth/yandex/login");
-                              window.location.href = data.url;
+                              if (data?.url) window.location.href = data.url;
                             } catch (err: unknown) {
                               setError(err instanceof Error ? err.message : "Yandex OAuth недоступен");
                             }

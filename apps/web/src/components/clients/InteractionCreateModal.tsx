@@ -74,7 +74,9 @@ export function InteractionCreateModal({
       if (content.trim()) body.content = content.trim();
       if (result.trim()) body.result = result.trim();
       if (isCall && (durationMin || durationSec)) {
-        body.duration_seconds = (parseInt(durationMin || "0") * 60) + parseInt(durationSec || "0");
+        const mins = parseInt(durationMin || "0", 10);
+        const secs = parseInt(durationSec || "0", 10);
+        body.duration_seconds = (Number.isNaN(mins) ? 0 : mins) * 60 + (Number.isNaN(secs) ? 0 : secs);
       }
 
       await api.post(`/clients/${clientId}/interactions`, body);

@@ -104,6 +104,17 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
       setError("Неверный формат телефона");
       return;
     }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError("Неверный формат email");
+      return;
+    }
+    if (debtAmount) {
+      const parsed = parseFloat(debtAmount);
+      if (Number.isNaN(parsed) || parsed < 0) {
+        setError("Некорректная сумма долга");
+        return;
+      }
+    }
 
     setSaving(true);
     setError(null);
@@ -114,7 +125,10 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
       };
       if (phone) body.phone = phone.trim();
       if (email) body.email = email.trim();
-      if (debtAmount) body.debt_amount = parseFloat(debtAmount);
+      if (debtAmount) {
+        const debt = parseFloat(debtAmount);
+        if (!Number.isNaN(debt)) body.debt_amount = debt;
+      }
       if (notes) body.notes = notes.trim();
       if (nextContact) body.next_contact_at = new Date(nextContact).toISOString();
       if (consentType) {

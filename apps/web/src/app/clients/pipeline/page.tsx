@@ -91,8 +91,9 @@ export default function PipelinePage() {
     try {
       const data: PipelineStats[] = await api.get("/clients/pipeline/stats");
       setStats(data);
-    } catch {
-      /* ignore */
+    } catch (err) {
+      // Stats are non-critical — log but don't block the UI
+      console.warn("[Pipeline] Failed to load stats:", err);
     }
   }, []);
 

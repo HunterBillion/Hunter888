@@ -18,12 +18,13 @@ import { InteractionCreateModal } from "@/components/clients/InteractionCreateMo
 import { ReminderCreateModal } from "@/components/clients/ReminderCreateModal";
 import type { CRMClientDetail, ClientStatus } from "@/types";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
+import { logger } from "@/lib/logger";
 
 export default function ClientDetailPage() {
   const { user } = useAuth();
   const params = useParams();
   const router = useRouter();
-  const id = params.id as string;
+  const id = typeof params.id === "string" ? params.id : String(params.id ?? "");
 
   const isReadOnly = user?.role === "methodologist";
 
@@ -33,6 +34,7 @@ export default function ClientDetailPage() {
   const [showInteractionModal, setShowInteractionModal] = useState(false);
   const [showReminderModal, setShowReminderModal] = useState(false);
   const [smsLoading, setSmsLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     api.get(`/clients/${id}`)
@@ -42,37 +44,53 @@ export default function ClientDetailPage() {
   }, [id]);
 
   const handleStatusChange = async (newStatus: ClientStatus, reason?: string) => {
+    setActionError(null);
     try {
       await api.patch(`/clients/${id}/status`, {
         new_status: newStatus,
         reason: reason || undefined,
       });
       setClient((prev) => prev ? { ...prev, status: newStatus } : prev);
-    } catch { /* ignore */ }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Не удалось сменить статус";
+      setActionError(msg);
+      logger.error("[ClientDetail] Status change failed:", err);
+    }
   };
 
   const handleConsentSubmit = async (data: { consent_type: string; channel: string }) => {
+    setActionError(null);
     try {
       await api.post(`/clients/${id}/consents`, data);
-      // Refresh client data
       const updated: CRMClientDetail = await api.get(`/clients/${id}`);
       setClient(updated);
       setShowConsentForm(false);
-    } catch { /* ignore */ }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Не удалось сохранить согласие";
+      setActionError(msg);
+      logger.error("[ClientDetail] Consent submit failed:", err);
+    }
   };
 
   const refreshClient = async () => {
     try {
       const updated: CRMClientDetail = await api.get(`/clients/${id}`);
       setClient(updated);
-    } catch { /* ignore */ }
+    } catch (err) {
+      logger.error("[ClientDetail] Refresh failed:", err);
+    }
   };
 
   const handleSendSmsLink = async (consentType: string) => {
+    setActionError(null);
     setSmsLoading(true);
     try {
       await api.post(`/clients/${id}/consents/send-link?consent_type=${consentType}`, {});
-    } catch { /* ignore */ }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Не удалось отправить SMS";
+      setActionError(msg);
+      logger.error("[ClientDetail] SMS link failed:", err);
+    }
     setSmsLoading(false);
   };
 
@@ -153,6 +171,23 @@ export default function ClientDetailPage() {
             )}
           </div>
         </motion.div>
+
+        {/* Action error banner */}
+        {actionError && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4 rounded-xl px-4 py-3 text-sm flex items-center justify-between"
+            style={{
+              background: "rgba(239,68,68,0.12)",
+              border: "1px solid rgba(239,68,68,0.2)",
+              color: "#FCA5A5",
+            }}
+          >
+            <span>{actionError}</span>
+            <button onClick={() => setActionError(null)} className="ml-3 text-xs opacity-60 hover:opacity-100">✕</button>
+          </motion.div>
+        )}
 
         {/* Main grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">

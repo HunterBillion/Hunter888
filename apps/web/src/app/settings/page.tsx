@@ -498,7 +498,7 @@ export default function SettingsPage() {
                     <motion.button
                       onClick={async () => {
                         setUnlinking("google");
-                        try { await api.post("/auth/google/disconnect", {}); setLinkedGoogle(false); } catch {}
+                        try { await api.post("/auth/google/disconnect", {}); setLinkedGoogle(false); } catch (err) { console.error("[Settings] Google disconnect failed:", err); }
                         setUnlinking(null);
                       }}
                       disabled={unlinking === "google"}
@@ -511,7 +511,7 @@ export default function SettingsPage() {
                     </motion.button>
                   ) : oauthStatus.google ? (
                     <motion.button
-                      onClick={async () => { try { const d = await api.get("/auth/google/login"); window.location.href = d.url; } catch {} }}
+                      onClick={async () => { try { const d = await api.get("/auth/google/login"); if (d?.url) window.location.href = d.url; } catch (err) { console.error("[Settings] Google link failed:", err); } }}
                       className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[12px]"
                       style={{ background: "var(--accent-muted)", border: "1px solid var(--accent)", color: "var(--accent)" }}
                       whileTap={{ scale: 0.95 }}
@@ -538,7 +538,7 @@ export default function SettingsPage() {
                     <motion.button
                       onClick={async () => {
                         setUnlinking("yandex");
-                        try { await api.post("/auth/yandex/disconnect", {}); setLinkedYandex(false); } catch {}
+                        try { await api.post("/auth/yandex/disconnect", {}); setLinkedYandex(false); } catch (err) { console.error("[Settings] Yandex disconnect failed:", err); }
                         setUnlinking(null);
                       }}
                       disabled={unlinking === "yandex"}
@@ -551,7 +551,7 @@ export default function SettingsPage() {
                     </motion.button>
                   ) : oauthStatus.yandex ? (
                     <motion.button
-                      onClick={async () => { try { const d = await api.get("/auth/yandex/login"); window.location.href = d.url; } catch {} }}
+                      onClick={async () => { try { const d = await api.get("/auth/yandex/login"); if (d?.url) window.location.href = d.url; } catch (err) { console.error("[Settings] Yandex link failed:", err); } }}
                       className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[12px]"
                       style={{ background: "var(--accent-muted)", border: "1px solid var(--accent)", color: "var(--accent)" }}
                       whileTap={{ scale: 0.95 }}
