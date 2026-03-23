@@ -92,6 +92,8 @@ def determine_difficulty(rating1: float, rating2: float) -> DuelDifficulty:
 async def join_queue(
     user_id: uuid.UUID,
     db: AsyncSession,
+    *,
+    create_invitation: bool = False,
 ) -> dict:
     """Add player to matchmaking queue.
 
@@ -103,7 +105,11 @@ async def join_queue(
     # Check if already in queue
     existing = await r.zscore(QUEUE_KEY, str(user_id))
     if existing is not None:
-        return {"status": "already_queued", "rating": existing}
+        return {
+            "status": "already_queued",
+            "rating": existing,
+            "position": await r.zcard(QUEUE_KEY),
+        }
 
     # Get player rating
     rating = await get_or_create_rating(user_id, db)
@@ -133,9 +139,9 @@ async def join_queue(
 
     position = await r.zcard(QUEUE_KEY)
 
-    # Create invitation for other managers (60s TTL)
-    inv_key = INVITATION_KEY.format(challenger_id=user_id)
-    await r.set(inv_key, "1", ex=MATCH_TIMEOUT_SECONDS)
+    if create_invitation:
+        inv_key = INVITATION_KEY.format(challenger_id=user_id)
+        await r.set(inv_key, "1", ex=MATCH_TIMEOUT_SECONDS)
 
     logger.info(
         "Player %s joined PvP queue (rating=%.0f, rd=%.0f, pos=%d)",
@@ -147,6 +153,7 @@ async def join_queue(
         "rating": rating.rating,
         "rd": rating.rd,
         "position": position,
+        "invitation_enabled": create_invitation,
     }
 
 
@@ -215,7 +222,10 @@ async def accept_invitation(
     await r.hset(matched_key, mapping={
         "duel_id": str(duel.id),
         "opponent_id": str(acceptor_id),
-        "opponent_rating": str(acceptor_rating.rating),
+        "player1_id": str(challenger_id),
+        "player2_id": str(acceptor_id),
+        "player1_rating": str(challenger_rating.rating),
+        "player2_rating": str(acceptor_rating.rating),
         "difficulty": difficulty.value,
     })
     await r.expire(matched_key, 30)
@@ -228,8 +238,11 @@ async def accept_invitation(
     return {
         "opponent_id": acceptor_id,
         "duel_id": duel.id,
+        "player1_id": challenger_id,
+        "player2_id": acceptor_id,
+        "player1_rating": challenger_rating.rating,
+        "player2_rating": acceptor_rating.rating,
         "difficulty": difficulty.value,
-        "opponent_rating": acceptor_rating.rating,
     }
 
 
@@ -256,8 +269,11 @@ async def find_match(
         return {
             "opponent_id": uuid.UUID(matched["opponent_id"]),
             "duel_id": uuid.UUID(matched["duel_id"]),
+            "player1_id": uuid.UUID(matched["player1_id"]),
+            "player2_id": uuid.UUID(matched["player2_id"]),
+            "player1_rating": float(matched["player1_rating"]),
+            "player2_rating": float(matched["player2_rating"]),
             "difficulty": matched["difficulty"],
-            "opponent_rating": float(matched.get("opponent_rating", 1500)),
         }
 
     # Get player's data
@@ -345,8 +361,11 @@ async def find_match(
             return {
                 "opponent_id": candidate_id,
                 "duel_id": duel.id,
+                "player1_id": user_id,
+                "player2_id": candidate_id,
+                "player1_rating": player_rating,
+                "player2_rating": candidate_rating,
                 "difficulty": difficulty.value,
-                "opponent_rating": candidate_rating,
             }
 
     # No match found
@@ -457,6 +476,13 @@ async def check_reconnect(user_id: uuid.UUID) -> dict | None:
         "duel_id": uuid.UUID(data["duel_id"]),
         "seconds_remaining": int(RECONNECT_GRACE_SECONDS - elapsed),
     }
+
+
+async def clear_reconnect_grace(user_id: uuid.UUID) -> None:
+    """Clear reconnect grace once a player is back online."""
+    r = _redis()
+    key = RECONNECT_KEY.format(user_id=user_id)
+    await r.delete(key)
 
 
 async def cleanup_duel_state(duel_id: uuid.UUID) -> None:

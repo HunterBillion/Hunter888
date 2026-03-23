@@ -63,6 +63,9 @@ class DuelResponse(BaseModel):
     round_2_data: dict | None = None
     anti_cheat_flags: list[dict] | None = None
     replay_url: str | None = None
+    player1_rating_delta: float = 0.0
+    player2_rating_delta: float = 0.0
+    rating_change_applied: bool = False
     created_at: datetime
     completed_at: datetime | None = None
 

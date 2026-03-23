@@ -173,7 +173,7 @@ class PvPDuel(Base):
     round_number: Mapped[int] = mapped_column(Integer, default=1)  # Current round
 
     # Anti-cheat
-    anti_cheat_flags: Mapped[dict | None] = mapped_column(JSONB)
+    anti_cheat_flags: Mapped[list[dict] | None] = mapped_column(JSONB)
     # [{check_type, player_id, score, flagged, details}]
 
     # Replay

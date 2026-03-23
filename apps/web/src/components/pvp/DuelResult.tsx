@@ -8,12 +8,24 @@ interface Props {
   opponentTotal: number;
   isWinner: boolean;
   isDraw: boolean;
+  isPvE: boolean;
+  ratingChangeApplied: boolean;
   myRatingDelta: number;
   summary: string;
   onClose: () => void;
 }
 
-export function DuelResult({ myTotal, opponentTotal, isWinner, isDraw, myRatingDelta, summary, onClose }: Props) {
+export function DuelResult({
+  myTotal,
+  opponentTotal,
+  isWinner,
+  isDraw,
+  isPvE,
+  ratingChangeApplied,
+  myRatingDelta,
+  summary,
+  onClose,
+}: Props) {
   const resultColor = isDraw ? "var(--warning)" : isWinner ? "var(--neon-green, #00FF66)" : "var(--neon-red, #FF3333)";
   const resultText = isDraw ? "НИЧЬЯ" : isWinner ? "ПОБЕДА!" : "ПОРАЖЕНИЕ";
   const deltaSign = myRatingDelta >= 0 ? "+" : "";
@@ -88,12 +100,16 @@ export function DuelResult({ myTotal, opponentTotal, isWinner, isDraw, myRatingD
           transition={{ delay: 0.8 }}
           className="mt-4 inline-flex items-center gap-2 font-mono text-lg font-bold px-4 py-2 rounded-xl"
           style={{
-            background: myRatingDelta >= 0 ? "rgba(0,255,102,0.1)" : "rgba(255,51,51,0.1)",
-            color: myRatingDelta >= 0 ? "var(--neon-green)" : "var(--neon-red)",
+            background: ratingChangeApplied ? (myRatingDelta >= 0 ? "rgba(0,255,102,0.1)" : "rgba(255,51,51,0.1)") : "rgba(255,215,0,0.1)",
+            color: ratingChangeApplied ? (myRatingDelta >= 0 ? "var(--neon-green)" : "var(--neon-red)") : "var(--warning)",
           }}
         >
-          {myRatingDelta >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
-          {deltaSign}{Math.round(myRatingDelta)} рейтинга
+          {ratingChangeApplied ? (
+            myRatingDelta >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />
+          ) : (
+            <Minus size={18} />
+          )}
+          {ratingChangeApplied ? `${deltaSign}${Math.round(myRatingDelta)} рейтинга` : isPvE ? "PvE без рейтинга" : "Рейтинг не изменён"}
         </motion.div>
 
         {/* Summary */}

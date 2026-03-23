@@ -82,7 +82,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
               ПОИСК СОПЕРНИКА
             </h2>
             <div className="mt-4 space-y-2 font-mono" style={{ color: "var(--text-muted)" }}>
-              {position > 0 && <p className="text-xs">Позиция в очереди: {position}</p>}
+              {position > 0 && <p className="text-xs">Игроков в очереди: {position}</p>}
               <motion.div
                 key={displayRemaining}
                 initial={{ scale: 1.1, opacity: 0.8 }}

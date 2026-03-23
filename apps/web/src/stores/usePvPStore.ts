@@ -24,6 +24,8 @@ interface DuelResult {
   player2_total: number;
   winner_id: string | null;
   is_draw: boolean;
+  is_pve: boolean;
+  rating_change_applied: boolean;
   player1_rating_delta: number;
   player2_rating_delta: number;
   summary: string;
@@ -39,6 +41,7 @@ interface PvPState {
   queuePosition: number;
   estimatedWait: number;
   pvEOffer: string | null;
+  matchedOpponentRating: number | null;
 
   // Duel
   currentDuel: PvPDuel | null;
@@ -69,12 +72,15 @@ interface PvPState {
   fetchActiveSeason: () => Promise<void>;
   setQueueStatus: (status: QueueStatus) => void;
   setQueuePosition: (pos: number, est: number) => void;
+  setMatchedOpponentRating: (rating: number | null) => void;
+  resetQueue: () => void;
   setPvEOffer: (msg: string | null) => void;
   setDuelBrief: (brief: DuelBrief) => void;
   setMyRole: (role: "seller" | "client") => void;
   setRoundNumber: (n: number) => void;
   setTimeRemaining: (t: number) => void;
   addMessage: (msg: PvPMessage) => void;
+  replaceMessages: (messages: PvPMessage[]) => void;
   setJudgeScore: (score: JudgeScore) => void;
   setDuelResult: (result: DuelResult) => void;
   resetDuel: () => void;
@@ -89,6 +95,7 @@ export const usePvPStore = create<PvPState>((set, get) => ({
   queuePosition: 0,
   estimatedWait: 0,
   pvEOffer: null,
+  matchedOpponentRating: null,
   currentDuel: null,
   duelBrief: null,
   myRole: null,
@@ -150,16 +157,29 @@ export const usePvPStore = create<PvPState>((set, get) => ({
 
   setQueueStatus: (queueStatus) => set({ queueStatus }),
   setQueuePosition: (queuePosition, estimatedWait) => set({ queuePosition, estimatedWait }),
+  setMatchedOpponentRating: (matchedOpponentRating) => set({ matchedOpponentRating }),
+  resetQueue: () => set({
+    queueStatus: "idle",
+    queuePosition: 0,
+    estimatedWait: 0,
+    pvEOffer: null,
+    matchedOpponentRating: null,
+  }),
   setPvEOffer: (pvEOffer) => set({ pvEOffer }),
   setDuelBrief: (duelBrief) => set({ duelBrief, queueStatus: "in_duel" }),
   setMyRole: (myRole) => set({ myRole }),
   setRoundNumber: (roundNumber) => set({ roundNumber }),
   setTimeRemaining: (timeRemaining) => set({ timeRemaining }),
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
+  replaceMessages: (messages) => set({ messages }),
   setJudgeScore: (judgeScore) => set({ judgeScore }),
   setDuelResult: (duelResult) => set({ duelResult }),
   resetDuel: () => set({
     queueStatus: "idle",
+    queuePosition: 0,
+    estimatedWait: 0,
+    pvEOffer: null,
+    matchedOpponentRating: null,
     currentDuel: null,
     duelBrief: null,
     myRole: null,

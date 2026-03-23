@@ -3,16 +3,14 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Swords, ArrowRight, Clock, Loader2, Trophy, Zap } from "lucide-react";
+import { Swords, ArrowRight, Loader2, Trophy, Zap } from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { usePvPStore } from "@/stores/usePvPStore";
 import { RatingCard } from "@/components/pvp/RatingCard";
 import { MatchmakingOverlay } from "@/components/pvp/MatchmakingOverlay";
-import { RankBadge } from "@/components/pvp/RankBadge";
 import { FriendsPanel } from "@/components/pvp/FriendsPanel";
-import type { PvPRankTier, DuelStatus } from "@/types";
 
 const DUEL_STATUS_LABELS: Record<string, string> = {
   pending: "Ожидание",
@@ -47,22 +45,32 @@ function PvPLobbyContent() {
       switch (data.type) {
         case "queue.joined":
           store.setQueueStatus("searching");
+          if (typeof data.data.position === "number") {
+            store.setQueuePosition(data.data.position as number, store.estimatedWait);
+          }
           break;
         case "queue.status":
-          store.setQueuePosition(data.data.position as number, data.data.estimated_remaining as number);
+          store.setQueuePosition(
+            (data.data.queue_size as number) ?? (data.data.position as number) ?? 0,
+            data.data.estimated_remaining as number,
+          );
           break;
         case "match.found":
           store.setQueueStatus("matched");
+          store.setMatchedOpponentRating(
+            typeof data.data.opponent_rating === "number" ? (data.data.opponent_rating as number) : null,
+          );
           // Navigate to duel page
           setTimeout(() => {
             router.push(`/pvp/duel/${data.data.duel_id}`);
           }, 2000);
           break;
         case "pve.offer":
+          store.setQueueStatus("idle");
           store.setPvEOffer((data.data?.message as string) ?? null);
           break;
         case "queue.left":
-          store.setQueueStatus("idle");
+          store.resetQueue();
           break;
       }
     },
@@ -75,7 +83,7 @@ function PvPLobbyContent() {
 
   const handleCancelQueue = useCallback(() => {
     sendMessage({ type: "queue.leave" });
-    store.setQueueStatus("idle");
+    store.resetQueue();
   }, [sendMessage, store]);
 
   // Auto-accept PvP invitation when arriving with ?accept=challenger_id
@@ -214,6 +222,7 @@ function PvPLobbyContent() {
                           const oppScore = isP1 ? duel.player2_total : duel.player1_total;
                           const myDelta = isP1 ? duel.player1_rating_delta : duel.player2_rating_delta;
                           const isWinner = duel.winner_id === store.rating?.user_id;
+                          const ratingApplied = duel.rating_change_applied && !duel.is_pve;
 
                           return (
                             <motion.div
@@ -243,9 +252,9 @@ function PvPLobbyContent() {
                               </div>
                               <div
                                 className="font-mono text-sm font-bold"
-                                style={{ color: myDelta >= 0 ? "var(--neon-green)" : "var(--neon-red)" }}
+                                style={{ color: ratingApplied ? (myDelta >= 0 ? "var(--neon-green)" : "var(--neon-red)") : "var(--warning)" }}
                               >
-                                {myDelta >= 0 ? "+" : ""}{Math.round(myDelta)}
+                                {ratingApplied ? `${myDelta >= 0 ? "+" : ""}${Math.round(myDelta)}` : "Без рейтинга"}
                               </div>
                               <ArrowRight size={14} style={{ color: "var(--text-muted)" }} />
                             </motion.div>
@@ -258,7 +267,10 @@ function PvPLobbyContent() {
               </AnimatePresence>
             </div>
 
-            <FriendsPanel onChallengeSent={() => store.setQueueStatus("searching")} />
+            <FriendsPanel onChallengeSent={() => {
+              store.setQueueStatus("searching");
+              sendMessage({ type: "queue.watch" });
+            }} />
           </div>
         </div>
       </div>
@@ -270,6 +282,7 @@ function PvPLobbyContent() {
             status={store.queueStatus}
             position={store.queuePosition}
             estimatedWait={store.estimatedWait}
+            opponentRating={store.matchedOpponentRating ?? undefined}
             onCancel={handleCancelQueue}
           />
         )}
@@ -310,6 +323,7 @@ function PvPLobbyContent() {
                   onClick={async () => {
                     if (pveAccepting) return;
                     store.setPvEOffer(null);
+                    store.resetQueue();
                     setPveAccepting(true);
                     try {
                       const data = (await api.post("/pvp/accept-pve", {})) as { duel_id?: string };
@@ -332,8 +346,7 @@ function PvPLobbyContent() {
                   className="flex-1 py-2.5 rounded-xl font-mono text-xs font-bold uppercase tracking-wider vh-btn-outline"
                   onClick={() => {
                     sendMessage({ type: "queue.leave" });
-                    store.setPvEOffer(null);
-                    store.setQueueStatus("idle");
+                    store.resetQueue();
                   }}
                 >
                   Отмена

@@ -1254,6 +1254,7 @@ export interface PvPDuel {
   replay_url: string | null;
   player1_rating_delta: number;
   player2_rating_delta: number;
+  rating_change_applied: boolean;
   created_at: string;
   completed_at: string | null;
 }

@@ -20,7 +20,21 @@ export default function DuelPage() {
   const store = usePvPStore();
   const [input, setInput] = useState("");
   const [duelMeta, setDuelMeta] = useState<PvPDuel | null>(null);
+  const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const restartTimer = (seconds: number) => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    store.setTimeRemaining(seconds);
+    timerRef.current = setInterval(() => {
+      const t = usePvPStore.getState().timeRemaining;
+      if (t <= 0) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        return;
+      }
+      usePvPStore.setState({ timeRemaining: t - 1 });
+    }, 1000);
+  };
 
   const { sendMessage, connectionState } = useWebSocket({
     path: "/ws/pvp",
@@ -34,22 +48,36 @@ export default function DuelPage() {
         case "round.start":
           store.setRoundNumber(data.data.round as number);
           store.setMyRole(data.data.your_role as "seller" | "client");
-          store.setTimeRemaining(data.data.time_limit as number);
-          // Start countdown
-          if (timerRef.current) clearInterval(timerRef.current);
-          timerRef.current = setInterval(() => {
-            const t = usePvPStore.getState().timeRemaining;
-            if (t <= 0) {
-              if (timerRef.current) clearInterval(timerRef.current);
-              return;
-            }
-            usePvPStore.setState({ timeRemaining: t - 1 });
-          }, 1000);
+          restartTimer(data.data.time_limit as number);
+          setStatusNotice(null);
           break;
 
         case "round.swap":
           store.setRoundNumber(0); // swap indicator
           if (timerRef.current) clearInterval(timerRef.current);
+          break;
+
+        case "duel.state":
+          store.setRoundNumber(data.data.round_number as number);
+          store.setMyRole(data.data.your_role as "seller" | "client");
+          store.replaceMessages(
+            Array.isArray(data.data.messages)
+              ? (data.data.messages as Array<Record<string, unknown>>).map((msg) => ({
+                  id: store.nextMsgId(),
+                  sender_role: msg.sender_role as "seller" | "client",
+                  text: String(msg.text || ""),
+                  round: Number(msg.round || data.data.round_number || 1),
+                  timestamp:
+                    typeof msg.timestamp === "string"
+                      ? msg.timestamp
+                      : typeof msg.timestamp === "number"
+                        ? new Date((msg.timestamp as number) * 1000).toISOString()
+                        : new Date().toISOString(),
+                }))
+              : [],
+          );
+          restartTimer(Number(data.data.time_remaining || data.data.time_limit || 0));
+          setStatusNotice("Соединение восстановлено");
           break;
 
         case "duel.message":
@@ -83,6 +111,8 @@ export default function DuelPage() {
             player2_total: data.data.player2_total as number,
             winner_id: data.data.winner_id as string | null,
             is_draw: data.data.is_draw as boolean,
+            is_pve: Boolean(data.data.is_pve),
+            rating_change_applied: Boolean(data.data.rating_change_applied),
             player1_rating_delta: data.data.player1_rating_delta as number,
             player2_rating_delta: data.data.player2_rating_delta as number,
             summary: data.data.summary as string,
@@ -90,19 +120,35 @@ export default function DuelPage() {
           break;
 
         case "opponent.disconnected":
-          // Show reconnect grace notice
+          setStatusNotice(`Соперник переподключается. Ждём ${String(data.data.seconds_remaining || 60)} сек.`);
           break;
 
         case "duel.resumed":
-          sendMessage({ type: "duel.ready", duel_id: duelId });
+          setStatusNotice("Восстанавливаем дуэль...");
+          break;
+
+        case "duel.cancelled":
+          if (timerRef.current) clearInterval(timerRef.current);
+          setStatusNotice("Дуэль остановлена: соперник не вернулся");
+          setTimeout(() => {
+            store.resetDuel();
+            router.push("/pvp");
+          }, 1500);
           break;
 
         case "error":
           logger.error("PvP error:", data.data.detail);
+          if (typeof data.data.detail === "string") {
+            setStatusNotice(data.data.detail);
+          }
           break;
       }
     },
   });
+
+  useEffect(() => {
+    store.resetDuel();
+  }, [duelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Send ready on connect
   useEffect(() => {
@@ -159,6 +205,8 @@ export default function DuelPage() {
         opponentTotal={oppTotal}
         isWinner={isWinner}
         isDraw={store.duelResult.is_draw}
+        isPvE={store.duelResult.is_pve}
+        ratingChangeApplied={store.duelResult.rating_change_applied}
         myRatingDelta={isP1 ? store.duelResult.player1_rating_delta : store.duelResult.player2_rating_delta}
         summary={store.duelResult.summary}
         onClose={() => {
@@ -189,6 +237,17 @@ export default function DuelPage() {
           {store.duelBrief?.scenario_title || "Сценарий"}
         </div>
       </header>
+
+      {statusNotice && (
+        <div className="px-4 pt-3 z-20">
+          <div
+            className="rounded-xl px-4 py-2 text-xs font-mono"
+            style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-secondary)", border: "1px solid rgba(255,255,255,0.08)" }}
+          >
+            {statusNotice}
+          </div>
+        </div>
+      )}
 
       {/* Round indicator */}
       {store.myRole && (

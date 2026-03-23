@@ -218,7 +218,11 @@ async def get_my_duels(
             duration_seconds=d.duration_seconds,
             round_1_data=d.round_1_data,
             round_2_data=d.round_2_data,
+            anti_cheat_flags=d.anti_cheat_flags,
             replay_url=d.replay_url,
+            player1_rating_delta=d.player1_rating_delta,
+            player2_rating_delta=d.player2_rating_delta,
+            rating_change_applied=d.rating_change_applied,
             created_at=d.created_at,
             completed_at=d.completed_at,
         )
@@ -263,6 +267,9 @@ async def get_duel(
         round_2_data=duel.round_2_data,
         anti_cheat_flags=duel.anti_cheat_flags,
         replay_url=duel.replay_url,
+        player1_rating_delta=duel.player1_rating_delta,
+        player2_rating_delta=duel.player2_rating_delta,
+        rating_change_applied=duel.rating_change_applied,
         created_at=duel.created_at,
         completed_at=duel.completed_at,
     )
@@ -312,7 +319,7 @@ async def challenge_friend(
     if not friendship:
         raise HTTPException(status_code=403, detail="Прямой вызов доступен только друзьям")
 
-    queue_result = await join_queue(user.id, db)
+    queue_result = await join_queue(user.id, db, create_invitation=True)
     await db.commit()
 
     await notification_manager.send_to_user(str(target_user_id), {
