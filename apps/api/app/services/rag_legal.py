@@ -67,6 +67,8 @@ class RAGContext:
             if r.common_errors:
                 errors_str = "; ".join(r.common_errors[:3])
                 lines.append(f"   ⚠ Частые ошибки: {errors_str}")
+            if r.correct_response_hint:
+                lines.append(f"   Подсказка: {r.correct_response_hint}")
 
         return "\n".join(lines)
 
@@ -129,6 +131,12 @@ def _keyword_score(text: str, keywords: list[str]) -> float:
     return matches / len(keywords)
 
 
+def _query_mentions_article(query: str, law_article: str) -> bool:
+    q = query.lower()
+    article = law_article.lower()
+    return article in q or article.replace(" ", "") in q.replace(" ", "")
+
+
 async def retrieve_by_keywords(
     query: str,
     db: AsyncSession,
@@ -161,7 +169,7 @@ async def retrieve_by_keywords(
         score = _keyword_score(query, keywords)
 
         # Boost: if query contains the law article reference
-        if chunk.law_article and chunk.law_article.lower() in query.lower():
+        if chunk.law_article and _query_mentions_article(query, chunk.law_article):
             score = min(1.0, score + 0.3)
 
         # Boost: check common errors against query
@@ -169,6 +177,17 @@ async def retrieve_by_keywords(
             if isinstance(err, str) and err.lower() in query.lower():
                 score = min(1.0, score + 0.2)
                 break
+
+        # Boost: hint phrases act like internal coaching material.
+        hint = (chunk.correct_response_hint or "").lower()
+        if hint:
+            overlap = sum(1 for token in re.findall(r"\w+", hint)[:12] if token and token in query.lower())
+            if overlap:
+                score = min(1.0, score + min(0.18, overlap * 0.03))
+
+        # High-frequency errors are more useful for coaching and examination.
+        if chunk.error_frequency:
+            score = min(1.0, score + min(0.12, chunk.error_frequency / 100))
 
         if score >= min_score:
             scored.append((score, chunk))

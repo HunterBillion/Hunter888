@@ -108,6 +108,7 @@ async def get_timeline(
     Таймлайн игрового клиента — агрегация из всех источников.
     """
     service = GameCRMService(db)
+    owner_id = _resolve_owner(user, story_id)
 
     # Parse event types
     types_list = None
@@ -116,6 +117,7 @@ async def get_timeline(
 
     return await service.get_client_timeline(
         story_id,
+        user_id=owner_id,
         limit=limit,
         offset=offset,
         event_types=types_list,
@@ -127,7 +129,7 @@ async def get_timeline(
 async def send_message(
     story_id: uuid.UUID,
     body: SendMessageRequest,
-    user: User = Depends(require_role("manager", "admin")),
+    user: User = Depends(require_role("manager", "admin", "rop")),
     db: AsyncSession = Depends(get_db),
 ):
     """Отправить сообщение игровому клиенту (запись в таймлайн)."""
@@ -236,6 +238,6 @@ def _resolve_owner(user: User, story_id: uuid.UUID) -> uuid.UUID | None:
     - manager: свой user_id
     - rop: TODO — проверка команды
     """
-    if user.role.value in ("admin", "methodologist"):
+    if user.role.value in ("admin", "methodologist", "rop"):
         return None  # get_story_detail will find by story_id
     return user.id

@@ -22,15 +22,18 @@ from typing import Any
 import redis.asyncio as aioredis
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import settings
 from app.models.game_crm import GameClientEvent, GameClientStatus, GameEventType
-from app.models.roleplay import ClientProfile, ClientStory, EpisodicMemory
+from app.models.roleplay import ClientProfile, ClientStory, EpisodicMemory, ObjectionChain, Trap
 from app.models.training import TrainingSession
 from app.models.user import User
 from app.services.llm import generate_response
 from app.services.rag_legal import retrieve_legal_context
+from app.services.objection_chain import build_chain_system_prompt
 from app.services.timeline_aggregator import TimelineAggregator, create_game_event
+from app.services.trap_detector import build_trap_injection_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +110,7 @@ class GameCRMService:
         self,
         story_id: uuid.UUID,
         *,
+        user_id: uuid.UUID | None = None,
         limit: int = 50,
         offset: int = 0,
         event_types: list[str] | None = None,
@@ -118,6 +122,7 @@ class GameCRMService:
         Returns:
             {"items": [...], "total": N, "limit": N, "offset": N}
         """
+        await self._get_story(story_id, user_id)
         items = await self.timeline.get_timeline(
             story_id,
             limit=limit,
@@ -404,7 +409,11 @@ class GameCRMService:
             severity=0.3,
         )
 
-        ai_reply_text = await self._safe_generate_ai_client_reply(story, manager_message=content)
+        ai_reply_text = await self._safe_generate_ai_client_reply(
+            story,
+            actor_id=actor_id,
+            manager_message=content,
+        )
         ai_event = await create_game_event(
             self.db,
             story_id=story_id,
@@ -678,10 +687,14 @@ class GameCRMService:
         self,
         story: ClientStory,
         *,
+        actor_id: uuid.UUID,
         manager_message: str,
     ) -> str:
         recent_messages = await self._get_recent_chat_history(story.id)
         memories = await self._get_story_memories(story.id)
+        manager_skill = await self._get_manager_skill_profile(actor_id)
+        traps = await self._get_story_traps(story)
+        chain_prompt = await self._get_story_chain_prompt(story)
         legal_context = await retrieve_legal_context(
             "\n".join(
                 [msg.get("content", "") for msg in recent_messages[-6:]] + [manager_message]
@@ -701,9 +714,18 @@ class GameCRMService:
             story,
             profile=profile,
             memories=memories,
+            traps=traps,
+            chain_prompt=chain_prompt,
+            manager_skill=manager_skill,
             legal_context=legal_context.to_prompt_context() if legal_context.has_results else "",
         )
-        messages = [*recent_messages, {"role": "user", "content": manager_message}]
+        messages = list(recent_messages)
+        if not (
+            messages
+            and messages[-1].get("role") == "user"
+            and messages[-1].get("content", "").strip() == manager_message.strip()
+        ):
+            messages.append({"role": "user", "content": manager_message})
 
         response = await generate_response(
             system_prompt=system_prompt,
@@ -711,16 +733,24 @@ class GameCRMService:
             emotion_state=self._resolve_story_emotion(story),
             user_id=str(story.user_id),
         )
-        return response.content.strip()
+        reply_text = response.content.strip()
+        await self._update_story_legal_memory(
+            story,
+            manager_message=manager_message,
+            legal_context=legal_context,
+            manager_skill=manager_skill,
+        )
+        return reply_text
         
     async def _safe_generate_ai_client_reply(
         self,
         story: ClientStory,
         *,
+        actor_id: uuid.UUID,
         manager_message: str,
     ) -> str:
         try:
-            return await self._generate_ai_client_reply(story, manager_message=manager_message)
+            return await self._generate_ai_client_reply(story, actor_id=actor_id, manager_message=manager_message)
         except Exception as exc:
             logger.warning("Game CRM AI reply fallback: story=%s error=%s", story.id, exc)
             return (
@@ -756,6 +786,141 @@ class GameCRMService:
         )
         return list(result.scalars().all())
 
+    async def _get_story_traps(self, story: ClientStory) -> list[dict[str, Any]]:
+        if not story.client_profile_id:
+            return []
+
+        profile_result = await self.db.execute(
+            select(ClientProfile).where(ClientProfile.id == story.client_profile_id)
+        )
+        profile = profile_result.scalar_one_or_none()
+        if not profile or not profile.trap_ids:
+            return []
+
+        trap_ids: list[uuid.UUID] = []
+        for trap_id in profile.trap_ids:
+            try:
+                trap_ids.append(uuid.UUID(str(trap_id)))
+            except (TypeError, ValueError):
+                continue
+
+        if not trap_ids:
+            return []
+
+        result = await self.db.execute(
+            select(Trap).where(Trap.id.in_(trap_ids), Trap.is_active.is_(True))
+        )
+        traps = result.scalars().all()
+        return [
+            {
+                "id": str(trap.id),
+                "name": trap.name,
+                "category": trap.category,
+                "subcategory": trap.subcategory,
+                "difficulty": trap.difficulty,
+                "client_phrase": trap.client_phrase,
+                "client_phrase_variants": trap.client_phrase_variants or [],
+                "wrong_response_example": trap.wrong_response_example,
+                "correct_response_example": trap.correct_response_example,
+                "explanation": trap.explanation,
+                "law_reference": trap.law_reference,
+            }
+            for trap in traps
+        ]
+
+    async def _get_story_chain_prompt(self, story: ClientStory) -> str:
+        if not story.client_profile_id:
+            return ""
+
+        profile_result = await self.db.execute(
+            select(ClientProfile).where(ClientProfile.id == story.client_profile_id)
+        )
+        profile = profile_result.scalar_one_or_none()
+        if not profile or not profile.chain_id:
+            return ""
+
+        chain_result = await self.db.execute(
+            select(ObjectionChain).where(ObjectionChain.id == profile.chain_id, ObjectionChain.is_active.is_(True))
+        )
+        chain = chain_result.scalar_one_or_none()
+        if not chain or not isinstance(chain.steps, list):
+            return ""
+
+        return build_chain_system_prompt(chain.steps)
+
+    async def _get_manager_skill_profile(self, actor_id: uuid.UUID) -> dict[str, Any]:
+        stats = await self.db.execute(
+            select(
+                func.avg(TrainingSession.score_total),
+                func.max(TrainingSession.score_total),
+                func.count(TrainingSession.id),
+            ).where(
+                TrainingSession.user_id == actor_id,
+                TrainingSession.score_total.isnot(None),
+            )
+        )
+        avg_score, best_score, total_sessions = stats.one()
+        avg_score = float(avg_score or 0.0)
+        best_score = float(best_score or 0.0)
+        total_sessions = int(total_sessions or 0)
+
+        if total_sessions < 3 or avg_score < 60:
+            tier = "novice"
+            cunning_level = 0.45
+        elif avg_score < 78:
+            tier = "balanced"
+            cunning_level = 0.62
+        elif avg_score < 88:
+            tier = "strong"
+            cunning_level = 0.78
+        else:
+            tier = "expert"
+            cunning_level = 0.9
+
+        return {
+            "avg_score": round(avg_score, 1),
+            "best_score": round(best_score, 1),
+            "total_sessions": total_sessions,
+            "tier": tier,
+            "cunning_level": cunning_level,
+        }
+
+    async def _update_story_legal_memory(
+        self,
+        story: ClientStory,
+        *,
+        manager_message: str,
+        legal_context: Any,
+        manager_skill: dict[str, Any],
+    ) -> None:
+        ds = story.director_state or {}
+        existing_memory = ds.get("legal_memory") or []
+        updated = list(existing_memory)
+
+        for result in getattr(legal_context, "results", [])[:4]:
+            updated.append(f"{result.law_article}: {result.fact_text}")
+            if result.common_errors:
+                updated.extend(
+                    f"Ошибка/спорная тема: {item}" for item in result.common_errors[:2]
+                )
+            if result.correct_response_hint:
+                updated.append(f"Корректный вектор ответа: {result.correct_response_hint}")
+
+        if "127-фз" in manager_message.lower() or "ст." in manager_message.lower():
+            updated.append(f"Менеджер ссылался на право: {manager_message[:220]}")
+
+        # Preserve insertion order while deduplicating.
+        deduped = list(dict.fromkeys(item for item in updated if item))[-12:]
+        ds["legal_memory"] = deduped
+        ds["adaptation_profile"] = {
+            "manager_tier": manager_skill.get("tier"),
+            "avg_score": manager_skill.get("avg_score"),
+            "best_score": manager_skill.get("best_score"),
+            "suggested_cunning_level": manager_skill.get("cunning_level"),
+        }
+        story.director_state = ds
+        flag_modified(story, "director_state")
+
     def _resolve_story_emotion(self, story: ClientStory) -> str:
         ds = story.director_state or {}
         tension_curve = ds.get("tension_curve") or []
@@ -777,6 +942,9 @@ class GameCRMService:
         *,
         profile: ClientProfile | None,
         memories: list[EpisodicMemory],
+        traps: list[dict],
+        chain_prompt: str,
+        manager_skill: dict[str, Any],
         legal_context: str,
     ) -> str:
         ds = story.director_state or {}
@@ -784,6 +952,10 @@ class GameCRMService:
         between_events = story.between_call_events or []
         consequences = story.consequences or []
         personality = story.personality_profile or {}
+        legal_memory = ds.get("legal_memory") or []
+        adaptation = ds.get("adaptation_profile") or {}
+        skill_tier = manager_skill.get("tier", "balanced")
+        cunning_level = manager_skill.get("cunning_level", 0.6)
 
         parts = [
             "Ты играешь ИИ-клиента-должника в учебной CRM-панели по банкротству физлиц.",
@@ -798,6 +970,8 @@ class GameCRMService:
             f"Текущий этап истории: звонок {story.current_call_number} из {story.total_calls_planned}.",
             f"Режим развития истории: {ds.get('pacing', 'normal')}.",
             f"Следующий твист: {ds.get('next_twist') or 'не задан'}.",
+            f"Текущий уровень хитрости клиента: {cunning_level:.2f} из 1.0.",
+            f"Уровень менеджера по прошлым сессиям: {skill_tier}.",
         ]
 
         if profile:
@@ -833,16 +1007,36 @@ class GameCRMService:
                 )
             )
 
+        if legal_memory:
+            parts.append(
+                "Жёсткая юридическая память клиента: ранее спорные или важные правовые темы, к которым он будет возвращаться:\n"
+                + "\n".join(f"- {item}" for item in legal_memory[:8])
+            )
+
+        if adaptation:
+            parts.append(
+                "Профиль адаптации под менеджера: "
+                + json.dumps(adaptation, ensure_ascii=False)
+            )
+
         if legal_context:
             parts.append(legal_context)
 
+        if traps:
+            parts.append(build_trap_injection_prompt(traps))
+
+        if chain_prompt:
+            parts.append(chain_prompt)
+
         parts.append(
             "Поведенческие правила:\n"
-            "- если менеджер поверхностен, усиливай недоверие;\n"
+            "- если менеджер поверхностен, усиливай недоверие и дроби разговор на неудобные уточнения;\n"
             "- если менеджер юридически точен, спорь умно, а не абсурдно;\n"
             "- можешь быть эмоциональным, но не ломай правдоподобие;\n"
             "- не соглашайся слишком быстро;\n"
-            "- если менеджер задел важный страх или мягкую точку, можешь немного смягчиться."
+            "- если менеджер задел важный страх или мягкую точку, можешь немного смягчиться;\n"
+            "- если менеджер слабый, не раскрывай все возражения сразу — дави простыми, но болезненными сомнениями;\n"
+            "- если менеджер сильный, используй более тонкие юридические, эмоциональные и procedural-вопросы."
         )
 
         return "\n\n".join(parts)
