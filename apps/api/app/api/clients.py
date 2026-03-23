@@ -1280,55 +1280,81 @@ async def api_get_audit_log(
 from app.models.client import ALLOWED_STATUS_TRANSITIONS
 
 
+_GRAPH_MAX_CLIENTS = 5000  # Hard cap to prevent unbounded memory usage
+
+
 @router.get("/graph/data")
 async def api_get_graph_data(
+    limit: int = Query(default=_GRAPH_MAX_CLIENTS, ge=1, le=_GRAPH_MAX_CLIENTS),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("manager", "admin", "rop", "methodologist")),
 ):
     """
     Данные для lifecycle-графа клиентов и статусных переходов.
+    Ограничено до {_GRAPH_MAX_CLIENTS} клиентов для защиты от OOM.
     """
-    # ── Все активные клиенты ──
-    query = select(RealClient).where(RealClient.is_active.is_(True))
+    from collections import Counter
+
+    # ── Фильтр по роли ──
+    base_filter = RealClient.is_active.is_(True)
     if current_user.role == UserRole.manager:
-        query = query.where(RealClient.manager_id == current_user.id)
+        role_filter = RealClient.manager_id == current_user.id
     elif current_user.role == UserRole.rop:
         if not current_user.team_id:
-            query = query.where(False)
-        else:
-            team_members = select(User.id).where(User.team_id == current_user.team_id)
-            query = query.where(RealClient.manager_id.in_(team_members))
+            return {"nodes": [], "links": [], "status_counts": {}, "transitions": [],
+                    "total_clients": 0, "total_managers": 0, "truncated": False}
+        team_members = select(User.id).where(User.team_id == current_user.team_id)
+        role_filter = RealClient.manager_id.in_(team_members)
+    else:
+        role_filter = True  # admin / methodologist see all
 
+    # ── Status counts via DB aggregate (no full load) ──
+    count_query = (
+        select(RealClient.status, func.count(RealClient.id))
+        .where(base_filter)
+        .where(role_filter)
+        .group_by(RealClient.status)
+    )
+    count_rows = await db.execute(count_query)
+    status_counts = {
+        (s.value if hasattr(s, "value") else str(s)): cnt
+        for s, cnt in count_rows.all()
+    }
+    total_matching = sum(status_counts.values())
+    truncated = total_matching > limit
+
+    # ── Load clients with cap ──
+    query = (
+        select(RealClient)
+        .where(base_filter)
+        .where(role_filter)
+        .order_by(RealClient.created_at.desc())
+        .limit(limit)
+    )
     rows = await db.execute(query)
-    clients = list(rows.scalars().all())
+    clients = rows.scalars().all()
 
-    # ── Менеджеры ──
-    manager_ids = {c.manager_id for c in clients if c.manager_id}
+    # ── Manager counts via Counter (O(n) not O(n²)) ──
+    mgr_counter: Counter = Counter(c.manager_id for c in clients if c.manager_id)
+    manager_ids = set(mgr_counter.keys())
+
     mgr_rows = await db.execute(
         select(User).where(User.id.in_(manager_ids)) if manager_ids else select(User).where(False)
     )
     managers = {m.id: m for m in mgr_rows.scalars().all()}
 
-    # ── Статистика по статусам ──
-    status_counts: dict[str, int] = {}
-    for c in clients:
-        s = c.status.value if hasattr(c.status, "value") else str(c.status)
-        status_counts[s] = status_counts.get(s, 0) + 1
-
     # ── Build nodes ──
     nodes = []
 
-    # Manager nodes
     for mid, mgr in managers.items():
         nodes.append({
             "id": f"mgr-{mid}",
             "type": "manager",
             "label": mgr.full_name or mgr.email or "Менеджер",
             "role": mgr.role.value if hasattr(mgr.role, "value") else str(mgr.role),
-            "client_count": sum(1 for c in clients if c.manager_id == mid),
+            "client_count": mgr_counter[mid],
         })
 
-    # Client nodes
     for c in clients:
         s = c.status.value if hasattr(c.status, "value") else str(c.status)
         nodes.append({
@@ -1342,18 +1368,12 @@ async def api_get_graph_data(
         })
 
     # ── Build links ──
-    links = []
+    links = [
+        {"source": f"cli-{c.id}", "target": f"mgr-{c.manager_id}", "type": "managed_by"}
+        for c in clients if c.manager_id
+    ]
 
-    # Client → Manager links
-    for c in clients:
-        if c.manager_id:
-            links.append({
-                "source": f"cli-{c.id}",
-                "target": f"mgr-{c.manager_id}",
-                "type": "managed_by",
-            })
-
-    # Status transition edges (from the pipeline)
+    # Status transition edges (static from the pipeline definition)
     transitions = []
     for from_status, to_statuses in ALLOWED_STATUS_TRANSITIONS.items():
         fs = from_status.value if hasattr(from_status, "value") else str(from_status)
@@ -1366,6 +1386,7 @@ async def api_get_graph_data(
         "links": links,
         "status_counts": status_counts,
         "transitions": transitions,
-        "total_clients": len(clients),
+        "total_clients": total_matching,
         "total_managers": len(managers),
+        "truncated": truncated,
     }

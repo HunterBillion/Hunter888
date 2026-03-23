@@ -47,7 +47,16 @@ class ClientStatusChangeRequest(BaseModel):
     """PATCH /api/clients/{id}/status — сменить статус"""
 
     new_status: str = Field(..., max_length=50)
-    reason: str | None = Field(None, max_length=500)
+    reason: str | None = Field(None, min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def strip_and_validate_reason(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if not v:
+                return None
+        return v
     # Для lost: причина потери
     # Для consent_revoked: причина отзыва
 

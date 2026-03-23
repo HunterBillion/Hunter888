@@ -82,6 +82,8 @@ def _clear_auth_cookies(response: JSONResponse) -> JSONResponse:
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
 async def register(request: Request, body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy.exc import IntegrityError
+
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=err.EMAIL_ALREADY_REGISTERED)
@@ -92,7 +94,13 @@ async def register(request: Request, body: RegisterRequest, db: AsyncSession = D
         full_name=body.full_name,
     )
     db.add(user)
-    await db.flush()
+    # Race-safe: if two concurrent requests pass the check above,
+    # the DB UNIQUE constraint on email catches the second insert.
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=err.EMAIL_ALREADY_REGISTERED)
 
     tokens = _create_tokens(str(user.id))
     response = JSONResponse(content=tokens.model_dump(), status_code=201)

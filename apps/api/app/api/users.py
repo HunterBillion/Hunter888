@@ -2,6 +2,7 @@
 
 import glob as globmod
 import io
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -584,53 +585,72 @@ async def upload_avatar(
             detail=f"Файл слишком большой. Максимум {limit_mb}MB",
         )
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Remove old avatar files for this user
-    for old in globmod.glob(str(UPLOAD_DIR / f"{user.id}.*")):
-        Path(old).unlink(missing_ok=True)
-
+    import asyncio
     import tempfile
 
-    if is_image and content_type != "image/gif":
-        # Resize to 256x256, convert to WebP
-        from PIL import Image
+    def _process_avatar_sync(user_id: uuid.UUID, data: bytes, content_type: str, is_image: bool) -> str:
+        """Synchronous avatar processing — runs in executor to avoid blocking event loop.
 
-        img = Image.open(io.BytesIO(data))
-        img = img.convert("RGB")
-        img.thumbnail((256, 256), Image.LANCZOS)
-        ext = "webp"
-        out_path = UPLOAD_DIR / f"{user.id}.{ext}"
-        # Atomic write: write to temp file, then rename (prevents race conditions
-        # when two concurrent requests both try to write the same avatar)
-        fd, tmp = tempfile.mkstemp(dir=UPLOAD_DIR, suffix=f".{ext}")
-        try:
-            with open(fd, "wb") as f:
-                img.save(f, "WEBP", quality=85)
-            Path(tmp).replace(out_path)  # atomic on POSIX
-        except BaseException:
-            Path(tmp).unlink(missing_ok=True)
-            raise
-    elif content_type == "image/gif":
-        ext = "gif"
-        out_path = UPLOAD_DIR / f"{user.id}.{ext}"
-        fd, tmp = tempfile.mkstemp(dir=UPLOAD_DIR, suffix=f".{ext}")
-        try:
-            Path(tmp).write_bytes(data)
-            Path(tmp).replace(out_path)
-        except BaseException:
-            Path(tmp).unlink(missing_ok=True)
-            raise
-    else:
-        ext = content_type.split("/")[1]  # mp4 or webm
-        out_path = UPLOAD_DIR / f"{user.id}.{ext}"
-        fd, tmp = tempfile.mkstemp(dir=UPLOAD_DIR, suffix=f".{ext}")
-        try:
-            Path(tmp).write_bytes(data)
-            Path(tmp).replace(out_path)
-        except BaseException:
-            Path(tmp).unlink(missing_ok=True)
-            raise
+        Handles PIL resize, atomic writes, and FD cleanup for all branches.
+        Returns the file extension used.
+        """
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Remove old avatar files for this user
+        for old in globmod.glob(str(UPLOAD_DIR / f"{user_id}.*")):
+            Path(old).unlink(missing_ok=True)
+
+        if is_image and content_type != "image/gif":
+            from PIL import Image
+
+            img = Image.open(io.BytesIO(data))
+            img = img.convert("RGB")
+            img.thumbnail((256, 256), Image.LANCZOS)
+            ext = "webp"
+            out_path = UPLOAD_DIR / f"{user_id}.{ext}"
+            fd, tmp = tempfile.mkstemp(dir=UPLOAD_DIR, suffix=f".{ext}")
+            try:
+                with open(fd, "wb") as f:  # open(fd) takes ownership of fd
+                    img.save(f, "WEBP", quality=85)
+                Path(tmp).replace(out_path)
+            except BaseException:
+                Path(tmp).unlink(missing_ok=True)
+                raise
+        elif content_type == "image/gif":
+            ext = "gif"
+            out_path = UPLOAD_DIR / f"{user_id}.{ext}"
+            fd, tmp = tempfile.mkstemp(dir=UPLOAD_DIR, suffix=f".{ext}")
+            try:
+                os.write(fd, data)      # write via fd
+                os.close(fd)            # close fd explicitly — was previously leaked!
+                Path(tmp).replace(out_path)
+            except BaseException:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass  # already closed
+                Path(tmp).unlink(missing_ok=True)
+                raise
+        else:
+            ext = content_type.split("/")[1]  # mp4 or webm
+            out_path = UPLOAD_DIR / f"{user_id}.{ext}"
+            fd, tmp = tempfile.mkstemp(dir=UPLOAD_DIR, suffix=f".{ext}")
+            try:
+                os.write(fd, data)      # write via fd
+                os.close(fd)            # close fd explicitly — was previously leaked!
+                Path(tmp).replace(out_path)
+            except BaseException:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass  # already closed
+                Path(tmp).unlink(missing_ok=True)
+                raise
+
+        return ext
+
+    # Run all blocking I/O + PIL in a thread to avoid blocking the event loop
+    ext = await asyncio.to_thread(_process_avatar_sync, user.id, data, content_type, is_image)
 
     avatar_url = f"/api/uploads/avatars/{user.id}.{ext}"
     user.avatar_url = avatar_url

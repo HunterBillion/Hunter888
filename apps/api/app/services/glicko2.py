@@ -237,7 +237,14 @@ def apply_rd_decay(rd: float, last_played: datetime | None) -> float:
 async def get_or_create_rating(
     user_id: uuid.UUID, db: AsyncSession
 ) -> PvPRating:
-    """Get existing rating or create a new one with defaults."""
+    """Get existing rating or create a new one with defaults.
+
+    Race-safe: if two concurrent requests try to create the same rating,
+    the second one catches the IntegrityError (UNIQUE on user_id) and
+    re-fetches the row that the first request created.
+    """
+    from sqlalchemy.exc import IntegrityError
+
     result = await db.execute(
         select(PvPRating).where(PvPRating.user_id == user_id)
     )
@@ -252,8 +259,17 @@ async def get_or_create_rating(
             rank_tier=PvPRankTier.unranked,
         )
         db.add(rating)
-        await db.flush()
-        logger.info("Created PvP rating for user %s", user_id)
+        try:
+            await db.flush()
+            logger.info("Created PvP rating for user %s", user_id)
+        except IntegrityError:
+            # Another request created the rating first — rollback and re-fetch
+            await db.rollback()
+            result = await db.execute(
+                select(PvPRating).where(PvPRating.user_id == user_id)
+            )
+            rating = result.scalar_one()
+            logger.debug("PvP rating already existed for user %s (concurrent create)", user_id)
 
     return rating
 

@@ -439,7 +439,14 @@ async def _advance_round(duel_id: uuid.UUID) -> None:
             if participant_id != BOT_ID:
                 await _send_to_user(participant_id, "judge.score", round_score_payload)
     except Exception as exc:
-        logger.warning("Round judge failed: duel=%s round=%s error=%s", duel_id, round_number, exc)
+        logger.error("Round judge failed: duel=%s round=%s error=%s", duel_id, round_number, exc, exc_info=True)
+        # Notify players about partial scoring failure
+        for pid in [session["player1_id"], session["player2_id"]]:
+            if pid != BOT_ID:
+                await _send_to_user(pid, "round.judge_error", {
+                    "duel_id": str(duel_id), "round": round_number,
+                    "detail": "Ошибка оценки раунда — результат будет рассчитан при финализации",
+                })
 
     if session["round"] == 1:
         await _update_duel_row(duel_id, status=DuelStatus.swap)
@@ -480,21 +487,42 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
         if not duel:
             return
 
+        # Idempotency guard: if DB already shows completed/judging, skip
+        if duel.status in (DuelStatus.completed, DuelStatus.judging):
+            logger.warning("Duel %s already finalized (status=%s), skipping", duel_id, duel.status.value)
+            return
+
         duel.status = DuelStatus.judging
         db.add(duel)
         await db.flush()
 
-        judge_result = await judge_full_duel(
-            round1_dialog=round1_messages,
-            round2_dialog=round2_messages,
-            player1_id=session["player1_id"],
-            player2_id=session["player2_id"],
-            player1_name=session["player_names"][session["player1_id"]],
-            player2_name=session["player_names"][session["player2_id"]],
-            archetype="skeptic",
-            difficulty=duel.difficulty,
-            db=db,
-        )
+        try:
+            judge_result = await judge_full_duel(
+                round1_dialog=round1_messages,
+                round2_dialog=round2_messages,
+                player1_id=session["player1_id"],
+                player2_id=session["player2_id"],
+                player1_name=session["player_names"][session["player1_id"]],
+                player2_name=session["player_names"][session["player2_id"]],
+                archetype="skeptic",
+                difficulty=duel.difficulty,
+                db=db,
+            )
+        except Exception as exc:
+            # Judge failed — mark duel as error state, don't lose messages
+            logger.error("Judge failed for duel %s: %s", duel_id, exc, exc_info=True)
+            duel.status = DuelStatus.completed
+            duel.round_1_data = {"messages": round1_messages}
+            duel.round_2_data = {"messages": round2_messages}
+            duel.completed_at = datetime.now(timezone.utc)
+            db.add(duel)
+            await db.commit()
+            for uid in [session["player1_id"], session["player2_id"]]:
+                if uid != BOT_ID:
+                    await _send_to_user(uid, "duel.error", {"duel_id": str(duel_id), "detail": "Ошибка судейства"})
+            await matchmaker.cleanup_duel_state(duel_id)
+            await _cleanup_duel_runtime(duel_id)
+            return
 
         duel.player1_total = judge_result.player1_total
         duel.player2_total = judge_result.player2_total
@@ -513,27 +541,35 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
         p1_delta = 0.0
         p2_delta = 0.0
         if not duel.is_pve:
-            _, p1_delta = await update_rating_after_duel(
-                duel.player1_id,
-                duel.player2_id,
-                0.5 if judge_result.is_draw else 1.0 if judge_result.winner_id == duel.player1_id else 0.0,
-                False,
-                db,
-            )
-            _, p2_delta = await update_rating_after_duel(
-                duel.player2_id,
-                duel.player1_id,
-                0.5 if judge_result.is_draw else 1.0 if judge_result.winner_id == duel.player2_id else 0.0,
-                False,
-                db,
-            )
+            try:
+                _, p1_delta = await update_rating_after_duel(
+                    duel.player1_id,
+                    duel.player2_id,
+                    0.5 if judge_result.is_draw else 1.0 if judge_result.winner_id == duel.player1_id else 0.0,
+                    False,
+                    db,
+                )
+                _, p2_delta = await update_rating_after_duel(
+                    duel.player2_id,
+                    duel.player1_id,
+                    0.5 if judge_result.is_draw else 1.0 if judge_result.winner_id == duel.player2_id else 0.0,
+                    False,
+                    db,
+                )
+            except Exception as exc:
+                logger.error("Rating update failed for duel %s: %s", duel_id, exc, exc_info=True)
+                # Continue — duel result is still valid even if rating update fails
+
             for uid in [duel.player1_id, duel.player2_id]:
-                ac_result = await run_anti_cheat(uid, duel_id, round1_messages + round2_messages, db)
-                await save_anti_cheat_result(ac_result, db)
-                if ac_result.overall_flagged:
-                    flags = list(duel.anti_cheat_flags or [])
-                    flags.append(_collect_anti_cheat_flag(uid, ac_result))
-                    duel.anti_cheat_flags = flags
+                try:
+                    ac_result = await run_anti_cheat(uid, duel_id, round1_messages + round2_messages, db)
+                    await save_anti_cheat_result(ac_result, db)
+                    if ac_result.overall_flagged:
+                        flags = list(duel.anti_cheat_flags or [])
+                        flags.append(_collect_anti_cheat_flag(uid, ac_result))
+                        duel.anti_cheat_flags = flags
+                except Exception as exc:
+                    logger.warning("Anti-cheat failed for user %s in duel %s: %s", uid, duel_id, exc)
 
         duel.player1_rating_delta = p1_delta
         duel.player2_rating_delta = p2_delta
@@ -831,9 +867,14 @@ async def pvp_websocket(websocket: WebSocket) -> None:
 
             await _send(websocket, "error", {"detail": f"Unknown message type: {msg_type}"})
 
+    except WebSocketDisconnect:
+        logger.info("PvP WebSocket disconnected: user=%s", user_id)
     except Exception as exc:
-        logger.error("PvP WebSocket error: user=%s error=%s", user_id, exc)
-        await _send(websocket, "error", {"detail": str(exc)})
+        logger.error("PvP WebSocket error: user=%s error=%s", user_id, exc, exc_info=True)
+        try:
+            await _send(websocket, "error", {"detail": "Внутренняя ошибка сервера"})
+        except Exception:
+            pass  # Connection already closed
     finally:
         _active_connections.pop(user_id, None)
         for duel_id, session in list(_duel_sessions.items()):

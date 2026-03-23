@@ -187,7 +187,7 @@ class RealClient(Base):
     )
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(20), index=True)
-    email: Mapped[str | None] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(255), index=True)
     status: Mapped[ClientStatus] = mapped_column(
         client_status_enum, default=ClientStatus.new, nullable=False, index=True
     )
@@ -220,7 +220,7 @@ class RealClient(Base):
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), server_default=func.now(), index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
