@@ -100,10 +100,10 @@ async def get_embedding(text: str) -> list[float] | None:
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{settings.gemini_embedding_model}:embedContent"
-            f"?key={settings.gemini_embedding_api_key}"
         )
         resp = await client.post(
             url,
+            headers={"x-goog-api-key": settings.gemini_embedding_api_key},
             json={
                 "model": f"models/{settings.gemini_embedding_model}",
                 "content": {"parts": [{"text": text}]},
@@ -115,6 +115,14 @@ async def get_embedding(text: str) -> list[float] | None:
     except Exception as e:
         logger.warning("Embedding API failed: %s", e)
         return None
+
+
+async def close_embedding_client() -> None:
+    """Gracefully close the shared httpx client. Call once during app shutdown."""
+    global _embedding_client
+    if _embedding_client is not None:
+        await _embedding_client.aclose()
+        _embedding_client = None
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +167,7 @@ async def retrieve_by_keywords(
     stmt = select(LegalKnowledgeChunk).where(LegalKnowledgeChunk.is_active.is_(True))
     if category:
         stmt = stmt.where(LegalKnowledgeChunk.category == category)
+    stmt = stmt.limit(500)  # Safety limit to prevent memory issues
 
     result = await db.execute(stmt)
     chunks = result.scalars().all()
@@ -223,8 +232,8 @@ async def retrieve_by_embedding(
 ) -> list[RAGResult]:
     """Retrieve relevant legal chunks using embedding similarity.
 
-    Phase 4+: requires pgvector extension and embedding column on LegalKnowledgeChunk.
-    Falls back to keyword search if embeddings not available.
+    Uses pgvector cosine similarity if embeddings are available.
+    Falls back to keyword search if not.
     """
     embedding = await get_embedding(query)
 
@@ -232,14 +241,123 @@ async def retrieve_by_embedding(
         logger.debug("Embedding not available, falling back to keyword search")
         return await retrieve_by_keywords(query, db, top_k)
 
-    # Phase 4 TODO: pgvector cosine similarity query
-    # For now, fall back to keyword matching
-    logger.debug(
-        "Embedding retrieved (%d dims), but pgvector not yet configured. "
-        "Falling back to keyword search.",
-        len(embedding),
-    )
-    return await retrieve_by_keywords(query, db, top_k)
+    # Try pgvector cosine similarity search
+    try:
+        from sqlalchemy import text as sa_text
+
+        # Use raw SQL for pgvector cosine distance operator <=>
+        query_sql = sa_text("""
+            SELECT id, category, fact_text, law_article, common_errors,
+                   correct_response_hint,
+                   1 - (embedding <=> :embedding::vector) AS similarity
+            FROM legal_knowledge_chunks
+            WHERE is_active = true
+              AND embedding IS NOT NULL
+            ORDER BY embedding <=> :embedding::vector
+            LIMIT :top_k
+        """)
+
+        result = await db.execute(
+            query_sql,
+            {"embedding": str(embedding), "top_k": top_k},
+        )
+        rows = result.fetchall()
+
+        if not rows:
+            logger.debug("No embeddings in DB, falling back to keyword search")
+            return await retrieve_by_keywords(query, db, top_k)
+
+        results = []
+        for row in rows:
+            # Filter by minimum similarity threshold
+            if row.similarity < 0.3:
+                continue
+            results.append(
+                RAGResult(
+                    chunk_id=row.id,
+                    category=row.category if isinstance(row.category, str) else row.category.value,
+                    fact_text=row.fact_text,
+                    law_article=row.law_article,
+                    relevance_score=float(row.similarity),
+                    common_errors=row.common_errors or [],
+                    correct_response_hint=row.correct_response_hint,
+                )
+            )
+
+        if results:
+            return results
+
+        # No results above threshold -- fall back
+        logger.debug("No embedding results above threshold, falling back to keyword search")
+        return await retrieve_by_keywords(query, db, top_k)
+
+    except Exception as e:
+        logger.warning("pgvector query failed (extension may not be installed): %s", e)
+        return await retrieve_by_keywords(query, db, top_k)
+
+
+async def _retrieve_by_embedding_with_method(
+    query: str,
+    db: AsyncSession,
+    top_k: int = 5,
+) -> tuple[list[RAGResult], bool]:
+    """Wrapper that returns (results, used_embedding_flag).
+
+    Returns True for used_embedding only when results actually came
+    from pgvector cosine similarity, not from keyword fallback.
+    """
+    embedding = await get_embedding(query)
+
+    if embedding is None:
+        return await retrieve_by_keywords(query, db, top_k), False
+
+    try:
+        from sqlalchemy import text as sa_text
+
+        query_sql = sa_text("""
+            SELECT id, category, fact_text, law_article, common_errors,
+                   correct_response_hint,
+                   1 - (embedding <=> :embedding::vector) AS similarity
+            FROM legal_knowledge_chunks
+            WHERE is_active = true
+              AND embedding IS NOT NULL
+            ORDER BY embedding <=> :embedding::vector
+            LIMIT :top_k
+        """)
+
+        result = await db.execute(
+            query_sql,
+            {"embedding": str(embedding), "top_k": top_k},
+        )
+        rows = result.fetchall()
+
+        if not rows:
+            return await retrieve_by_keywords(query, db, top_k), False
+
+        results = []
+        for row in rows:
+            if row.similarity < 0.3:
+                continue
+            results.append(
+                RAGResult(
+                    chunk_id=row.id,
+                    category=row.category if isinstance(row.category, str) else row.category.value,
+                    fact_text=row.fact_text,
+                    law_article=row.law_article,
+                    relevance_score=float(row.similarity),
+                    common_errors=row.common_errors or [],
+                    correct_response_hint=row.correct_response_hint,
+                )
+            )
+
+        if results:
+            return results, True
+
+        return await retrieve_by_keywords(query, db, top_k), False
+
+    except Exception as e:
+        logger.warning("pgvector query failed (extension may not be installed): %s", e)
+        return await retrieve_by_keywords(query, db, top_k), False
 
 
 # ---------------------------------------------------------------------------
@@ -270,8 +388,8 @@ async def retrieve_legal_context(
     method = "keyword"
 
     if prefer_embedding and settings.gemini_embedding_api_key:
-        results = await retrieve_by_embedding(query, db, top_k)
-        if results:
+        results, used_embedding = await _retrieve_by_embedding_with_method(query, db, top_k)
+        if used_embedding:
             method = "embedding"
     else:
         results = await retrieve_by_keywords(query, db, top_k)
@@ -346,3 +464,47 @@ async def validate_legal_claim(
         "law_article": top.law_article,
         "explanation": "Утверждение частично соответствует правовой норме.",
     }
+
+
+# ---------------------------------------------------------------------------
+# Embedding population utility
+# ---------------------------------------------------------------------------
+
+async def populate_embeddings(db: AsyncSession, batch_size: int = 10) -> int:
+    """Populate embedding vectors for chunks that don't have them.
+
+    Call this after seeding new knowledge chunks.
+    Returns the number of chunks updated.
+    """
+    from sqlalchemy import text as sa_text
+
+    # Get active chunks (embedding=NULL or not yet set)
+    stmt = select(LegalKnowledgeChunk).where(
+        LegalKnowledgeChunk.is_active.is_(True),
+    )
+    result = await db.execute(stmt)
+    chunks = result.scalars().all()
+
+    updated = 0
+    for chunk in chunks:
+        embedding = await get_embedding(chunk.fact_text)
+        if embedding:
+            # Use raw SQL to set pgvector column
+            await db.execute(
+                sa_text(
+                    "UPDATE legal_knowledge_chunks "
+                    "SET embedding = :emb::vector WHERE id = :id"
+                ),
+                {"emb": str(embedding), "id": str(chunk.id)},
+            )
+            updated += 1
+
+            if updated % batch_size == 0:
+                await db.commit()
+                logger.info("Populated %d embeddings...", updated)
+
+    if updated % batch_size != 0:
+        await db.commit()
+
+    logger.info("Embedding population complete: %d chunks updated", updated)
+    return updated

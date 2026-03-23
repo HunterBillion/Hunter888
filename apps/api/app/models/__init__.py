@@ -90,6 +90,14 @@ from app.models.pvp import (
     DuelDifficulty,
 )
 from app.models.custom_character import CustomCharacter
+from app.models.knowledge import (
+    KnowledgeQuizSession,
+    QuizParticipant,
+    KnowledgeAnswer,
+    QuizChallenge,
+    QuizMode,
+    QuizSessionStatus,
+)
 from app.services.web_push import PushSubscription
 
 __all__ = [
@@ -186,6 +194,13 @@ __all__ = [
     "DuelDifficulty",
     # Custom Characters
     "CustomCharacter",
+    # Knowledge Quiz (AI Examiner + PvP Arena)
+    "KnowledgeQuizSession",
+    "QuizParticipant",
+    "KnowledgeAnswer",
+    "QuizChallenge",
+    "QuizMode",
+    "QuizSessionStatus",
     # Web Push (Task X6)
     "PushSubscription",
 ]

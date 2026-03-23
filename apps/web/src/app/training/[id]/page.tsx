@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
@@ -36,6 +36,7 @@ import { PreCallBriefOverlay } from "@/components/training/PreCallBriefOverlay";
 import { StoryCallReportOverlay } from "@/components/training/StoryCallReportOverlay";
 import { BetweenCallsOverlay } from "@/components/training/BetweenCallsOverlay";
 import { useSessionStore } from "@/stores/useSessionStore";
+import { TrainingErrorBoundary } from "@/components/training/TrainingErrorBoundary";
 import { useHotkeys } from "@/hooks/useHotkeys";
 import { LogoSeparator } from "@/components/ui/LogoSeparator";
 import {
@@ -105,12 +106,16 @@ export default function TrainingSessionPage() {
   const isStoryMode = searchParams.get("mode") === "story";
   const storyScenarioId = isStoryMode ? routeId : null;
   const storyCalls = Math.min(5, Math.max(2, Number(searchParams.get("calls") || "3") || 3));
-  const storyCustomParams = {
-    archetype: searchParams.get("custom_archetype") || undefined,
-    profession: searchParams.get("custom_profession") || undefined,
-    lead_source: searchParams.get("custom_lead_source") || undefined,
-    difficulty: searchParams.get("custom_difficulty") ? Number(searchParams.get("custom_difficulty")) : undefined,
-  };
+  const storyArchetype = searchParams.get("custom_archetype") || undefined;
+  const storyProfession = searchParams.get("custom_profession") || undefined;
+  const storyLeadSource = searchParams.get("custom_lead_source") || undefined;
+  const storyDifficulty = searchParams.get("custom_difficulty") ? Number(searchParams.get("custom_difficulty")) : undefined;
+  const storyCustomParams = useMemo(() => ({
+    archetype: storyArchetype,
+    profession: storyProfession,
+    lead_source: storyLeadSource,
+    difficulty: storyDifficulty,
+  }), [storyArchetype, storyProfession, storyLeadSource, storyDifficulty]);
 
   // ── Zustand store (replaces 30+ useState) ──
   const s = useSessionStore();
@@ -549,7 +554,7 @@ export default function TrainingSessionPage() {
 
   const handleMicRelease = async () => {
     if (microphone.recordingState === "recording" && !preferBrowserSpeech) {
-      const blob = microphone.stopRecording();
+      const blob = await microphone.stopRecording();
       s.setMicActive(false);
       if (blob && blob.size > 0) {
         try {
@@ -588,18 +593,19 @@ export default function TrainingSessionPage() {
     sendMessage({ type: "silence.continue", data: {} });
   };
 
-  // Track talk/listen time — 1s interval
+  // Track talk/listen time — 1s interval (uses getState() to avoid stale closures)
   useEffect(() => {
     if (s.sessionState !== "ready") return;
     const iv = setInterval(() => {
-      if (s.micActive) {
-        s.setTalkTime(s.talkTime + 1);
-      } else if (s.isTyping || tts.speaking) {
-        s.setListenTime(s.listenTime + 1);
+      const state = useSessionStore.getState();
+      if (state.micActive) {
+        useSessionStore.setState({ talkTime: state.talkTime + 1 });
+      } else if (state.isTyping || tts.speaking) {
+        useSessionStore.setState({ listenTime: state.listenTime + 1 });
       }
     }, 1000);
     return () => clearInterval(iv);
-  }, [s.sessionState, s.micActive, s.isTyping, tts.speaking, s]);
+  }, [s.sessionState, tts.speaking]);
 
   const talkPercent = s.talkTime + s.listenTime > 0 ? Math.round((s.talkTime / (s.talkTime + s.listenTime)) * 100) : 50;
   const emotionValue = EMOTION_MAP[s.emotion]?.value ?? 10;
@@ -699,6 +705,7 @@ export default function TrainingSessionPage() {
   }
 
   return (
+    <TrainingErrorBoundary sessionId={routeId}>
     <div className="flex h-screen flex-col overflow-hidden" style={{ background: "var(--bg-primary)" }}>
       {/* ── Scanlines overlay ──────────────────────────────── */}
       <div className="fixed inset-0 scanlines z-[100] opacity-15 mix-blend-overlay pointer-events-none" />
@@ -1285,5 +1292,6 @@ export default function TrainingSessionPage() {
         )}
       </AnimatePresence>
     </div>
+    </TrainingErrorBoundary>
   );
 }

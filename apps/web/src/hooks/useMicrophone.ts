@@ -20,7 +20,7 @@ interface UseMicrophoneReturn {
   audioLevel: number; // 0-100 scale for visual indicator
   isSupported: boolean;
   startRecording: () => Promise<boolean>;
-  stopRecording: () => Blob | null;
+  stopRecording: () => Promise<Blob | null>;
   requestPermission: () => Promise<boolean>;
 }
 
@@ -247,46 +247,54 @@ export function useMicrophone(
     }
   }, [computeAudioLevel, isSupported, monitorAudio]);
 
-  const stopRecording = useCallback((): Blob | null => {
-    cancelAnimationFrame(animFrameRef.current);
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
+  const stopRecording = useCallback((): Promise<Blob | null> => {
+    return new Promise((resolve) => {
+      cancelAnimationFrame(animFrameRef.current);
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
 
-    const mediaRecorder = mediaRecorderRef.current;
-    if (!mediaRecorder || mediaRecorder.state === "inactive") {
-      setRecordingState("idle");
-      setAudioLevel(0);
-      return null;
-    }
+      const mediaRecorder = mediaRecorderRef.current;
+      if (!mediaRecorder || mediaRecorder.state === "inactive") {
+        setRecordingState("idle");
+        setAudioLevel(0);
+        resolve(null);
+        return;
+      }
 
-    mediaRecorder.stop();
-    mediaRecorderRef.current = null;
+      // Listen for the final dataavailable event before building Blob
+      mediaRecorder.addEventListener("stop", () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        chunksRef.current = [];
 
-    // Stop all tracks
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
+        // Stop all tracks
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+        }
 
-    // Close audio context
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {});
-      audioContextRef.current = null;
-    }
-    analyserRef.current = null;
+        // Close audio context
+        if (audioContextRef.current) {
+          audioContextRef.current.close().catch(() => {});
+          audioContextRef.current = null;
+        }
+        analyserRef.current = null;
 
-    setRecordingState("processing");
-    setAudioLevel(0);
+        setRecordingState("processing");
+        setAudioLevel(0);
 
-    const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-    chunksRef.current = [];
+        // Reset to idle after a moment
+        setTimeout(() => {
+          if (mountedRef.current) setRecordingState("idle");
+        }, 100);
 
-    // Reset to idle after a moment (caller can set to processing longer if needed)
-    setTimeout(() => setRecordingState("idle"), 100);
+        resolve(blob);
+      }, { once: true });
 
-    return blob;
+      mediaRecorder.stop();
+      mediaRecorderRef.current = null;
+    });
   }, []);
 
   return {

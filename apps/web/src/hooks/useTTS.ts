@@ -172,6 +172,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
 
   // --- Refs ---
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -217,6 +218,10 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
+      }
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
       }
       if (fallbackTimerRef.current) {
         clearTimeout(fallbackTimerRef.current);
@@ -329,6 +334,11 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
       audioRef.current.currentTime = 0;
       audioRef.current = null;
     }
+    // Revoke ObjectURL to prevent memory leak
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
     // Stop browser TTS
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -365,6 +375,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
         }
         const blob = new Blob([bytes], { type: "audio/mpeg" });
         const url = URL.createObjectURL(blob);
+        objectUrlRef.current = url;
 
         const audio = new Audio(url);
         audioRef.current = audio;
@@ -388,6 +399,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
           stopAudioLevelSimulation();
           stopDurationCountdown();
           URL.revokeObjectURL(url);
+          objectUrlRef.current = null;
           audioRef.current = null;
           opts?.onEnded?.();
         };
@@ -397,6 +409,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
           stopAudioLevelSimulation();
           stopDurationCountdown();
           URL.revokeObjectURL(url);
+          objectUrlRef.current = null;
           audioRef.current = null;
           opts?.onEnded?.();
         };
@@ -411,6 +424,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
           stopAudioLevelSimulation();
           stopDurationCountdown();
           URL.revokeObjectURL(url);
+          objectUrlRef.current = null;
           audioRef.current = null;
           opts?.onEnded?.();
         });

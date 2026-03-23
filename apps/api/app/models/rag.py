@@ -11,6 +11,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
+from pgvector.sqlalchemy import Vector
 
 from app.database import Base
 
@@ -72,6 +73,10 @@ class LegalKnowledgeChunk(Base):
     error_frequency: Mapped[int] = mapped_column(Integer, default=5)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Embedding vector for semantic search (pgvector cosine similarity)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

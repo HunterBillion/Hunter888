@@ -50,3 +50,8 @@ api_router.include_router(game_crm_router, prefix="/game/clients", tags=["game-c
 from app.api.pvp import router as pvp_router
 
 api_router.include_router(pvp_router, prefix="/pvp", tags=["pvp"])
+
+# Agent 9 — Knowledge Quiz (127-FZ testing)
+from app.api.knowledge import router as knowledge_router
+
+api_router.include_router(knowledge_router, prefix="/knowledge", tags=["knowledge"])

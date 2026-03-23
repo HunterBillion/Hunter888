@@ -26,6 +26,7 @@ from app.ws.game_crm import game_crm_websocket
 from app.ws.training import training_websocket
 from app.ws.notifications import notification_websocket
 from app.ws.pvp import pvp_websocket
+from app.ws.knowledge import knowledge_websocket
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +179,15 @@ async def ws_pvp(websocket: WebSocket):
         await websocket.close(code=4003)
         return
     await pvp_websocket(websocket)
+
+
+@app.websocket("/ws/knowledge")
+async def ws_knowledge(websocket: WebSocket):
+    """WebSocket for Knowledge Quiz (127-FZ knowledge testing)."""
+    if not _validate_ws_origin(websocket):
+        await websocket.close(code=4003)
+        return
+    await knowledge_websocket(websocket)
 
 
 @app.websocket("/ws/game-crm")
