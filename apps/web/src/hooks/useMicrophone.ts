@@ -40,6 +40,9 @@ export function useMicrophone(
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
+  // FIX 20: Guard against setState after unmount
+  const mountedRef = useRef(true);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -78,23 +81,32 @@ export function useMicrophone(
       });
   }, []);
 
-  // Cleanup on unmount
+  // Cleanup on unmount — stop all media resources and prevent stale state updates
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       cancelAnimationFrame(animFrameRef.current);
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current = null;
+      }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
       }
       if (audioContextRef.current) {
         audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
       }
+      analyserRef.current = null;
     };
   }, []);
 
   const computeAudioLevel = useCallback(() => {
     const analyser = analyserRef.current;
-    if (!analyser) return;
+    if (!analyser || !mountedRef.current) return;
 
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(dataArray);

@@ -405,7 +405,7 @@ async def change_password(
     user.hashed_password = hash_password(body.new_password)
     user.must_change_password = False
     db.add(user)
-    # commit handled by get_db context manager
+    await db.commit()  # Explicit commit — password change is critical, don't rely on implicit
 
 
 @router.get("/", response_model=list[UserListItem])
@@ -435,8 +435,11 @@ async def list_users(
             query = query.where(User.role == role_enum)
         except ValueError:
             pass  # ignore invalid role values
-    # ROP can only see users from their own team
-    if user.role.value == "rop" and user.team_id:
+    # ROP can only see users from their own team.
+    # SECURITY: If ROP has no team assigned, return empty — NOT all users.
+    if user.role.value == "rop":
+        if not user.team_id:
+            return []
         query = query.where(User.team_id == user.team_id)
 
     result = await db.execute(query)
@@ -583,6 +586,8 @@ async def upload_avatar(
     for old in globmod.glob(str(UPLOAD_DIR / f"{user.id}.*")):
         Path(old).unlink(missing_ok=True)
 
+    import tempfile
+
     if is_image and content_type != "image/gif":
         # Resize to 256x256, convert to WebP
         from PIL import Image
@@ -592,17 +597,36 @@ async def upload_avatar(
         img.thumbnail((256, 256), Image.LANCZOS)
         ext = "webp"
         out_path = UPLOAD_DIR / f"{user.id}.{ext}"
-        img.save(out_path, "WEBP", quality=85)
+        # Atomic write: write to temp file, then rename (prevents race conditions
+        # when two concurrent requests both try to write the same avatar)
+        fd, tmp = tempfile.mkstemp(dir=UPLOAD_DIR, suffix=f".{ext}")
+        try:
+            with open(fd, "wb") as f:
+                img.save(f, "WEBP", quality=85)
+            Path(tmp).replace(out_path)  # atomic on POSIX
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
     elif content_type == "image/gif":
-        # Save GIF as-is (preserve animation)
         ext = "gif"
         out_path = UPLOAD_DIR / f"{user.id}.{ext}"
-        out_path.write_bytes(data)
+        fd, tmp = tempfile.mkstemp(dir=UPLOAD_DIR, suffix=f".{ext}")
+        try:
+            Path(tmp).write_bytes(data)
+            Path(tmp).replace(out_path)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
     else:
-        # Video: save as-is
         ext = content_type.split("/")[1]  # mp4 or webm
         out_path = UPLOAD_DIR / f"{user.id}.{ext}"
-        out_path.write_bytes(data)
+        fd, tmp = tempfile.mkstemp(dir=UPLOAD_DIR, suffix=f".{ext}")
+        try:
+            Path(tmp).write_bytes(data)
+            Path(tmp).replace(out_path)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
 
     avatar_url = f"/api/uploads/avatars/{user.id}.{ext}"
     user.avatar_url = avatar_url

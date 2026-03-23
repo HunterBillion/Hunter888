@@ -146,6 +146,23 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3000"
     cors_origins: str = "http://localhost:3000"
 
+    @field_validator("cors_origins")
+    @classmethod
+    def validate_cors_origins(cls, v: str, info) -> str:
+        """In production, warn about overly permissive CORS (many localhost ports, wildcards)."""
+        env = info.data.get("app_env", "development")
+        if env != "production":
+            return v
+        origins = [o.strip() for o in v.split(",") if o.strip()]
+        localhost_count = sum(1 for o in origins if "localhost" in o or "127.0.0.1" in o)
+        if localhost_count > 2:
+            import logging
+            logging.getLogger(__name__).warning(
+                "CORS has %d localhost origins in production — this may be a dev config leak. "
+                "Consider restricting to your production domain only.", localhost_count
+            )
+        return v
+
     # Web Push (VAPID)
     vapid_public_key: str = ""   # Base64url-encoded VAPID public key
     vapid_private_key: str = ""  # Base64url-encoded VAPID private key

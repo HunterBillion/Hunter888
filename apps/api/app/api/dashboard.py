@@ -240,53 +240,50 @@ async def rop_dashboard(
     now = datetime.now(timezone.utc)
     week_ago = now - timedelta(days=7)
 
-    # ── Team info ──
-    team_result = await db.execute(select(Team).where(Team.id == user.team_id))
-    team = team_result.scalar_one_or_none()
-    team_name = team.name if team else "Команда"
-
-    # ── Members ──
+    # ── Team + Members in ONE query (join avoids N+1) ──
     members_result = await db.execute(
-        select(User)
+        select(User, Team.name)
+        .outerjoin(Team, User.team_id == Team.id)
         .where(User.team_id == user.team_id)
         .order_by(User.full_name)
     )
-    members = members_result.scalars().all()
+    rows = members_result.all()
+    members = [row[0] for row in rows]
+    team_name = rows[0][1] if rows else "Команда"
 
     team_user_ids = [m.id for m in members]
 
-    # ── Per-member stats (batched in ONE query) ──
+    # ── Per-member stats + week activity in ONE combined query ──
+    # Uses conditional aggregation to get both lifetime and week stats in a single pass.
     member_stats_result = await db.execute(
         select(
             TrainingSession.user_id,
-            func.count(TrainingSession.id).label("total"),
-            func.avg(TrainingSession.score_total).label("avg"),
-            func.max(TrainingSession.score_total).label("best"),
+            # Lifetime stats (completed only)
+            func.count(TrainingSession.id).filter(
+                TrainingSession.status == SessionStatus.completed
+            ).label("total"),
+            func.avg(TrainingSession.score_total).filter(
+                TrainingSession.status == SessionStatus.completed
+            ).label("avg"),
+            func.max(TrainingSession.score_total).filter(
+                TrainingSession.status == SessionStatus.completed
+            ).label("best"),
+            # Week activity (all statuses)
+            func.count(TrainingSession.id).filter(
+                TrainingSession.started_at >= week_ago
+            ).label("week_count"),
         )
-        .where(
-            TrainingSession.user_id.in_(team_user_ids),
-            TrainingSession.status == SessionStatus.completed,
-        )
+        .where(TrainingSession.user_id.in_(team_user_ids))
         .group_by(TrainingSession.user_id)
     )
-    stats_by_user = {
-        row[0]: {"total": row[1], "avg": round(float(row[2] or 0), 1), "best": round(float(row[3] or 0), 1)}
-        for row in member_stats_result.all()
-    }
-
-    # Week activity (also batched)
-    week_result = await db.execute(
-        select(
-            TrainingSession.user_id,
-            func.count(TrainingSession.id),
-        )
-        .where(
-            TrainingSession.user_id.in_(team_user_ids),
-            TrainingSession.started_at >= week_ago,
-        )
-        .group_by(TrainingSession.user_id)
-    )
-    week_by_user = {row[0]: row[1] for row in week_result.all()}
+    stats_by_user = {}
+    week_by_user = {}
+    for row in member_stats_result.all():
+        uid = row[0]
+        stats_by_user[uid] = {
+            "total": row[1], "avg": round(float(row[2] or 0), 1), "best": round(float(row[3] or 0), 1)
+        }
+        week_by_user[uid] = row[4]
 
     members_data = []
     for m in members:

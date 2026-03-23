@@ -27,6 +27,13 @@ export function NotificationWSProvider({ children }: { children: React.ReactNode
     if (!token) return;
     if (!mountedRef.current) return;
 
+    // FIX 19: Close any existing connection before opening a new one.
+    // Prevents duplicate WS connections after rapid reconnect/token refresh.
+    if (wsRef.current) {
+      try { wsRef.current.close(); } catch {}
+      wsRef.current = null;
+    }
+
     try {
       const ws = new WebSocket(`${getWsBaseUrl()}/ws/notifications`);
       wsRef.current = ws;
@@ -124,6 +131,8 @@ export function NotificationWSProvider({ children }: { children: React.ReactNode
       };
 
       ws.onclose = () => {
+        // FIX 18: Clear ref immediately so no stale onmessage callbacks fire
+        if (wsRef.current === ws) wsRef.current = null;
         if (!mountedRef.current) return;
         useNotificationStore.getState().setWsConnected(false);
         if (pingTimer.current) clearInterval(pingTimer.current);
