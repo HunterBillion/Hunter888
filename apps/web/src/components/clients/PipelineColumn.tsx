@@ -2,7 +2,7 @@
 
 import { useCallback, forwardRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { CRMClient, ClientStatus } from "@/types";
+import type { CRMClient, ClientStatus, UserRole } from "@/types";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
 import { PipelineCard } from "./PipelineCard";
 
@@ -11,6 +11,10 @@ interface PipelineColumnProps {
   clients: CRMClient[];
   isOver: boolean;
   activeId: string | null;
+  userRole?: UserRole;
+  readOnly?: boolean;
+  onQuickNote?: (client: CRMClient) => void;
+  onReminder?: (client: CRMClient) => void;
   // HTML5 DnD handlers (desktop)
   onDragOver: (status: string, e: React.DragEvent) => void;
   onDragLeave: (status: string) => void;
@@ -30,6 +34,10 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
       clients,
       isOver,
       activeId,
+      userRole,
+      readOnly = false,
+      onQuickNote,
+      onReminder,
       onDragOver,
       onDragLeave,
       onDrop,
@@ -70,9 +78,9 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
         ref={ref}
         className="flex flex-col rounded-xl transition-all duration-200"
         style={{
-          width: "280px",
-          minWidth: "280px",
-          maxHeight: "calc(100vh - 160px)",
+          width: "100%",
+          minWidth: 0,
+          maxHeight: "min(70vh, calc(100vh - 220px))",
           background: isOver
             ? `color-mix(in srgb, ${color} 6%, var(--bg-secondary))`
             : "var(--bg-secondary)",
@@ -157,27 +165,33 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
                 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                draggable
-                onDragStart={(e) =>
+                draggable={!readOnly}
+                onDragStart={readOnly ? undefined : (e) =>
                   onDragStart(
                     client.id,
                     e as unknown as React.DragEvent,
                   )
                 }
-                onDragEnd={onDragEnd}
-                onTouchStart={(e) =>
+                onDragEnd={readOnly ? undefined : onDragEnd}
+                onTouchStart={readOnly ? undefined : (e) =>
                   onTouchStart(
                     client.id,
                     e as unknown as React.TouchEvent,
                   )
                 }
-                onTouchMove={(e) =>
+                onTouchMove={readOnly ? undefined : (e) =>
                   onTouchMove(e as unknown as React.TouchEvent)
                 }
-                onTouchEnd={onTouchEnd}
-                className="cursor-grab active:cursor-grabbing touch-none"
+                onTouchEnd={readOnly ? undefined : onTouchEnd}
+                className={readOnly ? "" : "cursor-grab active:cursor-grabbing touch-none"}
               >
-                <PipelineCard client={client} />
+                <PipelineCard
+                  client={client}
+                  userRole={userRole}
+                  readOnly={readOnly}
+                  onQuickNote={onQuickNote}
+                  onReminder={onReminder}
+                />
               </motion.div>
             ))}
           </AnimatePresence>

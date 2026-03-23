@@ -1,6 +1,6 @@
 "use client";
 
-import { Phone, Calendar, DollarSign, AlertTriangle } from "lucide-react";
+import { Bell, Calendar, DollarSign, ExternalLink, MessageSquarePlus, Phone, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import type { CRMClient, UserRole } from "@/types";
 import { CLIENT_STATUS_COLORS } from "@/types";
@@ -8,6 +8,9 @@ import { CLIENT_STATUS_COLORS } from "@/types";
 interface PipelineCardProps {
   client: CRMClient;
   userRole?: UserRole;
+  readOnly?: boolean;
+  onQuickNote?: (client: CRMClient) => void;
+  onReminder?: (client: CRMClient) => void;
 }
 
 const formatDebt = (amount: number) => {
@@ -32,7 +35,13 @@ const isOverdue = (date: string | null) => {
   return new Date(date) < new Date();
 };
 
-export function PipelineCard({ client, userRole }: PipelineCardProps) {
+export function PipelineCard({
+  client,
+  userRole,
+  readOnly = false,
+  onQuickNote,
+  onReminder,
+}: PipelineCardProps) {
   const color = CLIENT_STATUS_COLORS[client.status];
   const overdue = isOverdue(client.next_contact_at);
   const nextContactLabel = client.next_contact_at
@@ -49,14 +58,14 @@ export function PipelineCard({ client, userRole }: PipelineCardProps) {
     : null;
 
   return (
-    <Link href={`/clients/${client.id}`} onClick={(e) => e.stopPropagation()}>
-      <div
-        className="rounded-lg p-3 transition-all duration-150 hover:brightness-110 group"
-        style={{
-          background: "var(--bg-primary)",
-          border: `1px solid var(--border-color)`,
-        }}
-      >
+    <div
+      className="rounded-lg transition-all duration-150 hover:brightness-110"
+      style={{
+        background: "var(--bg-primary)",
+        border: "1px solid var(--border-color)",
+      }}
+    >
+      <Link href={`/clients/${client.id}`} onClick={(e) => e.stopPropagation()} className="group block p-3">
         {/* Name + overdue indicator */}
         <div className="flex items-start justify-between gap-1">
           <span
@@ -65,17 +74,20 @@ export function PipelineCard({ client, userRole }: PipelineCardProps) {
           >
             {client.full_name}
           </span>
-          {overdue && (
-            <AlertTriangle
-              size={12}
-              className="shrink-0 mt-0.5"
-              style={{ color: "var(--neon-red, #FF3333)" }}
-            />
-          )}
+          <div className="flex items-center gap-1">
+            {overdue && (
+              <AlertTriangle
+                size={12}
+                className="shrink-0 mt-0.5"
+                style={{ color: "var(--neon-red, #FF3333)" }}
+              />
+            )}
+            <ExternalLink size={12} className="opacity-0 transition-opacity group-hover:opacity-100" style={{ color: "var(--text-muted)" }} />
+          </div>
         </div>
 
         {/* Meta row */}
-        <div className="flex items-center gap-3 mt-2 flex-wrap">
+        <div className="mt-2 flex items-center gap-3 flex-wrap">
           {(client.debt_amount ?? 0) > 0 && (
             <span
               className="flex items-center gap-0.5 text-[10px] font-mono"
@@ -132,7 +144,43 @@ export function PipelineCard({ client, userRole }: PipelineCardProps) {
             </span>
           </div>
         )}
-      </div>
-    </Link>
+      </Link>
+
+      {!readOnly && (onQuickNote || onReminder) && (
+        <div
+          className="flex items-center gap-2 border-t px-3 py-2"
+          style={{ borderColor: "var(--border-color)" }}
+        >
+          {onQuickNote && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onQuickNote(client);
+              }}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono"
+              style={{ background: "var(--input-bg)", color: "var(--text-secondary)" }}
+            >
+              <MessageSquarePlus size={11} />
+              Заметка
+            </button>
+          )}
+          {onReminder && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onReminder(client);
+              }}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono"
+              style={{ background: "var(--input-bg)", color: "var(--text-secondary)" }}
+            >
+              <Bell size={11} />
+              Напомнить
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

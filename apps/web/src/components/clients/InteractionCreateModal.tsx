@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Loader2, MessageSquarePlus } from "lucide-react";
 import { api } from "@/lib/api";
@@ -20,12 +20,19 @@ const CALL_TYPES = ["outbound_call", "inbound_call"];
 interface InteractionCreateModalProps {
   open: boolean;
   clientId: string;
+  initialType?: string;
   onClose: () => void;
   onCreated: () => void;
 }
 
-export function InteractionCreateModal({ open, clientId, onClose, onCreated }: InteractionCreateModalProps) {
-  const [type, setType] = useState("outbound_call");
+export function InteractionCreateModal({
+  open,
+  clientId,
+  initialType = "outbound_call",
+  onClose,
+  onCreated,
+}: InteractionCreateModalProps) {
+  const [type, setType] = useState(initialType);
   const [content, setContent] = useState("");
   const [result, setResult] = useState("");
   const [durationMin, setDurationMin] = useState("");
@@ -35,8 +42,14 @@ export function InteractionCreateModal({ open, clientId, onClose, onCreated }: I
 
   const isCall = CALL_TYPES.includes(type);
 
+  useEffect(() => {
+    if (open) {
+      setType(initialType);
+    }
+  }, [initialType, open]);
+
   const resetForm = () => {
-    setType("outbound_call");
+    setType(initialType);
     setContent("");
     setResult("");
     setDurationMin("");

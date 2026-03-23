@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, GitBranch, Loader2, Network, RotateCcw, Users } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, ArrowRight, GitBranch, Loader2, Network, RotateCcw, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
-import type { ClientStatus } from "@/types";
+import type { ClientStatus, UserRole } from "@/types";
 import { CLIENT_STATUS_COLORS, CLIENT_STATUS_LABELS } from "@/types";
 
 interface GraphTransition {
@@ -124,6 +125,14 @@ function formatCount(value: number): string {
   return new Intl.NumberFormat("ru-RU").format(value);
 }
 
+function getScopeLabel(role: UserRole | undefined): string {
+  if (role === "admin") return "Видимость: все команды, все менеджеры и РОП.";
+  if (role === "rop") return "Видимость: только ваша команда и подчинённые менеджеры.";
+  if (role === "manager") return "Видимость: только ваши реальные клиенты.";
+  if (role === "methodologist") return "Видимость: read-only по реальным данным и статистике.";
+  return "Видимость определяется вашей ролью.";
+}
+
 export default function ClientGraphPage() {
   const { user } = useAuth();
   const [data, setData] = useState<GraphData | null>(null);
@@ -135,7 +144,7 @@ export default function ClientGraphPage() {
     if (!user) return;
 
     api
-      .get("/clients/graph-data")
+      .get("/clients/graph/data")
       .then((resp: GraphData) => {
         setData(resp);
         const firstActive = STAGE_ORDER.find((status) => (resp.status_counts[status] || 0) > 0);
@@ -151,6 +160,7 @@ export default function ClientGraphPage() {
   const totalClients = data?.total_clients || 0;
   const selectedShare = totalClients > 0 ? Math.round((selectedCount / totalClients) * 100) : 0;
   const maxCount = Math.max(...STAGE_ORDER.map((status) => data?.status_counts[status] || 0), 1);
+  const scopeLabel = getScopeLabel(user?.role);
 
   const stageFlows = useMemo(() => {
     const transitions = data?.transitions || [];
@@ -159,6 +169,12 @@ export default function ClientGraphPage() {
       outgoing: transitions.filter((item) => item.from === selectedStage),
     };
   }, [data?.transitions, selectedStage]);
+
+  const stageNavigation = useMemo(() => {
+    const previous = stageFlows.incoming[0]?.from || null;
+    const next = stageFlows.outgoing[0]?.to || null;
+    return { previous, next };
+  }, [stageFlows]);
 
   const summary = useMemo(() => {
     const counts = data?.status_counts || {};
@@ -185,6 +201,13 @@ export default function ClientGraphPage() {
           >
             <div className="space-y-2">
               <div className="flex items-center gap-3">
+                <Link
+                  href="/clients"
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl border transition-colors"
+                  style={{ borderColor: "var(--border-color)", color: "var(--text-muted)" }}
+                >
+                  <ArrowLeft size={18} />
+                </Link>
                 <div
                   className="flex h-11 w-11 items-center justify-center rounded-2xl"
                   style={{ background: "var(--accent)", color: "#050505" }}
@@ -203,6 +226,9 @@ export default function ClientGraphPage() {
               <p className="max-w-3xl text-sm" style={{ color: "var(--text-secondary)" }}>
                 Экран показывает единый маршрут клиента, ветки потерь и возврата, а также фактическое распределение
                 текущих карточек по этапам.
+              </p>
+              <p className="text-xs font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                {scopeLabel}
               </p>
             </div>
 
@@ -434,6 +460,39 @@ export default function ClientGraphPage() {
                       {branchStages.has(selectedStage) ? "Нужен контроль" : "Нормальный поток"}
                     </div>
                   </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={!stageNavigation.previous}
+                    onClick={() => stageNavigation.previous && setSelectedStage(stageNavigation.previous)}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-mono"
+                    style={{
+                      background: stageNavigation.previous ? "var(--input-bg)" : "rgba(255,255,255,0.04)",
+                      border: "1px solid var(--border-color)",
+                      color: stageNavigation.previous ? "var(--text-primary)" : "var(--text-muted)",
+                      opacity: stageNavigation.previous ? 1 : 0.5,
+                    }}
+                  >
+                    <ArrowLeft size={12} />
+                    Назад
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!stageNavigation.next}
+                    onClick={() => stageNavigation.next && setSelectedStage(stageNavigation.next)}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-mono"
+                    style={{
+                      background: stageNavigation.next ? "var(--input-bg)" : "rgba(255,255,255,0.04)",
+                      border: "1px solid var(--border-color)",
+                      color: stageNavigation.next ? "var(--text-primary)" : "var(--text-muted)",
+                      opacity: stageNavigation.next ? 1 : 0.5,
+                    }}
+                  >
+                    Вперёд
+                    <ArrowRight size={12} />
+                  </button>
                 </div>
               </div>
 

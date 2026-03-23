@@ -28,6 +28,16 @@ export default function ClientsPage() {
   const isAdminOrRop = userRole === "admin" || userRole === "rop";
   const isReadOnly = userRole === "methodologist";
   const canExportSelected = userRole === "admin" || userRole === "rop" || userRole === "methodologist";
+  const scopeLabel =
+    userRole === "admin"
+      ? "Администратор: все команды, все менеджеры и РОП."
+      : userRole === "rop"
+        ? "РОП: только ваша команда и нижестоящие менеджеры."
+        : userRole === "manager"
+          ? "Менеджер: только ваши реальные клиенты."
+          : userRole === "methodologist"
+            ? "Методолог: read-only по реальным данным и статистике."
+            : "";
 
   const [createOpen, setCreateOpen] = useState(false);
   const [clients, setClients] = useState<CRMClient[]>([]);
@@ -155,12 +165,19 @@ export default function ClientsPage() {
         <div className="mx-auto max-w-6xl px-4 py-8">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Users size={20} style={{ color: "var(--accent)" }} />
-              <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
-                КЛИЕНТЫ
-              </h1>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Users size={20} style={{ color: "var(--accent)" }} />
+                <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
+                  КЛИЕНТЫ
+                </h1>
+              </div>
+              {scopeLabel && (
+                <p className="mt-2 text-[11px] font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                  {scopeLabel}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Link href="/clients/graph">

@@ -1279,7 +1279,7 @@ async def api_get_audit_log(
 from app.models.client import ALLOWED_STATUS_TRANSITIONS
 
 
-@router.get("/graph-data")
+@router.get("/graph/data")
 async def api_get_graph_data(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("manager", "admin", "rop", "methodologist")),

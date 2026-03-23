@@ -16,19 +16,26 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useKanbanDrag } from "@/hooks/useKanbanDrag";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { InteractionCreateModal } from "@/components/clients/InteractionCreateModal";
 import { PipelineColumn } from "@/components/clients/PipelineColumn";
 import { PipelineCard } from "@/components/clients/PipelineCard";
-import type { CRMClient, ClientStatus, PipelineStats } from "@/types";
+import { ReminderCreateModal } from "@/components/clients/ReminderCreateModal";
+import type { CRMClient, ClientStatus, PipelineStats, UserRole } from "@/types";
 import { PIPELINE_STATUSES, CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
 
 export default function PipelinePage() {
   const { user } = useAuth();
+  const userRole = user?.role as UserRole | undefined;
+  const isReadOnly = userRole === "methodologist";
 
   const [clients, setClients] = useState<CRMClient[]>([]);
   const [stats, setStats] = useState<PipelineStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [showLost, setShowLost] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [noteClient, setNoteClient] = useState<CRMClient | null>(null);
+  const [reminderClient, setReminderClient] = useState<CRMClient | null>(null);
 
   // ── Column refs for touch hit-testing ──
   const columnRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -43,8 +50,8 @@ export default function PipelinePage() {
     try {
       const data = await api.get("/clients?per_page=500");
       setClients(data.items || []);
-    } catch {
-      /* API may not exist yet */
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка загрузки клиентов");
     }
     setLoading(false);
   }, []);
@@ -72,8 +79,19 @@ export default function PipelinePage() {
   // ── Drop handler with optimistic update ──
   const handleDrop = useCallback(
     async (clientId: string, newStatus: string) => {
+      if (isReadOnly) return;
       const client = clients.find((c) => c.id === clientId);
       if (!client || client.status === newStatus) return;
+      let reason: string | undefined;
+      if (newStatus === "lost" || newStatus === "consent_revoked") {
+        const promptLabel =
+          newStatus === "lost"
+            ? "Укажите причину потери клиента"
+            : "Укажите причину отзыва согласия";
+        const value = window.prompt(promptLabel)?.trim();
+        if (!value) return;
+        reason = value;
+      }
 
       // Optimistic update
       setClients((prev) =>
@@ -83,15 +101,17 @@ export default function PipelinePage() {
       );
 
       try {
-        await api.patch(`/clients/${clientId}/status`, { new_status: newStatus });
+        setError(null);
+        await api.patch(`/clients/${clientId}/status`, { new_status: newStatus, reason });
         // Refresh stats after successful status change
         fetchStats();
-      } catch {
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Не удалось сменить статус");
         // Revert on failure
         fetchClients();
       }
     },
-    [clients, fetchClients, fetchStats],
+    [clients, fetchClients, fetchStats, isReadOnly],
   );
 
   // ── Kanban drag hook ──
@@ -136,6 +156,13 @@ export default function PipelinePage() {
     (c) => c.status !== "lost" && c.status !== "completed",
   ).length;
   const totalDebt = clients.reduce((sum, c) => sum + (c.debt_amount ?? 0), 0);
+  const scopeLabel = useMemo(() => {
+    if (userRole === "admin") return "Администратор: все команды и все менеджеры.";
+    if (userRole === "rop") return "РОП: только ваша команда и нижестоящие менеджеры.";
+    if (userRole === "manager") return "Менеджер: только ваши клиенты и ваши действия.";
+    if (userRole === "methodologist") return "Методолог: read-only, без смены статусов и без записи данных.";
+    return "";
+  }, [userRole]);
 
   // ── Dragged client for overlay ──
   const draggedClient = dragState.activeId
@@ -232,6 +259,43 @@ export default function PipelinePage() {
               </div>
             </div>
 
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span
+                className="rounded-lg px-3 py-1 text-[10px] font-mono"
+                style={{
+                  background: "var(--input-bg)",
+                  border: "1px solid var(--border-color)",
+                  color: "var(--text-muted)",
+                }}
+              >
+                {scopeLabel}
+              </span>
+              {!isReadOnly && (
+                <>
+                  <span
+                    className="rounded-lg px-3 py-1 text-[10px] font-mono"
+                    style={{
+                      background: "rgba(59,130,246,0.12)",
+                      border: "1px solid rgba(59,130,246,0.25)",
+                      color: "#93C5FD",
+                    }}
+                  >
+                    Drag & drop меняет статус
+                  </span>
+                  <span
+                    className="rounded-lg px-3 py-1 text-[10px] font-mono"
+                    style={{
+                      background: "rgba(16,185,129,0.12)",
+                      border: "1px solid rgba(16,185,129,0.25)",
+                      color: "#6EE7B7",
+                    }}
+                  >
+                    На карточке доступны заметка и напоминание
+                  </span>
+                </>
+              )}
+            </div>
+
             {/* Mini funnel bar */}
             {stats.length > 0 && (
               <motion.div
@@ -276,14 +340,26 @@ export default function PipelinePage() {
             ref={(el) => {
               scrollContainerRef.current = el;
             }}
-            className="flex-1 overflow-x-auto overflow-y-hidden px-4 pb-4"
+            className="flex-1 overflow-y-auto px-4 pb-4"
             style={{ scrollbarWidth: "thin" }}
           >
+            {error && (
+              <div
+                className="mx-auto mb-4 max-w-[1600px] rounded-xl px-4 py-3 text-sm"
+                style={{
+                  background: "rgba(239,68,68,0.12)",
+                  border: "1px solid rgba(239,68,68,0.2)",
+                  color: "#FCA5A5",
+                }}
+              >
+                {error}
+              </div>
+            )}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.1 }}
-              className="flex gap-3 mx-auto max-w-[1600px] h-full"
+              className="mx-auto grid max-w-[1600px] gap-3 pb-6 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
             >
               {visibleStatuses.map((status, i) => (
                 <motion.div
@@ -299,6 +375,10 @@ export default function PipelinePage() {
                     clients={grouped[status] || []}
                     isOver={dragState.overColumn === status}
                     activeId={dragState.activeId}
+                    userRole={userRole}
+                    readOnly={isReadOnly}
+                    onQuickNote={isReadOnly ? undefined : setNoteClient}
+                    onReminder={isReadOnly ? undefined : setReminderClient}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleColumnDrop}
@@ -332,10 +412,36 @@ export default function PipelinePage() {
                 filter: "drop-shadow(0 8px 24px rgba(0,0,0,0.4))",
               }}
             >
-              <PipelineCard client={draggedClient} />
+              <PipelineCard client={draggedClient} userRole={userRole} readOnly />
             </motion.div>
           )}
         </AnimatePresence>
+
+        {!isReadOnly && noteClient && (
+          <InteractionCreateModal
+            open={Boolean(noteClient)}
+            clientId={noteClient.id}
+            initialType="note"
+            onClose={() => setNoteClient(null)}
+            onCreated={() => {
+              setNoteClient(null);
+              fetchClients();
+            }}
+          />
+        )}
+
+        {!isReadOnly && reminderClient && (
+          <ReminderCreateModal
+            open={Boolean(reminderClient)}
+            clientId={reminderClient.id}
+            clientName={reminderClient.full_name}
+            onClose={() => setReminderClient(null)}
+            onCreated={() => {
+              setReminderClient(null);
+              fetchClients();
+            }}
+          />
+        )}
       </div>
     </AuthLayout>
   );
