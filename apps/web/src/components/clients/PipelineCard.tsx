@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Bell, Calendar, DollarSign, ExternalLink, MessageSquarePlus, Phone, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import type { CRMClient, UserRole } from "@/types";
@@ -19,6 +20,7 @@ interface PipelineCardProps {
   readOnly?: boolean;
   onQuickNote?: (client: CRMClient) => void;
   onReminder?: (client: CRMClient) => void;
+  onInlineNoteSubmit?: (client: CRMClient, text: string) => Promise<void>;
   visibleFields?: PipelineCardField[];
 }
 
@@ -50,10 +52,14 @@ export function PipelineCard({
   readOnly = false,
   onQuickNote,
   onReminder,
+  onInlineNoteSubmit,
   visibleFields = ["debt", "phone", "next_contact", "updated"],
 }: PipelineCardProps) {
   const color = CLIENT_STATUS_COLORS[client.status];
   const showField = (field: PipelineCardField) => visibleFields.includes(field);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
   const overdue = isOverdue(client.next_contact_at);
   const nextContactLabel = client.next_contact_at
     ? (() => {
@@ -67,6 +73,19 @@ export function PipelineCard({
         return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
       })()
     : null;
+
+  const handleInlineSave = async () => {
+    const text = draft.trim();
+    if (!text || !onInlineNoteSubmit) return;
+    setSaving(true);
+    try {
+      await onInlineNoteSubmit(client, text);
+      setDraft("");
+      setComposerOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div
@@ -170,6 +189,20 @@ export function PipelineCard({
           className="flex items-center gap-2 border-t px-3 py-2"
           style={{ borderColor: "var(--border-color)" }}
         >
+          {onInlineNoteSubmit && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setComposerOpen((prev) => !prev);
+              }}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono"
+              style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+            >
+              <MessageSquarePlus size={11} />
+              Написать
+            </button>
+          )}
           {onQuickNote && (
             <button
               type="button"
@@ -198,6 +231,56 @@ export function PipelineCard({
               Напомнить
             </button>
           )}
+        </div>
+      )}
+
+      {!readOnly && composerOpen && onInlineNoteSubmit && (
+        <div
+          className="border-t px-3 py-3"
+          style={{ borderColor: "var(--border-color)", background: "rgba(255,255,255,0.02)" }}
+        >
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Быстрая заметка по клиенту прямо из канбана..."
+            className="vh-input w-full text-xs"
+            rows={3}
+            style={{ resize: "vertical" }}
+          />
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+              {draft.length}/1000
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setComposerOpen(false);
+                  setDraft("");
+                }}
+                className="rounded-lg px-2.5 py-1 text-[10px] font-mono"
+                style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}
+              >
+                Скрыть
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleInlineSave();
+                }}
+                disabled={!draft.trim() || saving}
+                className="rounded-lg px-2.5 py-1 text-[10px] font-mono"
+                style={{
+                  background: draft.trim() ? "var(--accent)" : "var(--input-bg)",
+                  color: draft.trim() ? "#050505" : "var(--text-muted)",
+                  opacity: saving ? 0.7 : 1,
+                }}
+              >
+                {saving ? "Сохраняю..." : "Сохранить"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

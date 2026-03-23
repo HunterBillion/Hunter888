@@ -4,6 +4,10 @@
 
 /* ── CSS Custom Properties for Dark/Light theming ────────────────────── */
 :root {
+  --app-shell-max: 1760px;
+  --app-content-max: 1440px;
+  --app-shell-padding: clamp(16px, 2vw, 32px);
+  --app-section-padding-y: clamp(20px, 2.4vw, 40px);
   --bg-primary: #fafafa;
   --bg-secondary: #f4f4f5;
   --bg-tertiary: #e4e4e7;
@@ -149,6 +153,7 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
     font-family: "Inter", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
     transition: background-color 0.4s ease, color 0.3s ease, border-color 0.3s ease;
   }
 
@@ -188,6 +193,59 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
 
   .glass-panel:hover {
     border-color: var(--border-hover);
+  }
+
+  .app-shell {
+    width: min(100%, var(--app-shell-max));
+    margin-inline: auto;
+    padding-inline: var(--app-shell-padding);
+  }
+
+  .app-page {
+    width: min(100%, var(--app-content-max));
+    margin-inline: auto;
+    padding-inline: var(--app-shell-padding);
+    padding-block: var(--app-section-padding-y);
+  }
+
+  .app-page--wide {
+    width: min(100%, var(--app-shell-max));
+  }
+
+  .training-session-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    min-height: 0;
+  }
+
+  .training-session-panel {
+    min-height: 0;
+  }
+
+  .training-session-center {
+    min-height: min(72vh, 920px);
+  }
+
+  @media (min-width: 1024px) {
+    .training-session-grid {
+      grid-template-columns: minmax(280px, 0.95fr) minmax(420px, 1.25fr) minmax(300px, 0.95fr);
+      align-items: stretch;
+    }
+  }
+
+  @media (min-width: 1440px) {
+    .training-session-grid {
+      grid-template-columns: minmax(320px, 0.92fr) minmax(520px, 1.4fr) minmax(340px, 0.98fr);
+      gap: 1.25rem;
+    }
+  }
+
+  @media (min-width: 1800px) {
+    .training-session-grid {
+      grid-template-columns: minmax(360px, 0.9fr) minmax(640px, 1.5fr) minmax(360px, 1fr);
+      gap: 1.5rem;
+    }
   }
 
   /* ── Scanlines overlay (CRT effect) ─────────────────── */

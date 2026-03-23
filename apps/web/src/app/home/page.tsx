@@ -269,7 +269,7 @@ export default function HomePage() {
           )}
         </AnimatePresence>
 
-        <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className="app-page">
           {/* Welcome + Quick Start */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: showPortal ? 2 : 0 }}
             className="flex flex-col md:flex-row md:items-end md:justify-between gap-4"

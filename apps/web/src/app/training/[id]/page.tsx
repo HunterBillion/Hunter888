@@ -831,9 +831,10 @@ export default function TrainingSessionPage() {
       )}
 
       {/* ── 3-Column Layout ─────────────────────────────────── */}
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 md:p-6 min-h-0 z-20">
+      <main className="app-page app-page--wide flex-1 min-h-0 z-20">
+        <div className="training-session-grid">
         {/* LEFT: Client Signal + Transcript */}
-        <aside className="hidden lg:flex lg:col-span-3 flex-col min-h-0">
+        <aside className="training-session-panel hidden lg:flex flex-col">
           <div className="glass-panel rounded-xl flex min-h-0 flex-1 flex-col overflow-hidden" style={{ borderLeft: "2px solid rgba(139,92,246,0.18)" }}>
             <div className="p-4 border-b flex justify-between items-center shrink-0" style={{ borderColor: "var(--border-color)", background: "rgba(0,0,0,0.2)" }}>
               <h2 className="font-display tracking-widest text-sm flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
@@ -872,7 +873,7 @@ export default function TrainingSessionPage() {
         </aside>
 
         {/* CENTER: Avatar + Mic */}
-        <section className="col-span-1 lg:col-span-6 glass-panel rounded-xl relative flex flex-col items-center justify-center overflow-hidden"
+        <section className="training-session-panel training-session-center glass-panel rounded-xl relative flex flex-col items-center justify-center overflow-hidden"
           style={{ border: "1px solid rgba(139,92,246,0.2)", boxShadow: "inset 0 0 50px rgba(0,0,0,0.3)" }}
         >
           {/* Spinning orbit circles */}
@@ -980,7 +981,7 @@ export default function TrainingSessionPage() {
         </section>
 
         {/* RIGHT: Stats Panel — progressive reveal per ТЗ */}
-        <aside className="col-span-1 lg:col-span-3 flex flex-col gap-4">
+        <aside className="training-session-panel flex flex-col gap-4">
           <div className="glass-panel rounded-xl p-4" style={{ borderRight: "2px solid rgba(139,92,246,0.24)" }}>
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
@@ -1112,6 +1113,7 @@ export default function TrainingSessionPage() {
             )}
           </div>
         </aside>
+        </div>
       </main>
 
       {/* ── Trap Notification ──────────────────────────────── */}

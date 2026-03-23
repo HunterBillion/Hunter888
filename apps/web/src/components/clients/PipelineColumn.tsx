@@ -17,6 +17,7 @@ interface PipelineColumnProps {
   visibleFields?: PipelineCardField[];
   onQuickNote?: (client: CRMClient) => void;
   onReminder?: (client: CRMClient) => void;
+  onInlineNoteSubmit?: (client: CRMClient, text: string) => Promise<void>;
   // HTML5 DnD handlers (desktop)
   onDragOver: (status: string, e: React.DragEvent) => void;
   onDragLeave: (status: string) => void;
@@ -42,6 +43,7 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
       visibleFields,
       onQuickNote,
       onReminder,
+      onInlineNoteSubmit,
       onDragOver,
       onDragLeave,
       onDrop,
@@ -196,6 +198,7 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
                   visibleFields={visibleFields}
                   onQuickNote={onQuickNote}
                   onReminder={onReminder}
+                  onInlineNoteSubmit={onInlineNoteSubmit}
                 />
               </motion.div>
             ))}

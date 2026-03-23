@@ -69,8 +69,18 @@ export default function PipelinePage() {
   // ── Data fetching ──
   const fetchClients = useCallback(async () => {
     try {
-      const data = await api.get("/clients?per_page=500");
-      setClients(data.items || []);
+      const allItems: CRMClient[] = [];
+      let page = 1;
+      let pages = 1;
+
+      do {
+        const data = await api.get(`/clients?page=${page}&per_page=100`);
+        allItems.push(...(data.items || []));
+        pages = data.pages || 1;
+        page += 1;
+      } while (page <= pages && page <= 20);
+
+      setClients(allItems);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка загрузки клиентов");
     }
@@ -96,6 +106,14 @@ export default function PipelinePage() {
     await Promise.all([fetchClients(), fetchStats()]);
     setRefreshing(false);
   }, [fetchClients, fetchStats]);
+
+  const handleInlineNoteSubmit = useCallback(async (client: CRMClient, text: string) => {
+    await api.post(`/clients/${client.id}/interactions`, {
+      interaction_type: "note",
+      content: text,
+    });
+    await fetchClients();
+  }, [fetchClients]);
 
   // ── Drop handler with optimistic update ──
   const handleDrop = useCallback(
@@ -603,6 +621,7 @@ export default function PipelinePage() {
                     visibleFields={cardFields}
                     onQuickNote={isReadOnly ? undefined : setNoteClient}
                     onReminder={isReadOnly ? undefined : setReminderClient}
+                    onInlineNoteSubmit={isReadOnly ? undefined : handleInlineNoteSubmit}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleColumnDrop}
