@@ -1,8 +1,10 @@
 """
-Game CRM models — parallel CRM for AI training clients (Agent 7, spec 10.1-10.3).
+AI continuity models for the unified Clients domain.
 
-GameClientEvent — отдельная таблица от ClientInteraction (152-ФЗ compliance).
-Хранит события таймлайна игровых клиентов из ClientStory.
+GameClientEvent остаётся отдельной таблицей от ClientInteraction:
+- не хранит реальные ПДн
+- обслуживает AI continuity / training слой
+- должен быть логически совместим с общим путём клиента, а не жить как отдельная CRM
 """
 
 import enum

@@ -33,7 +33,7 @@ from app.api.custom_characters import router as custom_characters_router
 
 api_router.include_router(custom_characters_router, tags=["characters"])
 
-# Agent 7 — Client Communication Module
+# Agent 7 — Unified Client Domain: CRM Core
 from app.api.clients import router as clients_router
 from app.api.clients import notifications_router, reminders_router
 
@@ -41,7 +41,7 @@ api_router.include_router(clients_router, prefix="/clients", tags=["clients"])
 api_router.include_router(notifications_router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(reminders_router, prefix="/reminders", tags=["reminders"])
 
-# Agent 7 — Game CRM (spec 10.1-10.3)
+# Agent 7 — Unified Client Domain: AI Continuity Layer
 from app.api.game_crm import router as game_crm_router
 
 api_router.include_router(game_crm_router, prefix="/game/clients", tags=["game-crm"])

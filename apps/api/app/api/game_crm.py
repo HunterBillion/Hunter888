@@ -1,8 +1,12 @@
 """
-API routes — Game CRM (Agent 7, spec 10.1-10.3).
+API routes — AI Continuity Layer of the unified Clients domain.
 
 Prefix: /api/game/clients
-Доступ: manager (свои), rop (команда), admin (все), methodologist (read-only)
+
+Целевая архитектура:
+- это не отдельный клиентский модуль
+- это continuity/training слой внутри общего домена `Клиенты`
+- lifecycle клиента должен оставаться логически совместимым с CRM Core
 """
 
 import logging

@@ -115,10 +115,31 @@ docker compose down -v
 │   ├── api/          # FastAPI backend (port 8000)
 │   └── web/          # Next.js frontend (port 3000)
 ├── prompts/          # Versioned AI character prompts
+├── docs/             # Architecture and product specs
 ├── scripts/          # Dev utilities (seed, etc.)
 ├── docker-compose.yml
 └── Makefile
 ```
+
+## Client Domain Architecture
+
+Модуль `Клиенты` в этом репозитории трактуется как единый домен.
+
+- `real_clients` — ядро реальной CRM
+- `game_crm` — AI/continuity слой внутри того же домена, а не отдельная CRM
+- `training` — использует клиентский контекст для сценариев и сопровождения
+
+Целевая архитектура, роли, статусы, merge/export policy и lifecycle-граф описаны в:
+
+- [docs/clients_domain_architecture.md](docs/clients_domain_architecture.md)
+
+Этот документ является опорной точкой для дальнейшей переработки:
+
+- backend моделей и схем
+- API контрактов
+- фронтенд-воронки
+- графа клиента
+- AI continuity logic
 
 ## Development
 
