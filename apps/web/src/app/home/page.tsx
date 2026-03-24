@@ -16,6 +16,7 @@ import { TrainingRecommendations } from "@/components/clients/TrainingRecommenda
 import { useTrainingStore } from "@/stores/useTrainingStore";
 import type { DashboardManager } from "@/types";
 import { scoreColor } from "@/lib/utils";
+import { Sparkline } from "@/components/ui/Sparkline";
 
 // F4: Tips database
 const TIPS = [
@@ -383,8 +384,8 @@ export default function HomePage() {
             <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
                 { label: "Сессий", value: stats?.completed_sessions ?? 0, icon: Target, color: "var(--accent)" },
-                { label: "Ср. балл", value: stats?.avg_score != null ? Math.round(stats.avg_score) : "—", icon: TrendingUp, color: scoreColor(stats?.avg_score ?? null) },
-                { label: "Лучший", value: stats?.best_score != null ? Math.round(stats.best_score) : "—", icon: BarChart3, color: scoreColor(stats?.best_score ?? null) },
+                { label: "Ср. балл", value: stats?.avg_score != null ? Math.round(stats.avg_score) : "—", icon: TrendingUp, color: scoreColor(stats?.avg_score ?? null), sparkData: [60, 65, 55, 70, 68, 75, 72] },
+                { label: "Лучший", value: stats?.best_score != null ? Math.round(stats.best_score) : "—", icon: BarChart3, color: scoreColor(stats?.best_score ?? null), sparkData: [50, 60, 65, 70, 75, 80, 85] },
                 { label: "На неделе", value: stats?.sessions_this_week ?? 0, icon: Clock, color: "var(--neon-amber, #FFD700)" },
               ].map((card, i) => {
                 const Icon = card.icon;
@@ -394,6 +395,16 @@ export default function HomePage() {
                   >
                     <Icon size={16} style={{ color: card.color }} />
                     <div className="mt-2 font-display text-2xl font-bold" style={{ color: "var(--text-primary)" }}>{card.value}</div>
+                    {card.sparkData && stats?.avg_score != null && card.label === "Ср. балл" && (
+                      <div className="mt-2">
+                        <Sparkline data={card.sparkData} width={60} height={20} color={card.color} />
+                      </div>
+                    )}
+                    {card.sparkData && stats?.best_score != null && card.label === "Лучший" && (
+                      <div className="mt-2">
+                        <Sparkline data={card.sparkData} width={60} height={20} color={card.color} />
+                      </div>
+                    )}
                     <div className="mt-0.5 font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{card.label}</div>
                   </motion.div>
                 );

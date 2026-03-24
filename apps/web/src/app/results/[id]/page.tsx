@@ -21,6 +21,9 @@ import {
     Share2,
     Check,
     Trophy,
+    Download,
+    Copy,
+    ClipboardCheck,
     Swords,
     Crown,
     Medal,
@@ -28,6 +31,7 @@ import {
     Sparkles,
   } from "lucide-react";
 import { api } from "@/lib/api";
+import { downloadTranscript, copyTranscript } from "@/lib/exportTranscript";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import PentagramChart from "@/components/results/PentagramChart";
@@ -68,6 +72,7 @@ export default function ResultsPage() {
   const [loading, setLoading] = useState(true);
   const [repeating, setRepeating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [transcriptCopied, setTranscriptCopied] = useState(false);
   const [achievement, setAchievement] = useState<{ id: string; title: string; description: string; icon?: string } | null>(null);
 
   // Tournament state
@@ -554,11 +559,69 @@ export default function ResultsPage() {
 
         {/* Transcript */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="glass-panel mt-6 p-6 rounded-2xl">
-          <div className="mb-3 flex items-center gap-2">
-            <MessageSquare size={14} style={{ color: "var(--text-muted)" }} />
-            <p className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-              TRANSCRIPT ({messages.length} MESSAGES)
-            </p>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageSquare size={14} style={{ color: "var(--text-muted)" }} />
+              <p className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                TRANSCRIPT ({messages.length} MESSAGES)
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <motion.button
+                onClick={async () => {
+                  const meta = {
+                    sessionId: session.id,
+                    scenarioTitle: undefined,
+                    date: session.started_at ? new Date(session.started_at).toLocaleDateString("ru-RU") : new Date().toLocaleDateString("ru-RU"),
+                    score: session.score_total,
+                    emotion: timeline.length > 0 ? emotionLabelRu(timeline[timeline.length - 1].state) : undefined,
+                    duration: session.duration_seconds ? formatDuration(session.duration_seconds) : undefined,
+                  };
+                  const msgs = messages.map((m) => ({
+                    role: m.role as "user" | "assistant" | "system",
+                    text: m.content,
+                    timestamp: m.created_at ? new Date(m.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : undefined,
+                  }));
+                  const ok = await copyTranscript(meta, msgs);
+                  if (ok) {
+                    setTranscriptCopied(true);
+                    setTimeout(() => setTranscriptCopied(false), 2000);
+                  }
+                }}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors"
+                style={{ background: "var(--input-bg)", color: transcriptCopied ? "var(--neon-green, #00FF66)" : "var(--text-muted)", border: "1px solid var(--border-color)" }}
+                whileTap={{ scale: 0.95 }}
+                title="Скопировать транскрипт"
+              >
+                {transcriptCopied ? <ClipboardCheck size={12} /> : <Copy size={12} />}
+                {transcriptCopied ? "Скопировано" : "Копировать"}
+              </motion.button>
+              <motion.button
+                onClick={() => {
+                  const meta = {
+                    sessionId: session.id,
+                    scenarioTitle: undefined,
+                    date: session.started_at ? new Date(session.started_at).toLocaleDateString("ru-RU") : new Date().toLocaleDateString("ru-RU"),
+                    score: session.score_total,
+                    emotion: timeline.length > 0 ? emotionLabelRu(timeline[timeline.length - 1].state) : undefined,
+                    duration: session.duration_seconds ? formatDuration(session.duration_seconds) : undefined,
+                  };
+                  const msgs = messages.map((m) => ({
+                    role: m.role as "user" | "assistant" | "system",
+                    text: m.content,
+                    timestamp: m.created_at ? new Date(m.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : undefined,
+                  }));
+                  downloadTranscript(meta, msgs);
+                }}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors"
+                style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--border-color)" }}
+                whileTap={{ scale: 0.95 }}
+                title="Скачать транскрипт (.md)"
+              >
+                <Download size={12} />
+                Скачать
+              </motion.button>
+            </div>
           </div>
           <div className="max-h-[500px] space-y-2 overflow-y-auto">
             {messages.map((msg) => (
