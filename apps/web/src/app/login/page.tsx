@@ -4,11 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Crosshair, Mail, Lock, ArrowRight, AlertCircle } from "lucide-react";
+import { Crosshair, Mail, ArrowRight, AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { LogoSeparator } from "@/components/ui/LogoSeparator";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import dynamic from "next/dynamic";
 const WaveScene = dynamic(
   () => import("@/components/landing/WaveScene").then((m) => m.WaveScene),
@@ -190,20 +191,13 @@ export default function LoginPage() {
 
           <div>
             <label htmlFor="password" className="vh-label">Пароль</label>
-            <div className="relative">
-              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="vh-input pl-10"
-                placeholder="••••••••"
-                aria-label="Пароль"
-                autoComplete="current-password"
-              />
-            </div>
+            <PasswordInput
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              ariaLabel="Пароль"
+            />
           </div>
 
           <motion.button

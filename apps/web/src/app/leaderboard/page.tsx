@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Medal, Crown, TrendingUp, Loader2, Swords, Clock, Zap, Plus, X as XIcon } from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { UserAvatar } from "@/components/ui/UserAvatar";
+import { LeaderboardSkeleton } from "@/components/ui/Skeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { hasRole } from "@/lib/guards";
@@ -428,19 +430,17 @@ function LeaderboardList({
 }) {
   if (loading) {
     return (
-      <div className="mt-6 flex flex-col items-center py-16">
-        <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
-        <span className="mt-3 font-mono text-xs" style={{ color: "var(--text-muted)" }}>ЗАГРУЗКА...</span>
-      </div>
+      <LeaderboardSkeleton />
     );
   }
 
   if (empty) {
     return (
-      <div className="mt-6 flex flex-col items-center py-16">
-        <Trophy size={32} style={{ color: "var(--text-muted)" }} />
-        <p className="mt-3 font-mono text-xs" style={{ color: "var(--text-muted)" }}>{emptyText}</p>
-      </div>
+      <EmptyState
+        icon={Trophy}
+        title={emptyText}
+        description="Пройдите тренировки, чтобы попасть в рейтинг"
+      />
     );
   }
 

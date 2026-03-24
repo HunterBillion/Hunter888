@@ -15,13 +15,7 @@ import { ReminderWidget } from "@/components/clients/ReminderWidget";
 import { TrainingRecommendations } from "@/components/clients/TrainingRecommendations";
 import { useTrainingStore } from "@/stores/useTrainingStore";
 import type { DashboardManager } from "@/types";
-
-function scoreColor(score: number | null): string {
-  if (score === null) return "var(--text-muted)";
-  if (score >= 70) return "var(--neon-green)";
-  if (score >= 40) return "var(--neon-amber)";
-  return "var(--neon-red)";
-}
+import { scoreColor } from "@/lib/utils";
 
 // F4: Tips database
 const TIPS = [

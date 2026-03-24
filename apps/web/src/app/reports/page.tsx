@@ -23,8 +23,10 @@ import {
   ArrowDown,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { scoreColor } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { CardSkeleton } from "@/components/ui/Skeleton";
 
 /* ─── Types ─── */
 
@@ -86,13 +88,6 @@ function trendIcon(trend: string | null) {
   if (trend === "growing") return <TrendingUp size={14} style={{ color: "#34D399" }} />;
   if (trend === "declining") return <TrendingDown size={14} style={{ color: "#F87171" }} />;
   return <Minus size={14} style={{ color: "#94A3B8" }} />;
-}
-
-function scoreColor(score: number | null): string {
-  if (score === null) return "var(--text-muted)";
-  if (score >= 70) return "#00FF66";
-  if (score >= 40) return "#FBBF24";
-  return "#F87171";
 }
 
 /* ─── Skill Bar ─── */
@@ -492,8 +487,8 @@ export default function ReportsPage() {
 
         {/* Loading */}
         {loading && (
-          <div className="flex items-center justify-center" style={{ padding: 80 }}>
-            <Loader2 size={28} className="animate-spin" style={{ color: "var(--accent)" }} />
+          <div className="grid gap-3 md:grid-cols-2">
+            {[1, 2, 3, 4].map(i => <CardSkeleton key={i} />)}
           </div>
         )}
 

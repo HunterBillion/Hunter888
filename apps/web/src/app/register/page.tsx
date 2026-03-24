@@ -4,10 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { UserPlus, Mail, Lock, User, ArrowRight, AlertCircle } from "lucide-react";
+import { UserPlus, Mail, User, ArrowRight, AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import dynamic from "next/dynamic";
 import { FishermanError } from "@/components/errors/FishermanError";
 const WaveScene = dynamic(
@@ -158,10 +159,16 @@ export default function RegisterPage() {
 
           <div>
             <label htmlFor="password" className="vh-label">Пароль</label>
-            <div className="relative">
-              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
-              <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} className="vh-input pl-10" placeholder="Минимум 8 символов" autoComplete="new-password" aria-label="Пароль" aria-describedby="password-requirements" />
-            </div>
+            <PasswordInput
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={8}
+              placeholder="Минимум 8 символов"
+              autoComplete="new-password"
+              ariaLabel="Пароль"
+              ariaDescribedBy="password-requirements"
+            />
             {password.length > 0 && (
               <div className="mt-2 flex items-center gap-2">
                 <div className="flex flex-1 gap-1">
@@ -195,20 +202,14 @@ export default function RegisterPage() {
 
           <div>
             <label htmlFor="confirmPassword" className="vh-label">Повторите пароль</label>
-            <div className="relative">
-              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
-              <input
-                id="confirmPassword"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                className="vh-input pl-10"
-                placeholder="Повторите пароль"
-                autoComplete="new-password"
-                aria-label="Повторите пароль"
-              />
-            </div>
+            <PasswordInput
+              id="confirmPassword"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              minLength={8}
+              autoComplete="new-password"
+              ariaLabel="Подтвердите пароль"
+            />
             {!passwordsMatch && (
               <div className="mt-2 text-[11px]" style={{ color: "var(--neon-red)" }}>
                 Пароли не совпадают.

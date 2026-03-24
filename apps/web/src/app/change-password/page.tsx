@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { KeyRound, Lock, ArrowRight, AlertCircle } from "lucide-react";
+import { KeyRound, ArrowRight, AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 
 export default function ChangePasswordPage() {
   const router = useRouter();
@@ -101,72 +102,42 @@ export default function ChangePasswordPage() {
             <label htmlFor="oldPassword" className="vh-label">
               Текущий пароль
             </label>
-            <div className="relative">
-              <Lock
-                size={16}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2"
-                style={{ color: "var(--text-muted)" }}
-              />
-              <input
-                id="oldPassword"
-                type="password"
-                value={oldPassword}
-                onChange={(e) => setOldPassword(e.target.value)}
-                required
-                className="vh-input pl-10"
-                aria-label="Текущий пароль"
-                autoComplete="current-password"
-              />
-            </div>
+            <PasswordInput
+              id="oldPassword"
+              value={oldPassword}
+              onChange={(e) => setOldPassword(e.target.value)}
+              autoComplete="current-password"
+              ariaLabel="Текущий пароль"
+            />
           </div>
 
           <div>
             <label htmlFor="newPassword" className="vh-label">
               Новый пароль
             </label>
-            <div className="relative">
-              <Lock
-                size={16}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2"
-                style={{ color: "var(--text-muted)" }}
-              />
-              <input
-                id="newPassword"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                minLength={8}
-                className="vh-input pl-10"
-                placeholder="Минимум 8 символов"
-                aria-label="Новый пароль"
-                autoComplete="new-password"
-              />
-            </div>
+            <PasswordInput
+              id="newPassword"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              minLength={8}
+              placeholder="Минимум 8 символов"
+              autoComplete="new-password"
+              ariaLabel="Новый пароль"
+            />
           </div>
 
           <div>
             <label htmlFor="confirmPassword" className="vh-label">
               Подтвердите новый пароль
             </label>
-            <div className="relative">
-              <Lock
-                size={16}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2"
-                style={{ color: "var(--text-muted)" }}
-              />
-              <input
-                id="confirmPassword"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                minLength={8}
-                className="vh-input pl-10"
-                aria-label="Подтвердите новый пароль"
-                autoComplete="new-password"
-              />
-            </div>
+            <PasswordInput
+              id="confirmPassword"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              minLength={8}
+              autoComplete="new-password"
+              ariaLabel="Подтвердите новый пароль"
+            />
           </div>
 
           <motion.button

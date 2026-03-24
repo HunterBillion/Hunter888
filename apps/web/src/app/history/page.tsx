@@ -16,6 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { scoreColor } from "@/lib/utils";
 import AuthLayout from "@/components/layout/AuthLayout";
 import type { HistoryEntry } from "@/types";
 
@@ -30,13 +31,6 @@ function statusConfig(status: string) {
     default:
       return { label: "Активно", icon: Clock, color: "var(--accent)" };
   }
-}
-
-function scoreColor(score: number | null) {
-  if (score === null) return "var(--text-muted)";
-  if (score >= 70) return "#00FF66";
-  if (score >= 40) return "var(--warning)";
-  return "#FF3333";
 }
 
 function formatDuration(seconds: number | null) {

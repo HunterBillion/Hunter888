@@ -8,6 +8,7 @@ import { usePvPStore } from "@/stores/usePvPStore";
 import { RankBadge } from "@/components/pvp/RankBadge";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { useAuth } from "@/hooks/useAuth";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { hasRole } from "@/lib/guards";
 import { api } from "@/lib/api";
 import type { PvPRankTier } from "@/types";
@@ -132,10 +133,13 @@ export default function PvPLeaderboardPage() {
               <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
             </div>
           ) : store.leaderboard.length === 0 ? (
-            <div className="mt-12 text-center py-16">
-              <Trophy size={32} style={{ color: "var(--text-muted)" }} />
-              <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>Пока нет данных</p>
-            </div>
+            <EmptyState
+              icon={Trophy}
+              title="Пока нет данных"
+              description="Проведите первый PvP-бой, чтобы попасть в рейтинг"
+              actionLabel="Начать бой"
+              onAction={() => window.location.href = "/pvp"}
+            />
           ) : (
             <div className="mt-6 space-y-3">
               {store.leaderboard.map((entry, i) => {

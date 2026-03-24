@@ -10,6 +10,7 @@ import {
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { PageSkeleton } from "@/components/ui/Skeleton";
 import { ClientTimeline } from "@/components/clients/ClientTimeline";
 import { ConsentBadge } from "@/components/clients/ConsentBadge";
 import { ConsentForm } from "@/components/clients/ConsentForm";
@@ -99,9 +100,7 @@ export default function ClientDetailPage() {
   if (loading) {
     return (
       <AuthLayout>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
-        </div>
+        <PageSkeleton />
       </AuthLayout>
     );
   }

@@ -29,6 +29,7 @@ import {
   } from "lucide-react";
 import { api } from "@/lib/api";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { PageSkeleton } from "@/components/ui/Skeleton";
 import PentagramChart from "@/components/results/PentagramChart";
 import EmotionTimeline from "@/components/results/EmotionTimeline";
 import TrapResults from "@/components/results/TrapResults";
@@ -118,12 +119,11 @@ export default function ResultsPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg-primary)" }}>
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2">
-          <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
-          <span className="font-mono text-sm" style={{ color: "var(--text-muted)" }}>ANALYZING DATA...</span>
-        </motion.div>
-      </div>
+      <AuthLayout>
+        <div className="flex items-center justify-center min-h-screen">
+          <PageSkeleton />
+        </div>
+      </AuthLayout>
     );
   }
 

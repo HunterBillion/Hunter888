@@ -6,6 +6,7 @@ import { Bell, Check, CheckCheck, Loader2, Inbox } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { EmptyState } from "@/components/ui/EmptyState";
 import type { AppNotification } from "@/types";
 
 type TabFilter = "all" | "unread";
@@ -117,12 +118,11 @@ export default function NotificationsPage() {
               <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
             </div>
           ) : items.length === 0 ? (
-            <div className="text-center py-16">
-              <Inbox size={32} className="mx-auto mb-3 opacity-20" style={{ color: "var(--text-muted)" }} />
-              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                {tab === "unread" ? "Нет непрочитанных" : "Нет уведомлений"}
-              </p>
-            </div>
+            <EmptyState
+              icon={Inbox}
+              title={tab === "unread" ? "Нет непрочитанных" : "Нет уведомлений"}
+              description={tab === "unread" ? "Все уведомления прочитаны — отличная работа!" : "Уведомления появятся по мере активности"}
+            />
           ) : (
             items.map((n, i) => (
               <motion.div

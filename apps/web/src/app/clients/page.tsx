@@ -13,6 +13,7 @@ import type { CRMClient, ClientStatus, PipelineStats, ClientListResponse, UserRo
 import { CLIENT_STATUS_LABELS } from "@/types";
 import { ClientCreateModal } from "@/components/clients/ClientCreateModal";
 import { BulkReassignModal } from "@/components/clients/BulkReassignModal";
+import { EmptyState } from "@/components/ui/EmptyState";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -451,12 +452,13 @@ export default function ClientsPage() {
               <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
             </div>
           ) : clients.length === 0 ? (
-            <div className="text-center py-16">
-              <Users size={32} className="mx-auto mb-3 opacity-20" style={{ color: "var(--text-muted)" }} />
-              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                {search || statusFilter ? "Клиенты не найдены" : "Пока нет клиентов"}
-              </p>
-            </div>
+            <EmptyState
+              icon={Users}
+              title={search || statusFilter ? "Клиенты не найдены" : "Пока нет клиентов"}
+              description={search || statusFilter ? "Попробуйте изменить параметры поиска" : "Добавьте первого клиента для начала работы с CRM"}
+              actionLabel={!search && !statusFilter ? "Добавить клиента" : undefined}
+              onAction={!search && !statusFilter ? () => setShowCreate(true) : undefined}
+            />
           ) : (
             clients.map((c, i) => (
               <motion.div

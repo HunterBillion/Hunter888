@@ -21,16 +21,11 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { DashboardSkeleton } from "@/components/ui/Skeleton";
 import { ClientStats } from "@/components/clients/ClientStats";
 import { TrainingRecommendations } from "@/components/clients/TrainingRecommendations";
 import type { DashboardROP, TeamMember, DashboardTournament, PipelineStats } from "@/types";
-
-function scoreColor(score: number | null) {
-  if (score === null) return "var(--text-muted)";
-  if (score >= 70) return "#00FF66";
-  if (score >= 40) return "var(--warning)";
-  return "#FF3333";
-}
+import { scoreColor } from "@/lib/utils";
 
 const podiumColors = ["#FFD700", "#C0C0C0", "#CD7F32"]; // gold, silver, bronze
 
@@ -84,10 +79,7 @@ export default function DashboardPage() {
           </motion.div>
 
           {loading ? (
-            <div className="mt-16 flex flex-col items-center">
-              <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
-              <span className="mt-3 font-mono text-xs" style={{ color: "var(--text-muted)" }}>ЗАГРУЗКА...</span>
-            </div>
+            <DashboardSkeleton />
           ) : error ? (
             <motion.div
               initial={{ opacity: 0 }}

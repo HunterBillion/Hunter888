@@ -25,8 +25,10 @@ import {
   Zap,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { scoreColor } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { AnalyticsSkeleton } from "@/components/ui/Skeleton";
 import type {
   WeakSpot,
   ProgressPoint,
@@ -79,13 +81,6 @@ const SUB_SKILL_LABELS: Record<string, string> = {
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function scoreColor(score: number | null): string {
-  if (score === null) return "var(--text-muted)";
-  if (score >= 70) return "var(--neon-green, #00FF94)";
-  if (score >= 40) return "var(--warning, #FFD700)";
-  return "var(--neon-red, #FF2A6D)";
-}
 
 function TrendIcon({ trend }: { trend: string }) {
   if (trend === "improving") return <TrendingUp size={14} style={{ color: "var(--neon-green, #00FF94)" }} />;
@@ -208,9 +203,8 @@ export default function AnalyticsPage() {
   if (loading) {
     return (
       <AuthLayout>
-        <div className="flex flex-col items-center justify-center min-h-[60vh]">
-          <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
-          <span className="mt-3 font-mono text-xs" style={{ color: "var(--text-muted)" }}>АНАЛИЗ ДАННЫХ...</span>
+        <div className="relative panel-grid-bg min-h-screen">
+          <AnalyticsSkeleton />
         </div>
       </AuthLayout>
     );

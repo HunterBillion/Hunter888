@@ -10,6 +10,17 @@ export function scoreColor(score: number | null): string {
   return "var(--neon-red)";
 }
 
+/**
+ * Returns a score tier label for accessibility (not color-dependent).
+ * Use alongside scoreColor to ensure color-blind users can interpret scores.
+ */
+export function scoreTier(score: number | null): { label: string; icon: "good" | "mid" | "low" | "none" } {
+  if (score === null || score === undefined) return { label: "—", icon: "none" };
+  if (score >= 70) return { label: "Отлично", icon: "good" };
+  if (score >= 40) return { label: "Средне", icon: "mid" };
+  return { label: "Слабо", icon: "low" };
+}
+
 /** Format duration in seconds to "M:SS" string */
 export function formatDuration(seconds: number | null): string {
   if (!seconds) return "—";
