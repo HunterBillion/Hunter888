@@ -182,6 +182,8 @@ export default function LoginPage() {
                 required
                 className="vh-input pl-10"
                 placeholder="you@example.com"
+                aria-label="Email"
+                autoComplete="email"
               />
             </div>
           </div>
@@ -198,6 +200,8 @@ export default function LoginPage() {
                 required
                 className="vh-input pl-10"
                 placeholder="••••••••"
+                aria-label="Пароль"
+                autoComplete="current-password"
               />
             </div>
           </div>

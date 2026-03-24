@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Loader2, UserCheck } from "lucide-react";
 import { api } from "@/lib/api";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface ManagerOption {
   id: string;
@@ -18,6 +19,7 @@ interface BulkReassignModalProps {
 }
 
 export function BulkReassignModal({ open, clientIds, onClose, onDone }: BulkReassignModalProps) {
+  const focusTrapRef = useFocusTrap(open, onClose);
   const [managers, setManagers] = useState<ManagerOption[]>([]);
   const [selectedManager, setSelectedManager] = useState("");
   const [saving, setSaving] = useState(false);
@@ -76,6 +78,10 @@ export function BulkReassignModal({ open, clientIds, onClose, onDone }: BulkReas
           />
 
           <motion.div
+            ref={focusTrapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Переназначение клиентов"
             className="relative w-full max-w-sm rounded-2xl p-6"
             style={{
               background: "var(--bg-secondary, var(--bg-primary))",
@@ -94,7 +100,7 @@ export function BulkReassignModal({ open, clientIds, onClose, onDone }: BulkReas
                   Переназначить
                 </h2>
               </div>
-              <motion.button onClick={handleClose} style={{ color: "var(--text-muted)" }} whileTap={{ scale: 0.9 }}>
+              <motion.button onClick={handleClose} aria-label="Закрыть" style={{ color: "var(--text-muted)" }} whileTap={{ scale: 0.9 }}>
                 <X size={18} />
               </motion.button>
             </div>
@@ -113,6 +119,7 @@ export function BulkReassignModal({ open, clientIds, onClose, onDone }: BulkReas
               <div>
                 <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>МЕНЕДЖЕР *</label>
                 <select
+                  aria-label="Выберите менеджера"
                   value={selectedManager}
                   onChange={(e) => setSelectedManager(e.target.value)}
                   className="vh-input w-full"

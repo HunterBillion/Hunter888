@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RotateCcw } from "lucide-react";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 // ── Error fish that swim across ────────────────────────────
 const ERROR_FISH = [
@@ -50,6 +51,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
   const starIdRef = useRef(0);
   const animRef = useRef(0);
   const timeRef = useRef(Date.now());
+  const reducedMotion = useReducedMotion();
 
   // Stable star positions
   const stars = useMemo(() =>
@@ -93,8 +95,27 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // Animate fish movement
+  // Animate fish movement (skip rAF loop for reduced motion — use slower interval)
   useEffect(() => {
+    if (reducedMotion) {
+      // Simplified: move fish via interval instead of rAF
+      const id = setInterval(() => {
+        setFish((prev) =>
+          prev
+            .map((f) => ({
+              ...f,
+              x: f.caught ? f.x : f.x + (f.direction === 1 ? -f.speed * 4 : f.speed * 4),
+              y: f.caught ? f.y - 3 : f.y,
+            }))
+            .filter((f) => {
+              if (f.caught) return f.y > 10;
+              if (f.direction === 1) return f.x > -15;
+              return f.x < 115;
+            }),
+        );
+      }, 200);
+      return () => clearInterval(id);
+    }
     const tick = () => {
       const now = Date.now();
       setFish((prev) =>
@@ -115,7 +136,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
     };
     animRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animRef.current);
-  }, []);
+  }, [reducedMotion]);
 
   // Spawn falling star on catch
   const spawnFallingStar = useCallback(() => {
@@ -227,8 +248,8 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
             left: `${s.x}%`,
             top: `${s.y}%`,
           }}
-          animate={{ opacity: [0.2, 0.6, 0.2] }}
-          transition={{ duration: s.dur, repeat: Infinity, delay: s.delay }}
+          animate={reducedMotion ? {} : { opacity: [0.2, 0.6, 0.2] }}
+          transition={reducedMotion ? {} : { duration: s.dur, repeat: Infinity, delay: s.delay }}
         />
       ))}
 
@@ -328,11 +349,11 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
       <motion.div
         className="absolute"
         style={{ top: "50%", left: "calc(50% - 50px)" }}
-        animate={{
+        animate={reducedMotion ? {} : {
           y: [0, -4, 0, 3, 0],
           rotate: [-1, 1.5, -0.5, 1, -1],
         }}
-        transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
+        transition={reducedMotion ? {} : { duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
       >
         {/* Water splash around boat */}
         <motion.div

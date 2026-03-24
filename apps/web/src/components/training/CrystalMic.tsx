@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, Keyboard, Loader2 } from "lucide-react";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 interface CrystalMicProps {
   isRecording: boolean;
@@ -24,6 +25,7 @@ export function CrystalMic({
   disabled,
 }: CrystalMicProps) {
   const normalizedLevel = Math.min(audioLevel / 100, 1);
+  const reducedMotion = useReducedMotion();
 
   // P2-23: Show tooltip on first use
   const [showTooltip, setShowTooltip] = useState(false);
@@ -80,7 +82,7 @@ export function CrystalMic({
       {/* Crystal mic button */}
       <div className="relative cursor-pointer group">
         {/* Outer glow rings (visible when recording) */}
-        {isRecording && (
+        {isRecording && !reducedMotion && (
           <>
             <motion.div
               className="absolute inset-[-20px] rounded-full opacity-20"
@@ -162,7 +164,7 @@ export function CrystalMic({
           {isProcessing ? (
             <Loader2 size={28} className="relative z-20 animate-spin text-white" />
           ) : (
-            <motion.div className="relative z-20" animate={isRecording ? { scale: [1, 1.15, 1] } : {}} transition={{ duration: 0.8, repeat: Infinity }}>
+            <motion.div className="relative z-20" animate={isRecording && !reducedMotion ? { scale: [1, 1.15, 1] } : {}} transition={{ duration: 0.8, repeat: Infinity }}>
               <Mic
                 size={28}
                 className="drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"

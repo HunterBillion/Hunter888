@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { FishermanError } from "@/components/errors/FishermanError";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { getToken, setTokens } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { getApiBaseUrl } from "@/lib/public-origin";
@@ -46,6 +47,9 @@ export default function Home() {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSent, setForgotSent] = useState(false);
 
+  // A11y: respect prefers-reduced-motion
+  const reducedMotion = useReducedMotion();
+
   // A1: Parallax mouse tracking
   const mouseX = useMotionValue(0.5);
   const mouseY = useMotionValue(0.5);
@@ -56,13 +60,14 @@ export default function Home() {
   const beamParallaxY = useTransform(mouseY, [0, 1], [-5, 5]);
 
   useEffect(() => {
+    if (reducedMotion) return; // Skip parallax when user prefers reduced motion
     const onMove = (e: MouseEvent) => {
       mouseX.set(e.clientX / window.innerWidth);
       mouseY.set(e.clientY / window.innerHeight);
     };
     window.addEventListener("mousemove", onMove);
     return () => window.removeEventListener("mousemove", onMove);
-  }, [mouseX, mouseY]);
+  }, [mouseX, mouseY, reducedMotion]);
 
   // A4: Detect mobile for adaptive timing
   const isMobile = useMemo(() => {
@@ -565,6 +570,8 @@ export default function Home() {
                             required={!isLogin}
                             className="vh-input pl-10 w-full"
                             placeholder="Полное имя"
+                            aria-label="Полное имя"
+                            autoComplete="name"
                           />
                         </div>
                       </motion.div>
@@ -581,6 +588,8 @@ export default function Home() {
                       required
                       className="vh-input pl-10 w-full"
                       placeholder="Email"
+                      aria-label="Email"
+                      autoComplete="email"
                     />
                   </div>
 
@@ -596,6 +605,8 @@ export default function Home() {
                         required
                         className="vh-input pl-10 w-full"
                         placeholder="Пароль"
+                        aria-label="Пароль"
+                        autoComplete={isLogin ? "current-password" : "new-password"}
                       />
                     </div>
                     {/* C4: Password strength wave */}
@@ -797,6 +808,8 @@ export default function Home() {
                               onChange={(e) => setForgotEmail(e.target.value)}
                               className="vh-input pl-10 w-full"
                               placeholder="Email"
+                              aria-label="Email для восстановления пароля"
+                              autoComplete="email"
                             />
                           </div>
                           <div className="flex gap-3 w-full">

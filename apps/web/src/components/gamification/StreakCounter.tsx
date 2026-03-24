@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Flame } from "lucide-react";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 interface StreakCounterProps {
   streak: number;
@@ -10,6 +11,7 @@ interface StreakCounterProps {
 
 export function StreakCounter({ streak, className = "" }: StreakCounterProps) {
   const isActive = streak > 0;
+  const reducedMotion = useReducedMotion();
 
   return (
     <motion.div
@@ -21,8 +23,8 @@ export function StreakCounter({ streak, className = "" }: StreakCounterProps) {
       whileHover={{ scale: 1.05 }}
     >
       <motion.div
-        animate={isActive ? { scale: [1, 1.2, 1] } : {}}
-        transition={{ duration: 0.6, repeat: Infinity, repeatDelay: 2 }}
+        animate={isActive && !reducedMotion ? { scale: [1, 1.2, 1] } : {}}
+        transition={reducedMotion ? {} : { duration: 0.6, repeat: Infinity, repeatDelay: 2 }}
       >
         <Flame size={14} style={{ color: isActive ? "#ff9900" : "var(--text-muted)" }} />
       </motion.div>

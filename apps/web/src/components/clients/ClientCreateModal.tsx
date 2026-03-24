@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Loader2, UserPlus } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { DuplicateWarning } from "./DuplicateWarning";
 
 const SOURCES = [
@@ -49,6 +50,7 @@ interface CreateResponse {
 export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModalProps) {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const focusTrapRef = useFocusTrap(open, onClose);
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -174,6 +176,10 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
 
           {/* Modal */}
           <motion.div
+            ref={focusTrapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Создание клиента"
             className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl p-6"
             style={{
               background: "var(--bg-secondary, var(--bg-primary))",
@@ -193,7 +199,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
                   Новый клиент
                 </h2>
               </div>
-              <motion.button onClick={handleClose} style={{ color: "var(--text-muted)" }} whileTap={{ scale: 0.9 }}>
+              <motion.button onClick={handleClose} aria-label="Закрыть" style={{ color: "var(--text-muted)" }} whileTap={{ scale: 0.9 }}>
                 <X size={18} />
               </motion.button>
             </div>
@@ -220,6 +226,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
                 </label>
                 <input
                   type="text"
+                  aria-label="ИМЯ"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Иванов Иван Иванович"
@@ -234,6 +241,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
                   <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>ТЕЛЕФОН</label>
                   <input
                     type="tel"
+                    aria-label="ТЕЛЕФОН"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="+7 999 123-45-67"
@@ -244,6 +252,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
                   <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>EMAIL</label>
                   <input
                     type="email"
+                    aria-label="EMAIL"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="client@mail.ru"
@@ -258,6 +267,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
                   <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>СУММА ДОЛГА, ₽</label>
                   <input
                     type="number"
+                    aria-label="СУММА ДОЛГА, ₽"
                     value={debtAmount}
                     onChange={(e) => setDebtAmount(e.target.value)}
                     placeholder="500000"
@@ -268,7 +278,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
                 </div>
                 <div>
                   <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>ИСТОЧНИК *</label>
-                  <select value={source} onChange={(e) => setSource(e.target.value)} className="vh-input w-full">
+                  <select aria-label="ИСТОЧНИК" value={source} onChange={(e) => setSource(e.target.value)} className="vh-input w-full">
                     {SOURCES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                   </select>
                 </div>
@@ -278,7 +288,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
               {isAdmin && managers.length > 0 && (
                 <div>
                   <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>НАЗНАЧИТЬ МЕНЕДЖЕРУ</label>
-                  <select value={managerId} onChange={(e) => setManagerId(e.target.value)} className="vh-input w-full">
+                  <select aria-label="НАЗНАЧИТЬ МЕНЕДЖЕРУ" value={managerId} onChange={(e) => setManagerId(e.target.value)} className="vh-input w-full">
                     <option value="">— Мне —</option>
                     {managers.map((m) => <option key={m.id} value={m.id}>{m.full_name}</option>)}
                   </select>
@@ -290,6 +300,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
                 <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>СЛЕДУЮЩИЙ КОНТАКТ</label>
                 <input
                   type="datetime-local"
+                  aria-label="СЛЕДУЮЩИЙ КОНТАКТ"
                   value={nextContact}
                   onChange={(e) => setNextContact(e.target.value)}
                   className="vh-input w-full"
@@ -300,14 +311,14 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>НАЧАЛЬНОЕ СОГЛАСИЕ</label>
-                  <select value={consentType} onChange={(e) => setConsentType(e.target.value)} className="vh-input w-full">
+                  <select aria-label="НАЧАЛЬНОЕ СОГЛАСИЕ" value={consentType} onChange={(e) => setConsentType(e.target.value)} className="vh-input w-full">
                     {CONSENT_TYPES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </div>
                 {consentType && (
                   <div>
                     <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>КАНАЛ</label>
-                    <select value={consentChannel} onChange={(e) => setConsentChannel(e.target.value)} className="vh-input w-full">
+                    <select aria-label="КАНАЛ" value={consentChannel} onChange={(e) => setConsentChannel(e.target.value)} className="vh-input w-full">
                       {CONSENT_CHANNELS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                     </select>
                   </div>
@@ -318,6 +329,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
               <div>
                 <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>ЗАМЕТКИ</label>
                 <textarea
+                  aria-label="ЗАМЕТКИ"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Дополнительная информация..."

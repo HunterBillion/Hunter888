@@ -47,7 +47,12 @@ export function NotificationToastProvider() {
   const dismiss = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
   return (
-    <div className="fixed top-16 right-4 z-[200] flex flex-col gap-2 w-80 pointer-events-none">
+    <div
+      className="fixed top-16 right-4 z-[200] flex flex-col gap-2 w-80 pointer-events-none"
+      role="status"
+      aria-live="polite"
+      aria-atomic="false"
+    >
       <AnimatePresence>
         {toasts.map((t) => {
           const Icon = ICONS[t.type] || Bell;
@@ -80,7 +85,7 @@ export function NotificationToastProvider() {
                   {t.body}
                 </div>
               </div>
-              <button onClick={() => dismiss(t.id)} className="shrink-0 mt-0.5" style={{ color: "var(--text-muted)" }}>
+              <button onClick={() => dismiss(t.id)} className="shrink-0 mt-0.5" style={{ color: "var(--text-muted)" }} aria-label="Закрыть уведомление">
                 <X size={12} />
               </button>
             </motion.div>

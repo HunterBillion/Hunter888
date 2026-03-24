@@ -5,6 +5,7 @@ import { Phone, Calendar, DollarSign, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import type { CRMClient, UserRole } from "@/types";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
+import { sanitizeText } from "@/lib/sanitize";
 
 interface ClientCardProps {
   client: CRMClient;
@@ -53,7 +54,7 @@ export function CRMClientCard({ client, compact, userRole }: ClientCardProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
-              {client.full_name}
+              {sanitizeText(client.full_name)}
             </span>
             <span
               className="text-[10px] font-mono px-1.5 py-0.5 rounded-full"
@@ -83,7 +84,7 @@ export function CRMClientCard({ client, compact, userRole }: ClientCardProps) {
               )}
               {(userRole === "admin" || userRole === "rop") && client.manager_name && (
                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  {client.manager_name}
+                  {sanitizeText(client.manager_name ?? "")}
                 </span>
               )}
             </div>

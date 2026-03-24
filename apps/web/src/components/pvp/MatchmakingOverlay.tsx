@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Search, Swords, Loader2, X } from "lucide-react";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 interface Props {
   status: "searching" | "matched";
@@ -15,6 +16,7 @@ interface Props {
 const MATCH_TIMEOUT = 60;
 
 export function MatchmakingOverlay({ status, position, estimatedWait, opponentRating, onCancel }: Props) {
+  const reducedMotion = useReducedMotion();
   const rem = estimatedWait > 0 ? estimatedWait : MATCH_TIMEOUT;
   const [anchor, setAnchor] = useState({ remaining: rem, wait: MATCH_TIMEOUT - rem, ts: Date.now() });
   const [live, setLive] = useState({ remaining: rem, wait: Math.max(0, MATCH_TIMEOUT - rem) });
@@ -65,14 +67,14 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
               <motion.div
                 className="absolute inset-0 rounded-full border-2 border-dashed"
                 style={{ borderColor: "var(--accent)" }}
-                animate={{ rotate: 360 }}
-                transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                animate={reducedMotion ? {} : { rotate: 360 }}
+                transition={reducedMotion ? {} : { duration: 3, repeat: Infinity, ease: "linear" }}
               />
               <motion.div
                 className="absolute inset-3 rounded-full border-2"
                 style={{ borderColor: "rgba(139,92,246,0.3)" }}
-                animate={{ rotate: -360 }}
-                transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
+                animate={reducedMotion ? {} : { rotate: -360 }}
+                transition={reducedMotion ? {} : { duration: 5, repeat: Infinity, ease: "linear" }}
               />
               <div className="absolute inset-0 flex items-center justify-center">
                 <Search size={28} style={{ color: "var(--accent)" }} />

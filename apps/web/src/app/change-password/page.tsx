@@ -114,6 +114,8 @@ export default function ChangePasswordPage() {
                 onChange={(e) => setOldPassword(e.target.value)}
                 required
                 className="vh-input pl-10"
+                aria-label="Текущий пароль"
+                autoComplete="current-password"
               />
             </div>
           </div>
@@ -137,6 +139,8 @@ export default function ChangePasswordPage() {
                 minLength={8}
                 className="vh-input pl-10"
                 placeholder="Минимум 8 символов"
+                aria-label="Новый пароль"
+                autoComplete="new-password"
               />
             </div>
           </div>
@@ -159,6 +163,8 @@ export default function ChangePasswordPage() {
                 required
                 minLength={8}
                 className="vh-input pl-10"
+                aria-label="Подтвердите новый пароль"
+                autoComplete="new-password"
               />
             </div>
           </div>

@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { ArrowLeftRight } from "lucide-react";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 interface Props {
   roundNumber: number;
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function RoundIndicator({ roundNumber, myRole, timeRemaining }: Props) {
+  const reducedMotion = useReducedMotion();
   const mins = Math.floor(timeRemaining / 60);
   const secs = timeRemaining % 60;
   const isLow = timeRemaining <= 60;
@@ -41,8 +43,8 @@ export function RoundIndicator({ roundNumber, myRole, timeRemaining }: Props) {
         </span>
         {roundNumber === 0 && (
           <motion.div
-            animate={{ scale: [1, 1.1, 1] }}
-            transition={{ repeat: Infinity, duration: 1.5 }}
+            animate={reducedMotion ? {} : { scale: [1, 1.1, 1] }}
+            transition={reducedMotion ? {} : { repeat: Infinity, duration: 1.5 }}
             className="flex items-center gap-1 font-mono text-xs"
             style={{ color: "var(--warning)" }}
           >
@@ -65,7 +67,7 @@ export function RoundIndicator({ roundNumber, myRole, timeRemaining }: Props) {
 
       {/* Timer */}
       <div
-        className={`font-mono text-lg font-bold ${isLow ? "animate-pulse" : ""}`}
+        className={`font-mono text-lg font-bold ${isLow && !reducedMotion ? "animate-pulse" : ""}`}
         style={{ color: isLow ? "var(--neon-red)" : "var(--text-primary)" }}
       >
         {mins}:{secs.toString().padStart(2, "0")}

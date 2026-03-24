@@ -144,7 +144,7 @@ export default function RegisterPage() {
             <label htmlFor="fullName" className="vh-label">Полное имя</label>
             <div className="relative">
               <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
-              <input id="fullName" type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} required className="vh-input pl-10" placeholder="Иван Петров" autoComplete="name" />
+              <input id="fullName" type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} required className="vh-input pl-10" placeholder="Иван Петров" autoComplete="name" aria-label="Полное имя" />
             </div>
           </div>
 
@@ -152,7 +152,7 @@ export default function RegisterPage() {
             <label htmlFor="email" className="vh-label">Email</label>
             <div className="relative">
               <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
-              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="vh-input pl-10" placeholder="you@example.com" autoComplete="email" />
+              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="vh-input pl-10" placeholder="you@example.com" autoComplete="email" aria-label="Email" />
             </div>
           </div>
 
@@ -160,7 +160,7 @@ export default function RegisterPage() {
             <label htmlFor="password" className="vh-label">Пароль</label>
             <div className="relative">
               <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
-              <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} className="vh-input pl-10" placeholder="Минимум 8 символов" autoComplete="new-password" />
+              <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} className="vh-input pl-10" placeholder="Минимум 8 символов" autoComplete="new-password" aria-label="Пароль" aria-describedby="password-requirements" />
             </div>
             {password.length > 0 && (
               <div className="mt-2 flex items-center gap-2">
@@ -188,7 +188,7 @@ export default function RegisterPage() {
                 </span>
               </div>
             )}
-            <div className="mt-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
+            <div id="password-requirements" className="mt-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
               Требования: 8+ символов, заглавная, строчная буква и цифра.
             </div>
           </div>
@@ -206,6 +206,7 @@ export default function RegisterPage() {
                 className="vh-input pl-10"
                 placeholder="Повторите пароль"
                 autoComplete="new-password"
+                aria-label="Повторите пароль"
               />
             </div>
             {!passwordsMatch && (

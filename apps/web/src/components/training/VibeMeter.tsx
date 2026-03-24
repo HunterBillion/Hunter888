@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Activity } from "lucide-react";
 import { type EmotionState, EMOTION_MAP } from "@/types";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 const ARCHETYPE_HINTS: Record<string, string> = {
   skeptic: "Скептик: нужны факты и цифры",
@@ -26,6 +27,7 @@ export default function VibeMeter({ emotion, archetype, trigger }: VibeMeterProp
   const config = EMOTION_MAP[emotion] || EMOTION_MAP.cold;
   const fillPercent = `${config.value}%`;
   const [hovered, setHovered] = useState(false);
+  const reducedMotion = useReducedMotion();
 
   return (
     <div
@@ -102,14 +104,14 @@ export default function VibeMeter({ emotion, archetype, trigger }: VibeMeterProp
           {/* Pulse ring on emotion change */}
           <motion.span
             className="inline-block"
-            animate={{
+            animate={reducedMotion ? {} : {
               textShadow: [
                 `0 0 10px ${config.glow}`,
                 `0 0 25px ${config.glow}`,
                 `0 0 10px ${config.glow}`,
               ],
             }}
-            transition={{ duration: 1.5, ease: "easeInOut" }}
+            transition={reducedMotion ? {} : { duration: 1.5, ease: "easeInOut" }}
           >
             {config.labelRu}
           </motion.span>

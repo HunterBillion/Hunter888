@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Loader2, Bell } from "lucide-react";
 import { api } from "@/lib/api";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface ReminderCreateModalProps {
   open: boolean;
@@ -14,6 +15,7 @@ interface ReminderCreateModalProps {
 }
 
 export function ReminderCreateModal({ open, clientId, clientName, onClose, onCreated }: ReminderCreateModalProps) {
+  const focusTrapRef = useFocusTrap(open, onClose);
   const [remindAt, setRemindAt] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -82,6 +84,10 @@ export function ReminderCreateModal({ open, clientId, clientName, onClose, onCre
           />
 
           <motion.div
+            ref={focusTrapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Создание напоминания"
             className="relative w-full max-w-sm rounded-2xl p-6"
             style={{
               background: "var(--bg-secondary, var(--bg-primary))",
@@ -100,7 +106,7 @@ export function ReminderCreateModal({ open, clientId, clientName, onClose, onCre
                   Напоминание
                 </h2>
               </div>
-              <motion.button onClick={handleClose} style={{ color: "var(--text-muted)" }} whileTap={{ scale: 0.9 }}>
+              <motion.button onClick={handleClose} aria-label="Закрыть" style={{ color: "var(--text-muted)" }} whileTap={{ scale: 0.9 }}>
                 <X size={18} />
               </motion.button>
             </div>
@@ -120,6 +126,7 @@ export function ReminderCreateModal({ open, clientId, clientName, onClose, onCre
                 <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>КОГДА *</label>
                 <input
                   type="datetime-local"
+                  aria-label="Дата и время напоминания"
                   value={remindAt}
                   onChange={(e) => setRemindAt(e.target.value)}
                   className="vh-input w-full"
@@ -132,6 +139,7 @@ export function ReminderCreateModal({ open, clientId, clientName, onClose, onCre
                   СООБЩЕНИЕ <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>({message.length}/500)</span>
                 </label>
                 <textarea
+                  aria-label="Сообщение напоминания"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder="О чём напомнить..."

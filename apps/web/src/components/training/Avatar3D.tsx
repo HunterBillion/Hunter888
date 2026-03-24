@@ -7,6 +7,7 @@ import * as THREE from "three";
 
 import { EMOTION_MAP, type EmotionState } from "@/types";
 import { JarvisScene } from "./JarvisCore";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 // ─── Emotion config ──────────────────────────────────────────────────────────
 
@@ -575,6 +576,7 @@ export function Avatar3D({
   className = "",
 }: Avatar3DProps) {
   const [webglSupported, setWebglSupported] = useState(true);
+  const reducedMotion = useReducedMotion();
 
   const checkGL = useCallback(() => {
     setWebglSupported(checkWebGLSupport());
@@ -584,7 +586,8 @@ export function Avatar3D({
     checkGL();
   }, [checkGL]);
 
-  if (!webglSupported) {
+  // Show lightweight SVG fallback for reduced motion (avoids heavy 3D canvas)
+  if (reducedMotion || !webglSupported) {
     return (
       <div className={`relative ${className}`}>
         <AvatarFallback emotion={emotion} />

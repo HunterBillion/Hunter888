@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Loader2, MessageSquarePlus } from "lucide-react";
 import { api } from "@/lib/api";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 const INTERACTION_TYPES = [
   { value: "outbound_call", label: "Исходящий звонок" },
@@ -32,6 +33,7 @@ export function InteractionCreateModal({
   onClose,
   onCreated,
 }: InteractionCreateModalProps) {
+  const focusTrapRef = useFocusTrap(open, onClose);
   const [type, setType] = useState(initialType);
   const [content, setContent] = useState("");
   const [result, setResult] = useState("");
@@ -108,6 +110,10 @@ export function InteractionCreateModal({
           />
 
           <motion.div
+            ref={focusTrapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Новое взаимодействие"
             className="relative w-full max-w-md rounded-2xl p-6"
             style={{
               background: "var(--bg-secondary, var(--bg-primary))",
@@ -126,7 +132,7 @@ export function InteractionCreateModal({
                   Запись взаимодействия
                 </h2>
               </div>
-              <motion.button onClick={handleClose} style={{ color: "var(--text-muted)" }} whileTap={{ scale: 0.9 }}>
+              <motion.button onClick={handleClose} aria-label="Закрыть" style={{ color: "var(--text-muted)" }} whileTap={{ scale: 0.9 }}>
                 <X size={18} />
               </motion.button>
             </div>
@@ -140,7 +146,7 @@ export function InteractionCreateModal({
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>ТИП *</label>
-                <select value={type} onChange={(e) => setType(e.target.value)} className="vh-input w-full">
+                <select aria-label="ТИП" value={type} onChange={(e) => setType(e.target.value)} className="vh-input w-full">
                   {INTERACTION_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
@@ -148,6 +154,7 @@ export function InteractionCreateModal({
               <div>
                 <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>ОПИСАНИЕ</label>
                 <textarea
+                  aria-label="ОПИСАНИЕ"
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   placeholder="Что обсуждали, итог разговора..."
@@ -161,6 +168,7 @@ export function InteractionCreateModal({
                 <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>РЕЗУЛЬТАТ</label>
                 <input
                   type="text"
+                  aria-label="РЕЗУЛЬТАТ"
                   value={result}
                   onChange={(e) => setResult(e.target.value)}
                   placeholder="Перезвонить, записан на консультацию, отказ..."
@@ -175,6 +183,7 @@ export function InteractionCreateModal({
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
+                      aria-label="Минуты"
                       value={durationMin}
                       onChange={(e) => setDurationMin(e.target.value)}
                       placeholder="0"
@@ -184,6 +193,7 @@ export function InteractionCreateModal({
                     <span className="text-xs" style={{ color: "var(--text-muted)" }}>мин</span>
                     <input
                       type="number"
+                      aria-label="Секунды"
                       value={durationSec}
                       onChange={(e) => setDurationSec(e.target.value)}
                       placeholder="0"

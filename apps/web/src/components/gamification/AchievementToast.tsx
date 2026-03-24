@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Award } from "lucide-react";
 import { useSound } from "@/hooks/useSound";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 interface Achievement {
   id: string;
@@ -19,6 +20,7 @@ interface AchievementToastProps {
 
 export function AchievementToast({ achievement, onClose }: AchievementToastProps) {
   const { playSound } = useSound();
+  const reducedMotion = useReducedMotion();
 
   // Play sound when achievement appears
   useEffect(() => {
@@ -49,8 +51,8 @@ export function AchievementToast({ achievement, onClose }: AchievementToastProps
           <motion.div
             className="flex h-12 w-12 items-center justify-center rounded-xl"
             style={{ background: "var(--accent)", boxShadow: "0 0 20px rgba(139,92,246,0.4)" }}
-            animate={{ rotate: [0, -10, 10, -5, 5, 0] }}
-            transition={{ duration: 0.6, delay: 0.3 }}
+            animate={reducedMotion ? {} : { rotate: [0, -10, 10, -5, 5, 0] }}
+            transition={reducedMotion ? {} : { duration: 0.6, delay: 0.3 }}
           >
             {achievement.icon ? (
               <span className="text-xl">{achievement.icon}</span>
