@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { getToken } from "@/lib/auth";
 import { getWsBaseUrl } from "@/lib/public-origin";
-import { useNotificationStore } from "@/stores/useNotificationStore";
+import { useNotificationStore, type NotificationItem } from "@/stores/useNotificationStore";
 import { api } from "@/lib/api";
 
 const MAX_RECONNECT_DELAY = 30_000;
@@ -157,14 +157,21 @@ export function NotificationWSProvider({ children }: { children: React.ReactNode
     const token = getToken();
     if (!token) return;
     api.get("/notifications?limit=10")
-      .then((data) => {
-        if (data?.items) {
-          useNotificationStore.getState().setItems(data.items);
-          const unread = data.items.filter((i: { read: boolean }) => !i.read).length;
+      .then((data: unknown) => {
+        if (!mountedRef.current) return;
+        if (data && typeof data === "object" && "items" in data && Array.isArray((data as Record<string, unknown>).items)) {
+          const items = (data as { items: Array<{ read: boolean }> }).items;
+          useNotificationStore.getState().setItems(items as NotificationItem[]);
+          const unread = items.filter((i) => !i.read).length;
           useNotificationStore.getState().setUnread(unread);
         }
       })
-      .catch((err) => { console.error("Failed to fetch initial notifications:", err); });
+      .catch((err: unknown) => {
+        // Non-critical: WS will provide live data; log for debugging
+        if (mountedRef.current) {
+          console.error("Failed to fetch initial notifications:", err);
+        }
+      });
   }, []);
 
   useEffect(() => {

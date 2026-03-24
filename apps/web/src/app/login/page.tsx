@@ -13,7 +13,10 @@ import { PasswordInput } from "@/components/ui/PasswordInput";
 import dynamic from "next/dynamic";
 const WaveScene = dynamic(
   () => import("@/components/landing/WaveScene").then((m) => m.WaveScene),
-  { ssr: false },
+  {
+    ssr: false,
+    loading: () => <div className="fixed inset-0 -z-10" style={{ background: "var(--bg-primary)" }} />,
+  },
 );
 import { FishermanError } from "@/components/errors/FishermanError";
 
@@ -28,10 +31,22 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    // Client-side validation (#13) — avoid unnecessary API calls
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError("Введите корректный email");
+      return;
+    }
+    if (!password || password.length < 4) {
+      setError("Пароль должен содержать минимум 4 символа");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const data = await api.post("/auth/login", { email: email.trim(), password });
+      const data = await api.post("/auth/login", { email: trimmedEmail, password });
       setTokens(data.access_token, data.refresh_token);
       if (data.must_change_password) {
         router.push("/change-password");
@@ -233,6 +248,7 @@ export default function LoginPage() {
                 whileTap={{ scale: 0.97 }}
                 onClick={async () => {
                   try {
+                    setError(""); // Clear stale error before redirect (#18)
                     const data = await api.get("/auth/google/login");
                     if (data?.url) window.location.href = data.url;
                   } catch (err: unknown) {
@@ -251,6 +267,7 @@ export default function LoginPage() {
                 whileTap={{ scale: 0.97 }}
                 onClick={async () => {
                   try {
+                    setError(""); // Clear stale error before redirect (#18)
                     const data = await api.get("/auth/yandex/login");
                     if (data?.url) window.location.href = data.url;
                   } catch (err: unknown) {

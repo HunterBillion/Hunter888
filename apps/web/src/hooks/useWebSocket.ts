@@ -158,11 +158,16 @@ export function useWebSocket({
     messageQueueRef.current = [];
   }, [clearTimers]);
 
+  const MAX_QUEUE_SIZE = 50;
+
   const sendMessage = useCallback((data: unknown) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(data));
     } else {
-      // Buffer messages while reconnecting
+      // Buffer messages while reconnecting, cap at MAX_QUEUE_SIZE to prevent memory leak (#16)
+      if (messageQueueRef.current.length >= MAX_QUEUE_SIZE) {
+        messageQueueRef.current.shift(); // drop oldest
+      }
       messageQueueRef.current.push(data);
     }
   }, []);

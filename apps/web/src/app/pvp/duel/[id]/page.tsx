@@ -39,16 +39,19 @@ export default function DuelPage() {
   const { sendMessage, connectionState } = useWebSocket({
     path: "/ws/pvp",
     onMessage: (data) => {
+      // Validate message has expected structure (#10)
+      const d = data.data && typeof data.data === "object" ? data.data as Record<string, unknown> : {};
+
       switch (data.type) {
         case "duel.brief":
-          store.setDuelBrief(data.data as unknown as import("@/types").DuelBrief);
-          store.setMyRole(data.data.your_role as "seller" | "client");
+          store.setDuelBrief(d as unknown as import("@/types").DuelBrief);
+          if (typeof d.your_role === "string") store.setMyRole(d.your_role as "seller" | "client");
           break;
 
         case "round.start":
-          store.setRoundNumber(data.data.round as number);
-          store.setMyRole(data.data.your_role as "seller" | "client");
-          restartTimer(data.data.time_limit as number);
+          store.setRoundNumber(Number(d.round || 1));
+          if (typeof d.your_role === "string") store.setMyRole(d.your_role as "seller" | "client");
+          restartTimer(Number(d.time_limit || 0));
           setStatusNotice(null);
           break;
 
@@ -58,15 +61,15 @@ export default function DuelPage() {
           break;
 
         case "duel.state":
-          store.setRoundNumber(data.data.round_number as number);
-          store.setMyRole(data.data.your_role as "seller" | "client");
+          store.setRoundNumber(Number(d.round_number || 1));
+          if (typeof d.your_role === "string") store.setMyRole(d.your_role as "seller" | "client");
           store.replaceMessages(
-            Array.isArray(data.data.messages)
-              ? (data.data.messages as Array<Record<string, unknown>>).map((msg) => ({
+            Array.isArray(d.messages)
+              ? (d.messages as Array<Record<string, unknown>>).map((msg) => ({
                   id: store.nextMsgId(),
                   sender_role: msg.sender_role as "seller" | "client",
                   text: String(msg.text || ""),
-                  round: Number(msg.round || data.data.round_number || 1),
+                  round: Number(msg.round || d.round_number || 1),
                   timestamp:
                     typeof msg.timestamp === "string"
                       ? msg.timestamp
@@ -76,25 +79,25 @@ export default function DuelPage() {
                 }))
               : [],
           );
-          restartTimer(Number(data.data.time_remaining || data.data.time_limit || 0));
+          restartTimer(Number(d.time_remaining || d.time_limit || 0));
           setStatusNotice("Соединение восстановлено");
           break;
 
         case "duel.message":
           store.addMessage({
             id: store.nextMsgId(),
-            sender_role: data.data.sender_role as "seller" | "client",
-            text: data.data.text as string,
-            round: data.data.round as number,
+            sender_role: (typeof d.sender_role === "string" ? d.sender_role : "client") as "seller" | "client",
+            text: String(d.text || ""),
+            round: Number(d.round || 1),
             timestamp: new Date().toISOString(),
           });
           break;
 
         case "judge.score":
           store.setJudgeScore({
-            selling_score: data.data.selling_score as number,
-            acting_score: data.data.acting_score as number,
-            legal_accuracy: data.data.legal_accuracy as number,
+            selling_score: Number(d.selling_score || 0),
+            acting_score: Number(d.acting_score || 0),
+            legal_accuracy: Number(d.legal_accuracy || 0),
           });
           break;
 
@@ -106,21 +109,21 @@ export default function DuelPage() {
         case "duel.result":
           if (timerRef.current) clearInterval(timerRef.current);
           store.setDuelResult({
-            duel_id: data.data.duel_id as string,
-            player1_total: data.data.player1_total as number,
-            player2_total: data.data.player2_total as number,
-            winner_id: data.data.winner_id as string | null,
-            is_draw: data.data.is_draw as boolean,
-            is_pve: Boolean(data.data.is_pve),
-            rating_change_applied: Boolean(data.data.rating_change_applied),
-            player1_rating_delta: data.data.player1_rating_delta as number,
-            player2_rating_delta: data.data.player2_rating_delta as number,
-            summary: data.data.summary as string,
+            duel_id: String(d.duel_id || ""),
+            player1_total: Number(d.player1_total || 0),
+            player2_total: Number(d.player2_total || 0),
+            winner_id: typeof d.winner_id === "string" ? d.winner_id : null,
+            is_draw: Boolean(d.is_draw),
+            is_pve: Boolean(d.is_pve),
+            rating_change_applied: Boolean(d.rating_change_applied),
+            player1_rating_delta: Number(d.player1_rating_delta || 0),
+            player2_rating_delta: Number(d.player2_rating_delta || 0),
+            summary: String(d.summary || ""),
           });
           break;
 
         case "opponent.disconnected":
-          setStatusNotice(`Соперник переподключается. Ждём ${String(data.data.seconds_remaining || 60)} сек.`);
+          setStatusNotice(`Соперник переподключается. Ждём ${String(d.seconds_remaining || 60)} сек.`);
           break;
 
         case "duel.resumed":

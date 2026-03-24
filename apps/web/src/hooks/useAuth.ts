@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { getToken } from "@/lib/auth";
@@ -12,8 +12,13 @@ import { getToken } from "@/lib/auth";
 export function useAuth() {
   const router = useRouter();
   const { user, loading, fetchUser, logout: storeLogout } = useAuthStore();
+  const didFetchRef = useRef(false);
 
   useEffect(() => {
+    // Guard: only run once per mount to prevent loops from fetchUser reference changes
+    if (didFetchRef.current) return;
+    didFetchRef.current = true;
+
     const token = getToken();
     if (!token) {
       router.replace("/login");
@@ -25,6 +30,11 @@ export function useAuth() {
       if (!u) router.replace("/login");
     });
   }, [fetchUser, router]);
+
+  // Reset guard on unmount so remount works correctly
+  useEffect(() => {
+    return () => { didFetchRef.current = false; };
+  }, []);
 
   const logout = useCallback(async () => {
     await storeLogout();

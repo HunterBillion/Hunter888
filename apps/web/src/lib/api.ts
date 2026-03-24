@@ -57,9 +57,14 @@ async function handleTokenRefresh(): Promise<boolean> {
   // If a refresh is already in-flight, piggyback on its promise
   if (_refreshPromise) return _refreshPromise;
 
-  _refreshPromise = _doRefresh().finally(() => {
-    _refreshPromise = null;
-  });
+  _refreshPromise = _doRefresh()
+    .catch(() => {
+      // Safety: if _doRefresh throws unexpectedly, clear promise and return false
+      return false;
+    })
+    .finally(() => {
+      _refreshPromise = null;
+    });
 
   return _refreshPromise;
 }
@@ -186,14 +191,21 @@ async function uploadFile(path: string, file: File): Promise<unknown> {
   return response.json();
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * Typed API client (#19).
+ * Generic overloads allow callers to specify the expected response type:
+ *   const user = await api.get<User>("/auth/me");
+ * Without explicit type, defaults to `any` for backward compatibility.
+ */
 export const api = {
-  get: (path: string) => request(path),
-  post: (path: string, body: unknown) =>
-    request(path, { method: "POST", body: JSON.stringify(body) }),
-  put: (path: string, body: unknown) =>
-    request(path, { method: "PUT", body: JSON.stringify(body) }),
-  patch: (path: string, body?: unknown) =>
-    request(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
-  delete: (path: string) => request(path, { method: "DELETE" }),
-  upload: (path: string, file: File) => uploadFile(path, file),
+  get: <T = any>(path: string): Promise<T> => request(path) as Promise<T>,
+  post: <T = any>(path: string, body: unknown): Promise<T> =>
+    request(path, { method: "POST", body: JSON.stringify(body) }) as Promise<T>,
+  put: <T = any>(path: string, body: unknown): Promise<T> =>
+    request(path, { method: "PUT", body: JSON.stringify(body) }) as Promise<T>,
+  patch: <T = any>(path: string, body?: unknown): Promise<T> =>
+    request(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }) as Promise<T>,
+  delete: <T = any>(path: string): Promise<T> => request(path, { method: "DELETE" }) as Promise<T>,
+  upload: <T = any>(path: string, file: File): Promise<T> => uploadFile(path, file) as Promise<T>,
 };

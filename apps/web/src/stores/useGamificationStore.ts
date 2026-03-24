@@ -36,14 +36,20 @@ export const useGamificationStore = create<GamificationState>((set, get) => ({
 
     set({ loading: true, error: null });
     try {
-      const data = await api.get("/gamification/me/progress");
+      const raw = await api.get("/gamification/me/progress");
+      // Validate response is an object before destructuring (#11)
+      if (!raw || typeof raw !== "object") {
+        set({ loading: false, _fetchTs: Date.now() });
+        return;
+      }
+      const data = raw as Record<string, unknown>;
       set({
-        level: data.level ?? 1,
-        currentXP: data.xp_current_level ?? 0,
-        nextLevelXP: data.xp_next_level ?? 100,
-        totalXP: data.total_xp ?? 0,
-        streak: data.streak_days ?? 0,
-        achievements: data.achievements ?? [],
+        level: typeof data.level === "number" ? data.level : 1,
+        currentXP: typeof data.xp_current_level === "number" ? data.xp_current_level : 0,
+        nextLevelXP: typeof data.xp_next_level === "number" ? data.xp_next_level : 100,
+        totalXP: typeof data.total_xp === "number" ? data.total_xp : 0,
+        streak: typeof data.streak_days === "number" ? data.streak_days : 0,
+        achievements: Array.isArray(data.achievements) ? (data.achievements as Achievement[]) : [],
         loading: false,
         _fetchTs: Date.now(),
       });

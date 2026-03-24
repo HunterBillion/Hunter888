@@ -66,7 +66,8 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     set({ scenariosLoading: true });
     try {
       const data = await api.get("/scenarios/");
-      set({ scenarios: data, scenariosLoading: false });
+      // Validate response is array (#17) — prevents map() crash in consuming components
+      set({ scenarios: Array.isArray(data) ? data : [], scenariosLoading: false });
     } catch {
       set({ scenariosLoading: false });
     }

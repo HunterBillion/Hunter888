@@ -106,7 +106,7 @@ export function useMicrophone(
 
   const computeAudioLevel = useCallback(() => {
     const analyser = analyserRef.current;
-    if (!analyser || !mountedRef.current) return;
+    if (!analyser || !mountedRef.current) return undefined;
 
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(dataArray);
