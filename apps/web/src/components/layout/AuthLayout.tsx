@@ -8,6 +8,8 @@ import { Crosshair, Loader2, RefreshCw } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { api } from "@/lib/api";
 import Header from "./Header";
+import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
+import { KeyboardShortcutsOverlay } from "@/components/ui/KeyboardShortcutsOverlay";
 
 // ── Error Boundary ──────────────────────────────────────
 interface ErrorBoundaryProps {
@@ -229,7 +231,9 @@ export default function AuthLayout({
         {/* Scanlines — centralized here */}
         <div className="fixed inset-0 scanlines z-[100] opacity-10 mix-blend-overlay pointer-events-none" />
         <Header />
+        <Breadcrumbs className="mx-auto max-w-6xl px-4 pt-3" />
         <main className="flex-1">{children}</main>
+        <KeyboardShortcutsOverlay />
       </div>
     </AuthErrorBoundary>
   );

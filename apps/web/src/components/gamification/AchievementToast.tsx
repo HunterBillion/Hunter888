@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Award } from "lucide-react";
 import { useSound } from "@/hooks/useSound";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { Confetti } from "@/components/ui/Confetti";
 
 interface Achievement {
   id: string;
@@ -21,15 +22,19 @@ interface AchievementToastProps {
 export function AchievementToast({ achievement, onClose }: AchievementToastProps) {
   const { playSound } = useSound();
   const reducedMotion = useReducedMotion();
+  const [confettiTrigger, setConfettiTrigger] = useState(0);
 
-  // Play sound when achievement appears
+  // Play sound + confetti when achievement appears
   useEffect(() => {
     if (achievement) {
       playSound("success");
+      setConfettiTrigger((n) => n + 1);
     }
   }, [achievement, playSound]);
 
   return (
+    <>
+    <Confetti trigger={confettiTrigger} />
     <AnimatePresence>
       {achievement && (
         <motion.div
@@ -74,5 +79,6 @@ export function AchievementToast({ achievement, onClose }: AchievementToastProps
         </motion.div>
       )}
     </AnimatePresence>
+    </>
   );
 }
