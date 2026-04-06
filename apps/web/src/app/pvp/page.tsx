@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Swords, ArrowRight, Loader2, Trophy, Zap, BookOpen, Brain, Clock, Target } from "lucide-react";
+import { Swords, ArrowRight, Loader2, Trophy, Zap, BookOpen, Brain, Clock, Target, ShoppingBag, Lock } from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -32,8 +32,8 @@ function PvPLobbyContent() {
   // 3.1: Pre-select knowledge tab + category from URL params
   const tabParam = searchParams.get("tab");
   const categoryParam = searchParams.get("category");
-  const [tab, setTab] = useState<"arena" | "knowledge" | "history">(
-    tabParam === "knowledge" ? "knowledge" : "arena"
+  const [tab, setTab] = useState<"arena" | "knowledge" | "history" | "shop">(
+    tabParam === "knowledge" ? "knowledge" : tabParam === "shop" ? "shop" : "arena"
   );
   const [quizMode, setQuizMode] = useState<"free_dialog" | "blitz" | "themed" | null>(null);
   const [quizCategory, setQuizCategory] = useState<string | null>(categoryParam || null);
@@ -261,7 +261,7 @@ function PvPLobbyContent() {
 
               {/* Tabs */}
               <div className="flex gap-1 rounded-xl p-1" style={{ background: "var(--input-bg)" }}>
-                {(["arena", "knowledge", "history"] as const).map((t) => (
+                {(["arena", "knowledge", "history", "shop"] as const).map((t) => (
                   <button
                     key={t}
                     onClick={() => setTab(t)}
@@ -275,8 +275,9 @@ function PvPLobbyContent() {
                         style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)" }}
                       />
                     )}
-                    <span className="relative z-10">
-                      {t === "arena" ? "Дуэли" : t === "knowledge" ? "Знания ФЗ-127" : "История"}
+                    <span className="relative z-10 flex items-center gap-1">
+                      {t === "shop" && <ShoppingBag size={12} />}
+                      {t === "arena" ? "Дуэли" : t === "knowledge" ? "Знания ФЗ-127" : t === "shop" ? "Магазин" : "История"}
                     </span>
                   </button>
                 ))}
@@ -287,6 +288,66 @@ function PvPLobbyContent() {
                 {tab === "arena" && (
                   <motion.div key="arena" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                     <div className="space-y-4">
+                      {/* PvP Mode Selection */}
+                      <div>
+                        <p className="text-xs font-mono tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>РЕЖИМЫ PVP</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {([
+                            { code: "classic", name: "Классическая дуэль", desc: "2 раунда, смена ролей", icon: "\u2694\uFE0F", level: 5 },
+                            { code: "rapid", name: "Rapid Fire", desc: "5 мини-раундов по 2 мин", icon: "\u26A1", level: 9 },
+                            { code: "gauntlet", name: "Гантлет", desc: "3-5 дуэлей подряд", icon: "\uD83C\uDFF0", level: 10 },
+                            { code: "team2v2", name: "Team 2v2", desc: "Команда из 2 продавцов", icon: "\uD83D\uDC65", level: 12 },
+                          ] as const).map((mode) => {
+                            const userLevel = store.rating ? Math.max(1, Math.floor(store.rating.total_duels / 2) + 1) : 1;
+                            const locked = userLevel < mode.level;
+                            return (
+                              <motion.div
+                                key={mode.code}
+                                whileHover={locked ? {} : { scale: 1.02 }}
+                                className="glass-panel rounded-xl p-3 text-left relative"
+                                style={{ opacity: locked ? 0.5 : 1, cursor: locked ? "not-allowed" : "default" }}
+                              >
+                                {locked && <Lock size={14} className="absolute top-2 right-2" style={{ color: "var(--text-muted)" }} />}
+                                <span className="text-lg">{mode.icon}</span>
+                                <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-primary)" }}>{mode.name}</p>
+                                <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
+                                {locked && <p className="text-xs font-mono mt-1" style={{ color: "var(--warning)" }}>Ур. {mode.level}</p>}
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* PvE Mode Selection */}
+                      <div>
+                        <p className="text-xs font-mono tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>РЕЖИМЫ PVE</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {([
+                            { code: "standard", name: "Стандартный бот", desc: "Обычная PvE дуэль", icon: "\uD83E\uDD16", level: 3 },
+                            { code: "ladder", name: "Bot Ladder", desc: "5 ботов, рост сложности", icon: "\uD83D\uDCF6", level: 9 },
+                            { code: "boss", name: "Boss Rush", desc: "3 уникальных босса", icon: "\uD83D\uDC80", level: 10 },
+                            { code: "mirror", name: "Mirror Match", desc: "Играй против себя", icon: "\uD83E\uDE9E", level: 15 },
+                          ] as const).map((mode) => {
+                            const userLevel = store.rating ? Math.max(1, Math.floor(store.rating.total_duels / 2) + 1) : 1;
+                            const locked = userLevel < mode.level;
+                            return (
+                              <motion.div
+                                key={mode.code}
+                                whileHover={locked ? {} : { scale: 1.02 }}
+                                className="glass-panel rounded-xl p-3 text-left relative"
+                                style={{ opacity: locked ? 0.5 : 1, cursor: locked ? "not-allowed" : "default" }}
+                              >
+                                {locked && <Lock size={14} className="absolute top-2 right-2" style={{ color: "var(--text-muted)" }} />}
+                                <span className="text-lg">{mode.icon}</span>
+                                <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-primary)" }}>{mode.name}</p>
+                                <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
+                                {locked && <p className="text-xs font-mono mt-1" style={{ color: "var(--warning)" }}>Ур. {mode.level}</p>}
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
                       {/* Quick info */}
                       <div className="glass-panel p-4 flex items-center gap-3">
                         <Swords size={18} style={{ color: "var(--accent)" }} />
@@ -626,6 +687,56 @@ function PvPLobbyContent() {
                         })}
                       </div>
                     )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Shop */}
+              <AnimatePresence mode="wait">
+                {tab === "shop" && (
+                  <motion.div key="shop" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
+                          {store.rating?.total_duels ? store.rating.total_duels * 15 : 0}
+                        </span>
+                        <span className="text-sm font-mono" style={{ color: "var(--text-muted)" }}>Arena Points</span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {([
+                          { code: "hint_pack_3", name: "3 подсказки", cost: 50, icon: "\uD83D\uDCA1" },
+                          { code: "replay_token", name: "Токен реплея", cost: 80, icon: "\uD83D\uDD04" },
+                          { code: "xp_boost_2h", name: "XP Boost 2ч", cost: 120, icon: "\uD83D\uDE80" },
+                          { code: "avatar_frame_gold", name: "Рамка Gold", cost: 200, icon: "\uD83D\uDDBC\uFE0F" },
+                          { code: "scenario_unlock", name: "Разблокировка сценария", cost: 300, icon: "\uD83D\uDD13" },
+                          { code: "title_duelist", name: 'Титул "Дуэлянт"', cost: 500, icon: "\uD83C\uDFC5" },
+                        ]).map((item) => (
+                          <motion.div
+                            key={item.code}
+                            whileHover={{ scale: 1.02 }}
+                            className="glass-panel rounded-xl p-4 flex flex-col"
+                          >
+                            <span className="text-2xl mb-2">{item.icon}</span>
+                            <h3 className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{item.name}</h3>
+                            <p className="text-xs font-mono mt-1" style={{ color: "var(--accent)" }}>{item.cost} AP</p>
+                            <motion.button
+                              whileTap={{ scale: 0.95 }}
+                              className="mt-3 w-full py-2 rounded-lg font-mono text-xs font-bold uppercase tracking-wider"
+                              style={{ background: "var(--accent)", color: "#fff" }}
+                              onClick={() => {
+                                useNotificationStore.getState().addToast({
+                                  title: "Покупка",
+                                  body: `${item.name} будет доступен после интеграции магазина.`,
+                                  type: "info",
+                                });
+                              }}
+                            >
+                              Купить
+                            </motion.button>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>

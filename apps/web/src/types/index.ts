@@ -1420,7 +1420,7 @@ export interface GamePortfolioStats {
 
 // ─── PvP Arena ───────────────────────────────────────────────────────────────
 
-export type PvPRankTier = "unranked" | "bronze" | "silver" | "gold" | "platinum" | "diamond";
+export type PvPRankTier = "unranked" | "iron" | "bronze" | "silver" | "gold" | "platinum" | "diamond" | "master" | "grandmaster";
 
 export type DuelStatus =
   | "pending" | "round_1" | "swap" | "round_2"
@@ -1430,20 +1430,26 @@ export type DuelDifficulty = "easy" | "medium" | "hard";
 
 export const PVP_RANK_LABELS: Record<PvPRankTier, string> = {
   unranked: "Без ранга",
+  iron: "Железо",
   bronze: "Бронза",
   silver: "Серебро",
   gold: "Золото",
   platinum: "Платина",
-  diamond: "Алмаз",
+  diamond: "Даймонд",
+  master: "Мастер",
+  grandmaster: "Грандмастер",
 };
 
 export const PVP_RANK_COLORS: Record<PvPRankTier, string> = {
   unranked: "#9CA3AF",
-  bronze: "#CD7F32",
-  silver: "#C0C0C0",
-  gold: "#FFD700",
-  platinum: "#7DD3FC",
-  diamond: "#A78BFA",
+  iron: "#6B7280",
+  bronze: "#B45309",
+  silver: "#9CA3AF",
+  gold: "#F59E0B",
+  platinum: "#22D3EE",
+  diamond: "#06B6D4",
+  master: "#DC2626",
+  grandmaster: "#FF6B35",
 };
 
 export type RatingType = "training_duel" | "knowledge_arena";

@@ -129,6 +129,19 @@ async def purchase_ap_item(
     )
 
 
+# ─── Season Pass ─────────────────────────────────────────────────────────────
+
+@router.get("/season-pass")
+async def get_season_pass(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current season pass progress, tier, and rewards."""
+    from app.services.season_pass import get_season_progress
+
+    return await get_season_progress(user.id, db)
+
+
 # ─── Catch-Up ────────────────────────────────────────────────────────────────
 
 @router.get("/catch-up", response_model=list[StuckCheckpointResponse])

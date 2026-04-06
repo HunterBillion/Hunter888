@@ -30,6 +30,10 @@ AP_RATES: dict[str, int] = {
     "daily_challenge": 5,
     "promotion_success": 50,
     "first_match_of_day": 5,
+    # Tournament placements
+    "tournament_1st": 100,
+    "tournament_2nd": 60,
+    "tournament_3rd": 30,
 }
 
 # AP Shop prices

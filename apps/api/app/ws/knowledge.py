@@ -78,6 +78,7 @@ from app.core.security import decode_token
 from app.database import async_session
 from app.models.user import User
 from app.models.knowledge import (
+    DebateSession,
     KnowledgeQuizSession,
     KnowledgeAnswer,
     QuizChallenge,
@@ -403,6 +404,35 @@ async def _start_solo_quiz(
             "greeting": personality.greeting,
         },
     })
+
+    # Debate / Mock Court: start debate session instead of generating questions
+    if mode in (QuizMode.debate, QuizMode.mock_court):
+        await _start_debate_session(ws, state, data)
+        return state
+
+    # Case Study: generate a case overview first, then questions
+    if mode == QuizMode.case_study:
+        try:
+            from app.services.rag_legal import retrieve_legal_context as _rag_retrieve
+            async with async_session() as rag_db:
+                ctx = await _rag_retrieve("реальный судебный кейс банкротство", rag_db, top_k=2)
+                if ctx and ctx.chunks:
+                    case_text = ctx.chunks[0].text[:1500]
+                else:
+                    case_text = (
+                        "Гражданин Иванов И.И. обратился в арбитражный суд с заявлением "
+                        "о признании его банкротом. Общая сумма долга — 2.5 млн руб. "
+                        "Единственное жилье — квартира 45 кв.м. Есть автомобиль 2018 г.в."
+                    )
+        except Exception:
+            case_text = (
+                "Гражданин Иванов И.И. обратился в арбитражный суд с заявлением "
+                "о признании его банкротом. Общая сумма долга — 2.5 млн руб."
+            )
+        await _send(ws, "case_study.overview", {
+            "case_text": case_text,
+            "instruction": "Прочитайте описание дела. Далее последуют вопросы по нему.",
+        })
 
     # Generate and send first question
     await _next_question(ws, state)
@@ -930,6 +960,33 @@ async def _finish_solo_quiz(ws: WebSocket, state: _SoloQuizState) -> None:
             results_data["xp_earned"] = xp_info
         except Exception as e:
             logger.warning("Gamification hook error in quiz completion: %s", e, exc_info=True)
+
+    # --- Arena Points + Season Pass progression ---
+    try:
+        from app.services.arena_points import award_arena_points, AP_RATES
+        from app.services.season_pass import advance_season
+
+        # Determine AP source based on quiz score
+        if state.score >= 80:
+            ap_source = "knowledge_session_high"
+        elif state.score >= 50:
+            ap_source = "knowledge_session_mid"
+        else:
+            ap_source = "knowledge_session_low"
+
+        async with async_session() as ap_db:
+            ap_balance = await award_arena_points(ap_db, state.user_id, ap_source)
+            season_result = await advance_season(state.user_id, AP_RATES[ap_source], ap_db)
+            await ap_db.commit()
+
+        results_data["ap_earned"] = {
+            "amount": AP_RATES[ap_source],
+            "source": ap_source,
+            "balance": ap_balance,
+            "season": season_result,
+        }
+    except Exception as e:
+        logger.warning("AP/Season hook error in quiz completion: %s", e, exc_info=True)
 
     # --- Behavioral Intelligence: track behavior + update emotion profile ---
     try:
@@ -1969,6 +2026,29 @@ async def _finalize_match(
     except Exception as e:
         logger.warning("PvP gamification hook error: %s", e, exc_info=True)
 
+    # ── Arena Points + Season Pass for PvP Knowledge Arena ──
+    try:
+        from app.services.arena_points import award_arena_points, AP_RATES
+        from app.services.season_pass import advance_season
+        async with async_session() as ap_db:
+            for ranking in rankings:
+                if ranking["is_bot"]:
+                    continue
+                uid = uuid.UUID(ranking["user_id"])
+                is_win = ranking["rank"] == 1
+                ap_source = "pvp_win" if is_win else "pvp_loss"
+                ap_balance = await award_arena_points(ap_db, uid, ap_source)
+                season_result = await advance_season(uid, AP_RATES[ap_source], ap_db)
+                ranking["ap_earned"] = {
+                    "amount": AP_RATES[ap_source],
+                    "source": ap_source,
+                    "balance": ap_balance,
+                    "season": season_result,
+                }
+            await ap_db.commit()
+    except Exception as e:
+        logger.warning("PvP Knowledge AP/Season hook error: %s", e, exc_info=True)
+
     await arena.complete_match(session_id)
 
     # Broadcast final results
@@ -2043,6 +2123,397 @@ async def _pubsub_listener(
             await pubsub.aclose()
         except Exception:
             pass
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DOC_11: 7 NEW KNOWLEDGE MODE HANDLERS
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+async def _handle_rapid_blitz(ws: WebSocket, state: _SoloQuizState, db: AsyncSession) -> None:
+    """Rapid Blitz: 10 questions, 30s each, binary scoring (right/wrong).
+
+    Like blitz but FASTER. Level 7 required.
+    Scoring: +10 for correct, 0 for incorrect (no partial credit).
+    """
+    # rapid_blitz uses same flow as blitz with shorter timer — handled by
+    # _next_question + _handle_answer with time_limit=30 from get_time_limit_seconds.
+    # This handler is called on quiz.start if mode is rapid_blitz.
+    # Timer fires _handle_rapid_blitz_timeout if 30s expire.
+    pass  # Flow handled by existing _start_solo_quiz / _handle_answer
+
+
+async def _handle_case_study(ws: WebSocket, state: _SoloQuizState, text: str) -> None:
+    """Case Study: Present a court case, ask 5-7 follow-up questions.
+
+    Open-ended answers evaluated by LLM. Scoring: 0-10 per question.
+    Level 6 required.
+    """
+    if state.finished or state.current_q is None:
+        await _send_error(ws, "No active question", "no_question")
+        return
+
+    text, _ = filter_user_input(text)
+    response_time_ms = int((time.time() - state.question_start_time) * 1000)
+
+    if state.timer_task and not state.timer_task.done():
+        state.timer_task.cancel()
+
+    # Evaluate open-ended answer via LLM (0-10 scoring)
+    personality_prompt = state.personality.system_prompt if state.personality else None
+    async with async_session() as eval_db:
+        result = await evaluate_answer_v2(
+            eval_db,
+            question=state.current_q,
+            user_answer=text,
+            mode=state.mode,
+            personality_prompt=personality_prompt,
+        )
+
+    # Case study: 0-10 scoring per question
+    if result.is_correct:
+        score_delta = 10.0
+        state.correct += 1
+    else:
+        # Partial credit: LLM may give partial marks
+        score_delta = 3.0  # partial credit for attempted answer
+        state.incorrect += 1
+    state.score += score_delta
+
+    state.update_adaptive_difficulty(result.is_correct)
+
+    await _save_answer(state, text, is_correct=result.is_correct,
+                       explanation=result.explanation, score_delta=score_delta,
+                       article_reference=result.article_reference,
+                       rag_chunks=None, hint_used=state.hint_used_for_current,
+                       response_time_ms=response_time_ms)
+
+    await _send(ws, "quiz.feedback", {
+        "is_correct": result.is_correct,
+        "explanation": result.explanation,
+        "article_reference": result.article_reference,
+        "score_delta": score_delta,
+        "current_difficulty": state.current_difficulty,
+        "streak": state.consecutive_correct,
+    })
+    await _send_progress(ws, state)
+    await _next_question(ws, state)
+
+
+async def _handle_debate_round(
+    ws: WebSocket, state: _SoloQuizState, text: str,
+) -> None:
+    """Debate mode: Player argues FOR or AGAINST a legal position.
+
+    5-7 round dialogue with AI. AI argues opposite side.
+    Each round: player submits argument, AI responds, AI scores argument quality.
+    Level 8 required.
+    """
+    from app.models.knowledge import DebateSession
+    from app.services.llm import generate_response
+
+    if state.finished:
+        await _send_error(ws, "Debate session finished", "finished")
+        return
+
+    text, _ = filter_user_input(text)
+
+    # Load or create debate session
+    async with async_session() as db:
+        debate = (await db.execute(
+            select(DebateSession).where(
+                DebateSession.quiz_session_id == state.session_id,
+            )
+        )).scalar_one_or_none()
+
+        if not debate:
+            await _send_error(ws, "No active debate session", "no_debate")
+            return
+
+        rounds_data = list(debate.rounds_data or [])
+        current_round = len(rounds_data) + 1
+
+        if current_round > debate.total_rounds:
+            await _send_error(ws, "All debate rounds completed", "debate_complete")
+            return
+
+        # Generate AI counter-argument and score
+        scoring_prompt = (
+            f"Ты — AI-судья юридической дебатов на тему: '{debate.topic}'.\n"
+            f"Позиция игрока: {debate.position}. Позиция AI: {debate.ai_position}.\n"
+            f"Раунд {current_round}/{debate.total_rounds}.\n\n"
+            f"Аргумент игрока:\n{text}\n\n"
+            f"1. Оцени качество аргумента от 0 до 10 (legal_score).\n"
+            f"2. Дай контраргумент от лица оппонента ({debate.ai_position}).\n"
+            f"3. Кратко прокомментируй сильные и слабые стороны.\n\n"
+            f"Формат ответа (JSON):\n"
+            f'{{"score": 7, "counter_argument": "...", "feedback": "..."}}'
+        )
+
+        try:
+            ai_response = await generate_response(
+                system_prompt="Ты — справедливый судья юридических дебатов по 127-ФЗ.",
+                user_message=scoring_prompt,
+                max_tokens=800,
+            )
+            # Parse response — try JSON, fallback to raw
+            import json as _json
+            try:
+                parsed = _json.loads(ai_response)
+                round_score = float(parsed.get("score", 5))
+                counter_arg = str(parsed.get("counter_argument", ai_response))
+                feedback = str(parsed.get("feedback", ""))
+            except (_json.JSONDecodeError, ValueError):
+                round_score = 5.0
+                counter_arg = ai_response
+                feedback = ""
+        except Exception as e:
+            logger.error("Debate AI response failed: %s", e)
+            round_score = 5.0
+            counter_arg = "Не удалось сгенерировать ответ."
+            feedback = ""
+
+        round_score = max(0.0, min(10.0, round_score))
+        state.score += round_score
+
+        round_entry = {
+            "round_number": current_round,
+            "player_argument": text,
+            "ai_response": counter_arg,
+            "score": round_score,
+            "feedback": feedback,
+        }
+        rounds_data.append(round_entry)
+        debate.rounds_data = rounds_data
+        db.add(debate)
+        await db.commit()
+
+    # Send round result
+    await _send(ws, "debate.round_result", {
+        "round_number": current_round,
+        "total_rounds": debate.total_rounds,
+        "your_score": round_score,
+        "ai_counter_argument": counter_arg,
+        "feedback": feedback,
+        "cumulative_score": state.score,
+    })
+
+    if current_round >= debate.total_rounds:
+        # Debate complete
+        state.finished = True
+        await _send(ws, "debate.completed", {
+            "total_score": state.score,
+            "max_possible": debate.total_rounds * 10,
+            "rounds": rounds_data,
+        })
+        await _finish_solo_quiz(ws, state)
+    else:
+        await _send(ws, "debate.next_round", {
+            "round_number": current_round + 1,
+            "topic": debate.topic,
+            "your_position": debate.position,
+        })
+
+
+async def _handle_mock_court_round(
+    ws: WebSocket, state: _SoloQuizState, text: str,
+) -> None:
+    """Mock Court: Simulated court hearing. Player is the lawyer, AI is the judge.
+
+    Uses DebateSession model with strict legal evaluation.
+    Level 11 required.
+    """
+    # Reuses debate handler with stricter scoring prompt
+    from app.models.knowledge import DebateSession
+    from app.services.llm import generate_response
+
+    if state.finished:
+        await _send_error(ws, "Court session finished", "finished")
+        return
+
+    text, _ = filter_user_input(text)
+
+    async with async_session() as db:
+        debate = (await db.execute(
+            select(DebateSession).where(
+                DebateSession.quiz_session_id == state.session_id,
+            )
+        )).scalar_one_or_none()
+
+        if not debate:
+            await _send_error(ws, "No active court session", "no_session")
+            return
+
+        rounds_data = list(debate.rounds_data or [])
+        current_round = len(rounds_data) + 1
+
+        if current_round > debate.total_rounds:
+            state.finished = True
+            await _finish_solo_quiz(ws, state)
+            return
+
+        scoring_prompt = (
+            f"Ты — арбитражный судья. Рассматриваешь дело о банкротстве.\n"
+            f"Тема: '{debate.topic}'.\n"
+            f"Раунд {current_round}/{debate.total_rounds}.\n\n"
+            f"Выступление представителя должника (игрок):\n{text}\n\n"
+            f"Оцени строго по критериям:\n"
+            f"1. Юридическая точность (ссылки на статьи 127-ФЗ)\n"
+            f"2. Логика аргументации\n"
+            f"3. Процессуальная корректность\n"
+            f"Выстави оценку 0-10 и задай уточняющий вопрос как судья.\n\n"
+            f'Формат (JSON): {{"score": N, "judge_question": "...", "feedback": "..."}}'
+        )
+
+        try:
+            ai_response = await generate_response(
+                system_prompt="Ты — строгий арбитражный судья РФ, специалист по делам о банкротстве.",
+                user_message=scoring_prompt,
+                max_tokens=800,
+            )
+            import json as _json
+            try:
+                parsed = _json.loads(ai_response)
+                round_score = float(parsed.get("score", 4))
+                judge_q = str(parsed.get("judge_question", ai_response))
+                feedback = str(parsed.get("feedback", ""))
+            except (_json.JSONDecodeError, ValueError):
+                round_score = 4.0
+                judge_q = ai_response
+                feedback = ""
+        except Exception as e:
+            logger.error("Mock court AI response failed: %s", e)
+            round_score = 4.0
+            judge_q = "Уточните вашу позицию."
+            feedback = ""
+
+        round_score = max(0.0, min(10.0, round_score))
+        state.score += round_score
+
+        round_entry = {
+            "round_number": current_round,
+            "player_statement": text,
+            "judge_response": judge_q,
+            "score": round_score,
+            "feedback": feedback,
+        }
+        rounds_data.append(round_entry)
+        debate.rounds_data = rounds_data
+        db.add(debate)
+        await db.commit()
+
+    await _send(ws, "court.round_result", {
+        "round_number": current_round,
+        "total_rounds": debate.total_rounds,
+        "your_score": round_score,
+        "judge_question": judge_q,
+        "feedback": feedback,
+        "cumulative_score": state.score,
+    })
+
+    if current_round >= debate.total_rounds:
+        state.finished = True
+        await _send(ws, "court.verdict", {
+            "total_score": state.score,
+            "max_possible": debate.total_rounds * 10,
+            "rounds": rounds_data,
+            "verdict": "Удовлетворено" if state.score >= debate.total_rounds * 6 else "Отказано",
+        })
+        await _finish_solo_quiz(ws, state)
+    else:
+        await _send(ws, "court.next_round", {
+            "round_number": current_round + 1,
+            "judge_question": judge_q,
+        })
+
+
+async def _handle_article_deep_dive(ws: WebSocket, state: _SoloQuizState, text: str) -> None:
+    """Article Deep Dive: Focus on ONE article of 127-FZ.
+
+    10 increasingly detailed questions about that article.
+    Progressive difficulty within session.
+    Level 9 required.
+    """
+    # Uses standard _handle_answer flow — the deep dive difference is in question generation.
+    # The article focus is set via state.category and questions are generated with
+    # increasing difficulty automatically by the adaptive difficulty system.
+    await _handle_answer(ws, state, text)
+
+
+async def _handle_daily_challenge_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> None:
+    """Daily Challenge: Same questions for everyone, compete on leaderboard.
+
+    10 daily questions, global leaderboard.
+    Level 5 required.
+    """
+    # Same scoring as blitz — binary correct/incorrect
+    await _handle_answer(ws, state, text)
+
+
+async def _handle_team_quiz_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> None:
+    """Team Quiz placeholder: 2v2 knowledge battle.
+
+    Simplified: matchmake 4 players, split into teams, alternating questions.
+    Team score = sum of both members' correct answers.
+    Level 10 required.
+
+    NOTE: Full team matchmaking is handled via PvP arena Redis.
+    This handler covers the answer evaluation for team members.
+    """
+    # Uses standard answer flow — team scoring aggregated at match level
+    await _handle_answer(ws, state, text)
+
+
+async def _start_debate_session(
+    ws: WebSocket, state: _SoloQuizState, data: dict,
+) -> None:
+    """Initialize a debate or mock_court session with a topic and positions."""
+    from app.models.knowledge import DebateSession
+    from app.services.rag_legal import retrieve_legal_context
+
+    topic = data.get("topic")
+    if not topic:
+        # Generate a debate topic from RAG
+        try:
+            async with async_session() as rag_db:
+                ctx = await retrieve_legal_context("спорный вопрос банкротства", rag_db, top_k=1)
+                if ctx and ctx.chunks:
+                    topic = f"Вопрос по {ctx.chunks[0].article}: правомерность процедуры"
+                else:
+                    topic = "Обоснованность признания гражданина банкротом при наличии единственного жилья"
+        except Exception:
+            topic = "Обоснованность признания гражданина банкротом при наличии единственного жилья"
+
+    position = data.get("position", "pro")
+    ai_position = "contra" if position == "pro" else "pro"
+    total_rounds = 7 if state.mode == QuizMode.debate else 10
+
+    async with async_session() as db:
+        debate = DebateSession(
+            quiz_session_id=state.session_id,
+            topic=topic,
+            position=position,
+            ai_position=ai_position,
+            total_rounds=total_rounds,
+            rounds_data=[],
+        )
+        db.add(debate)
+        await db.commit()
+
+    mode_label = "Дебаты" if state.mode == QuizMode.debate else "Судебное заседание"
+    await _send(ws, f"{'debate' if state.mode == QuizMode.debate else 'court'}.started", {
+        "session_id": str(state.session_id),
+        "topic": topic,
+        "your_position": position,
+        "ai_position": ai_position,
+        "total_rounds": total_rounds,
+        "mode_label": mode_label,
+        "instruction": (
+            f"{mode_label} начинается! Тема: {topic}. "
+            f"Ваша позиция: {'ЗА' if position == 'pro' else 'ПРОТИВ'}. "
+            f"Представьте свой первый аргумент."
+        ),
+    })
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2146,7 +2617,21 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
                     await _send_error(websocket, "Empty answer", "empty_text")
                     continue
                 if quiz_state and not quiz_state.finished:
-                    await _handle_answer(websocket, quiz_state, text)
+                    # Route to mode-specific handler
+                    if quiz_state.mode == QuizMode.debate:
+                        await _handle_debate_round(websocket, quiz_state, text)
+                    elif quiz_state.mode == QuizMode.mock_court:
+                        await _handle_mock_court_round(websocket, quiz_state, text)
+                    elif quiz_state.mode == QuizMode.case_study:
+                        await _handle_case_study(websocket, quiz_state, text)
+                    elif quiz_state.mode == QuizMode.article_deep_dive:
+                        await _handle_article_deep_dive(websocket, quiz_state, text)
+                    elif quiz_state.mode == QuizMode.daily_challenge:
+                        await _handle_daily_challenge_answer(websocket, quiz_state, text)
+                    elif quiz_state.mode == QuizMode.team_quiz:
+                        await _handle_team_quiz_answer(websocket, quiz_state, text)
+                    else:
+                        await _handle_answer(websocket, quiz_state, text)
                 else:
                     await _send_error(websocket, "No active quiz session", "no_session")
 

@@ -493,6 +493,223 @@ async def cleanup_duel_state(duel_id: uuid.UUID) -> None:
     await r.delete(key)
 
 
+# ---------------------------------------------------------------------------
+# Promotion / Demotion Logic (DOC_13)
+# ---------------------------------------------------------------------------
+
+TIER_BOUNDARIES: dict[str, tuple[int, int]] = {
+    "iron": (0, 999),
+    "bronze": (1000, 1399),
+    "silver": (1400, 1699),
+    "gold": (1700, 1999),
+    "platinum": (2000, 2299),
+    "diamond": (2300, 2599),
+    "master": (2600, 2899),
+    "grandmaster": (2900, 9999),
+}
+
+TIER_ORDER = ["iron", "bronze", "silver", "gold", "platinum", "diamond", "master", "grandmaster"]
+DEMOTION_SHIELD_THRESHOLD = 5  # losses at tier floor before demotion
+
+
+def get_tier_for_rating(rating: float) -> str:
+    """Return tier name for a given rating value."""
+    for tier in reversed(TIER_ORDER):
+        lo, hi = TIER_BOUNDARIES[tier]
+        if rating >= lo:
+            return tier
+    return "iron"
+
+
+def get_tier_index(tier: str) -> int:
+    """Return numeric index for tier ordering."""
+    base = tier.split("_")[0] if "_" in tier else tier
+    try:
+        return TIER_ORDER.index(base)
+    except ValueError:
+        return 0
+
+
+async def check_tier_change(
+    user_id: uuid.UUID,
+    old_rating: float,
+    new_rating: float,
+    duel_id: uuid.UUID | None,
+    db: AsyncSession,
+) -> dict | None:
+    """Check if a rating change triggers promotion series or demotion.
+
+    Called after update_rating_after_duel().
+
+    Returns:
+        dict with tier change info, or None if no change.
+    """
+    from app.models.pvp import PromotionSeries, PvPRating
+    from datetime import timedelta
+
+    old_tier = get_tier_for_rating(old_rating)
+    new_tier = get_tier_for_rating(new_rating)
+    old_idx = get_tier_index(old_tier)
+    new_idx = get_tier_index(new_tier)
+
+    # --- Check active promotion series first ---
+    active_series = (await db.execute(
+        select(PromotionSeries).where(
+            PromotionSeries.user_id == user_id,
+            PromotionSeries.result == None,  # noqa: E711
+            PromotionSeries.expires_at > datetime.now(timezone.utc),
+        )
+    )).scalar_one_or_none()
+
+    if active_series:
+        # Player is in a promotion series — update it
+        is_win = new_rating > old_rating
+        if is_win:
+            active_series.wins += 1
+        else:
+            active_series.losses += 1
+        active_series.matches_played += 1
+
+        if duel_id:
+            duel_ids = list(active_series.duel_ids or [])
+            duel_ids.append(str(duel_id))
+            active_series.duel_ids = duel_ids
+
+        # Check if series resolved
+        if active_series.wins >= 2:
+            # Promoted!
+            active_series.result = "promoted"
+            active_series.completed_at = datetime.now(timezone.utc)
+
+            # Update rank tier
+            rating_obj = (await db.execute(
+                select(PvPRating).where(
+                    PvPRating.user_id == user_id,
+                    PvPRating.rating_type == "training_duel",
+                )
+            )).scalar_one_or_none()
+            if rating_obj:
+                from app.models.pvp import rank_from_rating
+                rating_obj.rank_tier = rank_from_rating(new_rating, rating_obj.placement_done)
+                rating_obj.demotion_shield_losses = 0
+                db.add(rating_obj)
+
+            db.add(active_series)
+            await db.flush()
+
+            logger.info(
+                "Promotion series WON: user=%s %s -> %s",
+                user_id, active_series.from_tier, active_series.to_tier,
+            )
+            return {
+                "promotion_completed": True,
+                "new_tier": active_series.to_tier,
+                "series_wins": active_series.wins,
+                "series_losses": active_series.losses,
+            }
+
+        elif active_series.losses >= 2:
+            # Series failed
+            active_series.result = "failed"
+            active_series.completed_at = datetime.now(timezone.utc)
+            db.add(active_series)
+            await db.flush()
+
+            logger.info(
+                "Promotion series FAILED: user=%s %s -> %s",
+                user_id, active_series.from_tier, active_series.to_tier,
+            )
+            return {
+                "promotion_failed": True,
+                "target_tier": active_series.to_tier,
+                "series_wins": active_series.wins,
+                "series_losses": active_series.losses,
+            }
+
+        # Series still in progress
+        db.add(active_series)
+        await db.flush()
+        return {
+            "promotion_in_progress": True,
+            "target_tier": active_series.to_tier,
+            "series_wins": active_series.wins,
+            "series_losses": active_series.losses,
+            "matches_needed": 3,
+        }
+
+    # --- No active series ---
+    if new_idx > old_idx:
+        # Crossed into higher tier — start promotion series
+        series = PromotionSeries(
+            user_id=user_id,
+            rating_type="training_duel",
+            from_tier=old_tier,
+            to_tier=new_tier,
+            matches_played=1,
+            wins=1,  # current win counts
+            losses=0,
+            duel_ids=[str(duel_id)] if duel_id else [],
+            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        )
+        db.add(series)
+        await db.flush()
+
+        logger.info(
+            "Promotion series STARTED: user=%s %s -> %s",
+            user_id, old_tier, new_tier,
+        )
+        return {
+            "promotion_started": True,
+            "target_tier": new_tier,
+            "series_wins": 1,
+            "series_losses": 0,
+            "matches_needed": 3,
+        }
+
+    elif new_idx < old_idx:
+        # Rating dropped below tier floor — demotion warning
+        rating_obj = (await db.execute(
+            select(PvPRating).where(
+                PvPRating.user_id == user_id,
+                PvPRating.rating_type == "training_duel",
+            )
+        )).scalar_one_or_none()
+
+        if rating_obj:
+            rating_obj.demotion_shield_losses += 1
+            if rating_obj.demotion_shield_losses >= DEMOTION_SHIELD_THRESHOLD:
+                # Actually demote
+                from app.models.pvp import rank_from_rating
+                rating_obj.rank_tier = rank_from_rating(new_rating, rating_obj.placement_done)
+                rating_obj.demotion_shield_losses = 0
+                rating_obj.demotion_warning_issued = False
+                db.add(rating_obj)
+                await db.flush()
+
+                logger.info("Player DEMOTED: user=%s -> %s", user_id, new_tier)
+                return {
+                    "demoted": True,
+                    "new_tier": new_tier,
+                    "losses_until_demotion": 0,
+                }
+            else:
+                rating_obj.demotion_warning_issued = True
+                db.add(rating_obj)
+                await db.flush()
+
+                remaining = DEMOTION_SHIELD_THRESHOLD - rating_obj.demotion_shield_losses
+                logger.info(
+                    "Demotion WARNING: user=%s, %d losses until demotion",
+                    user_id, remaining,
+                )
+                return {
+                    "demotion_warning": True,
+                    "losses_until_demotion": remaining,
+                }
+
+    return None
+
+
 async def is_in_queue(user_id: uuid.UUID) -> bool:
     """Check if player is currently in the matchmaking queue."""
     r = _redis()
@@ -503,3 +720,87 @@ async def get_queue_size() -> int:
     """Get current number of players in queue."""
     r = _redis()
     return await r.zcard(QUEUE_KEY)
+
+
+# ---------------------------------------------------------------------------
+# Mode-aware queue operations (DOC_09: Rapid Fire, Gauntlet, Team 2v2)
+# ---------------------------------------------------------------------------
+
+MODE_QUEUE_KEY = "pvp:queue:{mode}"
+MODE_QUEUE_META_KEY = "pvp:queue:{mode}:{user_id}"
+GAUNTLET_COOLDOWN_KEY = "pvp:gauntlet:cooldown:{user_id}"
+GAUNTLET_COOLDOWN_SECONDS = 6 * 3600  # 6 hours
+
+
+async def join_mode_queue(
+    user_id: uuid.UUID,
+    mode: str,
+    db: AsyncSession,
+) -> dict:
+    """Add player to a mode-specific matchmaking queue.
+
+    For rapid/gauntlet: instant PvE (no matchmaking needed).
+    For team2v2: separate queue, needs 2+ players.
+    """
+    r = _redis()
+    queue_key = MODE_QUEUE_KEY.format(mode=mode)
+
+    if mode in ("rapid", "gauntlet"):
+        # PvE modes — no queuing, immediate start
+        return {"status": "ready", "mode": mode}
+
+    # team2v2: add to team queue
+    existing = await r.zscore(queue_key, str(user_id))
+    if existing is not None:
+        return {"status": "already_queued", "mode": mode}
+
+    rating = await get_or_create_rating(user_id, db)
+    await r.zadd(queue_key, {str(user_id): rating.rating})
+
+    meta_key = MODE_QUEUE_META_KEY.format(mode=mode, user_id=user_id)
+    await r.hset(meta_key, mapping={
+        "rating": str(rating.rating),
+        "rd": str(rating.rd),
+        "queued_at": str(time.time()),
+        "status": MatchQueueStatus.waiting.value,
+    })
+    await r.expire(meta_key, MATCH_TIMEOUT_SECONDS + 30)
+
+    position = await r.zcard(queue_key)
+    logger.info("Player %s joined %s queue (pos=%d)", user_id, mode, position)
+
+    return {"status": "queued", "mode": mode, "position": position}
+
+
+async def leave_mode_queue(user_id: uuid.UUID, mode: str) -> bool:
+    """Remove player from a mode-specific queue."""
+    r = _redis()
+    queue_key = MODE_QUEUE_KEY.format(mode=mode)
+    removed = await r.zrem(queue_key, str(user_id))
+    meta_key = MODE_QUEUE_META_KEY.format(mode=mode, user_id=user_id)
+    await r.delete(meta_key)
+    return bool(removed)
+
+
+async def check_gauntlet_cooldown(user_id: uuid.UUID) -> dict:
+    """Check if player is on gauntlet cooldown. Returns {on_cooldown, seconds_remaining}."""
+    r = _redis()
+    key = GAUNTLET_COOLDOWN_KEY.format(user_id=user_id)
+    ttl = await r.ttl(key)
+    if ttl and ttl > 0:
+        return {"on_cooldown": True, "seconds_remaining": ttl}
+    return {"on_cooldown": False, "seconds_remaining": 0}
+
+
+async def set_gauntlet_cooldown(user_id: uuid.UUID) -> None:
+    """Set gauntlet cooldown for a player (6 hours)."""
+    r = _redis()
+    key = GAUNTLET_COOLDOWN_KEY.format(user_id=user_id)
+    await r.set(key, "1", ex=GAUNTLET_COOLDOWN_SECONDS)
+
+
+async def get_mode_queue_size(mode: str) -> int:
+    """Get number of players in a mode-specific queue."""
+    r = _redis()
+    queue_key = MODE_QUEUE_KEY.format(mode=mode)
+    return await r.zcard(queue_key)

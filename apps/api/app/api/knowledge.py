@@ -919,3 +919,141 @@ async def backfill_srs_from_history(
     result = await backfill_from_quiz_answers(db, user.id)
     await db.commit()
     return result
+
+
+# ---------------------------------------------------------------------------
+# DOC_11: Daily Challenge
+# ---------------------------------------------------------------------------
+
+@router.get("/daily-challenge")
+async def get_daily_challenge(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get today's daily challenge. Creates one if it doesn't exist yet.
+
+    Returns challenge info and whether the user has already attempted it.
+    Level 5+ required.
+    """
+    from app.models.knowledge import DailyChallenge, DailyChallengeEntry
+    from datetime import date
+
+    if user.level < 5:
+        raise HTTPException(status_code=403, detail="Доступно с уровня 5")
+
+    today = date.today()
+
+    # Get or create today's challenge
+    challenge = (await db.execute(
+        select(DailyChallenge).where(DailyChallenge.challenge_date == today)
+    )).scalar_one_or_none()
+
+    if not challenge:
+        # Generate 10 questions for today's challenge
+        from app.services.knowledge_quiz import generate_question
+        from app.services.rag_legal import retrieve_legal_context
+
+        questions = []
+        categories = [
+            "procedures", "requirements", "consequences", "rights",
+            "financial_manager", "creditors", "property", "restructuring",
+            "court_process", "appeals",
+        ]
+        for i in range(10):
+            try:
+                cat = categories[i % len(categories)]
+                ctx = await retrieve_legal_context(f"вопрос по {cat} банкротство", db, top_k=1)
+                q = await generate_question(
+                    db=db,
+                    category=cat,
+                    difficulty=3,
+                    mode=QuizMode.daily_challenge,
+                )
+                questions.append({
+                    "question_number": i + 1,
+                    "question_text": q.question_text,
+                    "category": q.category,
+                    "difficulty": q.difficulty,
+                    "expected_article": q.expected_article,
+                })
+            except Exception:
+                questions.append({
+                    "question_number": i + 1,
+                    "question_text": f"Вопрос {i + 1} по 127-ФЗ (резервный)",
+                    "category": categories[i % len(categories)],
+                    "difficulty": 3,
+                    "expected_article": "",
+                })
+
+        challenge = DailyChallenge(
+            challenge_date=today,
+            questions=questions,
+            category=None,
+            total_participants=0,
+        )
+        db.add(challenge)
+        await db.commit()
+        await db.refresh(challenge)
+
+    # Check if user already attempted
+    entry = (await db.execute(
+        select(DailyChallengeEntry).where(
+            DailyChallengeEntry.challenge_id == challenge.id,
+            DailyChallengeEntry.user_id == user.id,
+        )
+    )).scalar_one_or_none()
+
+    return {
+        "challenge_id": str(challenge.id),
+        "challenge_date": str(challenge.challenge_date),
+        "questions_count": len(challenge.questions),
+        "category": challenge.category,
+        "already_attempted": entry is not None,
+        "your_score": entry.score if entry else None,
+        "your_rank": entry.rank if entry else None,
+        "total_participants": challenge.total_participants,
+    }
+
+
+@router.get("/daily-challenge/leaderboard")
+async def get_daily_challenge_leaderboard(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get today's daily challenge leaderboard."""
+    from app.models.knowledge import DailyChallenge, DailyChallengeEntry
+    from datetime import date
+
+    today = date.today()
+
+    challenge = (await db.execute(
+        select(DailyChallenge).where(DailyChallenge.challenge_date == today)
+    )).scalar_one_or_none()
+
+    if not challenge:
+        return {"challenge_date": str(today), "entries": [], "total_participants": 0}
+
+    entries_result = await db.execute(
+        select(DailyChallengeEntry, User.full_name)
+        .join(User, DailyChallengeEntry.user_id == User.id)
+        .where(DailyChallengeEntry.challenge_id == challenge.id)
+        .order_by(desc(DailyChallengeEntry.score))
+        .limit(50)
+    )
+    rows = entries_result.all()
+
+    leaderboard = []
+    for rank, (entry, username) in enumerate(rows, 1):
+        leaderboard.append({
+            "rank": rank,
+            "user_id": str(entry.user_id),
+            "username": username or "Anonymous",
+            "score": entry.score,
+        })
+
+    return {
+        "challenge_id": str(challenge.id),
+        "challenge_date": str(today),
+        "entries": leaderboard,
+        "total_participants": challenge.total_participants,
+    }

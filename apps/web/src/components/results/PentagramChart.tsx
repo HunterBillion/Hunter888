@@ -84,7 +84,7 @@ export default function PentagramChart({ data }: { data: PentagramData }) {
         angleLines: { color: gridColor },
         grid: { color: gridColor },
         pointLabels: {
-          font: { family: "'Rajdhani', sans-serif", size: 13, weight: "bold" as const },
+          font: { family: "'Rajdhani', sans-serif", size: data.labels.length > 6 ? 11 : 13, weight: "bold" as const },
           color: labelColor,
         },
         ticks: { display: false },

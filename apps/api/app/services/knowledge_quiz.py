@@ -790,6 +790,14 @@ def get_total_questions(mode: QuizMode) -> int:
         QuizMode.blitz: 20,
         QuizMode.themed: 15,
         QuizMode.pvp: 10,
+        # DOC_11: New modes
+        QuizMode.rapid_blitz: 10,
+        QuizMode.case_study: 7,
+        QuizMode.debate: 7,
+        QuizMode.mock_court: 10,
+        QuizMode.article_deep_dive: 10,
+        QuizMode.team_quiz: 10,
+        QuizMode.daily_challenge: 10,
     }.get(mode, 10)
 
 
@@ -800,6 +808,14 @@ def get_time_limit_seconds(mode: QuizMode) -> int | None:
         QuizMode.blitz: 60,
         QuizMode.themed: None,
         QuizMode.pvp: 45,
+        # DOC_11: New modes
+        QuizMode.rapid_blitz: 30,
+        QuizMode.case_study: None,
+        QuizMode.debate: None,
+        QuizMode.mock_court: None,
+        QuizMode.article_deep_dive: 60,
+        QuizMode.team_quiz: 45,
+        QuizMode.daily_challenge: 60,
     }.get(mode)
 
 

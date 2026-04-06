@@ -234,3 +234,58 @@ class ArenaLeaderboardResponse(BaseModel):
     entries: list[ArenaLeaderboardEntryElo | ArenaLeaderboardEntryScore]
     user_rank: dict | None = None
     total_players: int = 0
+
+
+# ---------------------------------------------------------------------------
+# DOC_11: New Knowledge Modes (7 new modes)
+# ---------------------------------------------------------------------------
+
+class DailyChallengeResponse(BaseModel):
+    """Response for daily challenge endpoint."""
+    challenge_id: uuid.UUID
+    challenge_date: str
+    questions_count: int
+    category: str | None = None
+    already_attempted: bool = False
+    your_score: float | None = None
+    your_rank: int | None = None
+    total_participants: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class DailyChallengeLeaderboardEntry(BaseModel):
+    rank: int
+    user_id: uuid.UUID
+    username: str
+    score: float = 0.0
+
+
+class DailyChallengeLeaderboardResponse(BaseModel):
+    challenge_id: uuid.UUID
+    challenge_date: str
+    entries: list[DailyChallengeLeaderboardEntry]
+    total_participants: int = 0
+
+
+class DebateRoundData(BaseModel):
+    """Single debate round data."""
+    round_number: int
+    player_argument: str
+    ai_response: str
+    score: float = 0.0
+    feedback: str = ""
+
+
+class DebateSessionResponse(BaseModel):
+    """Debate/mock-court session response."""
+    session_id: uuid.UUID
+    topic: str
+    position: str
+    ai_position: str
+    total_rounds: int
+    current_round: int = 0
+    rounds: list[DebateRoundData] = Field(default_factory=list)
+    total_score: float = 0.0
+
+    model_config = {"from_attributes": True}

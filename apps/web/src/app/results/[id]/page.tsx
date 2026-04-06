@@ -217,7 +217,7 @@ export default function ResultsPage() {
 
   const pentagramData = skillRadar
     ? {
-        labels: ["Эмпатия", "Знания", "Возражения", "Стрессоуст.", "Закрытие", "Квалификация"],
+        labels: ["Эмпатия", "Знания", "Возражения", "Стрессоуст.", "Закрытие", "Квалификация", "Тайм-менедж.", "Адаптация", "Юрид. знания", "Раппорт"],
         values: [
           Math.min(100, Math.max(0, skillRadar.empathy ?? 0)),
           Math.min(100, Math.max(0, skillRadar.knowledge ?? 0)),
@@ -225,6 +225,10 @@ export default function ResultsPage() {
           Math.min(100, Math.max(0, skillRadar.stress_resistance ?? 0)),
           Math.min(100, Math.max(0, skillRadar.closing ?? 0)),
           Math.min(100, Math.max(0, skillRadar.qualification ?? 0)),
+          Math.min(100, Math.max(0, skillRadar.time_management ?? 0)),
+          Math.min(100, Math.max(0, skillRadar.adaptability ?? 0)),
+          Math.min(100, Math.max(0, skillRadar.legal_knowledge ?? 0)),
+          Math.min(100, Math.max(0, skillRadar.rapport ?? 0)),
         ],
         // Previous session overlay for progress comparison
         previousValues: previousSkillRadar
@@ -235,6 +239,10 @@ export default function ResultsPage() {
               Math.min(100, Math.max(0, previousSkillRadar.stress_resistance ?? 0)),
               Math.min(100, Math.max(0, previousSkillRadar.closing ?? 0)),
               Math.min(100, Math.max(0, previousSkillRadar.qualification ?? 0)),
+              Math.min(100, Math.max(0, previousSkillRadar.time_management ?? 0)),
+              Math.min(100, Math.max(0, previousSkillRadar.adaptability ?? 0)),
+              Math.min(100, Math.max(0, previousSkillRadar.legal_knowledge ?? 0)),
+              Math.min(100, Math.max(0, previousSkillRadar.rapport ?? 0)),
             ]
           : undefined,
       }

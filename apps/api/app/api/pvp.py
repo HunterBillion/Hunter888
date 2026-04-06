@@ -22,24 +22,47 @@ from app.core.deps import get_current_user, require_role
 from app.database import get_db
 from app.models.pvp import (
     AntiCheatLog,
+    DuelDifficulty,
+    DuelStatus,
+    GauntletRun,
+    PvEBossRun,
+    PvELadderRun,
+    PvEMode,
     PvPDuel,
     PvPRating,
     PvPRankTier,
     PvPSeason,
+    PvPTeam,
+    RapidFireMatch,
     RANK_DISPLAY_NAMES,
 )
 from app.models.user import User, UserFriendship
 from app.schemas.pvp import (
     AntiCheatFlagResponse,
     DuelResponse,
+    GauntletCooldownResponse,
+    GauntletCreateRequest,
+    GauntletCreateResponse,
     LeaderboardEntry,
     LeaderboardResponse,
+    PvEBossCreateResponse,
+    PvELadderCreateResponse,
+    PvEMirrorCreateResponse,
+    RapidFireCreateResponse,
     RatingResponse,
     SeasonResponse,
+    TeamCreateRequest,
+    TeamCreateResponse,
 )
 from app.services.glicko2 import get_or_create_rating, apply_season_reset
-from app.services.pvp_matchmaker import create_pve_duel, get_queue_size, leave_queue
-from app.services.pvp_matchmaker import join_queue
+from app.services.pvp_matchmaker import (
+    check_gauntlet_cooldown,
+    create_pve_duel,
+    get_queue_size,
+    join_queue,
+    leave_queue,
+    set_gauntlet_cooldown,
+)
 from app.ws.notifications import notification_manager
 
 router = APIRouter()
@@ -500,4 +523,386 @@ async def get_active_season(
         end_date=season.end_date,
         is_active=season.is_active,
         rewards=season.rewards,
+    )
+
+
+# ---------------------------------------------------------------------------
+# PvE Modes (DOC_10: Ladder, Boss Rush, Mirror Match)
+# ---------------------------------------------------------------------------
+
+_PVE_BOT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
+_LADDER_BOT_CONFIGS = [
+    {"archetype": "passive", "difficulty_offset": -1, "label": "Бот 1 — Лёгкий"},
+    {"archetype": "pragmatic", "difficulty_offset": 0, "label": "Бот 2 — Средний"},
+    {"archetype": "aggressive", "difficulty_offset": 1, "label": "Бот 3 — Сложный"},
+    {"archetype": "know_it_all", "difficulty_offset": 2, "label": "Бот 4 — Экспертный"},
+    {"archetype": "manipulator", "difficulty_offset": 3, "label": "Бот 5 — Экстремальный"},
+]
+
+_BOSS_CONFIGS = [
+    {
+        "boss_type": "lawyer_perfectionist",
+        "archetype": "know_it_all",
+        "label": "Юрист-перфекционист",
+        "mechanic": "legal_penalty",
+        "description": "Каждая юридическая ошибка = мгновенно -10 баллов",
+    },
+    {
+        "boss_type": "emotional_vampire",
+        "archetype": "desperate",
+        "label": "Эмоциональный вампир",
+        "mechanic": "composure_drain",
+        "description": "Самообладание клиента падает с каждым сообщением",
+    },
+    {
+        "boss_type": "chameleon",
+        "archetype": "sarcastic",
+        "label": "Хамелеон",
+        "mechanic": "archetype_shift",
+        "description": "Меняет архетип каждые 2 сообщения",
+    },
+]
+
+_DIFFICULTY_LEVELS = ["easy", "medium", "hard"]
+
+
+def _base_difficulty_for_rating(rating_val: float) -> DuelDifficulty:
+    if rating_val < 1600:
+        return DuelDifficulty.easy
+    elif rating_val < 2200:
+        return DuelDifficulty.medium
+    return DuelDifficulty.hard
+
+
+@router.post("/pve/ladder/create", response_model=PvELadderCreateResponse)
+async def create_pve_ladder(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a PvE Bot Ladder run (Level 9+). 5 sequential bots."""
+    if user.level < 9:
+        raise HTTPException(status_code=403, detail="Доступно с уровня 9")
+
+    active_run = (await db.execute(
+        select(PvELadderRun).where(
+            PvELadderRun.user_id == user.id,
+            PvELadderRun.is_complete == False,  # noqa: E712
+        )
+    )).scalar_one_or_none()
+    if active_run:
+        raise HTTPException(status_code=409, detail="Активная лестница уже существует")
+
+    rating = await get_or_create_rating(user.id, db)
+    base_diff = _base_difficulty_for_rating(rating.rating)
+    base_idx = _DIFFICULTY_LEVELS.index(base_diff.value)
+
+    bot_configs = []
+    for cfg in _LADDER_BOT_CONFIGS:
+        eff = min(2, max(0, base_idx + cfg["difficulty_offset"]))
+        bot_configs.append({
+            **cfg,
+            "base_difficulty": base_diff.value,
+            "effective_difficulty": _DIFFICULTY_LEVELS[eff],
+        })
+
+    first_duel = PvPDuel(
+        player1_id=user.id,
+        player2_id=_PVE_BOT_ID,
+        status=DuelStatus.pending,
+        difficulty=base_diff,
+        is_pve=True,
+        pve_mode=PvEMode.ladder.value,
+        pve_metadata={"ladder_bot_index": 0, "archetype": bot_configs[0]["archetype"]},
+    )
+    db.add(first_duel)
+    await db.flush()
+
+    ladder_run = PvELadderRun(
+        user_id=user.id,
+        current_bot_index=0,
+        bots_defeated=0,
+        cumulative_score=0.0,
+        bot_configs=bot_configs,
+        duel_ids=[str(first_duel.id)],
+    )
+    db.add(ladder_run)
+    await db.commit()
+
+    return PvELadderCreateResponse(
+        run_id=ladder_run.id,
+        total_bots=5,
+        current_bot_index=0,
+        first_duel_id=first_duel.id,
+    )
+
+
+@router.post("/pve/boss/create", response_model=PvEBossCreateResponse)
+async def create_pve_boss(
+    boss_index: int = Query(0, ge=0, le=2),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a PvE Boss Rush run (Level 10+). 3 unique boss bots."""
+    if user.level < 10:
+        raise HTTPException(status_code=403, detail="Доступно с уровня 10")
+
+    boss_cfg = _BOSS_CONFIGS[boss_index]
+
+    duel = PvPDuel(
+        player1_id=user.id,
+        player2_id=_PVE_BOT_ID,
+        status=DuelStatus.pending,
+        difficulty=DuelDifficulty.hard,
+        is_pve=True,
+        pve_mode=PvEMode.boss.value,
+        pve_metadata={
+            "boss_type": boss_cfg["boss_type"],
+            "archetype": boss_cfg["archetype"],
+            "mechanic": boss_cfg["mechanic"],
+            "boss_index": boss_index,
+        },
+    )
+    db.add(duel)
+    await db.flush()
+
+    boss_run = PvEBossRun(
+        user_id=user.id,
+        boss_index=boss_index,
+        boss_type=boss_cfg["boss_type"],
+        duel_id=duel.id,
+        special_mechanics_log={"mechanic": boss_cfg["mechanic"], "events": []},
+    )
+    db.add(boss_run)
+    await db.commit()
+
+    return PvEBossCreateResponse(
+        run_id=boss_run.id,
+        boss_index=boss_index,
+        boss_type=boss_cfg["boss_type"],
+        duel_id=duel.id,
+        message=f"Boss Rush: {boss_cfg['label']} — {boss_cfg['description']}",
+    )
+
+
+@router.post("/pve/mirror/create", response_model=PvEMirrorCreateResponse)
+async def create_pve_mirror(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a PvE Mirror Match (Level 15+). AI mimics your style."""
+    if user.level < 15:
+        raise HTTPException(status_code=403, detail="Доступно с уровня 15")
+
+    style_summary: dict = {"sessions_analyzed": 0, "avg_messages": 0, "sample_messages": []}
+    try:
+        from app.models.training import TrainingSession
+        past_sessions = (await db.execute(
+            select(TrainingSession)
+            .where(TrainingSession.user_id == user.id)
+            .order_by(TrainingSession.created_at.desc())
+            .limit(20)
+        )).scalars().all()
+
+        total_msgs = 0
+        sample_messages: list[str] = []
+        for sess in past_sessions:
+            if hasattr(sess, "history") and sess.history:
+                user_msgs = [m for m in (sess.history or []) if m.get("role") == "user"]
+                total_msgs += len(user_msgs)
+                for m in user_msgs[:1]:
+                    if len(sample_messages) < 5:
+                        sample_messages.append(m.get("content", "")[:200])
+
+        style_summary = {
+            "sessions_analyzed": len(past_sessions),
+            "avg_messages": total_msgs // max(len(past_sessions), 1),
+            "sample_messages": sample_messages,
+        }
+    except Exception:
+        pass
+
+    duel = PvPDuel(
+        player1_id=user.id,
+        player2_id=_PVE_BOT_ID,
+        status=DuelStatus.pending,
+        difficulty=DuelDifficulty.hard,
+        is_pve=True,
+        pve_mode=PvEMode.mirror.value,
+        pve_metadata={"mirror_style": style_summary, "archetype": "mirror"},
+    )
+    db.add(duel)
+    await db.commit()
+
+    return PvEMirrorCreateResponse(
+        duel_id=duel.id,
+        style_summary=style_summary,
+    )
+
+
+# ===========================================================================
+# DOC_09: New PvP Mode Endpoints — Rapid Fire, Gauntlet, Team 2v2
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# Rapid Fire
+# ---------------------------------------------------------------------------
+
+@router.post("/rapid-fire/create", response_model=RapidFireCreateResponse)
+@limiter.limit("10/minute")
+async def create_rapid_fire(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create and start a Rapid Fire match (5 mini-rounds, seller only, AI client).
+
+    Returns match_id. Client should then connect via WS and send
+    {type: "rapid_fire.start", match_id: "<id>"}.
+    """
+    match = RapidFireMatch(
+        player1_id=user.id,
+        is_pve=True,
+    )
+    db.add(match)
+    await db.flush()
+    await db.commit()
+
+    return RapidFireCreateResponse(
+        match_id=match.id,
+        total_rounds=5,
+        time_per_round=120,
+        messages_per_round=5,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Gauntlet
+# ---------------------------------------------------------------------------
+
+@router.get("/gauntlet/cooldown", response_model=GauntletCooldownResponse)
+async def get_gauntlet_cooldown_status(
+    user: User = Depends(get_current_user),
+):
+    """Check gauntlet cooldown for current user (6h between attempts)."""
+    status = await check_gauntlet_cooldown(user.id)
+    return GauntletCooldownResponse(**status)
+
+
+@router.post("/gauntlet/create", response_model=GauntletCreateResponse)
+@limiter.limit("5/minute")
+async def create_gauntlet(
+    request: Request,
+    body: GauntletCreateRequest = GauntletCreateRequest(),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a Gauntlet run (3-5 PvE duels with progressive difficulty).
+
+    Enforces 6-hour cooldown between attempts.
+    Returns run_id. Client should then connect via WS and send
+    {type: "gauntlet.start", run_id: "<id>"}.
+    """
+    # Check cooldown
+    cooldown = await check_gauntlet_cooldown(user.id)
+    if cooldown["on_cooldown"]:
+        hours_left = cooldown["seconds_remaining"] / 3600
+        raise HTTPException(
+            status_code=429,
+            detail=f"Испытание на перезарядке. Осталось {hours_left:.1f} ч.",
+        )
+
+    rating = await get_or_create_rating(user.id, db)
+    base_difficulty = "easy" if rating.rating < 1600 else ("medium" if rating.rating < 2200 else "hard")
+
+    run = GauntletRun(
+        user_id=user.id,
+        total_duels=body.total_duels,
+    )
+    db.add(run)
+    await db.flush()
+
+    # Set cooldown
+    await set_gauntlet_cooldown(user.id)
+    await db.commit()
+
+    return GauntletCreateResponse(
+        run_id=run.id,
+        total_duels=run.total_duels,
+        base_difficulty=base_difficulty,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Team 2v2
+# ---------------------------------------------------------------------------
+
+@router.post("/team/create", response_model=TeamCreateResponse)
+@limiter.limit("10/minute")
+async def create_team_battle(
+    request: Request,
+    body: TeamCreateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a Team 2v2 battle. Requires a partner_id (must be a friend).
+
+    Returns team_id. Both players should connect via WS and send
+    {type: "team.start", team_id: "<id>"}.
+    """
+    if body.partner_id == user.id:
+        raise HTTPException(status_code=400, detail="Нельзя создать команду с самим собой")
+
+    # Check partner exists
+    partner = (await db.execute(
+        select(User).where(User.id == body.partner_id, User.is_active.is_(True))
+    )).scalar_one_or_none()
+    if not partner:
+        raise HTTPException(status_code=404, detail="Партнёр не найден")
+
+    # Check friendship
+    friendship = (
+        await db.execute(
+            select(UserFriendship).where(
+                UserFriendship.status == "accepted",
+                or_(
+                    (UserFriendship.requester_id == user.id) & (UserFriendship.addressee_id == body.partner_id),
+                    (UserFriendship.requester_id == body.partner_id) & (UserFriendship.addressee_id == user.id),
+                ),
+            )
+        )
+    ).scalar_one_or_none()
+    if not friendship:
+        raise HTTPException(status_code=403, detail="Командная битва доступна только друзьям")
+
+    # Get average rating
+    r1 = await get_or_create_rating(user.id, db, rating_type="team_battle")
+    r2 = await get_or_create_rating(body.partner_id, db, rating_type="team_battle")
+    avg_rating = (r1.rating + r2.rating) / 2.0
+
+    team = PvPTeam(
+        player1_id=user.id,
+        player2_id=body.partner_id,
+        avg_rating=avg_rating,
+    )
+    db.add(team)
+    await db.flush()
+    await db.commit()
+
+    # Notify partner
+    await notification_manager.send_to_user(str(body.partner_id), {
+        "type": "team.invitation",
+        "data": {
+            "team_id": str(team.id),
+            "creator_id": str(user.id),
+            "creator_name": user.full_name,
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }, force=True)
+
+    return TeamCreateResponse(
+        team_id=team.id,
+        player1_id=user.id,
+        player2_id=body.partner_id,
     )

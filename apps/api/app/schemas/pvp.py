@@ -166,6 +166,54 @@ class SeasonResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# PvE Modes (DOC_10)
+# ---------------------------------------------------------------------------
+
+class PvELadderCreateResponse(BaseModel):
+    """Response when creating a PvE Ladder run."""
+    run_id: uuid.UUID
+    total_bots: int = 5
+    current_bot_index: int = 0
+    first_duel_id: uuid.UUID | None = None
+    message: str = "Bot Ladder запущена. Побеждайте 5 ботов последовательно!"
+
+    model_config = {"from_attributes": True}
+
+
+class PvEBossCreateResponse(BaseModel):
+    """Response when creating a PvE Boss Rush run."""
+    run_id: uuid.UUID
+    boss_index: int
+    boss_type: str
+    duel_id: uuid.UUID | None = None
+    message: str = "Boss Rush: приготовьтесь к бою с боссом!"
+
+    model_config = {"from_attributes": True}
+
+
+class PvEMirrorCreateResponse(BaseModel):
+    """Response when creating a PvE Mirror Match."""
+    duel_id: uuid.UUID
+    message: str = "Mirror Match: победите своё отражение!"
+    style_summary: dict | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class TierChangeResponse(BaseModel):
+    """Tier change notification after duel."""
+    promotion_started: bool = False
+    target_tier: str | None = None
+    demoted: bool = False
+    new_tier: str | None = None
+    demotion_warning: bool = False
+    losses_until_demotion: int | None = None
+    series_wins: int = 0
+    series_losses: int = 0
+    series_matches_needed: int = 3
+
+
+# ---------------------------------------------------------------------------
 # WebSocket messages
 # ---------------------------------------------------------------------------
 
@@ -195,3 +243,83 @@ class WSJudgeScore(BaseModel):
     legal_accuracy: float = 0.0
     breakdown: dict = Field(default_factory=dict)
     flags: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# DOC_09: New PvP Mode Schemas
+# ---------------------------------------------------------------------------
+
+class RapidFireCreateRequest(BaseModel):
+    """Request to create a Rapid Fire match."""
+    pass  # Auth header provides user_id
+
+
+class RapidFireCreateResponse(BaseModel):
+    """Response after creating a Rapid Fire match."""
+    match_id: uuid.UUID
+    total_rounds: int = 5
+    time_per_round: int = 120
+    messages_per_round: int = 5
+    message: str = "Rapid Fire: 5 мини-раундов по 2 минуты!"
+
+
+class GauntletCreateRequest(BaseModel):
+    """Request to create a Gauntlet run."""
+    total_duels: int = Field(default=3, ge=3, le=5)
+
+
+class GauntletCreateResponse(BaseModel):
+    """Response after creating a Gauntlet run."""
+    run_id: uuid.UUID
+    total_duels: int
+    base_difficulty: str
+    cooldown_hours: int = 6
+    message: str = "Испытание: серия дуэлей с нарастающей сложностью!"
+
+
+class GauntletCooldownResponse(BaseModel):
+    """Gauntlet cooldown status."""
+    on_cooldown: bool
+    seconds_remaining: int = 0
+
+
+class TeamCreateRequest(BaseModel):
+    """Request to create a Team 2v2 battle."""
+    partner_id: uuid.UUID
+
+
+class TeamCreateResponse(BaseModel):
+    """Response after creating a Team 2v2 battle."""
+    team_id: uuid.UUID
+    player1_id: uuid.UUID
+    player2_id: uuid.UUID
+    message: str = "Командная битва 2v2: оба продают, AI клиенты — разные!"
+
+
+class RapidFireResultResponse(BaseModel):
+    """Rapid Fire match result."""
+    match_id: uuid.UUID
+    total_score: float
+    normalized_score: float
+    mini_scores: list[dict] = Field(default_factory=list)
+    archetypes: list[str] = Field(default_factory=list)
+    rating_delta: float = 0.0
+    completed_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class GauntletResultResponse(BaseModel):
+    """Gauntlet run result."""
+    run_id: uuid.UUID
+    total_score: float
+    completed_duels: int
+    total_duels: int
+    losses: int
+    is_eliminated: bool
+    scores: list[float] = Field(default_factory=list)
+    difficulties: list[str] = Field(default_factory=list)
+    rating_bonus: float = 0.0
+    completed_at: datetime | None = None
+
+    model_config = {"from_attributes": True}

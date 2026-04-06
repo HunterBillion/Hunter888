@@ -6,16 +6,32 @@ import type { PvPRating, PvPRankTier } from "@/types";
 import { RankBadge } from "./RankBadge";
 
 const TIER_THRESHOLDS: { tier: PvPRankTier; min: number }[] = [
+  { tier: "grandmaster", min: 2900 },
+  { tier: "master", min: 2600 },
   { tier: "diamond", min: 2300 },
   { tier: "platinum", min: 2000 },
   { tier: "gold", min: 1700 },
   { tier: "silver", min: 1400 },
-  { tier: "bronze", min: 0 },
+  { tier: "bronze", min: 1000 },
+  { tier: "iron", min: 0 },
 ];
+
+/** Get division (III / II / I) within a tier based on position in range */
+export function getDivision(rating: number, tier: PvPRankTier): string {
+  if (tier === "grandmaster" || tier === "unranked") return "";
+  const entry = TIER_THRESHOLDS.find((t) => t.tier === tier);
+  const nextEntry = TIER_THRESHOLDS[TIER_THRESHOLDS.indexOf(entry!) - 1];
+  if (!entry || !nextEntry) return "";
+  const range = nextEntry.min - entry.min;
+  const pos = (rating - entry.min) / range;
+  if (pos < 1 / 3) return "III";
+  if (pos < 2 / 3) return "II";
+  return "I";
+}
 
 function getNextTier(rating: number, currentTier: PvPRankTier) {
   const idx = TIER_THRESHOLDS.findIndex((t) => t.tier === currentTier);
-  if (idx <= 0) return null; // already diamond or not found
+  if (idx <= 0) return null; // already grandmaster or not found
   const next = TIER_THRESHOLDS[idx - 1];
   const current = TIER_THRESHOLDS[idx];
   const range = next.min - current.min;

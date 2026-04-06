@@ -63,6 +63,8 @@ function buildCsp(nonce: string): string {
 
 const PUBLIC_ROUTES = [
   "/",
+  "/product",
+  "/pricing",
   "/login",
   "/register",
   "/consent/verify",

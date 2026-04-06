@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import random
 import time
 import uuid
 from datetime import datetime, timezone
@@ -12,7 +13,15 @@ from sqlalchemy import select
 
 from app.core.security import decode_token
 from app.database import async_session
-from app.models.pvp import DuelStatus, PvPDuel
+from app.models.pvp import (
+    DuelDifficulty,
+    DuelMode,
+    DuelStatus,
+    GauntletRun,
+    PvPDuel,
+    PvPTeam,
+    RapidFireMatch,
+)
 from app.models.user import User
 from app.services import pvp_matchmaker as matchmaker
 from app.services.llm import generate_response
@@ -25,7 +34,8 @@ from app.services.anti_cheat_realtime import (
     cleanup_duel as ac_cleanup_duel,
 )
 from app.services.content_filter import filter_ai_output, filter_user_input
-from app.services.glicko2 import update_rating_after_duel
+from app.services.glicko2 import get_or_create_rating, update_rating_after_duel
+from app.services.pvp_matchmaker import check_tier_change
 from app.services.pvp_bot_engine import (
     generate_bot_reply,
     generate_bot_opener,
@@ -99,6 +109,24 @@ BOT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 ROUND_TIME_LIMIT = 600
 ROUND_MESSAGE_LIMIT = 8
 
+# ── New PvP Mode Constants ──────────────────────────────────────────────────
+RAPID_FIRE_ROUNDS = 5
+RAPID_FIRE_TIME_LIMIT = 120          # 2 min per mini-round
+RAPID_FIRE_MSG_LIMIT = 5             # 5 messages per mini-round
+RAPID_FIRE_MAX_SCORE = 20            # per mini-round (selling 0-15, legal 0-5)
+RAPID_FIRE_RATING_MULTIPLIER = 0.8
+
+GAUNTLET_MAX_DUELS = 5
+GAUNTLET_MIN_DUELS = 3
+GAUNTLET_TIME_LIMIT = 600            # 10 min per duel stage
+GAUNTLET_MSG_LIMIT = 8
+GAUNTLET_LOSS_THRESHOLD = 50.0       # Score below this = loss
+GAUNTLET_MAX_LOSSES = 2
+GAUNTLET_COOLDOWN_HOURS = 6
+
+TEAM_TIME_LIMIT = 600
+TEAM_MSG_LIMIT = 8
+
 # (websocket, conn_id) — conn_id prevents race condition on connection swap
 _active_connections: dict[uuid.UUID, tuple[WebSocket, str]] = {}
 _duel_messages: dict[uuid.UUID, dict[int, list[dict[str, Any]]]] = {}
@@ -106,6 +134,13 @@ _duel_sessions: dict[uuid.UUID, dict[str, Any]] = {}
 _disconnect_tasks: dict[tuple[uuid.UUID, uuid.UUID], asyncio.Task] = {}
 # Lock to protect concurrent access to _duel_sessions (race condition prevention)
 _duel_sessions_lock = asyncio.Lock()
+
+# ── New mode session storage ────────────────────────────────────────────────
+_rapid_fire_sessions: dict[uuid.UUID, dict[str, Any]] = {}
+_gauntlet_sessions: dict[uuid.UUID, dict[str, Any]] = {}
+_team_sessions: dict[uuid.UUID, dict[str, Any]] = {}
+# Team 2v2: waiting room for partner to connect
+_team_waiting: dict[uuid.UUID, dict[str, Any]] = {}  # team_id -> {players, ws_map, ...}
 
 
 async def _send(ws: WebSocket, msg_type: str, data: dict | None = None) -> None:
@@ -284,7 +319,16 @@ async def _ensure_session(duel_id: uuid.UUID, duel: PvPDuel, player1_name: str, 
             return session
 
         import random as _rand
-        archetype = _rand.choice(_PVP_ARCHETYPES)
+
+        # Determine archetype — use PvE metadata if available, else random
+        pve_meta = duel.pve_metadata or {}
+        archetype = pve_meta.get("archetype") or _rand.choice(_PVP_ARCHETYPES)
+
+        # PvE mode-specific configuration
+        pve_mode = duel.pve_mode  # ladder / boss / mirror / standard / None
+        boss_mechanic = pve_meta.get("mechanic")  # legal_penalty / composure_drain / archetype_shift
+        mirror_style = pve_meta.get("mirror_style")  # player's extracted style
+        boss_message_count = 0  # for chameleon archetype shifting
 
         session = {
             "duel_id": duel_id,
@@ -298,6 +342,12 @@ async def _ensure_session(duel_id: uuid.UUID, duel: PvPDuel, player1_name: str, 
             "scenario_title": None,
             "archetype": archetype,
             "is_pve": duel.is_pve,
+            "pve_mode": pve_mode,
+            "pve_metadata": pve_meta,
+            "boss_mechanic": boss_mechanic,
+            "boss_message_count": boss_message_count,
+            "mirror_style": mirror_style,
+            "boss_penalty_total": 0.0,
             "ready": set(),
             "round": 1,
             "started": False,
@@ -448,18 +498,83 @@ async def _send_ai_message(duel_id: uuid.UUID, round_number: int, ai_role: str, 
 
 
 async def _generate_ai_reply(session: dict[str, Any], round_number: int, user_text: str, ai_role: str) -> str:
-    """Delegate to pvp_bot_engine for intelligent archetype-aware responses."""
-    return await generate_bot_reply(
+    """Delegate to pvp_bot_engine for intelligent archetype-aware responses.
+
+    Enhanced for PvE modes:
+    - Boss Rush: chameleon shifts archetype every 2 messages
+    - Mirror Match: adds player style context to the prompt
+    """
+    archetype = session["archetype"]
+    pve_mode = session.get("pve_mode")
+
+    # Boss Rush — Chameleon: shift archetype every 2 messages
+    if pve_mode == "boss" and session.get("boss_mechanic") == "archetype_shift":
+        session["boss_message_count"] = session.get("boss_message_count", 0) + 1
+        if session["boss_message_count"] % 2 == 0:
+            import random as _r
+            new_arch = _r.choice([a for a in _PVP_ARCHETYPES if a != archetype])
+            session["archetype"] = new_arch
+            archetype = new_arch
+            # Notify player about the shift
+            await _send_to_user(session["player1_id"], "boss.mechanic", {
+                "event": "archetype_shift",
+                "new_archetype": archetype,
+                "message": f"Хамелеон меняет стиль! Теперь он — {_ARCHETYPE_BRIEFS.get(archetype, {}).get('name', archetype)}",
+            })
+
+    # Mirror Match: inject player style into scenario_title for prompt context
+    scenario_title = session.get("scenario_title")
+    if pve_mode == "mirror" and session.get("mirror_style"):
+        mirror = session["mirror_style"]
+        samples = mirror.get("sample_messages", [])
+        sample_text = "\n".join(f"- {s}" for s in samples[:3]) if samples else ""
+        scenario_title = (
+            f"{scenario_title or 'Mirror Match'}\n\n"
+            f"[MIRROR MODE] Имитируй стиль игрока. "
+            f"Средняя длина сообщений: {mirror.get('avg_messages', 5)} за сессию. "
+            f"Примеры сообщений игрока:\n{sample_text}"
+        )
+
+    reply = await generate_bot_reply(
         duel_id=str(session["duel_id"]),
         round_number=round_number,
-        archetype=session["archetype"],
+        archetype=archetype,
         difficulty=session["difficulty"],
         ai_role=ai_role,
         user_text=user_text,
         history=session["history"][round_number],
         player_id=str(session["player1_id"]),
-        scenario_title=session.get("scenario_title"),
+        scenario_title=scenario_title,
     )
+
+    # Boss Rush — Emotional Vampire: apply composure drain penalty notification
+    if pve_mode == "boss" and session.get("boss_mechanic") == "composure_drain":
+        msg_count = len(session["history"][round_number])
+        penalty = msg_count * 1.5  # growing penalty per message
+        session["boss_penalty_total"] = session.get("boss_penalty_total", 0) + penalty
+        await _send_to_user(session["player1_id"], "boss.mechanic", {
+            "event": "composure_drain",
+            "penalty": penalty,
+            "total_penalty": session["boss_penalty_total"],
+            "message": f"Эмоциональное давление: -{penalty:.1f} баллов (всего: -{session['boss_penalty_total']:.1f})",
+        })
+
+    # Boss Rush — Lawyer Perfectionist: check for legal errors (heuristic)
+    if pve_mode == "boss" and session.get("boss_mechanic") == "legal_penalty":
+        # Simple heuristic: check if player mentions legal articles incorrectly
+        legal_error_markers = ["127-фз", "статья", "ст."]
+        has_legal_ref = any(m in user_text.lower() for m in legal_error_markers)
+        if not has_legal_ref and len(session["history"][round_number]) > 2:
+            # Player not citing law — potential penalty
+            session["boss_penalty_total"] = session.get("boss_penalty_total", 0) + 10
+            await _send_to_user(session["player1_id"], "boss.mechanic", {
+                "event": "legal_penalty",
+                "penalty": 10,
+                "total_penalty": session["boss_penalty_total"],
+                "message": "Юрист-перфекционист: нет ссылки на закон! -10 баллов",
+            })
+
+    return reply
 
 
 async def _start_round(duel_id: uuid.UUID, round_number: int) -> None:
@@ -684,6 +799,27 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
                 logger.error("Rating update failed for duel %s: %s", duel_id, exc, exc_info=True)
                 # Continue — duel result is still valid even if rating update fails
 
+            # --- Promotion / Demotion check (DOC_13) ---
+            for uid, old_r, delta in [
+                (duel.player1_id, judge_result.player1_total, p1_delta),
+                (duel.player2_id, judge_result.player2_total, p2_delta),
+            ]:
+                if uid == BOT_ID or delta == 0.0:
+                    continue
+                try:
+                    # Approximate old_rating from current - delta
+                    r_obj = await get_or_create_rating(uid, db)
+                    old_rating = r_obj.rating - delta
+                    tier_result = await check_tier_change(
+                        uid, old_rating, r_obj.rating, duel_id, db,
+                    )
+                    if tier_result:
+                        await _send_to_user(uid, "tier.change", tier_result)
+                except Exception as tc_exc:
+                    logger.warning(
+                        "Tier change check failed for user %s: %s", uid, tc_exc,
+                    )
+
             # Collect real-time signals before cleanup
             rt_signals = ac_cleanup_duel(duel_id)
 
@@ -786,6 +922,34 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
             await ev_db.commit()
     except Exception:
         logger.debug("PvP EventBus emit failed for duel %s", duel_id)
+
+    # ── 3.4b: Arena Points + Season Pass progression ──
+    try:
+        from app.services.arena_points import award_arena_points, AP_RATES
+        from app.services.season_pass import advance_season
+        async with async_session() as ap_db:
+            for uid in [session["player1_id"], session["player2_id"]]:
+                if uid == BOT_ID:
+                    continue
+                is_winner = (winner_id is not None and uid == winner_id)
+                is_draw = judge_result.is_draw
+                if is_draw:
+                    ap_source = "pvp_draw"
+                elif is_winner:
+                    ap_source = "pvp_win"
+                else:
+                    ap_source = "pvp_loss"
+                ap_balance = await award_arena_points(ap_db, uid, ap_source)
+                season_result = await advance_season(uid, AP_RATES[ap_source], ap_db)
+                await _send_to_user(uid, "ap.earned", {
+                    "amount": AP_RATES[ap_source],
+                    "source": ap_source,
+                    "balance": ap_balance,
+                    "season": season_result,
+                })
+            await ap_db.commit()
+    except Exception:
+        logger.debug("AP/Season award failed for duel %s", duel_id, exc_info=True)
 
     # ── 3.5: Cross-module PvP notifications ──
     try:
@@ -1008,6 +1172,788 @@ def _cancel_matchmaking_task(user_id: uuid.UUID) -> None:
         task.cancel()
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# NEW PVP MODES: Rapid Fire, Gauntlet, Team 2v2
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _difficulty_for_rating(rating: float) -> DuelDifficulty:
+    """Determine difficulty tier from a single player's rating."""
+    if rating < 1600:
+        return DuelDifficulty.easy
+    elif rating < 2200:
+        return DuelDifficulty.medium
+    return DuelDifficulty.hard
+
+
+def _escalate_difficulty(base: DuelDifficulty, steps: int) -> DuelDifficulty:
+    """Increase difficulty by N steps (easy -> medium -> hard)."""
+    order = [DuelDifficulty.easy, DuelDifficulty.medium, DuelDifficulty.hard]
+    idx = order.index(base) if base in order else 0
+    return order[min(idx + steps, len(order) - 1)]
+
+
+async def _score_rapid_mini_round(
+    messages: list[dict[str, Any]],
+    archetype: str,
+    difficulty: DuelDifficulty,
+    db,
+) -> dict:
+    """Score a single Rapid Fire mini-round. Returns {selling: 0-15, legal: 0-5, total: 0-20}."""
+    try:
+        seller_score, _ = await judge_round(
+            dialog=messages,
+            seller_id=uuid.UUID(int=0),
+            client_id=BOT_ID,
+            seller_name="Player",
+            client_name="AI Client",
+            archetype=archetype,
+            difficulty=difficulty,
+            round_number=1,
+            db=db,
+        )
+        # Normalize to mini-round scale: selling 0-15 (from 0-50), legal 0-5 (from 0-20)
+        selling = min(15.0, seller_score.selling_score * 15.0 / 50.0)
+        legal = min(5.0, seller_score.legal_accuracy * 5.0 / 20.0)
+        return {"selling": round(selling, 1), "legal": round(legal, 1), "total": round(selling + legal, 1)}
+    except Exception as exc:
+        logger.error("Rapid mini-round scoring failed: %s", exc, exc_info=True)
+        return {"selling": 7.5, "legal": 2.5, "total": 10.0}
+
+
+async def _handle_rapid_fire(ws: WebSocket, user_id: uuid.UUID, match_id: uuid.UUID) -> None:
+    """Handle a full Rapid Fire match: 5 mini-rounds, seller-only, AI client.
+
+    The player sends duel.message messages; after each mini-round (5 msgs or 120s),
+    scores are sent and the next round starts with a new archetype.
+    """
+    try:
+        async with async_session() as db:
+            match = (await db.execute(
+                select(RapidFireMatch).where(RapidFireMatch.id == match_id)
+            )).scalar_one_or_none()
+            if not match:
+                await _send(ws, "error", {"detail": "Rapid Fire match not found"})
+                return
+
+            rating = await get_or_create_rating(user_id, db, rating_type="rapid_fire")
+            base_difficulty = _difficulty_for_rating(rating.rating)
+
+            # Pick 5 different archetypes
+            archetypes = random.sample(
+                _PVP_ARCHETYPES, min(RAPID_FIRE_ROUNDS, len(_PVP_ARCHETYPES))
+            )
+            match.archetypes = archetypes
+            db.add(match)
+            await db.flush()
+
+        mini_scores: list[dict] = []
+        session_key = f"rapid:{match_id}"
+
+        await _send(ws, "rapid.started", {
+            "match_id": str(match_id),
+            "total_rounds": RAPID_FIRE_ROUNDS,
+            "time_per_round": RAPID_FIRE_TIME_LIMIT,
+            "messages_per_round": RAPID_FIRE_MSG_LIMIT,
+        })
+
+        for round_num in range(RAPID_FIRE_ROUNDS):
+            archetype = archetypes[round_num]
+            difficulty = _escalate_difficulty(base_difficulty, round_num // 2)
+
+            await _send(ws, "rapid.round_start", {
+                "round": round_num + 1,
+                "archetype": archetype,
+                "archetype_name": _ARCHETYPE_BRIEFS.get(archetype, {}).get("name", archetype),
+                "difficulty": difficulty.value,
+                "time_limit": RAPID_FIRE_TIME_LIMIT,
+                "message_limit": RAPID_FIRE_MSG_LIMIT,
+            })
+
+            round_messages: list[dict[str, Any]] = []
+            history: list[dict[str, str]] = []
+            round_start = time.time()
+            msg_count = 0
+
+            while msg_count < RAPID_FIRE_MSG_LIMIT:
+                remaining = RAPID_FIRE_TIME_LIMIT - (time.time() - round_start)
+                if remaining <= 0:
+                    await _send(ws, "rapid.round_time_up", {"round": round_num + 1})
+                    break
+
+                try:
+                    raw = await asyncio.wait_for(ws.receive_json(), timeout=remaining)
+                except (asyncio.TimeoutError, WebSocketDisconnect):
+                    break
+
+                msg_type = raw.get("type")
+                if msg_type == "ping":
+                    await _send(ws, "pong")
+                    continue
+                if msg_type != "duel.message":
+                    continue
+
+                text = (raw.get("text") or "").strip()[:2000]
+                if not text:
+                    continue
+
+                text, _ = filter_user_input(text)
+                msg_count += 1
+
+                msg_record = {
+                    "sender_id": str(user_id),
+                    "role": "seller",
+                    "text": text,
+                    "timestamp": time.time(),
+                }
+                round_messages.append(msg_record)
+                history.append({"role": "user", "content": text})
+
+                await _send(ws, "duel.message", {
+                    "sender_role": "seller",
+                    "text": text,
+                    "round": round_num + 1,
+                })
+
+                # Generate bot client reply
+                try:
+                    bot_reply = await generate_bot_reply(
+                        duel_id=f"rapid-{match_id}-r{round_num}",
+                        round_number=1,
+                        archetype=archetype,
+                        difficulty=difficulty,
+                        ai_role="client",
+                        user_text=text,
+                        history=history,
+                        player_id=str(user_id),
+                        scenario_title=None,
+                    )
+                    bot_msg = {
+                        "sender_id": str(BOT_ID),
+                        "role": "client",
+                        "text": bot_reply,
+                        "timestamp": time.time(),
+                    }
+                    round_messages.append(bot_msg)
+                    history.append({"role": "assistant", "content": bot_reply})
+
+                    await _send(ws, "duel.message", {
+                        "sender_role": "client",
+                        "text": bot_reply,
+                        "round": round_num + 1,
+                    })
+                except Exception as exc:
+                    logger.warning("Rapid Fire bot reply failed: %s", exc)
+
+            # Score this mini-round
+            async with async_session() as db:
+                score = await _score_rapid_mini_round(round_messages, archetype, difficulty, db)
+
+            mini_scores.append(score)
+            await _send(ws, "rapid.round_result", {
+                "round": round_num + 1,
+                "score": score,
+                "archetype": archetype,
+            })
+
+            # Clean up bot state for this mini-round
+            cleanup_bot_state(f"rapid-{match_id}-r{round_num}")
+
+        # ── Final scoring ──
+        total = sum(s["total"] for s in mini_scores)
+        normalized = round(total * 100.0 / (RAPID_FIRE_MAX_SCORE * RAPID_FIRE_ROUNDS), 1) if mini_scores else 0.0
+
+        # Apply rating change
+        rating_delta = 0.0
+        async with async_session() as db:
+            match = (await db.execute(
+                select(RapidFireMatch).where(RapidFireMatch.id == match_id)
+            )).scalar_one_or_none()
+            if match:
+                match.mini_scores = mini_scores
+                match.total_score = total
+                match.normalized_score = normalized
+                match.completed_at = datetime.now(timezone.utc)
+                db.add(match)
+
+                # Rating: treat as PvE with multiplier
+                try:
+                    pve_score = 1.0 if normalized >= 70 else (0.5 if normalized >= 40 else 0.0)
+                    _, delta = await update_rating_after_duel(
+                        user_id, BOT_ID, pve_score, True, db,
+                    )
+                    rating_delta = round(delta * RAPID_FIRE_RATING_MULTIPLIER, 1)
+                    match.rating_delta = rating_delta
+                except Exception as exc:
+                    logger.warning("Rapid Fire rating update failed: %s", exc)
+
+                await db.commit()
+
+        # ── Arena Points + Season Pass for Rapid Fire ──
+        ap_data = {}
+        try:
+            from app.services.arena_points import award_arena_points, AP_RATES
+            from app.services.season_pass import advance_season
+            async with async_session() as ap_db:
+                ap_source = "pve_match"
+                ap_balance = await award_arena_points(ap_db, user_id, ap_source)
+                season_result = await advance_season(user_id, AP_RATES[ap_source], ap_db)
+                await ap_db.commit()
+                ap_data = {
+                    "ap_earned": AP_RATES[ap_source],
+                    "ap_source": ap_source,
+                    "ap_balance": ap_balance,
+                    "season": season_result,
+                }
+        except Exception as exc:
+            logger.debug("Rapid Fire AP award failed: %s", exc)
+
+        await _send(ws, "rapid.completed", {
+            "match_id": str(match_id),
+            "total": total,
+            "normalized": normalized,
+            "mini_scores": mini_scores,
+            "rating_delta": rating_delta,
+            **ap_data,
+        })
+
+    except WebSocketDisconnect:
+        logger.info("Rapid Fire disconnected: user=%s match=%s", user_id, match_id)
+    except Exception as exc:
+        logger.error("Rapid Fire error: user=%s match=%s error=%s", user_id, match_id, exc, exc_info=True)
+        try:
+            await _send(ws, "error", {"detail": "Ошибка Rapid Fire режима"})
+        except Exception:
+            pass
+
+
+async def _handle_gauntlet(ws: WebSocket, user_id: uuid.UUID, run_id: uuid.UUID) -> None:
+    """Handle a Gauntlet run: 3-5 consecutive PvE duels with escalating difficulty.
+
+    Player is always seller. 2 losses = elimination. Each duel is a single round.
+    """
+    try:
+        async with async_session() as db:
+            run = (await db.execute(
+                select(GauntletRun).where(GauntletRun.id == run_id)
+            )).scalar_one_or_none()
+            if not run:
+                await _send(ws, "error", {"detail": "Gauntlet run not found"})
+                return
+
+            rating = await get_or_create_rating(user_id, db)
+            base_difficulty = _difficulty_for_rating(rating.rating)
+
+        await _send(ws, "gauntlet.started", {
+            "run_id": str(run_id),
+            "total_duels": run.total_duels,
+            "base_difficulty": base_difficulty.value,
+        })
+
+        duel_scores: list[float] = []
+        duel_ids: list[str] = []
+        difficulties: list[str] = []
+        losses = 0
+
+        for duel_num in range(run.total_duels):
+            difficulty = _escalate_difficulty(base_difficulty, duel_num)
+            archetype = random.choice(_PVP_ARCHETYPES)
+
+            await _send(ws, "gauntlet.duel_start", {
+                "duel_number": duel_num + 1,
+                "total_duels": run.total_duels,
+                "archetype": archetype,
+                "archetype_name": _ARCHETYPE_BRIEFS.get(archetype, {}).get("name", archetype),
+                "difficulty": difficulty.value,
+                "losses": losses,
+                "max_losses": GAUNTLET_MAX_LOSSES,
+                "time_limit": GAUNTLET_TIME_LIMIT,
+                "message_limit": GAUNTLET_MSG_LIMIT,
+            })
+
+            # Run a single-round duel (seller only)
+            round_messages: list[dict[str, Any]] = []
+            history: list[dict[str, str]] = []
+            duel_start = time.time()
+            msg_count = 0
+            duel_session_key = f"gauntlet-{run_id}-d{duel_num}"
+
+            # Generate bot opener (bot is client, player is seller)
+            try:
+                # No opener needed -- player (seller) speaks first in gauntlet
+                pass
+            except Exception:
+                pass
+
+            while msg_count < GAUNTLET_MSG_LIMIT:
+                remaining = GAUNTLET_TIME_LIMIT - (time.time() - duel_start)
+                if remaining <= 0:
+                    await _send(ws, "gauntlet.duel_time_up", {"duel_number": duel_num + 1})
+                    break
+
+                try:
+                    raw = await asyncio.wait_for(ws.receive_json(), timeout=remaining)
+                except (asyncio.TimeoutError, WebSocketDisconnect):
+                    break
+
+                msg_type = raw.get("type")
+                if msg_type == "ping":
+                    await _send(ws, "pong")
+                    continue
+                if msg_type != "duel.message":
+                    continue
+
+                text = (raw.get("text") or "").strip()[:2000]
+                if not text:
+                    continue
+
+                text, _ = filter_user_input(text)
+                msg_count += 1
+
+                msg_record = {
+                    "sender_id": str(user_id),
+                    "role": "seller",
+                    "text": text,
+                    "timestamp": time.time(),
+                }
+                round_messages.append(msg_record)
+                history.append({"role": "user", "content": text})
+
+                await _send(ws, "duel.message", {
+                    "sender_role": "seller",
+                    "text": text,
+                    "round": duel_num + 1,
+                })
+
+                # Bot client reply
+                try:
+                    bot_reply = await generate_bot_reply(
+                        duel_id=duel_session_key,
+                        round_number=1,
+                        archetype=archetype,
+                        difficulty=difficulty,
+                        ai_role="client",
+                        user_text=text,
+                        history=history,
+                        player_id=str(user_id),
+                        scenario_title=None,
+                    )
+                    bot_msg = {
+                        "sender_id": str(BOT_ID),
+                        "role": "client",
+                        "text": bot_reply,
+                        "timestamp": time.time(),
+                    }
+                    round_messages.append(bot_msg)
+                    history.append({"role": "assistant", "content": bot_reply})
+
+                    await _send(ws, "duel.message", {
+                        "sender_role": "client",
+                        "text": bot_reply,
+                        "round": duel_num + 1,
+                    })
+                except Exception as exc:
+                    logger.warning("Gauntlet bot reply failed: %s", exc)
+
+            # Score this duel stage
+            duel_score = 0.0
+            async with async_session() as db:
+                try:
+                    seller_score, _ = await judge_round(
+                        dialog=round_messages,
+                        seller_id=user_id,
+                        client_id=BOT_ID,
+                        seller_name="Player",
+                        client_name="AI Client",
+                        archetype=archetype,
+                        difficulty=difficulty,
+                        round_number=1,
+                        db=db,
+                    )
+                    duel_score = seller_score.total  # selling + legal (0-70 range)
+                except Exception as exc:
+                    logger.error("Gauntlet duel scoring failed: %s", exc, exc_info=True)
+                    duel_score = 35.0  # neutral fallback
+
+            duel_scores.append(duel_score)
+            difficulties.append(difficulty.value)
+            cleanup_bot_state(duel_session_key)
+
+            is_loss = duel_score < GAUNTLET_LOSS_THRESHOLD
+            if is_loss:
+                losses += 1
+
+            await _send(ws, "gauntlet.duel_result", {
+                "duel_number": duel_num + 1,
+                "score": round(duel_score, 1),
+                "is_loss": is_loss,
+                "losses": losses,
+                "max_losses": GAUNTLET_MAX_LOSSES,
+            })
+
+            if losses >= GAUNTLET_MAX_LOSSES:
+                await _send(ws, "gauntlet.eliminated", {
+                    "duel_number": duel_num + 1,
+                    "total_score": round(sum(duel_scores), 1),
+                    "losses": losses,
+                })
+                break
+
+        # ── Final result ──
+        total_score = sum(duel_scores)
+        completed_duels = len(duel_scores)
+        is_eliminated = losses >= GAUNTLET_MAX_LOSSES
+
+        async with async_session() as db:
+            run = (await db.execute(
+                select(GauntletRun).where(GauntletRun.id == run_id)
+            )).scalar_one_or_none()
+            if run:
+                run.completed_duels = completed_duels
+                run.losses = losses
+                run.scores = duel_scores
+                run.difficulties = difficulties
+                run.final_score = total_score
+                run.is_completed = True
+                run.is_eliminated = is_eliminated
+                run.completed_at = datetime.now(timezone.utc)
+
+                # Rating bonus for gauntlet completion (proportional to duels survived)
+                try:
+                    pve_score = 1.0 if not is_eliminated else (0.5 if completed_duels >= 3 else 0.0)
+                    _, delta = await update_rating_after_duel(
+                        user_id, BOT_ID, pve_score, True, db,
+                    )
+                    run.rating_bonus = delta
+                except Exception as exc:
+                    logger.warning("Gauntlet rating update failed: %s", exc)
+
+                db.add(run)
+                await db.commit()
+
+        # ── Arena Points + Season Pass for Gauntlet ──
+        gauntlet_ap_data = {}
+        try:
+            from app.services.arena_points import award_arena_points, AP_RATES
+            from app.services.season_pass import advance_season
+            # Award AP per duel completed in gauntlet
+            total_ap = AP_RATES["pve_match"] * completed_duels
+            async with async_session() as ap_db:
+                ap_balance = await award_arena_points(ap_db, user_id, "pve_match", amount=total_ap)
+                season_result = await advance_season(user_id, total_ap, ap_db)
+                await ap_db.commit()
+                gauntlet_ap_data = {
+                    "ap_earned": total_ap,
+                    "ap_source": "gauntlet",
+                    "ap_balance": ap_balance,
+                    "season": season_result,
+                }
+        except Exception as exc:
+            logger.debug("Gauntlet AP award failed: %s", exc)
+
+        await _send(ws, "gauntlet.completed", {
+            "run_id": str(run_id),
+            "total_score": round(total_score, 1),
+            "completed_duels": completed_duels,
+            "total_duels": run.total_duels if run else GAUNTLET_MIN_DUELS,
+            "losses": losses,
+            "is_eliminated": is_eliminated,
+            "duel_scores": [round(s, 1) for s in duel_scores],
+            "difficulties": difficulties,
+            "rating_bonus": run.rating_bonus if run else 0.0,
+            **gauntlet_ap_data,
+        })
+
+    except WebSocketDisconnect:
+        logger.info("Gauntlet disconnected: user=%s run=%s", user_id, run_id)
+    except Exception as exc:
+        logger.error("Gauntlet error: user=%s run=%s error=%s", user_id, run_id, exc, exc_info=True)
+        try:
+            await _send(ws, "error", {"detail": "Ошибка режима Испытание"})
+        except Exception:
+            pass
+
+
+async def _handle_team_battle(ws: WebSocket, user_id: uuid.UUID, team_id: uuid.UUID) -> None:
+    """Handle Team 2v2 mode (simplified: sequential, not truly parallel).
+
+    Both team members are sellers. Each talks to their own AI client (different archetype).
+    Team score = average of both sellers' scores.
+    This simplified version has players take turns rather than true parallel WS.
+    """
+    try:
+        async with async_session() as db:
+            team = (await db.execute(
+                select(PvPTeam).where(PvPTeam.id == team_id)
+            )).scalar_one_or_none()
+            if not team:
+                await _send(ws, "error", {"detail": "Team not found"})
+                return
+
+            is_player1 = user_id == team.player1_id
+            partner_id = team.player2_id if is_player1 else team.player1_id
+
+        # Register this player in waiting room
+        if team_id not in _team_waiting:
+            _team_waiting[team_id] = {
+                "team": team,
+                "connected": set(),
+                "ready": set(),
+                "scores": {},
+                "completed": False,
+            }
+
+        tw = _team_waiting[team_id]
+        tw["connected"].add(user_id)
+
+        # Choose 2 different archetypes for the two AI clients
+        if "archetypes" not in tw:
+            tw["archetypes"] = random.sample(_PVP_ARCHETYPES, 2)
+
+        my_archetype = tw["archetypes"][0] if is_player1 else tw["archetypes"][1]
+
+        await _send(ws, "team.waiting", {
+            "team_id": str(team_id),
+            "your_archetype": my_archetype,
+            "archetype_name": _ARCHETYPE_BRIEFS.get(my_archetype, {}).get("name", my_archetype),
+            "partner_connected": partner_id in tw["connected"],
+        })
+
+        # Wait for partner (up to 120 seconds)
+        wait_start = time.time()
+        while partner_id not in tw["connected"]:
+            remaining = 120 - (time.time() - wait_start)
+            if remaining <= 0:
+                await _send(ws, "team.timeout", {"detail": "Партнёр не подключился"})
+                _team_waiting.pop(team_id, None)
+                return
+            try:
+                raw = await asyncio.wait_for(ws.receive_json(), timeout=min(5.0, remaining))
+                if raw.get("type") == "ping":
+                    await _send(ws, "pong")
+            except asyncio.TimeoutError:
+                continue
+            except WebSocketDisconnect:
+                tw["connected"].discard(user_id)
+                return
+
+        # Both connected — notify
+        await _send(ws, "team.ready", {
+            "team_id": str(team_id),
+            "your_archetype": my_archetype,
+            "archetype_name": _ARCHETYPE_BRIEFS.get(my_archetype, {}).get("name", my_archetype),
+            "time_limit": TEAM_TIME_LIMIT,
+            "message_limit": TEAM_MSG_LIMIT,
+        })
+
+        # Signal ready
+        tw["ready"].add(user_id)
+        while len(tw["ready"]) < 2:
+            try:
+                raw = await asyncio.wait_for(ws.receive_json(), timeout=10.0)
+                if raw.get("type") == "ping":
+                    await _send(ws, "pong")
+                elif raw.get("type") == "team.ready_ack":
+                    break
+            except asyncio.TimeoutError:
+                if len(tw["ready"]) >= 2:
+                    break
+                continue
+            except WebSocketDisconnect:
+                tw["connected"].discard(user_id)
+                return
+
+        # ── Run this player's individual selling conversation ──
+        async with async_session() as db:
+            rating = await get_or_create_rating(user_id, db, rating_type="team_battle")
+            difficulty = _difficulty_for_rating(rating.rating)
+
+        await _send(ws, "team.round_start", {
+            "archetype": my_archetype,
+            "difficulty": difficulty.value,
+            "time_limit": TEAM_TIME_LIMIT,
+            "message_limit": TEAM_MSG_LIMIT,
+        })
+
+        round_messages: list[dict[str, Any]] = []
+        history: list[dict[str, str]] = []
+        round_start = time.time()
+        msg_count = 0
+        team_duel_key = f"team-{team_id}-{user_id}"
+
+        while msg_count < TEAM_MSG_LIMIT:
+            remaining = TEAM_TIME_LIMIT - (time.time() - round_start)
+            if remaining <= 0:
+                await _send(ws, "team.time_up", {})
+                break
+
+            try:
+                raw = await asyncio.wait_for(ws.receive_json(), timeout=remaining)
+            except (asyncio.TimeoutError, WebSocketDisconnect):
+                break
+
+            msg_type = raw.get("type")
+            if msg_type == "ping":
+                await _send(ws, "pong")
+                continue
+            if msg_type != "duel.message":
+                continue
+
+            text = (raw.get("text") or "").strip()[:2000]
+            if not text:
+                continue
+
+            text, _ = filter_user_input(text)
+            msg_count += 1
+
+            msg_record = {
+                "sender_id": str(user_id),
+                "role": "seller",
+                "text": text,
+                "timestamp": time.time(),
+            }
+            round_messages.append(msg_record)
+            history.append({"role": "user", "content": text})
+
+            await _send(ws, "duel.message", {
+                "sender_role": "seller",
+                "text": text,
+                "round": 1,
+            })
+
+            try:
+                bot_reply = await generate_bot_reply(
+                    duel_id=team_duel_key,
+                    round_number=1,
+                    archetype=my_archetype,
+                    difficulty=difficulty,
+                    ai_role="client",
+                    user_text=text,
+                    history=history,
+                    player_id=str(user_id),
+                    scenario_title=None,
+                )
+                bot_msg = {
+                    "sender_id": str(BOT_ID),
+                    "role": "client",
+                    "text": bot_reply,
+                    "timestamp": time.time(),
+                }
+                round_messages.append(bot_msg)
+                history.append({"role": "assistant", "content": bot_reply})
+
+                await _send(ws, "duel.message", {
+                    "sender_role": "client",
+                    "text": bot_reply,
+                    "round": 1,
+                })
+            except Exception as exc:
+                logger.warning("Team 2v2 bot reply failed: %s", exc)
+
+        # Score this player's conversation
+        my_score = 0.0
+        async with async_session() as db:
+            try:
+                seller_score, _ = await judge_round(
+                    dialog=round_messages,
+                    seller_id=user_id,
+                    client_id=BOT_ID,
+                    seller_name="Player",
+                    client_name="AI Client",
+                    archetype=my_archetype,
+                    difficulty=difficulty,
+                    round_number=1,
+                    db=db,
+                )
+                my_score = seller_score.total
+            except Exception as exc:
+                logger.error("Team 2v2 scoring failed: %s", exc, exc_info=True)
+                my_score = 35.0
+
+        cleanup_bot_state(team_duel_key)
+
+        # Store score and wait for partner
+        tw["scores"][user_id] = my_score
+        await _send(ws, "team.your_score", {
+            "score": round(my_score, 1),
+            "waiting_for_partner": partner_id not in tw["scores"],
+        })
+
+        # Wait for partner to finish (up to TEAM_TIME_LIMIT + 30s buffer)
+        wait_start = time.time()
+        while partner_id not in tw["scores"]:
+            remaining = TEAM_TIME_LIMIT + 30 - (time.time() - wait_start)
+            if remaining <= 0:
+                tw["scores"].setdefault(partner_id, 0.0)
+                break
+            try:
+                raw = await asyncio.wait_for(ws.receive_json(), timeout=min(5.0, remaining))
+                if raw.get("type") == "ping":
+                    await _send(ws, "pong")
+            except asyncio.TimeoutError:
+                continue
+            except WebSocketDisconnect:
+                return
+
+        # ── Team result ──
+        p1_score = tw["scores"].get(team.player1_id, 0.0)
+        p2_score = tw["scores"].get(team.player2_id, 0.0)
+        team_score = (p1_score + p2_score) / 2.0
+
+        await _send(ws, "team.completed", {
+            "team_id": str(team_id),
+            "team_score": round(team_score, 1),
+            "your_score": round(my_score, 1),
+            "partner_score": round(tw["scores"].get(partner_id, 0.0), 1),
+            "archetypes": tw["archetypes"],
+        })
+
+        # Update rating for this player
+        async with async_session() as db:
+            try:
+                pve_score = 1.0 if team_score >= 50 else (0.5 if team_score >= 30 else 0.0)
+                await update_rating_after_duel(
+                    user_id, BOT_ID, pve_score, True, db,
+                )
+                await db.commit()
+            except Exception as exc:
+                logger.warning("Team 2v2 rating update failed: %s", exc)
+
+        # ── Arena Points + Season Pass for Team 2v2 ──
+        try:
+            from app.services.arena_points import award_arena_points, AP_RATES
+            from app.services.season_pass import advance_season
+            async with async_session() as ap_db:
+                ap_source = "pve_match"
+                ap_balance = await award_arena_points(ap_db, user_id, ap_source)
+                season_result = await advance_season(user_id, AP_RATES[ap_source], ap_db)
+                await ap_db.commit()
+                await _send(ws, "ap.earned", {
+                    "amount": AP_RATES[ap_source],
+                    "source": ap_source,
+                    "balance": ap_balance,
+                    "season": season_result,
+                })
+        except Exception as exc:
+            logger.debug("Team 2v2 AP award failed: %s", exc)
+
+        # Cleanup if both players done
+        if len(tw["scores"]) >= 2:
+            _team_waiting.pop(team_id, None)
+
+    except WebSocketDisconnect:
+        logger.info("Team 2v2 disconnected: user=%s team=%s", user_id, team_id)
+        tw = _team_waiting.get(team_id)
+        if tw:
+            tw["connected"].discard(user_id)
+    except Exception as exc:
+        logger.error("Team 2v2 error: user=%s team=%s error=%s", user_id, team_id, exc, exc_info=True)
+        try:
+            await _send(ws, "error", {"detail": "Ошибка режима Командная битва"})
+        except Exception:
+            pass
+
+
 async def pvp_websocket(websocket: WebSocket) -> None:
     await websocket.accept()
     auth = await _auth_websocket(websocket)
@@ -1161,6 +2107,47 @@ async def pvp_websocket(websocket: WebSocket) -> None:
                     "is_pve": True,
                 })
                 continue
+
+            # ── New PvP Modes ───────────────────────────────────────────
+            if msg_type == "rapid_fire.start":
+                match_id_raw = msg.get("match_id") or (msg.get("data") or {}).get("match_id")
+                if not match_id_raw:
+                    await _send(websocket, "error", {"detail": "match_id is required"})
+                    continue
+                try:
+                    rf_match_id = uuid.UUID(str(match_id_raw))
+                except (TypeError, ValueError):
+                    await _send(websocket, "error", {"detail": "Invalid match_id"})
+                    continue
+                # Rapid Fire takes over the WS loop
+                await _handle_rapid_fire(websocket, user_id, rf_match_id)
+                break  # After rapid fire completes, close WS
+
+            if msg_type == "gauntlet.start":
+                run_id_raw = msg.get("run_id") or (msg.get("data") or {}).get("run_id")
+                if not run_id_raw:
+                    await _send(websocket, "error", {"detail": "run_id is required"})
+                    continue
+                try:
+                    g_run_id = uuid.UUID(str(run_id_raw))
+                except (TypeError, ValueError):
+                    await _send(websocket, "error", {"detail": "Invalid run_id"})
+                    continue
+                await _handle_gauntlet(websocket, user_id, g_run_id)
+                break
+
+            if msg_type == "team.start":
+                team_id_raw = msg.get("team_id") or (msg.get("data") or {}).get("team_id")
+                if not team_id_raw:
+                    await _send(websocket, "error", {"detail": "team_id is required"})
+                    continue
+                try:
+                    t_team_id = uuid.UUID(str(team_id_raw))
+                except (TypeError, ValueError):
+                    await _send(websocket, "error", {"detail": "Invalid team_id"})
+                    continue
+                await _handle_team_battle(websocket, user_id, t_team_id)
+                break
 
             await _send(websocket, "error", {"detail": f"Unknown message type: {msg_type}"})
 

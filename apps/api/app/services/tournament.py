@@ -229,17 +229,34 @@ async def award_tournament_prizes(
         return []
 
     xp_tiers = [t.bonus_xp_first, t.bonus_xp_second, t.bonus_xp_third]
+    ap_sources = ["tournament_1st", "tournament_2nd", "tournament_3rd"]
     prizes = []
 
     for i, entry in enumerate(leaderboard[:3]):
         xp = xp_tiers[i] if i < len(xp_tiers) else 0
-        prizes.append({
+        prize_entry = {
             "user_id": entry["user_id"],
             "full_name": entry["full_name"],
             "rank": entry["rank"],
             "score": entry["best_score"],
             "bonus_xp": xp,
-        })
+        }
+
+        # Award Arena Points + Season Pass for tournament placement
+        try:
+            from app.services.arena_points import award_arena_points, AP_RATES
+            from app.services.season_pass import advance_season
+            uid = uuid.UUID(entry["user_id"])
+            ap_source = ap_sources[i] if i < len(ap_sources) else ap_sources[-1]
+            ap_balance = await award_arena_points(db, uid, ap_source)
+            season_result = await advance_season(uid, AP_RATES[ap_source], db)
+            prize_entry["ap_earned"] = AP_RATES[ap_source]
+            prize_entry["ap_balance"] = ap_balance
+            prize_entry["season"] = season_result
+        except Exception as exc:
+            logger.warning("Tournament AP award failed for user %s: %s", entry["user_id"], exc)
+
+        prizes.append(prize_entry)
 
     # Mark tournament as inactive
     t.is_active = False
