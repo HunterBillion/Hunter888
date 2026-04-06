@@ -59,6 +59,7 @@ from app.services.emotion import (
     transition_emotion, transition_emotion_v3,
     get_fake_prompt, save_journey_snapshot,
 )
+from app.services.emotion_v6 import compute_intensity, detect_compound_emotion
 from app.services.session_manager import (
     RateLimitError,
     SessionError,
@@ -1259,14 +1260,38 @@ async def _generate_character_reply(
             await _send(ws, "tts.fallback", {"reason": f"tts_error: {e}"})
 
     if new_emotion != current_emotion:
-        await _send(ws, "emotion.update", {
+        _em_msg = {
             "previous": current_emotion,
             "current": new_emotion,
             "triggers": trigger_result.triggers if trigger_result else [],
             "energy": emotion_meta.get("energy_after", 0),
             "is_fake": emotion_meta.get("is_fake", False),
             "rollback": emotion_meta.get("rollback", False),
-        })
+        }
+        # v6 extensions: intensity + compound emotion
+        try:
+            _energy_val = emotion_meta.get("energy_after", 0.0)
+            _thresh_pos = emotion_meta.get("threshold_pos", 1.0)
+            _thresh_neg = emotion_meta.get("threshold_neg", -1.0)
+            _intensity_level, _intensity_norm = compute_intensity(
+                _energy_val, _thresh_pos, _thresh_neg,
+            )
+            _em_msg["intensity"] = _intensity_level.value  # "low"/"medium"/"high"
+
+            _recent = [current_emotion, new_emotion]
+            _compound = detect_compound_emotion(
+                current_state=new_emotion,
+                intensity=_intensity_level,
+                intensity_value=_intensity_norm,
+                recent_states=_recent,
+                fake_active=emotion_meta.get("is_fake", False),
+                ocean_profile=state.get("ocean_profile"),
+                recent_triggers=[t for t in (trigger_result.triggers if trigger_result else [])],
+            )
+            _em_msg["compound"] = _compound.code if _compound else None
+        except Exception:
+            logger.debug("v6 emotion extensions failed for session %s", session_id)
+        await _send(ws, "emotion.update", _em_msg)
 
     # ── Real-time score hint (L1-L8) — every 3rd message to avoid spam ──
     msg_count = state.get("message_count", 0)

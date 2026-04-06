@@ -140,7 +140,7 @@ SKILL_NAMES_RU = {
 }
 
 SKILL_SCENARIOS = {
-    "empathy": [("rescue", 4), ("couple_call", 5)],
+    "empathy": [("rescue", 4), ("special_couple", 5)],
     "knowledge": [("in_website", 3), ("in_hotline", 4)],
     "objection_handling": [("cold_ad", 5), ("cold_referral", 4)],
     "stress_resistance": [("cold_base", 3), ("rescue", 4)],

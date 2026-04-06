@@ -24,9 +24,8 @@ def upgrade() -> None:
     op.add_column("pvp_duels", sa.Column("mode", sa.String(20), nullable=False, server_default="classic"))
     op.create_index("ix_pvp_duels_mode", "pvp_duels", ["mode"])
 
-    # Extend RatingType enum
-    op.execute("ALTER TYPE ratingtype ADD VALUE IF NOT EXISTS 'team_battle'")
-    op.execute("ALTER TYPE ratingtype ADD VALUE IF NOT EXISTS 'rapid_fire'")
+    # RatingType is VARCHAR(50), not an enum — no ALTER TYPE needed.
+    # New values ('team_battle', 'rapid_fire') will be used directly on INSERT.
 
     # Create pvp_teams table
     op.create_table(
@@ -47,9 +46,9 @@ def upgrade() -> None:
         sa.Column("total_duels", sa.Integer(), nullable=False, server_default="3"),
         sa.Column("completed_duels", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("losses", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("duel_ids", JSONB(), nullable=False, server_default="'[]'::jsonb"),
-        sa.Column("scores", JSONB(), nullable=False, server_default="'[]'::jsonb"),
-        sa.Column("difficulties", JSONB(), nullable=False, server_default="'[]'::jsonb"),
+        sa.Column("duel_ids", JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column("scores", JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column("difficulties", JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
         sa.Column("final_score", sa.Float(), nullable=True),
         sa.Column("rating_bonus", sa.Float(), nullable=True),
         sa.Column("rd_bonus", sa.Float(), nullable=True),
@@ -67,9 +66,9 @@ def upgrade() -> None:
         sa.Column("player1_id", UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("player2_id", UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
         sa.Column("is_pve", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("archetypes", JSONB(), nullable=False, server_default="'[]'::jsonb"),
-        sa.Column("mini_scores", JSONB(), nullable=False, server_default="'[]'::jsonb"),
-        sa.Column("difficulty_progression", JSONB(), nullable=False, server_default="'[]'::jsonb"),
+        sa.Column("archetypes", JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column("mini_scores", JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column("difficulty_progression", JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
         sa.Column("total_score", sa.Float(), nullable=True),
         sa.Column("normalized_score", sa.Float(), nullable=True),
         sa.Column("bonuses", JSONB(), nullable=True),

@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 # revision identifiers
 revision = "20260404_006"
-down_revision = "20260402_005_phase3_fk_indexes_and_cascades"
+down_revision = "20260402_005"
 branch_labels = None
 depends_on = None
 

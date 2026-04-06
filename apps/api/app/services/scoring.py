@@ -68,11 +68,11 @@ class ScoreBreakdown:
     narrative_progression: float  # L9: 0-10
     legal_accuracy: float         # L10: -5 to +5
 
+    total: float                  # 0-100 clamped
+
     # v6 bonus layers (DOC_06)
     adaptation: float = 0.0       # L11: 0-7.5
     time_management: float = 0.0  # L12: 0-5.0
-
-    total: float                  # 0-100 clamped
     details: dict = field(default_factory=dict)
 
     @property
@@ -972,8 +972,41 @@ def _score_adaptation(
         return dot / (na * nb) if na > 0 and nb > 0 else 0.0
 
     # Sub-score 1: archetype_recognition (0-2.5)
+    # Ideal trigger profiles per archetype group (DOC_05 §6.2)
+    ARCHETYPE_IDEAL_TRIGGERS = {
+        "resistance": {"facts": 0.8, "authority": 0.6, "patience": 0.4},
+        "emotional": {"empathy": 0.9, "social_proof": 0.5, "patience": 0.6},
+        "control": {"authority": 0.7, "facts": 0.6, "urgency": 0.5},
+        "avoidance": {"patience": 0.8, "urgency": 0.6, "facts": 0.4},
+        "special": {"empathy": 0.5, "facts": 0.5, "social_proof": 0.5},
+        "cognitive": {"facts": 0.8, "urgency": 0.7, "patience": 0.3},
+        "social": {"empathy": 0.8, "social_proof": 0.6, "patience": 0.4},
+        "temporal": {"empathy": 0.6, "authority": 0.5, "urgency": 0.5},
+        "professional": {"facts": 0.7, "authority": 0.6, "patience": 0.4},
+        "compound": {"empathy": 0.5, "facts": 0.5, "authority": 0.5},
+    }
+
+    # Map archetype_code to group: use first segment before '_' or fallback
+    _arch_group = (archetype_code or "").split("_")[0].lower()
+    if _arch_group not in ARCHETYPE_IDEAL_TRIGGERS:
+        # Heuristic mapping for known prefixes
+        _GROUP_MAP = {
+            "skeptic": "resistance", "denier": "resistance", "legal": "resistance",
+            "angry": "emotional", "crying": "emotional", "anxious": "emotional",
+            "dominant": "control", "micromanager": "control",
+            "ghosting": "avoidance", "passive": "avoidance",
+            "vip": "special", "celebrity": "special",
+            "analytical": "cognitive", "engineer": "cognitive",
+            "family": "social", "community": "social",
+            "busy": "temporal", "deadline": "temporal",
+            "expert": "professional", "cfo": "professional",
+        }
+        _arch_group = _GROUP_MAP.get(_arch_group, "compound")
+
     actual_triggers = _extract_triggers(user_messages)
-    recognition_score = 1.25  # default: neutral
+    ideal_triggers = ARCHETYPE_IDEAL_TRIGGERS.get(_arch_group, ARCHETYPE_IDEAL_TRIGGERS["compound"])
+    _sim = _cosine(actual_triggers, ideal_triggers)
+    recognition_score = min(2.5, max(0.0, _sim * 2.5))
 
     # Sub-score 2: style_shift (0-2.5)
     style_shift_score = 1.5  # default
@@ -999,8 +1032,26 @@ def _score_adaptation(
             else:
                 style_shift_score = 0.5
 
-    # Sub-score 3: archetype_counter (0-2.5) — requires archetype weakness data
-    counter_score = 1.0  # default; will be enhanced with archetype configs
+    # Sub-score 3: archetype_counter (0-2.5)
+    # Checks if manager used the archetype's weakness trigger or
+    # matched the recommended approach for the archetype group.
+    counter_score = 1.0  # baseline
+    if archetype_code and emotion_timeline:
+        # If client reached deal/negotiating → manager found the right approach
+        final_states = [e.get("state") for e in emotion_timeline[-3:] if "state" in e]
+        if any(s in ("deal", "negotiating", "considering") for s in final_states):
+            counter_score = 2.0
+            # Bonus: if reached deal quickly (< 60% of messages)
+            deal_idx = next(
+                (i for i, e in enumerate(emotion_timeline) if e.get("state") in ("deal", "negotiating")),
+                len(emotion_timeline),
+            )
+            if deal_idx < len(emotion_timeline) * 0.6:
+                counter_score = 2.5
+        elif any(s in ("curious",) for s in final_states):
+            counter_score = 1.5
+        elif any(s in ("hostile", "hangup") for s in final_states):
+            counter_score = 0.0
 
     total = min(7.5, recognition_score + style_shift_score + counter_score)
     adapt_details = {

@@ -89,14 +89,14 @@ LOSS_STAGE_SCENARIO_MAP: dict[str, list[ScenarioCode]] = {
     "contacted": [ScenarioCode.warm_callback, ScenarioCode.warm_noanswer, ScenarioCode.warm_refused],
     # Lost during interest/consultation → objection handling, rescue
     "interested": [ScenarioCode.in_website, ScenarioCode.in_hotline, ScenarioCode.rescue],
-    "consultation": [ScenarioCode.in_hotline, ScenarioCode.rescue, ScenarioCode.couple_call],
+    "consultation": [ScenarioCode.in_hotline, ScenarioCode.rescue, ScenarioCode.special_couple],
     # Lost during thinking → persistence / rescue training
     "thinking": [ScenarioCode.warm_dropped, ScenarioCode.rescue, ScenarioCode.warm_refused],
     # Lost after consent → document collection failures → upsell/vip
     "consent_given": [ScenarioCode.upsell, ScenarioCode.vip_debtor],
     "contract_signed": [ScenarioCode.upsell, ScenarioCode.vip_debtor],
     # Consent revoked → rescue / couple call
-    "consent_revoked": [ScenarioCode.rescue, ScenarioCode.couple_call],
+    "consent_revoked": [ScenarioCode.rescue, ScenarioCode.special_couple],
     # Paused → warm follow-up
     "paused": [ScenarioCode.warm_callback, ScenarioCode.warm_dropped],
 }
@@ -109,13 +109,13 @@ REASON_KEYWORD_MAP: dict[str, list[ScenarioCode]] = {
     "передумал": [ScenarioCode.warm_refused, ScenarioCode.rescue],
     "не берёт": [ScenarioCode.warm_noanswer, ScenarioCode.warm_dropped],
     "не отвечает": [ScenarioCode.warm_noanswer, ScenarioCode.warm_dropped],
-    "супруг": [ScenarioCode.couple_call],
-    "жена": [ScenarioCode.couple_call],
-    "муж": [ScenarioCode.couple_call],
+    "супруг": [ScenarioCode.special_couple],
+    "жена": [ScenarioCode.special_couple],
+    "муж": [ScenarioCode.special_couple],
     "не доверяет": [ScenarioCode.cold_referral, ScenarioCode.in_social],
     "auto_timeout": [ScenarioCode.warm_dropped, ScenarioCode.warm_noanswer],
     "рефинанс": [ScenarioCode.rescue, ScenarioCode.vip_debtor],
-    "партнёр": [ScenarioCode.cold_partner, ScenarioCode.couple_call],
+    "партнёр": [ScenarioCode.cold_partner, ScenarioCode.special_couple],
 }
 
 SCENARIO_NAMES: dict[str, str] = {
@@ -132,7 +132,7 @@ SCENARIO_NAMES: dict[str, str] = {
     "in_social": "Входящий (соцсети)",
     "upsell": "Допродажа",
     "rescue": "Спасение клиента",
-    "couple_call": "Звонок с супругом",
+    "special_couple": "Звонок с супругом",
     "vip_debtor": "VIP-должник",
 }
 

@@ -1394,6 +1394,18 @@ async def generate_response(
     """
     if character_prompt_path:
         character_prompt = load_prompt(character_prompt_path)
+        # Hook: try DB-backed prompt_registry first (DOC_16 integration)
+        try:
+            from app.services.prompt_registry import load_archetype_prompt_db
+            from app.database import async_session as _llm_async_session
+            # Extract archetype code from path: "characters/skeptic_v2.md" → "skeptic"
+            _arch_slug = character_prompt_path.replace("characters/", "").split("_")[0].split(".")[0]
+            async with _llm_async_session() as _pr_db:
+                _db_prompt = await load_archetype_prompt_db(_arch_slug, db=_pr_db)
+                if _db_prompt:
+                    character_prompt = _db_prompt
+        except Exception:
+            pass  # Fallback: use file-loaded prompt
         guardrails = load_prompt("guardrails.md")
         full_system = _build_system_prompt(
             character_prompt, guardrails, emotion_state,

@@ -2,7 +2,7 @@ from app.models.user import User, Team, UserConsent, UserFriendship
 from app.models.character import Character, Objection
 from app.models.scenario import Scenario, ScenarioTemplate, ScenarioCode, ScenarioType
 from app.models.script import Script, Checkpoint, ScriptEmbedding
-from app.models.training import TrainingSession, Message, AssignedTraining
+from app.models.training import TrainingSession, Message, AssignedTraining, CallRecord, SessionReport
 from app.models.analytics import Achievement, UserAchievement, LeaderboardSnapshot, ApiLog
 from app.models.roleplay import (
     ArchetypeCode,
@@ -33,7 +33,9 @@ from app.models.progress import (
     SessionHistory,
     LevelDefinition,
     AchievementDefinition,
+    EarnedAchievement,
     WeeklyReport,
+    ProgressLeaderboardSnapshot,
 )
 from app.models.checkpoint import CheckpointDefinition, UserCheckpoint
 from app.models.voice import (
@@ -70,6 +72,13 @@ from app.models.roleplay import (
     EpisodicMemory,
     PersonalityProfile,
     StoryStageDirection,
+    TrapCascade,
+)
+from app.models.behavior import (
+    BehaviorSnapshot,
+    EmotionProfile,
+    ProgressTrend,
+    DailyAdvice,
 )
 from app.models.game_crm import (
     GameClientEvent,
@@ -107,13 +116,14 @@ from app.models.knowledge import (
     QuizChallenge,
     QuizMode,
     QuizSessionStatus,
+    UserAnswerHistory,
     # DOC_11: Knowledge v2 models
     DebateSession,
     TeamQuizTeam,
     DailyChallenge,
     DailyChallengeEntry,
 )
-from app.models.rag import ChunkUsageLog
+from app.models.rag import ChunkUsageLog, LegalKnowledgeChunk, LegalValidationResult
 from app.models.tournament import (
     BracketMatch,
     BracketMatchStatus,
@@ -266,4 +276,17 @@ __all__ = [
     "XPLog",
     "PromptVersion",
     "CrossRecommendationCache",
+    # Previously missing exports (GAP-2 fix)
+    "CallRecord",
+    "SessionReport",
+    "EarnedAchievement",
+    "ProgressLeaderboardSnapshot",
+    "LegalKnowledgeChunk",
+    "LegalValidationResult",
+    "UserAnswerHistory",
+    "BehaviorSnapshot",
+    "EmotionProfile",
+    "ProgressTrend",
+    "DailyAdvice",
+    "TrapCascade",
 ]

@@ -83,7 +83,7 @@ CATEGORY_TO_TRAINING_FOCUS: dict[str, dict] = {
     "rights": {
         "focus": "Права должника",
         "trap_types": ["rights_ignorance"],
-        "scenario_boost": ["rescue", "couple_call"],
+        "scenario_boost": ["rescue", "special_couple"],
     },
 }
 

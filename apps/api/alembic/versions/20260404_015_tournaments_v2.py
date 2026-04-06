@@ -79,7 +79,7 @@ def upgrade() -> None:
         sa.Column("team_a_score", sa.Float(), server_default="0.0"),
         sa.Column("team_b_score", sa.Float(), server_default="0.0"),
         sa.Column("winner_team_id", UUID(as_uuid=True), sa.ForeignKey("tournament_teams.id", ondelete="SET NULL"), nullable=True),
-        sa.Column("individual_duels", JSONB(), server_default="'[]'::jsonb"),
+        sa.Column("individual_duels", JSONB(), server_default=sa.text("'[]'::jsonb")),
         sa.Column("status", sa.String(20), server_default="'pending'"),
         sa.Column("scheduled_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),

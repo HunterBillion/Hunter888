@@ -164,7 +164,7 @@ class TournamentTheme(Base):
     archetype_filter: Mapped[list] = mapped_column(JSONB, nullable=False)
     difficulty_filter: Mapped[str | None] = mapped_column(String(20), nullable=True)
     scenario_category: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    icon_emoji: Mapped[str] = mapped_column(String(10), nullable=False, default="\u{1F3C6}")
+    icon_emoji: Mapped[str] = mapped_column(String(10), nullable=False, default="\U0001F3C6")
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

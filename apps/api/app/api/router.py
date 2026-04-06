@@ -75,3 +75,13 @@ api_router.include_router(behavior_router, tags=["behavior"])
 from app.api.navigator import router as navigator_router
 
 api_router.include_router(navigator_router, tags=["navigator"])
+
+# Progression — Hunter Score, Arena Points, Catch-Up (DOC_14/DOC_13/DOC_04)
+from app.api.progression import router as progression_router_v2
+
+api_router.include_router(progression_router_v2, prefix="/progression", tags=["progression"])
+
+# Prompt Registry CRUD — Methodologist/Admin prompt management (DOC_16)
+from app.api.prompts import router as prompts_router
+
+api_router.include_router(prompts_router, prefix="/prompts", tags=["prompts"])

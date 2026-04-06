@@ -52,7 +52,7 @@ def upgrade() -> None:
         sa.Column("matches_played", sa.Integer(), server_default="0"),
         sa.Column("wins", sa.Integer(), server_default="0"),
         sa.Column("losses", sa.Integer(), server_default="0"),
-        sa.Column("duel_ids", JSONB(), server_default="'[]'::jsonb"),
+        sa.Column("duel_ids", JSONB(), server_default=sa.text("'[]'::jsonb")),
         sa.Column("result", sa.String(20), nullable=True),
         sa.Column("started_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),

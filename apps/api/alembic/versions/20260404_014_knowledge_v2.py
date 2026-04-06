@@ -35,7 +35,7 @@ def upgrade() -> None:
         sa.Column("player_position", sa.Text(), nullable=False),
         sa.Column("ai_position", sa.Text(), nullable=False),
         sa.Column("total_rounds", sa.Integer(), nullable=False, server_default="5"),
-        sa.Column("rounds_data", JSONB(), nullable=False, server_default="'[]'::jsonb"),
+        sa.Column("rounds_data", JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
     )
     op.create_index("ix_debate_sessions_quiz", "debate_sessions", ["quiz_session_id"])

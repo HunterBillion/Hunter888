@@ -210,6 +210,56 @@ def compose_session_prompt(
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts" / "characters"
 
 
+async def load_archetype_prompt_db(
+    archetype_code: str,
+    version: str = "v2",
+    db=None,
+) -> str | None:
+    """Load archetype prompt from DB (prompt_versions table), fall back to filesystem.
+
+    Priority: DB (active, matching version) → DB (active, any version) → File → None.
+    """
+    if db is not None:
+        try:
+            from sqlalchemy import select
+            from app.models.prompt_version import PromptVersion
+
+            # Try exact version
+            result = await db.execute(
+                select(PromptVersion.content)
+                .where(
+                    PromptVersion.prompt_type == "archetype",
+                    PromptVersion.prompt_key == archetype_code,
+                    PromptVersion.version == version,
+                    PromptVersion.is_active == True,  # noqa: E712
+                )
+                .limit(1)
+            )
+            row = result.scalar_one_or_none()
+            if row:
+                return row
+
+            # Try any active version
+            result = await db.execute(
+                select(PromptVersion.content)
+                .where(
+                    PromptVersion.prompt_type == "archetype",
+                    PromptVersion.prompt_key == archetype_code,
+                    PromptVersion.is_active == True,  # noqa: E712
+                )
+                .order_by(PromptVersion.created_at.desc())
+                .limit(1)
+            )
+            row = result.scalar_one_or_none()
+            if row:
+                return row
+        except Exception as exc:
+            logger.warning("DB prompt load failed for %s: %s — falling back to file", archetype_code, exc)
+
+    # Fallback: filesystem
+    return load_archetype_prompt(archetype_code, version)
+
+
 def load_archetype_prompt(archetype_code: str, version: str = "v2") -> str | None:
     """Load archetype prompt from file system. Returns None if not found."""
     path = PROMPTS_DIR / f"{archetype_code}_{version}.md"

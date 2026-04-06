@@ -109,7 +109,7 @@ SKILL_SCENARIO_MAP: dict[str, list[str]] = {
     "empathy": ["in_hotline", "warm_callback", "rescue"],
     "knowledge": ["in_website", "cold_ad", "upsell"],
     "objection_handling": ["cold_base", "warm_refused", "cold_partner"],
-    "stress_resistance": ["cold_base", "rescue", "couple_call"],
+    "stress_resistance": ["cold_base", "rescue", "special_couple"],
     "closing": ["in_website", "warm_callback", "in_social"],
     "qualification": ["cold_ad", "cold_base", "in_website", "in_social"],
 }
