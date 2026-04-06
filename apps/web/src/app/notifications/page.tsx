@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Bell, Check, CheckCheck, Loader2, Inbox } from "lucide-react";
+import { Check, CheckCheck, Loader2, Inbox } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { AppNotification } from "@/types";
+import { logger } from "@/lib/logger";
 
 type TabFilter = "all" | "unread";
 
@@ -25,7 +26,7 @@ export default function NotificationsPage() {
       const all: AppNotification[] = data.items || [];
       setUnreadCount(data.unread_count || 0);
       setItems(tab === "unread" ? all.filter((n) => !n.read_at) : all);
-    } catch { /* ignore */ }
+    } catch (err) { logger.error("Failed to fetch notifications:", err); }
     setLoading(false);
   }, [tab]);
 
@@ -70,19 +71,16 @@ export default function NotificationsPage() {
     <AuthLayout>
       <div className="panel-grid-bg min-h-screen">
         <div className="mx-auto max-w-2xl px-4 py-8">
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+        {/* Header — compact */}
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Bell size={20} style={{ color: "var(--accent)" }} />
-              <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
-                УВЕДОМЛЕНИЯ
-              </h1>
-            </div>
+            <span className="text-sm" style={{ color: "var(--text-muted)" }}>
+              {unreadCount > 0 ? `${unreadCount} непрочитанных` : "Все прочитано"}
+            </span>
             {unreadCount > 0 && (
               <motion.button
                 onClick={markAllRead}
-                className="flex items-center gap-1.5 text-xs font-mono transition-colors"
+                className="flex items-center gap-1.5 text-xs transition-colors"
                 style={{ color: "var(--accent)" }}
                 whileTap={{ scale: 0.95 }}
               >
@@ -104,6 +102,7 @@ export default function NotificationsPage() {
                 border: `1px solid ${tab === t.key ? "var(--accent)" : "var(--border-color)"}`,
                 color: tab === t.key ? "var(--accent)" : "var(--text-muted)",
               }}
+              whileHover={{ scale: 1.03, borderColor: "var(--border-hover)" }}
               whileTap={{ scale: 0.97 }}
             >
               {t.label}
@@ -133,6 +132,10 @@ export default function NotificationsPage() {
                 className="glass-panel p-4 flex items-start gap-3 cursor-pointer"
                 style={{ background: n.read_at ? undefined : "var(--accent-muted)" }}
                 onClick={() => !n.read_at && markRead(n.id)}
+                onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !n.read_at) { e.preventDefault(); markRead(n.id); } }}
+                role="button"
+                tabIndex={0}
+                aria-label={`${n.read_at ? "Прочитано" : "Отметить как прочитанное"}: ${n.title}`}
               >
                 {/* Unread indicator */}
                 <div className="mt-1 shrink-0">
@@ -148,7 +151,7 @@ export default function NotificationsPage() {
                     <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                       {n.title}
                     </span>
-                    <span className="text-[10px] font-mono shrink-0 ml-3" style={{ color: "var(--text-muted)" }}>
+                    <span className="text-xs font-mono shrink-0 ml-3" style={{ color: "var(--text-muted)" }}>
                       {formatDate(n.created_at)}
                     </span>
                   </div>

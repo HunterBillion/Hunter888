@@ -14,7 +14,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
       attribute="class"
       defaultTheme="dark"
       enableSystem={false}
-      storageKey="vh-theme"
     >
       <NotificationWSProvider>
         {children}

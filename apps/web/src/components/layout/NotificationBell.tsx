@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, ExternalLink, Check, Wifi, WifiOff, Swords } from "lucide-react";
@@ -8,6 +9,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import type { AppNotification } from "@/types";
+import { logger } from "@/lib/logger";
 
 /**
  * NotificationBell — reads from useNotificationStore (populated by NotificationWSProvider).
@@ -58,7 +60,7 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
   // Mark read — try REST API, update store
   const handleMarkRead = useCallback((id: string) => {
     storeMarkRead(id);
-    api.post(`/notifications/${id}/read`, {}).catch((err) => { console.error("Failed to mark notification as read:", err); });
+    api.post(`/notifications/${id}/read`, {}).catch((err) => { logger.error("Failed to mark notification as read:", err); });
   }, [storeMarkRead]);
 
   const formatTime = (iso: string) => {
@@ -77,72 +79,96 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
     success: { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.25)", color: "#22C55E" },
     consent: { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.25)", color: "#22C55E" },
     warning: { bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)", color: "#F59E0B" },
-    reminder: { bg: "rgba(139,92,246,0.1)", border: "rgba(139,92,246,0.25)", color: "#8B5CF6" },
+    reminder: { bg: "rgba(99,102,241,0.1)", border: "rgba(99,102,241,0.25)", color: "#6366F1" },
     achievement: { bg: "rgba(255,215,0,0.1)", border: "rgba(255,215,0,0.25)", color: "#FFD700" },
     pvp_invitation: { bg: "rgba(255,215,0,0.12)", border: "rgba(255,215,0,0.3)", color: "#FFD700" },
   };
 
   const router = useRouter();
 
+  // Portal target for toasts — render outside header DOM to guarantee zero layout interference
+  const toastPortal = typeof document !== "undefined"
+    ? createPortal(
+        <div
+          className="fixed z-[9000] flex flex-col gap-2.5 pointer-events-none"
+          style={{
+            top: "4.5rem",
+            right: "1rem",
+            maxWidth: "min(360px, calc(100vw - 2rem))",
+          }}
+        >
+          <AnimatePresence mode="popLayout">
+            {toasts.map((toast) => {
+              const colors = toastColors[toast.type] || toastColors.info;
+              const isPvPInvite = toast.type === "pvp_invitation" && toast.challenger_id;
+
+              return (
+                <motion.div
+                  key={toast.id}
+                  initial={{ opacity: 0, x: 60, scale: 0.85, filter: "blur(4px)" }}
+                  animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0px)" }}
+                  exit={{ opacity: 0, x: 80, scale: 0.85, filter: "blur(4px)" }}
+                  transition={{ type: "spring", stiffness: 420, damping: 28 }}
+                  className={`pointer-events-auto rounded-2xl px-4 py-3.5 text-xs font-medium ${!isPvPInvite ? "cursor-pointer" : ""}`}
+                  onClick={!isPvPInvite ? () => removeToast(toast.id) : undefined}
+                  style={{
+                    background: colors.bg,
+                    border: `1px solid ${colors.border}`,
+                    color: colors.color,
+                    backdropFilter: "blur(24px) saturate(1.4)",
+                    WebkitBackdropFilter: "blur(24px) saturate(1.4)",
+                    boxShadow: `0 8px 32px rgba(0,0,0,0.2), 0 0 0 0.5px ${colors.border}`,
+                  }}
+                >
+                  <div className="font-semibold flex items-center gap-2">
+                    {isPvPInvite && <Swords size={14} />}
+                    {toast.title}
+                  </div>
+                  {toast.body && <div className="mt-0.5 opacity-80">{toast.body}</div>}
+                  {/* Auto-dismiss progress bar */}
+                  <motion.div
+                    className="mt-2 h-[1.5px] rounded-full"
+                    style={{ background: colors.color, opacity: 0.3 }}
+                    initial={{ width: "100%" }}
+                    animate={{ width: "0%" }}
+                    transition={{ duration: 5, ease: "linear" }}
+                  />
+                  {isPvPInvite ? (
+                    <div className="mt-2 flex gap-2" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-opacity hover:opacity-90"
+                        style={{ background: "rgba(34,197,94,0.3)", color: "#22C55E" }}
+                        onClick={() => {
+                          removeToast(toast.id);
+                          router.push(`/pvp?accept=${toast.challenger_id}`);
+                        }}
+                      >
+                        Принять
+                      </button>
+                      <button
+                        type="button"
+                        className="px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider opacity-70 hover:opacity-100 transition-opacity"
+                        style={{ color: colors.color }}
+                        onClick={() => removeToast(toast.id)}
+                      >
+                        Отказать
+                      </button>
+                    </div>
+                  ) : null}
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>,
+        document.body,
+      )
+    : null;
+
   return (
     <>
-      {/* Toast notifications from store */}
-      <div className="fixed top-24 right-4 z-[220] flex flex-col gap-2 pointer-events-none">
-        <AnimatePresence>
-          {toasts.map((toast) => {
-            const style = toastColors[toast.type] || toastColors.info;
-            const isPvPInvite = toast.type === "pvp_invitation" && toast.challenger_id;
-
-            return (
-              <motion.div
-                key={toast.id}
-                initial={{ opacity: 0, x: 60, scale: 0.9 }}
-                animate={{ opacity: 1, x: 0, scale: 1 }}
-                exit={{ opacity: 0, x: 60, scale: 0.9 }}
-                transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                className={`pointer-events-auto rounded-xl px-4 py-3 text-xs font-medium max-w-xs ${!isPvPInvite ? "cursor-pointer" : ""}`}
-                onClick={!isPvPInvite ? () => removeToast(toast.id) : undefined}
-                style={{
-                  background: style.bg,
-                  border: `1px solid ${style.border}`,
-                  color: style.color,
-                  backdropFilter: "blur(12px)",
-                  boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
-                }}
-              >
-                <div className="font-semibold flex items-center gap-2">
-                  {isPvPInvite && <Swords size={14} />}
-                  {toast.title}
-                </div>
-                {toast.body && <div className="mt-0.5 opacity-80">{toast.body}</div>}
-                {isPvPInvite ? (
-                  <div className="mt-2 flex gap-2" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      className="px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-opacity hover:opacity-90"
-                      style={{ background: "rgba(34,197,94,0.3)", color: "#22C55E" }}
-                      onClick={() => {
-                        removeToast(toast.id);
-                        router.push(`/pvp?accept=${toast.challenger_id}`);
-                      }}
-                    >
-                      Принять
-                    </button>
-                    <button
-                      type="button"
-                      className="px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider opacity-70 hover:opacity-100 transition-opacity"
-                      style={{ color: style.color }}
-                      onClick={() => removeToast(toast.id)}
-                    >
-                      Отказать
-                    </button>
-                  </div>
-                ) : null}
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-      </div>
+      {/* Toast notifications — portaled to document.body, never affects header layout */}
+      {toastPortal}
 
       <div className="relative" ref={dropdownRef}>
         <motion.button
@@ -158,7 +184,7 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
+              className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center rounded-full px-1 text-xs font-bold text-white"
               style={{ background: "var(--neon-red, #FF3333)" }}
             >
               {unread > 99 ? "99+" : unread}
@@ -179,12 +205,13 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -4, scale: 0.95 }}
               transition={{ duration: 0.15 }}
-              className="absolute right-0 top-full mt-3 w-80 rounded-[22px] overflow-hidden z-[70]"
+              className="absolute right-0 top-full mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-[22px] overflow-hidden z-[70]"
               style={{
-                background: "linear-gradient(180deg, rgba(8,8,12,0.98), rgba(14,16,22,0.96))",
-                backdropFilter: "blur(24px)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                boxShadow: "0 24px 60px rgba(0,0,0,0.52)",
+                background: "var(--header-bg)",
+                backdropFilter: "blur(28px) saturate(1.4)",
+                WebkitBackdropFilter: "blur(28px) saturate(1.4)",
+                border: "1px solid var(--header-border)",
+                boxShadow: "var(--header-shadow)",
               }}
             >
               {/* Header */}
@@ -200,7 +227,7 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
                   )}
                 </div>
                 {unread > 0 && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full"
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded-full"
                     style={{ background: "rgba(255,51,51,0.1)", color: "var(--neon-red, #FF3333)" }}
                   >
                     {unread} новых
@@ -219,6 +246,9 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
                   items.map((n) => (
                     <motion.div
                       key={n.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${n.read ? "Прочитано" : "Непрочитано"}: ${n.title}`}
                       className="flex items-start gap-3 px-4 py-3 transition-colors cursor-pointer"
                       style={{
                         background: n.read ? "transparent" : "var(--accent-muted)",
@@ -226,6 +256,12 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
                       }}
                       whileHover={{ background: "var(--bg-tertiary)" }}
                       onClick={() => !n.read && handleMarkRead(n.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          if (!n.read) handleMarkRead(n.id);
+                        }
+                      }}
                     >
                       {/* Unread dot */}
                       <div className="mt-1.5 shrink-0">
@@ -239,10 +275,10 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
                         <div className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
                           {n.title}
                         </div>
-                        <div className="text-[11px] mt-0.5 line-clamp-2" style={{ color: "var(--text-muted)" }}>
+                        <div className="text-xs mt-0.5 line-clamp-2" style={{ color: "var(--text-muted)" }}>
                           {n.body || ""}
                         </div>
-                        <div className="text-[9px] font-mono mt-1" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
+                        <div className="text-xs font-mono mt-1" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
                           {formatTime(n.created_at)}
                         </div>
                       </div>

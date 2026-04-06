@@ -58,6 +58,20 @@ TIER_MIN_DIFFICULTY: dict[ReputationTier, int] = {
     ReputationTier.hunter: 6,
 }
 
+# Tier → client warmth modifier (DOC_03 §26: affects initial PAD.Pleasure)
+TIER_CLIENT_WARMTH: dict[ReputationTier, float] = {
+    ReputationTier.trainee: 0.3,     # Warm start — forgiving
+    ReputationTier.manager: 0.1,     # Standard
+    ReputationTier.senior: 0.0,      # Neutral
+    ReputationTier.expert: -0.1,     # Cold start
+    ReputationTier.hunter: -0.2,     # Hostile start — frequent traps
+}
+
+# EMA smoothing parameters for reputation score
+REPUTATION_EMA_ALPHA = 0.15     # new_score = 0.15 × session + 0.85 × old
+REPUTATION_PASSIVE_DECAY = -2   # per day after 7 days inactivity
+REPUTATION_DEFAULT_SCORE = 50   # Starting score = Senior Manager tier
+
 # Tier → badge icon
 TIER_BADGES: dict[ReputationTier, str] = {
     ReputationTier.trainee: "🟢",

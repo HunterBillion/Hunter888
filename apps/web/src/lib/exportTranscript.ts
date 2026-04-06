@@ -45,7 +45,7 @@ function formatTranscript(meta: TranscriptMeta, messages: TranscriptMessage[]): 
   }
 
   lines.push("---");
-  lines.push(`_Экспортировано из VibeHunter ${new Date().toLocaleDateString("ru-RU")}_`);
+  lines.push(`_Экспортировано из Hunter888 ${new Date().toLocaleDateString("ru-RU")}_`);
 
   return lines.join("\n");
 }
@@ -68,14 +68,45 @@ export function downloadTranscript(meta: TranscriptMeta, messages: TranscriptMes
 }
 
 /**
+ * Copies text to clipboard with fallback for non-HTTPS / restricted contexts.
+ */
+async function clipboardWrite(text: string): Promise<boolean> {
+  // Modern Clipboard API (requires secure context)
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to legacy fallback
+    }
+  }
+  // Legacy fallback using textarea + execCommand
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Copies transcript to clipboard.
  */
 export async function copyTranscript(meta: TranscriptMeta, messages: TranscriptMessage[]): Promise<boolean> {
   const content = formatTranscript(meta, messages);
-  try {
-    await navigator.clipboard.writeText(content);
-    return true;
-  } catch {
-    return false;
-  }
+  return clipboardWrite(content);
+}
+
+/**
+ * Copies arbitrary text to clipboard (e.g. URL for sharing).
+ */
+export async function copyToClipboard(text: string): Promise<boolean> {
+  return clipboardWrite(text);
 }

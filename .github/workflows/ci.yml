@@ -18,6 +18,40 @@ jobs:
       run:
         working-directory: apps/api
 
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: trainer
+          POSTGRES_PASSWORD: trainer_pass
+          POSTGRES_DB: trainer_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trainer -d trainer_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://trainer:trainer_pass@localhost:5432/trainer_db
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ci-test-secret-key-not-for-production
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: "7"
+      GEMINI_API_KEY: "test-fake-key"
+      ENVIRONMENT: test
+
     steps:
       - uses: actions/checkout@v4
 
@@ -49,6 +83,9 @@ jobs:
 
       - name: Audit Python dependencies
         run: pip install pip-audit && pip-audit --strict --desc 2>/dev/null || echo "::warning::pip-audit found vulnerabilities"
+
+      - name: Run migrations
+        run: python -m alembic upgrade head
 
       - name: Test
         run: pytest -v --tb=short --cov=app --cov-report=term-missing --cov-fail-under=70

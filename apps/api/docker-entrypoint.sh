@@ -65,7 +65,18 @@ if ! python -m alembic upgrade head; then
     fi
 fi
 
-log "Migrations complete. Starting API..."
+log "Migrations complete."
+
+# ── Seed database ─────────────────────────────────────────────────────
+# Idempotent: seed_db.py checks if data exists before inserting.
+log "Running database seed (idempotent)..."
+if python -m scripts.seed_db; then
+    log "Seed complete."
+else
+    log "WARNING: Seed script failed (non-critical, continuing startup)."
+fi
+
+log "Starting API..."
 
 # Start the application in background and track PID for graceful shutdown
 "$@" &

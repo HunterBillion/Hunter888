@@ -10,6 +10,8 @@ import { usePvPStore } from "@/stores/usePvPStore";
 import { DuelChat } from "@/components/pvp/DuelChat";
 import { RoundIndicator } from "@/components/pvp/RoundIndicator";
 import { DuelResult } from "@/components/pvp/DuelResult";
+import { Confetti } from "@/components/ui/Confetti";
+import { useScreenShake } from "@/components/ui/ScreenShake";
 import { api } from "@/lib/api";
 import type { PvPDuel } from "@/types";
 
@@ -18,6 +20,8 @@ export default function DuelPage() {
   const router = useRouter();
   const duelId = params.id as string;
   const store = usePvPStore();
+  const shake = useScreenShake();
+  const [confettiTrigger, setConfettiTrigger] = useState(0);
   const [input, setInput] = useState("");
   const [duelMeta, setDuelMeta] = useState<PvPDuel | null>(null);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
@@ -106,8 +110,19 @@ export default function DuelPage() {
           store.setTimeRemaining(0);
           break;
 
-        case "duel.result":
+        case "duel.result": {
           if (timerRef.current) clearInterval(timerRef.current);
+          // Celebration effects
+          const winnerId = typeof d.winner_id === "string" ? d.winner_id : null;
+          const userId = usePvPStore.getState().rating?.user_id;
+          const isWin = userId != null && winnerId === userId;
+          const isDraw = Boolean(d.is_draw);
+          if (isWin) {
+            setConfettiTrigger((c) => c + 1);
+            shake("victory");
+          } else if (!isDraw) {
+            shake("error");
+          }
           store.setDuelResult({
             duel_id: String(d.duel_id || ""),
             player1_total: Number(d.player1_total || 0),
@@ -119,8 +134,15 @@ export default function DuelPage() {
             player1_rating_delta: Number(d.player1_rating_delta || 0),
             player2_rating_delta: Number(d.player2_rating_delta || 0),
             summary: String(d.summary || ""),
+            player1_breakdown: d.player1_breakdown && typeof d.player1_breakdown === "object"
+              ? (d.player1_breakdown as Record<string, unknown>) as never : null,
+            player2_breakdown: d.player2_breakdown && typeof d.player2_breakdown === "object"
+              ? (d.player2_breakdown as Record<string, unknown>) as never : null,
+            turning_point: d.turning_point && typeof d.turning_point === "object"
+              ? (d.turning_point as Record<string, unknown>) as never : null,
           });
           break;
+        }
 
         case "opponent.disconnected":
           setStatusNotice(`Соперник переподключается. Ждём ${String(d.seconds_remaining || 60)} сек.`);
@@ -151,7 +173,7 @@ export default function DuelPage() {
 
   useEffect(() => {
     store.resetDuel();
-  }, [duelId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [duelId]); // eslint-disable-line react-hooks/exhaustive-deps -- store.resetDuel is a stable Zustand action
 
   // Send ready on connect
   useEffect(() => {
@@ -176,7 +198,7 @@ export default function DuelPage() {
   useEffect(() => {
     api.get(`/pvp/duels/${duelId}`)
       .then((data) => setDuelMeta(data as PvPDuel))
-      .catch(() => null);
+      .catch((err) => { logger.error("Failed to load duel meta:", err); });
     if (!store.rating) {
       store.fetchRating();
     }
@@ -210,12 +232,13 @@ export default function DuelPage() {
 
   // Result overlay
   if (store.duelResult) {
-    const isP1 = duelMeta ? duelMeta.player1_id === store.rating?.user_id : true;
+    const userId = store.rating?.user_id;
+    const isP1 = duelMeta ? duelMeta.player1_id === userId : true;
     const myTotal = isP1 ? store.duelResult.player1_total : store.duelResult.player2_total;
     const oppTotal = isP1 ? store.duelResult.player2_total : store.duelResult.player1_total;
-    const isWinner = store.duelResult.winner_id === store.rating?.user_id;
+    const isWinner = userId != null && store.duelResult.winner_id === userId;
 
-    return (
+    return (<>
       <DuelResult
         myTotal={myTotal}
         opponentTotal={oppTotal}
@@ -225,12 +248,16 @@ export default function DuelPage() {
         ratingChangeApplied={store.duelResult.rating_change_applied}
         myRatingDelta={isP1 ? store.duelResult.player1_rating_delta : store.duelResult.player2_rating_delta}
         summary={store.duelResult.summary}
+        myBreakdown={isP1 ? store.duelResult.player1_breakdown : store.duelResult.player2_breakdown}
+        opponentBreakdown={isP1 ? store.duelResult.player2_breakdown : store.duelResult.player1_breakdown}
+        turningPoint={store.duelResult.turning_point}
         onClose={() => {
           store.resetDuel();
           router.push("/pvp");
         }}
       />
-    );
+      {confettiTrigger > 0 && <Confetti trigger={confettiTrigger} />}
+    </>);
   }
 
   return (
@@ -276,6 +303,26 @@ export default function DuelPage() {
         </div>
       )}
 
+      {/* Character brief for client role */}
+      {store.myRole === "client" && store.duelBrief?.character_brief && (
+        <div className="mx-4 mb-2 cyber-card px-3 py-2.5 z-20">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="status-badge status-badge--online" style={{ fontSize: "12px" }}>
+              ВАША РОЛЬ
+            </span>
+            <span className="text-xs font-mono font-bold" style={{ color: "var(--accent)" }}>
+              {store.duelBrief.character_brief.name}
+            </span>
+          </div>
+          <p className="text-xs leading-relaxed mb-1" style={{ color: "var(--text-secondary)" }}>
+            {store.duelBrief.character_brief.brief}
+          </p>
+          <p className="text-xs italic" style={{ color: "var(--text-muted)" }}>
+            {store.duelBrief.character_brief.behavior}
+          </p>
+        </div>
+      )}
+
       {/* Chat area */}
       <div className="flex-1 min-h-0 z-20">
         <DuelChat
@@ -298,15 +345,15 @@ export default function DuelPage() {
             style={{ borderTop: "1px solid var(--border-color)", background: "var(--glass-bg)" }}
           >
             <div className="text-center">
-              <div className="font-mono text-[9px] uppercase" style={{ color: "var(--text-muted)" }}>Продажи</div>
+              <div className="font-mono text-xs uppercase" style={{ color: "var(--text-muted)" }}>Продажи</div>
               <div className="font-bold" style={{ color: "var(--accent)" }}>{Math.round(store.judgeScore.selling_score)}</div>
             </div>
             <div className="text-center">
-              <div className="font-mono text-[9px] uppercase" style={{ color: "var(--text-muted)" }}>Актёрство</div>
+              <div className="font-mono text-xs uppercase" style={{ color: "var(--text-muted)" }}>Актёрство</div>
               <div className="font-bold" style={{ color: "#FFD700" }}>{Math.round(store.judgeScore.acting_score)}</div>
             </div>
             <div className="text-center">
-              <div className="font-mono text-[9px] uppercase" style={{ color: "var(--text-muted)" }}>Юр. точность</div>
+              <div className="font-mono text-xs uppercase" style={{ color: "var(--text-muted)" }}>Юр. точность</div>
               <div className="font-bold" style={{ color: "var(--neon-green)" }}>{Math.round(store.judgeScore.legal_accuracy)}</div>
             </div>
           </motion.div>

@@ -5,7 +5,9 @@ import { motion } from "framer-motion";
 import { Clock, ChevronRight, Phone } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { sanitizeText } from "@/lib/sanitize";
 import type { ReminderItem } from "@/types";
+import { logger } from "@/lib/logger";
 
 export function ReminderWidget() {
   const [reminders, setReminders] = useState<ReminderItem[]>([]);
@@ -20,7 +22,7 @@ export function ReminderWidget() {
         });
         setReminders(today);
       })
-      .catch((err) => { console.error("Failed to load reminders:", err); })
+      .catch((err) => { logger.error("Failed to load reminders:", err); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -46,7 +48,7 @@ export function ReminderWidget() {
         </div>
         <Link
           href="/clients"
-          className="text-[10px] flex items-center gap-1 transition-colors"
+          className="text-xs flex items-center gap-1 transition-colors"
           style={{ color: "var(--text-muted)" }}
         >
           Все <ChevronRight size={10} />
@@ -71,17 +73,17 @@ export function ReminderWidget() {
                 <Phone size={12} style={{ color: isOverdue ? "var(--neon-red, #FF3333)" : "var(--text-muted)" }} />
                 <div className="flex-1 min-w-0">
                   <span className="text-sm truncate block" style={{ color: "var(--text-primary)" }}>
-                    {r.client_name}
+                    {sanitizeText(r.client_name || "")}
                   </span>
                   {r.message && (
-                    <span className="text-[10px] truncate block" style={{ color: "var(--text-muted)" }}>
-                      {r.message}
+                    <span className="text-xs truncate block" style={{ color: "var(--text-muted)" }}>
+                      {sanitizeText(r.message)}
                     </span>
                   )}
                 </div>
                 <div className="shrink-0 text-right">
                   <span
-                    className="text-[10px] font-mono"
+                    className="text-xs font-mono"
                     style={{ color: isOverdue ? "var(--neon-red, #FF3333)" : "var(--text-muted)" }}
                   >
                     {formatTime(r.remind_at)}
@@ -95,7 +97,7 @@ export function ReminderWidget() {
 
       {reminders.length > 5 && (
         <div className="text-center mt-2">
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
             +{reminders.length - 5} ещё
           </span>
         </div>

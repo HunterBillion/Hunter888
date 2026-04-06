@@ -9,12 +9,11 @@ from app.models.roleplay import (
     LeadSource,
     ProfessionCategory,
     ProfessionProfile,
-    EmotionProfile,
+    ArchetypeEmotionProfile,
     Trap,
     ObjectionChain,
     ClientProfile,
 )
-from app.models.tournament import Tournament, TournamentEntry
 from app.models.emotion import (
     EmotionTransition,
     ArchetypeEmotionConfig,
@@ -36,6 +35,7 @@ from app.models.progress import (
     AchievementDefinition,
     WeeklyReport,
 )
+from app.models.checkpoint import CheckpointDefinition, UserCheckpoint
 from app.models.voice import (
     VoiceProfile,
     EmotionVoiceModifier,
@@ -88,6 +88,16 @@ from app.models.pvp import (
     AntiCheatAction,
     PvPRankTier,
     DuelDifficulty,
+    UserFingerprint,
+    # DOC_09-13: New PvP/PvE/Rating models
+    PvPTeam,
+    GauntletRun,
+    RapidFireMatch,
+    PvELadderRun,
+    PvEBossRun,
+    PromotionSeries,
+    SeasonReward,
+    APPurchase,
 )
 from app.models.custom_character import CustomCharacter
 from app.models.knowledge import (
@@ -97,7 +107,28 @@ from app.models.knowledge import (
     QuizChallenge,
     QuizMode,
     QuizSessionStatus,
+    # DOC_11: Knowledge v2 models
+    DebateSession,
+    TeamQuizTeam,
+    DailyChallenge,
+    DailyChallengeEntry,
 )
+from app.models.rag import ChunkUsageLog
+from app.models.tournament import (
+    BracketMatch,
+    BracketMatchStatus,
+    Tournament,
+    TournamentEntry,
+    TournamentFormat,
+    TournamentParticipant,
+    # DOC_12: Tournament v2 models
+    TournamentTheme,
+    TournamentTeam,
+    TeamMatch,
+)
+from app.models.xp_log import XPLog
+from app.models.prompt_version import PromptVersion
+from app.models.cross_recommendation import CrossRecommendationCache
 from app.services.web_push import PushSubscription
 
 __all__ = [
@@ -125,12 +156,16 @@ __all__ = [
     "LeadSource",
     "ProfessionCategory",
     "ProfessionProfile",
-    "EmotionProfile",
+    "ArchetypeEmotionProfile",
     "Trap",
     "ObjectionChain",
     "ClientProfile",
     "Tournament",
     "TournamentEntry",
+    "TournamentFormat",
+    "TournamentParticipant",
+    "BracketMatch",
+    "BracketMatchStatus",
     "VoiceProfile",
     "EmotionVoiceModifier",
     "PauseConfig",
@@ -192,6 +227,7 @@ __all__ = [
     "AntiCheatAction",
     "PvPRankTier",
     "DuelDifficulty",
+    "UserFingerprint",
     # Custom Characters
     "CustomCharacter",
     # Knowledge Quiz (AI Examiner + PvP Arena)
@@ -203,4 +239,31 @@ __all__ = [
     "QuizSessionStatus",
     # Web Push (Task X6)
     "PushSubscription",
+    # RAG Feedback Loop
+    "ChunkUsageLog",
+    # DOC_04: Checkpoints
+    "CheckpointDefinition",
+    "UserCheckpoint",
+    # DOC_09-13: PvP/PvE/Rating expansion
+    "PvPTeam",
+    "GauntletRun",
+    "RapidFireMatch",
+    "PvELadderRun",
+    "PvEBossRun",
+    "PromotionSeries",
+    "SeasonReward",
+    "APPurchase",
+    # DOC_11: Knowledge v2
+    "DebateSession",
+    "TeamQuizTeam",
+    "DailyChallenge",
+    "DailyChallengeEntry",
+    # DOC_12: Tournament v2
+    "TournamentTheme",
+    "TournamentTeam",
+    "TeamMatch",
+    # DOC_15-16: Progression + Prompts
+    "XPLog",
+    "PromptVersion",
+    "CrossRecommendationCache",
 ]

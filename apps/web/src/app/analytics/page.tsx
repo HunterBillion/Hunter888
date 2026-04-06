@@ -28,7 +28,9 @@ import { api } from "@/lib/api";
 import { scoreColor } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { BackButton } from "@/components/ui/BackButton";
 import { AnalyticsSkeleton } from "@/components/ui/Skeleton";
+import { logger } from "@/lib/logger";
 import type {
   WeakSpot,
   ProgressPoint,
@@ -146,7 +148,7 @@ function Sparkline({ points }: { points: ProgressPoint[] }) {
             transition={{ duration: 0.6, delay: i * 0.04 }}
           >
             {p.sessions_count > 0 && (
-              <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 glass-panel px-2 py-1 text-[10px] font-mono whitespace-nowrap"
+              <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 glass-panel px-2 py-1 text-xs font-mono whitespace-nowrap"
                 style={{ color: "var(--text-primary)" }}>
                 {p.avg_total.toFixed(0)} ({p.sessions_count} сес.)
               </div>
@@ -170,11 +172,11 @@ export default function AnalyticsPage() {
   // Fetch analytics from separate endpoints in parallel
   useEffect(() => {
     Promise.all([
-      api.get("/analytics/me/weak-spots").catch(() => []),
-      api.get("/analytics/me/progress").catch(() => []),
-      api.get("/analytics/me/archetype-scores").catch(() => []),
-      api.get("/analytics/me/recommendations").catch(() => []),
-      api.get("/analytics/me/insights").catch(() => []),
+      api.get("/analytics/me/weak-spots").catch((err) => { logger.warn("analytics/weak-spots failed:", err); return []; }),
+      api.get("/analytics/me/progress").catch((err) => { logger.warn("analytics/progress failed:", err); return []; }),
+      api.get("/analytics/me/archetype-scores").catch((err) => { logger.warn("analytics/archetype-scores failed:", err); return []; }),
+      api.get("/analytics/me/recommendations").catch((err) => { logger.warn("analytics/recommendations failed:", err); return []; }),
+      api.get("/analytics/me/insights").catch((err) => { logger.warn("analytics/insights failed:", err); return []; }),
     ])
       .then(([weakSpots, progress, archetypeScores, recommendations, insights]) => {
         // Combine into snapshot-like structure for backward compat
@@ -227,6 +229,7 @@ export default function AnalyticsPage() {
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
         <div className="mx-auto max-w-6xl px-4 py-8">
+          <BackButton href="/home" label="На главную" />
 
           {/* ── Header ── */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
@@ -251,7 +254,7 @@ export default function AnalyticsPage() {
             >
               <div className="flex items-center gap-2 mb-3">
                 <Lightbulb size={16} style={{ color: "var(--warning)" }} />
-                <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                   Инсайты
                 </span>
               </div>
@@ -284,12 +287,12 @@ export default function AnalyticsPage() {
             >
               <div className="flex items-center gap-2 mb-4">
                 <Activity size={16} style={{ color: "var(--accent)" }} />
-                <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                   Прогресс по неделям
                 </span>
               </div>
               <Sparkline points={progress} />
-              <div className="mt-3 flex justify-between text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+              <div className="mt-3 flex justify-between text-xs font-mono" style={{ color: "var(--text-muted)" }}>
                 <span>{progress.length > 0 ? formatDate(progress[0].period_start) : ""}</span>
                 <span>{progress.length > 0 ? formatDate(progress[progress.length - 1].period_end) : ""}</span>
               </div>
@@ -300,7 +303,7 @@ export default function AnalyticsPage() {
                 if (!lastActive) return null;
                 return (
                   <div className="mt-4 space-y-2">
-                    <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+                    <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                       ПОСЛЕДНЯЯ НЕДЕЛЯ
                     </span>
                     {[
@@ -310,7 +313,7 @@ export default function AnalyticsPage() {
                       { label: "Результат", value: lastActive.avg_result, max: 10, color: SKILL_COLORS.result },
                     ].map((s) => (
                       <div key={s.label} className="flex items-center gap-3">
-                        <span className="w-24 text-[10px] font-mono truncate" style={{ color: "var(--text-muted)" }}>
+                        <span className="w-24 text-xs font-mono truncate" style={{ color: "var(--text-muted)" }}>
                           {s.label}
                         </span>
                         <div className="flex-1">
@@ -335,7 +338,7 @@ export default function AnalyticsPage() {
             >
               <div className="flex items-center gap-2 mb-4">
                 <Target size={16} style={{ color: "var(--neon-red, #FF2A6D)" }} />
-                <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                   Зоны роста
                 </span>
               </div>
@@ -368,7 +371,7 @@ export default function AnalyticsPage() {
                             {ws.sub_skill ? SUB_SKILL_LABELS[ws.sub_skill] || ws.sub_skill : SKILL_LABELS[ws.skill] || ws.skill}
                           </span>
                           {ws.archetype && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono"
+                            <span className="text-xs px-1.5 py-0.5 rounded-full font-mono"
                               style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
                               {ws.archetype}
                             </span>
@@ -381,7 +384,7 @@ export default function AnalyticsPage() {
                           <TrendIcon trend={ws.trend} />
                         </div>
                       </div>
-                      <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                      <p className="mt-1.5 text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
                         {ws.recommendation}
                       </p>
                     </motion.div>
@@ -400,7 +403,7 @@ export default function AnalyticsPage() {
           >
             <div className="flex items-center gap-2 mb-4">
               <Radar size={16} style={{ color: "var(--accent)" }} />
-              <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+              <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                 Владение архетипами
               </span>
             </div>
@@ -430,12 +433,12 @@ export default function AnalyticsPage() {
                         </span>
                         <div className="flex items-center gap-2 mt-1">
                           <span
-                            className="text-[10px] px-1.5 py-0.5 rounded-full font-mono"
+                            className="text-xs px-1.5 py-0.5 rounded-full font-mono"
                             style={{ background: mastery.bg, color: mastery.color }}
                           >
                             {mastery.label}
                           </span>
-                          <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                          <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
                             {arch.sessions_count} сес.
                           </span>
                         </div>
@@ -472,16 +475,16 @@ export default function AnalyticsPage() {
                               { label: "Результат", val: arch.avg_result, max: 10, color: SKILL_COLORS.result },
                             ].map((s) => (
                               <div key={s.label} className="flex items-center gap-2">
-                                <span className="w-20 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                                <span className="w-20 text-xs font-mono" style={{ color: "var(--text-muted)" }}>
                                   {s.label}
                                 </span>
                                 <div className="flex-1"><MiniBar value={s.val} max={s.max} color={s.color} /></div>
-                                <span className="text-[10px] font-mono w-8 text-right" style={{ color: s.color }}>
+                                <span className="text-xs font-mono w-8 text-right" style={{ color: s.color }}>
                                   {s.val.toFixed(0)}
                                 </span>
                               </div>
                             ))}
-                            <div className="flex justify-between mt-2 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                            <div className="flex justify-between mt-2 text-xs font-mono" style={{ color: "var(--text-muted)" }}>
                               <span>Лучший: {arch.best_score.toFixed(0)}</span>
                               <span>Худший: {arch.worst_score.toFixed(0)}</span>
                               <span>{daysAgo(arch.last_played)}</span>
@@ -506,7 +509,7 @@ export default function AnalyticsPage() {
             >
               <div className="flex items-center gap-2 mb-4">
                 <Zap size={16} style={{ color: "var(--warning)" }} />
-                <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                   Рекомендации
                 </span>
               </div>
@@ -536,7 +539,7 @@ export default function AnalyticsPage() {
                       <div className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
                         {rec.scenario_title}
                       </div>
-                      <div className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                      <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
                         {rec.reason}
                       </div>
                     </div>

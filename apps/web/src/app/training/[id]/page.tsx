@@ -5,7 +5,6 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 import {
-  Clock,
   XCircle,
   CheckCircle2,
   AlertTriangle,
@@ -13,7 +12,6 @@ import {
   Volume2,
   VolumeX,
   Radio,
-  Lightbulb,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useMicrophone } from "@/hooks/useMicrophone";
@@ -26,6 +24,10 @@ import TranscriptionIndicator from "@/components/training/TranscriptionIndicator
 import VibeMeter from "@/components/training/VibeMeter";
 import ScriptAdherence, { type CheckpointInfo } from "@/components/training/ScriptAdherence";
 import TalkListenRatio from "@/components/training/TalkListenRatio";
+import DifficultyIndicator from "@/components/training/DifficultyIndicator";
+import StageProgressBar from "@/components/training/StageProgress";
+import WhisperPanel from "@/components/training/WhisperPanel";
+import { HangupModal } from "@/components/training/HangupModal";
 import { TrapNotification, TrapSummaryBadge, type TrapEvent } from "@/components/training/TrapNotification";
 import { ClientCard, type ClientCardData } from "@/components/training/ClientCard";
 import { ClientCardMini } from "@/components/training/ClientCardMini";
@@ -33,11 +35,16 @@ import { HumanFactorIcons } from "@/components/training/HumanFactorIcons";
 import { StoryProgress } from "@/components/training/StoryProgress";
 import { ConsequenceToast } from "@/components/training/ConsequenceToast";
 import { PreCallBriefOverlay } from "@/components/training/PreCallBriefOverlay";
+import RealtimeScores from "@/components/training/RealtimeScores";
+import TrapLog from "@/components/training/TrapLog";
+import LiveEmotionTimeline from "@/components/training/LiveEmotionTimeline";
 import { StoryCallReportOverlay } from "@/components/training/StoryCallReportOverlay";
 import { BetweenCallsOverlay } from "@/components/training/BetweenCallsOverlay";
 import { useSessionStore } from "@/stores/useSessionStore";
 import { TrainingErrorBoundary } from "@/components/training/TrainingErrorBoundary";
+import { TrainingToasts } from "@/components/training/TrainingToasts";
 import { useHotkeys } from "@/hooks/useHotkeys";
+import { useSound } from "@/hooks/useSound";
 import { LogoSeparator } from "@/components/ui/LogoSeparator";
 import {
   type EmotionState,
@@ -47,6 +54,11 @@ import {
   EMOTION_MAP,
 } from "@/types";
 import { logger } from "@/lib/logger";
+
+/** Type-safe accessor for untyped WebSocket message data payloads. */
+function wsPayload<T>(data: Record<string, unknown>): T {
+  return data as T;
+}
 
 /**
  * Strip ALL stage directions / action narration from LLM output.
@@ -118,18 +130,20 @@ export default function TrainingSessionPage() {
   }), [storyArchetype, storyProfession, storyLeadSource, storyDifficulty]);
 
   // ── Zustand store (replaces 30+ useState) ──
+  // Full subscription for render — but NEVER put `s` in useEffect deps!
+  // Use useSessionStore.getState() for actions inside effects/callbacks.
   const s = useSessionStore();
 
   // Initialize store on mount
   useEffect(() => {
-    s.init(routeId);
-    return () => { s.reset(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useSessionStore.getState().init(routeId);
+    return () => { useSessionStore.getState().reset(); };
   }, [routeId]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionEndedRef = useRef<{ score: number | null; xp: number | null; levelUp: boolean }>({ score: null, xp: null, levelUp: false });
   const storyBootstrappedRef = useRef(false);
   const [storyTransitionText, setStoryTransitionText] = useState(
     isStoryMode ? "ИНИЦИАЛИЗАЦИЯ AI-ИСТОРИИ..." : "ПОДКЛЮЧЕНИЕ К СЕССИИ..."
@@ -151,13 +165,58 @@ export default function TrainingSessionPage() {
   } | null>(null);
   const [preferBrowserSpeech, setPreferBrowserSpeech] = useState(false);
 
+  // ── Micro-animation states ──
+  const [scorePulse, setScorePulse] = useState(false);
+  const [checkpointFlash, setCheckpointFlash] = useState(false);
+  const prevScriptScoreRef = useRef(s.scriptScore);
+  const prevCheckpointsRef = useRef(s.checkpointsHit);
+
+  // ── Score change pulse animation ──
+  useEffect(() => {
+    if (s.scriptScore !== prevScriptScoreRef.current && s.scriptScore > 0) {
+      setScorePulse(true);
+      const t = setTimeout(() => setScorePulse(false), 600);
+      prevScriptScoreRef.current = s.scriptScore;
+      return () => clearTimeout(t);
+    }
+  }, [s.scriptScore]);
+
+  // ── Checkpoint hit celebration ──
+  useEffect(() => {
+    if (s.checkpointsHit > prevCheckpointsRef.current) {
+      setCheckpointFlash(true);
+      const t = setTimeout(() => setCheckpointFlash(false), 800);
+      prevCheckpointsRef.current = s.checkpointsHit;
+      return () => clearTimeout(t);
+    }
+  }, [s.checkpointsHit]);
+
+  // Sound effect for difficulty mode changes (boss/safe)
+  const { playSound } = useSound();
+  const difficultyMode = useSessionStore((st) => st.difficultyMode);
+  const prevDifficultyModeRef = useRef(difficultyMode);
+  useEffect(() => {
+    if (prevDifficultyModeRef.current !== difficultyMode) {
+      if (difficultyMode === "boss") playSound("epic", 0.4);
+      else if (difficultyMode === "safe") playSound("fail", 0.3);
+      prevDifficultyModeRef.current = difficultyMode;
+    }
+  }, [difficultyMode, playSound]);
+
   // TTS — ElevenLabs (primary) + browser speechSynthesis (fallback)
   const tts = useTTS({ lang: "ru-RU", rate: 0.95, pitch: 1.0 });
   const microphone = useMicrophone({
-    onSilenceTimeout: () => s.setShowSilenceModal(true),
+    onSilenceTimeout: () => useSessionStore.getState().setShowSilenceModal(true),
   });
 
+  // Compute last sequence number for session resume
+  const lastSeqNum = s.messages.length > 0
+    ? s.messages.reduce((max, m) => Math.max(max, m.sequenceNumber ?? 0), 0) || null
+    : null;
+
   const { sendMessage, connectionState } = useWebSocket({
+    sessionId: s.sessionId || null,
+    lastSequenceNumber: lastSeqNum,
     onMessage: (data) => {
       logger.log(`[WS] ${data.type}`, data.type === "tts.audio" ? `(audio ${(data.data?.audio_b64 as string)?.length || 0} chars)` : data.data);
       switch (data.type) {
@@ -191,6 +250,7 @@ export default function TrainingSessionPage() {
             content,
             emotion: data.data.emotion as EmotionState | undefined,
             timestamp: new Date().toISOString(),
+            sequenceNumber: data.data.sequence_number as number | undefined,
           });
           if (data.data.emotion) s.setEmotion(data.data.emotion as EmotionState);
           if (data.data.script_score !== undefined) s.setScriptScore(data.data.script_score as number);
@@ -226,7 +286,16 @@ export default function TrainingSessionPage() {
             s.setSessionState("connecting");
           } else {
             s.setSessionState("completed");
-            setTimeout(() => router.push(`/results/${routeId}`), 1500);
+            // Show celebration overlay with score before redirecting
+            const ended = data.data as Record<string, unknown> | undefined;
+            const endedScores = ended?.scores as Record<string, number> | undefined;
+            const endedXp = ended?.xp_breakdown as Record<string, number> | undefined;
+            sessionEndedRef.current = {
+              score: (endedScores?.total as number) ?? null,
+              xp: (endedXp?.grand_total as number) ?? null,
+              levelUp: Boolean(ended?.level_up),
+            };
+            setTimeout(() => router.push(`/results/${routeId}`), 3500);
           }
           break;
 
@@ -256,7 +325,14 @@ export default function TrainingSessionPage() {
           break;
 
         case "emotion.update":
-          if (data.data.current) s.setEmotion(data.data.current as EmotionState);
+          if (data.data.current) {
+            s.setEmotion(data.data.current as EmotionState);
+            s.addEmotionToHistory(data.data.current as EmotionState);
+          }
+          break;
+
+        case "stage.update":
+          s.setStageUpdate(wsPayload<import("@/types").StageUpdate>(data.data));
           break;
 
         case "score.update":
@@ -264,6 +340,9 @@ export default function TrainingSessionPage() {
           if (data.data.checkpoints_hit !== undefined) s.setCheckpointsHit(data.data.checkpoints_hit as number);
           if (data.data.checkpoints_total !== undefined) s.setCheckpointsTotal(data.data.checkpoints_total as number);
           if (Array.isArray(data.data.checkpoints)) s.setCheckpoints(data.data.checkpoints as CheckpointInfo[]);
+          // new_checkpoint: set if present, clear if not (only flash once per match)
+          s.setNewCheckpoint(data.data.new_checkpoint ? (data.data.new_checkpoint as string) : null);
+          if (data.data.is_preliminary !== undefined) s.setIsPreliminaryScore(data.data.is_preliminary as boolean);
           break;
 
         case "score.hint":
@@ -273,6 +352,14 @@ export default function TrainingSessionPage() {
             human_factor: Number(data.data.human_factor || 0),
             realtime_estimate: Number(data.data.realtime_estimate || 0),
             max_possible_realtime: Number(data.data.max_possible_realtime || 0),
+          });
+          // Also store in Zustand for RealtimeScores panel
+          s.setRealtimeScores({
+            objection_handling: Number(data.data.objection_handling || 0),
+            communication: Number(data.data.communication || 0),
+            human_factor: Number(data.data.human_factor || 0),
+            realtime_estimate: Number(data.data.realtime_estimate || 0),
+            max_possible: Number(data.data.max_possible_realtime || 0),
           });
           break;
 
@@ -290,6 +377,22 @@ export default function TrainingSessionPage() {
           if (timerRef.current) clearInterval(timerRef.current);
           break;
 
+        case "client.hangup_warning":
+          s.setHangupWarning((data.data.message as string) || "Клиент теряет терпение...");
+          // Auto-dismiss after 5 seconds
+          setTimeout(() => s.setHangupWarning(null), 5000);
+          break;
+
+        case "client.hangup":
+          s.setHangupData({
+            reason: (data.data.reason as string) || "",
+            hangupPhrase: (data.data.hangup_phrase as string) || "",
+            canContinue: Boolean(data.data.call_can_continue),
+            triggers: (data.data.triggers as string[]) || [],
+          });
+          s.setShowHangupModal(true);
+          break;
+
         case "trap.triggered": {
           const trapEvent: TrapEvent = {
             trap_name: data.data.trap_name as string,
@@ -302,6 +405,7 @@ export default function TrainingSessionPage() {
             correct_example: (data.data.correct_example as string) || "",
           };
           s.setActiveTrap(trapEvent);
+          s.addTrapToHistory(trapEvent);
           s.adjustTrapNetScore(trapEvent.score_delta);
           if (trapEvent.status === "fell" || trapEvent.status === "partial") {
             s.addTrapFell();
@@ -331,13 +435,49 @@ export default function TrainingSessionPage() {
           break;
         }
 
+        case "whisper.coaching": {
+          const whisper: import("@/types").CoachingWhisper = {
+            type: data.data.type as import("@/types").WhisperType,
+            message: data.data.message as string,
+            stage: data.data.stage as string,
+            priority: data.data.priority as "high" | "medium" | "low",
+            icon: data.data.icon as string,
+            timestamp: Date.now(),
+          };
+          s.addWhisper(whisper);
+          break;
+        }
+
+        case "whisper.toggle_ack":
+          if (data.data.enabled !== undefined) s.setWhispersEnabled(data.data.enabled as boolean);
+          break;
+
         case "soft_skills.update": {
-          const skills = data.data as unknown as SoftSkillsUpdate;
+          const skills = wsPayload<SoftSkillsUpdate>(data.data);
           if (skills.talk_ratio !== undefined) {
             const serverTalk = Math.round(skills.talk_ratio * 100);
             s.setTalkTime(serverTalk);
             s.setListenTime(100 - serverTalk);
           }
+          break;
+        }
+
+        case "difficulty.update": {
+          const diffUpdate = wsPayload<import("@/stores/useSessionStore").DifficultyUpdate>(data.data);
+          s.setDifficultyUpdate(diffUpdate);
+          // Generate difficulty change reason
+          const reason = diffUpdate.had_comeback
+            ? "Восстановление после серии ошибок"
+            : diffUpdate.good_streak >= 3
+              ? `Серия верных ответов (${diffUpdate.good_streak}) — сложность растёт`
+              : diffUpdate.bad_streak >= 3
+                ? `Серия ошибок (${diffUpdate.bad_streak}) — сложность снижается`
+                : diffUpdate.mode === "boss"
+                  ? "Режим босса: максимальная сложность"
+                  : diffUpdate.mode === "safe"
+                    ? "Безопасный режим: пониженная сложность"
+                    : null;
+          s.setDifficultyReason(reason);
           break;
         }
 
@@ -360,7 +500,7 @@ export default function TrainingSessionPage() {
           break;
 
         case "story.pre_call_brief":
-          s.setPreCallBrief(data.data as unknown as import("@/types/story").PreCallBrief);
+          s.setPreCallBrief(wsPayload<import("@/types/story").PreCallBrief>(data.data));
           s.setHumanFactors(
             ((data.data as { active_factors?: import("@/types/story").HumanFactor[] }).active_factors) || []
           );
@@ -418,6 +558,39 @@ export default function TrainingSessionPage() {
           setTimeout(() => router.push(`/training/crm/${data.data.story_id}`), 1500);
           break;
 
+        // ── v6: Session resume messages ──
+        case "session.resumed":
+          s.setEmotion(data.data.emotion as EmotionState);
+          s.setElapsed(Math.floor(data.data.elapsed_seconds as number));
+          // Sort messages by sequence number to ensure correct order after replay
+          s.sortMessagesBySequence();
+          s.setSessionState("ready");
+          // Restart elapsed timer
+          if (timerRef.current) clearInterval(timerRef.current);
+          timerRef.current = setInterval(() => s.tickElapsed(), 1000);
+          logger.log("[WS] Session resumed:", data.data.session_id);
+          break;
+
+        case "message.replay": {
+          // Add replayed message if not already in store (dedupe by sequence_number)
+          const seq = data.data.sequence_number as number | undefined;
+          const alreadyExists = seq != null && s.messages.some((m) => m.sequenceNumber === seq);
+          if (!alreadyExists) {
+            s.addMessage({
+              id: s.nextMsgId(),
+              role: data.data.role as "user" | "assistant",
+              content: data.data.content as string,
+              emotion: data.data.emotion as EmotionState | undefined,
+              timestamp: data.data.timestamp
+                ? new Date((data.data.timestamp as number) * 1000).toISOString()
+                : new Date().toISOString(),
+              sequenceNumber: seq,
+              isReplay: true,
+            });
+          }
+          break;
+        }
+
         case "error":
           logger.error("Training error:", data.data.message);
           break;
@@ -446,8 +619,9 @@ export default function TrainingSessionPage() {
   });
 
   // Session start on WS connect
+  const sessionState = useSessionStore((st) => st.sessionState);
   useEffect(() => {
-    if (connectionState === "connected" && s.sessionState === "connecting") {
+    if (connectionState === "connected" && sessionState === "connecting") {
         if (isStoryMode) {
           if (!storyBootstrappedRef.current && storyScenarioId) {
             setStoryTransitionText("ЗАПУСК AI-ИСТОРИИ...");
@@ -464,22 +638,23 @@ export default function TrainingSessionPage() {
           sendMessage({ type: "session.start", data: { session_id: routeId } });
       }
     }
-  }, [connectionState, s.sessionState, routeId, sendMessage, isStoryMode, storyScenarioId, storyCalls, storyCustomParams]);
+  }, [connectionState, sessionState, routeId, sendMessage, isStoryMode, storyScenarioId, storyCalls, storyCustomParams]);
 
-  // Handle WS disconnect
+  // Handle WS disconnect / reconnecting
   useEffect(() => {
-    if (connectionState === "disconnected" && s.sessionState !== "completed") {
-      s.setSessionState("connecting");
+    const st = useSessionStore.getState();
+    if ((connectionState === "disconnected" || connectionState === "reconnecting") && st.sessionState !== "completed") {
+      st.setConnectionState(connectionState);
     }
-  }, [connectionState, s.sessionState, s]);
+  }, [connectionState, sessionState]);
 
   // Timer
   useEffect(() => {
-    if (s.sessionState === "ready") {
-      timerRef.current = setInterval(() => s.tickElapsed(), 1000);
+    if (sessionState === "ready") {
+      timerRef.current = setInterval(() => useSessionStore.getState().tickElapsed(), 1000);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [s.sessionState, s]);
+  }, [sessionState]);
 
   // Auto-scroll
   useEffect(() => {
@@ -517,6 +692,11 @@ export default function TrainingSessionPage() {
   const handleSend = () => {
     const text = s.input.trim();
     if (!text || s.sessionState !== "ready") return;
+    // Block sending when WS is not connected — messages would be buffered silently
+    if (connectionState !== "connected") {
+      logger.warn("[Training] Send blocked: WS not connected (state=%s)", connectionState);
+      return;
+    }
     s.addMessage({ id: s.nextMsgId(), role: "user", content: text, timestamp: new Date().toISOString() });
     sendMessage({ type: "text.message", data: { content: text } });
     s.setInput("");
@@ -594,24 +774,26 @@ export default function TrainingSessionPage() {
   };
 
   // Track talk/listen time — 1s interval (uses getState() to avoid stale closures)
+  const ttsRef = useRef(tts.speaking);
+  ttsRef.current = tts.speaking;
   useEffect(() => {
-    if (s.sessionState !== "ready") return;
+    if (sessionState !== "ready") return;
     const iv = setInterval(() => {
       const state = useSessionStore.getState();
       if (state.micActive) {
         useSessionStore.setState({ talkTime: state.talkTime + 1 });
-      } else if (state.isTyping || tts.speaking) {
+      } else if (state.isTyping || ttsRef.current) {
         useSessionStore.setState({ listenTime: state.listenTime + 1 });
       }
     }, 1000);
     return () => clearInterval(iv);
-  }, [s.sessionState, tts.speaking]);
+  }, [sessionState]);
 
   const talkPercent = s.talkTime + s.listenTime > 0 ? Math.round((s.talkTime / (s.talkTime + s.listenTime)) * 100) : 50;
   const emotionValue = EMOTION_MAP[s.emotion]?.value ?? 10;
   const emotionLabel = EMOTION_MAP[s.emotion]?.labelRu ?? "Нейтральный";
-  const rawTrust = (s.clientCard as unknown as { trust_level?: number } | null)?.trust_level;
-  const rawResistance = (s.clientCard as unknown as { resistance_level?: number } | null)?.resistance_level;
+  const rawTrust = s.clientCard?.trust_level;
+  const rawResistance = s.clientCard?.resistance_level;
   const negativeFactorPenalty = s.humanFactors.reduce((sum, factor) => {
     if (["distrust", "fear", "anger", "stress", "fatigue", "sadness"].includes(factor.factor)) {
       return sum + factor.intensity * 9;
@@ -715,36 +897,39 @@ export default function TrainingSessionPage() {
 
       {/* ── Top HUD Header ─────────────────────────────────── */}
       <header
-        className="h-16 shrink-0 glass-panel rounded-none flex justify-between items-center px-6 z-20"
-        style={{ borderTop: "2px solid rgba(139,92,246,0.3)", borderRadius: 0 }}
+        className="h-12 shrink-0 glass-panel rounded-none flex justify-between items-center px-4 lg:px-6 z-20"
+        style={{ borderTop: "2px solid rgba(99,102,241,0.3)", borderRadius: 0 }}
       >
         <div className="flex items-center gap-4">
           <div
             className="w-2 h-2 rounded-full animate-pulse"
             style={{
-              background: connectionState === "connected" ? "#00FF66" : "var(--neon-red)",
-              boxShadow: connectionState === "connected" ? "0 0 10px #00FF66" : "0 0 10px #FF3333",
+              background: connectionState === "connected" ? "#00FF66"
+                : connectionState === "reconnecting" ? "#F59E0B"
+                : "var(--neon-red)",
+              boxShadow: connectionState === "connected" ? "0 0 10px #00FF66"
+                : connectionState === "reconnecting" ? "0 0 10px #F59E0B"
+                : "0 0 10px #FF3333",
             }}
           />
           <span className="font-mono text-xs tracking-widest" style={{ color: "var(--text-muted)" }}>
             LAYER 4: <span style={{ color: "var(--text-primary)" }}>
-              {connectionState === "connected" ? "ONLINE" : "OFFLINE"}
+              {connectionState === "connected" ? "ONLINE"
+                : connectionState === "reconnecting" ? "RECONNECTING..."
+                : "OFFLINE"}
             </span>
           </span>
         </div>
 
-        <div className="font-display font-black text-xl tracking-[0.15em] flex items-center gap-2">
+        <div className="font-display font-black text-lg tracking-[0.12em] flex items-center gap-2">
           <span style={{ color: "var(--accent)" }}>X</span><span style={{ color: "var(--text-primary)" }}>HUNTER</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded ml-2" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
-            v2.4
-          </span>
         </div>
 
         <div className="flex items-center gap-4">
           <div className="text-right hidden md:block">
-            <div className="font-mono text-[10px] tracking-widest" style={{ color: "var(--text-muted)" }}>SESSION TIME</div>
+            <div className="font-mono text-xs tracking-widest" style={{ color: "var(--text-muted)" }}>ВРЕМЯ</div>
             <div
-              className={`font-mono text-sm ${s.elapsed >= 1500 ? "animate-pulse" : ""}`}
+              className={`font-mono text-base font-bold ${s.elapsed >= 1500 ? "animate-pulse" : ""}`}
               style={{ color: s.elapsed >= 1500 ? "var(--warning)" : "var(--accent)" }}
             >
               {formatTime(s.elapsed)}
@@ -756,12 +941,13 @@ export default function TrainingSessionPage() {
             className="flex items-center justify-center rounded-lg p-1.5"
             style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}
             whileTap={{ scale: 0.95 }}
+            aria-label={tts.enabled ? "Выключить голос AI" : "Включить голос AI"}
             title={`Голос AI: ${tts.mode === "elevenlabs" ? "ElevenLabs" : "Браузер"}`}
           >
             {tts.enabled ? <Volume2 size={14} style={{ color: "var(--accent)" }} /> : <VolumeX size={14} style={{ color: "var(--text-muted)" }} />}
           </motion.button>
 
-          <button onClick={() => s.setShowAbortModal(true)} disabled={s.sessionState !== "ready"} className="vh-btn-danger">
+          <button onClick={() => s.setShowAbortModal(true)} disabled={s.sessionState !== "ready"} className="btn-neon btn-neon--danger" aria-label="Прервать тренировку">
             <span>ABORT FLIGHT</span>
           </button>
         </div>
@@ -838,22 +1024,25 @@ export default function TrainingSessionPage() {
       )}
 
       {/* ── 3-Column Layout ─────────────────────────────────── */}
-      <main className="app-page app-page--wide flex-1 min-h-0 z-20">
+      <main className="flex-1 min-h-0 z-20 px-3 py-2 lg:px-4 lg:py-3" style={{ width: "min(100%, var(--app-shell-max))", marginInline: "auto" }}>
         <div className="training-session-grid">
-        {/* LEFT: Client Signal + Transcript */}
+        {/* LEFT: Transcript — fills height, internal scroll */}
         <aside className="training-session-panel hidden lg:flex flex-col">
-          <div className="glass-panel rounded-xl flex min-h-0 flex-1 flex-col overflow-hidden" style={{ borderLeft: "2px solid rgba(139,92,246,0.18)" }}>
-            <div className="p-4 border-b flex justify-between items-center shrink-0" style={{ borderColor: "var(--border-color)", background: "rgba(0,0,0,0.2)" }}>
-              <h2 className="font-display tracking-widest text-sm flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
-                <Radio size={14} style={{ color: "var(--accent)" }} /> LIVE TRANSCRIPT
+          <div className="glass-panel rounded-xl flex min-h-0 flex-1 flex-col overflow-hidden" style={{ borderLeft: "2px solid rgba(99,102,241,0.18)" }}>
+            <div className="px-3 py-2 border-b flex justify-between items-center shrink-0" style={{ borderColor: "var(--border-color)", background: "rgba(0,0,0,0.2)" }}>
+              <h2 className="font-display tracking-widest text-xs flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
+                <Radio size={12} style={{ color: "var(--accent)" }} /> TRANSCRIPT
               </h2>
               <span className="flex gap-1 items-center">
                 <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ background: "var(--accent)" }} />
-                <span className="text-[10px] font-mono" style={{ color: "var(--accent)" }}>REC</span>
+                <span className="text-xs font-mono font-semibold" style={{ color: "var(--accent)" }}>REC</span>
               </span>
             </div>
 
-            <div className="flex-1 p-4 overflow-y-auto space-y-3 flex flex-col justify-end">
+            <div className="flex-1 p-3 overflow-y-auto space-y-2 flex flex-col">
+              {/* Spacer pushes messages to bottom when few, collapses when many */}
+              <div className="flex-1 min-h-0" />
+
               {s.messages.length === 0 && s.sessionState === "ready" && (
                 <p className="py-8 text-center text-xs" style={{ color: "var(--text-muted)" }}>Начните диалог</p>
               )}
@@ -881,30 +1070,45 @@ export default function TrainingSessionPage() {
 
         {/* CENTER: Avatar + Mic */}
         <section className="training-session-panel training-session-center glass-panel rounded-xl relative flex flex-col items-center justify-center overflow-hidden"
-          style={{ border: "1px solid rgba(139,92,246,0.2)", boxShadow: "inset 0 0 50px rgba(0,0,0,0.3)" }}
+          style={{ border: "1px solid rgba(99,102,241,0.2)", boxShadow: "inset 0 0 50px rgba(0,0,0,0.3)" }}
         >
           {/* Spinning orbit circles */}
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-10">
-            <div className="w-[450px] h-[450px] rounded-full border border-dashed animate-spin-slow" style={{ borderColor: "var(--accent)" }} />
-            <div className="absolute w-[350px] h-[350px] rounded-full border animate-spin-slow-reverse" style={{ borderColor: "rgba(139,92,246,0.5)" }} />
+            <div className="w-[min(350px,50vh)] h-[min(350px,50vh)] rounded-full border border-dashed animate-spin-slow" style={{ borderColor: "var(--accent)" }} />
+            <div className="absolute w-[min(270px,40vh)] h-[min(270px,40vh)] rounded-full border animate-spin-slow-reverse" style={{ borderColor: "rgba(99,102,241,0.5)" }} />
           </div>
 
           {/* Emotion indicator */}
           <div className="absolute top-6 left-6 flex flex-col gap-1 z-30">
-            <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--text-muted)" }}>
-              Target Emotion State
+            <span className="font-mono text-xs tracking-widest uppercase" style={{ color: "var(--text-muted)" }}>
+              Состояние клиента
             </span>
             <div className="flex items-center gap-2">
               <motion.div
-                className="w-2 h-2 rounded-full"
+                className="w-2.5 h-2.5 rounded-full"
                 style={{ background: EMOTION_MAP[s.emotion]?.color || "#6D28D9" }}
-                animate={{ boxShadow: `0 0 8px ${EMOTION_MAP[s.emotion]?.glow || "rgba(109,40,217,0.4)"}` }}
+                animate={{
+                  boxShadow: [
+                    `0 0 4px ${EMOTION_MAP[s.emotion]?.glow || "rgba(109,40,217,0.4)"}`,
+                    `0 0 12px ${EMOTION_MAP[s.emotion]?.glow || "rgba(109,40,217,0.4)"}`,
+                    `0 0 4px ${EMOTION_MAP[s.emotion]?.glow || "rgba(109,40,217,0.4)"}`,
+                  ],
+                }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
               />
-              <span className="font-display font-bold tracking-widest text-lg uppercase"
-                style={{ color: EMOTION_MAP[s.emotion]?.color || "#6D28D9" }}
-              >
-                {EMOTION_MAP[s.emotion]?.label || "UNKNOWN"}
-              </span>
+              <AnimatePresence mode="wait">
+                <motion.span
+                  key={s.emotion}
+                  className="font-display font-bold tracking-widest text-lg uppercase"
+                  style={{ color: EMOTION_MAP[s.emotion]?.color || "#6D28D9" }}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 8 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {EMOTION_MAP[s.emotion]?.labelRu || EMOTION_MAP[s.emotion]?.label || "НЕИЗВЕСТНО"}
+                </motion.span>
+              </AnimatePresence>
             </div>
           </div>
 
@@ -922,8 +1126,8 @@ export default function TrainingSessionPage() {
           )}
 
           {/* Avatar */}
-          <div className="relative w-full aspect-square max-w-[500px] flex items-center justify-center z-10">
-            <div className="absolute inset-0 rounded-full opacity-20 blur-[80px] transition-colors duration-1000"
+          <div className="relative w-full max-w-[min(50vh,400px)] aspect-square flex items-center justify-center z-10">
+            <div className="absolute inset-0 rounded-full opacity-20 blur-[60px] transition-colors duration-1000"
               style={{ background: EMOTION_MAP[s.emotion]?.color || "#6D28D9" }}
             />
             <Avatar3D
@@ -935,7 +1139,7 @@ export default function TrainingSessionPage() {
           </div>
 
           {/* Mic / Text input */}
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30 w-full max-w-lg px-4">
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 w-full max-w-lg px-4">
             {s.textMode ? (
               <div className="flex items-end gap-2">
                 <textarea
@@ -946,6 +1150,7 @@ export default function TrainingSessionPage() {
                   placeholder={s.sessionState === "ready" ? "Введите сообщение..." : "Ожидание подключения..."}
                   disabled={s.sessionState !== "ready"}
                   rows={1}
+                  aria-label="Введите сообщение"
                   className="vh-input max-h-32 min-h-[42px] flex-1 resize-none"
                   onInput={(e) => {
                     const t = e.target as HTMLTextAreaElement;
@@ -955,7 +1160,8 @@ export default function TrainingSessionPage() {
                 />
                 <motion.button
                   onClick={handleSend}
-                  disabled={!s.input.trim() || s.sessionState !== "ready"}
+                  disabled={!s.input.trim() || s.sessionState !== "ready" || connectionState !== "connected"}
+                  aria-label="Отправить сообщение"
                   className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl text-white"
                   style={{ background: "var(--accent)", opacity: !s.input.trim() || s.sessionState !== "ready" ? 0.4 : 1 }}
                   whileTap={{ scale: 0.95 }}
@@ -987,86 +1193,113 @@ export default function TrainingSessionPage() {
           </div>
         </section>
 
-        {/* RIGHT: Stats Panel — progressive reveal per ТЗ */}
-        <aside className="training-session-panel flex flex-col gap-4">
-          <div className="glass-panel rounded-xl p-4" style={{ borderRight: "2px solid rgba(139,92,246,0.24)" }}>
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.22em]" style={{ color: "var(--accent)" }}>
-                  CLIENT SIGNAL
+        {/* RIGHT: Stats Panel — compact scrollable sidebar */}
+        <aside className="training-session-panel flex flex-col gap-2.5">
+          <div className="glass-panel rounded-xl p-4" style={{ borderRight: "2px solid rgba(99,102,241,0.24)" }}>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="font-mono text-xs uppercase tracking-[0.18em] shrink-0 font-semibold" style={{ color: "var(--accent)" }}>
+                  Клиент
                 </div>
-                <div className="mt-2 font-display text-lg font-bold tracking-[0.08em]" style={{ color: "var(--text-primary)" }}>
+                <div className="font-display text-base font-bold tracking-wide truncate" style={{ color: "var(--text-primary)" }}>
                   {s.characterName}
                 </div>
-                <div className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                  Состояние клиента и вероятность движения к сделке.
-                </div>
               </div>
-              <div className="rounded-lg px-2 py-1 text-[10px] font-mono uppercase tracking-widest" style={{ background: "rgba(139,92,246,0.12)", color: "var(--accent)" }}>
+              <div className="rounded-lg px-2.5 py-1 text-xs font-mono uppercase tracking-wider shrink-0 font-semibold" style={{ background: "rgba(99,102,241,0.12)", color: "var(--accent)" }}>
                 {emotionLabel}
               </div>
             </div>
 
             <VibeMeter emotion={s.emotion} />
 
-            <div className="mt-4 rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
-              <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+            <div className="mt-3 rounded-lg p-3 relative overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div className="flex items-center justify-between text-xs font-mono uppercase tracking-wider font-semibold" style={{ color: "var(--text-secondary)" }}>
                 <span>Принятие сделки</span>
-                <span style={{ color: "var(--accent)" }}>{acceptanceScore}/100</span>
+                <motion.span
+                  key={acceptanceScore}
+                  initial={{ scale: 1.2, color: acceptanceScore >= 60 ? "#00FF94" : "#F59E0B" }}
+                  animate={{ scale: 1, color: "var(--accent)" }}
+                  transition={{ duration: 0.4 }}
+                  className="font-bold"
+                >
+                  {acceptanceScore}/100
+                </motion.span>
               </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full" style={{ background: "var(--input-bg)" }}>
-                <div
-                  className="h-full rounded-full transition-all duration-500"
+              <div className="mt-1.5 h-2 overflow-hidden rounded-full" style={{ background: "var(--input-bg)" }}>
+                <motion.div
+                  className="h-full rounded-full"
+                  animate={{ width: `${acceptanceScore}%` }}
+                  transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
                   style={{
-                    width: `${acceptanceScore}%`,
-                    background: acceptanceScore >= 60 ? "linear-gradient(90deg, #22c55e, #00FF94)" : "linear-gradient(90deg, #F59E0B, #8B5CF6)",
+                    background: acceptanceScore >= 60 ? "linear-gradient(90deg, #22c55e, #00FF94)" : "linear-gradient(90deg, #F59E0B, #6366F1)",
+                    boxShadow: acceptanceScore >= 60 ? "0 0 12px rgba(0,255,148,0.4)" : "0 0 12px rgba(99,102,241,0.3)",
                   }}
                 />
               </div>
-              <div className="mt-2 text-xs" style={{ color: "var(--text-secondary)" }}>{acceptanceLabel}</div>
+              <div className="mt-1 flex items-center justify-between">
+                <div className="text-xs font-medium" style={{ color: acceptanceScore >= 60 ? "var(--neon-green, #00FF94)" : "var(--text-secondary)" }}>{acceptanceLabel}</div>
+                {acceptanceScore >= 80 && <span className="text-sm">🎯</span>}
+              </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="mt-3 grid grid-cols-2 gap-2">
               {[
                 { label: "Доверие", value: trustScore, max: 10, color: "#3B82F6" },
-                { label: "Сопротивление", value: resistanceScore, max: 10, color: "#F59E0B" },
+                { label: "Сопротивл.", value: resistanceScore, max: 10, color: "#F59E0B" },
                 { label: "Давление", value: pressureScore, max: 100, color: "#EF4444" },
-                { label: "Скрипт", value: Math.round(s.scriptScore), max: 100, color: "#8B5CF6" },
+                { label: "Скрипт", value: Math.round(s.scriptScore), max: 100, color: "#6366F1" },
               ].map((item) => (
-                <div key={item.label} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div className="text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{item.label}</div>
-                  <div className="mt-1 text-lg font-bold" style={{ color: item.color }}>{item.value}<span className="ml-1 text-[11px]" style={{ color: "var(--text-muted)" }}>/ {item.max}</span></div>
-                </div>
+                <motion.div
+                  key={item.label}
+                  className="rounded-lg px-3 py-2 relative overflow-hidden group/stat"
+                  style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+                  whileHover={{ scale: 1.03, borderColor: `${item.color}33` }}
+                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                >
+                  {/* Micro progress bar at bottom */}
+                  <div className="absolute bottom-0 left-0 h-[2px] transition-all duration-700 ease-out" style={{ width: `${(item.value / item.max) * 100}%`, background: `linear-gradient(90deg, transparent, ${item.color})`, opacity: 0.5 }} />
+                  <div className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{item.label}</div>
+                  <motion.div
+                    className="text-lg font-bold leading-tight"
+                    style={{ color: item.color }}
+                    key={`${item.label}-${item.value}`}
+                    initial={{ scale: 1.15, opacity: 0.7 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    {item.value}<span className="ml-0.5 text-xs" style={{ color: "var(--text-muted)" }}>/{item.max}</span>
+                  </motion.div>
+                </motion.div>
               ))}
             </div>
 
             {(s.humanFactors.length > 0 || s.consequences.length > 0) && (
-              <div className="mt-4 space-y-3">
+              <div className="mt-2 space-y-2">
                 {s.humanFactors.length > 0 && (
                   <div>
-                    <div className="mb-2 text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-                      Human Factors
+                    <div className="mb-1.5 text-xs font-mono uppercase tracking-wider font-semibold" style={{ color: "var(--text-secondary)" }}>
+                      Человеческие факторы
                     </div>
                     <HumanFactorIcons factors={s.humanFactors} />
                   </div>
                 )}
                 {s.consequences.length > 0 && (
                   <div>
-                    <div className="mb-2 text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                    <div className="mb-1.5 text-xs font-mono uppercase tracking-wider font-semibold" style={{ color: "var(--text-secondary)" }}>
                       Последствия
                     </div>
-                    <div className="space-y-2">
-                      {s.consequences.slice(-3).reverse().map((consequence, index) => (
+                    <div className="space-y-1">
+                      {s.consequences.slice(-2).reverse().map((consequence, index) => (
                         <div key={`${consequence.call}-${consequence.type}-${index}`} className="rounded-lg px-3 py-2 text-xs" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.16)", color: "var(--text-secondary)" }}>
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "#F87171" }}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono text-xs uppercase tracking-wider font-semibold" style={{ color: "#F87171" }}>
                               {consequence.type.replace(/_/g, " ")}
                             </span>
-                            <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
-                              call {consequence.call}
+                            <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                              #{consequence.call}
                             </span>
                           </div>
-                          <div className="mt-1">{consequence.detail}</div>
+                          <div className="mt-0.5 line-clamp-2">{consequence.detail}</div>
                         </div>
                       ))}
                     </div>
@@ -1076,24 +1309,94 @@ export default function TrainingSessionPage() {
             )}
           </div>
 
-          <ScriptAdherence progress={s.scriptScore} checkpointsHit={s.checkpointsHit} checkpointsTotal={s.checkpointsTotal} checkpoints={s.checkpoints} highlightCheckpoint={s.checkpointHint?.checkpoint ?? null} />
+          <WhisperPanel onToggle={(enabled) => sendMessage({ type: "whisper.toggle", data: { enabled } })} />
+
+          <StageProgressBar
+            currentStage={s.currentStage}
+            stagesCompleted={s.stagesCompleted}
+            totalStages={s.totalStages}
+          />
+
+          <ScriptAdherence progress={s.scriptScore} checkpointsHit={s.checkpointsHit} checkpointsTotal={s.checkpointsTotal} checkpoints={s.checkpoints} highlightCheckpoint={s.checkpointHint?.checkpoint ?? null} newCheckpoint={s.newCheckpoint} isPreliminary={s.isPreliminaryScore} />
 
           <TalkListenRatio talkPercent={talkPercent} />
+
+          <DifficultyIndicator
+            effectiveDifficulty={s.effectiveDifficulty}
+            modifier={s.difficultyModifier}
+            mode={s.difficultyMode}
+            trend={s.difficultyTrend}
+            goodStreak={s.goodStreak}
+            badStreak={s.badStreak}
+            hadComeback={s.hadComeback}
+          />
+
+          {/* Real-time scores panel */}
+          <RealtimeScores />
+
+          {/* Trap history log */}
+          <TrapLog />
+
+          {/* Live emotion sparkline */}
+          <LiveEmotionTimeline />
 
           {/* TrapSummary: always visible (traps can appear any time) */}
           <TrapSummaryBadge fell={s.trapsFell} dodged={s.trapsDodged} netScore={s.trapNetScore} />
 
           {/* Live Score */}
-          <div className="rounded-xl p-5" style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(20px)" }}>
-            <div className="font-mono text-[10px] uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>LIVE SCORE</div>
-            <div className="text-3xl font-bold glow-text-purple" style={{ color: "var(--accent)" }}>
-              {Math.round(s.scriptScore)}
-              <span className="text-sm font-normal ml-1" style={{ color: "var(--text-muted)" }}>/100</span>
+          <motion.div
+            className="rounded-xl p-3 relative overflow-hidden"
+            style={{
+              background: "var(--glass-bg)",
+              border: scorePulse ? "1px solid rgba(99,102,241,0.5)" : "1px solid var(--glass-border)",
+              backdropFilter: "blur(20px)",
+              transition: "border-color 0.3s ease",
+            }}
+            animate={scorePulse ? { boxShadow: ["0 0 0px rgba(99,102,241,0)", "0 0 20px rgba(99,102,241,0.3)", "0 0 0px rgba(99,102,241,0)"] } : {}}
+            transition={{ duration: 0.6 }}
+          >
+            {/* Checkpoint flash overlay */}
+            <AnimatePresence>
+              {checkpointFlash && (
+                <motion.div
+                  className="absolute inset-0 rounded-xl pointer-events-none"
+                  initial={{ opacity: 0.4 }}
+                  animate={{ opacity: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.8 }}
+                  style={{ background: "radial-gradient(circle at center, rgba(0,255,148,0.15) 0%, transparent 70%)" }}
+                />
+              )}
+            </AnimatePresence>
+            <div className="flex items-center justify-between mb-1">
+              <div className="font-mono text-xs uppercase tracking-wider font-semibold flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
+                Баллы
+                {checkpointFlash && (
+                  <motion.span
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="text-[10px]"
+                  >
+                    ✅
+                  </motion.span>
+                )}
+              </div>
+              <motion.div
+                className="text-xl font-bold glow-text-purple"
+                style={{ color: "var(--accent)" }}
+                key={Math.round(s.scriptScore)}
+                initial={{ scale: 1.2, opacity: 0.7 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 500, damping: 25 }}
+              >
+                {Math.round(s.scriptScore)}<span className="text-xs font-normal ml-0.5" style={{ color: "var(--text-muted)" }}>/100</span>
+              </motion.div>
             </div>
             {scoreHint && (
               <div className="mt-4 space-y-2">
-                <div className="flex items-center justify-between text-[11px]" style={{ color: "var(--text-secondary)" }}>
-                  <span>RT Estimate</span>
+                <div className="flex items-center justify-between text-xs" style={{ color: "var(--text-secondary)" }}>
+                  <span>Оценка</span>
                   <span className="font-mono" style={{ color: "var(--accent)" }}>
                     {scoreHint.realtime_estimate}/{scoreHint.max_possible_realtime}
                   </span>
@@ -1104,21 +1407,31 @@ export default function TrainingSessionPage() {
                   ["Human Factor", scoreHint.human_factor, "#EC4899"],
                 ].map(([label, value, color]) => (
                   <div key={label as string}>
-                    <div className="mb-1 flex items-center justify-between text-[10px]" style={{ color: "var(--text-muted)" }}>
+                    <div className="mb-1 flex items-center justify-between text-xs" style={{ color: "var(--text-muted)" }}>
                       <span>{label as string}</span>
-                      <span>{Math.round(value as number)}</span>
+                      <motion.span
+                        key={`${label}-${Math.round(value as number)}`}
+                        initial={{ scale: 1.15 }}
+                        animate={{ scale: 1 }}
+                        className="font-mono"
+                        style={{ color: color as string }}
+                      >
+                        {Math.round(value as number)}
+                      </motion.span>
                     </div>
                     <div className="h-1.5 w-full rounded-full" style={{ background: "var(--input-bg)" }}>
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${Math.min(100, ((value as number) / 18.75) * 100)}%`, background: color as string }}
+                      <motion.div
+                        className="h-full rounded-full"
+                        animate={{ width: `${Math.min(100, ((value as number) / 18.75) * 100)}%` }}
+                        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                        style={{ background: color as string, boxShadow: `0 0 6px ${(color as string)}44` }}
                       />
                     </div>
                   </div>
                 ))}
               </div>
             )}
-          </div>
+          </motion.div>
         </aside>
         </div>
       </main>
@@ -1126,164 +1439,121 @@ export default function TrainingSessionPage() {
       {/* ── Trap Notification ──────────────────────────────── */}
       <TrapNotification event={s.activeTrap} onDismiss={() => s.setActiveTrap(null)} />
 
-      {/* ── Objection Hint Toast ──────────────────────────── */}
-      <AnimatePresence>
-        {s.objectionHint && (
-          <motion.div
-            initial={{ opacity: 0, x: 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 40 }}
-            className="fixed bottom-6 left-6 z-[160] max-w-xs"
-          >
-            <div
-              className="rounded-xl p-3 backdrop-blur-xl flex items-start gap-3"
-              style={{
-                background: "rgba(139,92,246,0.1)",
-                border: "1px solid rgba(139,92,246,0.3)",
-                boxShadow: "0 0 20px rgba(139,92,246,0.15)",
-              }}
-            >
-              <Lightbulb size={16} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 2 }} />
-              <div>
-                <div className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--accent)" }}>
-                  ПОДСКАЗКА
-                </div>
-                <div className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
-                  {s.objectionHint.message}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Checkpoint Hint Toast ─────────────────────────── */}
-      <AnimatePresence>
-        {s.checkpointHint && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-20 left-1/2 -translate-x-1/2 z-[140]"
-          >
-            <div
-              className="rounded-xl px-4 py-2 backdrop-blur-xl flex items-center gap-2"
-              style={{
-                background: "rgba(139,92,246,0.1)",
-                border: "1px solid rgba(139,92,246,0.3)",
-                boxShadow: "0 0 15px rgba(139,92,246,0.1)",
-              }}
-            >
-              <CheckCircle2 size={14} style={{ color: "var(--accent)" }} />
-              <span className="font-mono text-[11px]" style={{ color: "var(--text-secondary)" }}>
-                Сейчас хорошо бы: <span style={{ color: "var(--accent)" }}>{s.checkpointHint.checkpoint}</span>
-              </span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Silence Warning Banner ──────────────────────────── */}
-      <AnimatePresence>
-        {s.silenceWarning && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[140] flex items-center gap-3 rounded-xl px-5 py-3"
-            style={{
-              background: "rgba(245,158,11,0.15)",
-              border: "1px solid rgba(245,158,11,0.3)",
-              backdropFilter: "blur(12px)",
-              boxShadow: "0 0 20px rgba(245,158,11,0.15)",
-            }}
-          >
-            <AlertTriangle size={18} style={{ color: "var(--warning)" }} />
-            <span className="font-mono text-sm" style={{ color: "var(--warning)" }}>
-              Вы молчите — скоро сессия будет приостановлена
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Timer Warning (25min+) ────────────────────────── */}
-      <AnimatePresence>
-        {s.elapsed >= 1500 && s.elapsed < 1800 && s.sessionState === "ready" && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed top-20 right-6 z-[130] flex items-center gap-2 rounded-xl px-4 py-2"
-            style={{
-              background: "rgba(245,158,11,0.1)",
-              border: "1px solid rgba(245,158,11,0.2)",
-              backdropFilter: "blur(12px)",
-            }}
-          >
-            <Clock size={14} style={{ color: "var(--warning)" }} />
-            <span className="font-mono text-xs" style={{ color: "var(--warning)" }}>
-              {formatTime(1800 - s.elapsed)} до лимита
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* ── Training Toasts (hangup, hints, silence, timer) ── */}
+      <TrainingToasts
+        hangupWarning={s.hangupWarning}
+        objectionHint={s.objectionHint}
+        checkpointHint={s.checkpointHint}
+        silenceWarning={s.silenceWarning}
+        elapsed={s.elapsed}
+        sessionState={s.sessionState}
+        formatTime={formatTime}
+      />
 
       {/* ── Modals ──────────────────────────────────────────── */}
       <AnimatePresence>
         {s.sessionState === "completed" && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[150] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="glass-panel px-8 py-6 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full" style={{ background: "rgba(0,255,102,0.1)" }}>
-                <CheckCircle2 size={24} style={{ color: "#00FF66" }} />
+          <motion.div key="modal-completed" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[150] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(8px)" }}>
+            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 300, damping: 20 }} className="glass-panel px-8 sm:px-12 py-8 text-center max-w-md rounded-3xl">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "rgba(0,255,102,0.1)", boxShadow: "0 0 40px rgba(0,255,102,0.15)" }}>
+                <CheckCircle2 size={32} style={{ color: "#00FF66" }} />
               </div>
-              <h2 className="mt-3 font-display text-lg font-bold" style={{ color: "var(--text-primary)" }}>
-                FLIGHT COMPLETED
+              <h2 className="mt-4 font-display text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
+                ТРЕНИРОВКА ЗАВЕРШЕНА
               </h2>
-              <p className="mt-1 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-                Analyzing data...
-              </p>
+              {sessionEndedRef.current.score !== null && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="mt-4"
+                >
+                  <div className="font-display text-5xl font-black" style={{ color: sessionEndedRef.current.score >= 70 ? "#00FF66" : sessionEndedRef.current.score >= 40 ? "#FFB400" : "#FF3333" }}>
+                    {Math.round(sessionEndedRef.current.score)}
+                  </div>
+                  <div className="font-mono text-sm mt-1" style={{ color: "var(--text-muted)" }}>баллов</div>
+                </motion.div>
+              )}
+              {sessionEndedRef.current.xp !== null && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.6 }}
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2"
+                  style={{ background: "rgba(255,180,0,0.1)", border: "1px solid rgba(255,180,0,0.2)" }}
+                >
+                  <span className="font-display font-bold text-lg" style={{ color: "#FFB400" }}>+{sessionEndedRef.current.xp} XP</span>
+                </motion.div>
+              )}
+              {sessionEndedRef.current.levelUp && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.9, type: "spring" }}
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2"
+                  style={{ background: "rgba(0,255,102,0.1)", border: "1px solid rgba(0,255,102,0.3)" }}
+                >
+                  <span className="font-display font-bold text-lg" style={{ color: "#00FF66" }}>УРОВЕНЬ ПОВЫШЕН!</span>
+                </motion.div>
+              )}
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.2 }}
+                className="mt-4 font-mono text-sm"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Переход к результатам...
+              </motion.p>
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
 
+      <AnimatePresence>
         {s.showAbortModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[150] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="glass-panel max-w-sm px-8 py-6 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full" style={{ background: "rgba(255,51,51,0.1)" }}>
-                <XCircle size={24} style={{ color: "#FF3333" }} />
+          <motion.div key="modal-abort" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[150] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="glass-panel w-full max-w-md px-6 sm:px-8 py-7 text-center rounded-2xl">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(255,51,51,0.1)", border: "1px solid rgba(255,51,51,0.2)" }}>
+                <XCircle size={26} style={{ color: "#FF3333" }} />
               </div>
-              <h2 className="mt-3 font-display text-lg font-bold" style={{ color: "var(--text-primary)" }}>
+              <h2 className="mt-4 font-display text-xl font-bold" style={{ color: "var(--text-primary)" }}>
                 Прервать тренировку?
               </h2>
-              <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
+              <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                 Прогресс будет сохранён, но сессия завершится досрочно.
               </p>
-              <div className="mt-4 flex justify-center gap-3">
-                <motion.button onClick={() => s.setShowAbortModal(false)} className="vh-btn-outline" whileTap={{ scale: 0.97 }}>
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <motion.button onClick={() => s.setShowAbortModal(false)} className="btn-neon w-full py-3 text-sm" whileTap={{ scale: 0.97 }}>
                   Продолжить
                 </motion.button>
-                <motion.button onClick={() => { s.setShowAbortModal(false); handleEnd(); }} className="vh-btn-danger flex items-center gap-2" whileTap={{ scale: 0.97 }}>
+                <motion.button onClick={() => { s.setShowAbortModal(false); handleEnd(); }} className="btn-neon btn-neon--danger w-full py-3 text-sm flex items-center justify-center gap-2" whileTap={{ scale: 0.97 }}>
                   <XCircle size={14} /> Завершить
                 </motion.button>
               </div>
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
 
+      <AnimatePresence>
         {s.showSilenceModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[150] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="glass-panel max-w-sm px-8 py-6 text-center">
-              <h2 className="font-display text-lg font-bold" style={{ color: "var(--warning)" }}>
-                SIGNAL LOST
+          <motion.div key="modal-silence" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[150] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="glass-panel w-full max-w-md px-6 sm:px-8 py-7 text-center rounded-2xl">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                <AlertTriangle size={26} style={{ color: "var(--warning)" }} />
+              </div>
+              <h2 className="mt-4 font-display text-xl font-bold" style={{ color: "var(--warning)" }}>
+                Потеря сигнала
               </h2>
-              <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
+              <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                 Вы давно молчите. Продолжить тренировку?
               </p>
-              <div className="mt-4 flex justify-center gap-3">
-                <motion.button onClick={handleContinueSession} className="vh-btn-primary" whileTap={{ scale: 0.97 }}>
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <motion.button onClick={handleContinueSession} className="btn-neon w-full py-3 text-sm" whileTap={{ scale: 0.97 }}>
                   Продолжить
                 </motion.button>
-                <motion.button onClick={handleEnd} className="vh-btn-outline" whileTap={{ scale: 0.97 }}>
+                <motion.button onClick={handleEnd} className="btn-neon w-full py-3 text-sm" whileTap={{ scale: 0.97 }}>
                   Завершить
                 </motion.button>
               </div>
@@ -1291,6 +1561,27 @@ export default function TrainingSessionPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <HangupModal
+        open={s.showHangupModal}
+        data={s.hangupData}
+        onRedial={() => {
+          s.setShowHangupModal(false);
+          s.setHangupData(null);
+          if (s.storyMode && s.storyId) {
+            sendMessage({ type: "story.next_call", data: { story_id: s.storyId } });
+          }
+        }}
+        onResults={() => {
+          s.setShowHangupModal(false);
+          s.setHangupData(null);
+          if (s.storyMode) {
+            sendMessage({ type: "story.end", data: { story_id: s.storyId } });
+          } else {
+            sendMessage({ type: "session.end", data: {} });
+          }
+        }}
+      />
     </div>
     </TrainingErrorBoundary>
   );

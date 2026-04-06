@@ -26,8 +26,8 @@ const PERIOD_OPTIONS = [
 ];
 
 function TrendIcon({ direction }: { direction: string }) {
-  if (direction === "up") return <TrendingUp size={12} style={{ color: "#00FF66" }} />;
-  if (direction === "down") return <TrendingDown size={12} style={{ color: "#FF3333" }} />;
+  if (direction === "up") return <TrendingUp size={12} style={{ color: "var(--neon-green)" }} />;
+  if (direction === "down") return <TrendingDown size={12} style={{ color: "var(--neon-red)" }} />;
   return <Minus size={12} style={{ color: "var(--text-muted)" }} />;
 }
 
@@ -43,10 +43,10 @@ export function GamePortfolioStats({
         className="rounded-xl p-4 animate-pulse"
         style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-color)" }}
       >
-        <div className="h-4 w-32 rounded" style={{ background: "var(--input-bg)" }} />
-        <div className="grid grid-cols-4 gap-3 mt-4">
+        <div className="h-4 w-32 rounded skeleton-neon" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-16 rounded-lg" style={{ background: "var(--input-bg)" }} />
+            <div key={i} className="h-16 rounded-lg skeleton-neon" />
           ))}
         </div>
       </div>
@@ -59,14 +59,14 @@ export function GamePortfolioStats({
       value: stats.total_stories,
       sub: `${stats.active} активных`,
       icon: Users,
-      color: "#3B82F6",
+      color: "var(--accent)",
     },
     {
       label: "Звонков",
       value: stats.total_calls,
       sub: `~${stats.avg_calls_per_story} / историю`,
       icon: Phone,
-      color: "#10B981",
+      color: "var(--neon-green)",
     },
     {
       label: "Ср. балл",
@@ -77,7 +77,7 @@ export function GamePortfolioStats({
           ? `${stats.trend.change_pct}%`
           : "стабильно",
       icon: Target,
-      color: "#F59E0B",
+      color: "var(--neon-amber)",
     },
     {
       label: "Завершено",
@@ -86,7 +86,7 @@ export function GamePortfolioStats({
         ? `${Math.round((stats.completed / stats.total_stories) * 100)}%`
         : "0%",
       icon: BarChart3,
-      color: "#00FF66",
+      color: "var(--neon-green)",
     },
   ];
 
@@ -118,10 +118,10 @@ export function GamePortfolioStats({
             <button
               key={opt.value}
               onClick={() => onPeriodChange(opt.value)}
-              className="text-[10px] font-mono px-2 py-1 rounded-md transition-colors"
+              className="text-xs font-mono px-2 py-1 rounded-md transition-colors"
               style={{
                 background: period === opt.value ? "var(--accent)" : "var(--input-bg)",
-                color: period === opt.value ? "#000" : "var(--text-muted)",
+                color: period === opt.value ? "var(--bg-primary)" : "var(--text-muted)",
                 border: `1px solid ${period === opt.value ? "var(--accent)" : "var(--border-color)"}`,
               }}
             >
@@ -148,7 +148,7 @@ export function GamePortfolioStats({
             <div className="flex items-center gap-1.5 mb-1">
               <card.icon size={11} style={{ color: card.color }} />
               <span
-                className="text-[10px] font-mono"
+                className="text-xs font-mono"
                 style={{ color: "var(--text-muted)" }}
               >
                 {card.label}
@@ -161,7 +161,7 @@ export function GamePortfolioStats({
               {card.value}
             </div>
             <div
-              className="text-[10px] font-mono"
+              className="text-xs font-mono"
               style={{ color: "var(--text-muted)", opacity: 0.7 }}
             >
               {card.sub}

@@ -174,7 +174,7 @@ export function PostSessionVerdict({ score, onContinue, xpGained = 0 }: PostSess
               {/* Continue button */}
               <motion.button
                 onClick={onContinue}
-                className="vh-btn-primary flex items-center gap-2 mx-auto text-lg px-8 py-4"
+                className="btn-neon flex items-center gap-2 mx-auto text-lg px-8 py-4"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.5 }}

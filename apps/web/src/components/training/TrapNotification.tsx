@@ -113,10 +113,10 @@ export function TrapNotification({ event, onDismiss }: TrapNotificationProps) {
                 </motion.div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[10px] tracking-widest" style={{ color: config.color }}>
+                    <span className="font-mono text-xs tracking-widest" style={{ color: config.color }}>
                       {config.label}
                     </span>
-                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded"
+                    <span className="font-mono text-xs px-1.5 py-0.5 rounded"
                       style={{ background: "rgba(255,255,255,0.05)", color: "var(--text-muted)" }}>
                       {CATEGORY_LABELS[event.category] || event.category}
                     </span>
@@ -140,7 +140,7 @@ export function TrapNotification({ event, onDismiss }: TrapNotificationProps) {
             </div>
 
             {/* Message */}
-            <div className="mt-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
+            <div className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
               {config.message}
             </div>
 
@@ -185,16 +185,16 @@ export function TrapSummaryBadge({ fell, dodged, netScore }: TrapSummaryBadgePro
         backdropFilter: "blur(20px)",
       }}
     >
-      <div className="font-mono text-[10px] uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
+      <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
         TRAP SCORE
       </div>
       <div className="flex items-baseline gap-2">
         <span className="text-2xl font-bold font-display" style={{ color }}>
           {deltaStr}
         </span>
-        <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>pts</span>
+        <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>pts</span>
       </div>
-      <div className="mt-2 flex gap-3 text-[10px] font-mono">
+      <div className="mt-2 flex gap-3 text-xs font-mono">
         <span style={{ color: "#FF2A6D" }}>
           <ShieldAlert size={10} className="inline mr-1" />{fell}
         </span>

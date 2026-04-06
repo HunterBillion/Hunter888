@@ -8,10 +8,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
 from app.core import errors as err
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.user import User, UserConsent
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter()
 
@@ -50,6 +55,7 @@ class ConsentStatusResponse(BaseModel):
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 
+@limiter.limit("10/minute")
 @router.post("/", response_model=ConsentRecord, status_code=status.HTTP_201_CREATED)
 async def accept_consent(
     body: AcceptConsentRequest,

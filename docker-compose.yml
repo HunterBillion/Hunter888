@@ -5,6 +5,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-trainer}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trainer_pass}
       POSTGRES_DB: ${POSTGRES_DB:-trainer_db}
+      TZ: ${TZ:-Europe/Moscow}
+      PGTZ: ${TZ:-Europe/Moscow}
     ports:
       - "5432:5432"
     volumes:
@@ -77,6 +79,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    restart: unless-stopped
+    networks:
+      - backend
     deploy:
       resources:
         limits:
@@ -93,6 +98,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    restart: unless-stopped
+    networks:
+      - backend
     deploy:
       resources:
         limits:
@@ -111,6 +119,7 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret_pass}@redis:6379/0
       WHISPER_URL: http://whisper:8000
       EMBEDDINGS_SERVICE_URL: http://embeddings:8001
+      TZ: ${TZ:-Europe/Moscow}
     volumes:
       # Persist uploaded avatars across container restarts
       - api_uploads:/app/uploads
@@ -125,6 +134,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    stop_grace_period: 45s
     restart: unless-stopped
     networks:
       - backend
@@ -154,13 +164,14 @@ services:
       # Keep runtime env for reference (used by standalone server.js hostname binding)
       HOSTNAME: "0.0.0.0"
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
+      test: ["CMD", "wget", "--spider", "-q", "http://0.0.0.0:3000/"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 15s
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - frontend

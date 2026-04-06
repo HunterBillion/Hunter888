@@ -2,6 +2,15 @@ import { clearTokens, getToken, getRefreshToken, setTokens } from "./auth";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { getApiBaseUrl } from "./public-origin";
 
+/** Read the csrf_token cookie set by the backend on login/refresh. */
+function getCsrfToken(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+const _CSRF_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
+
 function apiPrefix(): string {
   return `${getApiBaseUrl()}/api`;
 }
@@ -26,7 +35,10 @@ let _refreshPromise: Promise<boolean> | null = null;
 
 async function _doRefresh(): Promise<boolean> {
   const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
+  // Even without in-memory token, the httpOnly refresh_token cookie may
+  // still be present — send the request and let the backend check the cookie.
+  const hasMarkerCookie = typeof document !== "undefined" && document.cookie.includes("vh_authenticated=");
+  if (!refreshToken && !hasMarkerCookie) return false;
 
   try {
     const controller = new AbortController();
@@ -35,7 +47,7 @@ async function _doRefresh(): Promise<boolean> {
     const res = await fetch(`${apiPrefix()}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
+      body: JSON.stringify(refreshToken ? { refresh_token: refreshToken } : {}),
       credentials: "include",
       signal: controller.signal,
     });
@@ -69,6 +81,9 @@ async function handleTokenRefresh(): Promise<boolean> {
   return _refreshPromise;
 }
 
+/** Exported for WebSocket pre-auth token refresh. */
+export const tryRefreshToken = handleTokenRefresh;
+
 async function request(path: string, options: RequestInit = {}): Promise<unknown> {
   const token = getToken();
 
@@ -79,6 +94,15 @@ async function request(path: string, options: RequestInit = {}): Promise<unknown
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Attach CSRF token for state-changing methods (matches CSRFMiddleware on backend)
+  const method = (options.method || "GET").toUpperCase();
+  if (_CSRF_METHODS.has(method)) {
+    const csrfToken = getCsrfToken();
+    if (csrfToken) {
+      headers["X-CSRF-Token"] = csrfToken;
+    }
   }
 
   let response: Response;
@@ -134,7 +158,8 @@ async function request(path: string, options: RequestInit = {}): Promise<unknown
       message = body.detail.map((e: { msg?: string }) => e.msg).join(", ");
     } else if (body.detail && typeof body.detail === "object") {
       // Handle structured error details (e.g. consent check returns { message, redirect })
-      message = body.detail.message || JSON.stringify(body.detail);
+      // Avoid JSON.stringify to prevent leaking internal structure to end users
+      message = body.detail.message || "Ошибка запроса";
     }
     throw new ApiError(message, response.status);
   }
@@ -144,8 +169,12 @@ async function request(path: string, options: RequestInit = {}): Promise<unknown
 }
 
 async function uploadFile(path: string, file: File): Promise<unknown> {
-  const formData = new FormData();
-  formData.append("file", file);
+  // Factory: FormData body is consumed on first fetch — must recreate for retries
+  const createBody = () => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return fd;
+  };
 
   const token = getToken();
   const headers: Record<string, string> = {};
@@ -156,7 +185,7 @@ async function uploadFile(path: string, file: File): Promise<unknown> {
     response = await fetch(`${apiPrefix()}${path}`, {
       method: "POST",
       headers,
-      body: formData,
+      body: createBody(),
       credentials: "include",
     });
   } catch {
@@ -171,7 +200,7 @@ async function uploadFile(path: string, file: File): Promise<unknown> {
       response = await fetch(`${apiPrefix()}${path}`, {
         method: "POST",
         headers,
-        body: formData,
+        body: createBody(),
         credentials: "include",
       });
     }
@@ -200,8 +229,8 @@ async function uploadFile(path: string, file: File): Promise<unknown> {
  */
 export const api = {
   get: <T = any>(path: string): Promise<T> => request(path) as Promise<T>,
-  post: <T = any>(path: string, body: unknown): Promise<T> =>
-    request(path, { method: "POST", body: JSON.stringify(body) }) as Promise<T>,
+  post: <T = any>(path: string, body: unknown, opts?: { signal?: AbortSignal }): Promise<T> =>
+    request(path, { method: "POST", body: JSON.stringify(body), signal: opts?.signal }) as Promise<T>,
   put: <T = any>(path: string, body: unknown): Promise<T> =>
     request(path, { method: "PUT", body: JSON.stringify(body) }) as Promise<T>,
   patch: <T = any>(path: string, body?: unknown): Promise<T> =>

@@ -4,12 +4,15 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowLeft, Copy, Loader2, Merge, Phone, AlertTriangle, Check,
+  Copy, Loader2, Merge, Phone, AlertTriangle, Check,
 } from "lucide-react";
 import Link from "next/link";
+import { BackButton } from "@/components/ui/BackButton";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { logger } from "@/lib/logger";
+import { useNotificationStore } from "@/stores/useNotificationStore";
 
 interface DuplicateClient {
   id: string;
@@ -45,7 +48,7 @@ export default function DuplicatesPage() {
   useEffect(() => {
     api.get("/clients/duplicates")
       .then((data: DuplicateGroup[]) => setGroups(Array.isArray(data) ? data : []))
-      .catch((err) => { console.error("Failed to load duplicate clients:", err); })
+      .catch((err) => { logger.error("Failed to load duplicate clients:", err); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -59,7 +62,10 @@ export default function DuplicatesPage() {
       }
       // Remove merged group
       setGroups((prev) => prev.filter((g) => g.phone !== phone));
-    } catch { /* ignore */ }
+    } catch (err) {
+      logger.error("Failed to merge duplicate clients:", err);
+      useNotificationStore.getState().addToast({ title: "Ошибка", body: "Не удалось объединить дубликаты", type: "error" });
+    }
     setMerging(null);
   };
 
@@ -69,13 +75,9 @@ export default function DuplicatesPage() {
         <div className="mx-auto max-w-4xl px-4 py-8">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-          <Link
-            href="/clients"
-            className="flex items-center gap-1.5 text-sm mb-4 transition-colors"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <ArrowLeft size={14} /> К клиентам
-          </Link>
+          <div className="mb-4">
+            <BackButton href="/clients" label="К клиентам" />
+          </div>
 
           <div className="flex items-center gap-2">
             <Copy size={20} style={{ color: "var(--accent)" }} />
@@ -84,7 +86,7 @@ export default function DuplicatesPage() {
             </h1>
             {groups.length > 0 && (
               <span className="text-xs font-mono px-2 py-0.5 rounded-full ml-2"
-                style={{ background: "rgba(245,158,11,0.1)", color: "#F59E0B", border: "1px solid rgba(245,158,11,0.2)" }}
+                style={{ background: "rgba(245,158,11,0.1)", color: "var(--warning)", border: "1px solid rgba(245,158,11,0.2)" }}
               >
                 {groups.length} групп
               </span>
@@ -117,12 +119,12 @@ export default function DuplicatesPage() {
               >
                 {/* Group header */}
                 <div className="flex items-center gap-3 px-5 py-3 border-b" style={{ borderColor: "var(--border-color)", background: "rgba(245,158,11,0.04)" }}>
-                  <AlertTriangle size={14} style={{ color: "#F59E0B" }} />
+                  <AlertTriangle size={14} style={{ color: "var(--warning)" }} />
                   <div className="flex items-center gap-2">
                     <Phone size={12} style={{ color: "var(--text-muted)" }} />
                     <span className="text-sm font-mono" style={{ color: "var(--text-primary)" }}>{group.phone}</span>
                   </div>
-                  <span className="text-[10px] font-mono ml-auto" style={{ color: "var(--text-muted)" }}>
+                  <span className="text-xs font-mono ml-auto" style={{ color: "var(--text-muted)" }}>
                     {group.clients.length} записей
                   </span>
                 </div>
@@ -156,16 +158,16 @@ export default function DuplicatesPage() {
                           </Link>
                           <div className="flex items-center gap-3 mt-0.5">
                             {client.email && (
-                              <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>{client.email}</span>
+                              <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{client.email}</span>
                             )}
-                            <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>{client.status}</span>
+                            <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{client.status}</span>
                             {client.manager_name && (
-                              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{client.manager_name}</span>
+                              <span className="text-xs" style={{ color: "var(--text-muted)" }}>{client.manager_name}</span>
                             )}
                           </div>
                         </div>
 
-                        <span className="text-[9px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>
+                        <span className="text-xs font-mono shrink-0" style={{ color: "var(--text-muted)" }}>
                           {new Date(client.created_at).toLocaleDateString("ru-RU")}
                         </span>
                       </div>
@@ -175,7 +177,7 @@ export default function DuplicatesPage() {
 
                 {/* Merge action */}
                 <div className="px-5 py-3 border-t flex items-center justify-between" style={{ borderColor: "var(--border-color)" }}>
-                  <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                     {mergeTarget[group.phone]
                       ? "Остальные записи будут объединены в выбранную"
                       : "Выберите основную запись"}

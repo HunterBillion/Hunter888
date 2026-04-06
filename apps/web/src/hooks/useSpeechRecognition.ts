@@ -197,6 +197,8 @@ export function useSpeechRecognition(
       startAudioMonitor();
     } catch {
       setStatus("error");
+      isListeningRef.current = false;
+      stopAudioMonitor();
       optionsRef.current.onError?.("start-failed");
     }
   }, [isSupported, lang, startAudioMonitor, stopAudioMonitor]);

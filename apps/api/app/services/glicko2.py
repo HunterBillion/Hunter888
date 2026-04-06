@@ -18,7 +18,7 @@ import math
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import case, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pvp import PvPRating, PvPRankTier, rank_from_rating
@@ -101,16 +101,28 @@ def _compute_delta(
 def _new_volatility(
     sigma: float, phi: float, v: float, delta: float
 ) -> float:
-    """Illinois algorithm for new volatility (σ')."""
+    """Illinois algorithm for new volatility (σ').
+
+    Hardened against edge cases:
+    - sigma=0: clamped to DEFAULT_VOL to avoid log(0)
+    - fB==fA: returns current sigma to avoid ZeroDivisionError
+    - overflow: result validated as finite, falls back to sigma
+    """
+    # Guard: sigma must be positive for log() to work
+    if sigma <= 0:
+        sigma = DEFAULT_VOL
+
     a = math.log(sigma ** 2)
     tau2 = TAU ** 2
 
     def f(x: float) -> float:
-        ex = math.exp(x)
+        ex = math.exp(min(x, 700))  # clamp to prevent overflow
         d2 = delta ** 2
         phi2 = phi ** 2
         num1 = ex * (d2 - phi2 - v - ex)
         den1 = 2.0 * (phi2 + v + ex) ** 2
+        if den1 == 0:
+            return 0.0
         return num1 / den1 - (x - a) / tau2
 
     # Set initial boundaries
@@ -121,6 +133,8 @@ def _new_volatility(
         k = 1
         while f(a - k * TAU) < 0:
             k += 1
+            if k > 100:  # prevent infinite loop
+                break
         B = a - k * TAU
 
     # Illinois algorithm (bisection variant)
@@ -129,7 +143,10 @@ def _new_volatility(
 
     iterations = 0
     while abs(B - A) > EPSILON and iterations < 100:
-        C = A + (A - B) * fA / (fB - fA)
+        denom = fB - fA
+        if abs(denom) < 1e-15:
+            break  # convergence: fA ≈ fB, avoid division by zero
+        C = A + (A - B) * fA / denom
         fC = f(C)
 
         if fC * fB <= 0:
@@ -142,7 +159,11 @@ def _new_volatility(
         fB = fC
         iterations += 1
 
-    return math.exp(A / 2.0)
+    result = math.exp(A / 2.0)
+    # Validate result is finite and reasonable
+    if not math.isfinite(result) or result > 1.0:
+        return sigma  # fall back to current volatility
+    return result
 
 
 def calculate_glicko2(
@@ -209,7 +230,7 @@ def calculate_glicko2(
         new_rating = rating + rating_delta
 
     # Clamp
-    new_rating = max(0.0, min(3000.0, new_rating))
+    new_rating = max(0.0, min(9999.0, new_rating))  # DOC_13: expanded for Grandmaster
     new_rd = max(MIN_RD, min(MAX_RD, new_rd))
 
     return new_rating, new_rd, sigma_new
@@ -235,41 +256,58 @@ def apply_rd_decay(rd: float, last_played: datetime | None) -> float:
 # ---------------------------------------------------------------------------
 
 async def get_or_create_rating(
-    user_id: uuid.UUID, db: AsyncSession
+    user_id: uuid.UUID,
+    db: AsyncSession,
+    rating_type: str = "training_duel",
 ) -> PvPRating:
     """Get existing rating or create a new one with defaults.
 
     Race-safe: if two concurrent requests try to create the same rating,
-    the second one catches the IntegrityError (UNIQUE on user_id) and
-    re-fetches the row that the first request created.
+    the second one catches the IntegrityError (UNIQUE on user_id+rating_type)
+    and re-fetches the row that the first request created.
+
+    Args:
+        rating_type: "training_duel" (default, for PvP sales duels) or
+                     "knowledge_arena" (for 127-FZ knowledge PvP).
     """
     from sqlalchemy.exc import IntegrityError
 
     result = await db.execute(
-        select(PvPRating).where(PvPRating.user_id == user_id)
+        select(PvPRating).where(
+            PvPRating.user_id == user_id,
+            PvPRating.rating_type == rating_type,
+        )
     )
     rating = result.scalar_one_or_none()
 
     if rating is None:
         rating = PvPRating(
             user_id=user_id,
+            rating_type=rating_type,
             rating=DEFAULT_RATING,
             rd=DEFAULT_RD,
             volatility=DEFAULT_VOL,
             rank_tier=PvPRankTier.unranked,
         )
-        db.add(rating)
         try:
-            await db.flush()
-            logger.info("Created PvP rating for user %s", user_id)
+            # Use a savepoint so a concurrent-create race only rolls back this
+            # INSERT, not the entire outer transaction (which may have other
+            # in-flight changes from update_rating_after_duel).
+            async with db.begin_nested():
+                db.add(rating)
+                await db.flush()
+            logger.info("Created %s rating for user %s", rating_type, user_id)
         except IntegrityError:
-            # Another request created the rating first — rollback and re-fetch
-            await db.rollback()
+            # Savepoint auto-rolled back; parent transaction is still alive.
+            # Re-fetch the row that the concurrent request already created.
             result = await db.execute(
-                select(PvPRating).where(PvPRating.user_id == user_id)
+                select(PvPRating).where(
+                    PvPRating.user_id == user_id,
+                    PvPRating.rating_type == rating_type,
+                )
             )
             rating = result.scalar_one()
-            logger.debug("PvP rating already existed for user %s (concurrent create)", user_id)
+            logger.debug("%s rating already existed for user %s (concurrent create)", rating_type, user_id)
 
     return rating
 
@@ -359,25 +397,38 @@ async def update_rating_after_duel(
 
 
 async def apply_season_reset(db: AsyncSession, season_id: uuid.UUID) -> int:
-    """Soft reset all ratings for new season.
+    """Soft reset all ratings for new season (single bulk UPDATE — O(1) memory).
 
     Formula: r_new = r * 0.75 + 1500 * 0.25, RD = 150.
     Returns number of ratings reset.
     """
-    result = await db.execute(select(PvPRating))
-    ratings = result.scalars().all()
-    count = 0
+    # Compute new rating inline so rank_tier CASE can reference the same expression.
+    new_rating_expr = PvPRating.rating * 0.75 + DEFAULT_RATING * 0.25
 
-    for r in ratings:
-        r.rating = r.rating * 0.75 + DEFAULT_RATING * 0.25
-        r.rd = 150.0
-        r.placement_done = True  # Keep placement status across seasons
-        r.current_streak = 0
-        r.season_id = season_id
-        r.rank_tier = rank_from_rating(r.rating, r.placement_done)
-        db.add(r)
-        count += 1
+    # CASE determines rank tier from the post-reset rating value.
+    # placement_done is forced True for all rows, so unranked never applies.
+    rank_tier_expr = case(
+        (new_rating_expr >= 2300, "diamond"),
+        (new_rating_expr >= 2000, "platinum"),
+        (new_rating_expr >= 1700, "gold"),
+        (new_rating_expr >= 1400, "silver"),
+        else_="bronze",
+    )
 
+    stmt = (
+        update(PvPRating)
+        .values(
+            rating=new_rating_expr,
+            rd=150.0,
+            placement_done=True,
+            current_streak=0,
+            season_id=season_id,
+            rank_tier=rank_tier_expr,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    result = await db.execute(stmt)
+    count = result.rowcount if result.rowcount >= 0 else 0
     await db.flush()
-    logger.info("Season reset applied to %d ratings", count)
+    logger.info("Season reset applied to %d ratings (bulk UPDATE)", count)
     return count

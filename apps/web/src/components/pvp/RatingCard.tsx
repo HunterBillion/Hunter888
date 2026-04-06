@@ -1,9 +1,27 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { TrendingUp, TrendingDown, Minus, Swords, Flame } from "lucide-react";
-import type { PvPRating } from "@/types";
+import { TrendingUp, TrendingDown, Minus, Swords, Flame, ChevronUp } from "lucide-react";
+import type { PvPRating, PvPRankTier } from "@/types";
 import { RankBadge } from "./RankBadge";
+
+const TIER_THRESHOLDS: { tier: PvPRankTier; min: number }[] = [
+  { tier: "diamond", min: 2300 },
+  { tier: "platinum", min: 2000 },
+  { tier: "gold", min: 1700 },
+  { tier: "silver", min: 1400 },
+  { tier: "bronze", min: 0 },
+];
+
+function getNextTier(rating: number, currentTier: PvPRankTier) {
+  const idx = TIER_THRESHOLDS.findIndex((t) => t.tier === currentTier);
+  if (idx <= 0) return null; // already diamond or not found
+  const next = TIER_THRESHOLDS[idx - 1];
+  const current = TIER_THRESHOLDS[idx];
+  const range = next.min - current.min;
+  const progress = Math.max(0, Math.min(1, (rating - current.min) / range));
+  return { tier: next.tier, threshold: next.min, progress, pointsNeeded: Math.max(0, next.min - Math.round(rating)) };
+}
 
 interface Props {
   rating: PvPRating;
@@ -12,6 +30,7 @@ interface Props {
 export function RatingCard({ rating: r }: Props) {
   const winRate = r.total_duels > 0 ? Math.round((r.wins / r.total_duels) * 100) : 0;
   const placementLeft = Math.max(0, 10 - r.placement_count);
+  const nextTier = r.placement_done ? getNextTier(r.rating, r.rank_tier) : null;
   const streakIcon = r.current_streak > 0
     ? <TrendingUp size={14} style={{ color: "var(--neon-green)" }} />
     : r.current_streak < 0
@@ -30,11 +49,11 @@ export function RatingCard({ rating: r }: Props) {
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.24em]" style={{ color: "var(--text-muted)" }}>
+            <div className="font-mono text-xs uppercase tracking-[0.24em]" style={{ color: "var(--text-muted)" }}>
               Arena Rating
             </div>
             <div className="mt-2 flex items-end gap-3">
-              <div className="font-display text-5xl font-black leading-none" style={{ color: "var(--text-primary)" }}>
+              <div className="font-display text-3xl sm:text-5xl font-black leading-none" style={{ color: "var(--text-primary)" }}>
                 {Math.round(r.rating)}
               </div>
               <div className="pb-1 text-xs font-mono" style={{ color: "var(--text-muted)" }}>
@@ -47,13 +66,13 @@ export function RatingCard({ rating: r }: Props) {
           </div>
           {!r.placement_done && (
             <div className="rounded-2xl px-4 py-3 text-right" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
-              <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+              <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
                 Калибровка
               </div>
               <div className="mt-1 text-2xl font-bold" style={{ color: "var(--accent)" }}>
                 {r.placement_count}/10
               </div>
-              <div className="mt-1 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+              <div className="mt-1 text-xs font-mono" style={{ color: "var(--text-muted)" }}>
                 Осталось {placementLeft}
               </div>
             </div>
@@ -63,19 +82,19 @@ export function RatingCard({ rating: r }: Props) {
 
       <div className="grid grid-cols-2 gap-4 p-6 md:grid-cols-4">
         <div className="text-center">
-          <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Побед</div>
+          <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Побед</div>
           <div className="font-display text-2xl font-bold" style={{ color: "var(--neon-green)" }}>{r.wins}</div>
         </div>
         <div className="text-center">
-          <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Поражений</div>
+          <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Поражений</div>
           <div className="font-display text-2xl font-bold" style={{ color: "var(--neon-red)" }}>{r.losses}</div>
         </div>
         <div className="text-center">
-          <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Win Rate</div>
+          <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Win Rate</div>
           <div className="font-display text-2xl font-bold" style={{ color: "var(--accent)" }}>{winRate}%</div>
         </div>
         <div className="text-center">
-          <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Streak</div>
+          <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Streak</div>
           <div className="font-display text-2xl font-bold flex items-center justify-center gap-1">
             {streakIcon}
             <span style={{ color: r.current_streak > 0 ? "var(--neon-green)" : r.current_streak < 0 ? "var(--neon-red)" : "var(--text-muted)" }}>
@@ -85,14 +104,41 @@ export function RatingCard({ rating: r }: Props) {
         </div>
       </div>
 
+      {/* Rank progress bar */}
+      {nextTier && (
+        <div className="px-6 py-4 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+              <ChevronUp size={12} className="inline" /> До следующего ранга
+            </span>
+            <span className="text-xs font-mono font-bold" style={{ color: "var(--accent)" }}>
+              {nextTier.pointsNeeded} очков
+            </span>
+          </div>
+          <div className="h-2 w-full rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
+            <motion.div
+              className="h-full rounded-full"
+              style={{ background: "linear-gradient(90deg, var(--accent), var(--magenta))", boxShadow: "0 0 8px rgba(99,102,241,0.4)" }}
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.round(nextTier.progress * 100)}%` }}
+              transition={{ duration: 1, ease: "easeOut" }}
+            />
+          </div>
+          <div className="flex items-center justify-between mt-1.5">
+            <RankBadge tier={r.rank_tier} size="sm" />
+            <RankBadge tier={nextTier.tier} size="sm" />
+          </div>
+        </div>
+      )}
+
       {/* Peak info */}
-      <div className="flex items-center justify-between border-t px-6 py-4 font-mono text-[10px]" style={{ color: "var(--text-muted)", borderColor: "rgba(255,255,255,0.06)" }}>
+      <div className="flex items-center justify-between border-t px-6 py-4 font-mono text-xs" style={{ color: "var(--text-muted)", borderColor: "rgba(255,255,255,0.06)" }}>
         <span className="flex items-center gap-1">
-          <Flame size={10} style={{ color: "#FFD700" }} />
+          <Flame size={13} style={{ color: "#FFD700" }} />
           Лучший streak: {r.best_streak}
         </span>
         <span className="flex items-center gap-1">
-          <Swords size={10} />
+          <Swords size={13} />
           Всего дуэлей: {r.total_duels}
         </span>
         <span>Пик: {Math.round(r.peak_rating)}</span>

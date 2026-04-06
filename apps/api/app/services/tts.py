@@ -196,6 +196,29 @@ _session_current_params: dict[str, VoiceParams] = {}
 # Flag: voice data loaded from DB
 _voice_data_loaded: bool = False
 
+# Shared httpx client for ElevenLabs API (reuses TCP connections)
+_shared_http_client: httpx.AsyncClient | None = None
+
+
+def _get_shared_client() -> httpx.AsyncClient:
+    """Get or create a shared httpx AsyncClient for ElevenLabs API."""
+    global _shared_http_client
+    if _shared_http_client is None or _shared_http_client.is_closed:
+        _shared_http_client = httpx.AsyncClient(
+            timeout=float(settings.elevenlabs_timeout_seconds),
+            follow_redirects=True,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
+    return _shared_http_client
+
+
+async def close_tts_client() -> None:
+    """Close the shared httpx client (call during app shutdown)."""
+    global _shared_http_client
+    if _shared_http_client and not _shared_http_client.is_closed:
+        await _shared_http_client.aclose()
+        _shared_http_client = None
+
 
 # =============================================================================
 # Fallback data (used when DB is unavailable)
@@ -1099,12 +1122,8 @@ async def synthesize_speech(
     )
 
     try:
-        async with httpx.AsyncClient(
-            timeout=float(settings.elevenlabs_timeout_seconds),
-            follow_redirects=True,
-            proxy=proxy,
-        ) as client:
-            response = await client.post(url, json=payload, headers=headers, params=params_qs)
+        client = _get_shared_client()
+        response = await client.post(url, json=payload, headers=headers, params=params_qs)
     except httpx.ConnectError:
         logger.error("ElevenLabs API unavailable")
         raise TTSError("ElevenLabs API unavailable")

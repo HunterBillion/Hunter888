@@ -36,7 +36,7 @@ export function DuplicateWarning({ message, duplicateIds, onDismiss }: Duplicate
                 <Link
                   key={id}
                   href={`/clients/${id}`}
-                  className="text-[10px] font-mono px-2 py-1 rounded-lg transition-colors"
+                  className="text-xs font-mono px-2 py-1 rounded-lg transition-colors"
                   style={{
                     background: "rgba(255,215,0,0.1)",
                     color: "#FFD700",
@@ -50,7 +50,7 @@ export function DuplicateWarning({ message, duplicateIds, onDismiss }: Duplicate
           )}
           <motion.button
             onClick={onDismiss}
-            className="text-[10px] font-mono mt-2"
+            className="text-xs font-mono mt-2"
             style={{ color: "var(--text-muted)" }}
             whileTap={{ scale: 0.97 }}
           >

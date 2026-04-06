@@ -1,342 +1,647 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
   Users,
-  Loader2,
   TrendingUp,
   Clock,
   Target,
   Trophy,
   ArrowRight,
+  ArrowUpDown,
   ShieldAlert,
   Crown,
-  Medal,
-  Flame,
+  BarChart3,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { BackButton } from "@/components/ui/BackButton";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
+import { AnimatedCounter } from "@/components/ui/AnimatedCounter";
+import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { ClientStats } from "@/components/clients/ClientStats";
 import { TrainingRecommendations } from "@/components/clients/TrainingRecommendations";
-import type { DashboardROP, TeamMember, DashboardTournament, PipelineStats } from "@/types";
+import { KnowledgeDashboardWidget } from "@/components/dashboard/KnowledgeDashboardWidget";
+import { OceanProfileWidget } from "@/components/dashboard/OceanProfileWidget";
+import { TeamHeatmap } from "@/components/dashboard/TeamHeatmap";
+import { WeakLinks } from "@/components/dashboard/WeakLinks";
+import { Benchmark } from "@/components/dashboard/Benchmark";
+import { WeeklyReport } from "@/components/dashboard/WeeklyReport";
+import { TeamTrendChart } from "@/components/dashboard/TeamTrendChart";
+import { ActivityChart } from "@/components/dashboard/ActivityChart";
+import { AlertPanel } from "@/components/dashboard/AlertPanel";
+import BehaviorProfileCard from "@/components/behavior/BehaviorProfileCard";
+import { ActivityFeed } from "@/components/activity/ActivityFeed";
+import { useActivityFeed } from "@/hooks/useActivityFeed";
+import type { DashboardROP, TeamMember, PipelineStats } from "@/types";
+import { useNotificationStore } from "@/stores/useNotificationStore";
 import { scoreColor } from "@/lib/utils";
+import { getApiBaseUrl } from "@/lib/public-origin";
+import { logger } from "@/lib/logger";
 
-const podiumColors = ["#FFD700", "#C0C0C0", "#CD7F32"]; // gold, silver, bronze
+/* ─── Constants ──────────────────────────────────────────────────────────── */
+
+type TabId = "overview" | "analytics" | "team" | "tournament";
+
+const TABS: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
+  { id: "overview", label: "Обзор", icon: LayoutDashboard },
+  { id: "analytics", label: "Аналитика", icon: BarChart3 },
+  { id: "team", label: "Команда", icon: Users },
+  { id: "tournament", label: "Турнир", icon: Trophy },
+];
+
+const AVATAR_COLORS = [
+  "#6366F1", "#8B5CF6", "#EC4899", "#F43F5E", "#F97316",
+  "#EAB308", "#22C55E", "#14B8A6", "#06B6D4", "#3B82F6",
+];
+
+const podiumColors = ["var(--neon-amber, #FFD700)", "var(--text-secondary)", "var(--warning)"];
+
+type SortKey = "full_name" | "total_sessions" | "avg_score" | "best_score" | "sessions_this_week";
+type SortDir = "asc" | "desc";
+
+/* ─── Helpers ────────────────────────────────────────────────────────────── */
+
+function getAvatarColor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+/* ─── Component ──────────────────────────────────────────────────────────── */
 
 export default function DashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const [data, setData] = useState<DashboardROP | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pipelineStats, setPipelineStats] = useState<PipelineStats[]>([]);
 
+  // Tab state — synced with URL
+  const tabParam = searchParams.get("tab") as TabId | null;
+  const [activeTab, setActiveTab] = useState<TabId>("overview");
+
+  useEffect(() => {
+    if (tabParam && TABS.some((t) => t.id === tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
+
+  const switchTab = useCallback((id: TabId) => {
+    setActiveTab(id);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", id);
+    window.history.replaceState(null, "", url.toString());
+  }, []);
+
+  // Sorting for managers table
+  const [sortKey, setSortKey] = useState<SortKey>("avg_score");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const toggleSort = useCallback((key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }, [sortKey]);
+
+  const activityItems = useActivityFeed(data?.members ?? []);
+
+  const sortedMembers = useMemo(() => {
+    if (!data) return [];
+    return [...data.members].sort((a, b) => {
+      let va: number | string = (a as unknown as Record<string, number | string | null>)[sortKey] ?? -Infinity;
+      let vb: number | string = (b as unknown as Record<string, number | string | null>)[sortKey] ?? -Infinity;
+      if (va === null || va === undefined || va === -Infinity) va = typeof vb === "string" ? "" : -Infinity;
+      if (vb === null || vb === undefined || vb === -Infinity) vb = typeof va === "string" ? "" : -Infinity;
+      if (typeof va === "string") return sortDir === "asc" ? va.localeCompare(vb as string) : (vb as string).localeCompare(va);
+      return sortDir === "asc" ? (va as number) - (vb as number) : (vb as number) - (va as number);
+    });
+  }, [data, sortKey, sortDir]);
+
+  // Data fetching
   useEffect(() => {
     if (!user) return;
-
     const allowed = user.role === "rop" || user.role === "admin";
-    if (!allowed) {
-      setError("Доступ ограничен");
-      setLoading(false);
-      return;
-    }
+    if (!allowed) { setError("Доступ ограничен"); setLoading(false); return; }
 
-    api
-      .get("/dashboard/rop")
+    api.get("/dashboard/rop")
       .then((resp: DashboardROP) => setData(resp))
       .catch((err) => setError(err.message || "Ошибка загрузки"))
       .finally(() => setLoading(false));
 
     api.get("/clients/pipeline/stats")
       .then((stats: PipelineStats[]) => setPipelineStats(stats))
-      .catch((err) => { console.error("Failed to load pipeline stats:", err); });
+      .catch((err) => {
+        logger.error("Failed to load pipeline stats:", err);
+        useNotificationStore.getState().addToast({ title: "Воронка продаж", body: "Не удалось загрузить статистику воронки", type: "error" });
+      });
   }, [user]);
+
+  const handleExportPdf = useCallback(async () => {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/dashboard/rop/export?period=week`, { credentials: "include" });
+      if (!res.ok) {
+        useNotificationStore.getState().addToast({ title: "Ошибка экспорта", body: `Не удалось скачать отчёт (${res.status})`, type: "error" });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "team_report.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      useNotificationStore.getState().addToast({ title: "Ошибка экспорта", body: "Не удалось скачать PDF-отчёт. Проверьте соединение.", type: "error" });
+      logger.error("PDF export failed:", err);
+    }
+  }, []);
+
+  /* ─── Sortable column header ───────────────────────────────────────────── */
+  const SortHeader = ({ label, sortField }: { label: string; sortField: SortKey }) => (
+    <th
+      className="px-5 py-4 text-left font-mono text-xs uppercase tracking-widest cursor-pointer select-none group"
+      style={{ color: "var(--text-muted)" }}
+      onClick={() => toggleSort(sortField)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {sortKey === sortField ? (
+          sortDir === "asc" ? <ChevronUp size={10} /> : <ChevronDown size={10} />
+        ) : (
+          <ArrowUpDown size={10} className="opacity-0 group-hover:opacity-50 transition-opacity" />
+        )}
+      </span>
+    </th>
+  );
 
   return (
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
         <div className="mx-auto max-w-6xl px-4 py-8">
-          {/* Header */}
+          <BackButton href="/home" label="На главную" />
+
+          {/* ─── Header ────────────────────────────────────────────────── */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="flex items-center gap-2">
-              <LayoutDashboard size={20} style={{ color: "var(--accent)" }} />
-              <h1
-                className="font-display text-2xl font-bold tracking-wider"
-                style={{ color: "var(--text-primary)" }}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <LayoutDashboard size={24} style={{ color: "var(--accent)" }} />
+                <h1 className="font-display text-3xl font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
+                  ПАНЕЛЬ РОП
+                </h1>
+              </div>
+              <button
+                onClick={handleExportPdf}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-mono uppercase tracking-wider transition-colors"
+                style={{ background: "var(--accent-muted)", color: "var(--accent)", border: "1px solid var(--accent)" }}
               >
-                ПАНЕЛЬ РОП
-              </h1>
+                <ArrowRight size={14} />
+                Скачать PDF
+              </button>
             </div>
-            <p className="mt-2 font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>
+            <p className="mt-2 font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>
               {data?.team.name ? `КОМАНДА: ${data.team.name.toUpperCase()}` : "АНАЛИТИКА КОМАНДЫ"}
             </p>
           </motion.div>
 
+          {/* ─── Loading / Error ────────────────────────────────────────── */}
           {loading ? (
             <DashboardSkeleton />
           ) : error ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="mt-16 flex flex-col items-center"
-            >
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-16 flex flex-col items-center">
               <ShieldAlert size={40} style={{ color: "var(--danger)" }} />
               <p className="mt-3 text-sm" style={{ color: "var(--danger)" }}>{error}</p>
             </motion.div>
           ) : data ? (
             <>
-              {/* Summary cards */}
-              <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  { label: "Менеджеров", value: data.team.total_members, icon: Users, color: "var(--accent)" },
-                  { label: "Всего сессий", value: data.stats.total_sessions, icon: Target, color: "#00FF66" },
-                  { label: "Средний балл", value: data.stats.avg_score !== null ? Math.round(data.stats.avg_score) : "—", icon: TrendingUp, color: "var(--warning)" },
-                  { label: "Активны на неделе", value: data.stats.active_this_week, icon: Clock, color: "#E028CC" },
-                ].map((card, i) => {
-                  const Icon = card.icon;
-                  return (
-                    <motion.div
-                      key={card.label}
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.1 + i * 0.05 }}
-                      className="glass-panel p-5"
-                    >
-                      <Icon size={18} style={{ color: card.color }} />
-                      <div className="mt-3 font-display text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
-                        {card.value}
-                      </div>
-                      <div className="mt-1 font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-                        {card.label}
-                      </div>
-                    </motion.div>
-                  );
-                })}
+              {/* ─── Sticky Tab Bar ──────────────────────────────────────── */}
+              <div
+                className="sticky top-[60px] z-30 mt-6"
+              >
+                <div
+                  className="flex items-center gap-1.5 rounded-xl p-1.5 overflow-x-auto"
+                  style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(20px)" }}
+                >
+                  {TABS.map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = activeTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => switchTab(tab.id)}
+                        className="relative flex items-center gap-2.5 px-6 py-3.5 rounded-xl font-mono text-sm uppercase tracking-widest whitespace-nowrap transition-all duration-200"
+                        style={{
+                          color: isActive ? "var(--text-primary)" : "var(--text-muted)",
+                          fontWeight: isActive ? 700 : 500,
+                        }}
+                      >
+                        <Icon size={18} style={{ color: isActive ? "var(--accent)" : undefined }} />
+                        <span className="hidden sm:inline">{tab.label}</span>
+                        {isActive && (
+                          <motion.div
+                            layoutId="dashboard-tab-indicator"
+                            className="absolute inset-0 rounded-xl"
+                            style={{
+                              background: "linear-gradient(135deg, var(--accent-muted), rgba(99,102,241,0.05))",
+                              border: "1px solid var(--accent)",
+                              boxShadow: "0 0 16px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.06)",
+                            }}
+                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* Best performer highlight */}
-              {data.stats.best_performer && (
+              {/* ─── Tab Content ──────────────────────────────────────────── */}
+              <AnimatePresence mode="wait">
                 <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.35 }}
-                  className="mt-4 glass-panel p-4 flex items-center gap-3"
-                  style={{ borderLeft: "3px solid #FFD700" }}
-                >
-                  <Crown size={18} style={{ color: "#FFD700" }} />
-                  <div>
-                    <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-                      Лучший результат
-                    </span>
-                    <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                      {data.stats.best_performer}
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Pipeline widget */}
-              {pipelineStats.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
+                  key={activeTab}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
                   className="mt-6"
                 >
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="font-display text-sm tracking-widest flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
-                      <Users size={16} style={{ color: "var(--accent)" }} />
-                      ВОРОНКА КЛИЕНТОВ
-                    </h2>
-                    <Link href="/clients/pipeline" className="font-mono text-[10px] flex items-center gap-1" style={{ color: "var(--accent)" }}>
-                      Открыть <ArrowRight size={10} />
-                    </Link>
-                  </div>
-                  <ClientStats stats={pipelineStats} />
-                </motion.div>
-              )}
 
-              {/* F6.1: Training recommendations for ROP */}
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.45 }}
-                className="mt-6"
-              >
-                <TrainingRecommendations />
-              </motion.div>
+                  {/* ═══════════ TAB: OVERVIEW ═══════════════════════════════ */}
+                  {activeTab === "overview" && (
+                    <div className="space-y-6">
 
-              <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Managers table — spans 2 cols on lg */}
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="glass-panel overflow-hidden lg:col-span-2"
-                >
-                  <div className="p-4 border-b flex items-center gap-2" style={{ borderColor: "var(--border-color)", background: "rgba(0,0,0,0.2)" }}>
-                    <Users size={16} style={{ color: "var(--accent)" }} />
-                    <h2 className="font-display text-sm tracking-widest" style={{ color: "var(--text-secondary)" }}>
-                      МЕНЕДЖЕРЫ
-                    </h2>
-                    <span className="ml-auto font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
-                      {data.team.active_members}/{data.team.total_members} активных
-                    </span>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
-                          {["Имя", "Роль", "Сессий", "Ср. балл", "Лучший", "На неделе", ""].map((h) => (
-                            <th
-                              key={h}
-                              className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-widest"
-                              style={{ color: "var(--text-muted)" }}
-                            >
-                              {h}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.members.map((m, i) => (
-                          <motion.tr
-                            key={m.id}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ delay: 0.35 + i * 0.03 }}
-                            className="transition-colors hover:brightness-125"
-                            style={{ borderBottom: "1px solid var(--border-color)" }}
-                          >
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                {!m.is_active && (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" title="Неактивен" />
-                                )}
-                                <div>
-                                  <div style={{ color: "var(--text-primary)" }}>{m.full_name}</div>
-                                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>{m.email}</div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span
-                                className="rounded-full px-2 py-0.5 text-xs font-mono"
-                                style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
-                              >
-                                {m.role}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 font-mono" style={{ color: "var(--text-primary)" }}>
-                              {m.total_sessions}
-                            </td>
-                            <td className="px-4 py-3 font-mono font-bold" style={{ color: scoreColor(m.avg_score) }}>
-                              {m.avg_score !== null ? Math.round(m.avg_score) : "—"}
-                            </td>
-                            <td className="px-4 py-3 font-mono font-bold" style={{ color: scoreColor(m.best_score) }}>
-                              {m.best_score !== null ? Math.round(m.best_score) : "—"}
-                            </td>
-                            <td className="px-4 py-3 font-mono" style={{ color: "var(--text-secondary)" }}>
-                              {m.sessions_this_week}
-                            </td>
-                            <td className="px-4 py-3">
-                              <motion.button
-                                onClick={() => router.push(`/profile?user=${m.id}`)}
-                                className="flex items-center gap-1 text-xs"
-                                style={{ color: "var(--accent)" }}
-                                whileHover={{ x: 3 }}
-                              >
-                                <ArrowRight size={14} />
-                              </motion.button>
-                            </td>
-                          </motion.tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </motion.div>
-
-                {/* Tournament sidebar */}
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
-                  className="glass-panel overflow-hidden flex flex-col"
-                >
-                  <div className="p-4 border-b flex items-center gap-2" style={{ borderColor: "var(--border-color)", background: "rgba(0,0,0,0.2)" }}>
-                    <Trophy size={16} style={{ color: "#FFD700" }} />
-                    <h2 className="font-display text-sm tracking-widest" style={{ color: "var(--text-secondary)" }}>
-                      ТУРНИР
-                    </h2>
-                  </div>
-
-                  {data.tournament ? (
-                    <div className="p-4 flex-1 flex flex-col">
-                      <div className="mb-3">
-                        <h3 className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                          {data.tournament.title}
-                        </h3>
-                        <p className="font-mono text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-                          До {new Date(data.tournament.week_end).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
-                        </p>
-                      </div>
-
-                      <div className="space-y-2 flex-1">
-                        {data.tournament.leaderboard.map((entry, i) => (
-                          <motion.div
-                            key={entry.user_id}
-                            initial={{ opacity: 0, x: 8 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: 0.5 + i * 0.05 }}
-                            className="flex items-center gap-3 rounded-lg px-3 py-2"
-                            style={{
-                              background: i < 3 ? `${podiumColors[i]}08` : "transparent",
-                              borderLeft: i < 3 ? `2px solid ${podiumColors[i]}` : "2px solid transparent",
-                            }}
-                          >
-                            <span
-                              className="w-5 text-center font-mono text-xs font-bold"
-                              style={{ color: i < 3 ? podiumColors[i] : "var(--text-muted)" }}
-                            >
-                              {entry.rank}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <span className="text-xs truncate block" style={{ color: "var(--text-primary)" }}>
-                                {entry.full_name}
-                              </span>
+                      {/* Hero Metric */}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="relative overflow-hidden rounded-2xl p-8"
+                        style={{
+                          background: "linear-gradient(135deg, var(--glass-bg), rgba(99,102,241,0.04))",
+                          border: "1px solid rgba(99,102,241,0.2)",
+                          backdropFilter: "blur(24px) saturate(1.5)",
+                          boxShadow: "0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)",
+                        }}
+                      >
+                        {/* Corner glow */}
+                        <div className="absolute -top-16 -left-16 w-48 h-48 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)" }} />
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-6">
+                          {/* Main score */}
+                          <div className="flex-shrink-0">
+                            <div className="font-mono text-sm uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
+                              СРЕДНИЙ БАЛЛ КОМАНДЫ
                             </div>
-                            <span className="font-mono text-xs font-bold" style={{ color: scoreColor(entry.best_score) }}>
-                              {Math.round(entry.best_score)}
-                            </span>
-                          </motion.div>
-                        ))}
-                      </div>
+                            <div
+                              className="font-display font-black tabular-nums"
+                              style={{
+                                fontSize: "clamp(3.5rem, 7vw, 5rem)",
+                                color: scoreColor(data.stats.avg_score),
+                                lineHeight: 1.1,
+                                minHeight: "1.1em",
+                                textShadow: `0 0 40px ${scoreColor(data.stats.avg_score)}40`,
+                              }}
+                            >
+                              {data.stats.avg_score !== null ? (
+                                <AnimatedCounter value={Math.round(data.stats.avg_score)} />
+                              ) : "—"}
+                            </div>
+                            {data.stats.best_performer && (
+                              <div className="flex items-center gap-1.5 mt-2">
+                                <Crown size={16} style={{ color: "#FFD700" }} />
+                                <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                                  Лучший: <span className="font-medium" style={{ color: "var(--text-primary)" }}>{data.stats.best_performer}</span>
+                                </span>
+                              </div>
+                            )}
+                          </div>
 
-                      {data.tournament.leaderboard.length === 0 && (
-                        <div className="flex-1 flex items-center justify-center">
-                          <p className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-                            Пока нет участников
-                          </p>
+                          {/* Secondary stats */}
+                          <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            {[
+                              { label: "Менеджеров", value: data.team.total_members, icon: Users, color: "var(--accent)" },
+                              { label: "Всего сессий", value: data.stats.total_sessions, icon: Target, color: "var(--neon-green)" },
+                              { label: "Активных", value: data.stats.active_this_week, icon: Clock, color: "var(--magenta)" },
+                              { label: "В команде", value: data.team.active_members, icon: TrendingUp, color: "var(--warning)" },
+                            ].map((stat) => {
+                              const SIcon = stat.icon;
+                              return (
+                                <div
+                                  key={stat.label}
+                                  className="rounded-xl px-4 py-4 relative overflow-hidden"
+                                  style={{ background: "var(--input-bg)", border: `1px solid ${stat.color}15` }}
+                                >
+                                  <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${stat.color}10 0%, transparent 70%)` }} />
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${stat.color}15` }}>
+                                      <SIcon size={16} style={{ color: stat.color }} />
+                                    </div>
+                                    <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                                      {stat.label}
+                                    </span>
+                                  </div>
+                                  <div className="font-display text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
+                                    <AnimatedCounter value={stat.value} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="p-6 flex-1 flex flex-col items-center justify-center text-center">
-                      <Trophy size={32} style={{ color: "var(--border-color)" }} />
-                      <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
-                        Нет активных турниров
-                      </p>
+                      </motion.div>
+
+                      {/* Alerts — compact */}
+                      <AlertPanel compact />
+
+                      {/* Activity Feed */}
+                      <ActivityFeed items={activityItems} loading={loading} />
+
+                      {/* Managers Table */}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.1 }}
+                        className="cyber-card overflow-hidden"
+                      >
+                        <div className="p-5 border-b flex items-center gap-2" style={{ borderColor: "var(--border-color)", background: "var(--input-bg)" }}>
+                          <Users size={18} style={{ color: "var(--accent)" }} />
+                          <h2 className="font-display text-base tracking-widest" style={{ color: "var(--text-secondary)" }}>
+                            МЕНЕДЖЕРЫ
+                          </h2>
+                          <span className="ml-auto font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                            {data.team.active_members}/{data.team.total_members} активных
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-base min-w-[700px]">
+                            <thead>
+                              <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
+                                <SortHeader label="Имя" sortField="full_name" />
+                                <th className="px-5 py-4 text-left font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                                  Роль
+                                </th>
+                                <SortHeader label="Сессий" sortField="total_sessions" />
+                                <SortHeader label="Ср. балл" sortField="avg_score" />
+                                <SortHeader label="Лучший" sortField="best_score" />
+                                <SortHeader label="Неделя" sortField="sessions_this_week" />
+                                <th className="px-5 py-4" style={{ width: 48 }} />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortedMembers.map((m, i) => {
+                                const avatarColor = getAvatarColor(m.id);
+                                return (
+                                  <motion.tr
+                                    key={m.id}
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="transition-all group table-row-accent"
+                                    style={{ borderBottom: "1px solid var(--border-color)" }}
+                                  >
+                                    <td className="px-5 py-4">
+                                      <div className="flex items-center gap-3">
+                                        {/* Avatar */}
+                                        <div
+                                          className="w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold text-white shrink-0 transition-all duration-200 group-hover:scale-110 group-hover:shadow-lg"
+                                          style={{ background: `linear-gradient(135deg, ${avatarColor}, ${avatarColor}CC)`, boxShadow: `0 2px 8px ${avatarColor}30` }}
+                                        >
+                                          {getInitials(m.full_name)}
+                                        </div>
+                                        <div>
+                                          <div className="flex items-center gap-1.5">
+                                            {!m.is_active && (
+                                              <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" title="Неактивен" />
+                                            )}
+                                            <span style={{ color: "var(--text-primary)" }}>{m.full_name}</span>
+                                          </div>
+                                          <div className="text-sm" style={{ color: "var(--text-muted)" }}>{m.email}</div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="px-5 py-4">
+                                      <span
+                                        className="rounded-full px-3 py-1 text-sm font-mono"
+                                        style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+                                      >
+                                        {m.role}
+                                      </span>
+                                    </td>
+                                    <td className="px-5 py-4 font-mono" style={{ color: "var(--text-primary)" }}>
+                                      {m.total_sessions}
+                                    </td>
+                                    <td className="px-5 py-4">
+                                      <ScoreBadge score={m.avg_score} size="sm" />
+                                    </td>
+                                    <td className="px-5 py-4">
+                                      <ScoreBadge score={m.best_score} size="sm" />
+                                    </td>
+                                    <td className="px-5 py-4 font-mono" style={{ color: "var(--text-secondary)" }}>
+                                      {m.sessions_this_week}
+                                    </td>
+                                    <td className="px-5 py-4">
+                                      <motion.button
+                                        onClick={() => router.push(`/profile?user=${m.id}`)}
+                                        className="flex items-center gap-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                                        style={{ color: "var(--accent)" }}
+                                        whileHover={{ x: 3 }}
+                                      >
+                                        <ArrowRight size={14} />
+                                      </motion.button>
+                                    </td>
+                                  </motion.tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </motion.div>
                     </div>
                   )}
+
+                  {/* ═══════════ TAB: ANALYTICS ══════════════════════════════ */}
+                  {activeTab === "analytics" && (
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <TeamTrendChart />
+                        <ActivityChart />
+                      </div>
+
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="rounded-2xl p-5"
+                        style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(20px)" }}
+                      >
+                        <TeamHeatmap />
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.1 }}
+                        className="rounded-2xl p-5"
+                        style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(20px)" }}
+                      >
+                        <Benchmark />
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.2 }}
+                        className="rounded-2xl p-5"
+                        style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(20px)" }}
+                      >
+                        <WeeklyReport />
+                      </motion.div>
+                    </div>
+                  )}
+
+                  {/* ═══════════ TAB: TEAM ════════════════════════════════════ */}
+                  {activeTab === "team" && (
+                    <div className="space-y-6">
+                      <AlertPanel />
+
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="rounded-2xl p-5"
+                        style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(20px)" }}
+                      >
+                        <WeakLinks />
+                      </motion.div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <BehaviorProfileCard />
+                        <OceanProfileWidget />
+                      </div>
+
+                      <TrainingRecommendations />
+                    </div>
+                  )}
+
+                  {/* ═══════════ TAB: TOURNAMENT ══════════════════════════════ */}
+                  {activeTab === "tournament" && (
+                    <div className="space-y-6">
+                      {/* Tournament Block */}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="cyber-card overflow-hidden"
+                      >
+                        <div className="p-5 border-b flex items-center gap-2" style={{ borderColor: "var(--border-color)", background: "var(--input-bg)" }}>
+                          <Trophy size={18} style={{ color: "#FFD700" }} />
+                          <h2 className="font-display text-base tracking-widest" style={{ color: "var(--text-secondary)" }}>
+                            ТУРНИР
+                          </h2>
+                        </div>
+
+                        {data.tournament ? (
+                          <div className="p-5">
+                            <div className="mb-4">
+                              <h3 className="text-base font-medium" style={{ color: "var(--text-primary)" }}>
+                                {data.tournament.title}
+                              </h3>
+                              <p className="font-mono text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                                До {new Date(data.tournament.week_end).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
+                              </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {data.tournament.leaderboard.map((entry, i) => (
+                                <motion.div
+                                  key={entry.user_id}
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  transition={{ delay: i * 0.05 }}
+                                  className="flex items-center gap-3 rounded-lg px-4 py-3"
+                                  style={{
+                                    background: i < 3 ? `${podiumColors[i]}08` : "var(--input-bg)",
+                                    borderLeft: i < 3 ? `3px solid ${podiumColors[i]}` : "3px solid transparent",
+                                  }}
+                                >
+                                  <span
+                                    className="w-6 text-center font-mono text-sm font-bold"
+                                    style={{ color: i < 3 ? podiumColors[i] : "var(--text-muted)" }}
+                                  >
+                                    {entry.rank}
+                                  </span>
+                                  <div className="flex-1 min-w-0">
+                                    <span className="text-sm truncate block" style={{ color: "var(--text-primary)" }}>
+                                      {entry.full_name}
+                                    </span>
+                                  </div>
+                                  <span className="font-mono text-sm font-bold" style={{ color: scoreColor(entry.best_score) }}>
+                                    {Math.round(entry.best_score)}
+                                  </span>
+                                </motion.div>
+                              ))}
+                            </div>
+
+                            {data.tournament.leaderboard.length === 0 && (
+                              <div className="py-8 flex items-center justify-center">
+                                <p className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                                  Пока нет участников
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="p-8 flex flex-col items-center justify-center text-center">
+                            <Trophy size={40} style={{ color: "var(--border-color)" }} />
+                            <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
+                              Нет активных турниров
+                            </p>
+                          </div>
+                        )}
+                      </motion.div>
+
+                      {/* Knowledge + Pipeline */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <KnowledgeDashboardWidget />
+
+                        {pipelineStats.length > 0 && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.1 }}
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <h2 className="font-display text-sm tracking-widest flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
+                                <Users size={16} style={{ color: "var(--accent)" }} />
+                                ВОРОНКА КЛИЕНТОВ
+                              </h2>
+                              <Link href="/clients/pipeline" className="font-mono text-xs flex items-center gap-1" style={{ color: "var(--accent)" }}>
+                                Открыть <ArrowRight size={10} />
+                              </Link>
+                            </div>
+                            <ClientStats stats={pipelineStats} />
+                          </motion.div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                 </motion.div>
-              </div>
+              </AnimatePresence>
             </>
           ) : null}
         </div>

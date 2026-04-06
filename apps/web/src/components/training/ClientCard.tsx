@@ -36,6 +36,10 @@ export interface ClientCardData {
   property: Array<{ type: string; status: string }>;
   call_history: Array<{ date: string; note: string }>;
   crm_notes: string;
+  /** Dynamic trust level from AI engine (0-100) */
+  trust_level?: number;
+  /** Dynamic resistance level from AI engine (0-100) */
+  resistance_level?: number;
 }
 
 interface ClientCardProps {
@@ -113,7 +117,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
       >
         {/* Header */}
         <motion.div variants={item} className="mb-6">
-          <div className="font-mono text-[10px] uppercase tracking-widest mb-1" style={{ color: "var(--accent)" }}>
+          <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: "var(--accent)" }}>
             CRM-КАРТОЧКА КЛИЕНТА
           </div>
           <h1 className="font-display text-2xl md:text-3xl font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
@@ -142,7 +146,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
                       <Icon size={12} style={{ color: "var(--accent)" }} />
                     </div>
                     <div>
-                      <div className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{row.label}</div>
+                      <div className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{row.label}</div>
                       <div className="text-sm" style={{ color: "var(--text-primary)" }}>{row.value}</div>
                     </div>
                   </div>
@@ -160,7 +164,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
 
             {/* Total debt */}
             <div className="rounded-xl p-4 mb-4" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>
-              <div className="text-[10px] font-mono uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>ОБЩИЙ ДОЛГ</div>
+              <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>ОБЩИЙ ДОЛГ</div>
               <div className="font-display text-3xl font-bold" style={{ color: "var(--neon-red, #FF3333)" }}>
                 <CountUp value={clientCard.total_debt} /> <span className="text-sm font-normal" style={{ color: "var(--text-muted)" }}>₽</span>
               </div>
@@ -169,7 +173,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
             {/* Creditors bar chart */}
             {clientCard.creditors.length > 0 && (
               <div className="mb-4">
-                <div className="text-[10px] font-mono uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>КРЕДИТОРЫ</div>
+                <div className="text-xs font-mono uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>КРЕДИТОРЫ</div>
                 <div className="space-y-2">
                   {clientCard.creditors.map((c, i) => (
                     <div key={i}>
@@ -180,7 +184,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
                       <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
                         <motion.div
                           className="h-full rounded-full"
-                          style={{ background: i === 0 ? "var(--accent)" : i === 1 ? "#E028CC" : "#3B82F6" }}
+                          style={{ background: i === 0 ? "var(--accent)" : i === 1 ? "var(--magenta)" : "var(--neon-amber)" }}
                           initial={{ width: 0 }}
                           animate={{ width: `${(c.amount / maxCreditor) * 100}%` }}
                           transition={{ duration: 0.8, delay: 0.3 + i * 0.1 }}
@@ -197,25 +201,25 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
               <div className="rounded-lg p-3" style={{ background: "var(--input-bg)" }}>
                 <div className="flex items-center gap-1.5 mb-1">
                   <Wallet size={12} style={{ color: "var(--accent)" }} />
-                  <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Доход</span>
+                  <span className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Доход</span>
                 </div>
                 <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
                   {clientCard.income > 0 ? `${fmt.format(clientCard.income)} ₽` : "Нет"}
                 </div>
-                <div className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
                   {incomeTypeLabels[clientCard.income_type] || clientCard.income_type}
                 </div>
               </div>
               <div className="rounded-lg p-3" style={{ background: "var(--input-bg)" }}>
                 <div className="flex items-center gap-1.5 mb-1">
                   <Building2 size={12} style={{ color: "var(--accent)" }} />
-                  <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Имущество</span>
+                  <span className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Имущество</span>
                 </div>
                 {clientCard.property.length > 0 ? (
                   <div className="space-y-0.5">
                     {clientCard.property.map((p, i) => (
                       <div key={i} className="text-xs" style={{ color: "var(--text-primary)" }}>
-                        {p.type} <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>({propertyStatusLabels[p.status] || p.status})</span>
+                        {p.type} <span className="text-xs" style={{ color: "var(--text-muted)" }}>({propertyStatusLabels[p.status] || p.status})</span>
                       </div>
                     ))}
                   </div>
@@ -240,7 +244,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
                   {clientCard.call_history.map((call, i) => (
                     <div key={i} className="relative">
                       <div className="absolute -left-4 top-1.5 w-2 h-2 rounded-full" style={{ background: "var(--accent)", boxShadow: "0 0 6px var(--accent-glow)" }} />
-                      <div className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>{call.date}</div>
+                      <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{call.date}</div>
                       <div className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>{sanitizeText(call.note)}</div>
                     </div>
                   ))}
@@ -278,7 +282,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
                 <div className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
                   Психотип, страхи и ловушки
                 </div>
-                <div className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
+                <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
                   Скрыты — определите в процессе тренировки
                 </div>
               </div>
@@ -290,7 +294,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
         <motion.div variants={item} className="mt-6 flex flex-col sm:flex-row justify-center gap-3">
           <motion.button
             onClick={onBack}
-            className="vh-btn-outline flex items-center justify-center gap-2"
+            className="btn-neon flex items-center justify-center gap-2"
             whileTap={{ scale: 0.97 }}
           >
             <ArrowLeft size={16} /> Назад
@@ -298,7 +302,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
           <motion.button
             onClick={onStart}
             disabled={loading}
-            className="vh-btn-primary flex items-center justify-center gap-2 text-lg px-8 py-4"
+            className="btn-neon flex items-center justify-center gap-2 text-lg px-8 py-4"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >

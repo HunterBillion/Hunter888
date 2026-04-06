@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Providers } from "@/components/providers/Providers";
 import "./globals.css";
 
@@ -43,25 +44,34 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Read the per-request nonce set by middleware.ts for CSP.
+  const nonce = (await headers()).get("x-nonce") ?? "";
+
   return (
     <html lang="ru" suppressHydrationWarning>
       <head>
+        {/* CSP nonce — available to client scripts via document.querySelector */}
+        <meta property="csp-nonce" content={nonce} />
         {/* G2: Preload critical fonts */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
           rel="preload"
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;700&display=swap"
           as="style"
+          nonce={nonce}
+          suppressHydrationWarning
         />
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;700&display=swap"
           rel="stylesheet"
+          nonce={nonce}
+          suppressHydrationWarning
         />
       </head>
       <body className="min-h-screen antialiased">

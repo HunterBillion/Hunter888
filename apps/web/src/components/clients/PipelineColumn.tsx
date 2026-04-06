@@ -120,7 +120,7 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
           <div className="flex items-center gap-2">
             {totalDebt > 0 && (
               <span
-                className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                className="text-xs font-mono px-1.5 py-0.5 rounded"
                 style={{
                   background: `${color}10`,
                   color: `${color}`,
@@ -131,7 +131,7 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
               </span>
             )}
             <span
-              className="text-[10px] font-mono font-bold min-w-[20px] text-center px-1.5 py-0.5 rounded-full"
+              className="text-xs font-mono font-bold min-w-[20px] text-center px-1.5 py-0.5 rounded-full"
               style={{
                 background: "var(--input-bg)",
                 color: clients.length > 0 ? color : "var(--text-muted)",
@@ -206,7 +206,7 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
 
           {!clients.length && !isOver && (
             <div className="text-center py-8">
-              <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+              <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
                 Пусто
               </span>
             </div>

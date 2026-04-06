@@ -9,6 +9,8 @@
  * (they win over inference).
  */
 
+import { logger } from "@/lib/logger";
+
 const DEFAULT_API_BASE = "http://localhost:8000";
 const DEFAULT_WS_BASE = "ws://localhost:8000";
 
@@ -36,7 +38,7 @@ export function getApiBaseUrl(): string {
   if (typeof window !== "undefined" && process.env.NODE_ENV === "production") {
     const url = baked || DEFAULT_API_BASE;
     if (url.startsWith("http://") && !url.includes("localhost") && !url.includes("127.0.0.1")) {
-      console.warn(
+      logger.warn(
         "[SECURITY] API URL uses HTTP in production. This is insecure — use HTTPS. URL:",
         url,
       );

@@ -23,6 +23,103 @@ class SessionStartRequest(BaseModel):
     custom_profession: str | None = None      # e.g. "budget", "entrepreneur"
     custom_lead_source: str | None = None     # e.g. "cold_base", "website_form"
     custom_difficulty: int | None = None       # 1-10
+    # ── Constructor v2: new optional fields (DOC_02) ──
+    # Step 3: Client context
+    custom_family_preset: str | None = None       # "single", "married_kids" etc.
+    custom_creditors_preset: str | None = None    # "1", "2_3", "4_5", "6_plus"
+    custom_debt_stage: str | None = None          # "pre_court", "execution" etc.
+    custom_debt_range: str | None = None          # "under_500k", "3m_10m" etc.
+    # Step 4: Emotional preset
+    custom_emotion_preset: str | None = None      # "neutral", "anxious", "angry" etc.
+    # Step 6: Environment
+    custom_bg_noise: str | None = None            # "none", "office", "street" etc.
+    custom_time_of_day: str | None = None         # "morning", "afternoon" etc.
+    custom_fatigue: str | None = None             # "fresh", "normal", "tired" etc.
+    # Custom character link
+    custom_character_id: uuid.UUID | None = None  # link to saved CustomCharacter
+
+
+class CustomCharacterCreate(BaseModel):
+    name: str
+    archetype: str
+    profession: str
+    lead_source: str
+    difficulty: int = 5
+    description: str | None = None
+    # v2 fields
+    family_preset: str | None = None
+    creditors_preset: str | None = None
+    debt_stage: str | None = None
+    debt_range: str | None = None
+    emotion_preset: str | None = None
+    bg_noise: str | None = None
+    time_of_day: str | None = None
+    client_fatigue: str | None = None
+
+
+class CustomCharacterUpdate(BaseModel):
+    """Partial update — all fields optional."""
+    name: str | None = None
+    archetype: str | None = None
+    profession: str | None = None
+    lead_source: str | None = None
+    difficulty: int | None = None
+    description: str | None = None
+    family_preset: str | None = None
+    creditors_preset: str | None = None
+    debt_stage: str | None = None
+    debt_range: str | None = None
+    emotion_preset: str | None = None
+    bg_noise: str | None = None
+    time_of_day: str | None = None
+    client_fatigue: str | None = None
+
+
+class CustomCharacterResponse(BaseModel):
+    id: str
+    name: str
+    archetype: str
+    profession: str
+    lead_source: str
+    difficulty: int
+    description: str | None = None
+    family_preset: str | None = None
+    creditors_preset: str | None = None
+    debt_stage: str | None = None
+    debt_range: str | None = None
+    emotion_preset: str | None = None
+    bg_noise: str | None = None
+    time_of_day: str | None = None
+    client_fatigue: str | None = None
+    play_count: int = 0
+    best_score: int | None = None
+    avg_score: int | None = None
+    last_played_at: str | None = None
+    created_at: str
+    updated_at: str | None = None
+    is_shared: bool = False
+    share_code: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class PreviewDossierRequest(BaseModel):
+    archetype: str
+    profession: str
+    lead_source: str = "cold_base"
+    family_preset: str | None = None
+    creditors_preset: str | None = None
+    debt_stage: str | None = None
+    debt_range: str | None = None
+    emotion_preset: str | None = None
+
+
+class PreviewDossierResponse(BaseModel):
+    dossier_text: str
+    hints: list[str]
+    generated_name: str
+    generated_age: int
+    generated_city: str
 
 
 class SessionResponse(BaseModel):
@@ -65,6 +162,14 @@ class TrapResultItem(BaseModel):
     caught: bool
     bonus: int | None = None
     penalty: int | None = None
+    status: str | None = None  # fell | dodged | partial
+    client_phrase: str | None = None
+    correct_example: str | None = None
+    explanation: str | None = None
+    law_reference: str | None = None
+    correct_keywords: list[str] | None = None
+    wrong_keywords: list[str] | None = None
+    category: str | None = None
 
 
 class SoftSkillsResult(BaseModel):
@@ -123,6 +228,22 @@ class HistoryEntryResponse(BaseModel):
     best_score: float | None = None
 
 
+class WeakLegalCategory(BaseModel):
+    """Weak legal area detected from L10 scoring — links to Knowledge Quiz."""
+    category: str
+    display_name: str
+    accuracy_pct: int
+    article_refs: list[str] = []
+
+
+class PromiseFulfillment(BaseModel):
+    """Promise tracking from Game CRM multi-call stories."""
+    text: str
+    call_number: int
+    fulfilled: bool
+    impact: str  # "bonus" | "penalty" | "neutral"
+
+
 class SessionResultResponse(BaseModel):
     session: SessionResponse
     messages: list[MessageResponse]
@@ -132,3 +253,29 @@ class SessionResultResponse(BaseModel):
     client_card: dict | None = None
     story: StorySummaryResponse | None = None
     story_calls: list[StoryCallSummary] = []
+    weak_legal_categories: list[WeakLegalCategory] | None = None
+    promise_fulfillment: list[PromiseFulfillment] | None = None
+
+
+# ── Wave 5: Replay Mode ──────────────────────────────────────────────────────
+
+
+class IdealResponseResult(BaseModel):
+    """Result of generating an ideal response for a specific message in a session."""
+    message_id: uuid.UUID
+    message_index: int
+    original_text: str
+    ideal_text: str
+    explanation: str
+    # Scoring comparison
+    original_score_estimate: float | None = None
+    ideal_score_estimate: float | None = None
+    score_delta: float | None = None
+    # Per-layer impact (key layers only)
+    layer_impact: dict | None = None  # e.g. {"L2": "+3.5", "L3": "+1.2", "L8": "+2.0"}
+    # Emotion prediction
+    original_emotion: str | None = None
+    ideal_emotion_prediction: str | None = None
+    emotion_explanation: str | None = None
+    # Trap handling
+    trap_handling: list[dict] | None = None  # [{"trap": "...", "original": "fell", "ideal": "dodged"}]

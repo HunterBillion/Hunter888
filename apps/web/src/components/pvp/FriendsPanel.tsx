@@ -96,6 +96,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="vh-input pl-10"
+          aria-label="Найти игрока по имени или email"
           placeholder="Найти игрока по имени или email"
         />
       </div>
@@ -117,19 +118,20 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
                   <UserAvatar avatarUrl={item.avatar_url} fullName={item.full_name} size={36} />
                   <div>
                     <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{item.full_name}</div>
-                    <div className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>{item.email}</div>
+                    <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{item.email}</div>
                   </div>
                 </div>
                 {item.status === "none" ? (
                   <button
-                    className="vh-btn-outline px-3 py-2 text-xs"
+                    className="btn-neon px-3 py-2 text-xs"
                     disabled={busyId === item.user_id}
+                    aria-label={`Добавить в друзья: ${item.full_name}`}
                     onClick={() => mutate(() => api.post("/users/friends", { user_id: item.user_id }), item.user_id)}
                   >
                     {busyId === item.user_id ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
                   </button>
                 ) : (
-                  <div className="text-[11px] font-mono uppercase tracking-wider" style={{ color: item.status === "accepted" ? "var(--neon-green)" : "var(--warning)" }}>
+                  <div className="text-xs font-mono uppercase tracking-wider" style={{ color: item.status === "accepted" ? "var(--neon-green)" : "var(--warning)" }}>
                     {item.status === "accepted" ? "В друзьях" : item.direction === "incoming" ? "Входящая" : "Отправлено"}
                   </div>
                 )}
@@ -141,7 +143,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
 
       {incoming.length > 0 && (
         <div className="mt-5">
-          <div className="mb-2 text-[11px] font-mono uppercase tracking-[0.18em]" style={{ color: "var(--warning)" }}>
+          <div className="mb-2 text-xs font-mono uppercase tracking-[0.18em]" style={{ color: "var(--warning)" }}>
             Входящие заявки
           </div>
           <div className="space-y-2">
@@ -156,6 +158,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
                     className="flex h-9 w-9 items-center justify-center rounded-xl"
                     style={{ background: "rgba(0,255,148,0.15)", color: "var(--neon-green)" }}
                     disabled={busyId === item.friendship_id}
+                    aria-label="Принять запрос в друзья"
                     onClick={() => mutate(() => api.post(`/users/friends/${item.friendship_id}/accept`, {}), item.friendship_id)}
                   >
                     <Check size={15} />
@@ -164,6 +167,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
                     className="flex h-9 w-9 items-center justify-center rounded-xl"
                     style={{ background: "rgba(255,42,109,0.12)", color: "var(--neon-red)" }}
                     disabled={busyId === item.friendship_id}
+                    aria-label="Отклонить запрос в друзья"
                     onClick={() => mutate(() => api.delete(`/users/friends/${item.friendship_id}`), item.friendship_id)}
                   >
                     <X size={15} />
@@ -176,7 +180,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
       )}
 
       <div className="mt-5">
-        <div className="mb-2 text-[11px] font-mono uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
+        <div className="mb-2 text-xs font-mono uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
           Твой круг
         </div>
         {loading ? (
@@ -202,14 +206,15 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
                   <UserAvatar avatarUrl={item.avatar_url} fullName={item.full_name} size={36} />
                   <div>
                     <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{item.full_name}</div>
-                    <div className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>{item.role}</div>
+                    <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{item.role}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    className="flex items-center gap-1 rounded-xl px-3 py-2 text-[11px] font-mono uppercase tracking-wider"
-                    style={{ background: "rgba(144,92,237,0.12)", color: "var(--accent)" }}
+                    className="flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-mono uppercase tracking-wider"
+                    style={{ background: "rgba(99,102,241,0.12)", color: "var(--accent)" }}
                     disabled={busyId === `challenge-${item.user_id}`}
+                    aria-label={`Вызвать на дуэль: ${item.full_name}`}
                     onClick={() => mutate(async () => {
                       await api.post(`/pvp/challenge/${item.user_id}`, {});
                       onChallengeSent?.();
@@ -219,9 +224,10 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
                     Вызов
                   </button>
                   <button
-                    className="text-[11px] font-mono uppercase tracking-wider"
+                    className="text-xs font-mono uppercase tracking-wider"
                     style={{ color: "var(--neon-red)" }}
                     disabled={busyId === item.friendship_id}
+                    aria-label={`Убрать из друзей: ${item.full_name}`}
                     onClick={() => mutate(() => api.delete(`/users/friends/${item.friendship_id}`), item.friendship_id)}
                   >
                     Убрать

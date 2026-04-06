@@ -31,7 +31,7 @@ export function ConsentBadge({ consent }: ConsentBadgeProps) {
       {active ? <ShieldCheck size={12} /> : <ShieldOff size={12} />}
       {label}
       {consent.revoked_at && (
-        <span className="text-[9px] opacity-60">
+        <span className="text-xs opacity-60">
           (отозв. {new Date(consent.revoked_at).toLocaleDateString("ru-RU")})
         </span>
       )}

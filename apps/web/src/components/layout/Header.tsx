@@ -17,9 +17,7 @@ import {
   Settings,
   ChevronDown,
   Swords,
-  ShieldCheck,
   FileBarChart,
-
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { sanitizeText } from "@/lib/sanitize";
@@ -44,7 +42,6 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/pvp", label: "Арена", icon: Swords },
   { href: "/reports", label: "Отчёты", icon: FileBarChart },
   { href: "/dashboard", label: "Панель РОП", icon: LayoutDashboard, roles: ["rop", "admin"] },
-  { href: "/admin/audit-log", label: "Аудит", icon: ShieldCheck, roles: ["admin"] },
 ];
 
 export default function Header() {
@@ -67,6 +64,7 @@ export default function Header() {
     setOpenPanel("none");
   }, [pathname]);
 
+  // Close panels on outside click (scroll close moved to scroll-shrink listener to reduce listeners)
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -74,12 +72,9 @@ export default function Header() {
         setOpenPanel("none");
       }
     };
-    const handleScroll = () => setOpenPanel("none");
     document.addEventListener("mousedown", handlePointerDown);
-    window.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
       document.removeEventListener("mousedown", handlePointerDown);
-      window.removeEventListener("scroll", handleScroll);
     };
   }, []);
 
@@ -96,17 +91,53 @@ export default function Header() {
   const notificationOpen = openPanel === "notifications";
   const mobileOpen = openPanel === "mobile";
 
+  // Single scroll listener: shrink header + close open panels
+  const scrolledRef = useRef(false);
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(() => {
+          const isScrolled = window.scrollY > 40;
+          if (scrolledRef.current !== isScrolled) {
+            scrolledRef.current = isScrolled;
+            setScrolled(isScrolled);
+          }
+          // Close any open panel on scroll
+          setOpenPanel("none");
+          ticking = false;
+        });
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
-    <header className="sticky top-0 z-30 py-3">
+    <header
+      className="sticky top-0 z-30"
+      style={{
+        paddingTop: scrolled ? "0.375rem" : "0.75rem",
+        paddingBottom: scrolled ? "0.375rem" : "0.75rem",
+        transition: "padding 0.35s cubic-bezier(0.4,0,0.2,1)",
+        willChange: "padding",
+      }}
+    >
       <div
         ref={shellRef}
-        className="app-shell overflow-visible rounded-[30px] border py-4"
+        className="app-shell overflow-visible rounded-[30px] border header-inner"
         style={{
-          background: "linear-gradient(180deg, rgba(3,3,6,0.98), rgba(7,7,10,0.94))",
-          borderColor: "rgba(255,255,255,0.08)",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.04)",
-          backdropFilter: "blur(28px)",
-          WebkitBackdropFilter: "blur(28px)",
+          background: "var(--header-bg)",
+          borderColor: "var(--header-border)",
+          boxShadow: scrolled ? "var(--header-shadow)" : "none",
+          backdropFilter: "blur(28px) saturate(1.4)",
+          WebkitBackdropFilter: "blur(28px) saturate(1.4)",
+          paddingTop: scrolled ? "0.625rem" : "0.875rem",
+          paddingBottom: scrolled ? "0.625rem" : "0.875rem",
+          transition: "padding 0.35s cubic-bezier(0.4,0,0.2,1), box-shadow 0.35s ease",
+          willChange: "padding",
         }}
       >
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 lg:grid-cols-[minmax(260px,1fr)_auto_minmax(260px,1fr)]">
@@ -114,22 +145,25 @@ export default function Header() {
             <div className="relative">
               <motion.button
                 onClick={() => setOpenPanel(userMenuOpen ? "none" : "user")}
-                className="flex max-w-full items-center gap-2 rounded-[20px] border px-3 py-2"
+                className="flex max-w-full items-center gap-2 rounded-[20px] border px-3 py-2 transition-colors duration-200"
                 style={{
-                  borderColor: userMenuOpen ? "rgba(144,92,237,0.45)" : "rgba(255,255,255,0.08)",
-                  background: userMenuOpen ? "rgba(144,92,237,0.12)" : "rgba(255,255,255,0.04)",
+                  borderColor: userMenuOpen ? "var(--border-hover)" : "var(--header-btn-border)",
+                  background: userMenuOpen ? "var(--header-btn-bg)" : "var(--header-btn-bg)",
+                  boxShadow: userMenuOpen ? "0 0 0 1px var(--accent-muted)" : undefined,
                 }}
                 whileTap={{ scale: 0.98 }}
+                aria-label="Меню пользователя"
+                aria-expanded={userMenuOpen}
               >
                 <UserAvatar avatarUrl={user?.avatar_url} fullName={displayName} size={34} />
                 <div className="hidden min-w-0 text-left sm:block">
-                  <div className="truncate text-sm font-medium" style={{ color: "#F5F7FB" }}>{displayName}</div>
-                  <div className="text-[10px] font-mono uppercase tracking-[0.16em]" style={{ color: "rgba(255,255,255,0.48)" }}>
+                  <div className="truncate text-sm font-medium" style={{ color: "var(--header-text)" }}>{displayName}</div>
+                  <div className="text-xs font-mono uppercase tracking-[0.16em]" style={{ color: "var(--header-text-muted)" }}>
                     {roleLabel}
                   </div>
                 </div>
                 <motion.span animate={{ rotate: userMenuOpen ? 180 : 0 }} className="hidden sm:block">
-                  <ChevronDown size={14} style={{ color: "rgba(255,255,255,0.62)" }} />
+                  <ChevronDown size={14} style={{ color: "var(--header-text-muted)" }} />
                 </motion.span>
               </motion.button>
 
@@ -142,17 +176,19 @@ export default function Header() {
                     transition={{ duration: 0.18 }}
                     className="absolute left-0 top-full z-[80] mt-2 w-[310px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[24px] border"
                     style={{
-                      background: "linear-gradient(180deg, rgba(8,8,12,0.99), rgba(14,16,22,0.97))",
-                      borderColor: "rgba(255,255,255,0.08)",
-                      boxShadow: "0 24px 60px rgba(0,0,0,0.5)",
+                      background: "var(--header-bg)",
+                      borderColor: "var(--header-border)",
+                      boxShadow: "var(--header-shadow)",
+                      backdropFilter: "blur(28px) saturate(1.4)",
+                      WebkitBackdropFilter: "blur(28px) saturate(1.4)",
                     }}
                   >
-                    <div className="px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--header-border)" }}>
                       <div className="flex items-center gap-3">
                         <UserAvatar avatarUrl={user?.avatar_url} fullName={displayName} size={42} />
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold" style={{ color: "#F5F7FB" }}>{displayName}</div>
-                          <div className="mt-0.5 text-[11px]" style={{ color: "rgba(255,255,255,0.5)" }}>{roleLabel}</div>
+                          <div className="truncate text-sm font-semibold" style={{ color: "var(--header-text)" }}>{displayName}</div>
+                          <div className="mt-0.5 text-xs" style={{ color: "var(--header-text-muted)" }}>{roleLabel}</div>
                         </div>
                       </div>
                     </div>
@@ -161,8 +197,8 @@ export default function Header() {
                       <motion.button
                         onClick={() => { setOpenPanel("none"); router.push("/profile"); }}
                         className="flex w-full items-center gap-3 rounded-[18px] px-4 py-3 text-sm"
-                        style={{ color: "rgba(255,255,255,0.82)" }}
-                        whileHover={{ background: "rgba(255,255,255,0.06)" }}
+                        style={{ color: "var(--header-text)" }}
+                        whileHover={{ background: "var(--header-btn-bg)" }}
                       >
                         <User size={15} />
                         Профиль
@@ -170,8 +206,8 @@ export default function Header() {
                       <motion.button
                         onClick={() => { setOpenPanel("none"); router.push("/settings"); }}
                         className="mt-1 flex w-full items-center gap-3 rounded-[18px] px-4 py-3 text-sm"
-                        style={{ color: "rgba(255,255,255,0.82)" }}
-                        whileHover={{ background: "rgba(255,255,255,0.06)" }}
+                        style={{ color: "var(--header-text)" }}
+                        whileHover={{ background: "var(--header-btn-bg)" }}
                       >
                         <Settings size={15} />
                         Настройки
@@ -196,18 +232,52 @@ export default function Header() {
           </div>
 
           <div className="flex items-center justify-center lg:justify-self-center">
-            <Link href="/home" className="flex items-end justify-center rounded-[20px] px-2 py-1 text-center">
-              <span className="translate-y-[1px] text-[2rem] font-display font-black leading-none sm:text-[2.35rem] lg:text-[2.55rem]" style={{ color: "#B685FF" }}>
+            <Link
+              href="/home"
+              className="group flex items-center gap-0 rounded-[20px] px-3 py-1.5 transition-opacity duration-200 hover:opacity-85"
+              aria-label="X·HUNTER — Главная"
+            >
+              {/* X — accent */}
+              <span
+                className="font-display font-black leading-none tracking-tight"
+                style={{
+                  fontSize: "clamp(1.6rem, 2.8vw, 2.15rem)",
+                  color: "var(--accent)",
+                  textShadow: "0 0 28px var(--accent-glow)",
+                  lineHeight: 1,
+                }}
+              >
                 X
               </span>
-              <span className="ml-1.5 text-[1.08rem] font-display font-black leading-none tracking-[0.18em] sm:text-[1.28rem] lg:text-[1.45rem]" style={{ color: "#F5F7FB" }}>
+              {/* Separator dot */}
+              <span
+                className="mx-[3px] font-display font-black"
+                style={{
+                  fontSize: "clamp(0.9rem, 1.4vw, 1.2rem)",
+                  color: "var(--accent)",
+                  opacity: 0.6,
+                  lineHeight: 1,
+                  marginBottom: "1px",
+                }}
+              >
+                ·
+              </span>
+              {/* HUNTER */}
+              <span
+                className="font-display font-black leading-none tracking-[0.16em]"
+                style={{
+                  fontSize: "clamp(1.05rem, 1.8vw, 1.45rem)",
+                  color: "var(--header-text)",
+                  lineHeight: 1,
+                }}
+              >
                 HUNTER
               </span>
             </Link>
           </div>
 
           <div className="relative z-20 flex items-center justify-end gap-2 sm:gap-3">
-            <div className="hidden xl:block w-32">
+            <div className="hidden lg:block w-32">
               <XPBar level={level} currentXP={currentXP} nextLevelXP={nextLevelXP} />
             </div>
 
@@ -215,7 +285,10 @@ export default function Header() {
               <StreakCounter streak={streak} />
             </div>
 
-            <div className="flex items-center gap-1 rounded-[20px] border px-2 py-1.5" style={{ borderColor: "rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.03)" }}>
+            <div
+              className="flex items-center gap-1 rounded-[20px] border px-2 py-1.5"
+              style={{ borderColor: "var(--header-btn-border)", background: "var(--header-btn-bg)" }}
+            >
               <ThemeToggle />
               <NotificationBell
                 open={notificationOpen}
@@ -224,10 +297,12 @@ export default function Header() {
             </div>
 
             <motion.button
-              className="xl:hidden flex h-11 w-11 items-center justify-center rounded-[18px] border"
+              className="lg:hidden flex h-11 w-11 items-center justify-center rounded-[18px] border"
               onClick={() => setOpenPanel(mobileOpen ? "none" : "mobile")}
-              style={{ borderColor: "rgba(255,255,255,0.08)", color: "#F5F7FB", background: "rgba(255,255,255,0.03)" }}
+              style={{ borderColor: "var(--header-btn-border)", color: "var(--header-text)", background: "var(--header-btn-bg)" }}
               whileTap={{ scale: 0.94 }}
+              aria-label="Меню навигации"
+              aria-expanded={mobileOpen}
             >
               <AnimatePresence mode="wait">
                 {mobileOpen ? (
@@ -244,32 +319,61 @@ export default function Header() {
           </div>
         </div>
 
-        <div className="mt-4 hidden xl:flex items-center justify-center">
-          <nav className="flex max-w-full flex-wrap items-center justify-center gap-1 rounded-[24px] border px-2 py-2" style={{ borderColor: "rgba(255,255,255,0.07)", background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))" }}>
+        <div className="mt-3 hidden lg:flex items-center justify-center">
+          <nav
+            className="flex max-w-full items-center justify-center gap-1 rounded-[22px] border px-2 py-1.5 overflow-visible"
+            style={{
+              borderColor: "var(--header-btn-border)",
+              background: "var(--header-btn-bg)",
+            }}
+          >
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.href);
               return (
-                <Link key={item.href} href={item.href}>
-                  <motion.div
-                    className="relative flex items-center gap-2 rounded-[18px] px-4 py-2.5 text-sm font-medium"
-                    style={{ color: active ? "#F5F7FB" : "rgba(255,255,255,0.58)" }}
-                    whileHover={{ y: -1, color: "#F5F7FB" }}
-                    whileTap={{ scale: 0.97 }}
+                <Link key={item.href} href={item.href} prefetch aria-current={active ? "page" : undefined}>
+                  <div
+                    className="relative flex items-center gap-2 rounded-[16px] px-4 xl:px-5 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors duration-200"
+                    style={{
+                      color: active ? "var(--header-text-active)" : "var(--header-text-muted)",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!active) e.currentTarget.style.color = "var(--header-text-active)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!active) e.currentTarget.style.color = "var(--header-text-muted)";
+                    }}
                   >
                     {active && (
-                      <motion.div
-                        layoutId="nav-active-pill"
-                        className="absolute inset-0 rounded-[18px]"
-                        style={{
-                          background: "linear-gradient(135deg, rgba(144,92,237,0.26), rgba(84,120,255,0.12))",
-                          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
-                        }}
-                      />
+                      <>
+                        <motion.div
+                          layoutId="nav-active-pill"
+                          className="absolute inset-0 rounded-[16px]"
+                          transition={{ type: "spring", stiffness: 400, damping: 35, mass: 0.6 }}
+                          style={{
+                            background: "var(--header-nav-active-bg)",
+                            boxShadow: "var(--header-nav-active-shadow)",
+                          }}
+                        />
+                        <motion.div
+                          layoutId="nav-active-glow"
+                          className="absolute rounded-full"
+                          transition={{ type: "spring", stiffness: 400, damping: 35, mass: 0.6 }}
+                          style={{
+                            bottom: -4,
+                            left: "25%",
+                            right: "25%",
+                            height: 2,
+                            background: "var(--accent)",
+                            boxShadow: "0 2px 12px var(--accent-glow)",
+                            borderRadius: 1,
+                          }}
+                        />
+                      </>
                     )}
-                    <span className="relative z-10"><Icon size={16} /></span>
-                    <span className="relative z-10">{item.label}</span>
-                  </motion.div>
+                    <span className="relative z-10 opacity-70 flex items-center"><Icon size={15} /></span>
+                    <span className="relative z-10 leading-none">{item.label}</span>
+                  </div>
                 </Link>
               );
             })}
@@ -279,49 +383,66 @@ export default function Header() {
 
       <AnimatePresence>
         {mobileOpen && (
-          <motion.nav
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.18 }}
-            className="app-shell mx-auto mt-3 overflow-hidden rounded-[28px] border xl:hidden"
-            style={{
-              background: "linear-gradient(180deg, rgba(5,5,8,0.98), rgba(10,12,18,0.96))",
-              borderColor: "rgba(255,255,255,0.08)",
-              boxShadow: "0 24px 54px rgba(0,0,0,0.42)",
-            }}
-          >
-            <div className="px-4 pb-4 pt-3">
-              <div className="mb-3 xl:hidden">
-                <XPBar level={level} currentXP={currentXP} nextLevelXP={nextLevelXP} />
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[28] lg:hidden"
+              style={{ background: "rgba(0,0,0,0.3)", backdropFilter: "blur(4px)" }}
+              onClick={() => setOpenPanel("none")}
+            />
+            <motion.nav
+              initial={{ opacity: 0, y: -16, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className="app-shell mx-auto mt-3 overflow-hidden rounded-[24px] border lg:hidden relative z-[29]"
+              style={{
+                background: "var(--header-bg)",
+                borderColor: "var(--header-border)",
+                boxShadow: "var(--header-shadow)",
+                backdropFilter: "blur(28px) saturate(1.4)",
+                WebkitBackdropFilter: "blur(28px) saturate(1.4)",
+              }}
+            >
+              <div className="px-4 pb-4 pt-3">
+                <div className="mb-3 lg:hidden">
+                  <XPBar level={level} currentXP={currentXP} nextLevelXP={nextLevelXP} />
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {navItems.map((item, index) => {
+                    const Icon = item.icon;
+                    const active = isActive(item.href);
+                    return (
+                      <motion.div
+                        key={item.href}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.025 }}
+                      >
+                        <Link
+                          href={item.href}
+                          onClick={() => setOpenPanel("none")}
+                          aria-current={active ? "page" : undefined}
+                          className="flex items-center gap-2.5 rounded-[16px] px-3.5 py-3 text-[13px] font-medium transition-all duration-200"
+                          style={{
+                            color: active ? "var(--header-text-active)" : "var(--header-text-muted)",
+                            background: active ? "var(--accent-muted)" : "transparent",
+                            border: active ? "1px solid rgba(99,102,241,0.2)" : "1px solid transparent",
+                          }}
+                        >
+                          <Icon size={16} style={{ opacity: active ? 1 : 0.6 }} />
+                          {item.label}
+                        </Link>
+                      </motion.div>
+                    );
+                  })}
+                </div>
               </div>
-              {navItems.map((item, index) => {
-                const Icon = item.icon;
-                const active = isActive(item.href);
-                return (
-                  <motion.div
-                    key={item.href}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.03 }}
-                  >
-                    <Link
-                      href={item.href}
-                      onClick={() => setOpenPanel("none")}
-                      className="mt-1 flex items-center gap-3 rounded-[18px] px-4 py-3 text-sm font-medium"
-                      style={{
-                        color: active ? "#F5F7FB" : "rgba(255,255,255,0.66)",
-                        background: active ? "rgba(144,92,237,0.18)" : "transparent",
-                      }}
-                    >
-                      <Icon size={16} />
-                      {item.label}
-                    </Link>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </motion.nav>
+            </motion.nav>
+          </>
         )}
       </AnimatePresence>
     </header>

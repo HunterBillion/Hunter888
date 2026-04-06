@@ -26,14 +26,19 @@ import logging
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.core import errors as err
+from app.core.deps import get_current_user
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
+limiter = Limiter(key_func=get_remote_address)
 
-router = APIRouter(prefix="/api", tags=["emotion", "traps", "chains"])
+router = APIRouter(tags=["emotion", "traps", "chains"])
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -477,7 +482,8 @@ async def get_cascade_data_by_code(cascade_code: str) -> dict | None:
     response_model=EmotionStateResponse,
     summary="Инициализировать эмоциональное состояние сессии",
 )
-async def emotion_init(session_id: str, body: EmotionInitRequest):
+@limiter.limit("15/minute")
+async def emotion_init(request: Request, session_id: str, body: EmotionInitRequest, user: User = Depends(get_current_user)):
     engine = await get_emotion_engine()
     state = await engine.init_session(
         session_id=session_id,
@@ -509,7 +515,7 @@ async def emotion_init(session_id: str, body: EmotionInitRequest):
     response_model=EmotionStateResponse,
     summary="Получить текущее состояние эмоций",
 )
-async def emotion_get(session_id: str):
+async def emotion_get(session_id: str, user: User = Depends(get_current_user)):
     engine = await get_emotion_engine()
     state = await engine.get_state(session_id)
     if state is None:
@@ -539,7 +545,8 @@ async def emotion_get(session_id: str):
     response_model=EmotionTriggerResponse,
     summary="Обработать триггер перехода",
 )
-async def emotion_trigger(session_id: str, body: EmotionTriggerRequest):
+@limiter.limit("15/minute")
+async def emotion_trigger(request: Request, session_id: str, body: EmotionTriggerRequest, user: User = Depends(get_current_user)):
     engine = await get_emotion_engine()
     result = await engine.process_trigger(
         session_id=session_id,
@@ -567,7 +574,7 @@ async def emotion_trigger(session_id: str, body: EmotionTriggerRequest):
     response_model=EmotionPromptResponse,
     summary="Данные для инъекции в system prompt",
 )
-async def emotion_prompt(session_id: str):
+async def emotion_prompt(session_id: str, user: User = Depends(get_current_user)):
     engine = await get_emotion_engine()
     ctx = await engine.get_prompt_context(session_id)
     return EmotionPromptResponse(**ctx)
@@ -588,6 +595,7 @@ async def traps_list(
     archetype: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    user: User = Depends(get_current_user),
 ):
     all_traps = await get_all_trap_data()
 
@@ -613,7 +621,8 @@ async def traps_list(
     response_model=TrapEvaluateResponse,
     summary="Оценить ответ менеджера на ловушку",
 )
-async def traps_evaluate(body: TrapEvaluateRequest):
+@limiter.limit("15/minute")
+async def traps_evaluate(request: Request, body: TrapEvaluateRequest, user: User = Depends(get_current_user)):
     from app.services.trap_detector import analyze_response as _analyze_response
 
     trap_data = await get_trap_data_by_code(body.trap_code)
@@ -653,7 +662,8 @@ async def traps_evaluate(body: TrapEvaluateRequest):
     response_model=TrapSelectResponse,
     summary="Выбрать ловушку для текущего хода",
 )
-async def traps_select(body: TrapSelectRequest):
+@limiter.limit("15/minute")
+async def traps_select(request: Request, body: TrapSelectRequest, user: User = Depends(get_current_user)):
     """Выбирает ловушку по фильтрам: архетип, эмоция, сложность, вероятность."""
     import random
 
@@ -685,7 +695,7 @@ async def traps_select(body: TrapSelectRequest):
     response_model=TrapSessionStatsResponse,
     summary="Статистика ловушек за сессию",
 )
-async def traps_session_stats(session_id: str):
+async def traps_session_stats(session_id: str, user: User = Depends(get_current_user)):
     stats = await get_session_trap_state(_uuid.UUID(session_id))
     return TrapSessionStatsResponse(
         session_id=session_id,
@@ -713,6 +723,7 @@ async def chains_list(
     archetype: str | None = Query(None),
     max_difficulty: int = Query(10, ge=1, le=10),
     limit: int = Query(50, ge=1, le=200),
+    user: User = Depends(get_current_user),
 ):
     await _ensure_cache()
     items = []
@@ -739,7 +750,8 @@ async def chains_list(
     response_model=ChainStepResponse,
     summary="Начать цепочку возражений",
 )
-async def chains_start(body: ChainStartRequest):
+@limiter.limit("10/minute")
+async def chains_start(request: Request, body: ChainStartRequest, user: User = Depends(get_current_user)):
     chain = await get_chain_data_by_code(body.chain_code)
     if chain is None:
         raise HTTPException(404, detail=f"Chain {body.chain_code} not found")
@@ -763,7 +775,8 @@ async def chains_start(body: ChainStartRequest):
     response_model=ChainStepResponse,
     summary="Обработать ответ менеджера на шаг цепочки",
 )
-async def chains_respond(body: ChainRespondRequest):
+@limiter.limit("15/minute")
+async def chains_respond(request: Request, body: ChainRespondRequest, user: User = Depends(get_current_user)):
     chain = await get_chain_data_by_code(body.chain_code)
     if chain is None:
         raise HTTPException(404, detail=f"Chain {body.chain_code} not found")
@@ -796,7 +809,7 @@ async def chains_respond(body: ChainRespondRequest):
     response_model=ChainSessionResponse,
     summary="Состояние цепочки за сессию",
 )
-async def chains_session(session_id: str):
+async def chains_session(session_id: str, user: User = Depends(get_current_user)):
     sid = _uuid.UUID(session_id)
     state = await _get_chain_state(sid) or {}
     return ChainSessionResponse(
@@ -820,7 +833,8 @@ async def chains_session(session_id: str):
     "/cascades/start",
     summary="Начать каскадную цепочку",
 )
-async def cascades_start(body: CascadeStartRequest):
+@limiter.limit("10/minute")
+async def cascades_start(request: Request, body: CascadeStartRequest, user: User = Depends(get_current_user)):
     cascade = await get_cascade_data_by_code(body.cascade_code)
     if cascade is None:
         raise HTTPException(404, detail=f"Cascade {body.cascade_code} not found")
@@ -835,7 +849,8 @@ async def cascades_start(body: CascadeStartRequest):
     response_model=CascadeOutcomeResponse,
     summary="Обработать исход ловушки каскада",
 )
-async def cascades_outcome(body: CascadeOutcomeRequest):
+@limiter.limit("15/minute")
+async def cascades_outcome(request: Request, body: CascadeOutcomeRequest, user: User = Depends(get_current_user)):
     cascade = await get_cascade_data_by_code(body.cascade_code)
     if cascade is None:
         raise HTTPException(404, detail=f"Cascade {body.cascade_code} not found")

@@ -1,11 +1,13 @@
 import { create } from "zustand";
+import { getToken } from "@/lib/auth";
+import type { ArenaPlayer, ArenaRoundResult, ArenaFinalResults, ArenaChallenge } from "@/types";
 
 export type QuizMode = "free_dialog" | "blitz" | "themed" | "pvp";
 export type QuizStatus = "idle" | "selecting" | "connecting" | "active" | "completed";
 
 export interface QuizMessage {
   id: string;
-  type: "question" | "answer" | "feedback" | "system" | "hint";
+  type: "question" | "answer" | "feedback" | "system" | "hint" | "follow_up";
   content: string;
   isCorrect?: boolean;
   articleRef?: string;
@@ -14,6 +16,17 @@ export interface QuizMessage {
   timestamp: number;
   userId?: string;
   userName?: string;
+  // V2 fields
+  personalityComment?: string;
+  avatarEmoji?: string;
+  speedBonus?: number;
+}
+
+export interface AIPersonality {
+  name: string;
+  displayName: string;
+  avatarEmoji: string;
+  greeting: string;
 }
 
 export interface CategoryProgress {
@@ -28,6 +41,45 @@ export interface PvPPlayer {
   name: string;
   score: number;
   rank?: number;
+}
+
+// Block 5: Cross-module recommendation types
+export interface ArenaRecommendation {
+  category: string;
+  accuracy: number;
+  recommendation: string;
+  priority: "critical" | "high" | "medium";
+  suggested_action: string;
+}
+
+export interface ArenaLeaderboardEntry {
+  user_id: string;
+  username: string;
+  rank: number;
+  rank_tier?: string;
+  score?: number;
+  avg_score?: number;
+  sessions_count?: number;
+  wins?: number;
+  losses?: number;
+  streak?: number;
+  rating?: number;
+  total_score?: number;
+}
+
+export interface ArenaStats {
+  overall_accuracy: number;
+  total_quizzes: number;
+  category_progress: CategoryProgress[];
+  pvp_stats: {
+    rating: number;
+    rank_tier: string;
+    wins: number;
+    losses: number;
+    current_streak: number;
+  };
+  weak_areas: string[];
+  recommendations: ArenaRecommendation[];
 }
 
 interface KnowledgeState {
@@ -67,6 +119,45 @@ interface KnowledgeState {
   // Results
   results: Record<string, unknown> | null;
 
+  // V2: AI Personality
+  aiPersonality: AIPersonality | null;
+
+  // V2: Streak & adaptive difficulty
+  streak: number;
+  bestStreak: number;
+  currentDifficulty: number;
+
+  // V2: Follow-up
+  pendingFollowUp: string | null;
+
+  // Block 5: Cross-module stats
+  arenaStats: ArenaStats | null;
+  arenaStatsLoading: boolean;
+
+  // Arena Leaderboard
+  arenaLeaderboard: ArenaLeaderboardEntry[];
+  arenaLeaderboardPeriod: "week" | "month" | "all";
+  arenaLeaderboardLoading: boolean;
+  arenaLeaderboardUserRank: Record<string, unknown> | null;
+
+  // PvP Arena Match state
+  pvpMatchId: string | null;
+  pvpRound: number;
+  pvpTotalRounds: number;
+  pvpArenaPlayers: ArenaPlayer[];
+  pvpRoundResults: ArenaRoundResult[];
+  pvpMyAnswer: string;
+  pvpMyAnswerSubmitted: boolean;
+  pvpOpponentsAnswered: Record<string, boolean>;
+  pvpTimeLeft: number;
+  pvpFinalResults: ArenaFinalResults | null;
+  pvpContainsBot: boolean;
+  pvpCurrentQuestion: string | null;
+  pvpCurrentCategory: string | null;
+  pvpCurrentDifficulty: number;
+  pvpDisconnectedPlayers: string[];
+  pvpActiveChallenges: ArenaChallenge[];
+
   // Actions
   init(mode: QuizMode, category?: string): void;
   setStatus(status: QuizStatus): void;
@@ -90,6 +181,28 @@ interface KnowledgeState {
   setInput(input: string): void;
   setIsTyping(typing: boolean): void;
   tickTimer(): void;
+  // V2 actions
+  setAiPersonality(p: AIPersonality | null): void;
+  setStreak(streak: number, bestStreak: number): void;
+  setCurrentDifficulty(d: number): void;
+  setPendingFollowUp(text: string | null): void;
+  fetchArenaStats(): Promise<void>;
+  fetchArenaLeaderboard(period?: "week" | "month" | "all"): Promise<void>;
+
+  // PvP Arena actions
+  setPvPMatch(matchId: string, players: ArenaPlayer[], totalRounds: number): void;
+  setPvPRoundQuestion(question: string, category: string | null, difficulty: number, round: number, timeLimit: number): void;
+  submitPvPAnswer(text: string): void;
+  setOpponentAnswered(userId: string): void;
+  addArenaRoundResult(result: ArenaRoundResult): void;
+  updateArenaScoreboard(players: ArenaPlayer[]): void;
+  setArenaFinalResults(results: ArenaFinalResults): void;
+  addArenaChallenge(challenge: ArenaChallenge): void;
+  removeArenaChallenge(challengeId: string): void;
+  addDisconnectedPlayer(userId: string): void;
+  removeDisconnectedPlayer(userId: string): void;
+  tickPvPTimer(): void;
+  resetPvP(): void;
   reset(): void;
 }
 
@@ -121,6 +234,39 @@ const INITIAL_STATE = {
   isTyping: false,
 
   results: null as Record<string, unknown> | null,
+
+  // V2
+  aiPersonality: null as AIPersonality | null,
+  streak: 0,
+  bestStreak: 0,
+  currentDifficulty: 3,
+  pendingFollowUp: null as string | null,
+
+  arenaStats: null as ArenaStats | null,
+  arenaStatsLoading: false,
+
+  arenaLeaderboard: [] as ArenaLeaderboardEntry[],
+  arenaLeaderboardPeriod: "all" as "week" | "month" | "all",
+  arenaLeaderboardLoading: false,
+  arenaLeaderboardUserRank: null as Record<string, unknown> | null,
+
+  // PvP Arena Match
+  pvpMatchId: null as string | null,
+  pvpRound: 0,
+  pvpTotalRounds: 10,
+  pvpArenaPlayers: [] as ArenaPlayer[],
+  pvpRoundResults: [] as ArenaRoundResult[],
+  pvpMyAnswer: "",
+  pvpMyAnswerSubmitted: false,
+  pvpOpponentsAnswered: {} as Record<string, boolean>,
+  pvpTimeLeft: 0,
+  pvpFinalResults: null as ArenaFinalResults | null,
+  pvpContainsBot: false,
+  pvpCurrentQuestion: null as string | null,
+  pvpCurrentCategory: null as string | null,
+  pvpCurrentDifficulty: 3,
+  pvpDisconnectedPlayers: [] as string[],
+  pvpActiveChallenges: [] as ArenaChallenge[],
 };
 
 export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
@@ -176,6 +322,152 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
     set((s) => {
       if (s.timeLeft === null || s.timeLeft <= 0) return {};
       return { timeLeft: s.timeLeft - 1 };
+    }),
+
+  // V2 actions
+  setAiPersonality: (aiPersonality) => set({ aiPersonality }),
+  setStreak: (streak, bestStreak) => set({ streak, bestStreak }),
+  setCurrentDifficulty: (currentDifficulty) => set({ currentDifficulty }),
+  setPendingFollowUp: (pendingFollowUp) => set({ pendingFollowUp }),
+
+  fetchArenaStats: async () => {
+    set({ arenaStatsLoading: true });
+    try {
+      const token = getToken();
+      const resp = await fetch("/api/dashboard/knowledge-stats", {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (resp.ok) {
+        const data: ArenaStats = await resp.json();
+        set({ arenaStats: data, arenaStatsLoading: false });
+      } else {
+        set({ arenaStatsLoading: false });
+      }
+    } catch {
+      set({ arenaStatsLoading: false });
+    }
+  },
+
+  fetchArenaLeaderboard: async (period = "all") => {
+    set({ arenaLeaderboardLoading: true, arenaLeaderboardPeriod: period });
+    try {
+      const token = getToken();
+      const resp = await fetch(`/api/knowledge/arena/leaderboard?period=${period}`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        set({
+          arenaLeaderboard: data.entries || [],
+          arenaLeaderboardUserRank: data.user_rank || null,
+          arenaLeaderboardLoading: false,
+        });
+      } else {
+        set({ arenaLeaderboardLoading: false });
+      }
+    } catch {
+      set({ arenaLeaderboardLoading: false });
+    }
+  },
+
+  // ── PvP Arena actions ──
+
+  setPvPMatch: (matchId, players, totalRounds) =>
+    set({
+      pvpMatchId: matchId,
+      pvpArenaPlayers: players,
+      pvpTotalRounds: totalRounds,
+      pvpRound: 0,
+      pvpRoundResults: [],
+      pvpFinalResults: null,
+      pvpContainsBot: players.some((p) => p.is_bot),
+      status: "active",
+      mode: "pvp",
+    }),
+
+  setPvPRoundQuestion: (question, category, difficulty, round, timeLimit) =>
+    set({
+      pvpCurrentQuestion: question,
+      pvpCurrentCategory: category,
+      pvpCurrentDifficulty: difficulty,
+      pvpRound: round,
+      pvpTimeLeft: timeLimit,
+      pvpMyAnswer: "",
+      pvpMyAnswerSubmitted: false,
+      pvpOpponentsAnswered: {},
+    }),
+
+  submitPvPAnswer: (text) =>
+    set({ pvpMyAnswer: text, pvpMyAnswerSubmitted: true }),
+
+  setOpponentAnswered: (userId) =>
+    set((s) => ({
+      pvpOpponentsAnswered: { ...s.pvpOpponentsAnswered, [userId]: true },
+    })),
+
+  addArenaRoundResult: (result) =>
+    set((s) => ({
+      pvpRoundResults: [...s.pvpRoundResults, result],
+      pvpCurrentQuestion: null,
+    })),
+
+  updateArenaScoreboard: (players) =>
+    set({ pvpArenaPlayers: players }),
+
+  setArenaFinalResults: (results) =>
+    set({ pvpFinalResults: results, status: "completed" }),
+
+  addArenaChallenge: (challenge) =>
+    set((s) => ({
+      pvpActiveChallenges: [
+        ...s.pvpActiveChallenges.filter((c) => c.challenge_id !== challenge.challenge_id),
+        challenge,
+      ],
+    })),
+
+  removeArenaChallenge: (challengeId) =>
+    set((s) => ({
+      pvpActiveChallenges: s.pvpActiveChallenges.filter((c) => c.challenge_id !== challengeId),
+    })),
+
+  addDisconnectedPlayer: (userId) =>
+    set((s) => ({
+      pvpDisconnectedPlayers: [...s.pvpDisconnectedPlayers, userId],
+    })),
+
+  removeDisconnectedPlayer: (userId) =>
+    set((s) => ({
+      pvpDisconnectedPlayers: s.pvpDisconnectedPlayers.filter((id) => id !== userId),
+    })),
+
+  tickPvPTimer: () =>
+    set((s) => {
+      if (s.pvpTimeLeft <= 0) return {};
+      return { pvpTimeLeft: s.pvpTimeLeft - 1 };
+    }),
+
+  resetPvP: () =>
+    set({
+      pvpMatchId: null,
+      pvpRound: 0,
+      pvpTotalRounds: 10,
+      pvpArenaPlayers: [],
+      pvpRoundResults: [],
+      pvpMyAnswer: "",
+      pvpMyAnswerSubmitted: false,
+      pvpOpponentsAnswered: {},
+      pvpTimeLeft: 0,
+      pvpFinalResults: null,
+      pvpContainsBot: false,
+      pvpCurrentQuestion: null,
+      pvpCurrentCategory: null,
+      pvpCurrentDifficulty: 3,
+      pvpDisconnectedPlayers: [],
+      pvpActiveChallenges: [],
+      isSearching: false,
+      challengeId: null,
     }),
 
   reset: () => set(INITIAL_STATE),

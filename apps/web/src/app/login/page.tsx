@@ -4,9 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Crosshair, Mail, ArrowRight, AlertCircle } from "lucide-react";
+import { Mail, ArrowRight, AlertCircle, KeyRound } from "lucide-react";
 import { api } from "@/lib/api";
+import { EASE_SNAP } from "@/lib/constants";
 import { setTokens } from "@/lib/auth";
+import { getApiBaseUrl } from "@/lib/public-origin";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { LogoSeparator } from "@/components/ui/LogoSeparator";
 import { PasswordInput } from "@/components/ui/PasswordInput";
@@ -20,6 +22,8 @@ const WaveScene = dynamic(
 );
 import { FishermanError } from "@/components/errors/FishermanError";
 
+type ForgotMode = "idle" | "form" | "sent";
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -27,6 +31,23 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [networkError, setNetworkError] = useState(false);
+  const [forgotMode, setForgotMode] = useState<ForgotMode>("idle");
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+
+  const handleForgot = async () => {
+    if (!forgotEmail.trim()) return;
+    setForgotLoading(true);
+    try {
+      await fetch(`${getApiBaseUrl()}/api/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail.trim() }),
+      });
+    } catch { /* silent — always show success for security */ }
+    setForgotLoading(false);
+    setForgotMode("sent");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +69,8 @@ export default function LoginPage() {
     try {
       const data = await api.post("/auth/login", { email: trimmedEmail, password });
       setTokens(data.access_token, data.refresh_token);
+      // router.push keeps tokens in memory (no page reload), middleware sees
+      // vh_authenticated cookie set by setTokens above.
       if (data.must_change_password) {
         router.push("/change-password");
       } else {
@@ -71,6 +94,76 @@ export default function LoginPage() {
         onRetry={() => { setNetworkError(false); setError(""); }}
         message="Похоже, рыба сегодня не клюёт..."
       />
+    );
+  }
+
+  // Forgot-password screen
+  if (forgotMode !== "idle") {
+    return (
+      <div
+        className="flex min-h-screen items-center justify-center px-4"
+        style={{ background: "var(--bg-primary)" }}
+      >
+        <div className="absolute right-4 top-4 z-10"><ThemeToggle /></div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-panel w-full max-w-md p-8 relative z-10"
+        >
+          <div className="absolute top-0 left-6 right-6 h-[2px] rounded-full" style={{ background: "linear-gradient(90deg, transparent, var(--accent), transparent)" }} />
+
+          {forgotMode === "sent" ? (
+            <div className="text-center py-6">
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 280 }}
+                className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5"
+                style={{ background: "rgba(0,255,148,0.1)", border: "1px solid rgba(0,255,148,0.25)" }}
+              >
+                <Mail size={24} style={{ color: "var(--neon-green)" }} />
+              </motion.div>
+              <h2 className="font-display font-bold text-xl mb-2" style={{ color: "var(--text-primary)" }}>Письмо отправлено</h2>
+              <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
+                Проверьте <strong style={{ color: "var(--text-secondary)" }}>{forgotEmail}</strong><br />и следуйте инструкциям в письме.
+              </p>
+              <button onClick={() => { setForgotMode("idle"); setForgotEmail(""); }} className="text-sm font-medium" style={{ color: "var(--accent)" }}>
+                ← Вернуться ко входу
+              </button>
+            </div>
+          ) : (
+            <div>
+              <button onClick={() => setForgotMode("idle")} className="flex items-center gap-1.5 text-xs mb-6" style={{ color: "var(--text-muted)" }}>
+                ← Назад
+              </button>
+              <div className="mb-6 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "var(--accent-muted)" }}>
+                  <KeyRound size={18} style={{ color: "var(--accent)" }} />
+                </div>
+                <div>
+                  <h2 className="font-display font-bold text-lg" style={{ color: "var(--text-primary)" }}>Забыли пароль?</h2>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>Пришлём ссылку для сброса</p>
+                </div>
+              </div>
+              <label className="vh-label">Email</label>
+              <div className="relative mb-4">
+                <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
+                <input
+                  type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
+                  className="vh-input pl-10 w-full" placeholder="you@example.com" autoComplete="email"
+                  onKeyDown={(e) => e.key === "Enter" && handleForgot()}
+                />
+              </div>
+              <motion.button
+                onClick={handleForgot} disabled={forgotLoading || !forgotEmail.trim()}
+                className="btn-neon flex w-full items-center justify-center gap-2"
+                whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}
+              >
+                {forgotLoading
+                  ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  : <><Mail size={15} />Отправить ссылку</>}
+              </motion.button>
+            </div>
+          )}
+        </motion.div>
+      </div>
     );
   }
 
@@ -100,50 +193,76 @@ export default function LoginPage() {
         <div className="absolute top-0 left-6 right-6 h-[2px] rounded-full" style={{ background: "linear-gradient(90deg, transparent, var(--accent), transparent)" }} />
 
         <div className="mb-8 text-center">
-          {/* Animated logo icon — orbiting rings */}
+          {/* Animated logo icon — neural pulse */}
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
-            className="relative mx-auto mb-5 h-16 w-16 flex items-center justify-center"
+            className="relative mx-auto mb-5 h-20 w-20 flex items-center justify-center"
           >
-            {/* Outer rotating ring */}
+            {/* Outer breathing ring */}
             <motion.div
-              className="absolute inset-0 rounded-full"
-              style={{ border: "1.5px solid var(--accent)", opacity: 0.4 }}
-              animate={{ rotate: 360 }}
-              transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-            />
-            {/* Middle ring — counter-rotate */}
-            <motion.div
-              className="absolute inset-2 rounded-full"
-              style={{ border: "1px dashed var(--accent)", opacity: 0.25 }}
-              animate={{ rotate: -360 }}
-              transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
-            />
-            {/* Core glow */}
-            <motion.div
-              className="w-6 h-6 rounded-full"
-              style={{ background: "var(--accent)" }}
+              className="absolute inset-0 rounded-2xl"
+              style={{
+                border: "1.5px solid var(--accent)",
+                opacity: 0.3,
+              }}
               animate={{
-                boxShadow: [
-                  "0 0 15px var(--accent-glow)",
-                  "0 0 35px var(--accent-glow)",
-                  "0 0 15px var(--accent-glow)",
+                rotate: [0, 90],
+                borderRadius: ["28%", "50%", "28%"],
+                scale: [1, 1.06, 1],
+              }}
+              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+            />
+            {/* Inner morphing shape */}
+            <motion.div
+              className="absolute rounded-2xl"
+              style={{
+                inset: 8,
+                border: "1px solid var(--accent)",
+                opacity: 0.2,
+              }}
+              animate={{
+                rotate: [0, -90],
+                borderRadius: ["50%", "28%", "50%"],
+              }}
+              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+            />
+            {/* Core — stylized "X" */}
+            <motion.svg
+              width="28"
+              height="28"
+              viewBox="0 0 28 28"
+              fill="none"
+              className="relative z-10"
+              animate={{
+                filter: [
+                  "drop-shadow(0 0 8px var(--accent-glow))",
+                  "drop-shadow(0 0 20px var(--accent-glow))",
+                  "drop-shadow(0 0 8px var(--accent-glow))",
                 ],
-                scale: [1, 1.15, 1],
               }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-            />
-            {/* Orbiting dot */}
+              transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <motion.path
+                d="M6 6L22 22M22 6L6 22"
+                stroke="var(--accent)"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{ duration: 1.2, delay: 0.3, ease: EASE_SNAP }}
+              />
+            </motion.svg>
+            {/* Ambient glow behind */}
             <motion.div
-              className="absolute w-2 h-2 rounded-full"
-              style={{ background: "var(--accent)", boxShadow: "0 0 8px var(--accent)" }}
-              animate={{
-                x: [24, 0, -24, 0, 24],
-                y: [0, -24, 0, 24, 0],
+              className="absolute rounded-full"
+              style={{
+                inset: -4,
+                background: "radial-gradient(circle, var(--accent-glow) 0%, transparent 70%)",
               }}
-              transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+              animate={{ opacity: [0.3, 0.6, 0.3] }}
+              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
             />
           </motion.div>
 
@@ -162,10 +281,10 @@ export default function LoginPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
-            className="mt-2 font-mono text-xs tracking-[0.4em] uppercase"
-            style={{ color: "var(--text-muted)" }}
+            className="mt-2 font-display text-base font-bold tracking-[0.12em] italic"
+            style={{ color: "var(--accent)", textShadow: "0 0 20px rgba(99,102,241,0.4)" }}
           >
-            Neural Sales Environment
+            Выбор игры, важнее самой игры
           </motion.p>
         </div>
 
@@ -205,7 +324,19 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label htmlFor="password" className="vh-label">Пароль</label>
+            <div className="flex items-center justify-between mb-1">
+              <label htmlFor="password" className="vh-label mb-0">Пароль</label>
+              <button
+                type="button"
+                onClick={() => { setForgotMode("form"); setForgotEmail(email.trim()); }}
+                className="text-xs transition-colors"
+                style={{ color: "var(--text-muted)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent)")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+              >
+                Забыли пароль?
+              </button>
+            </div>
             <PasswordInput
               id="password"
               value={password}
@@ -218,7 +349,7 @@ export default function LoginPage() {
           <motion.button
             type="submit"
             disabled={loading}
-            className="vh-btn-primary flex w-full items-center justify-center gap-2"
+            className="btn-neon flex w-full items-center justify-center gap-2"
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
           >
@@ -236,7 +367,7 @@ export default function LoginPage() {
           <div className="relative">
             <div className="flex items-center gap-3 my-1">
               <div className="flex-1 h-px" style={{ background: "var(--border-color)" }} />
-              <span className="font-mono text-[9px] tracking-wider" style={{ color: "var(--text-muted)" }}>ИЛИ</span>
+              <span className="font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>ИЛИ</span>
               <div className="flex-1 h-px" style={{ background: "var(--border-color)" }} />
             </div>
             <div className="flex gap-3 mt-3">
@@ -250,7 +381,12 @@ export default function LoginPage() {
                   try {
                     setError(""); // Clear stale error before redirect (#18)
                     const data = await api.get("/auth/google/login");
-                    if (data?.url) window.location.href = data.url;
+                    if (data?.url) {
+                      const { validateOAuthUrl } = await import("@/lib/sanitize");
+                      const safeUrl = validateOAuthUrl(data.url);
+                      if (safeUrl) window.location.href = safeUrl;
+                      else setError("Недоверенный OAuth URL");
+                    }
                   } catch (err: unknown) {
                     setError(err instanceof Error ? err.message : "Google OAuth недоступен");
                   }
@@ -269,7 +405,12 @@ export default function LoginPage() {
                   try {
                     setError(""); // Clear stale error before redirect (#18)
                     const data = await api.get("/auth/yandex/login");
-                    if (data?.url) window.location.href = data.url;
+                    if (data?.url) {
+                      const { validateOAuthUrl } = await import("@/lib/sanitize");
+                      const safeUrl = validateOAuthUrl(data.url);
+                      if (safeUrl) window.location.href = safeUrl;
+                      else setError("Недоверенный OAuth URL");
+                    }
                   } catch (err: unknown) {
                     setError(err instanceof Error ? err.message : "Yandex OAuth недоступен");
                   }

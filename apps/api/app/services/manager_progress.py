@@ -52,6 +52,48 @@ SKILL_SMOOTHING_ALPHA = 0.30
 COLD_START_SESSIONS = 5
 WEAK_POINT_GAP = 15  # навык ниже среднего на 15+ → weak
 
+# ── Skill mastery levels ─────────────────────────────────────────────
+SKILL_MASTERY_LEVELS: list[dict] = [
+    {"level": 1, "name": "Стажёр",       "name_en": "trainee",      "min_score": 0,  "max_score": 25,  "badge": "🔰"},
+    {"level": 2, "name": "Практикант",    "name_en": "apprentice",   "min_score": 26, "max_score": 45,  "badge": "📘"},
+    {"level": 3, "name": "Специалист",    "name_en": "specialist",   "min_score": 46, "max_score": 65,  "badge": "⭐"},
+    {"level": 4, "name": "Профессионал",  "name_en": "professional", "min_score": 66, "max_score": 80,  "badge": "🏅"},
+    {"level": 5, "name": "Эксперт",       "name_en": "expert",       "min_score": 81, "max_score": 95,  "badge": "💎"},
+    {"level": 6, "name": "Мастер",        "name_en": "master",       "min_score": 96, "max_score": 100, "badge": "👑"},
+]
+
+
+def get_skill_mastery(score: float) -> dict:
+    """Get mastery level info for a skill score (0-100).
+
+    Returns dict with: level, name, name_en, badge, progress_in_level (0-100%).
+    """
+    score = max(0.0, min(100.0, score))
+    for mastery in reversed(SKILL_MASTERY_LEVELS):
+        if score >= mastery["min_score"]:
+            range_size = mastery["max_score"] - mastery["min_score"] + 1
+            progress = ((score - mastery["min_score"]) / range_size) * 100 if range_size > 0 else 100
+            return {
+                "level": mastery["level"],
+                "name": mastery["name"],
+                "name_en": mastery["name_en"],
+                "badge": mastery["badge"],
+                "progress_in_level": round(min(100.0, progress), 1),
+            }
+    return {"level": 1, "name": "Стажёр", "name_en": "trainee", "badge": "🔰", "progress_in_level": 0}
+
+
+def get_all_skill_masteries(skills: dict[str, float]) -> dict[str, dict]:
+    """Get mastery levels for all 6 skills.
+
+    Args:
+        skills: Dict of skill_name → score (0-100)
+
+    Returns:
+        Dict of skill_name → mastery info
+    """
+    return {skill: get_skill_mastery(score) for skill, score in skills.items()}
+
 # Маппинг навыков → архетипы для рекомендаций
 SKILL_ARCHETYPE_MAP: dict[str, list[str]] = {
     "empathy": ["anxious", "desperate", "crying", "ashamed", "overwhelmed"],
@@ -326,6 +368,95 @@ class ManagerProgressService:
             "closing": self._calc_closing(sessions),
             "qualification": self._calc_qualification(sessions),
         }
+
+    async def calculate_skills_with_arena(self, user_id: uuid.UUID) -> dict[str, int]:
+        """Рассчитывает навыки с учётом данных Арены знаний.
+
+        Knowledge skill = training_component * 0.5 + arena_accuracy * 0.35 + pvp_win_rate * 0.15
+
+        Block 5 (Cross-Module): Arena data enriches the knowledge skill.
+        """
+        sessions = await self._get_recent_sessions(user_id, limit=10)
+        if not sessions:
+            return {s: 50 for s in SKILL_NAMES}
+
+        base_skills = {
+            "empathy": self._calc_empathy(sessions),
+            "knowledge": self._calc_knowledge(sessions),
+            "objection_handling": self._calc_objection_handling(sessions),
+            "stress_resistance": self._calc_stress_resistance(sessions),
+            "closing": self._calc_closing(sessions),
+            "qualification": self._calc_qualification(sessions),
+        }
+
+        # Enrich knowledge skill with Arena data
+        try:
+            arena_knowledge = await self._calc_knowledge_with_arena(
+                user_id, base_skills["knowledge"],
+            )
+            base_skills["knowledge"] = arena_knowledge
+        except Exception:
+            logger.debug("Arena data unavailable for knowledge skill", exc_info=True)
+
+        return base_skills
+
+    async def _calc_knowledge_with_arena(
+        self, user_id: uuid.UUID, training_score: int,
+    ) -> int:
+        """Calculate knowledge skill combining training + Arena quiz + PvP data.
+
+        Formula:
+            knowledge = training_component * 0.5 + arena_accuracy * 0.35 + pvp_win_rate * 0.15
+        """
+        from app.services.knowledge_quiz import get_category_progress
+
+        # Arena quiz accuracy
+        arena_score = 0
+        try:
+            category_progress = await get_category_progress(user_id, self._db)
+            if category_progress:
+                total_correct = sum(
+                    cp.get("correct_answers", 0) for cp in category_progress
+                )
+                total_answered = sum(
+                    cp.get("total_answers", 0) for cp in category_progress
+                )
+                if total_answered >= 5:  # Minimum data threshold
+                    arena_score = int((total_correct / total_answered) * 100)
+                else:
+                    # Not enough Arena data — use training only
+                    return training_score
+        except Exception:
+            return training_score
+
+        # PvP win rate (from PvP ratings)
+        pvp_score = 0
+        try:
+            from app.models.pvp import PvPRating
+            result = await self._db.execute(
+                select(PvPRating).where(
+                    PvPRating.user_id == user_id,
+                    PvPRating.rating_type == "knowledge_arena",
+                )
+            )
+            rating = result.scalar_one_or_none()
+            if rating and rating.total_duels >= 3:  # Minimum 3 duels
+                pvp_score = int((rating.wins / rating.total_duels) * 100)
+            else:
+                # Not enough PvP data — split between training and arena
+                final = int(training_score * 0.6 + arena_score * 0.4)
+                return max(0, min(100, final))
+        except Exception:
+            final = int(training_score * 0.6 + arena_score * 0.4)
+            return max(0, min(100, final))
+
+        # Full formula with all three components
+        final = int(
+            training_score * 0.5
+            + arena_score * 0.35
+            + pvp_score * 0.15
+        )
+        return max(0, min(100, final))
 
     # ── Рекомендация следующей сессии ──
 
@@ -690,6 +821,29 @@ class ManagerProgressService:
     async def _check_level_up(self, profile: ManagerProgress) -> dict[str, Any]:
         new_level = get_level_for_xp(profile.total_xp)
         if new_level > profile.current_level:
+            # DOC_04: Gate level-up on required checkpoints
+            try:
+                from app.services.checkpoint_validator import CheckpointValidator
+                validator = CheckpointValidator(self._db)
+                eligibility = await validator.can_level_up(profile.user_id, profile.current_level)
+                if not eligibility.checkpoints_met:
+                    # XP sufficient but checkpoints not met — soft gate
+                    profile.level_checkpoints_met = False
+                    logger.info(
+                        "Level up blocked by checkpoints: user=%s, level=%d, missing=%s",
+                        profile.user_id, profile.current_level, eligibility.missing_checkpoints,
+                    )
+                    return {
+                        "leveled_up": False,
+                        "xp_sufficient": True,
+                        "checkpoints_blocked": True,
+                        "missing_checkpoints": eligibility.missing_checkpoints,
+                    }
+                profile.level_checkpoints_met = True
+            except Exception as e:
+                # If checkpoint system fails, don't block progression
+                logger.warning("Checkpoint validation failed, allowing level up: %s", e)
+
             old_level = profile.current_level
             profile.current_level = new_level
             # Обновить разблокировки
@@ -699,6 +853,21 @@ class ManagerProgressService:
                 "Level up! user=%s: %d → %d (%s)",
                 profile.user_id, old_level, new_level, get_level_name(new_level),
             )
+            # BUG-1 fix: emit EVENT_LEVEL_UP so notifications are sent
+            from app.services.event_bus import event_bus, GameEvent, EVENT_LEVEL_UP
+            try:
+                await event_bus.emit(GameEvent(
+                    kind=EVENT_LEVEL_UP,
+                    user_id=profile.user_id,
+                    db=self._db,
+                    payload={
+                        "old_level": old_level,
+                        "new_level": new_level,
+                        "new_level_name": get_level_name(new_level),
+                    },
+                ))
+            except Exception as e:
+                logger.warning("Failed to emit level_up event: %s", e)
             return {
                 "leveled_up": True,
                 "old_level": old_level,

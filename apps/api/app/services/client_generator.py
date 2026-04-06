@@ -41,40 +41,244 @@ logger = logging.getLogger(__name__)
 # ══════════════════════════════════════════════════════════════════════
 
 ARCHETYPE_OCEAN: dict[str, dict[str, float]] = {
-    # ── Defensive ──
-    "skeptic":       {"O": 0.45, "C": 0.65, "E": 0.40, "A": 0.30, "N": 0.55},
-    "anxious":       {"O": 0.40, "C": 0.50, "E": 0.30, "A": 0.60, "N": 0.85},
-    "passive":       {"O": 0.35, "C": 0.35, "E": 0.25, "A": 0.70, "N": 0.45},
-    "avoidant":      {"O": 0.30, "C": 0.30, "E": 0.20, "A": 0.55, "N": 0.65},
-    "paranoid":      {"O": 0.25, "C": 0.60, "E": 0.30, "A": 0.15, "N": 0.80},
-    "ashamed":       {"O": 0.35, "C": 0.55, "E": 0.20, "A": 0.65, "N": 0.75},
+    # ── Group 1: RESISTANCE ──
+    "skeptic":        {"O": 0.45, "C": 0.65, "E": 0.40, "A": 0.30, "N": 0.55},
+    "blamer":         {"O": 0.35, "C": 0.50, "E": 0.60, "A": 0.20, "N": 0.70},
+    "sarcastic":      {"O": 0.55, "C": 0.45, "E": 0.50, "A": 0.20, "N": 0.60},
+    "aggressive":     {"O": 0.30, "C": 0.25, "E": 0.70, "A": 0.10, "N": 0.80},
+    "hostile":        {"O": 0.20, "C": 0.20, "E": 0.75, "A": 0.05, "N": 0.90},
+    "stubborn":       {"O": 0.25, "C": 0.70, "E": 0.30, "A": 0.35, "N": 0.40},
+    "conspiracy":     {"O": 0.55, "C": 0.40, "E": 0.45, "A": 0.20, "N": 0.70},
+    "righteous":      {"O": 0.30, "C": 0.85, "E": 0.35, "A": 0.50, "N": 0.55},
+    "litigious":      {"O": 0.50, "C": 0.75, "E": 0.55, "A": 0.15, "N": 0.65},
+    "scorched_earth": {"O": 0.20, "C": 0.15, "E": 0.15, "A": 0.30, "N": 0.90},
+    # ── Group 2: EMOTIONAL ──
+    "grateful":       {"O": 0.55, "C": 0.55, "E": 0.55, "A": 0.85, "N": 0.25},
+    "anxious":        {"O": 0.40, "C": 0.50, "E": 0.35, "A": 0.60, "N": 0.75},
+    "ashamed":        {"O": 0.30, "C": 0.60, "E": 0.20, "A": 0.65, "N": 0.75},
+    "overwhelmed":    {"O": 0.35, "C": 0.30, "E": 0.40, "A": 0.55, "N": 0.80},
+    "desperate":      {"O": 0.25, "C": 0.25, "E": 0.45, "A": 0.50, "N": 0.85},
+    "crying":         {"O": 0.30, "C": 0.35, "E": 0.30, "A": 0.60, "N": 0.90},
+    "guilty":         {"O": 0.35, "C": 0.60, "E": 0.30, "A": 0.65, "N": 0.75},
+    "mood_swinger":   {"O": 0.55, "C": 0.25, "E": 0.80, "A": 0.45, "N": 0.85},
+    "frozen":         {"O": 0.20, "C": 0.55, "E": 0.10, "A": 0.40, "N": 0.80},
+    "hysteric":       {"O": 0.40, "C": 0.15, "E": 0.90, "A": 0.35, "N": 0.95},
+    # ── Group 3: CONTROL ──
+    "pragmatic":      {"O": 0.50, "C": 0.75, "E": 0.45, "A": 0.50, "N": 0.30},
+    "shopper":        {"O": 0.60, "C": 0.55, "E": 0.50, "A": 0.45, "N": 0.40},
+    "negotiator":     {"O": 0.55, "C": 0.65, "E": 0.65, "A": 0.35, "N": 0.35},
+    "know_it_all":    {"O": 0.65, "C": 0.70, "E": 0.60, "A": 0.15, "N": 0.50},
+    "manipulator":    {"O": 0.70, "C": 0.80, "E": 0.55, "A": 0.10, "N": 0.25},
+    "lawyer_client":  {"O": 0.60, "C": 0.90, "E": 0.50, "A": 0.20, "N": 0.35},
+    "auditor":        {"O": 0.45, "C": 0.90, "E": 0.35, "A": 0.55, "N": 0.35},
+    "strategist":     {"O": 0.65, "C": 0.70, "E": 0.50, "A": 0.40, "N": 0.35},
+    "power_player":   {"O": 0.50, "C": 0.75, "E": 0.80, "A": 0.25, "N": 0.30},
+    "puppet_master":  {"O": 0.70, "C": 0.80, "E": 0.55, "A": 0.10, "N": 0.25},
+    # ── Group 4: AVOIDANCE ──
+    "passive":        {"O": 0.30, "C": 0.30, "E": 0.20, "A": 0.75, "N": 0.55},
+    "delegator":      {"O": 0.35, "C": 0.25, "E": 0.30, "A": 0.70, "N": 0.60},
+    "avoidant":       {"O": 0.30, "C": 0.35, "E": 0.25, "A": 0.55, "N": 0.65},
+    "paranoid":       {"O": 0.25, "C": 0.65, "E": 0.35, "A": 0.15, "N": 0.85},
+    "procrastinator": {"O": 0.45, "C": 0.30, "E": 0.40, "A": 0.70, "N": 0.50},
+    "ghosting":       {"O": 0.30, "C": 0.20, "E": 0.15, "A": 0.50, "N": 0.70},
+    "deflector":      {"O": 0.55, "C": 0.35, "E": 0.60, "A": 0.55, "N": 0.50},
+    "agreeable_ghost": {"O": 0.40, "C": 0.25, "E": 0.35, "A": 0.90, "N": 0.55},
+    "fortress":       {"O": 0.15, "C": 0.65, "E": 0.10, "A": 0.20, "N": 0.70},
+    "smoke_screen":   {"O": 0.65, "C": 0.30, "E": 0.75, "A": 0.55, "N": 0.45},
+    # ── Group 5: SPECIAL ──
+    "referred":       {"O": 0.55, "C": 0.50, "E": 0.50, "A": 0.70, "N": 0.30},
+    "returner":       {"O": 0.45, "C": 0.55, "E": 0.45, "A": 0.40, "N": 0.60},
+    "rushed":         {"O": 0.40, "C": 0.70, "E": 0.65, "A": 0.35, "N": 0.45},
+    "couple":         {"O": 0.50, "C": 0.50, "E": 0.60, "A": 0.40, "N": 0.60},
+    "elderly":        {"O": 0.30, "C": 0.60, "E": 0.35, "A": 0.75, "N": 0.50},
+    "young_debtor":   {"O": 0.70, "C": 0.30, "E": 0.65, "A": 0.55, "N": 0.55},
+    "foreign_speaker": {"O": 0.50, "C": 0.50, "E": 0.40, "A": 0.60, "N": 0.60},
+    "intermediary":   {"O": 0.45, "C": 0.50, "E": 0.45, "A": 0.60, "N": 0.45},
+    "repeat_caller":  {"O": 0.40, "C": 0.55, "E": 0.60, "A": 0.30, "N": 0.70},
+    "celebrity":      {"O": 0.50, "C": 0.80, "E": 0.50, "A": 0.30, "N": 0.50},
+    # ── Group 6: COGNITIVE ──
+    "overthinker":    {"O": 0.75, "C": 0.70, "E": 0.40, "A": 0.50, "N": 0.65},
+    "concrete":       {"O": 0.35, "C": 0.80, "E": 0.55, "A": 0.40, "N": 0.30},
+    "storyteller":    {"O": 0.70, "C": 0.30, "E": 0.80, "A": 0.65, "N": 0.40},
+    "misinformed":    {"O": 0.55, "C": 0.40, "E": 0.50, "A": 0.50, "N": 0.60},
+    "selective_listener": {"O": 0.40, "C": 0.55, "E": 0.45, "A": 0.30, "N": 0.65},
+    "black_white":    {"O": 0.20, "C": 0.65, "E": 0.50, "A": 0.35, "N": 0.60},
+    "memory_issues":  {"O": 0.35, "C": 0.40, "E": 0.35, "A": 0.65, "N": 0.55},
+    "technical":      {"O": 0.65, "C": 0.85, "E": 0.40, "A": 0.50, "N": 0.25},
+    "magical_thinker": {"O": 0.60, "C": 0.20, "E": 0.45, "A": 0.55, "N": 0.70},
+    "lawyer_level_2": {"O": 0.65, "C": 0.60, "E": 0.55, "A": 0.20, "N": 0.55},
+    # ── Group 7: SOCIAL ──
+    "family_man":     {"O": 0.40, "C": 0.65, "E": 0.45, "A": 0.75, "N": 0.55},
+    "influenced":     {"O": 0.35, "C": 0.45, "E": 0.30, "A": 0.70, "N": 0.65},
+    "reputation_guard": {"O": 0.35, "C": 0.70, "E": 0.40, "A": 0.45, "N": 0.65},
+    "community_leader": {"O": 0.55, "C": 0.60, "E": 0.70, "A": 0.50, "N": 0.40},
+    "breadwinner":    {"O": 0.40, "C": 0.70, "E": 0.45, "A": 0.55, "N": 0.65},
+    "divorced":       {"O": 0.40, "C": 0.50, "E": 0.50, "A": 0.25, "N": 0.75},
+    "guarantor":      {"O": 0.45, "C": 0.55, "E": 0.55, "A": 0.35, "N": 0.70},
+    "widow":          {"O": 0.30, "C": 0.50, "E": 0.25, "A": 0.65, "N": 0.85},
+    "caregiver":      {"O": 0.40, "C": 0.60, "E": 0.35, "A": 0.70, "N": 0.70},
+    "multi_debtor_family": {"O": 0.45, "C": 0.55, "E": 0.50, "A": 0.40, "N": 0.75},
+    # ── Group 8: TEMPORAL ──
+    "just_fired":     {"O": 0.40, "C": 0.45, "E": 0.40, "A": 0.55, "N": 0.75},
+    "collector_call": {"O": 0.40, "C": 0.40, "E": 0.50, "A": 0.55, "N": 0.80},
+    "court_notice":   {"O": 0.45, "C": 0.50, "E": 0.50, "A": 0.50, "N": 0.75},
+    "salary_arrest":  {"O": 0.35, "C": 0.45, "E": 0.60, "A": 0.40, "N": 0.80},
+    "pre_court":      {"O": 0.50, "C": 0.60, "E": 0.50, "A": 0.45, "N": 0.70},
+    "post_refusal":   {"O": 0.40, "C": 0.50, "E": 0.40, "A": 0.40, "N": 0.80},
+    "inheritance_trap": {"O": 0.50, "C": 0.50, "E": 0.45, "A": 0.55, "N": 0.65},
+    "business_collapse": {"O": 0.55, "C": 0.65, "E": 0.50, "A": 0.40, "N": 0.70},
+    "medical_crisis": {"O": 0.40, "C": 0.45, "E": 0.40, "A": 0.60, "N": 0.85},
+    "criminal_risk":  {"O": 0.45, "C": 0.55, "E": 0.45, "A": 0.45, "N": 0.90},
+    # ── Group 9: PROFESSIONAL ──
+    "teacher":        {"O": 0.60, "C": 0.70, "E": 0.50, "A": 0.70, "N": 0.35},
+    "doctor":         {"O": 0.55, "C": 0.80, "E": 0.45, "A": 0.50, "N": 0.30},
+    "military":       {"O": 0.25, "C": 0.90, "E": 0.55, "A": 0.35, "N": 0.30},
+    "accountant":     {"O": 0.40, "C": 0.90, "E": 0.30, "A": 0.50, "N": 0.35},
+    "salesperson":    {"O": 0.65, "C": 0.60, "E": 0.75, "A": 0.40, "N": 0.35},
+    "it_specialist":  {"O": 0.70, "C": 0.75, "E": 0.35, "A": 0.45, "N": 0.30},
+    "government":     {"O": 0.30, "C": 0.85, "E": 0.40, "A": 0.40, "N": 0.40},
+    "journalist":     {"O": 0.75, "C": 0.65, "E": 0.65, "A": 0.35, "N": 0.40},
+    "psychologist":   {"O": 0.80, "C": 0.70, "E": 0.50, "A": 0.55, "N": 0.25},
+    "competitor_employee": {"O": 0.50, "C": 0.65, "E": 0.55, "A": 0.15, "N": 0.35},
+    # ── Group 10: COMPOUND (calculated via blending) ──
+    "aggressive_desperate":  {"O": 0.28, "C": 0.25, "E": 0.58, "A": 0.30, "N": 0.90},
+    "manipulator_crying":    {"O": 0.50, "C": 0.58, "E": 0.43, "A": 0.35, "N": 0.72},
+    "know_it_all_paranoid":  {"O": 0.45, "C": 0.68, "E": 0.48, "A": 0.15, "N": 0.82},
+    "passive_aggressive":    {"O": 0.43, "C": 0.38, "E": 0.35, "A": 0.48, "N": 0.72},
+    "couple_disagreeing":    {"O": 0.40, "C": 0.38, "E": 0.65, "A": 0.25, "N": 0.82},
+    "elderly_paranoid":      {"O": 0.28, "C": 0.63, "E": 0.33, "A": 0.45, "N": 0.82},
+    "hysteric_litigious":    {"O": 0.45, "C": 0.45, "E": 0.73, "A": 0.25, "N": 0.92},
+    "puppet_master_lawyer":  {"O": 0.65, "C": 0.85, "E": 0.53, "A": 0.15, "N": 0.40},
+    "shifting":              {"O": 0.45, "C": 0.50, "E": 0.50, "A": 0.40, "N": 0.60},
+    "ultimate":              {"O": 0.45, "C": 0.50, "E": 0.55, "A": 0.30, "N": 0.75},
+}
 
-    # ── Aggressive ──
-    "aggressive":    {"O": 0.30, "C": 0.40, "E": 0.70, "A": 0.15, "N": 0.70},
-    "hostile":       {"O": 0.20, "C": 0.35, "E": 0.65, "A": 0.10, "N": 0.80},
-    "blamer":        {"O": 0.30, "C": 0.45, "E": 0.60, "A": 0.20, "N": 0.65},
-    "sarcastic":     {"O": 0.65, "C": 0.50, "E": 0.55, "A": 0.25, "N": 0.50},
 
-    # ── Active ──
-    "manipulator":   {"O": 0.55, "C": 0.60, "E": 0.65, "A": 0.20, "N": 0.40},
-    "pragmatic":     {"O": 0.50, "C": 0.75, "E": 0.50, "A": 0.45, "N": 0.30},
-    "delegator":     {"O": 0.40, "C": 0.30, "E": 0.45, "A": 0.55, "N": 0.35},
-    "know_it_all":   {"O": 0.60, "C": 0.70, "E": 0.60, "A": 0.15, "N": 0.45},
-    "negotiator":    {"O": 0.55, "C": 0.65, "E": 0.65, "A": 0.40, "N": 0.30},
-    "shopper":       {"O": 0.50, "C": 0.60, "E": 0.55, "A": 0.35, "N": 0.35},
+# ══════════════════════════════════════════════════════════════════════
+#  PROFESSION OCEAN Modifiers (DOC_02 §5.5)
+#  Applied: modified_OCEAN[dim] = base + prof_mod + noise(±0.15)
+# ══════════════════════════════════════════════════════════════════════
 
-    # ── Emotional ──
-    "desperate":     {"O": 0.35, "C": 0.25, "E": 0.40, "A": 0.70, "N": 0.90},
-    "crying":        {"O": 0.40, "C": 0.30, "E": 0.25, "A": 0.75, "N": 0.90},
-    "grateful":      {"O": 0.55, "C": 0.50, "E": 0.50, "A": 0.80, "N": 0.40},
-    "overwhelmed":   {"O": 0.30, "C": 0.25, "E": 0.20, "A": 0.60, "N": 0.85},
+PROFESSION_OCEAN_MODIFIERS: dict[str, dict[str, float]] = {
+    "budget":          {"C": 0.10, "A": 0.05},
+    "government":      {"C": 0.15, "O": -0.05},
+    "medical":         {"A": 0.15, "N": 0.10},
+    "education":       {"O": 0.10, "C": 0.05, "A": 0.10},
+    "military":        {"C": 0.20, "A": -0.10, "E": -0.05},
+    "law_enforcement": {"C": 0.15, "A": -0.15, "N": -0.05},
+    "entrepreneur":    {"E": 0.10, "O": 0.10, "C": 0.05},
+    "finance":         {"C": 0.20, "O": -0.05, "A": -0.05},
+    "freelancer":      {"O": 0.15, "C": -0.10, "E": 0.05},
+    "worker":          {"O": -0.10, "C": 0.05, "A": 0.05},
+    "construction":    {"C": 0.05, "A": -0.05, "E": 0.05},
+    "transport":       {"E": 0.05, "C": -0.05, "N": 0.05},
+    "agriculture":     {"O": -0.15, "C": 0.10, "A": 0.05},
+    "it_office":       {"O": 0.10, "C": 0.10, "E": -0.05},
+    "science":         {"O": 0.20, "C": 0.10, "E": -0.10},
+    "creative":        {"O": 0.25, "C": -0.15, "E": 0.10, "N": 0.10},
+    "trade_service":   {"E": 0.10, "A": 0.05},
+    "sports":          {"C": 0.15, "E": 0.15, "A": -0.05},
+    "pensioner":       {"O": -0.10, "C": 0.10, "N": 0.10},
+    "homemaker":       {"A": 0.15, "C": -0.05, "N": 0.10},
+    "student":         {"O": 0.15, "C": -0.10, "E": 0.10},
+    "unemployed":      {"N": 0.15, "C": -0.10, "E": -0.10},
+    "disabled":        {"N": 0.10, "A": 0.05, "E": -0.10},
+    "clergy":          {"A": 0.20, "C": 0.15, "O": 0.05, "N": -0.05},
+    "special":         {},
+}
 
-    # ── Situational ──
-    "returner":      {"O": 0.45, "C": 0.50, "E": 0.40, "A": 0.50, "N": 0.55},
-    "referred":      {"O": 0.50, "C": 0.55, "E": 0.45, "A": 0.60, "N": 0.40},
-    "rushed":        {"O": 0.35, "C": 0.55, "E": 0.70, "A": 0.30, "N": 0.60},
-    "lawyer_client": {"O": 0.40, "C": 0.70, "E": 0.45, "A": 0.25, "N": 0.50},
-    "couple":        {"O": 0.45, "C": 0.45, "E": 0.50, "A": 0.55, "N": 0.55},
+# Speech modifiers per profession
+PROFESSION_SPEECH_MODIFIERS: dict[str, dict] = {
+    "budget":          {"formality": 0.5, "vocabulary": "standard",     "jargon": []},
+    "government":      {"formality": 0.8, "vocabulary": "bureaucratic", "jargon": ["нормативный акт", "регламент"]},
+    "medical":         {"formality": 0.5, "vocabulary": "medical",      "jargon": ["диагноз", "выписка"]},
+    "education":       {"formality": 0.7, "vocabulary": "literary",     "jargon": ["учебный план", "аттестация"]},
+    "military":        {"formality": 0.8, "vocabulary": "military",     "jargon": ["рапорт", "приказ", "часть"]},
+    "law_enforcement": {"formality": 0.8, "vocabulary": "legal",        "jargon": ["протокол", "дело"]},
+    "entrepreneur":    {"formality": 0.5, "vocabulary": "business",     "jargon": ["маржа", "выручка", "контрагент"]},
+    "finance":         {"formality": 0.8, "vocabulary": "financial",    "jargon": ["ставка", "портфель", "БКИ"]},
+    "freelancer":      {"formality": 0.3, "vocabulary": "modern",       "jargon": ["дедлайн", "тикет", "самозанятый"]},
+    "worker":          {"formality": 0.3, "vocabulary": "colloquial",   "jargon": ["смена", "бригада"]},
+    "construction":    {"formality": 0.3, "vocabulary": "colloquial",   "jargon": ["объект", "подряд", "смета"]},
+    "transport":       {"formality": 0.3, "vocabulary": "colloquial",   "jargon": ["рейс", "маршрут"]},
+    "agriculture":     {"formality": 0.2, "vocabulary": "rural",        "jargon": ["урожай", "субсидия"]},
+    "it_office":       {"formality": 0.5, "vocabulary": "tech",         "jargon": ["спринт", "деплой", "ревью"]},
+    "science":         {"formality": 0.8, "vocabulary": "academic",     "jargon": ["грант", "публикация", "диссертация"]},
+    "creative":        {"formality": 0.3, "vocabulary": "expressive",   "jargon": ["проект", "гонорар"]},
+    "trade_service":   {"formality": 0.4, "vocabulary": "colloquial",   "jargon": ["выручка", "смена"]},
+    "sports":          {"formality": 0.3, "vocabulary": "sports",       "jargon": ["тренировка", "контракт"]},
+    "pensioner":       {"formality": 0.5, "vocabulary": "dated",        "jargon": ["пенсия", "собес", "стаж"]},
+    "homemaker":       {"formality": 0.3, "vocabulary": "domestic",     "jargon": ["кредитка", "рассрочка"]},
+    "student":         {"formality": 0.3, "vocabulary": "youth",        "jargon": ["стипендия", "общага"]},
+    "unemployed":      {"formality": 0.3, "vocabulary": "subdued",      "jargon": ["биржа труда", "пособие"]},
+    "disabled":        {"formality": 0.5, "vocabulary": "standard",     "jargon": ["группа", "МСЭ", "льготы"]},
+    "clergy":          {"formality": 0.8, "vocabulary": "religious",    "jargon": ["приход", "благословение"]},
+    "special":         {"formality": 0.5, "vocabulary": "standard",     "jargon": []},
+}
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  LEAD SOURCE Awareness + Trust (DOC_02 §6.5)
+# ══════════════════════════════════════════════════════════════════════
+
+LEAD_SOURCE_AWARENESS: dict[str, int] = {
+    "cold_base": 0, "cold_social": 1, "cold_event": 1,
+    "website_form": 2, "social_media": 1, "webinar": 2,
+    "warm_complaint": 0, "warm_competitor": 3, "lead_nurture": 2,
+    "ad_retarget": 1, "incoming": 2, "in_chat": 1,
+    "chatbot": 1, "in_referral_direct": 2, "in_urgent": 1,
+    "referral": 1, "repeat_call": 2, "partner": 1,
+    "churned": 3, "callback_scheduled": 2,
+}
+
+LEAD_SOURCE_TRUST_MODIFIER: dict[str, int] = {
+    "cold_base": -2, "cold_social": -1, "cold_event": 0,
+    "website_form": 1, "social_media": 0, "webinar": 2,
+    "warm_complaint": 0, "warm_competitor": -1, "lead_nurture": 1,
+    "ad_retarget": 0, "incoming": 2, "in_chat": 1,
+    "chatbot": 1, "in_referral_direct": 3, "in_urgent": 1,
+    "referral": 2, "repeat_call": 0, "partner": 1,
+    "churned": -1, "callback_scheduled": 2,
+}
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  EMOTION PRESETS (DOC_02 §8.3) — MoodBuffer modifiers
+# ══════════════════════════════════════════════════════════════════════
+
+EMOTION_PRESET_MODIFIERS: dict[str, dict[str, float]] = {
+    "neutral":  {"threshold_pos": 0,     "threshold_neg": 0,     "decay": 0,     "ema": 0},
+    "anxious":  {"threshold_pos": 0.05,  "threshold_neg": -0.15, "decay": 0.02,  "ema": 0.05},
+    "angry":    {"threshold_pos": -0.10, "threshold_neg": -0.20, "decay": -0.01, "ema": 0.08},
+    "hopeful":  {"threshold_pos": -0.10, "threshold_neg": 0.10,  "decay": 0.01,  "ema": -0.03},
+    "tired":    {"threshold_pos": 0.10,  "threshold_neg": 0.05,  "decay": 0.04,  "ema": -0.05},
+    "rushed":   {"threshold_pos": -0.05, "threshold_neg": -0.10, "decay": -0.02, "ema": 0.10},
+    "trusting": {"threshold_pos": -0.15, "threshold_neg": 0.15,  "decay": 0.01,  "ema": -0.05},
+}
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  ENVIRONMENT Modifiers (DOC_02 §10)
+# ══════════════════════════════════════════════════════════════════════
+
+ENVIRONMENT_AROUSAL_MOD: dict[str, float] = {
+    "none": 0, "office": 0.05, "street": 0.10, "children": 0.15, "tv": 0.03,
+}
+
+TIME_TRUST_MOD: dict[str, int] = {
+    "morning": -1, "afternoon": 0, "evening": 1, "night": -2,
+}
+
+TIME_ENERGY_MOD: dict[str, float] = {
+    "morning": 0.05, "afternoon": 0, "evening": -0.05, "night": -0.15,
+}
+
+FATIGUE_DECAY_MOD: dict[str, float] = {
+    "fresh": -0.02, "normal": 0, "tired": 0.03, "exhausted": 0.06,
+}
+
+FATIGUE_THRESHOLD_MOD: dict[str, float] = {
+    "fresh": -0.05, "normal": 0, "tired": 0.05, "exhausted": 0.10,
 }
 
 
@@ -714,9 +918,26 @@ EDUCATION_BY_CATEGORY: dict[str, list[str]] = {
     "special": ["высшее", "средне-специальное"],
 }
 
-# DTI (Debt-To-Income) realistic range for bankruptcy clients
-DTI_MIN = 0.5
-DTI_MAX = 2.0
+# DTI (Debt-To-Income) ranges by archetype — desperate clients have higher DTI
+_DTI_RANGES: dict[str, tuple[float, float]] = {
+    "desperate":    (1.5, 2.5),
+    "crying":       (1.3, 2.2),
+    "overwhelmed":  (1.4, 2.3),
+    "anxious":      (1.0, 1.8),
+    "ashamed":      (0.8, 1.6),
+    "pragmatic":    (0.5, 1.0),
+    "know_it_all":  (0.4, 0.9),
+    "negotiator":   (0.5, 1.1),
+    "sarcastic":    (0.6, 1.3),
+    "skeptic":      (0.6, 1.4),
+}
+DTI_MIN = 0.5  # fallback
+DTI_MAX = 2.0  # fallback
+
+
+def _get_dti_range(archetype_code: str) -> tuple[float, float]:
+    """Get DTI range for archetype. Falls back to global default."""
+    return _DTI_RANGES.get(archetype_code, (DTI_MIN, DTI_MAX))
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -968,26 +1189,26 @@ def _generate_debt_with_dti(
     income: int | None,
     debt_min: int = 200_000,
     debt_max: int = 2_000_000,
+    archetype_code: str = "",
 ) -> tuple[int, int | None]:
-    """Generate debt ensuring DTI ratio is realistic (0.5-2.0).
+    """Generate debt ensuring DTI ratio is realistic per archetype.
 
+    DTI ranges are archetype-specific (desperate=1.5-2.5, pragmatic=0.5-1.0).
     Returns (total_debt, adjusted_income).
     """
+    dti_min, dti_max = _get_dti_range(archetype_code)
     total_debt = round(random.randint(debt_min, debt_max) / 10_000) * 10_000
 
     if income and income > 0:
-        # Monthly payment ≈ debt / 36 months (typical)
         monthly_payment = total_debt / 36
         dti = monthly_payment / income
 
-        if dti < DTI_MIN:
-            # Debt too low for this income → increase debt
-            min_payment = income * DTI_MIN
+        if dti < dti_min:
+            min_payment = income * dti_min
             total_debt = int(min_payment * 36)
             total_debt = round(total_debt / 10_000) * 10_000
-        elif dti > DTI_MAX:
-            # Debt too high for this income → decrease debt slightly
-            max_payment = income * DTI_MAX
+        elif dti > dti_max:
+            max_payment = income * dti_max
             total_debt = int(max_payment * 36)
             total_debt = round(total_debt / 10_000) * 10_000
 
@@ -1190,9 +1411,10 @@ async def generate_client(
         profession_category, age, city_data["income_mult"]
     )
 
-    # 4) Debt with DTI validation
+    # 4) Debt with DTI validation (archetype-specific ranges)
     total_debt, income = _generate_debt_with_dti(
         profession_category, age, income, debt_min, debt_max,
+        archetype_code=archetype_code,
     )
     creditors = _generate_creditors(total_debt)
 
@@ -1218,8 +1440,20 @@ async def generate_client(
     breaking_points = ARCHETYPE_BREAKING_POINTS.get(archetype_code, ["Покажите результат"])
     breaking_point = random.choice(breaking_points)
 
-    # 8) Trust & resistance
-    trust = max(1, min(10, TRUST_BASE.get(archetype_code, 3) + TRUST_MODIFIER.get(lead_source, 0)))
+    # 8) Trust & resistance (with contextual modifiers)
+    from datetime import datetime
+    hour = datetime.now().hour
+    # Evening calls (18-21) get slight trust boost, early morning (7-9) slight penalty
+    time_modifier = 1 if 18 <= hour <= 21 else (-1 if 7 <= hour <= 9 else 0)
+    # Higher difficulty = lower baseline trust
+    difficulty_trust_penalty = -1 if difficulty >= 8 else 0
+
+    trust = max(1, min(10,
+        TRUST_BASE.get(archetype_code, 3)
+        + TRUST_MODIFIER.get(lead_source, 0)
+        + time_modifier
+        + difficulty_trust_penalty
+    ))
     resistance_base = RESISTANCE_BASE.get(archetype_code, 5)
     resistance_mult = 0.8 + (difficulty / 10) * 0.4
     resistance = max(1, min(10, int(resistance_base * resistance_mult) + random.randint(-1, 1)))

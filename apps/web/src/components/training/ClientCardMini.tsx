@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronUp, User, Landmark, Globe, Phone, Lock } from "lucide-react";
+import { sanitizeText } from "@/lib/sanitize";
 import type { ClientCardData } from "./ClientCard";
 
 interface ClientCardMiniProps {
@@ -24,6 +25,8 @@ export function ClientCardMini({ clientCard, isExpanded, onToggle }: ClientCardM
       {/* Collapsed bar */}
       <motion.button
         onClick={onToggle}
+        aria-expanded={isExpanded}
+        aria-label={isExpanded ? "Свернуть карточку клиента" : "Развернуть карточку клиента"}
         className="w-full flex items-center justify-between px-4 py-2 text-xs font-mono tracking-wider transition-colors"
         style={{
           background: "var(--glass-bg)",
@@ -36,7 +39,7 @@ export function ClientCardMini({ clientCard, isExpanded, onToggle }: ClientCardM
           <div className="flex items-center gap-1.5">
             <User size={12} style={{ color: "var(--accent)" }} />
             <span style={{ color: "var(--text-primary)" }}>
-              {clientCard.full_name}, {clientCard.age}
+              {sanitizeText(clientCard.full_name)}, {clientCard.age}
             </span>
           </div>
           <span style={{ color: "var(--border-color)" }}>|</span>
@@ -77,7 +80,7 @@ export function ClientCardMini({ clientCard, isExpanded, onToggle }: ClientCardM
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4">
               {/* Profile summary */}
               <div className="space-y-1.5">
-                <div className="text-[10px] font-mono uppercase tracking-widest flex items-center gap-1" style={{ color: "var(--accent)" }}>
+                <div className="text-xs font-mono uppercase tracking-widest flex items-center gap-1" style={{ color: "var(--accent)" }}>
                   <User size={10} /> ПРОФИЛЬ
                 </div>
                 <div className="text-xs" style={{ color: "var(--text-secondary)" }}>
@@ -90,7 +93,7 @@ export function ClientCardMini({ clientCard, isExpanded, onToggle }: ClientCardM
 
               {/* Finance summary */}
               <div className="space-y-1.5">
-                <div className="text-[10px] font-mono uppercase tracking-widest flex items-center gap-1" style={{ color: "var(--accent)" }}>
+                <div className="text-xs font-mono uppercase tracking-widest flex items-center gap-1" style={{ color: "var(--accent)" }}>
                   <Landmark size={10} /> ФИНАНСЫ
                 </div>
                 <div className="text-xs" style={{ color: "var(--text-secondary)" }}>
@@ -103,7 +106,7 @@ export function ClientCardMini({ clientCard, isExpanded, onToggle }: ClientCardM
 
               {/* Call history summary */}
               <div className="space-y-1.5">
-                <div className="text-[10px] font-mono uppercase tracking-widest flex items-center gap-1" style={{ color: "var(--accent)" }}>
+                <div className="text-xs font-mono uppercase tracking-widest flex items-center gap-1" style={{ color: "var(--accent)" }}>
                   <Phone size={10} /> ИСТОРИЯ
                 </div>
                 {clientCard.call_history.length > 0 ? (
@@ -120,7 +123,7 @@ export function ClientCardMini({ clientCard, isExpanded, onToggle }: ClientCardM
             </div>
 
             {/* Hidden data reminder */}
-            <div className="px-4 pb-3 flex items-center gap-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
+            <div className="px-4 pb-3 flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
               <Lock size={10} />
               Психотип и ловушки скрыты
             </div>

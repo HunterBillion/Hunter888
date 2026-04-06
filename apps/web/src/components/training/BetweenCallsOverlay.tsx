@@ -30,19 +30,19 @@ export function BetweenCallsOverlay({ callNumber, totalCalls, events, onContinue
           style={{ borderBottom: "1px solid var(--border-color)", background: "rgba(0,0,0,0.3)" }}
         >
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "rgba(139,92,246,0.16)" }}>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "rgba(99,102,241,0.16)" }}>
               <CalendarClock size={18} style={{ color: "var(--accent)" }} />
             </div>
             <div>
               <div className="font-display font-bold" style={{ color: "var(--text-primary)" }}>
                 МЕЖДУ ЗВОНКАМИ
               </div>
-              <div className="font-mono text-[10px] tracking-widest" style={{ color: "var(--text-muted)" }}>
+              <div className="font-mono text-xs tracking-widest" style={{ color: "var(--text-muted)" }}>
                 ПЕРЕХОД К ЗВОНКУ {callNumber} ИЗ {totalCalls}
               </div>
             </div>
           </div>
-          <div className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--accent)" }}>
+          <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--accent)" }}>
             AI STORY CONTINUITY
           </div>
         </div>
@@ -76,7 +76,7 @@ export function BetweenCallsOverlay({ callNumber, totalCalls, events, onContinue
                       )}
                     </div>
                     <div className="flex-1">
-                      <div className="font-mono text-[10px] uppercase tracking-widest" style={{ color: isHigh ? "var(--neon-red, #FF3333)" : "var(--accent)" }}>
+                      <div className="font-mono text-xs uppercase tracking-widest" style={{ color: isHigh ? "var(--neon-red, #FF3333)" : "var(--accent)" }}>
                         {event.title}
                       </div>
                       <div className="mt-1 text-sm" style={{ color: "var(--text-primary)" }}>
@@ -93,7 +93,7 @@ export function BetweenCallsOverlay({ callNumber, totalCalls, events, onContinue
         <div className="flex justify-end px-6 py-4" style={{ borderTop: "1px solid var(--border-color)" }}>
           <motion.button
             onClick={onContinue}
-            className="vh-btn-primary flex items-center gap-2 px-7 py-3"
+            className="btn-neon flex items-center gap-2 px-7 py-3"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >

@@ -71,7 +71,7 @@ export function CrystalMic({
 
       {/* Status text */}
       <span
-        className="font-mono text-[10px] tracking-widest uppercase transition-colors"
+        className="font-mono text-xs tracking-widest uppercase transition-colors"
         style={{
           color: isRecording ? "var(--magenta)" : isProcessing ? "var(--accent)" : "var(--text-muted)",
         }}
@@ -125,6 +125,8 @@ export function CrystalMic({
 
         {/* Crystal hexagon */}
         <motion.button
+          aria-label={isRecording ? "Запись голоса" : isProcessing ? "Обработка" : "Нажмите и удерживайте для записи"}
+          role="button"
           onMouseDown={!disabled ? onPress : undefined}
           onMouseUp={!disabled ? onRelease : undefined}
           onMouseLeave={!disabled ? onRelease : undefined}
@@ -133,10 +135,10 @@ export function CrystalMic({
           disabled={disabled}
           className="crystal-shape relative z-10 flex items-center justify-center"
           style={{
-            width: 80,
-            height: 96,
+            width: "clamp(64px, 10vw, 80px)",
+            height: "clamp(76px, 12vw, 96px)",
             background: isRecording
-              ? "linear-gradient(135deg, rgba(224,40,204,0.8) 0%, rgba(139,92,246,0.9) 100%)"
+              ? "linear-gradient(135deg, rgba(224,40,204,0.8) 0%, rgba(99,102,241,0.9) 100%)"
               : isProcessing
                 ? "var(--bg-tertiary)"
                 : "rgba(255,255,255,0.08)",
@@ -155,7 +157,7 @@ export function CrystalMic({
             className="crystal-inner absolute inset-[2px] z-0 transition-colors"
             style={{
               background: isRecording
-                ? "linear-gradient(135deg, rgba(224,40,204,0.6) 0%, rgba(139,92,246,0.7) 100%)"
+                ? "linear-gradient(135deg, rgba(224,40,204,0.6) 0%, rgba(99,102,241,0.7) 100%)"
                 : "linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-primary) 100%)",
             }}
           />
@@ -178,7 +180,7 @@ export function CrystalMic({
       {/* Text mode toggle */}
       <motion.button
         onClick={onTextMode}
-        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors"
+        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs uppercase tracking-widest transition-colors"
         style={{
           background: "var(--input-bg)",
           border: "1px solid var(--border-color)",

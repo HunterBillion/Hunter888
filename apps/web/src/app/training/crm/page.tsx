@@ -4,19 +4,20 @@ import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Gamepad2,
-  ArrowLeft,
   Loader2,
   RefreshCw,
   Sparkles,
   Layers3,
   Activity,
 } from "lucide-react";
-import Link from "next/link";
+import { BackButton } from "@/components/ui/BackButton";
 import { api } from "@/lib/api";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { GameStoryCard } from "@/components/game-crm/GameStoryCard";
 import { GamePortfolioStats } from "@/components/game-crm/GamePortfolioStats";
 import type { GameStory, GamePortfolioStats as PortfolioStats } from "@/types";
+import { useNotificationStore } from "@/stores/useNotificationStore";
+import { logger } from "@/lib/logger";
 
 export default function GameCRMPage() {
   const [stories, setStories] = useState<GameStory[]>([]);
@@ -36,8 +37,13 @@ export default function GameCRMPage() {
 
       const data = await api.get(`/game/clients/stories?${params}`);
       setStories(data.items || []);
-    } catch {
-      /* API may not exist yet */
+    } catch (err) {
+      useNotificationStore.getState().addToast({
+        title: "Ошибка загрузки",
+        body: "Не удалось загрузить истории. Попробуйте обновить страницу.",
+        type: "error",
+      });
+      logger.error("Failed to load stories:", err);
     }
     setLoading(false);
   }, [showCompleted]);
@@ -48,8 +54,8 @@ export default function GameCRMPage() {
     try {
       const data: PortfolioStats = await api.get(`/game/clients/portfolio/stats?period=${period}`);
       setStats(data);
-    } catch {
-      /* ignore */
+    } catch (err) {
+      logger.error("Failed to load portfolio stats:", err);
     }
     setStatsLoading(false);
   }, [period]);
@@ -73,7 +79,7 @@ export default function GameCRMPage() {
 
   return (
     <AuthLayout>
-      <div className="min-h-[calc(100vh-64px)] bg-[radial-gradient(circle_at_top,rgba(139,92,246,0.14),transparent_32%),linear-gradient(180deg,#040405_0%,#0a0a0d_45%,#09090b_100%)]">
+      <div className="min-h-[calc(100vh-64px)] bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.14),transparent_32%),linear-gradient(180deg,#040405_0%,#0a0a0d_45%,#09090b_100%)]">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -88,18 +94,12 @@ export default function GameCRMPage() {
               <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-2xl">
                   <div className="flex items-center gap-3">
-                    <Link
-                      href="/training"
-                      className="transition-colors hover:opacity-80"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      <ArrowLeft size={16} />
-                    </Link>
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl" style={{ background: "rgba(139,92,246,0.16)", border: "1px solid rgba(139,92,246,0.26)" }}>
+                    <BackButton href="/training" label="К тренировке" />
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl" style={{ background: "rgba(99,102,241,0.16)", border: "1px solid rgba(99,102,241,0.26)" }}>
                       <Gamepad2 size={20} style={{ color: "var(--accent)" }} />
                     </div>
                     <div>
-                      <div className="font-mono text-[10px] uppercase tracking-[0.32em]" style={{ color: "var(--accent)" }}>
+                      <div className="font-mono text-xs uppercase tracking-[0.32em]" style={{ color: "var(--accent)" }}>
                         AI Client Matrix
                       </div>
                       <h1
@@ -126,7 +126,7 @@ export default function GameCRMPage() {
                       <div className="mt-2 text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>
                         {item.value}
                       </div>
-                      <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                      <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
                         {item.label}
                       </div>
                     </div>
@@ -143,7 +143,7 @@ export default function GameCRMPage() {
                     <button
                       key={String(opt.value)}
                       onClick={() => setShowCompleted(opt.value as boolean | null)}
-                      className="rounded-xl px-3 py-2 text-[10px] font-mono uppercase tracking-wider transition-colors"
+                      className="rounded-xl px-3 py-2 text-xs font-mono uppercase tracking-wider transition-colors"
                       style={{
                         background: showCompleted === opt.value ? "var(--accent)" : "rgba(255,255,255,0.03)",
                         color: showCompleted === opt.value ? "#000" : "var(--text-muted)",
@@ -157,7 +157,7 @@ export default function GameCRMPage() {
 
                 <motion.button
                   onClick={handleRefresh}
-                  className="flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-[10px] font-mono uppercase tracking-wider"
+                  className="flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-mono uppercase tracking-wider"
                   style={{
                     background: "rgba(255,255,255,0.03)",
                     border: "1px solid rgba(255,255,255,0.06)",

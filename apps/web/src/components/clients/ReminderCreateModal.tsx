@@ -136,7 +136,7 @@ export function ReminderCreateModal({ open, clientId, clientName, onClose, onCre
 
               <div>
                 <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>
-                  СООБЩЕНИЕ <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>({message.length}/500)</span>
+                  СООБЩЕНИЕ <span className="text-xs" style={{ color: "var(--text-muted)" }}>({message.length}/500)</span>
                 </label>
                 <textarea
                   aria-label="Сообщение напоминания"
@@ -153,7 +153,7 @@ export function ReminderCreateModal({ open, clientId, clientName, onClose, onCre
               <motion.button
                 type="submit"
                 disabled={saving}
-                className="vh-btn-primary w-full flex items-center justify-center gap-2 py-3"
+                className="btn-neon w-full flex items-center justify-center gap-2 py-3"
                 whileTap={{ scale: 0.97 }}
               >
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Bell size={16} />}

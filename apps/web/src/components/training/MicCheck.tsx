@@ -121,7 +121,7 @@ export function MicCheck({ onComplete, onSkip }: MicCheckProps) {
         <div className="mb-6">
           <div className="flex items-center gap-2 justify-center mb-2">
             <Volume2 size={14} style={{ color: "var(--accent)" }} />
-            <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--text-muted)" }}>УРОВЕНЬ СИГНАЛА</span>
+            <span className="font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>УРОВЕНЬ СИГНАЛА</span>
           </div>
           <div className="h-3 rounded-full overflow-hidden mx-auto max-w-[200px]" style={{ background: "var(--input-bg)" }}>
             <motion.div
@@ -137,25 +137,25 @@ export function MicCheck({ onComplete, onSkip }: MicCheckProps) {
       <div className="flex gap-3 justify-center">
         {status === "idle" && (
           <>
-            <motion.button onClick={checkMic} className="vh-btn-primary flex items-center gap-2" whileTap={{ scale: 0.97 }}>
+            <motion.button onClick={checkMic} className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
               <Mic size={16} /> Проверить микрофон
             </motion.button>
-            <motion.button onClick={skip} className="vh-btn-outline" whileTap={{ scale: 0.97 }}>
+            <motion.button onClick={skip} className="btn-neon" whileTap={{ scale: 0.97 }}>
               Текстовый режим
             </motion.button>
           </>
         )}
         {status === "success" && (
-          <motion.button onClick={proceed} className="vh-btn-primary flex items-center gap-2" whileTap={{ scale: 0.97 }}>
+          <motion.button onClick={proceed} className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
             <CheckCircle2 size={16} /> Начать тренировку
           </motion.button>
         )}
         {(status === "denied" || status === "error") && (
           <>
-            <motion.button onClick={checkMic} className="vh-btn-outline flex items-center gap-2" whileTap={{ scale: 0.97 }}>
+            <motion.button onClick={checkMic} className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
               <AlertTriangle size={14} /> Повторить
             </motion.button>
-            <motion.button onClick={skip} className="vh-btn-primary" whileTap={{ scale: 0.97 }}>
+            <motion.button onClick={skip} className="btn-neon" whileTap={{ scale: 0.97 }}>
               Текстовый режим
             </motion.button>
           </>

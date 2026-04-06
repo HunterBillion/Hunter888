@@ -120,6 +120,14 @@ class Settings(BaseSettings):
     whisper_language: str = "ru"
     whisper_timeout_seconds: int = 30
 
+    # STT Provider: "whisper" (batch, self-hosted) | "deepgram" (streaming, cloud)
+    stt_provider: str = "whisper"
+
+    # Deepgram STT (streaming Nova-2)
+    deepgram_api_key: str = ""
+    deepgram_model: str = "nova-2"
+    deepgram_language: str = "ru"
+
     # OAuth (Google)
     google_client_id: str = ""
     google_client_secret: str = ""
@@ -275,8 +283,14 @@ class Settings(BaseSettings):
                 issues.append("CRITICAL: database_url contains default/localhost credentials")
 
             # Redis credentials
-            if "localhost" in self.redis_url and "production" in self.app_env:
-                issues.append("WARNING: redis_url points to localhost in production")
+            if "localhost" in self.redis_url:
+                issues.append("CRITICAL: redis_url points to localhost in production")
+            # Redis must use authentication in production: redis://:password@host:port/db
+            if "@" not in self.redis_url:
+                issues.append(
+                    "CRITICAL: redis_url has no password in production. "
+                    "Use format: redis://:PASSWORD@host:6379/0"
+                )
 
             # Rate limits sanity check
             if self.max_sessions_per_day > 1000:
@@ -293,6 +307,12 @@ class Settings(BaseSettings):
             # Debug mode
             if self.app_debug:
                 issues.append("WARNING: app_debug=True in production — Swagger UI and debug info exposed")
+
+            # Rate limiter needs proxy-aware IP resolution
+            issues.append(
+                "INFO: Rate limiting uses request.client.host — if behind a reverse proxy, "
+                "configure uvicorn --forwarded-allow-ips and nginx X-Real-IP header"
+            )
 
         # Always warn about missing LLM keys
         if not self.gemini_api_key and not self.claude_api_key and not self.openai_api_key:

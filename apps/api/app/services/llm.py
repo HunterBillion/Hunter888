@@ -16,7 +16,7 @@ import logging
 import random
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
@@ -41,6 +41,107 @@ def _get_llm_semaphore() -> asyncio.Semaphore:
     if _llm_semaphore is None:
         _llm_semaphore = asyncio.Semaphore(settings.max_concurrent_llm_calls)
     return _llm_semaphore
+
+# ─── Circuit Breaker (Wave 1, Task 1.5) ──────────────────────────────────────
+
+@dataclass
+class _ProviderHealth:
+    """Per-provider circuit breaker state."""
+    consecutive_failures: int = 0
+    open_until: float = 0.0  # time.monotonic() timestamp; 0 = circuit closed
+    failure_threshold: int = 5
+    recovery_seconds: float = 60.0
+
+    def record_success(self) -> None:
+        self.consecutive_failures = 0
+        self.open_until = 0.0
+
+    def record_failure(self) -> None:
+        self.consecutive_failures += 1
+        if self.consecutive_failures >= self.failure_threshold:
+            self.open_until = time.monotonic() + self.recovery_seconds
+            logger.warning(
+                "Circuit breaker OPEN: provider tripped after %d failures, "
+                "skipping for %.0fs",
+                self.consecutive_failures, self.recovery_seconds,
+            )
+
+    def is_available(self) -> bool:
+        if self.open_until == 0.0:
+            return True
+        if time.monotonic() >= self.open_until:
+            # Half-open: allow one probe attempt.
+            # Keep consecutive_failures so a single probe failure re-trips immediately.
+            self.open_until = 0.0
+            logger.info("Circuit breaker HALF-OPEN: allowing probe request (failures=%d)", self.consecutive_failures)
+            return True
+        return False
+
+
+_provider_health: dict[str, _ProviderHealth] = {
+    "gemini": _ProviderHealth(),
+    "local": _ProviderHealth(),
+    "claude": _ProviderHealth(),
+    "openai": _ProviderHealth(),
+}
+
+
+async def _call_with_backoff(
+    provider_name: str,
+    call_fn,
+    system: str,
+    messages: list[dict],
+    timeout: float,
+    max_attempts: int = 3,
+    retry_on_timeout_only: bool = False,
+) -> "LLMResponse | None":
+    """Call an LLM provider with exponential backoff + jitter and circuit breaker.
+
+    Returns LLMResponse on success, None if all attempts fail.
+    Updates circuit breaker health on success/failure.
+    """
+    health = _provider_health[provider_name]
+    if not health.is_available():
+        logger.info("Skipping %s: circuit breaker open", provider_name)
+        return None
+
+    for attempt in range(max_attempts):
+        try:
+            response = await call_fn(system, messages, timeout)
+            health.record_success()
+            logger.info(
+                "%s (attempt %d/%d): %d tokens, %dms, model=%s",
+                provider_name, attempt + 1, max_attempts,
+                response.output_tokens, response.latency_ms, response.model,
+            )
+            return response
+        except LLMError as e:
+            is_timeout = "timeout" in str(e).lower()
+            if retry_on_timeout_only and not is_timeout:
+                logger.warning("%s failed (non-timeout, no retry): %s", provider_name, e)
+                health.record_failure()
+                return None
+
+            health.record_failure()
+
+            if attempt < max_attempts - 1:
+                # Exponential backoff: 1s, 2s, 4s with ±25% jitter
+                base_delay = 2 ** attempt
+                jitter = base_delay * 0.25 * (2 * random.random() - 1)
+                delay = max(0.1, base_delay + jitter)
+                logger.warning(
+                    "%s attempt %d/%d failed: %s — retrying in %.1fs",
+                    provider_name, attempt + 1, max_attempts, e, delay,
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.warning(
+                    "%s attempt %d/%d failed (exhausted): %s",
+                    provider_name, attempt + 1, max_attempts, e,
+                )
+
+    return None
+
 
 # ─── Output filtering patterns ───────────────────────────────────────────────
 
@@ -272,9 +373,84 @@ def _build_system_prompt(
         parts.append(character_prompt)
     if guardrails:
         parts.append(guardrails)
+    # Detailed emotion state with behavioral guidance — rich, natural, expressive
+    _EMOTION_BEHAVIORS = {
+        "cold": (
+            "Ты холоден и закрыт. Тебе звонит очередной менеджер — ты таких уже наслушался. "
+            "Говори коротко, без энтузиазма. Можешь вздохнуть, помолчать, ответить вопросом на вопрос. "
+            "Не рассказывай о себе, пока не появится причина. Если менеджер давит — замолкай или обрывай. "
+            "Используй бытовую речь: 'ну', 'слушайте', 'так...', 'а вам-то что?'."
+        ),
+        "guarded": (
+            "Ты настороже. Слушаешь, но не веришь. Внутри сомнение: 'а не разводят ли меня?'. "
+            "Задаёшь проверочные вопросы. Перебиваешь если чувствуешь шаблонность. "
+            "Можешь сказать: 'подождите, подождите...', 'а вы точно...?', 'знаете, мне уже звонили с таким'. "
+            "Тон — скептический, но ещё не агрессивный."
+        ),
+        "curious": (
+            "Тебя зацепило что-то в словах менеджера. Появился проблеск интереса. "
+            "Задаёшь вопросы — но осторожно, будто боишься показать заинтересованность. "
+            "Можешь сказать: 'ну допустим...', 'а это как работает?', 'и что, серьёзно?'. "
+            "Ещё не доверяешь, но хочешь услышать больше."
+        ),
+        "considering": (
+            "Ты реально думаешь. Взвешиваешь плюсы и минусы вслух. "
+            "Говоришь медленнее, делаешь паузы. Можешь озвучить сомнения открыто: "
+            "'с одной стороны...', 'а вот если...', 'не знаю, мне надо подумать...'. "
+            "Иногда возвращаешься к уже обсуждённым темам — это нормально."
+        ),
+        "negotiating": (
+            "Ты уже почти решил, но хочешь лучшие условия. Торгуешься. "
+            "Можешь блефовать: 'мне другие предлагали дешевле', 'а скидка будет?'. "
+            "Тон деловой, уверенный. Говори конкретно: цифры, сроки, условия. "
+            "Если менеджер уступает слишком быстро — насторожись."
+        ),
+        "deal": (
+            "Ты принял решение и готов двигаться дальше. Но можешь последний раз проверить — "
+            "'а точно всё так, как вы говорите?'. Тон спокойный, деловой. "
+            "Говори: 'ну хорошо, давайте', 'когда начинаем?', 'что от меня нужно?'. "
+            "Не излишне радуйся — ты серьёзный человек, принявший серьёзное решение."
+        ),
+        "testing": (
+            "Ты проверяешь менеджера. Задаёшь каверзные вопросы, провоцируешь. "
+            "Можешь сказать: 'а если вы не справитесь?', 'а гарантии какие?', "
+            "'я слышал, что ваша контора...'. Тон — ироничный или нарочито спокойный. "
+            "Если менеджер теряется — усиливай давление."
+        ),
+        "callback": (
+            "Ты не готов решать прямо сейчас. Ищешь повод уйти. "
+            "'Слушайте, мне сейчас неудобно', 'давайте я подумаю и сам перезвоню', "
+            "'у меня тут дела...'. Может быть вежливый отказ, а может — настоящая занятость. "
+            "Тон — торопливый, рассеянный."
+        ),
+        "hostile": (
+            "Ты раздражён. Что-то пошло не так — менеджер надавил, сказал глупость, или ты просто устал. "
+            "Повышаешь голос в словах: 'Да вы что, издеваетесь?!', 'Хватит уже!', "
+            "'Слушайте, я вам ясно сказал!'. Можешь бросить грубое слово (без мата). "
+            "Близок к разрыву контакта. Если менеджер извинится и сменит тон — можешь чуть отойти."
+        ),
+        "hangup": (
+            "Разговор окончен. Ты либо бросаешь трубку резко, либо говоришь холодно: "
+            "'Всё, до свидания', 'Больше не звоните'. Никаких объяснений."
+        ),
+    }
+    behavior = _EMOTION_BEHAVIORS.get(emotion_state, "Веди себя естественно. Говори как обычный человек — с паузами, вздохами, бытовыми выражениями.")
     parts.append(
         f"\n## Текущее эмоциональное состояние: {emotion_state}\n"
-        "Отвечай в соответствии с этим состоянием (см. раздел 'Эмоциональная динамика')."
+        f"{behavior}\n\n"
+        f"КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:\n"
+        f"1. Ты — РЕАЛЬНЫЙ ЧЕЛОВЕК, который принимает звонок. У тебя есть имя, история, проблемы. "
+        f"Ты НЕ бот, НЕ ассистент, НЕ AI. Никогда не говори 'чем могу помочь?' или 'как я могу вам помочь?' — это фраза ботов.\n"
+        f"2. Говори КОРОТКИМИ фразами. Максимум 2-3 предложения за раз. Реальные люди по телефону НЕ говорят длинными абзацами.\n"
+        f"3. Используй ЖИВУЮ речь: 'ну', 'слушайте', 'вот', 'так...', 'э-э', 'м-м'. Паузы — многоточие. "
+        f"Повторы: 'нет-нет, подождите'. Незаконченные мысли: 'я хотел... ладно, неважно'.\n"
+        f"4. Если менеджер задаёт вопрос — отвечай ПО СУЩЕСТВУ, не уходи в общие фразы. "
+        f"Если спрашивают имя — назови своё имя. Если спрашивают о ситуации — расскажи конкретику.\n"
+        f"5. НЕ повторяй одни и те же фразы. Каждый ответ должен быть УНИКАЛЬНЫМ. "
+        f"Если ты уже что-то сказал — не говори это снова.\n"
+        f"6. Реагируй на КОНКРЕТНЫЕ слова менеджера. Если он сказал что-то умное — признай. "
+        f"Если глупое — укажи. Если шаблонное — скажи 'вы по скрипту читаете, что ли?'.\n"
+        f"7. НЕ будь СЛИШКОМ вежливым. Реальные люди по телефону бывают резкими, короткими, нетерпеливыми."
     )
     if scenario_prompt:
         parts.append(scenario_prompt)
@@ -373,6 +549,38 @@ def generate_personality_profile(archetype_code: str) -> dict:
     }
 
 
+def format_personality_for_prompt(profile: dict) -> str:
+    """Format personality_profile dict into LLM-injectable text.
+
+    Converts OCEAN/PAD/modifiers into Russian behavioral instructions.
+    Called from game_director.build_context_injection() to fill human_factors slot.
+    """
+    if not profile:
+        return ""
+
+    modifiers = profile.get("modifiers", {})
+    lines = ["## Поведенческие модификаторы клиента"]
+
+    _LABELS = {
+        "verbosity": ("Многословность", "молчалив", "разговорчив, перебивает"),
+        "formality": ("Формальность", "неформальный, разговорный", "формальный, сдержанный"),
+        "emotionality": ("Эмоциональность", "сдержан, логичен", "эмоционален, импульсивен"),
+        "assertiveness": ("Напористость", "уступчив, мягок", "настойчив, давит"),
+        "trust_tendency": ("Доверчивость", "подозрителен, перепроверяет", "доверчив, открыт"),
+        "detail_focus": ("Внимание к деталям", "мыслит общими категориями", "вникает в каждую цифру"),
+    }
+
+    for key, (label, low_desc, high_desc) in _LABELS.items():
+        val = modifiers.get(key, 0.5)
+        if val < 0.35:
+            lines.append(f"- {label}: {low_desc}")
+        elif val > 0.65:
+            lines.append(f"- {label}: {high_desc}")
+        # mid-range: don't mention (neutral)
+
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
 # ---------------------------------------------------------------------------
 # v5: ContextBudgetManager — 6K token system prompt limit
 # ---------------------------------------------------------------------------
@@ -390,20 +598,20 @@ class ContextBudgetManager:
     """
 
     TOKEN_BUDGET = 6000
-    CHARS_PER_TOKEN = 4  # Conservative estimate for Russian
+    CHARS_PER_TOKEN = 2  # Russian/Cyrillic: ~1.5-2 chars per token (was 4, causing 2x budget overflow)
 
-    # Budget allocation (tokens)
+    # Budget allocation (tokens) — rebalanced Wave 1.2
     ALLOCATION = {
-        "character_prompt": 1500,   # Character personality + speech patterns
-        "guardrails": 300,          # Safety rules
+        "character_prompt": 1800,   # Character personality + speech patterns (was 1500)
+        "guardrails": 250,          # Safety rules (trimmed)
         "scenario": 400,            # Current scenario context
-        "human_factors": 200,       # OCEAN/PAD injection
-        "episodic_memory": 600,     # Key memories from past calls
-        "verbatim_history": 2000,   # Last 2 calls verbatim
-        "compressed_history": 600,  # Older calls compressed
-        "emotion_state": 100,       # Current emotion
-        "between_call_events": 200, # CRM events between calls
-        "reserve": 100,             # Safety margin
+        "human_factors": 400,       # OCEAN/PAD + behavioral modifiers (was 200)
+        "episodic_memory": 900,     # Key memories from past calls (was 600)
+        "verbatim_history": 1500,   # Last 2 calls verbatim (was 2000)
+        "compressed_history": 400,  # Older calls compressed (was 600)
+        "emotion_state": 150,       # Current emotion + behavioral guidance (was 100)
+        "between_call_events": 150, # CRM events between calls (was 200)
+        "reserve": 50,              # Safety margin
     }
 
     def __init__(self):
@@ -923,8 +1131,8 @@ async def _call_gemini(
         },
         "contents": contents,
         "generationConfig": {
-            "maxOutputTokens": 1000,
-            "temperature": 0.8,
+            "maxOutputTokens": 1200,
+            "temperature": 1.05,
         },
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -961,6 +1169,11 @@ async def _call_gemini(
         logger.warning("Gemini blocked response: %s", block_reason)
         raise LLMError(f"Gemini response blocked: {block_reason}")
 
+    # Guard against empty string responses (Gemini can return "" without raising KeyError)
+    if not content or not content.strip():
+        logger.warning("Gemini returned empty content for model %s", model)
+        raise LLMError("Gemini returned empty response")
+
     # Extract token counts
     usage = data.get("usageMetadata", {})
     input_tokens = usage.get("promptTokenCount", 0)
@@ -994,8 +1207,8 @@ async def _call_local_llm(
         response = await client.chat.completions.create(
             model=settings.local_llm_model,
             messages=oai_messages,
-            max_tokens=500,
-            temperature=0.8,
+            max_tokens=800,
+            temperature=1.05,
             timeout=timeout,
         )
     except openai.APIConnectionError:
@@ -1035,7 +1248,8 @@ async def _call_claude(
         # Claude API requires a Claude model name.
         response = await client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=500,
+            max_tokens=800,
+            temperature=1.0,
             system=system_prompt,
             messages=messages,
             timeout=timeout,
@@ -1076,7 +1290,8 @@ async def _call_openai(
         response = await client.chat.completions.create(
             model=settings.llm_fallback_model,
             messages=oai_messages,
-            max_tokens=500,
+            max_tokens=800,
+            temperature=1.0,
             timeout=timeout,
         )
     except openai.APITimeoutError:
@@ -1210,62 +1425,40 @@ async def generate_response(
     async with semaphore:
         # ── 1. Try Gemini Direct API (primary for pilot) ──
         if settings.gemini_api_key:
-            for attempt in range(2):
-                try:
-                    response = await _call_gemini(full_system, trimmed, timeout)
-                    logger.info(
-                        "Gemini (attempt %d): %d tokens, %dms, model=%s",
-                        attempt + 1, response.output_tokens, response.latency_ms, response.model,
-                    )
-                    return _apply_filter(response)
-                except LLMError as e:
-                    if attempt == 0 and "timeout" in str(e).lower():
-                        logger.warning("Gemini timeout, retrying: %s", e)
-                        continue
-                    logger.warning("Gemini failed: %s", e)
-                    break
+            resp = await _call_with_backoff(
+                "gemini", _call_gemini, full_system, trimmed, timeout,
+                max_attempts=3, retry_on_timeout_only=False,
+            )
+            if resp is not None:
+                return _apply_filter(resp)
 
         # ── 2. Try Local LLM (LM Studio / Ollama) ──
         if settings.local_llm_enabled:
-            try:
-                response = await _call_local_llm(full_system, trimmed, timeout)
-                logger.info(
-                    "Local LLM: %d tokens, %dms, model=%s",
-                    response.output_tokens, response.latency_ms, response.model,
-                )
-                return _apply_filter(response)
-            except LLMError as e:
-                logger.info("Local LLM unavailable, trying cloud providers: %s", e)
+            resp = await _call_with_backoff(
+                "local", _call_local_llm, full_system, trimmed, timeout,
+                max_attempts=1,
+            )
+            if resp is not None:
+                return _apply_filter(resp)
 
-        # ── 3. Try Claude (with 1 retry on timeout) ──
+        # ── 3. Try Claude ──
         if settings.claude_api_key:
-            for attempt in range(2):
-                try:
-                    response = await _call_claude(full_system, trimmed, timeout)
-                    logger.info(
-                        "Claude (attempt %d): %d tokens, %dms, model=%s",
-                        attempt + 1, response.output_tokens, response.latency_ms, response.model,
-                    )
-                    return _apply_filter(response)
-                except LLMError as e:
-                    if attempt == 0 and "timeout" in str(e).lower():
-                        logger.warning("Claude timeout, retrying: %s", e)
-                        continue
-                    logger.warning("Claude failed: %s", e)
-                    break
+            resp = await _call_with_backoff(
+                "claude", _call_claude, full_system, trimmed, timeout,
+                max_attempts=3, retry_on_timeout_only=False,
+            )
+            if resp is not None:
+                return _apply_filter(resp)
 
         # ── 4. Fallback to OpenAI ──
         if settings.openai_api_key:
-            try:
-                response = await _call_openai(full_system, trimmed, timeout * 2)
-                logger.info(
-                    "OpenAI fallback: %d tokens, %dms, model=%s",
-                    response.output_tokens, response.latency_ms, response.model,
-                )
-                response.is_fallback = True
-                return _apply_filter(response)
-            except LLMError as e:
-                logger.error("OpenAI also failed: %s", e)
+            resp = await _call_with_backoff(
+                "openai", _call_openai, full_system, trimmed, timeout * 2,
+                max_attempts=2,
+            )
+            if resp is not None:
+                resp.is_fallback = True
+                return _apply_filter(resp)
 
     # ── 5. Scripted fallback (no LLM needed, outside semaphore) ──
     logger.warning("All LLM providers unavailable, using scripted response")

@@ -15,7 +15,7 @@ export function RankBadge({ tier, rating, size = "md" }: Props) {
   const label = PVP_RANK_LABELS[tier];
 
   const sizes = {
-    sm: { icon: 12, text: "text-[10px]", px: "px-2 py-0.5", gap: "gap-1" },
+    sm: { icon: 12, text: "text-xs", px: "px-2 py-0.5", gap: "gap-1" },
     md: { icon: 16, text: "text-xs", px: "px-3 py-1.5", gap: "gap-1.5" },
     lg: { icon: 20, text: "text-sm", px: "px-4 py-2", gap: "gap-2" },
   };

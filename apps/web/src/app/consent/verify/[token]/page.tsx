@@ -138,7 +138,7 @@ export default function ConsentVerifyPage() {
               width: "56px",
               height: "56px",
               borderRadius: "16px",
-              background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
+              background: "linear-gradient(135deg, #3b82f6, #6366F1)",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
@@ -208,8 +208,8 @@ export default function ConsentVerifyPage() {
             {/* Тип согласия */}
             <div
               style={{
-                background: "rgba(139,92,246,0.08)",
-                border: "1px solid rgba(139,92,246,0.15)",
+                background: "rgba(99,102,241,0.08)",
+                border: "1px solid rgba(99,102,241,0.15)",
                 borderRadius: "12px",
                 padding: "16px",
                 marginBottom: "20px",

@@ -11,6 +11,7 @@ from app.core.security import decode_token
 from app.database import async_session
 from app.models.user import User
 from app.services.game_crm_service import GameCRMService
+from app.core.ws_rate_limiter import game_crm_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ async def game_crm_websocket(websocket: WebSocket) -> None:
         return
 
     subscribed_story_id: uuid.UUID | None = None
+    _rate_limiter = game_crm_limiter()
 
     try:
         while True:
@@ -72,6 +74,10 @@ async def game_crm_websocket(websocket: WebSocket) -> None:
                 msg = await websocket.receive_json()
             except WebSocketDisconnect:
                 break
+
+            if not _rate_limiter.is_allowed():
+                await _send(websocket, "error", {"code": "rate_limited", "detail": "Too many messages"})
+                continue
 
             msg_type = msg.get("type")
             data = msg.get("data") or {}

@@ -8,6 +8,8 @@ import {
   Clock,
   ArrowRight,
   Home,
+  Users,
+  Zap,
   MessageSquare,
   TrendingDown,
   TrendingUp,
@@ -29,9 +31,11 @@ import {
     Medal,
     Layers3,
     Sparkles,
+    BookOpen,
+    Handshake,
   } from "lucide-react";
 import { api } from "@/lib/api";
-import { downloadTranscript, copyTranscript } from "@/lib/exportTranscript";
+import { downloadTranscript, copyTranscript, copyToClipboard } from "@/lib/exportTranscript";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import PentagramChart from "@/components/results/PentagramChart";
@@ -41,8 +45,14 @@ import SoftSkillsCard from "@/components/results/SoftSkillsCard";
 import ClientReveal from "@/components/results/ClientReveal";
 import AIRecommendations from "@/components/results/AIRecommendations";
 import CheckpointProgress from "@/components/results/CheckpointProgress";
+import StageBreakdown from "@/components/results/StageBreakdown";
+import AICoachSection from "@/components/results/AICoachSection";
+import ScoreLayersBreakdown from "@/components/results/ScoreLayersBreakdown";
+import ReplayModal from "@/components/results/ReplayModal";
 import { AchievementToast } from "@/components/gamification/AchievementToast";
-import { EMOTION_MAP, type EmotionState, type SessionResultResponse, type ActiveTournamentResponse, type TournamentSubmitResponse } from "@/types";
+import { BackButton } from "@/components/ui/BackButton";
+import { EMOTION_MAP, type EmotionState, type ChatMessage, type SessionResultResponse, type ActiveTournamentResponse, type TournamentSubmitResponse } from "@/types";
+import { logger } from "@/lib/logger";
 
 function formatDuration(seconds: number | null): string {
   if (!seconds) return "--:--";
@@ -74,12 +84,18 @@ export default function ResultsPage() {
   const [copied, setCopied] = useState(false);
   const [transcriptCopied, setTranscriptCopied] = useState(false);
   const [achievement, setAchievement] = useState<{ id: string; title: string; description: string; icon?: string } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [addedToCRM, setAddedToCRM] = useState(false);
+
+  // Replay Mode state
+  const [replayMessage, setReplayMessage] = useState<{ msg: ChatMessage; index: number } | null>(null);
 
   // Tournament state
   const [tournament, setTournament] = useState<ActiveTournamentResponse | null>(null);
   const [tournamentSubmitting, setTournamentSubmitting] = useState(false);
   const [tournamentResult, setTournamentResult] = useState<TournamentSubmitResponse | null>(null);
   const [tournamentError, setTournamentError] = useState("");
+  const [previousSkillRadar, setPreviousSkillRadar] = useState<Record<string, number> | null>(null);
 
   useEffect(() => {
     api
@@ -95,14 +111,28 @@ export default function ResultsPage() {
             setTimeout(() => setAchievement({ id: "good", title: "Уверенный старт", description: "Набрано 70+ баллов за сессию", icon: "⭐" }), 1500);
           }
         }
+
+        // Fetch previous session for skill radar comparison
+        api.get<Array<{ id: string; scoring_details?: Record<string, unknown> }>>("/training/history?limit=5")
+          .then((history) => {
+            const currentId = String(params.id);
+            const prev = history.find((h) => h.id !== currentId && h.scoring_details?._skill_radar);
+            if (prev) {
+              setPreviousSkillRadar(prev.scoring_details?._skill_radar as Record<string, number>);
+            }
+          })
+          .catch(() => { /* optional: previous radar not critical */ });
       })
-      .catch(console.error)
+      .catch((err) => {
+        logger.error("Failed to load results:", err);
+        setLoadError(err instanceof Error ? err.message : "Не удалось загрузить результаты сессии");
+      })
       .finally(() => setLoading(false));
 
     // Check active tournament
     api.get("/tournament/active")
       .then((data: ActiveTournamentResponse) => setTournament(data))
-      .catch((err) => { console.error("Failed to load active tournament:", err); });
+      .catch((err) => { logger.error("Failed to load active tournament:", err); });
   }, [params.id]);
 
   const submitToTournament = async () => {
@@ -132,6 +162,27 @@ export default function ResultsPage() {
     );
   }
 
+  if (loadError) {
+    return (
+      <AuthLayout>
+        <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg-primary)" }}>
+          <div className="text-center" style={{ maxWidth: 400 }}>
+            <AlertCircle size={48} style={{ color: "var(--neon-red)", margin: "0 auto 16px" }} />
+            <h2 style={{ color: "var(--text-primary)", marginBottom: 8 }}>Ошибка загрузки</h2>
+            <p style={{ color: "var(--text-muted)", marginBottom: 24 }}>{loadError}</p>
+            <button
+              onClick={() => { setLoadError(null); setLoading(true); window.location.reload(); }}
+              className="px-4 py-2 rounded"
+              style={{ background: "var(--accent)", color: "#000" }}
+            >
+              Попробовать снова
+            </button>
+          </div>
+        </div>
+      </AuthLayout>
+    );
+  }
+
   if (!result) {
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg-primary)" }}>
@@ -148,7 +199,10 @@ export default function ResultsPage() {
   const totalScore = session.score_total ?? 0;
   const hasScores = session.score_total !== null;
   const totalScoreColor = getScoreColor(totalScore);
+  const completeness = (result.score_breakdown as unknown as Record<string, number>)?._completeness ?? 1;
+  const userMsgCount = (result.score_breakdown as unknown as Record<string, number>)?._user_message_count ?? 0;
 
+  // Layer-based score bars (original 5 categories)
   const scoreItems = [
     { label: "Скрипт", value: session.score_script_adherence ?? 0, max: 30 },
     { label: "Возражения", value: session.score_objection_handling ?? 0, max: 25 },
@@ -157,12 +211,62 @@ export default function ResultsPage() {
     { label: "Результат", value: session.score_result ?? 0, max: 10 },
   ];
 
-  const pentagramData = {
-    labels: scoreItems.map((s) => s.label),
-    values: scoreItems.map((s) => (s.max > 0 ? (s.value / s.max) * 100 : 0)),
-  };
+  // 6-axis Skill Radar from backend (computed from all 10 scoring layers)
+  const skillRadar = (result.score_breakdown as Record<string, unknown> | null)?._skill_radar as
+    Record<string, number> | undefined;
+
+  const pentagramData = skillRadar
+    ? {
+        labels: ["Эмпатия", "Знания", "Возражения", "Стрессоуст.", "Закрытие", "Квалификация"],
+        values: [
+          Math.min(100, Math.max(0, skillRadar.empathy ?? 0)),
+          Math.min(100, Math.max(0, skillRadar.knowledge ?? 0)),
+          Math.min(100, Math.max(0, skillRadar.objection_handling ?? 0)),
+          Math.min(100, Math.max(0, skillRadar.stress_resistance ?? 0)),
+          Math.min(100, Math.max(0, skillRadar.closing ?? 0)),
+          Math.min(100, Math.max(0, skillRadar.qualification ?? 0)),
+        ],
+        // Previous session overlay for progress comparison
+        previousValues: previousSkillRadar
+          ? [
+              Math.min(100, Math.max(0, previousSkillRadar.empathy ?? 0)),
+              Math.min(100, Math.max(0, previousSkillRadar.knowledge ?? 0)),
+              Math.min(100, Math.max(0, previousSkillRadar.objection_handling ?? 0)),
+              Math.min(100, Math.max(0, previousSkillRadar.stress_resistance ?? 0)),
+              Math.min(100, Math.max(0, previousSkillRadar.closing ?? 0)),
+              Math.min(100, Math.max(0, previousSkillRadar.qualification ?? 0)),
+            ]
+          : undefined,
+      }
+    : {
+        // Fallback to 5-axis if skill_radar not available
+        labels: scoreItems.map((s) => s.label),
+        values: scoreItems.map((s) => (s.max > 0 ? (s.value / s.max) * 100 : 0)),
+      };
+
+  // Stage progress data (from stage tracker)
+  const stageProgress = (result.score_breakdown as Record<string, unknown> | null)?._stage_progress as
+    { stages_completed?: number[]; stage_scores?: Record<string, number>; final_stage?: number; total_stages?: number } | undefined;
 
   const timeline = session.emotion_timeline || [];
+  const emotionJourney = (result.score_breakdown as Record<string, unknown> | null)?._emotion_journey as
+    {
+      summary?: {
+        total_transitions?: number;
+        rollback_count?: number;
+        peak_state?: string;
+        fake_count?: number;
+        turning_points?: Array<{
+          message_index?: number | null;
+          from_state: string;
+          to_state: string;
+          direction: string;
+          triggers?: string[];
+        }>;
+      };
+      timeline?: unknown[];
+    } | undefined;
+  const journeySummary = emotionJourney?.summary;
   let criticalDrop: { from: string; to: string } | null = null;
   let keyRecovery: { from: string; to: string } | null = null;
 
@@ -178,6 +282,23 @@ export default function ResultsPage() {
       <AchievementToast achievement={achievement} onClose={() => setAchievement(null)} />
 
       <div className="max-w-7xl mx-auto w-full p-6 md:p-10 flex flex-col min-h-screen">
+        <BackButton href="/training" label="К тренировкам" />
+
+        {/* Completeness warning for short conversations */}
+        {completeness < 0.6 && (
+          <div
+            className="mt-3 mb-4 flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm"
+            style={{
+              borderColor: "rgba(255,180,0,0.3)",
+              background: "rgba(255,180,0,0.06)",
+              color: "#FFB400",
+            }}
+          >
+            <AlertTriangle size={16} />
+            Разговор был коротким ({userMsgCount} сообщ.). Баллы снижены пропорционально. Для полной оценки проведите сессию с 10+ репликами.
+          </div>
+        )}
+
         {/* Header */}
         <motion.header
           initial={{ opacity: 0, y: 12 }}
@@ -187,18 +308,34 @@ export default function ResultsPage() {
         >
           <div>
             <div className="font-mono text-sm tracking-[0.3em] mb-2 uppercase" style={{ color: "var(--accent)" }}>
-              Flight Log Terminated
+              Сессия завершена
             </div>
-            <h1 className="font-display font-bold text-4xl md:text-5xl tracking-widest uppercase glow-text-purple" style={{ color: "var(--text-primary)" }}>
-              Post-Flight Report
+            <h1 className="font-display font-bold text-3xl md:text-4xl tracking-wide uppercase glow-text-purple" style={{ color: "var(--text-primary)" }}>
+              Отчёт по сессии
             </h1>
           </div>
           <div className="flex items-end gap-8">
             {hasScores && (
-              <div className="text-right">
-                <div className="font-mono text-xs tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>OVERALL MASTERY</div>
-                <div className="font-display text-5xl font-bold" style={{ color: totalScoreColor, textShadow: `0 0 10px ${totalScoreColor}` }}>
-                  {Math.round(totalScore)}<span className="text-2xl" style={{ color: "var(--text-muted)" }}>%</span>
+              <div className="text-right flex flex-col items-center">
+                <div className="font-mono text-sm tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>ОБЩИЙ БАЛЛ</div>
+                <div className="score-ring relative" style={{ "--ring-color": totalScoreColor } as React.CSSProperties}>
+                  <svg width="96" height="96" viewBox="0 0 96 96">
+                    <circle cx="48" cy="48" r="42" fill="none" stroke="var(--border-color)" strokeWidth="4" opacity="0.3" />
+                    <circle
+                      cx="48" cy="48" r="42" fill="none"
+                      stroke={totalScoreColor}
+                      strokeWidth="4"
+                      strokeLinecap="round"
+                      strokeDasharray={`${2 * Math.PI * 42 * (totalScore / 100)} ${2 * Math.PI * 42}`}
+                      transform="rotate(-90 48 48)"
+                      style={{ filter: `drop-shadow(0 0 6px ${totalScoreColor})`, transition: "stroke-dasharray 1s ease-out" }}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="font-display text-3xl font-bold" style={{ color: totalScoreColor, textShadow: `0 0 10px ${totalScoreColor}` }}>
+                      {Math.round(totalScore)}
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
@@ -206,11 +343,11 @@ export default function ResultsPage() {
               <Link href={`/training/crm/${story.id}`}>
                 <motion.span
                   className="flex items-center gap-2 rounded-lg px-4 py-3 font-mono text-xs tracking-widest transition-colors backdrop-blur"
-                  style={{ background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.25)", color: "var(--accent)" }}
-                  whileHover={{ background: "rgba(139,92,246,0.2)" }}
+                  style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.25)", color: "var(--accent)" }}
+                  whileHover={{ background: "rgba(99,102,241,0.2)" }}
                   whileTap={{ scale: 0.97 }}
                 >
-                  <Layers3 size={14} /> STORY CRM
+                  <Layers3 size={14} /> ИСТОРИЯ CRM
                 </motion.span>
               </Link>
             )}
@@ -221,11 +358,44 @@ export default function ResultsPage() {
                 whileHover={{ background: "var(--accent)", color: "white" }}
                 whileTap={{ scale: 0.97 }}
               >
-                <RotateCcw size={14} /> NEW FLIGHT
+                <RotateCcw size={14} /> НОВАЯ ТРЕНИРОВКА
               </motion.span>
             </Link>
           </div>
         </motion.header>
+
+        {/* XP Rewards banner */}
+        {result.xp_breakdown && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.15 }}
+            className="mb-8 glass-panel rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4"
+          >
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <Zap size={20} style={{ color: "#FFB400" }} />
+                <span className="font-display font-bold text-xl" style={{ color: "#FFB400" }}>
+                  +{result.xp_breakdown.grand_total ?? result.xp_breakdown.session_total ?? 0} XP
+                </span>
+              </div>
+              {result.level_up && (
+                <div className="flex items-center gap-2 rounded-xl px-3 py-1.5" style={{ background: "rgba(0,255,102,0.1)", border: "1px solid rgba(0,255,102,0.3)" }}>
+                  <Trophy size={16} style={{ color: "#00FF66" }} />
+                  <span className="font-display font-bold text-sm" style={{ color: "#00FF66" }}>
+                    Уровень {result.new_level}!
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-4 text-sm font-mono" style={{ color: "var(--text-muted)" }}>
+              {result.xp_breakdown.base && <span>База: +{result.xp_breakdown.base}</span>}
+              {result.xp_breakdown.score_bonus > 0 && <span>За баллы: +{result.xp_breakdown.score_bonus}</span>}
+              {result.xp_breakdown.streak_bonus > 0 && <span>Стрик: +{result.xp_breakdown.streak_bonus}</span>}
+              {result.xp_breakdown.achievements > 0 && <span>Ачивки: +{result.xp_breakdown.achievements}</span>}
+            </div>
+          </motion.div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1">
           {/* LEFT: Pentagram */}
@@ -239,21 +409,21 @@ export default function ResultsPage() {
               <div className="absolute -top-20 -left-20 w-64 h-64 rounded-full opacity-20 blur-[100px] pointer-events-none" style={{ background: "var(--accent)" }} />
 
               <h2 className="font-display text-lg tracking-widest flex items-center gap-2 border-b pb-3 z-10 mb-6" style={{ color: "var(--text-primary)", borderColor: "var(--border-color)" }}>
-                <Crosshair size={18} style={{ color: "var(--accent)" }} /> THE PENTAGRAM OF MASTERY
+                <Crosshair size={18} style={{ color: "var(--accent)" }} /> {skillRadar ? "РАДАР НАВЫКОВ" : "ПЕНТАГРАММА НАВЫКОВ"}
               </h2>
 
               <div className="flex-1 relative z-10">
                 <PentagramChart data={pentagramData} />
               </div>
 
-              <div className="mt-4 flex flex-wrap justify-center gap-6 z-10 font-mono text-xs">
+              <div className="mt-4 flex flex-wrap justify-center gap-6 z-10 font-mono text-sm">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 border" style={{ background: "rgba(139,92,246,0.5)", borderColor: "var(--accent)" }} />
-                  <span style={{ color: "var(--text-secondary)" }}>YOUR PROFILE</span>
+                  <div className="w-3 h-3 border" style={{ background: "rgba(99,102,241,0.5)", borderColor: "var(--accent)" }} />
+                  <span style={{ color: "var(--text-secondary)" }}>Ваш профиль</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 border border-dashed" style={{ background: "rgba(255,255,255,0.05)", borderColor: "var(--text-muted)" }} />
-                  <span style={{ color: "var(--text-muted)" }}>IDEAL MODEL</span>
+                  <span style={{ color: "var(--text-muted)" }}>Идеальная модель</span>
                 </div>
               </div>
             </motion.div>
@@ -271,11 +441,21 @@ export default function ResultsPage() {
                 <div className="absolute -bottom-20 -right-20 w-64 h-64 rounded-full opacity-10 blur-[100px] pointer-events-none" style={{ background: "var(--magenta)" }} />
 
                 <h2 className="font-display text-lg tracking-widest flex items-center gap-2 border-b pb-3 z-10 mb-6" style={{ color: "var(--text-primary)", borderColor: "var(--border-color)" }}>
-                  <TrendingUp size={18} style={{ color: "var(--magenta)" }} /> TIMELINE EMOTIONS
+                  <TrendingUp size={18} style={{ color: "var(--magenta)" }} /> ЭМОЦИИ ПО ВРЕМЕНИ
                 </h2>
 
                 <div className="flex-1 w-full relative z-10">
-                  <EmotionTimeline timeline={timeline} />
+                  <EmotionTimeline
+                    timeline={timeline}
+                    journeySummary={journeySummary}
+                    onReplayMessage={(msgIdx) => {
+                      // Find the nearest user message at or after this index for Replay Mode
+                      const msg = messages.find((m, i) => i >= msgIdx && m.role === "user");
+                      if (msg) {
+                        setReplayMessage({ msg, index: messages.indexOf(msg) });
+                      }
+                    }}
+                  />
                 </div>
               </motion.div>
             )}
@@ -292,7 +472,7 @@ export default function ResultsPage() {
                   <div className="glass-panel p-5 rounded-xl" style={{ borderLeft: "4px solid #FF3333", background: "linear-gradient(to right, rgba(255,51,51,0.05), transparent)" }}>
                     <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle size={14} style={{ color: "#FF3333" }} />
-                      <div className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Critical Drop</div>
+                      <div className="font-mono text-sm uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Критич. падение</div>
                     </div>
                     <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                       Эмоция клиента упала: <span style={{ color: "#FF3333" }}>{emotionLabelRu(criticalDrop.from)}</span> → <span style={{ color: "#FF3333" }}>{emotionLabelRu(criticalDrop.to)}</span>
@@ -303,7 +483,7 @@ export default function ResultsPage() {
                   <div className="glass-panel p-5 rounded-xl" style={{ borderLeft: "4px solid #00FF66", background: "linear-gradient(to right, rgba(0,255,102,0.05), transparent)" }}>
                     <div className="flex items-center gap-2 mb-2">
                       <CheckCircle size={14} style={{ color: "#00FF66" }} />
-                      <div className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Key Recovery</div>
+                      <div className="font-mono text-sm uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Восстановление</div>
                     </div>
                     <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                       Восстановление: <span style={{ color: "#00FF66" }}>{emotionLabelRu(keyRecovery.from)}</span> → <span style={{ color: "#00FF66" }}>{emotionLabelRu(keyRecovery.to)}</span>
@@ -326,8 +506,8 @@ export default function ResultsPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <Sparkles size={16} style={{ color: "var(--accent)" }} />
-                  <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--accent)" }}>
-                    AI Client Story
+                  <span className="font-mono text-sm uppercase tracking-widest" style={{ color: "var(--accent)" }}>
+                    История клиента
                   </span>
                 </div>
                 <h2 className="mt-2 font-display text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
@@ -345,7 +525,7 @@ export default function ResultsPage() {
                   { label: "Последствия", value: story.consequences.length },
                 ].map((item) => (
                   <div key={item.label} className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
-                    <div className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                    <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                       {item.label}
                     </div>
                     <div className="mt-1 text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
@@ -361,7 +541,7 @@ export default function ResultsPage() {
                 {result.story_calls.map((call) => (
                   <div key={call.session_id} className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-color)" }}>
                     <div className="flex items-center justify-between">
-                      <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--accent)" }}>
+                      <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--accent)" }}>
                         Call {call.call_number}
                       </span>
                       <span className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -395,31 +575,148 @@ export default function ResultsPage() {
           </div>
         )}
 
+        {/* L1-L10 Detailed Score Layers */}
+        {hasScores && (
+          <div className="mt-6">
+            <ScoreLayersBreakdown
+              scoreBreakdown={{
+                score_script_adherence: session.score_script_adherence ?? 0,
+                score_objection_handling: session.score_objection_handling ?? 0,
+                score_communication: session.score_communication ?? 0,
+                score_anti_patterns: session.score_anti_patterns ?? 0,
+                score_result: session.score_result ?? 0,
+                score_chain_traversal: session.score_chain_traversal ?? 0,
+                score_trap_handling: session.score_trap_handling ?? 0,
+                score_human_factor: session.score_human_factor ?? 0,
+                score_narrative: session.score_narrative ?? 0,
+                score_legal: session.score_legal ?? 0,
+              }}
+              totalScore={totalScore}
+              layerExplanations={session.scoring_details?._layer_explanations as import("@/components/results/ScoreLayersBreakdown").LayerExplanation[] | undefined}
+            />
+          </div>
+        )}
+
+        {/* 3.1: Weak legal areas → Knowledge Quiz link */}
+        {result.weak_legal_categories && result.weak_legal_categories.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="cyber-card mt-6 p-5 relative overflow-hidden"
+          >
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, transparent, var(--neon-red, #FF2A6D), transparent)" }} />
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(255,42,109,0.1)", border: "1px solid rgba(255,42,109,0.2)" }}>
+                <BookOpen size={18} style={{ color: "var(--neon-red, #FF2A6D)" }} />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle size={12} style={{ color: "var(--neon-red, #FF2A6D)" }} />
+                  <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--neon-red, #FF2A6D)" }}>СЛАБЫЕ МЕСТА ПО ФЗ-127</span>
+                </div>
+                <p className="text-sm mb-3" style={{ color: "var(--text-secondary)" }}>
+                  Ваша юридическая точность ниже нормы. Подтяните знания в этих категориях:
+                </p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {result.weak_legal_categories.map((cat: { category: string; display_name: string; accuracy_pct: number }) => (
+                    <Link key={cat.category} href={`/knowledge?category=${encodeURIComponent(cat.category)}`}>
+                      <span className="status-badge status-badge--danger" style={{ cursor: "pointer" }}>
+                        {cat.display_name} · {cat.accuracy_pct}%
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+                <Link href={`/knowledge?category=${encodeURIComponent(result.weak_legal_categories[0]?.category || "")}`}>
+                  <motion.button
+                    className="btn-neon flex items-center gap-2 text-sm"
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    <BookOpen size={14} /> Подтяни знания по ФЗ-127
+                    <ArrowRight size={14} />
+                  </motion.button>
+                </Link>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* 3.2: Promise fulfillment from CRM story */}
+        {result.promise_fulfillment && result.promise_fulfillment.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.38 }}
+            className="glass-panel mt-6 p-5"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <Handshake size={14} style={{ color: "var(--accent)" }} />
+              <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--accent)" }}>ВЫПОЛНЕНИЕ ОБЕЩАНИЙ</span>
+            </div>
+            <div className="space-y-2">
+              {result.promise_fulfillment.map((p: { text: string; call_number: number; fulfilled: boolean; impact: string }, i: number) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded-lg p-2.5"
+                  style={{
+                    background: p.fulfilled ? "rgba(0,255,148,0.06)" : "rgba(255,42,109,0.06)",
+                    border: `1px solid ${p.fulfilled ? "rgba(0,255,148,0.15)" : "rgba(255,42,109,0.15)"}`,
+                  }}
+                >
+                  {p.fulfilled ? (
+                    <CheckCircle size={14} style={{ color: "var(--neon-green, #00FF94)" }} />
+                  ) : (
+                    <AlertCircle size={14} style={{ color: "var(--neon-red, #FF2A6D)" }} />
+                  )}
+                  <div className="flex-1">
+                    <span className="text-xs" style={{ color: "var(--text-primary)" }}>{p.text}</span>
+                    <span className="ml-2 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                      Звонок #{p.call_number}
+                    </span>
+                  </div>
+                  <span className={`stat-chip ${p.fulfilled ? "" : "neon-pulse"}`} style={{
+                    color: p.fulfilled ? "var(--neon-green, #00FF94)" : "var(--neon-red, #FF2A6D)",
+                    fontSize: "12px",
+                  }}>
+                    {p.fulfilled ? "+0.5" : "−1.0"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
         {/* Score bars */}
         {hasScores && (
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
-            className="glass-panel mt-8 p-6 rounded-2xl"
+            className="glass-panel mt-8 p-6 md:p-8 rounded-2xl"
           >
-            <div className="space-y-3">
+            <h3 className="font-display text-base font-bold tracking-wide mb-5" style={{ color: "var(--text-primary)" }}>
+              Базовые категории
+            </h3>
+            <div className="space-y-4">
               {scoreItems.map((item, i) => {
                 const pct = item.max > 0 ? (item.value / item.max) * 100 : 0;
                 const barColor = pct >= 70 ? "#00FF66" : pct >= 40 ? "var(--warning)" : "#FF3333";
                 return (
                   <motion.div key={item.label} initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 + i * 0.1 }}>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium" style={{ color: "var(--text-primary)" }}>{item.label}</span>
-                      <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{Math.round(item.value)} / {item.max}</span>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{item.label}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-mono font-bold" style={{ color: barColor }}>{Math.round(item.value)}</span>
+                        <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>/ {item.max}</span>
+                      </div>
                     </div>
-                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full" style={{ background: "var(--input-bg)" }}>
+                    <div className="h-2.5 w-full overflow-hidden rounded-full" style={{ background: "var(--input-bg)" }}>
                       <motion.div
                         className="h-full rounded-full"
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min(pct, 100)}%` }}
                         transition={{ duration: 0.8, delay: 0.6 + i * 0.1 }}
-                        style={{ background: barColor, boxShadow: `0 0 5px ${barColor}` }}
+                        style={{ background: barColor, boxShadow: `0 0 8px ${barColor}40` }}
                       />
                     </div>
                   </motion.div>
@@ -436,7 +733,32 @@ export default function ResultsPage() {
           </div>
         )}
 
-        {/* AI Recommendations (markdown) — fallback if LLM didn't generate feedback */}
+        {/* Stage-by-stage breakdown with recommendations */}
+        {stageProgress && (
+          <div className="mt-6">
+            <StageBreakdown
+              stageProgress={stageProgress}
+              resultDetails={(result.score_breakdown as Record<string, unknown> | null)?.result as Record<string, unknown> | undefined}
+              callOutcome={((result.score_breakdown as Record<string, unknown> | null)?.call_outcome as string) || undefined}
+              emotionTimeline={session.emotion_timeline || undefined}
+            />
+          </div>
+        )}
+
+        {/* AI-Coach Section (expanded analysis with citations) */}
+        <div className="mt-6">
+          <AICoachSection
+            sessionId={String(params.id)}
+            coachData={result.score_breakdown as Record<string, unknown> | null}
+            difficulty={(() => {
+              // Extract difficulty from session or default to 5
+              const sd = result.score_breakdown as Record<string, unknown> | null;
+              return (sd?._session_difficulty as number) ?? 5;
+            })()}
+          />
+        </div>
+
+        {/* AI Recommendations (markdown) — fallback/complement */}
         <div className="mt-6">
           <AIRecommendations
             text={
@@ -466,7 +788,7 @@ export default function ResultsPage() {
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <Swords size={14} style={{ color: "#FFD700" }} />
-                  <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "#FFD700" }}>ЕЖЕНЕДЕЛЬНЫЙ ТУРНИР</span>
+                  <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "#FFD700" }}>ЕЖЕНЕДЕЛЬНЫЙ ТУРНИР</span>
                 </div>
                 <h3 className="font-display text-lg font-bold" style={{ color: "var(--text-primary)" }}>
                   {tournament.tournament.title}
@@ -492,14 +814,14 @@ export default function ResultsPage() {
                 {tournament.leaderboard.length > 0 && (
                   <div className="mt-3 flex items-center gap-3">
                     {tournament.leaderboard.slice(0, 3).map((e) => (
-                      <span key={e.user_id} className="font-mono text-[10px] flex items-center gap-1 px-2 py-1 rounded-full"
+                      <span key={e.user_id} className="font-mono text-xs flex items-center gap-1 px-2 py-1 rounded-full"
                         style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}
                       >
                         {e.rank === 1 ? "🥇" : e.rank === 2 ? "🥈" : "🥉"} {e.full_name.split(" ")[0]} · {Math.round(e.best_score)}
                       </span>
                     ))}
                     {tournament.leaderboard.length > 3 && (
-                      <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+                      <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                         +{tournament.leaderboard.length - 3}
                       </span>
                     )}
@@ -522,7 +844,7 @@ export default function ResultsPage() {
                     <motion.button
                       onClick={submitToTournament}
                       disabled={tournamentSubmitting}
-                      className="vh-btn-primary flex items-center gap-2"
+                      className="btn-neon flex items-center gap-2"
                       whileTap={{ scale: 0.97 }}
                     >
                       {tournamentSubmitting ? (
@@ -533,7 +855,7 @@ export default function ResultsPage() {
                         </>
                       )}
                     </motion.button>
-                    <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+                    <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                       макс. {tournament.tournament.max_attempts} попыток
                     </span>
                   </div>
@@ -562,8 +884,8 @@ export default function ResultsPage() {
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <MessageSquare size={14} style={{ color: "var(--text-muted)" }} />
-              <p className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-                TRANSCRIPT ({messages.length} MESSAGES)
+              <p className="font-mono text-sm uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                ДИАЛОГ ({messages.length} сообщ.)
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -588,7 +910,7 @@ export default function ResultsPage() {
                     setTimeout(() => setTranscriptCopied(false), 2000);
                   }
                 }}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors"
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs uppercase tracking-widest transition-colors"
                 style={{ background: "var(--input-bg)", color: transcriptCopied ? "var(--neon-green, #00FF66)" : "var(--text-muted)", border: "1px solid var(--border-color)" }}
                 whileTap={{ scale: 0.95 }}
                 title="Скопировать транскрипт"
@@ -613,7 +935,7 @@ export default function ResultsPage() {
                   }));
                   downloadTranscript(meta, msgs);
                 }}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors"
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs uppercase tracking-widest transition-colors"
                 style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--border-color)" }}
                 whileTap={{ scale: 0.95 }}
                 title="Скачать транскрипт (.md)"
@@ -624,45 +946,121 @@ export default function ResultsPage() {
             </div>
           </div>
           <div className="max-h-[500px] space-y-2 overflow-y-auto">
-            {messages.map((msg) => (
-              <div key={msg.id} className="flex gap-3 rounded-lg p-2" style={{ background: msg.role !== "user" ? "var(--input-bg)" : "transparent" }}>
+            {messages.map((msg, idx) => (
+              <div
+                key={msg.id}
+                className={`flex gap-3 rounded-lg p-2 transition-colors ${msg.role === "user" ? "cursor-pointer hover:ring-1 hover:ring-[var(--accent)]" : ""}`}
+                style={{ background: msg.role !== "user" ? "var(--input-bg)" : "transparent" }}
+                onClick={() => {
+                  if (msg.role === "user") {
+                    setReplayMessage({ msg, index: idx });
+                  }
+                }}
+                title={msg.role === "user" ? "Нажмите для идеального ответа" : undefined}
+              >
                 <span
-                  className="w-16 shrink-0 font-mono text-[10px] uppercase"
+                  className="w-20 shrink-0 font-mono text-sm uppercase"
                   style={{ color: msg.role === "user" ? "var(--accent)" : emotionColor(msg.emotion_state || "") }}
                 >
-                  {msg.role === "user" ? "YOU" : "CLIENT"}
+                  {msg.role === "user" ? "ВЫ" : "КЛИЕНТ"}
                 </span>
                 <div className="flex-1">
                   <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{msg.content}</p>
-                  {msg.emotion_state && (
-                    <span className="mt-1 inline-block rounded-full px-2 py-0.5 text-[10px]"
-                      style={{ background: "var(--accent-muted)", color: emotionColor(msg.emotion_state) }}
-                    >
-                      {emotionLabelRu(msg.emotion_state)}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2 mt-1">
+                    {msg.emotion_state && (
+                      <span className="inline-block rounded-full px-2 py-0.5 text-xs"
+                        style={{ background: "var(--accent-muted)", color: emotionColor(msg.emotion_state) }}
+                      >
+                        {emotionLabelRu(msg.emotion_state)}
+                      </span>
+                    )}
+                    {msg.role === "user" && (
+                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs opacity-50 hover:opacity-100 transition-opacity"
+                        style={{ background: "rgba(138,43,226,0.15)", color: "var(--accent)" }}
+                      >
+                        <Sparkles size={13} /> Разбор
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         </motion.div>
 
+        {/* Recommendations + CRM */}
+        {hasScores && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 }}
+            className="mt-8 glass-panel rounded-2xl p-6"
+          >
+            <h3 className="font-display font-semibold text-base mb-4" style={{ color: "var(--text-primary)" }}>
+              Что дальше?
+            </h3>
+            <div className="flex flex-wrap gap-3">
+              {totalScore < 70 && (
+                <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(255,180,0,0.08)", color: "#FFB400", border: "1px solid rgba(255,180,0,0.2)" }}>
+                  Рекомендуем повторить сценарий — сфокусируйтесь на слабых местах
+                </div>
+              )}
+              {totalScore >= 85 && (
+                <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(0,255,102,0.08)", color: "#00FF66", border: "1px solid rgba(0,255,102,0.2)" }}>
+                  Отличный результат! Попробуйте более сложный сценарий
+                </div>
+              )}
+              <motion.button
+                onClick={async () => {
+                  if (addedToCRM) return;
+                  try {
+                    await api.post("/clients", {
+                      full_name: (session as unknown as Record<string, string>).character_name || (session as unknown as Record<string, string>).scenario_name || "Клиент из тренировки",
+                      source: "training",
+                      status: totalScore >= 70 ? "negotiation" : "new",
+                      notes: `Тренировка ${new Date(session.started_at).toLocaleDateString("ru")} — ${Math.round(totalScore)} баллов`,
+                    });
+                    setAddedToCRM(true);
+                  } catch {
+                    // Client already exists or other error — ignore silently
+                  }
+                }}
+                className="btn-neon flex items-center gap-2 text-sm"
+                style={addedToCRM ? { background: "rgba(0,255,102,0.15)", borderColor: "rgba(0,255,102,0.3)" } : {}}
+                whileTap={{ scale: 0.97 }}
+              >
+                <Users size={14} />
+                {addedToCRM ? "Добавлен в CRM" : "Добавить клиента в CRM"}
+              </motion.button>
+              {addedToCRM && (
+                <Link href="/clients">
+                  <motion.span className="btn-neon flex items-center gap-2 text-sm" whileTap={{ scale: 0.97 }}>
+                    Открыть CRM <ArrowRight size={14} />
+                  </motion.span>
+                </Link>
+              )}
+            </div>
+          </motion.div>
+        )}
+
         {/* Actions */}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }} className="mt-8 flex justify-center gap-3 pb-8">
           <motion.button
-            onClick={() => {
-              navigator.clipboard.writeText(window.location.href);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
+            onClick={async () => {
+              const ok = await copyToClipboard(window.location.href);
+              if (ok) {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }
             }}
-            className="vh-btn-outline flex items-center gap-2"
+            className="btn-neon flex items-center gap-2"
             whileTap={{ scale: 0.97 }}
           >
             {copied ? <Check size={16} /> : <Share2 size={16} />}
             {copied ? "Скопировано" : "Поделиться"}
           </motion.button>
-          <Link href="/">
-            <motion.span className="vh-btn-outline flex items-center gap-2" whileTap={{ scale: 0.97 }}>
+          <Link href="/home">
+            <motion.span className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
               <Home size={16} /> На главную
             </motion.span>
           </Link>
@@ -678,19 +1076,34 @@ export default function ResultsPage() {
               }
             }}
             disabled={repeating}
-            className="vh-btn-outline flex items-center gap-2"
+            className="btn-neon flex items-center gap-2"
             whileTap={{ scale: 0.97 }}
           >
             {repeating ? <Loader2 size={16} className="animate-spin" /> : <Repeat size={16} />}
             Повторить сценарий
           </motion.button>
           <Link href="/training">
-            <motion.span className="vh-btn-primary flex items-center gap-2" whileTap={{ scale: 0.97 }}>
+            <motion.span className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
               Новая тренировка <ArrowRight size={16} />
             </motion.span>
           </Link>
         </motion.div>
       </div>
+
+      {/* Wave 5: Replay Mode Modal */}
+      {replayMessage && (
+        <ReplayModal
+          sessionId={session.id}
+          message={replayMessage.msg}
+          messageIndex={replayMessage.index}
+          clientMessageBefore={
+            replayMessage.index > 0
+              ? messages.slice(0, replayMessage.index).reverse().find((m) => m.role === "assistant") ?? null
+              : null
+          }
+          onClose={() => setReplayMessage(null)}
+        />
+      )}
     </AuthLayout>
   );
 }

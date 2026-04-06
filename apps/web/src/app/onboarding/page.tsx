@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { logger } from "@/lib/logger";
 
 // ── Steps config ───────────────────────────────────────────
 const STEPS = [
@@ -21,6 +22,14 @@ const STEPS = [
 ];
 
 const TEAMS = ["Отдел продаж", "Отдел B2B", "Холодные звонки", "Сопровождение", "Другое"];
+const SPECIALIZATIONS = [
+  { value: "real_estate", label: "Недвижимость", desc: "Сделки, договоры, регистрация", icon: "🏠" },
+  { value: "corporate", label: "Корпоративное право", desc: "Договоры, ООО, ИП", icon: "🏢" },
+  { value: "family", label: "Семейное право", desc: "Разводы, наследство, опека", icon: "👨‍👩‍👧" },
+  { value: "bankruptcy", label: "Банкротство", desc: "Физ. и юр. лица", icon: "📉" },
+  { value: "criminal", label: "Уголовное право", desc: "Защита, представительство", icon: "⚖️" },
+  { value: "general", label: "Общая практика", desc: "Широкий профиль", icon: "📋" },
+];
 const EXP_LEVELS = [
   { value: "beginner", label: "Новичок", desc: "Менее 1 года", icon: "🌱" },
   { value: "intermediate", label: "Опытный", desc: "1-3 года", icon: "⚡" },
@@ -193,7 +202,7 @@ function MicTest({ onResult }: { onResult: (ok: boolean) => void }) {
                 className="w-1.5 rounded-full"
                 style={{ background: "var(--accent)" }}
                 animate={{
-                  height: Math.max(4, level * 64 * (0.3 + Math.sin(Date.now() * 0.01 + i * 0.5) * 0.7)),
+                  height: Math.max(4, level * 64 * (0.3 + Math.sin(i * 0.5) * 0.7)),
                   opacity: 0.3 + level * 0.7,
                 }}
                 transition={{ duration: 0.05 }}
@@ -272,7 +281,7 @@ function TrialDialog() {
                 border: msg.role === "bot" ? "1px solid var(--border-color)" : "none",
               }}
             >
-              {msg.role === "system" && <span className="font-mono text-[9px] block mb-1" style={{ color: "var(--text-muted)" }}>СИСТЕМА</span>}
+              {msg.role === "system" && <span className="font-mono text-xs block mb-1" style={{ color: "var(--text-muted)" }}>СИСТЕМА</span>}
               {msg.text}
             </div>
           </motion.div>
@@ -301,7 +310,7 @@ function TrialDialog() {
             type="button"
             onClick={sendMessage}
             disabled={!input.trim()}
-            className="vh-btn-primary px-4"
+            className="btn-neon px-4"
             whileTap={{ scale: 0.95 }}
           >
             <ArrowRight size={16} />
@@ -331,7 +340,9 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
 
   // Form data
+  const [role, setRole] = useState<"manager" | "rop">("manager");
   const [team, setTeam] = useState("");
+  const [specialization, setSpecialization] = useState("");
   const [experience, setExperience] = useState("");
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [notifications, setNotifications] = useState(true);
@@ -339,7 +350,7 @@ export default function OnboardingPage() {
   const [trainingMode, setTrainingMode] = useState("structured");
 
   const canAdvance = () => {
-    if (step === 1) return team !== "" && experience !== "";
+    if (step === 1) return !!role && team !== "" && specialization !== "" && experience !== "";
     if (step === 2) return true;
     if (step === 3) return micOk !== null;
     if (step === 4) return trainingMode !== "";
@@ -351,13 +362,15 @@ export default function OnboardingPage() {
     setLoading(true);
     try {
       await api.post("/users/me/preferences", {
+        role,
         team,
+        specialization,
         experience_level: experience,
         tts_enabled: ttsEnabled,
         notifications,
         training_mode: trainingMode,
       });
-    } catch { /* proceed */ }
+    } catch (err) { logger.warn("Failed to save preferences, proceeding:", err); }
     router.push("/home");
   };
 
@@ -410,7 +423,7 @@ export default function OnboardingPage() {
                     )}
                   </motion.div>
                   <span
-                    className="font-mono text-[9px] tracking-wider"
+                    className="font-mono text-xs tracking-wider"
                     style={{ color: isActive ? "var(--accent)" : isDone ? "var(--text-secondary)" : "var(--text-muted)" }}
                   >
                     {s.label}
@@ -444,8 +457,36 @@ export default function OnboardingPage() {
 
                 <div className="space-y-5">
                   <div>
+                    <label className="vh-label">Ваша роль</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { value: "manager" as const, label: "Менеджер", desc: "Тренировки, звонки, рейтинг", icon: "🎯" },
+                        { value: "rop" as const, label: "Руководитель (РОП)", desc: "Аналитика, команда, контроль", icon: "📊" },
+                      ].map((r) => (
+                        <motion.button
+                          key={r.value}
+                          type="button"
+                          onClick={() => setRole(r.value)}
+                          className="rounded-xl px-4 py-4 text-left flex items-center gap-3"
+                          style={{
+                            background: role === r.value ? "var(--accent-muted)" : "var(--input-bg)",
+                            border: `1.5px solid ${role === r.value ? "var(--accent)" : "var(--border-color)"}`,
+                            boxShadow: role === r.value ? "0 0 16px var(--accent-glow)" : "none",
+                          }}
+                          whileTap={{ scale: 0.97 }}
+                        >
+                          <span className="text-2xl">{r.icon}</span>
+                          <div>
+                            <div className="font-display font-bold text-sm" style={{ color: role === r.value ? "var(--accent)" : "var(--text-primary)" }}>{r.label}</div>
+                            <div className="text-xs" style={{ color: "var(--text-muted)" }}>{r.desc}</div>
+                          </div>
+                        </motion.button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
                     <label className="vh-label">Команда</label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {TEAMS.map(t => (
                         <motion.button key={t} type="button" onClick={() => setTeam(t)}
                           className="rounded-xl px-3 py-2.5 text-sm text-left"
@@ -456,6 +497,27 @@ export default function OnboardingPage() {
                           }}
                           whileTap={{ scale: 0.97 }}
                         >{t}</motion.button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="vh-label">Специализация</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {SPECIALIZATIONS.map(s => (
+                        <motion.button key={s.value} type="button" onClick={() => setSpecialization(s.value)}
+                          className="rounded-xl px-3 py-2.5 text-left flex items-center gap-2"
+                          style={{
+                            background: specialization === s.value ? "var(--accent-muted)" : "var(--input-bg)",
+                            border: `1px solid ${specialization === s.value ? "var(--accent)" : "var(--border-color)"}`,
+                          }}
+                          whileTap={{ scale: 0.97 }}
+                        >
+                          <span className="text-lg">{s.icon}</span>
+                          <div>
+                            <div className="font-medium text-xs" style={{ color: specialization === s.value ? "var(--accent)" : "var(--text-primary)" }}>{s.label}</div>
+                            <div className="text-xs" style={{ color: "var(--text-muted)" }}>{s.desc}</div>
+                          </div>
+                        </motion.button>
                       ))}
                     </div>
                   </div>
@@ -589,28 +651,28 @@ export default function OnboardingPage() {
         {/* Navigation */}
         <div className="mt-6 flex justify-between">
           {step > 1 ? (
-            <motion.button type="button" onClick={() => setStep(step - 1)} className="vh-btn-outline flex items-center gap-2" whileTap={{ scale: 0.97 }}>
+            <motion.button type="button" onClick={() => setStep(step - 1)} className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
               <ArrowLeft size={16} /> Назад
             </motion.button>
           ) : <div />}
 
           {step < totalSteps ? (
             <motion.button type="button" onClick={() => setStep(step + 1)} disabled={!canAdvance()}
-              className="vh-btn-primary flex items-center gap-2" whileTap={{ scale: 0.97 }}
+              className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}
               style={{ opacity: canAdvance() ? 1 : 0.4 }}
             >
               Далее <ArrowRight size={16} />
             </motion.button>
           ) : (
             <motion.button type="button" onClick={handleFinish} disabled={loading}
-              className="vh-btn-primary flex items-center gap-2" whileTap={{ scale: 0.97 }}>
+              className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
               {loading ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <><Crosshair size={16} /> Начать охоту</>}
             </motion.button>
           )}
         </div>
 
         {/* Step counter */}
-        <p className="mt-4 text-center font-mono text-[10px] tracking-wider" style={{ color: "var(--text-muted)" }}>
+        <p className="mt-4 text-center font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>
           ШАГ {step} ИЗ {totalSteps}
         </p>
       </div>

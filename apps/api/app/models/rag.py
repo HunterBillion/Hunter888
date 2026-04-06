@@ -42,40 +42,132 @@ class LegalCategory(str, enum.Enum):
 class LegalKnowledgeChunk(Base):
     """A single unit of legal knowledge for 127-ФЗ.
 
-    MVP: populated via seed script with ~30 common legal facts.
-    Phase 4: will add embedding column (pgvector) for semantic search.
+    Each chunk represents one legal fact, procedure, or judicial precedent.
+    Used by RAG pipeline for question generation, answer evaluation, and L10 scoring.
+    Supports: pgvector semantic search, keyword fallback, blitz pre-built Q&A.
     """
     __tablename__ = "legal_knowledge_chunks"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     category: Mapped[LegalCategory] = mapped_column(Enum(LegalCategory), nullable=False, index=True)
 
-    # The legal fact / rule
+    # ── Core content ──────────────────────────────────────────────────────────
     fact_text: Mapped[str] = mapped_column(Text, nullable=False)
-    # e.g. "Минимальный размер долга для подачи на банкротство — 500 000 рублей"
-
-    # Law reference
     law_article: Mapped[str] = mapped_column(String(100), nullable=False)
-    # e.g. "127-ФЗ ст. 213.3 п.2"
-
-    # Common incorrect statements that contradict this fact
     common_errors: Mapped[dict] = mapped_column(JSONB, default=list)
-    # ["Банкротство можно подать при любой сумме долга", "Порог — 300 000 рублей"]
-
-    # Keywords for MVP pattern matching (before pgvector)
     match_keywords: Mapped[dict] = mapped_column(JSONB, default=list)
-    # ["минимальный долг", "порог банкротства", "500 000", "сумма долга"]
-
-    # Correct response template for scoring reference
     correct_response_hint: Mapped[str | None] = mapped_column(Text)
-
-    # Difficulty: how often managers get this wrong (1-10)
     error_frequency: Mapped[int] = mapped_column(Integer, default=5)
+
+    # ── Difficulty & question generation ──────────────────────────────────────
+    difficulty_level: Mapped[int] = mapped_column(Integer, default=3, index=True)
+    # 1=базовый (определение), 2=простой (цифра/срок), 3=средний (процедура),
+    # 4=продвинутый (связь статей), 5=экспертный (судебная практика)
+
+    question_templates: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # [{"text": "Каков порог?", "difficulty": 2, "expected_answer_keywords": ["500"]}]
+
+    follow_up_questions: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # ["А знаете ли вы разницу между правом и обязанностью подачи?"]
+
+    related_chunk_ids: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # ["uuid1", "uuid2"] — for cross-referencing and follow-up chains
+
+    # ── Court practice ────────────────────────────────────────────────────────
+    court_case_reference: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # "Определение ВС РФ от 25.01.2018 №304-ЭС17-15555"
+
+    is_court_practice: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+    # ── Blitz mode (zero-LLM questions) ───────────────────────────────────────
+    blitz_question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Short question: "Минимальный порог долга для обязательного банкротства ФЛ?"
+
+    blitz_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Short answer: "500 000 рублей при просрочке от 3 месяцев"
+
+    # ── Deep context ──────────────────────────────────────────────────────────
+    source_article_full_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Full text of the relevant law article (for deep evaluation)
+
+    # ── Versioning & metadata ─────────────────────────────────────────────────
+    content_version: Mapped[int] = mapped_column(Integer, default=1)
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Tracks which embedding model was used (e.g. "gemini-embedding-001")
+
+    tags: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # ["каверзный", "судебная_практика", "пленум", "начинающий"]
+
+    content_hash: Mapped[str | None] = mapped_column(String(32), nullable=True, unique=True)
+    # md5(fact_text + law_article) — for idempotent seed upserts
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    # Embedding vector for semantic search (pgvector cosine similarity)
+    # ── Embedding (pgvector) ──────────────────────────────────────────────────
     embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+
+    # ── Feedback loop stats (auto-updated from user performance) ──────────────
+    retrieval_count: Mapped[int] = mapped_column(Integer, default=0)
+    # How many times this chunk was retrieved by RAG pipeline
+
+    correct_answer_count: Mapped[int] = mapped_column(Integer, default=0)
+    incorrect_answer_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Aggregated from KnowledgeAnswer + LegalValidationResult
+
+    effectiveness_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # correct / (correct + incorrect) — null until enough data (min 3 answers)
+
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Last time this chunk was retrieved in any session
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
+    )
+
+
+class ChunkUsageLog(Base):
+    """Log of every RAG chunk retrieval and its outcome.
+
+    Tracks which chunks are actually used, in what context, and whether
+    the user's answer was correct. Aggregated periodically to update
+    LegalKnowledgeChunk.error_frequency / effectiveness_score.
+    """
+    __tablename__ = "chunk_usage_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    chunk_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_knowledge_chunks.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # Context of usage
+    source_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    # "training" | "pvp_duel" | "quiz" | "blitz" | "validation"
+    source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # FK to training_sessions.id / pvp_duels.id / knowledge_quiz_sessions.id
+
+    # Retrieval context
+    query_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retrieval_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # "embedding" | "keyword" | "hybrid" | "blitz_pool"
+    relevance_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    retrieval_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Position in results (1 = top result)
+
+    # Outcome (filled after answer evaluation)
+    was_answered: Mapped[bool] = mapped_column(Boolean, default=False)
+    answer_correct: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # null = not yet evaluated, True = user got it right, False = wrong
+    user_answer_excerpt: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    score_delta: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Discovery: new errors not in common_errors
+    discovered_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # If user made a new type of error not in chunk.common_errors
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -90,7 +182,7 @@ class LegalValidationResult(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("training_sessions.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="SET NULL"), nullable=False, index=True
     )
     message_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     # Which message in the conversation contained the legal claim
@@ -100,7 +192,7 @@ class LegalValidationResult(Base):
 
     # Matched knowledge chunk (if any)
     knowledge_chunk_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("legal_knowledge_chunks.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("legal_knowledge_chunks.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
     # Classification result

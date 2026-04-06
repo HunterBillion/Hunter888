@@ -1,7 +1,8 @@
 "use client";
 
 import { Component, type ReactNode } from "react";
-import { AlertTriangle } from "lucide-react";
+import { RotateCcw, BookOpen } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface Props {
   children: ReactNode;
@@ -24,43 +25,127 @@ export class TrainingErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("[TrainingErrorBoundary] Caught error:", error, errorInfo);
+    logger.error("[TrainingErrorBoundary] Caught error:", error, errorInfo);
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-950 p-4">
-          <div className="max-w-md rounded-2xl border border-red-500/30 bg-gray-900 p-8 text-center">
-            <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-red-400" />
-            <h2 className="mb-2 text-xl font-semibold text-white">
-              Произошла ошибка
-            </h2>
-            <p className="mb-6 text-sm text-gray-400">
-              Во время тренировки произошла непредвиденная ошибка.
-              {this.props.sessionId && (
-                <> Сессия <code className="text-xs text-gray-500">{this.props.sessionId}</code> сохранена.</>
-              )}
-            </p>
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => this.setState({ hasError: false, error: null })}
-                className="rounded-lg bg-gray-800 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 transition"
+        <div
+          className="flex min-h-screen items-center justify-center px-4"
+          style={{ background: "var(--bg-primary)" }}
+        >
+          <div className="relative text-center max-w-md w-full">
+            {/* Background ghost */}
+            <div
+              className="pointer-events-none absolute inset-0 flex items-center justify-center select-none"
+              style={{ overflow: "hidden" }}
+            >
+              <span
+                className="font-display font-black leading-none"
+                style={{
+                  fontSize: "140px",
+                  color: "transparent",
+                  WebkitTextStroke: "1.5px rgba(255,42,109,0.06)",
+                }}
               >
-                Попробовать снова
-              </button>
-              <a
-                href="/training"
-                className="rounded-lg bg-orange-600 px-4 py-2 text-sm text-white hover:bg-orange-500 transition"
-              >
-                К тренировкам
-              </a>
+                СБОЙ
+              </span>
             </div>
-            {process.env.NODE_ENV === "development" && this.state.error && (
-              <pre className="mt-4 max-h-32 overflow-auto rounded bg-gray-950 p-2 text-left text-xs text-red-300">
-                {this.state.error.message}
-              </pre>
-            )}
+
+            <div className="relative z-10">
+              {/* Pulsing warning ring */}
+              <div
+                className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full"
+                style={{
+                  background: "rgba(255,42,109,0.06)",
+                  border: "2px solid rgba(255,42,109,0.15)",
+                  boxShadow: "0 0 30px rgba(255,42,109,0.08)",
+                }}
+              >
+                <div
+                  className="font-display text-xl font-black"
+                  style={{
+                    color: "var(--neon-red, #FF2A6D)",
+                    animation: "pulse 2s ease-in-out infinite",
+                  }}
+                >
+                  !
+                </div>
+              </div>
+
+              <div
+                className="font-mono text-[10px] tracking-[0.25em] uppercase mb-3"
+                style={{ color: "rgba(255,42,109,0.5)" }}
+              >
+                {"// ОШИБКА_ТРЕНИРОВКИ"}
+              </div>
+
+              <h2
+                className="mb-2 text-xl font-bold"
+                style={{ color: "var(--text-primary)" }}
+              >
+                Сессия прервана
+              </h2>
+
+              <p className="mb-3 text-sm" style={{ color: "var(--text-muted)" }}>
+                Во время тренировки произошла непредвиденная ошибка.
+              </p>
+
+              {this.props.sessionId && (
+                <div
+                  className="font-mono text-xs rounded-lg px-4 py-2 mb-5 inline-block"
+                  style={{
+                    background: "var(--input-bg)",
+                    border: "1px solid var(--border-color)",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  <span style={{ opacity: 0.5 }}>session:</span>{" "}
+                  <span style={{ color: "var(--accent)" }}>{this.props.sessionId}</span>
+                  <span style={{ opacity: 0.5 }}> — сохранена</span>
+                </div>
+              )}
+
+              {process.env.NODE_ENV === "development" && this.state.error && (
+                <div
+                  className="mb-5 rounded-lg px-4 py-2.5 text-left font-mono text-xs mx-auto max-w-sm"
+                  style={{
+                    background: "var(--input-bg)",
+                    border: "1px solid var(--border-color)",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  <span style={{ color: "rgba(255,42,109,0.5)" }}>{">"} </span>
+                  {this.state.error.message}
+                </div>
+              )}
+
+              <div className="flex gap-3 justify-center mt-6">
+                <button
+                  onClick={() => this.setState({ hasError: false, error: null })}
+                  className="flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-all"
+                  style={{
+                    background: "var(--accent)",
+                    color: "#fff",
+                    boxShadow: "0 0 20px var(--accent-glow)",
+                  }}
+                >
+                  <RotateCcw size={15} /> Попробовать снова
+                </button>
+                <a
+                  href="/training"
+                  className="flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-all"
+                  style={{
+                    background: "var(--input-bg)",
+                    color: "var(--text-primary)",
+                    border: "1px solid var(--border-color)",
+                  }}
+                >
+                  <BookOpen size={15} /> К тренировкам
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       );

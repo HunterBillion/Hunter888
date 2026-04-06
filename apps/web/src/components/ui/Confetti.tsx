@@ -14,7 +14,7 @@ interface Particle {
 }
 
 const COLORS = [
-  "#8B5CF6", // violet
+  "#6366F1", // violet
   "#FFD700", // gold
   "#00FF66", // green
   "#FF6B6B", // red

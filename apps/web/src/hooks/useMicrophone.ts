@@ -52,13 +52,15 @@ export function useMicrophone(
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSoundTimeRef = useRef<number>(Date.now());
 
-  // Check permission state on mount
+  // Check permission state on mount & clean up listener on unmount
+  const permStatusRef = useRef<PermissionStatus | null>(null);
   useEffect(() => {
     if (typeof navigator === "undefined" || !navigator.permissions) return;
 
     navigator.permissions
       .query({ name: "microphone" as PermissionName })
       .then((status) => {
+        permStatusRef.current = status;
         setPermissionState(
           status.state === "granted"
             ? "granted"
@@ -79,6 +81,13 @@ export function useMicrophone(
       .catch(() => {
         // permissions API not supported, leave as prompt
       });
+
+    return () => {
+      if (permStatusRef.current) {
+        permStatusRef.current.onchange = null;
+        permStatusRef.current = null;
+      }
+    };
   }, []);
 
   // Cleanup on unmount — stop all media resources and prevent stale state updates

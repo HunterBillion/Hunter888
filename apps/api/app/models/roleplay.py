@@ -25,32 +25,117 @@ from app.database import Base
 # ---------------------------------------------------------------------------
 
 class ArchetypeCode(str, enum.Enum):
-    """25 canonical client archetypes used across traps, chains, and scoring."""
+    """100 canonical client archetypes: 10 groups × 10 archetypes."""
+    # ── Group 1: RESISTANCE (Сопротивление) ──
     skeptic = "skeptic"
-    anxious = "anxious"
+    blamer = "blamer"
+    sarcastic = "sarcastic"
     aggressive = "aggressive"
-    passive = "passive"
+    hostile = "hostile"
+    stubborn = "stubborn"
+    conspiracy = "conspiracy"
+    righteous = "righteous"
+    litigious = "litigious"
+    scorched_earth = "scorched_earth"
+    # ── Group 2: EMOTIONAL (Эмоциональные) ──
+    grateful = "grateful"
+    anxious = "anxious"
+    ashamed = "ashamed"
+    overwhelmed = "overwhelmed"
+    desperate = "desperate"
+    crying = "crying"
+    guilty = "guilty"
+    mood_swinger = "mood_swinger"
+    frozen = "frozen"
+    hysteric = "hysteric"
+    # ── Group 3: CONTROL (Контроль) ──
     pragmatic = "pragmatic"
+    shopper = "shopper"
+    negotiator = "negotiator"
+    know_it_all = "know_it_all"
     manipulator = "manipulator"
+    lawyer_client = "lawyer_client"
+    auditor = "auditor"
+    strategist = "strategist"
+    power_player = "power_player"
+    puppet_master = "puppet_master"
+    # ── Group 4: AVOIDANCE (Избегание) ──
+    passive = "passive"
     delegator = "delegator"
     avoidant = "avoidant"
     paranoid = "paranoid"
-    ashamed = "ashamed"
-    hostile = "hostile"
-    blamer = "blamer"
-    sarcastic = "sarcastic"
-    know_it_all = "know_it_all"
-    negotiator = "negotiator"
-    shopper = "shopper"
-    desperate = "desperate"
-    crying = "crying"
-    grateful = "grateful"
-    overwhelmed = "overwhelmed"
-    returner = "returner"
+    procrastinator = "procrastinator"
+    ghosting = "ghosting"
+    deflector = "deflector"
+    agreeable_ghost = "agreeable_ghost"
+    fortress = "fortress"
+    smoke_screen = "smoke_screen"
+    # ── Group 5: SPECIAL (Особые) ──
     referred = "referred"
+    returner = "returner"
     rushed = "rushed"
-    lawyer_client = "lawyer_client"
     couple = "couple"
+    elderly = "elderly"
+    young_debtor = "young_debtor"
+    foreign_speaker = "foreign_speaker"
+    intermediary = "intermediary"
+    repeat_caller = "repeat_caller"
+    celebrity = "celebrity"
+    # ── Group 6: COGNITIVE (Когнитивные) ──
+    overthinker = "overthinker"
+    concrete = "concrete"
+    storyteller = "storyteller"
+    misinformed = "misinformed"
+    selective_listener = "selective_listener"
+    black_white = "black_white"
+    memory_issues = "memory_issues"
+    technical = "technical"
+    magical_thinker = "magical_thinker"
+    lawyer_level_2 = "lawyer_level_2"
+    # ── Group 7: SOCIAL (Социальные) ──
+    family_man = "family_man"
+    influenced = "influenced"
+    reputation_guard = "reputation_guard"
+    community_leader = "community_leader"
+    breadwinner = "breadwinner"
+    divorced = "divorced"
+    guarantor = "guarantor"
+    widow = "widow"
+    caregiver = "caregiver"
+    multi_debtor_family = "multi_debtor_family"
+    # ── Group 8: TEMPORAL (Ситуативные) ──
+    just_fired = "just_fired"
+    collector_call = "collector_call"
+    court_notice = "court_notice"
+    salary_arrest = "salary_arrest"
+    pre_court = "pre_court"
+    post_refusal = "post_refusal"
+    inheritance_trap = "inheritance_trap"
+    business_collapse = "business_collapse"
+    medical_crisis = "medical_crisis"
+    criminal_risk = "criminal_risk"
+    # ── Group 9: PROFESSIONAL (Профессиональные) ──
+    teacher = "teacher"
+    doctor = "doctor"
+    military = "military"
+    accountant = "accountant"
+    salesperson = "salesperson"
+    it_specialist = "it_specialist"
+    government = "government"
+    journalist = "journalist"
+    psychologist = "psychologist"
+    competitor_employee = "competitor_employee"
+    # ── Group 10: COMPOUND (Гибриды) ──
+    aggressive_desperate = "aggressive_desperate"
+    manipulator_crying = "manipulator_crying"
+    know_it_all_paranoid = "know_it_all_paranoid"
+    passive_aggressive = "passive_aggressive"
+    couple_disagreeing = "couple_disagreeing"
+    elderly_paranoid = "elderly_paranoid"
+    hysteric_litigious = "hysteric_litigious"
+    puppet_master_lawyer = "puppet_master_lawyer"
+    shifting = "shifting"
+    ultimate = "ultimate"
 
 
 class TrapCategory(str, enum.Enum):
@@ -150,8 +235,8 @@ class ProfessionProfile(Base):
     typical_debt_max: Mapped[int] = mapped_column(Integer, default=1000000)
     legal_literacy: Mapped[int] = mapped_column(Integer, default=2)  # 1-10
     vocabulary_level: Mapped[str] = mapped_column(String(50), default="simple")  # simple|standard|professional|legal
-    specific_fears: Mapped[dict] = mapped_column(JSONB, default=list)  # list of fear codes
-    specific_objections: Mapped[dict] = mapped_column(JSONB, default=list)  # list of objection templates
+    specific_fears: Mapped[list] = mapped_column(JSONB, default=list)  # list of fear codes
+    specific_objections: Mapped[list] = mapped_column(JSONB, default=list)  # list of objection templates
     speech_patterns: Mapped[dict] = mapped_column(JSONB, default=dict)  # {"style": "...", "markers": [...]}
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -160,14 +245,19 @@ class ProfessionProfile(Base):
     client_profiles: Mapped[list["ClientProfile"]] = relationship(back_populates="profession")
 
 
-class EmotionProfile(Base):
+class ArchetypeEmotionProfile(Base):
+    """Per-archetype emotion configuration: transition matrix, rollback triggers, fake transitions.
+
+    Renamed from EmotionProfile to avoid conflict with behavior.EmotionProfile
+    (manager OCEAN profile). Table name unchanged for backward compatibility.
+    """
     __tablename__ = "emotion_profiles"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     archetype_code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     transition_matrix: Mapped[dict] = mapped_column(JSONB, nullable=False)
     # Format: {"cold": {"empathy": 0, "facts": 1, "pressure": -1, ...}, "guarded": {...}, ...}
-    rollback_triggers: Mapped[dict] = mapped_column(JSONB, default=list)
+    rollback_triggers: Mapped[list] = mapped_column(JSONB, default=list)
     rollback_severity: Mapped[int] = mapped_column(Integer, default=1)  # How many phases to rollback
     breaking_point: Mapped[dict | None] = mapped_column(JSONB)  # {"trigger": "...", "jump": 2}
     initial_state: Mapped[str] = mapped_column(String(50), default="cold")
@@ -206,20 +296,20 @@ class Trap(Base):
 
     # --- Client phrases ---
     client_phrase: Mapped[str] = mapped_column(Text, nullable=False)  # Primary phrase
-    client_phrase_variants: Mapped[dict] = mapped_column(
+    client_phrase_variants: Mapped[list] = mapped_column(
         JSONB, default=list
     )  # 2-3 rephrasings for variety
 
     # --- Wrong response detection ---
-    wrong_response_keywords: Mapped[dict] = mapped_column(JSONB, default=list)
-    wrong_response_patterns: Mapped[dict] = mapped_column(
+    wrong_response_keywords: Mapped[list] = mapped_column(JSONB, default=list)
+    wrong_response_patterns: Mapped[list] = mapped_column(
         JSONB, default=list
     )  # Regex patterns for level 2+ detection
     wrong_response_example: Mapped[str | None] = mapped_column(Text)  # Example of wrong answer
 
     # --- Correct response detection ---
-    correct_response_keywords: Mapped[dict] = mapped_column(JSONB, default=list)
-    correct_response_patterns: Mapped[dict] = mapped_column(
+    correct_response_keywords: Mapped[list] = mapped_column(JSONB, default=list)
+    correct_response_patterns: Mapped[list] = mapped_column(
         JSONB, default=list
     )  # Regex patterns for level 2+ detection
     correct_response_example: Mapped[str | None] = mapped_column(Text)  # Example of correct answer
@@ -233,22 +323,22 @@ class Trap(Base):
     law_reference: Mapped[str | None] = mapped_column(Text)  # References to 127-ФЗ articles
 
     # --- Filtering ---
-    archetype_codes: Mapped[dict] = mapped_column(
+    archetype_codes: Mapped[list] = mapped_column(
         JSONB, default=list
     )  # Which archetypes use this trap: ["skeptic", "manipulator"]
-    profession_codes: Mapped[dict] = mapped_column(
+    profession_codes: Mapped[list] = mapped_column(
         JSONB, default=list
     )  # Which professions trigger this trap: ["lawyer_client", "entrepreneur"]
-    emotion_states: Mapped[dict] = mapped_column(
+    emotion_states: Mapped[list] = mapped_column(
         JSONB, default=list
     )  # Active in which emotion states: ["cold", "guarded", "hostile"]
 
     # --- Cascade links ---
     triggers_trap_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("traps.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("traps.id", ondelete="SET NULL"), nullable=True, index=True
     )  # On FELL → activate this harder trap
     blocked_by_trap_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("traps.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("traps.id", ondelete="SET NULL"), nullable=True, index=True
     )  # Only activate if this trap was DODGED
 
     # --- Emotion engine integration ---
@@ -302,10 +392,10 @@ class ObjectionChain(Base):
     # Extended step format with branching — see docstring
 
     # --- Filtering ---
-    archetype_codes: Mapped[dict] = mapped_column(
+    archetype_codes: Mapped[list] = mapped_column(
         JSONB, default=list
     )  # Which archetypes use this chain: ["skeptic", "pragmatic"]
-    scenario_types: Mapped[dict] = mapped_column(
+    scenario_types: Mapped[list] = mapped_column(
         JSONB, default=list
     )  # Which scenarios use this chain: ["cold_base", "warm_callback"]
 
@@ -354,7 +444,7 @@ class ClientProfile(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("training_sessions.id"), nullable=False, unique=True
+        UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="CASCADE"), nullable=False, unique=True
     )
     # Identity
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -364,32 +454,32 @@ class ClientProfile(Base):
     # Archetype + Profession
     archetype_code: Mapped[str] = mapped_column(String(50), nullable=False)
     profession_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("profession_profiles.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("profession_profiles.id", ondelete="SET NULL"), nullable=True, index=True
     )
     education_level: Mapped[str] = mapped_column(String(50), default="средне-специальное")
     legal_literacy: Mapped[int] = mapped_column(Integer, default=2)
     # Finances
     total_debt: Mapped[int] = mapped_column(Integer, default=500000)
-    creditors: Mapped[dict] = mapped_column(JSONB, default=list)  # [{"name": "Сбербанк", "amount": 1400000}]
+    creditors: Mapped[list] = mapped_column(JSONB, default=list)  # [{"name": "Сбербанк", "amount": 1400000}]
     income: Mapped[int | None] = mapped_column(Integer)
     income_type: Mapped[str] = mapped_column(String(50), default="official")  # official|gray|mixed|none
-    property_list: Mapped[dict] = mapped_column(JSONB, default=list)  # [{"type": "квартира", "status": "единственная"}]
+    property_list: Mapped[list] = mapped_column(JSONB, default=list)  # [{"type": "квартира", "status": "единственная"}]
     # Psychology
-    fears: Mapped[dict] = mapped_column(JSONB, default=list)  # list of fear descriptions
+    fears: Mapped[list] = mapped_column(JSONB, default=list)  # list of fear descriptions
     soft_spot: Mapped[str | None] = mapped_column(Text)  # What motivates to act
     trust_level: Mapped[int] = mapped_column(Integer, default=3)  # 1-10
     resistance_level: Mapped[int] = mapped_column(Integer, default=5)  # 1-10
     # Context
     lead_source: Mapped[str] = mapped_column(String(50), default="cold_base")
-    call_history: Mapped[dict] = mapped_column(JSONB, default=list)
+    call_history: Mapped[list] = mapped_column(JSONB, default=list)
     crm_notes: Mapped[str | None] = mapped_column(Text)
     # Hidden (manager doesn't see)
-    hidden_objections: Mapped[dict] = mapped_column(JSONB, default=list)
-    trap_ids: Mapped[dict] = mapped_column(JSONB, default=list)  # list of trap UUIDs
+    hidden_objections: Mapped[list] = mapped_column(JSONB, default=list)
+    trap_ids: Mapped[list] = mapped_column(JSONB, default=list)  # list of trap UUIDs
     chain_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("objection_chains.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("objection_chains.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    cascade_ids: Mapped[dict] = mapped_column(JSONB, default=list)  # list of TrapCascade UUIDs
+    cascade_ids: Mapped[list] = mapped_column(JSONB, default=list)  # list of TrapCascade UUIDs
     breaking_point: Mapped[str | None] = mapped_column(Text)
     # Scoring additions
     trap_results: Mapped[dict | None] = mapped_column(JSONB)  # Results of trap handling
@@ -476,7 +566,7 @@ class ClientStory(Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
     )
     client_profile_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("client_profiles.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("client_profiles.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
     # Story arc metadata
@@ -496,18 +586,18 @@ class ClientStory(Base):
     # }
 
     # Active human factors (accumulated across calls)
-    active_factors: Mapped[dict] = mapped_column(JSONB, default=list)
+    active_factors: Mapped[list] = mapped_column(JSONB, default=list)
     # Format: [{"factor": "fatigue", "intensity": 0.7, "since_call": 2}, ...]
 
     # Between-call CRM simulation events
-    between_call_events: Mapped[dict] = mapped_column(JSONB, default=list)
+    between_call_events: Mapped[list] = mapped_column(JSONB, default=list)
     # Format: [
     #   {"after_call": 1, "event": "client_googled_bankruptcy", "impact": "increased_knowledge"},
     #   {"after_call": 2, "event": "creditor_called", "impact": "increased_anxiety"},
     # ]
 
     # Story-level consequences accumulated across calls
-    consequences: Mapped[dict] = mapped_column(JSONB, default=list)
+    consequences: Mapped[list] = mapped_column(JSONB, default=list)
     # Format: [{"call": 1, "type": "trust_broken", "severity": 0.8, "detail": "..."}, ...]
 
     # Compressed summary of older calls (managed by ContextBudgetManager)
@@ -516,6 +606,24 @@ class ClientStory(Base):
     # Game Director state
     director_state: Mapped[dict | None] = mapped_column(JSONB)
     # Format: {"tension_curve": [0.3, 0.6, 0.8], "pacing": "accelerating", "next_twist": "..."}
+
+    # ── Game Director: narrative lifecycle fields (used by advance_story) ──
+    # Relationship score: 0-100 trust meter, modified by empathy/rudeness/promises
+    relationship_score: Mapped[float] = mapped_column(Float, default=50.0)
+    # Lifecycle state machine: NEW_LEAD → FIRST_CONTACT → ... → DEAL_CLOSED/REJECTED
+    lifecycle_state: Mapped[str] = mapped_column(String(50), default="FIRST_CONTACT")
+    # Active storylets: list of storylet codes currently in play
+    active_storylets: Mapped[dict] = mapped_column(JSONB, default=list)
+    # Format: ["wife_found_out", "collectors_arrived"]
+    # Consequence log: accumulated consequences across all calls
+    consequence_log: Mapped[dict] = mapped_column(JSONB, default=list)
+    # Format: [{"id": "...", "level": "local", "trigger_action": "...",
+    #           "effect_description": "...", "is_active": true, ...}]
+    # Memory: promises, key moments, and other structured memories from calls
+    memory: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # Format: {"promises": [...], "key_moments": [...]}
+    # Total completed calls counter (incremented by game_director.advance_story)
+    total_calls: Mapped[int] = mapped_column(Integer, default=0)
 
     # --- Voice assignment (persistent across calls, ТЗ-04 v2) ---
     voice_id: Mapped[str | None] = mapped_column(
@@ -548,10 +656,10 @@ class EpisodicMemory(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     story_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("client_stories.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("client_stories.id", ondelete="CASCADE"), nullable=False, index=True
     )
     session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("training_sessions.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="CASCADE"), nullable=False, index=True
     )
     call_number: Mapped[int] = mapped_column(Integer, nullable=False)
 
@@ -587,10 +695,10 @@ class StoryStageDirection(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     story_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("client_stories.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("client_stories.id", ondelete="CASCADE"), nullable=False, index=True
     )
     session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("training_sessions.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="CASCADE"), nullable=False, index=True
     )
     call_number: Mapped[int] = mapped_column(Integer, nullable=False)
     message_sequence: Mapped[int] = mapped_column(Integer, nullable=False)

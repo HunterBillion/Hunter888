@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { logger } from "@/lib/logger";
+import { getRefreshToken, getToken, setTokens } from "@/lib/auth";
 import { createWebSocket } from "@/lib/ws";
 import type { WSConnectionState, WSMessage } from "@/types";
 
@@ -10,17 +11,24 @@ interface UseWebSocketOptions {
   onMessage?: (data: WSMessage) => void;
   onError?: (error: Event) => void;
   autoConnect?: boolean;
+  /** Session ID for resume after reconnect (from useSessionStore) */
+  sessionId?: string | null;
+  /** Last received sequence number for message replay */
+  lastSequenceNumber?: number | null;
 }
 
 const HEARTBEAT_INTERVAL = 30_000; // 30 seconds
 const MAX_RECONNECT_DELAY = 30_000; // 30 seconds max
 const INITIAL_RECONNECT_DELAY = 1_000; // 1 second
+const TOKEN_REFRESH_INTERVAL = 25 * 60 * 1000; // 25 minutes (token TTL = 30 min)
 
 export function useWebSocket({
   path = "/ws/training",
   onMessage,
   onError,
   autoConnect = true,
+  sessionId = null,
+  lastSequenceNumber = null,
 }: UseWebSocketOptions = {}) {
   const [connectionState, setConnectionState] =
     useState<WSConnectionState>("disconnected");
@@ -31,15 +39,24 @@ export function useWebSocket({
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tokenRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const messageQueueRef = useRef<unknown[]>([]);
   const mountedRef = useRef(true);
   const manualCloseRef = useRef(false);
   const pathRef = useRef(path);
+  /** True after first successful connect — subsequent connects are reconnects */
+  const hasConnectedRef = useRef(false);
+  const sessionIdRef = useRef(sessionId);
+  const lastSeqRef = useRef(lastSequenceNumber);
+  // BUG-9 fix: ref to always call the latest connect() from setTimeout callbacks
+  const connectRef = useRef<() => void>(() => {});
 
-  // Keep callback refs up to date
+  // Keep refs up to date
   onMessageRef.current = onMessage;
   onErrorRef.current = onError;
   pathRef.current = path;
+  sessionIdRef.current = sessionId;
+  lastSeqRef.current = lastSequenceNumber;
 
   const clearTimers = useCallback(() => {
     if (reconnectTimerRef.current) {
@@ -49,6 +66,10 @@ export function useWebSocket({
     if (heartbeatTimerRef.current) {
       clearInterval(heartbeatTimerRef.current);
       heartbeatTimerRef.current = null;
+    }
+    if (tokenRefreshTimerRef.current) {
+      clearInterval(tokenRefreshTimerRef.current);
+      tokenRefreshTimerRef.current = null;
     }
   }, []);
 
@@ -63,6 +84,26 @@ export function useWebSocket({
     }, HEARTBEAT_INTERVAL);
   }, []);
 
+  const startTokenRefresh = useCallback(() => {
+    if (tokenRefreshTimerRef.current) {
+      clearInterval(tokenRefreshTimerRef.current);
+    }
+    tokenRefreshTimerRef.current = setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        const refreshToken = getRefreshToken();
+        if (refreshToken) {
+          wsRef.current.send(
+            JSON.stringify({
+              type: "auth.refresh",
+              data: { refresh_token: refreshToken },
+            }),
+          );
+          logger.log("[WS] Proactive token refresh sent");
+        }
+      }
+    }, TOKEN_REFRESH_INTERVAL);
+  }, []);
+
   const flushQueue = useCallback(() => {
     while (
       messageQueueRef.current.length > 0 &&
@@ -70,6 +111,42 @@ export function useWebSocket({
     ) {
       const msg = messageQueueRef.current.shift();
       wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  /**
+   * Try REST token refresh, then reconnect WS. Used when WS closes with 1008.
+   */
+  const refreshAndReconnect = useCallback(async () => {
+    try {
+      const refreshToken = getRefreshToken();
+      if (!refreshToken) {
+        window.location.href = "/login";
+        return;
+      }
+
+      // Use the same REST endpoint as api.ts
+      const apiBase =
+        process.env.NEXT_PUBLIC_API_URL || window.location.origin;
+      const res = await fetch(`${apiBase}/api/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const data = await res.json();
+      setTokens(data.access_token, data.refresh_token);
+      logger.log("[WS] Token refreshed via REST, reconnecting...");
+      // Reconnect will happen automatically via connect()
+    } catch {
+      logger.error("[WS] REST token refresh failed, redirecting to login");
+      window.location.href = "/login";
     }
   }, []);
 
@@ -82,9 +159,14 @@ export function useWebSocket({
     ) {
       return;
     }
+    // Close any lingering connection in CLOSING state to prevent duplicates
+    if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+      wsRef.current.close();
+    }
 
     manualCloseRef.current = false;
-    setConnectionState("connecting");
+    const isReconnect = hasConnectedRef.current;
+    setConnectionState(isReconnect ? "reconnecting" : "connecting");
 
     try {
       const ws = createWebSocket(pathRef.current);
@@ -94,7 +176,24 @@ export function useWebSocket({
         if (!mountedRef.current) return;
         setConnectionState("connected");
         reconnectDelayRef.current = INITIAL_RECONNECT_DELAY;
+        hasConnectedRef.current = true;
         startHeartbeat();
+        startTokenRefresh();
+
+        // If this is a reconnect and we have an active session — send resume
+        if (isReconnect && sessionIdRef.current) {
+          ws.send(
+            JSON.stringify({
+              type: "session.resume",
+              data: {
+                session_id: sessionIdRef.current,
+                last_sequence_number: lastSeqRef.current ?? null,
+              },
+            }),
+          );
+          logger.log("[WS] Sent session.resume for", sessionIdRef.current);
+        }
+
         flushQueue();
       };
 
@@ -104,6 +203,21 @@ export function useWebSocket({
           const data = JSON.parse(event.data);
           // Ignore pong messages
           if (data.type === "pong") return;
+
+          // Handle token refresh responses internally
+          if (data.type === "auth.refreshed") {
+            setTokens(data.data.access_token, data.data.refresh_token);
+            logger.log("[WS] Token refreshed via WS");
+            return;
+          }
+          if (data.type === "auth.refresh_error") {
+            if (data.data.reason === "refresh_expired") {
+              logger.error("[WS] Refresh token expired, redirecting to login");
+              window.location.href = "/login";
+            }
+            return;
+          }
+
           onMessageRef.current?.(data);
         } catch {
           logger.error("Failed to parse WebSocket message");
@@ -119,20 +233,39 @@ export function useWebSocket({
       ws.onclose = (event) => {
         if (!mountedRef.current) return;
         clearTimers();
-        setConnectionState("disconnected");
 
-        // 1008 = Policy Violation (auth denied) — redirect to login
-        if (event.code === 1008) {
-          window.location.href = "/login";
+        // 4001 = Superseded by newer connection — don't reconnect
+        if (event.code === 4001) {
+          setConnectionState("disconnected");
           return;
         }
 
+        // 1008 = Policy Violation (auth denied) — try REST refresh first
+        if (event.code === 1008) {
+          setConnectionState("reconnecting");
+          refreshAndReconnect().then(() => {
+            if (mountedRef.current && !manualCloseRef.current) {
+              // BUG-9 fix: use connectRef to avoid stale closure
+              reconnectTimerRef.current = setTimeout(() => {
+                if (mountedRef.current && !manualCloseRef.current) {
+                  connectRef.current();
+                }
+              }, 500);
+            }
+          });
+          return;
+        }
+
+        setConnectionState("disconnected");
+
         // Auto-reconnect with exponential backoff unless manually closed
         if (!manualCloseRef.current) {
+          setConnectionState("reconnecting");
           const delay = reconnectDelayRef.current;
+          // BUG-9 fix: use connectRef to avoid stale closure
           reconnectTimerRef.current = setTimeout(() => {
             if (mountedRef.current && !manualCloseRef.current) {
-              connect();
+              connectRef.current();
             }
           }, delay);
           // Exponential backoff: double the delay, cap at max
@@ -145,7 +278,10 @@ export function useWebSocket({
     } catch {
       setConnectionState("error");
     }
-  }, [clearTimers, startHeartbeat, flushQueue]);
+  }, [clearTimers, startHeartbeat, startTokenRefresh, flushQueue, refreshAndReconnect]);
+
+  // BUG-9 fix: keep ref always pointing to latest connect
+  connectRef.current = connect;
 
   const disconnect = useCallback(() => {
     manualCloseRef.current = true;

@@ -22,8 +22,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { useSound } from "@/hooks/useSound";
 import { useKnowledgeStore, type QuizMessage } from "@/stores/useKnowledgeStore";
 import { logger } from "@/lib/logger";
+import type { WSMessage } from "@/types";
 
 /* ─── Quiz Session Page ──────────────────────────────────────────────────── */
 
@@ -33,6 +35,7 @@ export default function KnowledgeSessionPage() {
   const sessionId = params.sessionId as string;
 
   const store = useKnowledgeStore();
+  const { playSound } = useSound();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -46,12 +49,13 @@ export default function KnowledgeSessionPage() {
       store.setSessionId(sessionId);
       store.setStatus("connecting");
     }
-  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps -- store setters are stable Zustand actions
 
   // WebSocket message handler
   const handleMessage = useCallback(
-    (data: Record<string, unknown>) => {
-      const type = data.type as string;
+    (msg: WSMessage) => {
+      const data: Record<string, unknown> = { ...msg, ...(msg.data || {}) };
+      const type = msg.type;
 
       switch (type) {
         case "session_started": {
@@ -77,24 +81,96 @@ export default function KnowledgeSessionPage() {
           break;
         }
 
-        case "question": {
-          store.addMessage({
-            type: "question",
-            content: data.content as string,
-            category: data.category as string | undefined,
-          });
-          store.setIsTyping(false);
+        // V2: quiz.ready with personality data
+        case "quiz.ready": {
+          store.setStatus("active");
+          store.setSessionId(sessionId);
+          if (typeof data.total_questions === "number") {
+            store.updateProgress({
+              correct: 0, incorrect: 0, skipped: 0, score: 0, current: 0,
+              total: data.total_questions as number,
+            });
+          }
+          if (typeof data.time_limit_per_question === "number") {
+            store.setTimeLeft(data.time_limit_per_question as number);
+          }
+          // V2: Set AI personality
+          const personality = data.ai_personality as Record<string, string> | undefined;
+          if (personality) {
+            store.setAiPersonality({
+              name: personality.name,
+              displayName: personality.display_name,
+              avatarEmoji: personality.avatar_emoji,
+              greeting: personality.greeting,
+            });
+            // Show greeting as system message
+            store.addMessage({
+              type: "system",
+              content: personality.greeting,
+              avatarEmoji: personality.avatar_emoji,
+            });
+          }
           break;
         }
 
-        case "feedback": {
+        case "question":
+        case "quiz.question": {
+          const content = (data.content || data.text) as string;
+          const currentPersonality = useKnowledgeStore.getState().aiPersonality;
+          store.addMessage({
+            type: "question",
+            content,
+            category: data.category as string | undefined,
+            avatarEmoji: currentPersonality?.avatarEmoji,
+          });
+          store.setIsTyping(false);
+          // V2: Update difficulty from server
+          if (typeof data.current_difficulty === "number") {
+            store.setCurrentDifficulty(data.current_difficulty as number);
+          }
+          // Clear pending follow-up
+          store.setPendingFollowUp(null);
+          break;
+        }
+
+        case "feedback":
+        case "quiz.feedback": {
+          // V2: Enhanced feedback with personality, streak, speed bonus
+          const personalityComment = data.personality_comment as string | undefined;
+          const speedBonus = data.speed_bonus as number | undefined;
+          const feedbackContent = personalityComment
+            ? `${personalityComment}\n\n${data.explanation as string || ""}`
+            : (data.explanation as string || "");
+          const currentPersonality2 = useKnowledgeStore.getState().aiPersonality;
+
+          // SFX: correct/incorrect + streak milestone
+          if (data.is_correct) {
+            playSound("correct", 0.4);
+            const streakVal = data.streak as number | undefined;
+            if (streakVal && [3, 5, 7, 10].includes(streakVal)) {
+              setTimeout(() => playSound("streak", 0.5), 300);
+            }
+          } else {
+            playSound("incorrect", 0.3);
+          }
+
           store.addMessage({
             type: "feedback",
-            content: data.explanation as string || "",
+            content: feedbackContent,
             isCorrect: data.is_correct as boolean,
             explanation: data.explanation as string | undefined,
-            articleRef: data.article_ref as string | undefined,
+            articleRef: (data.article_ref || data.article_reference) as string | undefined,
+            personalityComment,
+            speedBonus,
+            avatarEmoji: currentPersonality2?.avatarEmoji,
           });
+          // V2: Update streak & difficulty
+          if (typeof data.streak === "number") {
+            store.setStreak(data.streak as number, (data.best_streak as number) ?? store.bestStreak);
+          }
+          if (typeof data.current_difficulty === "number") {
+            store.setCurrentDifficulty(data.current_difficulty as number);
+          }
           if (data.progress) {
             const p = data.progress as Record<string, number>;
             store.updateProgress({
@@ -109,19 +185,56 @@ export default function KnowledgeSessionPage() {
           break;
         }
 
-        case "hint": {
+        // V2: Follow-up question from AI
+        case "quiz.follow_up": {
+          store.setPendingFollowUp(data.text as string);
+          const currentPersonality3 = useKnowledgeStore.getState().aiPersonality;
+          store.addMessage({
+            type: "follow_up",
+            content: data.text as string,
+            avatarEmoji: currentPersonality3?.avatarEmoji,
+          });
+          break;
+        }
+
+        // V2: Progress update
+        case "quiz.progress": {
+          const p = data as Record<string, number>;
+          store.updateProgress({
+            correct: p.correct ?? store.correct,
+            incorrect: p.incorrect ?? store.incorrect,
+            skipped: p.skipped ?? store.skipped,
+            score: p.score ?? store.score,
+            current: p.current ?? store.currentQuestion,
+            total: p.total ?? store.totalQuestions,
+          });
+          break;
+        }
+
+        // V2: Soft limit warning
+        case "quiz.soft_limit": {
+          store.addMessage({
+            type: "system",
+            content: data.text as string,
+          });
+          break;
+        }
+
+        case "hint":
+        case "quiz.hint": {
           store.addMessage({
             type: "hint",
-            content: data.content as string,
+            content: (data.content || data.text) as string,
           });
           setHintLoading(false);
           break;
         }
 
-        case "system": {
+        case "system":
+        case "quiz.system_message": {
           store.addMessage({
             type: "system",
-            content: data.content as string,
+            content: (data.content || data.text) as string,
           });
           break;
         }
@@ -131,12 +244,16 @@ export default function KnowledgeSessionPage() {
           break;
         }
 
-        case "timer_sync": {
-          store.setTimeLeft(data.time_left as number);
+        case "timer_sync":
+        case "quiz.timeout": {
+          if (typeof data.time_left === "number") {
+            store.setTimeLeft(data.time_left as number);
+          }
           break;
         }
 
-        case "session_completed": {
+        case "session_completed":
+        case "quiz.completed": {
           store.setResults(data.results as Record<string, unknown>);
           store.setStatus("completed");
           setShowResults(true);
@@ -144,6 +261,9 @@ export default function KnowledgeSessionPage() {
             clearInterval(timerRef.current);
             timerRef.current = null;
           }
+          // SFX: victory or defeat based on score
+          const resultScore = ((data.results as Record<string, unknown>)?.score as number) ?? 0;
+          playSound(resultScore >= 50 ? "victory" : "defeat", 0.5);
           break;
         }
 
@@ -159,26 +279,38 @@ export default function KnowledgeSessionPage() {
           logger.warn("[Knowledge WS] Unknown message type:", type);
       }
     },
-    [sessionId], // eslint-disable-line react-hooks/exhaustive-deps
+    [sessionId], // eslint-disable-line react-hooks/exhaustive-deps -- store actions are stable Zustand refs
   );
 
   // WebSocket connection
   const { sendMessage, isConnected, connectionState } = useWebSocket({
-    path: `/ws/knowledge/${sessionId}`,
+    path: `/ws/knowledge`,
     onMessage: handleMessage,
     autoConnect: true,
   });
 
-  // Set active status once connected
+  // Send quiz.start when WS connects and status is still "connecting"
   useEffect(() => {
     if (isConnected && store.status === "connecting") {
-      store.setStatus("active");
+      // Retrieve mode/category from URL search params or store
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get("mode") || store.mode || "free_dialog";
+      const category = params.get("category") || store.category || undefined;
+      const personality = params.get("personality") || undefined;
+      sendMessage({
+        type: "quiz.start",
+        data: { mode, category, ai_personality: personality },
+      });
     }
-  }, [isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isConnected, store.status, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Timer for blitz mode
+  // Extract boolean so we don't put a raw expression in the deps array
+  // (which React can't track) and don't use the numeric timeLeft value
+  // (which would restart the interval every second).
+  const hasTimeLeft = store.timeLeft !== null;
   useEffect(() => {
-    if (store.mode === "blitz" && store.timeLeft !== null && store.status === "active") {
+    if (store.mode === "blitz" && hasTimeLeft && store.status === "active") {
       timerRef.current = setInterval(() => {
         store.tickTimer();
       }, 1000);
@@ -189,7 +321,15 @@ export default function KnowledgeSessionPage() {
         }
       };
     }
-  }, [store.mode, store.status, store.timeLeft !== null]); // eslint-disable-line react-hooks/exhaustive-deps
+    // store.tickTimer is a stable Zustand action — safe to omit.
+  }, [store.mode, store.status, hasTimeLeft]); // eslint-disable-line react-hooks/exhaustive-deps -- store.tickTimer is a stable Zustand action (documented above)
+
+  // SFX: tick sound for last 10 seconds in blitz
+  useEffect(() => {
+    if (store.mode === "blitz" && store.timeLeft !== null && store.timeLeft <= 10 && store.timeLeft > 0) {
+      playSound("tick", 0.2);
+    }
+  }, [store.mode, store.timeLeft, playSound]);
 
   // Auto-scroll
   useEffect(() => {
@@ -208,13 +348,13 @@ export default function KnowledgeSessionPage() {
 
     // Focus back on input
     setTimeout(() => inputRef.current?.focus(), 50);
-  }, [store.input, store.status, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [store.input, store.status, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps -- store setters are stable Zustand actions
 
   // Skip question
   const handleSkip = useCallback(() => {
     sendMessage({ type: "skip" });
     store.addMessage({ type: "system", content: "Вопрос пропущен" });
-  }, [sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps -- store.addMessage is a stable Zustand action
 
   // Request hint
   const handleHint = useCallback(() => {
@@ -266,7 +406,7 @@ export default function KnowledgeSessionPage() {
               className="absolute top-0 left-0 right-0 h-[2px]"
               style={{
                 background:
-                  "linear-gradient(90deg, transparent, #8B5CF6, transparent)",
+                  "linear-gradient(90deg, transparent, #6366F1, transparent)",
               }}
             />
 
@@ -332,7 +472,7 @@ export default function KnowledgeSessionPage() {
                   {store.correct}
                 </div>
                 <div
-                  className="mt-1 font-mono text-[10px] uppercase tracking-widest"
+                  className="mt-1 font-mono text-xs uppercase tracking-widest"
                   style={{ color: "var(--text-muted)" }}
                 >
                   Верно
@@ -352,7 +492,7 @@ export default function KnowledgeSessionPage() {
                   {store.incorrect}
                 </div>
                 <div
-                  className="mt-1 font-mono text-[10px] uppercase tracking-widest"
+                  className="mt-1 font-mono text-xs uppercase tracking-widest"
                   style={{ color: "var(--text-muted)" }}
                 >
                   Неверно
@@ -361,18 +501,18 @@ export default function KnowledgeSessionPage() {
               <div
                 className="rounded-xl p-4 text-center"
                 style={{
-                  background: "rgba(139,92,246,0.06)",
-                  border: "1px solid rgba(139,92,246,0.15)",
+                  background: "rgba(99,102,241,0.06)",
+                  border: "1px solid rgba(99,102,241,0.15)",
                 }}
               >
                 <div
                   className="font-display text-3xl font-bold"
-                  style={{ color: "#8B5CF6" }}
+                  style={{ color: "#6366F1" }}
                 >
                   {accuracy}%
                 </div>
                 <div
-                  className="mt-1 font-mono text-[10px] uppercase tracking-widest"
+                  className="mt-1 font-mono text-xs uppercase tracking-widest"
                   style={{ color: "var(--text-muted)" }}
                 >
                   Точность
@@ -392,13 +532,70 @@ export default function KnowledgeSessionPage() {
                   {store.score}
                 </div>
                 <div
-                  className="mt-1 font-mono text-[10px] uppercase tracking-widest"
+                  className="mt-1 font-mono text-xs uppercase tracking-widest"
                   style={{ color: "var(--text-muted)" }}
                 >
                   Очки
                 </div>
               </div>
             </div>
+
+            {/* V2: Streak counter with animation */}
+            <AnimatePresence>
+              {store.streak >= 2 && (
+                <motion.div
+                  key={`streak-${store.streak}`}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: [1, 1.15, 1] }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.4 }}
+                  className="mt-3 flex items-center justify-center gap-1 rounded-lg py-1.5 px-3"
+                  style={{
+                    background: store.streak >= 5
+                      ? "rgba(249,115,22,0.2)"
+                      : "rgba(249,115,22,0.1)",
+                    border: `1px solid rgba(249,115,22,${store.streak >= 5 ? 0.4 : 0.2})`,
+                    boxShadow: store.streak >= 5
+                      ? "0 0 12px rgba(249,115,22,0.3)"
+                      : "none",
+                  }}
+                >
+                  <motion.span
+                    className="text-orange-500 text-sm"
+                    animate={store.streak >= 5 ? { scale: [1, 1.3, 1] } : {}}
+                    transition={{ repeat: Infinity, duration: 1.5 }}
+                  >
+                    {"\uD83D\uDD25"}
+                  </motion.span>
+                  <span className="font-mono text-sm font-bold" style={{ color: "#F97316" }}>
+                    {store.streak}
+                  </span>
+                  {store.streak >= 5 && (
+                    <motion.span
+                      className="text-xs font-mono text-orange-400 ml-1"
+                      animate={{ opacity: [0.6, 1, 0.6] }}
+                      transition={{ repeat: Infinity, duration: 1.2 }}
+                    >
+                      В УДАРЕ!
+                    </motion.span>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* V2: Difficulty indicator */}
+            {store.currentDifficulty > 0 && (
+              <div className="mt-2 text-center">
+                <span className="font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>
+                  СЛОЖНОСТЬ{" "}
+                </span>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <span key={i} style={{ color: i < store.currentDifficulty ? "#F59E0B" : "var(--text-muted)", fontSize: "12px" }}>
+                    {"\u2B50"}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {store.skipped > 0 && (
               <div
@@ -433,7 +630,7 @@ export default function KnowledgeSessionPage() {
                   // Would create new session
                   router.push("/pvp");
                 }}
-                className="vh-btn-primary flex flex-1 items-center justify-center gap-2"
+                className="btn-neon flex flex-1 items-center justify-center gap-2"
                 whileTap={{ scale: 0.98 }}
               >
                 Ещё раз
@@ -481,7 +678,7 @@ export default function KnowledgeSessionPage() {
             </motion.button>
             <div>
               <div
-                className="font-mono text-[10px] uppercase tracking-[0.2em]"
+                className="font-mono text-xs uppercase tracking-[0.2em]"
                 style={{ color: "var(--accent)" }}
               >
                 {store.mode === "blitz"
@@ -519,7 +716,7 @@ export default function KnowledgeSessionPage() {
                   />
                 </div>
                 <span
-                  className="font-mono text-[10px]"
+                  className="font-mono text-xs"
                   style={{ color: "var(--text-muted)" }}
                 >
                   {store.currentQuestion}/{store.totalQuestions}
@@ -626,11 +823,11 @@ export default function KnowledgeSessionPage() {
                 <div
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
                   style={{
-                    background: "rgba(139,92,246,0.12)",
-                    border: "1px solid rgba(139,92,246,0.25)",
+                    background: "rgba(99,102,241,0.12)",
+                    border: "1px solid rgba(99,102,241,0.25)",
                   }}
                 >
-                  <Brain size={14} style={{ color: "#8B5CF6" }} />
+                  <Brain size={14} style={{ color: "#6366F1" }} />
                 </div>
                 <div
                   className="rounded-2xl rounded-tl-sm px-4 py-3"
@@ -662,6 +859,45 @@ export default function KnowledgeSessionPage() {
           <div ref={messagesEndRef} />
         </div>
       </div>
+
+      {/* V2: Follow-up action bar */}
+      {store.pendingFollowUp && (
+        <div
+          className="shrink-0 border-t px-4 py-3"
+          style={{
+            borderColor: "rgba(99,102,241,0.15)",
+            background: "rgba(99,102,241,0.04)",
+          }}
+        >
+          <div className="mx-auto flex max-w-3xl items-center justify-between">
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Уточняющий вопрос — вы можете ответить или пропустить
+            </span>
+            <div className="flex gap-2">
+              <button
+                className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+                style={{ background: "rgba(99,102,241,0.15)", color: "#6366F1" }}
+                onClick={() => {
+                  store.setPendingFollowUp(null);
+                  // Let user type answer normally - next text.message will be treated as follow-up answer
+                }}
+              >
+                Ответить
+              </button>
+              <button
+                className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+                style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-muted)" }}
+                onClick={() => {
+                  store.setPendingFollowUp(null);
+                  sendMessage({ type: "quiz.follow_up_response", data: { action: "skip" } });
+                }}
+              >
+                Пропустить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Input Bar */}
       <div
@@ -763,6 +999,10 @@ function MessageBubble({ message }: { message: QuizMessage }) {
   const isFeedback = message.type === "feedback";
   const isHint = message.type === "hint";
   const isQuestion = message.type === "question";
+  const isFollowUp = message.type === "follow_up";
+
+  // V2: Avatar emoji from personality
+  const avatarEmoji = message.avatarEmoji;
 
   // System messages
   if (isSystem) {
@@ -773,7 +1013,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         className="flex justify-center"
       >
         <div
-          className="rounded-full px-4 py-1.5 font-mono text-[10px] uppercase tracking-wider"
+          className="rounded-full px-4 py-1.5 font-mono text-xs uppercase tracking-wider"
           style={{
             background: "rgba(255,255,255,0.04)",
             color: "var(--text-muted)",
@@ -804,14 +1044,14 @@ function MessageBubble({ message }: { message: QuizMessage }) {
           <Lightbulb size={14} style={{ color: "#F59E0B" }} />
         </div>
         <div
-          className="max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
+          className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
           style={{
             background: "rgba(245,158,11,0.06)",
             border: "1px solid rgba(245,158,11,0.15)",
           }}
         >
           <div
-            className="font-mono text-[9px] uppercase tracking-widest mb-1"
+            className="font-mono text-xs uppercase tracking-widest mb-1"
             style={{ color: "#F59E0B" }}
           >
             Подсказка
@@ -855,11 +1095,11 @@ function MessageBubble({ message }: { message: QuizMessage }) {
           )}
         </div>
         <div
-          className="max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
+          className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
           style={{ background: bgColor, border: `1px solid ${borderColor}` }}
         >
           <div
-            className="font-mono text-[9px] uppercase tracking-widest mb-1"
+            className="font-mono text-xs uppercase tracking-widest mb-1"
             style={{ color }}
           >
             {correct ? "Верно!" : "Неверно"}
@@ -874,13 +1114,58 @@ function MessageBubble({ message }: { message: QuizMessage }) {
           )}
           {message.articleRef && (
             <div
-              className="mt-2 flex items-center gap-1.5 font-mono text-[10px]"
+              className="mt-2 flex items-center gap-1.5 font-mono text-xs"
               style={{ color: "var(--text-muted)" }}
             >
-              <BookOpen size={10} />
+              <BookOpen size={13} />
               <span>{message.articleRef}</span>
             </div>
           )}
+          {/* V2: Speed bonus badge */}
+          {message.speedBonus && message.speedBonus > 0 && (
+            <div
+              className="mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-mono font-bold"
+              style={{ background: "rgba(34,197,94,0.15)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.25)" }}
+            >
+              {"\u26A1"} +{message.speedBonus} SPEED BONUS
+            </div>
+          )}
+        </div>
+      </motion.div>
+    );
+  }
+
+  // V2: Follow-up message
+  if (isFollowUp) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-start gap-3"
+      >
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg"
+          style={{
+            background: "rgba(99,102,241,0.12)",
+            border: "1px solid rgba(99,102,241,0.25)",
+          }}
+        >
+          {avatarEmoji || "\uD83D\uDCA1"}
+        </div>
+        <div
+          className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
+          style={{
+            background: "rgba(99,102,241,0.06)",
+            border: "1px solid rgba(99,102,241,0.15)",
+            borderLeft: "3px solid rgba(99,102,241,0.4)",
+          }}
+        >
+          <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: "#6366F1" }}>
+            Уточняющий вопрос (опционально)
+          </div>
+          <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+            {message.content}
+          </p>
         </div>
       </motion.div>
     );
@@ -895,16 +1180,16 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         className="flex items-start gap-3"
       >
         <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg"
           style={{
-            background: "rgba(139,92,246,0.12)",
-            border: "1px solid rgba(139,92,246,0.25)",
+            background: "rgba(99,102,241,0.12)",
+            border: "1px solid rgba(99,102,241,0.25)",
           }}
         >
-          <BookOpen size={14} style={{ color: "#8B5CF6" }} />
+          {avatarEmoji || <BookOpen size={14} style={{ color: "#6366F1" }} />}
         </div>
         <div
-          className="max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
+          className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
           style={{
             background: "rgba(255,255,255,0.04)",
             border: "1px solid rgba(255,255,255,0.08)",
@@ -912,7 +1197,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         >
           {message.category && (
             <div
-              className="font-mono text-[9px] uppercase tracking-widest mb-1.5"
+              className="font-mono text-xs uppercase tracking-widest mb-1.5"
               style={{ color: "var(--accent)" }}
             >
               {message.category}
@@ -937,10 +1222,10 @@ function MessageBubble({ message }: { message: QuizMessage }) {
       className="flex justify-end"
     >
       <div
-        className="max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-3"
+        className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-3"
         style={{
-          background: "rgba(139,92,246,0.15)",
-          border: "1px solid rgba(139,92,246,0.25)",
+          background: "rgba(99,102,241,0.15)",
+          border: "1px solid rgba(99,102,241,0.25)",
         }}
       >
         <p

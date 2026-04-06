@@ -13,6 +13,7 @@ Game CRM Service — бизнес-логика игровой CRM (Agent 7, spec
 - change_game_status(story_id, new_status) — смена статуса игрового клиента
 """
 
+import asyncio
 import json
 import logging
 import uuid
@@ -26,6 +27,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import settings
 from app.core import errors as err
+from app.core.redis_pool import get_redis
 from app.models.game_crm import GameClientEvent, GameClientStatus, GameEventType
 from app.models.roleplay import ClientProfile, ClientStory, EpisodicMemory, ObjectionChain, Trap
 from app.models.training import TrainingSession
@@ -46,20 +48,12 @@ MAX_MEMORY_ITEMS = 8
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Redis helper (shared pool)
+# Redis helper (uses centralized pool from app.core.redis_pool)
 # ══════════════════════════════════════════════════════════════════════════════
 
-_redis_pool: aioredis.ConnectionPool | None = None
-
-
 def _get_redis() -> aioredis.Redis:
-    """Get Redis client using shared pool (same pattern as deps.py)."""
-    global _redis_pool
-    if _redis_pool is None:
-        _redis_pool = aioredis.ConnectionPool.from_url(
-            settings.redis_url, decode_responses=True, max_connections=10,
-        )
-    return aioredis.Redis(connection_pool=_redis_pool)
+    """Get Redis client from centralized shared pool."""
+    return get_redis()
 
 
 async def _cache_get(key: str) -> dict | None:
@@ -691,18 +685,29 @@ class GameCRMService:
         actor_id: uuid.UUID,
         manager_message: str,
     ) -> str:
+        # Step 1: fetch recent chat history first — needed to build the RAG query
         recent_messages = await self._get_recent_chat_history(story.id)
+
+        # Step 2: kick off the RAG lookup in the background using its own DB
+        # session so it can run concurrently with the sequential self.db queries
+        # below (SQLAlchemy async sessions hold a single connection — concurrent
+        # queries on the same session are not safe).
+        _legal_query = "\n".join(
+            [msg.get("content", "") for msg in recent_messages[-6:]] + [manager_message]
+        )
+
+        async def _fetch_legal_isolated():
+            from app.database import async_session as _make_session
+            async with _make_session() as rag_db:
+                return await retrieve_legal_context(_legal_query, rag_db, top_k=6)
+
+        legal_task = asyncio.create_task(_fetch_legal_isolated())
+
+        # Step 3: sequential self.db queries (single connection, cannot parallelize)
         memories = await self._get_story_memories(story.id)
         manager_skill = await self._get_manager_skill_profile(actor_id)
         traps = await self._get_story_traps(story)
         chain_prompt = await self._get_story_chain_prompt(story)
-        legal_context = await retrieve_legal_context(
-            "\n".join(
-                [msg.get("content", "") for msg in recent_messages[-6:]] + [manager_message]
-            ),
-            self.db,
-            top_k=6,
-        )
 
         profile = None
         if story.client_profile_id:
@@ -710,6 +715,14 @@ class GameCRMService:
                 select(ClientProfile).where(ClientProfile.id == story.client_profile_id)
             )
             profile = profile_result.scalar_one_or_none()
+
+        # Step 4: await the RAG result (likely already done by the time we get here)
+        try:
+            legal_context = await legal_task
+        except Exception as exc:
+            logger.warning("Legal context fetch failed, proceeding without RAG: %s", exc)
+            from app.services.rag_legal import RAGContext
+            legal_context = RAGContext(results=[], query=_legal_query)
 
         system_prompt = self._build_ai_client_system_prompt(
             story,

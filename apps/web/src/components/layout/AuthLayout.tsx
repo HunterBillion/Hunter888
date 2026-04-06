@@ -4,14 +4,22 @@ import { useEffect, useState, useRef, Component, type ReactNode, type ErrorInfo 
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { logger } from "@/lib/logger";
-import { Crosshair, Loader2, RefreshCw } from "lucide-react";
-import { getToken } from "@/lib/auth";
+import { Loader2, RefreshCw } from "lucide-react";
+import { getToken, getRefreshToken, setTokens } from "@/lib/auth";
 import { api } from "@/lib/api";
+import { getApiBaseUrl } from "@/lib/public-origin";
 import Header from "./Header";
-import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
+// Breadcrumbs removed — page name is already shown in navbar active tab
 import { KeyboardShortcutsOverlay } from "@/components/ui/KeyboardShortcutsOverlay";
 import { CommandPalette } from "@/components/ui/CommandPalette";
 import { PageTransition } from "@/components/layout/PageTransition";
+import { ScreenShakeProvider } from "@/components/ui/ScreenShake";
+
+/** Check if vh_authenticated marker cookie exists (survives page reload). */
+function hasAuthMarkerCookie(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.cookie.includes("vh_authenticated=");
+}
 
 // ── Error Boundary ──────────────────────────────────────
 interface ErrorBoundaryProps {
@@ -55,7 +63,7 @@ class AuthErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState
                 this.setState({ hasError: false, error: null });
                 window.location.reload();
               }}
-              className="vh-btn-primary flex items-center gap-2 mx-auto"
+              className="btn-neon flex items-center gap-2 mx-auto"
             >
               <RefreshCw size={14} />
               Перезагрузить
@@ -93,49 +101,71 @@ export default function AuthLayout({
   requireConsent = true,
 }: AuthLayoutProps) {
   const router = useRouter();
-  const [state, setState] = useState<"loading" | "ready" | "redirecting" | "error">(
-    () => {
-      const token = typeof window !== "undefined" ? getToken() : null;
-      if (!token) return "loading";
-      if (!requireConsent || _consentOk) return "ready";
-      return "loading";
-    },
-  );
+  // Always start with "loading" on both server and client — using typeof window
+  // in a useState initializer causes SSR/client hydration mismatch because the
+  // server never has window. The useEffect boot below handles all auth logic.
+  const [state, setState] = useState<"loading" | "ready" | "redirecting" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState("");
+  const retryCount = useRef(0);
   const didRun = useRef(false);
 
   useEffect(() => {
     if (didRun.current) return;
     didRun.current = true;
 
-    const token = getToken();
-    if (!token) {
-      setState("redirecting");
-      router.replace("/login");
-      return;
-    }
+    const boot = async () => {
+      let token = getToken();
 
-    // Invalidate consent cache if user changed (prevents cross-user leakage)
-    if (_consentUserToken && _consentUserToken !== token) {
-      _consentChecked = false;
-      _consentOk = false;
-    }
-    _consentUserToken = token;
+      // After full-page reload the in-memory token is gone, but httpOnly
+      // refresh_token cookie may still be valid. Try to restore the session
+      // before giving up and redirecting to /login.
+      if (!token && hasAuthMarkerCookie()) {
+        try {
+          const storedRefreshToken = getRefreshToken();
+          const res = await fetch(`${getApiBaseUrl()}/api/auth/refresh`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(storedRefreshToken ? { refresh_token: storedRefreshToken } : {}),
+            credentials: "include",
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.access_token) {
+              setTokens(data.access_token, data.refresh_token);
+              token = data.access_token;
+            }
+          }
+        } catch {
+          // Refresh failed — will redirect to login below
+        }
+      }
 
-    if (!requireConsent || _consentOk) {
-      setState("ready");
-      return;
-    }
+      if (!token) {
+        setState("redirecting");
+        router.replace("/login");
+        return;
+      }
 
-    if (_consentChecked) {
-      setState(_consentOk ? "ready" : "redirecting");
-      if (!_consentOk) router.replace("/consent");
-      return;
-    }
+      // Invalidate consent cache if user changed (prevents cross-user leakage)
+      if (_consentUserToken && _consentUserToken !== token) {
+        _consentChecked = false;
+        _consentOk = false;
+      }
+      _consentUserToken = token;
 
-    api
-      .get("/consent/status")
-      .then((data) => {
+      if (!requireConsent || _consentOk) {
+        setState("ready");
+        return;
+      }
+
+      if (_consentChecked) {
+        setState(_consentOk ? "ready" : "redirecting");
+        if (!_consentOk) router.replace("/consent");
+        return;
+      }
+
+      try {
+        const data = await api.get("/consent/status");
         _consentChecked = true;
         _consentOk = data.all_accepted;
         if (data.all_accepted) {
@@ -144,15 +174,17 @@ export default function AuthLayout({
           setState("redirecting");
           router.replace("/consent");
         }
-      })
-      .catch((err) => {
-        // Fail-closed: don't allow access if consent check fails
+      } catch (err: unknown) {
+        logger.error("[AuthLayout] consent error:", err);
         _consentChecked = false;
         _consentOk = false;
         setState("error");
-        setErrorMessage(err?.message || "Не удалось проверить статус согласия");
-      });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+        setErrorMessage(err instanceof Error ? err.message : "Не удалось проверить статус согласия");
+      }
+    };
+
+    boot();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only initialization; boot fn is intentionally excluded
 
   if (state === "error") {
     return (
@@ -169,31 +201,60 @@ export default function AuthLayout({
           </p>
           <button
             onClick={() => {
+              const MAX_RETRIES = 5;
+              if (retryCount.current >= MAX_RETRIES) {
+                setErrorMessage("Слишком много попыток. Перезагрузите страницу.");
+                return;
+              }
+              retryCount.current += 1;
+              // Reset state and re-run the full boot flow (including token refresh)
               didRun.current = false;
+              _consentChecked = false;
+              _consentOk = false;
               setState("loading");
               setErrorMessage("");
-              // Retry consent check
+              // Exponential backoff: 200ms, 400ms, 800ms, 1600ms, 3200ms
+              const delay = Math.min(200 * Math.pow(2, retryCount.current - 1), 5000);
               setTimeout(() => {
                 didRun.current = false;
-                const token = getToken();
-                if (!token) {
-                  router.replace("/login");
-                  return;
-                }
-                api.get("/consent/status")
-                  .then((data) => {
+                const fullRetry = async () => {
+                  let token = getToken();
+                  if (!token && hasAuthMarkerCookie()) {
+                    try {
+                      const storedRefreshToken = getRefreshToken();
+                      const res = await fetch(`${getApiBaseUrl()}/api/auth/refresh`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(storedRefreshToken ? { refresh_token: storedRefreshToken } : {}),
+                        credentials: "include",
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        if (data.access_token) {
+                          setTokens(data.access_token, data.refresh_token);
+                          token = data.access_token;
+                        }
+                      }
+                    } catch { /* continue without token */ }
+                  }
+                  if (!token) { setState("redirecting"); router.replace("/login"); return; }
+                  if (!requireConsent) { setState("ready"); retryCount.current = 0; return; }
+                  try {
+                    const data = await api.get("/consent/status");
                     _consentChecked = true;
                     _consentOk = data.all_accepted;
                     setState(data.all_accepted ? "ready" : "redirecting");
+                    if (data.all_accepted) retryCount.current = 0;
                     if (!data.all_accepted) router.replace("/consent");
-                  })
-                  .catch(() => {
+                  } catch {
                     setState("error");
                     setErrorMessage("Сервер по-прежнему недоступен");
-                  });
-              }, 100);
+                  }
+                };
+                fullRetry();
+              }, delay);
             }}
-            className="vh-btn-primary flex items-center gap-2 mx-auto"
+            className="btn-neon flex items-center gap-2 mx-auto"
           >
             <RefreshCw size={14} />
             Повторить
@@ -211,16 +272,13 @@ export default function AuthLayout({
           animate={{ opacity: 1, scale: 1 }}
           className="flex flex-col items-center gap-3"
         >
-          <div className="relative">
-            <Crosshair size={24} style={{ color: "var(--accent)" }} />
-            <Loader2
-              size={40}
-              className="absolute -left-2 -top-2 animate-spin"
-              style={{ color: "var(--accent)", opacity: 0.3 }}
-            />
-          </div>
+          <Loader2
+            size={28}
+            className="animate-spin"
+            style={{ color: "var(--accent)", opacity: 0.6 }}
+          />
           <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-            {state === "loading" ? "ПРОВЕРКА АВТОРИЗАЦИИ..." : "ПЕРЕНАПРАВЛЕНИЕ..."}
+            {state === "loading" ? "Загрузка..." : "Перенаправление..."}
           </span>
         </motion.div>
       </div>
@@ -229,17 +287,26 @@ export default function AuthLayout({
 
   return (
     <AuthErrorBoundary>
-      <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-primary)" }}>
-        {/* Scanlines — centralized here */}
-        <div className="fixed inset-0 scanlines z-[100] opacity-10 mix-blend-overlay pointer-events-none" />
-        <Header />
-        <Breadcrumbs className="mx-auto max-w-6xl px-4 pt-3" />
-        <main className="flex-1">
-          <PageTransition>{children}</PageTransition>
-        </main>
-        <KeyboardShortcutsOverlay />
-        <CommandPalette />
-      </div>
+      <ScreenShakeProvider>
+        {/* Root background — body-level solid color, no stacking context */}
+        <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-primary)" }}>
+
+          {/* ── Single global dot-grid — rendered ONCE for ALL pages ── */}
+          {/* Positioned at z-index: 0, below content (z-index: 1+)       */}
+          {/* No duplication on page transitions since it's in this layout */}
+          <div className="app-grid-layer" aria-hidden="true" />
+
+          {/* Scanlines CRT overlay — above grid, below content */}
+          <div className="fixed inset-0 scanlines z-[2] opacity-[0.06] mix-blend-overlay pointer-events-none" />
+
+          <Header />
+          <main className="flex-1" style={{ position: "relative", zIndex: 1, minHeight: "calc(100vh - 200px)", overflow: "clip" }}>
+            <PageTransition>{children}</PageTransition>
+          </main>
+          <KeyboardShortcutsOverlay />
+          <CommandPalette />
+        </div>
+      </ScreenShakeProvider>
     </AuthErrorBoundary>
   );
 }

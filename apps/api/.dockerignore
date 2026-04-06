@@ -21,6 +21,5 @@ build
 .github
 docker-compose*
 Makefile
-scripts
 backups
 nginx

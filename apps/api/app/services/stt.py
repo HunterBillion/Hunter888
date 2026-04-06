@@ -14,7 +14,40 @@ import httpx
 
 from app.config import settings
 
-_MIN_AUDIO_SIZE = 100
+_MIN_AUDIO_SIZE = 500  # Increased: 100 bytes is too small for any valid audio
+
+
+def _detect_mime_type(audio_bytes: bytes) -> tuple[str, str]:
+    """Detect audio MIME type and file extension from magic bytes.
+
+    Returns:
+        (mime_type, extension) e.g. ("audio/webm", "webm")
+    """
+    if len(audio_bytes) < 4:
+        return "audio/webm", "webm"
+
+    # WAV: starts with RIFF....WAVE
+    if audio_bytes[:4] == b"RIFF" and audio_bytes[8:12] == b"WAVE":
+        return "audio/wav", "wav"
+
+    # OGG (includes Opus): starts with OggS
+    if audio_bytes[:4] == b"OggS":
+        return "audio/ogg", "ogg"
+
+    # WebM/Matroska: starts with 0x1A45DFA3
+    if audio_bytes[:4] == b"\x1a\x45\xdf\xa3":
+        return "audio/webm", "webm"
+
+    # MP3: starts with ID3 or 0xFF 0xFB/0xFF 0xF3/0xFF 0xF2
+    if audio_bytes[:3] == b"ID3" or (audio_bytes[0] == 0xFF and audio_bytes[1] in (0xFB, 0xF3, 0xF2, 0xE3)):
+        return "audio/mpeg", "mp3"
+
+    # FLAC: starts with fLaC
+    if audio_bytes[:4] == b"fLaC":
+        return "audio/flac", "flac"
+
+    # Default: assume webm (most common from browser MediaRecorder)
+    return "audio/webm", "webm"
 
 _BFL_CORRECTIONS = {
     r"\bбэ\s*фэ\s*эл\b": "БФЛ",
@@ -57,6 +90,42 @@ async def transcribe_audio(
     language: str | None = None,
     model: str | None = None,
 ) -> STTResult:
+    """Transcribe audio bytes using the configured STT provider.
+
+    Routes to Deepgram (with Whisper fallback) or Whisper based on
+    settings.stt_provider. Deepgram falls back to Whisper automatically
+    on failure.
+
+    Args:
+        audio_bytes: Raw audio data (WAV, WebM, OGG, etc.)
+        language: Override language (default from settings)
+        model: Override model name (default from settings)
+
+    Returns:
+        STTResult with transcription text, confidence, language, and duration.
+
+    Raises:
+        STTError: If all STT services are unreachable.
+    """
+    if settings.stt_provider == "deepgram" and settings.deepgram_api_key:
+        try:
+            from app.services.stt_deepgram import transcribe_with_fallback
+            return await transcribe_with_fallback(
+                audio_bytes, language=language, model=model,
+            )
+        except Exception as e:
+            logger.warning("Deepgram dispatch failed, using Whisper: %s", e)
+            # Fall through to Whisper
+
+    return await _transcribe_whisper(audio_bytes, language=language, model=model)
+
+
+async def _transcribe_whisper(
+    audio_bytes: bytes,
+    *,
+    language: str | None = None,
+    model: str | None = None,
+) -> STTResult:
     """Transcribe audio bytes using the self-hosted faster-whisper API.
 
     The API is OpenAI-compatible at WHISPER_URL/v1/audio/transcriptions.
@@ -76,9 +145,10 @@ async def transcribe_audio(
     lang = language or settings.whisper_language
     mdl = model or settings.whisper_model
 
-    # Build multipart form data (OpenAI-compatible)
+    # Detect MIME type from magic bytes instead of hardcoding
+    mime_type, ext = _detect_mime_type(audio_bytes)
     files = {
-        "file": ("audio.webm", io.BytesIO(audio_bytes), "audio/webm"),
+        "file": (f"audio.{ext}", io.BytesIO(audio_bytes), mime_type),
     }
     data = {
         "model": mdl,

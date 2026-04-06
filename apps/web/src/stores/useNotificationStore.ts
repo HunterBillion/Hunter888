@@ -34,6 +34,7 @@ interface NotificationState {
   setWsConnected: (connected: boolean) => void;
   addToast: (toast: Omit<Toast, "id" | "ts">) => void;
   removeToast: (id: string) => void;
+  clear: () => void;
 }
 
 let _toastCounter = 0;
@@ -76,4 +77,5 @@ export const useNotificationStore = create<NotificationState>((set) => ({
   },
   removeToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  clear: () => set({ items: [], unread: 0, wsConnected: false, toasts: [] }),
 }));

@@ -139,6 +139,7 @@ export interface WSPvPDuelBrief {
     duel_id: string;
     your_role: "seller" | "client";
     archetype: string | null;
+    character_brief: { name: string; brief: string; behavior: string } | null;
     human_factors: Record<string, unknown> | null;
     difficulty: string;
     scenario_title: string | null;

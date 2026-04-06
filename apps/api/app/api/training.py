@@ -2,7 +2,9 @@ import logging
 import uuid
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +20,7 @@ from app.models.user import User
 from pydantic import BaseModel, Field, field_validator
 from app.schemas.training import (
     HistoryEntryResponse,
+    IdealResponseResult,
     MessageResponse,
     SessionResponse,
     SessionResultResponse,
@@ -39,6 +42,7 @@ from app.services.emotion import init_emotion as sm_init_emotion
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 def _session_to_response(session: TrainingSession) -> SessionResponse:
@@ -147,6 +151,14 @@ async def _build_session_result(
                 caught=t.get("status") == "dodged",
                 bonus=t.get("delta") if t.get("status") == "dodged" else None,
                 penalty=abs(t.get("delta", 0)) if t.get("status") in ("fell", "partial") else None,
+                status=t.get("status"),
+                client_phrase=t.get("client_phrase") or None,
+                correct_example=t.get("correct_example") or None,
+                explanation=t.get("explanation") or None,
+                law_reference=t.get("law_reference") or None,
+                correct_keywords=t.get("correct_keywords") or None,
+                wrong_keywords=t.get("wrong_keywords") or None,
+                category=t.get("category") or None,
             )
             for t in raw_traps
             if t.get("status") != "not_activated"
@@ -190,6 +202,77 @@ async def _build_session_result(
             avg_message_length=avg_msg_len,
         )
 
+    # ── 3.1: Extract weak legal categories from L10 for Knowledge Quiz link ──
+    weak_legal: list | None = None
+    legal_details = details.get("legal_accuracy", {})
+    legal_score = legal_details.get("combined_score", 0)
+    if legal_score is not None and legal_score < 2.5:
+        from app.schemas.training import WeakLegalCategory
+        _LEGAL_CATEGORY_MAP = {
+            "eligibility": "Условия подачи",
+            "procedure": "Процедура",
+            "property": "Имущество",
+            "consequences": "Последствия",
+            "costs": "Стоимость",
+            "creditors": "Кредиторы",
+            "documents": "Документы",
+            "timeline": "Сроки",
+            "court": "Суд",
+            "rights": "Права",
+        }
+        seen_cats: set[str] = set()
+        weak_items: list[WeakLegalCategory] = []
+
+        # From regex details: extract article references and categories
+        regex_checks = legal_details.get("regex", {}).get("details", [])
+        for check in regex_checks[:20]:  # Limit processing
+            cat = check.get("category", "")
+            if cat and cat not in seen_cats:
+                seen_cats.add(cat)
+                weak_items.append(WeakLegalCategory(
+                    category=cat,
+                    display_name=_LEGAL_CATEGORY_MAP.get(cat, cat),
+                    accuracy_pct=max(0, min(100, int((legal_score + 5) / 10 * 100))),
+                    article_refs=[
+                        ref for ref in [check.get("law_article", "")]
+                        if ref and len(ref) < 100
+                    ],
+                ))
+
+        # From vector checks: extract fact references
+        vector_checks = legal_details.get("vector", {}).get("vector_checks", [])
+        for vc in vector_checks[:10]:
+            if vc.get("type") == "error":
+                fact = vc.get("fact", "")[:80]
+                if fact and "general" not in seen_cats:
+                    seen_cats.add("general")
+                    weak_items.append(WeakLegalCategory(
+                        category="general",
+                        display_name="Общие знания ФЗ-127",
+                        accuracy_pct=max(0, min(100, int((legal_score + 5) / 10 * 100))),
+                        article_refs=[],
+                    ))
+
+        if weak_items:
+            weak_legal = weak_items[:5]  # Max 5 categories
+
+    # ── 3.2: Extract promise fulfillment from CRM story memory ──
+    promise_data: list | None = None
+    if session.client_story_id:
+        from app.schemas.training import PromiseFulfillment
+        promises_raw = details.get("_promises", [])
+        if promises_raw:
+            promise_data = [
+                PromiseFulfillment(
+                    text=str(p.get("text", ""))[:200],
+                    call_number=int(p.get("call_number", 1)),
+                    fulfilled=bool(p.get("fulfilled", False)),
+                    impact="bonus" if p.get("fulfilled") else "penalty",
+                )
+                for p in promises_raw[:10]
+                if p.get("text")
+            ]
+
     story, story_calls = await _load_story_context(db, session.client_story_id, user_id=user.id)
     return SessionResultResponse(
         session=_session_to_response(session),
@@ -200,11 +283,15 @@ async def _build_session_result(
         client_card=details.get("_client_card_reveal"),
         story=story,
         story_calls=story_calls,
+        weak_legal_categories=weak_legal,
+        promise_fulfillment=promise_data,
     )
 
 
 @router.post("/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 async def start_session(
+    request: Request,
     body: SessionStartRequest,
     user: User = Depends(check_consent_accepted),
     db: AsyncSession = Depends(get_db),
@@ -325,7 +412,18 @@ async def end_session(
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.ACTIVE_SESSION_NOT_FOUND)
 
-    # Calculate scores before closing
+    # Retrieve emotion timeline from Redis BEFORE scoring (Wave 5 audit fix:
+    # scoring layers L5, L8, L9 need the timeline for accurate computation)
+    try:
+        from app.services.emotion import get_emotion_timeline
+        timeline_from_redis = await get_emotion_timeline(session_id)
+        if timeline_from_redis:
+            session.emotion_timeline = timeline_from_redis
+            await db.flush()
+    except Exception:
+        logger.debug("Failed to pre-load emotion timeline for %s", session_id)
+
+    # Calculate scores (now with populated emotion_timeline)
     scores = None
     try:
         scores = await calculate_scores(session_id, db)
@@ -351,6 +449,66 @@ async def end_session(
         except Exception:
             logger.debug("Failed to enrich with client reveal data for %s", session_id)
 
+        # Wave 4: Enrich with layer explanations, skill radar, emotion journey
+        try:
+            from app.services.scoring import (
+                generate_layer_explanations,
+                layer_explanations_to_dict,
+            )
+            msg_result = await db.execute(
+                select(Message)
+                .where(Message.session_id == session_id)
+                .order_by(Message.created_at)
+            )
+            raw_msgs = msg_result.scalars().all()
+            msg_dicts = [
+                {"role": m.role.value if hasattr(m.role, "value") else str(m.role),
+                 "content": m.content or "", "index": i}
+                for i, m in enumerate(raw_msgs)
+            ]
+            explanations = generate_layer_explanations(scores, msg_dicts)
+            enriched["_layer_explanations"] = layer_explanations_to_dict(explanations)
+        except Exception:
+            logger.debug("Failed to generate layer explanations for %s", session_id)
+
+        # Skill radar (6-axis computed from L1-L10 weights)
+        try:
+            enriched["_skill_radar"] = scores.skill_radar
+        except Exception:
+            logger.debug("Failed to compute skill radar for %s", session_id)
+
+        # Emotion journey summary (timeline + turning points)
+        try:
+            timeline = session.emotion_timeline or []
+            if timeline:
+                total_transitions = len(timeline)
+                rollback_count = sum(1 for t in timeline if t.get("rollback"))
+                fake_count = sum(1 for t in timeline if t.get("is_fake"))
+                peak_order = ["cold", "skeptical", "guarded", "curious",
+                              "considering", "warming", "open", "negotiating", "deal"]
+                peak_idx = 0
+                for t in timeline:
+                    state = t.get("state", "cold")
+                    if state in peak_order:
+                        peak_idx = max(peak_idx, peak_order.index(state))
+                turning_points = [
+                    t for t in timeline
+                    if t.get("rollback") or t.get("is_fake")
+                       or t.get("state") in ("deal", "hangup", "hostile")
+                ][:5]
+                enriched["_emotion_journey"] = {
+                    "summary": {
+                        "total_transitions": total_transitions,
+                        "rollback_count": rollback_count,
+                        "peak_state": peak_order[peak_idx] if peak_idx < len(peak_order) else "cold",
+                        "fake_count": fake_count,
+                        "turning_points": turning_points,
+                    },
+                    "timeline": timeline,
+                }
+        except Exception:
+            logger.debug("Failed to build emotion journey for %s", session_id)
+
         session.scoring_details = enriched
     except Exception:
         logger.exception("Failed to calculate scores for session %s", session_id)
@@ -371,11 +529,40 @@ async def end_session(
         session.status = SessionStatus.completed
         await db.flush()
 
-    # Award achievements after session completion
+    # Emit event → EventBus handles achievements, goals, SRS seeding, notifications
     try:
-        await check_and_award_achievements(user.id, db)
+        from app.services.event_bus import event_bus, GameEvent, EVENT_TRAINING_COMPLETED
+
+        # Extract weak legal categories for SRS seeding
+        event_payload: dict = {
+            "session_id": str(session.id),
+            "score": float(session.score_total) if session.score_total else 0.0,
+        }
+        if scores and scores.legal_accuracy < 0:
+            details = session.scoring_details or {}
+            legal_details = details.get("legal_accuracy", {})
+            weak_cats = []
+            regex_checks = legal_details.get("regex", {}).get("details", [])
+            for check in regex_checks[:10]:
+                cat = check.get("category", "")
+                ref = check.get("law_article", "")
+                if cat:
+                    weak_cats.append({
+                        "category": cat,
+                        "display_name": cat,
+                        "article_refs": [ref] if ref else [],
+                    })
+            if weak_cats:
+                event_payload["weak_legal_categories"] = weak_cats[:5]
+
+        await event_bus.emit(GameEvent(
+            kind=EVENT_TRAINING_COMPLETED,
+            user_id=user.id,
+            db=db,
+            payload=event_payload,
+        ))
     except Exception:
-        logger.exception("Failed to check achievements for user %s", user.id)
+        logger.exception("EventBus failed for training_completed, user %s", user.id)
 
     return session
 
@@ -561,6 +748,11 @@ async def assign_training(
     if target.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.TARGET_USER_NOT_FOUND)
 
+    # Load scenario title for notification
+    scenario_result = await db.execute(select(Scenario).where(Scenario.id == body.scenario_id))
+    scenario = scenario_result.scalar_one_or_none()
+    scenario_title = scenario.title if scenario else "Тренировка"
+
     assignment = AssignedTraining(
         user_id=body.user_id,
         scenario_id=body.scenario_id,
@@ -569,6 +761,27 @@ async def assign_training(
     )
     db.add(assignment)
     await db.flush()
+
+    # Send real-time notification to the assigned manager
+    try:
+        from app.ws.notifications import send_ws_notification
+        deadline_str = body.deadline or "без дедлайна"
+        await send_ws_notification(
+            body.user_id,
+            event_type="training.assigned",
+            data={
+                "assignment_id": str(assignment.id),
+                "scenario_id": str(body.scenario_id),
+                "scenario_title": scenario_title,
+                "assigned_by": str(user.id),
+                "assigned_by_name": user.full_name if hasattr(user, "full_name") else str(user.id),
+                "deadline": deadline_str,
+            },
+        )
+    except Exception:
+        pass  # Notification failure should not block assignment
+
+    await db.commit()
 
     return {"id": str(assignment.id), "message": err.TRAINING_ASSIGNED}
 
@@ -603,3 +816,478 @@ async def get_my_assignments(
         }
         for row in rows
     ]
+
+
+@router.get("/assigned/team")
+async def get_team_assignments(
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """ROP/admin: get all assignments for team members with completion status."""
+    from app.models.scenario import Scenario
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+
+    result = await db.execute(
+        select(AssignedTraining, Scenario.title, User.email)
+        .join(Scenario, Scenario.id == AssignedTraining.scenario_id)
+        .join(User, User.id == AssignedTraining.user_id)
+        .order_by(AssignedTraining.created_at.desc())
+        .limit(100)
+    )
+    rows = result.all()
+
+    assignments = []
+    for row in rows:
+        at = row[0]
+        is_completed = at.completed_at is not None
+        is_overdue = (
+            not is_completed
+            and at.deadline is not None
+            and at.deadline < now
+        )
+
+        assignments.append({
+            "id": str(at.id),
+            "user_id": str(at.user_id),
+            "user_email": row[2],
+            "scenario_id": str(at.scenario_id),
+            "scenario_title": row[1],
+            "assigned_by": str(at.assigned_by),
+            "deadline": at.deadline.isoformat() if at.deadline else None,
+            "completed_at": at.completed_at.isoformat() if at.completed_at else None,
+            "created_at": at.created_at.isoformat(),
+            "status": "completed" if is_completed else ("overdue" if is_overdue else "pending"),
+        })
+
+    # Summary stats
+    total = len(assignments)
+    completed = sum(1 for a in assignments if a["status"] == "completed")
+    overdue = sum(1 for a in assignments if a["status"] == "overdue")
+
+    return {
+        "assignments": assignments,
+        "summary": {
+            "total": total,
+            "completed": completed,
+            "pending": total - completed - overdue,
+            "overdue": overdue,
+        },
+    }
+
+
+# ── AI-Coach: interactive post-session coaching chat ───────────────────────
+
+
+class CoachQuestionRequest(BaseModel):
+    question: str
+    message_index: int | None = None  # Optional: reference to a specific message
+
+
+@router.post("/sessions/{session_id}/coach")
+@limiter.limit("5/minute")
+async def ask_coach(
+    request: Request,
+    session_id: uuid.UUID,
+    body: CoachQuestionRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ask AI-Coach a question about a completed training session.
+
+    The coach analyzes the conversation and provides specific advice
+    with citations from the actual dialogue.
+
+    Only available for sessions with difficulty <= 6 (easy/medium).
+    """
+    from app.models.training import Message, MessageRole
+    from app.services.llm import generate_response
+
+    # Load session
+    session = await db.get(TrainingSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not your session")
+
+    # Check difficulty restriction (coach only for easy/medium)
+    scenario_result = await db.execute(
+        select(Scenario).where(Scenario.id == session.scenario_id)
+    )
+    scenario = scenario_result.scalar_one_or_none()
+    difficulty = scenario.difficulty if scenario else 5
+    if difficulty > 6:
+        raise HTTPException(
+            status_code=403,
+            detail="AI-Coach доступен только для сценариев сложности 1-6. На сложных сценариях разбирайтесь самостоятельно!",
+        )
+
+    # Load conversation
+    msg_result = await db.execute(
+        select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.sequence_number)
+    )
+    messages = msg_result.scalars().all()
+
+    conversation_lines = []
+    for i, m in enumerate(messages):
+        role = "Менеджер" if m.role == MessageRole.user else "Клиент"
+        conversation_lines.append(f"[{i}] {role}: {m.content}")
+    conversation_text = "\n".join(conversation_lines)
+
+    # Build context for the referenced message
+    context_hint = ""
+    if body.message_index is not None and 0 <= body.message_index < len(messages):
+        ref_msg = messages[body.message_index]
+        role = "менеджера" if ref_msg.role == MessageRole.user else "клиента"
+        context_hint = f"\nМенеджер спрашивает про реплику [{body.message_index}] ({role}): \"{ref_msg.content[:200]}\"\n"
+
+    # Build rich score context
+    scoring_details = session.scoring_details or {}
+    score_summary = f"Общий балл: {session.score_total or '?'}/100"
+
+    # Stage progress context
+    stage_ctx = ""
+    stage_data = scoring_details.get("_stage_progress", {})
+    if stage_data:
+        completed = stage_data.get("stages_completed", [])
+        stage_ctx = f"\nЭтапы скрипта: пройдено {len(completed)} из {stage_data.get('total_stages', 7)}. Финальный: {stage_data.get('final_stage_name', '?')}."
+
+    # Skill radar context
+    skill_ctx = ""
+    skill_data = scoring_details.get("_skill_radar", {})
+    if skill_data:
+        skill_lines = [f"  {k}: {v:.0f}/100" for k, v in skill_data.items() if isinstance(v, (int, float))]
+        if skill_lines:
+            skill_ctx = "\nНавыки менеджера:\n" + "\n".join(skill_lines)
+
+    # Cited moments from report (if available)
+    cited_ctx = ""
+    cited_moments = scoring_details.get("_cited_moments", [])
+    if cited_moments:
+        cited_lines = [f"  - Реплика [{cm.get('message_index')}]: {cm.get('problem', '')}" for cm in cited_moments[:3]]
+        cited_ctx = "\nУже выявленные проблемы:\n" + "\n".join(cited_lines)
+
+    coach_prompt = (
+        "Ты — AI-тренер по продажам банкротства физических лиц (127-ФЗ). "
+        "Менеджер прошёл тренировочную сессию и задаёт вопрос по разбору. "
+        "Отвечай конкретно, ссылаясь на реплики из разговора по номерам [N]. "
+        "Давай практичные советы — что конкретно сказать, как перефразировать. "
+        "Приводи примеры фраз. Не повторяй то что уже было сказано.\n\n"
+        f"Сценарий: {scenario.title if scenario else '?'} (сложность {difficulty}/10)\n"
+        f"{score_summary}{stage_ctx}{skill_ctx}{cited_ctx}\n\n"
+        f"Разговор:\n{conversation_text}\n\n"
+        f"{context_hint}"
+        f"Вопрос менеджера: {body.question}"
+    )
+
+    try:
+        response = await generate_response(
+            system_prompt=coach_prompt,
+            messages=[{"role": "user", "content": body.question}],
+            emotion_state="cold",
+            user_id=f"coach:{user.id}",
+        )
+        answer = response.content
+    except Exception as e:
+        logger.error("Coach LLM failed: %s", e)
+        answer = "К сожалению, AI-Coach временно недоступен. Попробуйте позже."
+
+    # Find cited message indices in the answer
+    import re
+    cited = [int(m) for m in re.findall(r"\[(\d+)\]", answer) if int(m) < len(messages)]
+
+    return {
+        "answer": answer,
+        "cited_messages": cited,
+        "session_id": str(session_id),
+    }
+
+
+# ── Wave 5: Replay Mode — Ideal Response ─────────────────────────────────────
+
+
+@router.post(
+    "/sessions/{session_id}/messages/{message_id}/ideal-response",
+    response_model=IdealResponseResult,
+)
+@limiter.limit("3/minute")
+async def generate_ideal_response(
+    request: Request,
+    session_id: uuid.UUID,
+    message_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate an ideal response for a specific manager message in a completed session.
+
+    Replay Mode: Shows what the manager SHOULD have said at this point, with scoring
+    comparison, emotion prediction, and trap handling analysis.
+
+    Only available for completed sessions (user's own or admin/ROP with same team).
+    """
+    import re
+    from app.models.training import Message, MessageRole
+    from app.services.llm import generate_response
+
+    # ── 1. Load & validate session ──
+    session = await db.get(TrainingSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    # Ownership / team isolation check
+    if session.user_id != user.id:
+        if user.role.value == "admin":
+            pass  # admins can access any session
+        elif user.role.value in ("rop", "methodologist"):
+            # ROP/methodologist can only view sessions from their team
+            target_user = (await db.execute(
+                select(User).where(User.id == session.user_id)
+            )).scalar_one_or_none()
+            if not target_user or target_user.team_id != user.team_id:
+                raise HTTPException(status_code=403, detail="Not your team's session")
+        else:
+            raise HTTPException(status_code=403, detail="Not your session")
+    if session.status != SessionStatus.completed:
+        raise HTTPException(status_code=400, detail="Session must be completed to use Replay Mode")
+
+    # ── 2. Load all messages ──
+    msg_result = await db.execute(
+        select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.sequence_number)
+    )
+    all_messages = msg_result.scalars().all()
+
+    # Find the target message
+    target_msg = None
+    target_index = -1
+    for i, m in enumerate(all_messages):
+        if m.id == message_id:
+            target_msg = m
+            target_index = i
+            break
+
+    if target_msg is None:
+        raise HTTPException(status_code=404, detail="Message not found in this session")
+    if target_msg.role != MessageRole.user:
+        raise HTTPException(
+            status_code=400,
+            detail="Ideal response can only be generated for manager (user) messages",
+        )
+
+    # ── 3. Build context up to the target message ──
+    # Get conversation history up to (but not including) the target message
+    context_messages = all_messages[:target_index]
+    # The client's last message before the manager's reply
+    client_msg_before = None
+    for m in reversed(context_messages):
+        if m.role == MessageRole.assistant:
+            client_msg_before = m
+            break
+
+    # Emotion state at this point in the conversation
+    emotion_at_point = "cold"
+    for m in reversed(context_messages):
+        if m.emotion_state:
+            emotion_at_point = m.emotion_state
+            break
+
+    # Build conversation lines for LLM context
+    conversation_lines = []
+    for i, m in enumerate(context_messages):
+        role = "Менеджер" if m.role == MessageRole.user else "Клиент"
+        emotion_tag = f" [{m.emotion_state}]" if m.emotion_state else ""
+        conversation_lines.append(f"[{i}] {role}{emotion_tag}: {m.content}")
+
+    # Limit context to last 40 messages to prevent token exhaustion
+    if len(conversation_lines) > 40:
+        conversation_lines = conversation_lines[-40:]
+        conversation_lines.insert(0, "... (ранние реплики опущены) ...")
+    conversation_text = "\n".join(conversation_lines) if conversation_lines else "(Начало разговора)"
+
+    # ── 4. Extract scoring context ──
+    scoring_details = session.scoring_details or {}
+    score_ctx_parts = []
+
+    # Stage progress at this point
+    stage_data = scoring_details.get("_stage_progress", {})
+    if stage_data:
+        stages_completed = stage_data.get("stages_completed", [])
+        stage_names = {
+            1: "Приветствие", 2: "Контакт", 3: "Квалификация",
+            4: "Презентация", 5: "Возражения", 6: "Встреча", 7: "Закрытие",
+        }
+        completed_names = [stage_names.get(s, str(s)) for s in stages_completed]
+        score_ctx_parts.append(f"Пройденные этапы: {', '.join(completed_names) or 'нет'}.")
+
+    # Layer explanations for weak areas
+    layer_explanations = scoring_details.get("_layer_explanations", [])
+    weak_layers = [le for le in layer_explanations if le.get("percentage", 100) < 60]
+    if weak_layers:
+        weak_lines = [f"  - {le.get('label', '?')}: {le.get('percentage', 0):.0f}% — {le.get('summary', '')}" for le in weak_layers[:4]]
+        score_ctx_parts.append("Слабые области:\n" + "\n".join(weak_lines))
+
+    # Skill radar
+    skill_data = scoring_details.get("_skill_radar", {})
+    if skill_data:
+        weak_skills = {k: v for k, v in skill_data.items() if isinstance(v, (int, float)) and v < 60}
+        if weak_skills:
+            skill_lines = [f"  - {k}: {v:.0f}/100" for k, v in weak_skills.items()]
+            score_ctx_parts.append("Навыки требующие улучшения:\n" + "\n".join(skill_lines))
+
+    score_context = "\n".join(score_ctx_parts)
+
+    # Trap context — check if any traps were active at this point
+    trap_context = ""
+    trap_handling_data = scoring_details.get("trap_handling", {})
+    active_traps = trap_handling_data.get("traps", [])
+    relevant_traps = []
+    if active_traps and client_msg_before:
+        for trap in active_traps:
+            # Check if this trap was triggered around this message
+            trap_msg_idx = trap.get("message_index")
+            if trap_msg_idx is not None and abs(trap_msg_idx - target_index) <= 2:
+                relevant_traps.append(trap)
+        if relevant_traps:
+            trap_lines = [
+                f"  - {t.get('name', '?')} ({t.get('category', '?')}): статус={t.get('status', '?')}"
+                for t in relevant_traps
+            ]
+            trap_context = "\nАктивные ловушки в этот момент:\n" + "\n".join(trap_lines)
+
+    # ── 5. Build ideal-response prompt ──
+    scenario_result = await db.execute(
+        select(Scenario).where(Scenario.id == session.scenario_id)
+    )
+    scenario = scenario_result.scalar_one_or_none()
+
+    ideal_prompt = (
+        "Ты — эксперт-методолог по продажам банкротства физических лиц (127-ФЗ). "
+        "Менеджер прошёл тренировку, и теперь анализирует свои ответы. "
+        "Для указанной реплики менеджера нужно:\n"
+        "1. Написать ИДЕАЛЬНЫЙ ответ — что менеджер ДОЛЖЕН БЫЛ сказать в этот момент.\n"
+        "2. Объяснить ПОЧЕМУ этот ответ лучше — какие принципы продаж он применяет.\n"
+        "3. Предсказать РЕАКЦИЮ клиента — как бы изменилось его эмоциональное состояние.\n"
+        "4. Оценить ВЛИЯНИЕ на скоринг — какие слои улучшатся.\n\n"
+        "Формат ответа (строго JSON):\n"
+        "```json\n"
+        "{\n"
+        '  "ideal_text": "Идеальный ответ менеджера",\n'
+        '  "explanation": "Почему этот ответ лучше (2-3 предложения)",\n'
+        '  "emotion_prediction": "predicted_emotion_state",\n'
+        '  "emotion_explanation": "Почему клиент перешёл бы в это состояние",\n'
+        '  "layer_impact": {"L1": "+X", "L2": "+Y", "L3": "+Z"},\n'
+        '  "score_delta_estimate": 5.0,\n'
+        '  "trap_handling": [{"trap": "name", "original": "fell", "ideal": "dodged", "how": "explanation"}]\n'
+        "}\n"
+        "```\n\n"
+        f"Сценарий: {scenario.title if scenario else '?'} (сложность {scenario.difficulty if scenario else '?'}/10)\n"
+        f"Текущее эмоциональное состояние клиента: {emotion_at_point}\n"
+        f"{score_context}\n"
+        f"{trap_context}\n\n"
+        f"=== РАЗГОВОР ДО ЭТОГО МОМЕНТА ===\n{conversation_text}\n\n"
+        f"=== КЛИЕНТ СКАЗАЛ ===\n{client_msg_before.content if client_msg_before else '(начало разговора)'}\n\n"
+        f"=== МЕНЕДЖЕР ОТВЕТИЛ (ОРИГИНАЛ) ===\n{target_msg.content}\n\n"
+        "Сгенерируй идеальный ответ в формате JSON:"
+    )
+
+    # ── 6. Generate via LLM ──
+    try:
+        llm_result = await generate_response(
+            system_prompt=ideal_prompt,
+            messages=[{"role": "user", "content": "Сгенерируй идеальный ответ."}],
+            emotion_state=emotion_at_point,
+            user_id=f"replay:{user.id}",
+        )
+        raw_answer = llm_result.content
+    except Exception as e:
+        logger.error("Replay Mode LLM failed: %s", e)
+        raise HTTPException(status_code=503, detail="AI temporarily unavailable")
+
+    # ── 7. Parse JSON from LLM response ──
+    import json as _json
+    parsed: dict = {}
+    try:
+        # Extract JSON from markdown code block or raw JSON
+        json_match = re.search(r"```(?:json)?\s*\n?(.*?)```", raw_answer, re.DOTALL)
+        json_str = json_match.group(1).strip() if json_match else raw_answer.strip()
+        parsed = _json.loads(json_str)
+    except (_json.JSONDecodeError, AttributeError):
+        # Fallback: treat entire response as explanation
+        parsed = {
+            "ideal_text": raw_answer[:500],
+            "explanation": "LLM returned non-structured response.",
+        }
+
+    # ── 7b. Sanitize LLM output ──
+    # Truncate fields to prevent oversized responses / prompt leakage
+    _MAX_TEXT = 2000
+    _MAX_EXPLANATION = 1000
+    if "ideal_text" in parsed:
+        parsed["ideal_text"] = str(parsed["ideal_text"])[:_MAX_TEXT]
+    if "explanation" in parsed:
+        parsed["explanation"] = str(parsed["explanation"])[:_MAX_EXPLANATION]
+    if "emotion_explanation" in parsed:
+        parsed["emotion_explanation"] = str(parsed["emotion_explanation"])[:_MAX_EXPLANATION]
+    # Validate emotion prediction against known states
+    _VALID_EMOTIONS = {
+        "cold", "hostile", "hangup", "guarded", "testing", "curious",
+        "callback", "considering", "negotiating", "deal",
+        "skeptical", "warming", "open",
+    }
+    if parsed.get("emotion_prediction") and str(parsed["emotion_prediction"]) not in _VALID_EMOTIONS:
+        parsed["emotion_prediction"] = None
+    # Clamp score_delta_estimate to reasonable range
+    if parsed.get("score_delta_estimate") is not None:
+        try:
+            delta_val = float(parsed["score_delta_estimate"])
+            parsed["score_delta_estimate"] = max(-30, min(30, delta_val))
+        except (TypeError, ValueError):
+            parsed["score_delta_estimate"] = None
+    # Sanitize layer_impact keys — only allow L1-L10
+    if parsed.get("layer_impact") and isinstance(parsed["layer_impact"], dict):
+        parsed["layer_impact"] = {
+            k: str(v)[:10] for k, v in parsed["layer_impact"].items()
+            if isinstance(k, str) and re.match(r"^L\d{1,2}$", k)
+        }
+    # Limit trap_handling entries
+    if parsed.get("trap_handling") and isinstance(parsed["trap_handling"], list):
+        parsed["trap_handling"] = [
+            {
+                "trap": str(t.get("trap", ""))[:100],
+                "original": str(t.get("original", ""))[:20],
+                "ideal": str(t.get("ideal", ""))[:20],
+                "how": str(t.get("how", ""))[:200] if t.get("how") else None,
+            }
+            for t in parsed["trap_handling"][:5]
+            if isinstance(t, dict)
+        ]
+
+    # ── 8. Compute score estimates ──
+    original_total = float(session.score_total) if session.score_total else None
+    score_delta = parsed.get("score_delta_estimate")
+    ideal_estimate = None
+    if original_total is not None and score_delta is not None:
+        try:
+            ideal_estimate = min(100, original_total + float(score_delta))
+        except (TypeError, ValueError):
+            pass
+
+    # ── 9. Build response ──
+    return IdealResponseResult(
+        message_id=target_msg.id,
+        message_index=target_index,
+        original_text=target_msg.content,
+        ideal_text=parsed.get("ideal_text", ""),
+        explanation=parsed.get("explanation", ""),
+        original_score_estimate=original_total,
+        ideal_score_estimate=ideal_estimate,
+        score_delta=float(score_delta) if score_delta else None,
+        layer_impact=parsed.get("layer_impact"),
+        original_emotion=emotion_at_point,
+        ideal_emotion_prediction=parsed.get("emotion_prediction"),
+        emotion_explanation=parsed.get("emotion_explanation"),
+        trap_handling=parsed.get("trap_handling"),
+    )

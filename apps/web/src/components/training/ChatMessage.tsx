@@ -8,8 +8,9 @@ function emotionColors(emotion: EmotionState) {
   const e = EMOTION_MAP[emotion] || EMOTION_MAP.cold;
   return {
     text: e.color,
-    bg: e.color + "1A", // 10% opacity hex
-    border: e.color + "33", // 20% opacity hex
+    bg: e.color + "22", // 13% opacity — slightly more visible
+    border: e.color + "44", // 27% opacity
+    glow: e.color + "18", // 9% for subtle glow
   };
 }
 
@@ -17,10 +18,12 @@ const KEYWORDS = [
   "ROI", "рентабельность", "контракт", "договор", "цена", "стоимость",
   "бюджет", "скидка", "условия", "предложение", "выгода", "прибыль",
   "инвестиция", "окупаемость", "результат", "гарантия",
+  // Bankruptcy-specific (127-ФЗ)
+  "банкротство", "должник", "кредитор", "арбитражный", "реструктуризация",
+  "списание", "задолженность", "приставы", "взыскание", "127-ФЗ",
 ];
 
 function highlightKeywords(text: string): React.ReactNode[] {
-  // Sanitize before rendering to prevent XSS
   const safe = sanitizeText(text);
   const regex = new RegExp(`(${KEYWORDS.join("|")})`, "gi");
   const parts = safe.split(regex);
@@ -38,46 +41,74 @@ function highlightKeywords(text: string): React.ReactNode[] {
 
 interface ChatMessageProps {
   message: ChatBubble;
+  showEmotion?: boolean;
 }
 
-export default function ChatMessage({ message }: ChatMessageProps) {
+export default function ChatMessage({ message, showEmotion = true }: ChatMessageProps) {
   const isUser = message.role === "user";
   const ec = message.emotion ? emotionColors(message.emotion) : null;
+  const isFallback = message.is_fallback;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`flex flex-col ${isUser ? "items-end" : "items-start"} w-full`}
+      initial={{ opacity: 0, y: 6, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className={`flex flex-col ${isUser ? "items-end" : "items-start"} w-full group`}
     >
+      {/* Role + timestamp header */}
       <span
-        className="font-mono text-[10px] mb-1 tracking-wider"
+        className="font-mono text-xs mb-1.5 tracking-wide select-none flex items-center gap-2"
         style={{
-          color: isUser ? "var(--accent)" : (ec?.text || "var(--text-muted)"),
+          color: isUser ? "var(--accent)" : (ec?.text || "var(--text-secondary)"),
         }}
       >
-        {isUser ? "YOU" : "AI-CLIENT"}
-        <span className="ml-2 opacity-50">
-          [{new Date(message.timestamp).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}]
+        {isUser ? "ВЫ" : "КЛИЕНТ"}
+        {/* Emotion dot indicator */}
+        {!isUser && message.emotion && (
+          <span
+            className={`emotion-dot emotion-dot--${message.emotion}`}
+            style={{ width: 7, height: 7 }}
+          />
+        )}
+        <span className="opacity-50 group-hover:opacity-80 transition-opacity text-xs">
+          {new Date(message.timestamp).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
         </span>
       </span>
 
+      {/* Message bubble */}
       <div
-        className={`max-w-[85%] rounded-xl p-3 text-sm leading-relaxed ${
-          isUser ? "rounded-tr-none" : "rounded-tl-none"
-        }`}
+        className={`
+          max-w-[88%] rounded-2xl px-4 py-3
+          text-[15px] leading-relaxed
+          break-words hyphens-auto
+          ${isUser ? "rounded-tr-md" : "rounded-tl-md"}
+          ${isFallback ? "opacity-70 italic" : ""}
+          transition-shadow duration-300
+        `}
         style={{
-          background: isUser ? "var(--accent-muted)" : (ec?.bg || "var(--input-bg)"),
-          border: `1px solid ${isUser ? "var(--border-hover)" : (ec?.border || "var(--border-color)")}`,
+          background: isUser
+            ? "var(--accent-muted)"
+            : (ec?.bg || "var(--input-bg)"),
+          border: `1px solid ${isUser
+            ? "var(--border-hover)"
+            : (ec?.border || "var(--border-color)")}`,
           color: "var(--text-primary)",
+          boxShadow: !isUser && ec
+            ? `0 2px 16px ${ec.glow}`
+            : undefined,
         }}
       >
         {highlightKeywords(message.content)}
       </div>
 
-      {message.emotion && (
-        <span
-          className="mt-1 rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider"
+      {/* Emotion badge */}
+      {showEmotion && message.emotion && !isUser && (
+        <motion.span
+          initial={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.1 }}
+          className="mt-0.5 rounded-full px-2 py-0.5 font-mono text-xs uppercase tracking-wider select-none"
           style={{
             background: ec?.bg,
             color: ec?.text,
@@ -85,7 +116,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
           }}
         >
           {EMOTION_MAP[message.emotion]?.label || message.emotion}
-        </span>
+        </motion.span>
       )}
     </motion.div>
   );

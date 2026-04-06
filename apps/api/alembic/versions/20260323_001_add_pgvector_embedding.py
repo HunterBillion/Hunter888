@@ -23,6 +23,67 @@ def upgrade() -> None:
     # Enable pgvector extension (idempotent)
     op.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
 
+    # Create LegalCategory enum type if not exists
+    op.execute(sa.text("""
+        DO $$ BEGIN
+            CREATE TYPE legalcategory AS ENUM (
+                'eligibility', 'procedure', 'property', 'consequences', 'costs',
+                'creditors', 'documents', 'timeline', 'court', 'rights'
+            );
+        EXCEPTION WHEN duplicate_object THEN null;
+        END $$
+    """))
+
+    # Create LegalAccuracy enum type if not exists
+    op.execute(sa.text("""
+        DO $$ BEGIN
+            CREATE TYPE legalaccuracy AS ENUM (
+                'correct', 'correct_cited', 'partial', 'incorrect', 'n/a'
+            );
+        EXCEPTION WHEN duplicate_object THEN null;
+        END $$
+    """))
+
+    # Create legal_knowledge_chunks table if it doesn't exist yet
+    op.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS legal_knowledge_chunks (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            category legalcategory NOT NULL,
+            fact_text TEXT NOT NULL,
+            law_article VARCHAR(100) NOT NULL,
+            common_errors JSONB DEFAULT '[]'::jsonb,
+            match_keywords JSONB DEFAULT '[]'::jsonb,
+            correct_response_hint TEXT,
+            error_frequency INTEGER DEFAULT 5,
+            is_active BOOLEAN DEFAULT true,
+            created_at TIMESTAMPTZ DEFAULT now()
+        )
+    """))
+    op.execute(sa.text(
+        "CREATE INDEX IF NOT EXISTS ix_legal_chunks_category "
+        "ON legal_knowledge_chunks (category)"
+    ))
+
+    # Create legal_validation_results table if it doesn't exist yet
+    op.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS legal_validation_results (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            session_id UUID NOT NULL REFERENCES training_sessions(id),
+            message_sequence INTEGER NOT NULL,
+            manager_statement TEXT NOT NULL,
+            knowledge_chunk_id UUID REFERENCES legal_knowledge_chunks(id),
+            accuracy legalaccuracy NOT NULL,
+            score_delta FLOAT DEFAULT 0.0,
+            explanation TEXT,
+            law_reference VARCHAR(200),
+            created_at TIMESTAMPTZ DEFAULT now()
+        )
+    """))
+    op.execute(sa.text(
+        "CREATE INDEX IF NOT EXISTS ix_legal_validation_session "
+        "ON legal_validation_results (session_id)"
+    ))
+
     # Add embedding column (768-dim vector for gemini-embedding-001)
     op.execute(sa.text(
         "ALTER TABLE legal_knowledge_chunks "

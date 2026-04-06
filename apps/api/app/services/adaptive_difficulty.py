@@ -445,6 +445,79 @@ class IntraSessionAdapter:
         state = await self.get_state(session_id)
         return self._effective_difficulty(base_difficulty, state.difficulty_modifier)
 
+    # ── Определение тренда сложности ──
+
+    @staticmethod
+    def get_difficulty_trend(state: IntraSessionState) -> str:
+        """Вычисляет тренд сложности на основе последних 3 записей modifier_history.
+
+        Returns:
+            "rising" | "falling" | "stable"
+        """
+        history = state.modifier_history
+        if len(history) < 2:
+            return "stable"
+
+        recent = history[-3:] if len(history) >= 3 else history[-2:]
+        values = [entry.get("new", 0) for entry in recent]
+
+        if all(values[i] < values[i + 1] for i in range(len(values) - 1)):
+            return "rising"
+        elif all(values[i] > values[i + 1] for i in range(len(values) - 1)):
+            return "falling"
+        return "stable"
+
+    # ── Проверка необходимости hangup ──
+
+    @staticmethod
+    def should_hangup(state: IntraSessionState) -> bool:
+        """Проверяет, нужен ли hangup: bad_streak >= 15 И mercy уже был И всё ещё bad.
+
+        Логика:
+        1. bad_streak >= 10 → mercy_deal (шанс спасти)
+        2. bad_streak >= 15 И mercy_activated → hangup
+        """
+        return (
+            state.bad_streak >= 15
+            and state.mercy_activated
+            and not state.had_comeback
+        )
+
+    # ── Определение текущего mode ──
+
+    @staticmethod
+    def get_current_mode(state: IntraSessionState) -> str:
+        """Возвращает текущий mode (один, по приоритету)."""
+        if state.boss_mode:
+            return "boss"
+        if state.safe_mode:
+            return "safe"
+        if state.challenge_mode:
+            return "challenge"
+        if state.coaching_mode:
+            return "coaching"
+        if state.onboarding_mode:
+            return "onboarding"
+        return "normal"
+
+    # ── Построить WS payload для difficulty.update ──
+
+    def build_ws_payload(
+        self, state: IntraSessionState, base_difficulty: int,
+    ) -> dict[str, Any]:
+        """Формирует данные для WS-события difficulty.update."""
+        return {
+            "effective_difficulty": self._effective_difficulty(
+                base_difficulty, state.difficulty_modifier,
+            ),
+            "modifier": state.difficulty_modifier,
+            "mode": self.get_current_mode(state),
+            "good_streak": state.good_streak,
+            "bad_streak": state.bad_streak,
+            "had_comeback": state.had_comeback,
+            "trend": self.get_difficulty_trend(state),
+        }
+
     # ── Финализация сессии (получить итоговые данные) ──
 
     async def finalize_session(self, session_id: str) -> dict[str, Any]:

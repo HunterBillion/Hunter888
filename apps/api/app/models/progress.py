@@ -84,18 +84,61 @@ class ScoreTrend(str, enum.Enum):
 # ──────────────────────────────────────────────────────────────────────
 
 ALL_ARCHETYPES = [
-    "skeptic", "anxious", "passive", "avoidant", "paranoid", "ashamed",
-    "aggressive", "hostile", "blamer", "sarcastic",
-    "manipulator", "pragmatic", "delegator", "know_it_all", "negotiator", "shopper",
-    "desperate", "crying", "grateful", "overwhelmed",
-    "returner", "referred", "rushed", "lawyer_client", "couple",
+    # Group 1: RESISTANCE
+    "skeptic", "blamer", "sarcastic", "aggressive", "hostile",
+    "stubborn", "conspiracy", "righteous", "litigious", "scorched_earth",
+    # Group 2: EMOTIONAL
+    "grateful", "anxious", "ashamed", "overwhelmed", "desperate",
+    "crying", "guilty", "mood_swinger", "frozen", "hysteric",
+    # Group 3: CONTROL
+    "pragmatic", "shopper", "negotiator", "know_it_all", "manipulator",
+    "lawyer_client", "auditor", "strategist", "power_player", "puppet_master",
+    # Group 4: AVOIDANCE
+    "passive", "delegator", "avoidant", "paranoid",
+    "procrastinator", "ghosting", "deflector", "agreeable_ghost", "fortress", "smoke_screen",
+    # Group 5: SPECIAL
+    "referred", "returner", "rushed", "couple",
+    "elderly", "young_debtor", "foreign_speaker", "intermediary", "repeat_caller", "celebrity",
+    # Group 6: COGNITIVE
+    "overthinker", "concrete", "storyteller", "misinformed", "selective_listener",
+    "black_white", "memory_issues", "technical", "magical_thinker", "lawyer_level_2",
+    # Group 7: SOCIAL
+    "family_man", "influenced", "reputation_guard", "community_leader", "breadwinner",
+    "divorced", "guarantor", "widow", "caregiver", "multi_debtor_family",
+    # Group 8: TEMPORAL
+    "just_fired", "collector_call", "court_notice", "salary_arrest", "pre_court",
+    "post_refusal", "inheritance_trap", "business_collapse", "medical_crisis", "criminal_risk",
+    # Group 9: PROFESSIONAL
+    "teacher", "doctor", "military", "accountant", "salesperson",
+    "it_specialist", "government", "journalist", "psychologist", "competitor_employee",
+    # Group 10: COMPOUND
+    "aggressive_desperate", "manipulator_crying", "know_it_all_paranoid", "passive_aggressive",
+    "couple_disagreeing", "elderly_paranoid", "hysteric_litigious", "puppet_master_lawyer",
+    "shifting", "ultimate",
 ]
 
 ALL_SCENARIOS = [
-    "cold_ad", "cold_base", "cold_referral", "cold_partner",
+    # Group A: Outbound Cold (10)
+    "cold_ad", "cold_referral", "cold_social", "cold_database", "cold_base",
+    "cold_partner", "cold_premium", "cold_event", "cold_expired", "cold_insurance",
+    # Group B: Outbound Warm (10)
     "warm_callback", "warm_noanswer", "warm_refused", "warm_dropped",
-    "in_website", "in_hotline", "in_social",
-    "upsell", "rescue", "couple_call", "vip_debtor",
+    "warm_repeat", "warm_webinar", "warm_vip", "warm_ghosted", "warm_complaint", "warm_competitor",
+    # Group C: Inbound (8)
+    "in_website", "in_hotline", "in_social", "in_chatbot",
+    "in_partner", "in_complaint", "in_urgent", "in_corporate",
+    # Group D: Special (12)
+    "special_ghosted", "special_urgent", "special_guarantor", "special_couple",
+    "upsell", "rescue", "special_inheritance", "vip_debtor",
+    "special_psychologist", "special_vip", "special_medical", "special_boss",
+    # Group E: Follow-up (5)
+    "follow_up_first", "follow_up_second", "follow_up_third", "follow_up_rescue", "follow_up_memory",
+    # Group F: Crisis (5)
+    "crisis_collector", "crisis_pre_court", "crisis_business", "crisis_criminal", "crisis_full",
+    # Group G: Compliance (5)
+    "compliance_basic", "compliance_docs", "compliance_legal", "compliance_advanced", "compliance_full",
+    # Group H: Multi-party (5)
+    "multi_party_basic", "multi_party_lawyer", "multi_party_creditors", "multi_party_family", "multi_party_full",
 ]
 
 EMOTION_STATES = [
@@ -106,9 +149,10 @@ EMOTION_STATES = [
 SKILL_NAMES = [
     "empathy", "knowledge", "objection_handling",
     "stress_resistance", "closing", "qualification",
+    "time_management", "adaptation", "legal_knowledge", "rapport_building",
 ]
 
-DEFAULT_ARCHETYPES = ["skeptic", "anxious", "passive", "pragmatic", "desperate"]
+DEFAULT_ARCHETYPES = ["skeptic", "anxious", "passive", "pragmatic", "desperate", "concrete", "procrastinator"]
 DEFAULT_SCENARIOS = ["in_website", "cold_ad", "cold_referral"]
 
 
@@ -156,6 +200,11 @@ class ManagerProgress(Base):
     skill_stress_resistance: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     skill_closing: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     skill_qualification: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    # ── 4 new skills (DOC_06: 6 → 10) ──
+    skill_time_management: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    skill_adaptation: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    skill_legal_knowledge: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    skill_rapport_building: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
 
     # ── Разблокировки (JSONB) ──
     unlocked_archetypes: Mapped[list] = mapped_column(
@@ -175,12 +224,39 @@ class ManagerProgress(Base):
     current_deal_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     best_deal_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # ── Arena Knowledge Streak ──
+    arena_answer_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    arena_best_answer_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    arena_daily_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    arena_last_quiz_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # ── Чекпоинты (DOC_04) ──
+    checkpoints_completed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    level_checkpoints_met: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
     # ── Калибровка (cold start) ──
     calibration_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     calibration_sessions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     skill_confidence: Mapped[str] = mapped_column(
         String(20), nullable=False, default=SkillConfidence.low.value,
     )
+
+    # ── Hunter Score (DOC_14) ──
+    hunter_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    hunter_score_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # ── Prestige (DOC_15: post-level-20 progression) ──
+    prestige_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0-5
+    prestige_xp_multiplier: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)  # 1.0-1.5
+
+    # ── Season Pass (DOC_15) ──
+    season_pass_tier: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0-30
+    season_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # ── Arena Points (DOC_13) ──
+    arena_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    arena_points_last_month: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    arena_points_total_earned: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # ── Метаданные ──
     created_at: Mapped[datetime] = mapped_column(
@@ -191,9 +267,12 @@ class ManagerProgress(Base):
     )
 
     # ── Relationships ──
+    # lazy="select" (default) — load on explicit access only.
+    # Was "selectin" which eagerly loads ALL sessions (potentially 1000+) on every
+    # ManagerProgress query, causing major performance issues.
     sessions: Mapped[list["SessionHistory"]] = relationship(
         back_populates="manager",
-        lazy="selectin",
+        lazy="select",
         foreign_keys="[SessionHistory.user_id]",
         primaryjoin="ManagerProgress.user_id == SessionHistory.user_id",
     )
@@ -221,6 +300,10 @@ class ManagerProgress(Base):
             "stress_resistance": self.skill_stress_resistance,
             "closing": self.skill_closing,
             "qualification": self.skill_qualification,
+            "time_management": self.skill_time_management,
+            "adaptation": self.skill_adaptation,
+            "legal_knowledge": self.skill_legal_knowledge,
+            "rapport_building": self.skill_rapport_building,
         }
 
     def set_skills(self, skills: dict[str, int]) -> None:
@@ -496,7 +579,7 @@ class LevelDefinition(Base):
 # ──────────────────────────────────────────────────────────────────────
 
 class AchievementDefinition(Base):
-    """Определение достижения (справочник)."""
+    """Определение достижения (справочник, DOC_07: 140 ачивок, 8 категорий)."""
 
     __tablename__ = "achievement_definitions"
 
@@ -507,6 +590,11 @@ class AchievementDefinition(Base):
     xp_bonus: Mapped[int] = mapped_column(Integer, nullable=False)
     rarity: Mapped[str] = mapped_column(String(20), nullable=False)
     category: Mapped[str] = mapped_column(String(30), nullable=False)
+    # DOC_07 extensions
+    hint: Mapped[str | None] = mapped_column(Text, nullable=True)               # hint shown before unlock (secrets)
+    is_secret: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_anti: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # anti-achievement (0 XP, recommendation)
+    recommendation: Mapped[str | None] = mapped_column(Text, nullable=True)       # improvement tip for anti-achievements
 
     __table_args__ = (
         CheckConstraint("xp_bonus >= 0", name="ck_achdef_xp_nonneg"),
@@ -515,7 +603,9 @@ class AchievementDefinition(Base):
             name="ck_achdef_rarity",
         ),
         CheckConstraint(
-            "category IN ('results','skills','challenges','progression')",
-            name="ck_achdef_category",
+            "category IN ('results','skills','challenges','progression','arena','social','narrative','secret')",
+            name="ck_achdef_category_v2",
         ),
+        Index("idx_achievement_definitions_category", "category"),
+        Index("idx_achievement_definitions_rarity", "rarity"),
     )

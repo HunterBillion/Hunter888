@@ -546,7 +546,7 @@ function AvatarFallback({ emotion }: { emotion: string }) {
           <path d="M48 70 Q60 76 72 70" fill="none" stroke={color} strokeWidth="1.5" opacity="0.6" />
         </svg>
         <div
-          className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-wider"
+          className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-3 py-1 font-mono text-xs uppercase tracking-wider"
           style={{
             background: "var(--glass-bg)",
             border: "1px solid var(--border-color)",
@@ -625,7 +625,7 @@ export function Avatar3D({
 
       {/* Emotion label overlay */}
       <div
-        className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-wider"
+        className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 font-mono text-xs uppercase tracking-wider"
         style={{
           background: "var(--glass-bg)",
           border: "1px solid var(--border-color)",

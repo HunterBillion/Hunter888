@@ -10,6 +10,7 @@ WebSocket /ws/notifications — real-time уведомления для мене
 для отправки targeted-уведомлений конкретным пользователям.
 """
 
+import asyncio
 import json
 import logging
 import uuid
@@ -19,6 +20,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from app.core import errors as err
 from app.core.security import decode_token
+from app.core.ws_rate_limiter import notification_limiter
 from app.database import async_session
 
 logger = logging.getLogger(__name__)
@@ -38,15 +40,18 @@ class NotificationConnectionManager:
         self.user_prefs: dict[str, dict] = {}
         # (user_id, ws) → set of subscribed channels (e.g. "game_crm", "clients")
         self.subscriptions: dict[int, set[str]] = {}  # ws id() → channels
+        # Lock to protect concurrent access to active_connections
+        self._lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket, user_id: str, preferences: dict | None = None) -> None:
         """Добавить соединение пользователя."""
-        if user_id not in self.active_connections:
-            self.active_connections[user_id] = []
-        self.active_connections[user_id].append(websocket)
-        if preferences is not None:
-            self.user_prefs[user_id] = preferences
-        logger.info("WS Notification connected: user=%s (total=%d)", user_id, len(self.active_connections[user_id]))
+        async with self._lock:
+            if user_id not in self.active_connections:
+                self.active_connections[user_id] = []
+            self.active_connections[user_id].append(websocket)
+            if preferences is not None:
+                self.user_prefs[user_id] = preferences
+            logger.info("WS Notification connected: user=%s (total=%d)", user_id, len(self.active_connections[user_id]))
 
     def subscribe(self, websocket: WebSocket, channel: str) -> None:
         """Подписать соединение на канал (e.g. 'game_crm')."""
@@ -62,16 +67,17 @@ class NotificationConnectionManager:
         if ws_id in self.subscriptions:
             self.subscriptions[ws_id].discard(channel)
 
-    def disconnect(self, websocket: WebSocket, user_id: str) -> None:
-        """Удалить соединение."""
-        if user_id in self.active_connections:
-            self.active_connections[user_id] = [
-                ws for ws in self.active_connections[user_id] if ws != websocket
-            ]
-            if not self.active_connections[user_id]:
-                del self.active_connections[user_id]
-        # Clean up subscriptions
-        self.subscriptions.pop(id(websocket), None)
+    async def disconnect(self, websocket: WebSocket, user_id: str) -> None:
+        """Удалить соединение (async to acquire lock)."""
+        async with self._lock:
+            if user_id in self.active_connections:
+                self.active_connections[user_id] = [
+                    ws for ws in self.active_connections[user_id] if ws != websocket
+                ]
+                if not self.active_connections[user_id]:
+                    del self.active_connections[user_id]
+            # Clean up subscriptions
+            self.subscriptions.pop(id(websocket), None)
         logger.info("WS Notification disconnected: user=%s", user_id)
 
     async def send_to_user(
@@ -99,7 +105,8 @@ class NotificationConnectionManager:
             if prefs.get("notify_push") is False:
                 return  # User disabled in-app notifications
 
-        connections = self.active_connections.get(user_id, [])
+        async with self._lock:
+            connections = list(self.active_connections.get(user_id, []))
         dead = []
         for ws in connections:
             # Channel filtering: if channel specified, check subscription
@@ -111,10 +118,12 @@ class NotificationConnectionManager:
                 await ws.send_json(event)
             except Exception:
                 dead.append(ws)
-        for ws in dead:
-            self.active_connections[user_id] = [
-                c for c in self.active_connections.get(user_id, []) if c != ws
-            ]
+        if dead:
+            async with self._lock:
+                for ws in dead:
+                    self.active_connections[user_id] = [
+                        c for c in self.active_connections.get(user_id, []) if c != ws
+                    ]
 
     async def send_to_role(self, role: str, team_id: str | None, event: dict) -> None:
         """
@@ -122,21 +131,41 @@ class NotificationConnectionManager:
         Для РОП — фильтруем по team_id (если задан).
         В MVP: рассылка всем подключённым (фильтрация по роли — на стороне клиента).
         """
-        for user_id, connections in self.active_connections.items():
+        async with self._lock:
+            snapshot = {uid: list(conns) for uid, conns in self.active_connections.items()}
+        dead_pairs: list[tuple[str, WebSocket]] = []
+        for user_id, connections in snapshot.items():
             for ws in connections:
                 try:
                     await ws.send_json(event)
                 except Exception:
-                    pass
+                    dead_pairs.append((user_id, ws))
+        if dead_pairs:
+            async with self._lock:
+                for uid, ws in dead_pairs:
+                    if uid in self.active_connections:
+                        self.active_connections[uid] = [
+                            c for c in self.active_connections[uid] if c != ws
+                        ]
 
     async def broadcast(self, event: dict) -> None:
         """Отправить всем подключённым."""
-        for user_id, connections in self.active_connections.items():
+        async with self._lock:
+            snapshot = {uid: list(conns) for uid, conns in self.active_connections.items()}
+        dead_pairs: list[tuple[str, WebSocket]] = []
+        for user_id, connections in snapshot.items():
             for ws in connections:
                 try:
                     await ws.send_json(event)
                 except Exception:
-                    pass
+                    dead_pairs.append((user_id, ws))
+        if dead_pairs:
+            async with self._lock:
+                for uid, ws in dead_pairs:
+                    if uid in self.active_connections:
+                        self.active_connections[uid] = [
+                            c for c in self.active_connections[uid] if c != ws
+                        ]
 
     @property
     def connected_count(self) -> int:
@@ -145,6 +174,96 @@ class NotificationConnectionManager:
 
 # Singleton
 notification_manager = NotificationConnectionManager()
+
+
+# ─── 3.4: Typed cross-module notification helpers ────────────────────────────
+
+
+class NotificationType:
+    """Typed notification events from all modules."""
+    # Training module
+    TRAINING_STREAK_RISK = "training.streak_risk"
+    TRAINING_SCORE_RECORD = "training.score_record"
+    TRAINING_STALE = "training.stale"
+
+    # Knowledge module
+    KNOWLEDGE_SRS_OVERDUE = "knowledge.srs_overdue"
+    KNOWLEDGE_WEAK_AREA = "knowledge.weak_area"
+    KNOWLEDGE_MASTERY = "knowledge.mastery"
+
+    # PvP module
+    PVP_FRIEND_ONLINE = "pvp.friend_online"
+    PVP_RATING_DECAY = "pvp.rating_decay"
+    PVP_RANK_UP = "pvp.rank_up"
+    PVP_TOURNAMENT_START = "pvp.tournament_start"
+
+    # Gamification module
+    GAMIFICATION_ACHIEVEMENT = "gamification.achievement"
+    GAMIFICATION_LEVEL_UP = "gamification.level_up"
+    GAMIFICATION_GOAL_COMPLETE = "gamification.goal_complete"
+
+    # CRM module
+    CRM_CLIENT_REMINDER = "crm.client_reminder"
+    CRM_PROMISE_DUE = "crm.promise_due"
+
+
+async def send_typed_notification(
+    user_id: str,
+    notif_type: str,
+    title: str,
+    body: str,
+    *,
+    action_url: str | None = None,
+    channel: str | None = None,
+    force: bool = False,
+    push: bool = False,
+) -> None:
+    """Send a typed notification via WebSocket + optionally Web Push.
+
+    Args:
+        user_id: Target user UUID string
+        notif_type: One of NotificationType constants
+        title: Short notification title (max 100 chars)
+        body: Notification body text (max 500 chars)
+        action_url: Deep link URL for the notification action
+        channel: Optional channel filter for subscriptions
+        force: Bypass user notification preferences
+        push: Also send via Web Push (for offline users)
+    """
+    # Sanitize inputs
+    title = str(title)[:100]
+    body = str(body)[:500]
+    if action_url:
+        # Only allow relative URLs or known internal paths
+        action_url = str(action_url)[:200]
+        if action_url.startswith(("http://", "https://", "javascript:", "data:")):
+            action_url = None  # Block external/injection URLs
+
+    event = {
+        "type": "notification.new",
+        "notification_type": notif_type,
+        "title": title,
+        "body": body,
+        "action_url": action_url,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    await notification_manager.send_to_user(user_id, event, channel=channel, force=force)
+
+    # Optionally send Web Push for offline users
+    if push and user_id not in notification_manager.active_connections:
+        try:
+            from app.services.web_push import send_push_to_user
+            async with async_session() as db:
+                await send_push_to_user(
+                    user_id=uuid.UUID(user_id),
+                    title=title,
+                    body=body,
+                    url=action_url,
+                    db=db,
+                )
+        except Exception:
+            logger.debug("Failed to send Web Push to user %s", user_id)
 
 
 async def notification_websocket(websocket: WebSocket) -> None:
@@ -163,8 +282,13 @@ async def notification_websocket(websocket: WebSocket) -> None:
     user_id: str | None = None
 
     try:
-        # ── Шаг 1: Аутентификация (первое сообщение) ──
-        raw = await websocket.receive_text()
+        # ── Шаг 1: Аутентификация (первое сообщение, таймаут 10с) ──
+        try:
+            raw = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
+        except asyncio.TimeoutError:
+            await websocket.send_json({"type": "auth.error", "message": "Auth timeout"})
+            await websocket.close(code=4001)
+            return
         data = json.loads(raw)
 
         if data.get("type") != "auth":
@@ -250,8 +374,12 @@ async def notification_websocket(websocket: WebSocket) -> None:
         logger.info("WS Notifications authenticated: user=%s", user_id)
 
         # ── Шаг 2: Слушаем сообщения от клиента ──
+        _rate_limiter = notification_limiter()
         while True:
             raw = await websocket.receive_text()
+            if not _rate_limiter.is_allowed():
+                await websocket.send_json({"type": "error", "code": "rate_limited", "message": "Too many messages"})
+                continue
             data = json.loads(raw)
             msg_type = data.get("type")
 
@@ -324,7 +452,7 @@ async def notification_websocket(websocket: WebSocket) -> None:
             pass
     finally:
         if user_id:
-            notification_manager.disconnect(websocket, user_id)
+            await notification_manager.disconnect(websocket, user_id)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

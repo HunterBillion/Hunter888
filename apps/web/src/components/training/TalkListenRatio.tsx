@@ -30,17 +30,17 @@ export default function TalkListenRatio({ talkPercent }: TalkListenRatioProps) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div className="font-mono text-[10px] uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
+      <div className="font-mono text-xs uppercase tracking-wider mb-2.5 font-semibold" style={{ color: "var(--text-secondary)" }}>
         Говорю / Слушаю
       </div>
-      <div className="flex items-center gap-2 font-mono text-sm">
-        <Mic size={12} style={{ color: talkColor }} />
+      <div className="flex items-center gap-3 font-mono text-base font-bold">
+        <Mic size={15} style={{ color: talkColor }} />
         <span style={{ color: talkColor }}>{talkPercent}%</span>
         <span style={{ color: "var(--text-muted)" }}>/</span>
-        <Headphones size={12} style={{ color: "var(--accent)" }} />
+        <Headphones size={15} style={{ color: "var(--accent)" }} />
         <span style={{ color: "var(--accent)" }}>{listenPercent}%</span>
       </div>
-      <div className="flex h-1.5 mt-2 rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
+      <div className="flex h-2 mt-3 rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
         <motion.div
           className="h-full rounded-l-full"
           style={{ background: talkColor }}
@@ -62,11 +62,11 @@ export default function TalkListenRatio({ talkPercent }: TalkListenRatioProps) {
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4 }}
-            className="absolute bottom-full left-0 right-0 mb-1 rounded-lg p-2 text-[10px] font-mono z-10"
+            className="absolute bottom-full left-0 right-0 mb-1 rounded-lg p-3 text-xs z-10 leading-relaxed"
             style={{
               background: "var(--bg-secondary)",
               border: "1px solid var(--border-color)",
-              color: "var(--text-muted)",
+              color: "var(--text-secondary)",
             }}
           >
             Оптимально: говорить &lt;40%, слушать &gt;60%.

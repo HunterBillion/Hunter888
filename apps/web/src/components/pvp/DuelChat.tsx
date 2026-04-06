@@ -20,6 +20,16 @@ function sanitizeMessageText(text: string): string {
     : stripped;
 }
 
+function formatMessageTime(ts: string): string {
+  try {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
 interface Message {
   id: string;
   sender_role: "seller" | "client";
@@ -57,6 +67,9 @@ export function DuelChat({ messages, myRole, input, onInputChange, onSend, disab
     }
   };
 
+  const charCount = input.length;
+  const charWarning = charCount > 1800;
+
   return (
     <div
       className="flex h-full flex-col overflow-hidden rounded-[28px] border"
@@ -65,40 +78,49 @@ export function DuelChat({ messages, myRole, input, onInputChange, onSend, disab
         background: "linear-gradient(180deg, rgba(18,18,30,0.86), rgba(8,8,16,0.98))",
       }}
     >
+      {/* Header — player roles */}
       <div
-        className="flex items-center justify-between border-b px-5 py-4"
+        className="flex items-center justify-between border-b px-5 py-3"
         style={{
           borderColor: "rgba(255,255,255,0.06)",
-          background: "linear-gradient(90deg, rgba(144,92,237,0.12), rgba(0,255,148,0.08))",
+          background: "linear-gradient(90deg, rgba(99,102,241,0.12), rgba(0,255,148,0.08))",
         }}
       >
-        <div>
-          <div className="text-[11px] font-mono uppercase tracking-[0.22em]" style={{ color: "rgba(255,255,255,0.72)" }}>
-            Pyramid Link
-          </div>
-          <div className="mt-1 text-sm font-medium text-white">Тактический чат арены</div>
+        <div className="flex items-center gap-2">
+          <div
+            className="h-2 w-2 rounded-full"
+            style={{ background: myRole === "seller" ? "var(--accent)" : "#3B82F6" }}
+          />
+          <span className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
+            {myRole === "seller" ? "Вы: Менеджер" : "Вы: Клиент"}
+          </span>
         </div>
-        <div
-          className="rounded-full px-3 py-1 text-[11px] font-mono uppercase tracking-[0.18em]"
-          style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.72)" }}
-        >
-          {myRole === "seller" ? "Роль: менеджер" : "Роль: клиент"}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+            {myRole === "seller" ? "Оппонент: Клиент" : "Оппонент: Менеджер"}
+          </span>
+          <div
+            className="h-2 w-2 rounded-full"
+            style={{ background: myRole === "seller" ? "#3B82F6" : "var(--accent)" }}
+          />
         </div>
       </div>
 
+      {/* Messages area */}
       <div className="pvp-pyramid-grid flex-1 overflow-y-auto p-4 sm:p-6">
-        <div className="space-y-4">
+        <div className="space-y-3">
           {sanitizedMessages.map((msg, index) => {
             const isMine = msg.sender_role === myRole;
             const previousRound = index > 0 ? sanitizedMessages[index - 1]?.round : null;
+            const timeStr = formatMessageTime(msg.timestamp);
 
             return (
               <div key={msg.id}>
                 {(index === 0 || previousRound !== msg.round) && (
-                  <div className="flex justify-center">
+                  <div className="flex justify-center my-3">
                     <div
-                      className="rounded-full px-3 py-1 text-[10px] font-mono uppercase tracking-[0.22em]"
-                      style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.66)" }}
+                      className="rounded-full px-4 py-1.5 text-xs font-mono uppercase tracking-widest"
+                      style={{ background: "rgba(99,102,241,0.1)", color: "var(--accent)", border: "1px solid rgba(99,102,241,0.2)" }}
                     >
                       Раунд {msg.round}
                     </div>
@@ -106,24 +128,36 @@ export function DuelChat({ messages, myRole, input, onInputChange, onSend, disab
                 )}
 
                 <motion.div
-                  initial={{ opacity: 0, y: 8 }}
+                  initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={`mt-3 flex ${isMine ? "justify-end" : "justify-start"}`}
+                  transition={{ duration: 0.2 }}
+                  className={`flex ${isMine ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`pvp-message-pyramid max-w-[82%] px-5 py-4 ${isMine ? "pvp-message-pyramid--mine" : ""}`}
+                    className="max-w-[82%] px-4 py-3"
                     style={{
+                      borderRadius: isMine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
                       background: isMine
-                        ? "linear-gradient(180deg, rgba(144,92,237,0.4), rgba(90,50,160,0.22))"
-                        : "linear-gradient(180deg, rgba(42,52,74,0.7), rgba(18,26,41,0.48))",
-                      border: `1px solid ${isMine ? "rgba(191,85,236,0.6)" : "rgba(125,211,252,0.28)"}`,
-                      boxShadow: isMine ? "0 0 24px rgba(144,92,237,0.22)" : "0 0 20px rgba(125,211,252,0.1)",
+                        ? "linear-gradient(135deg, rgba(99,102,241,0.3), rgba(55,48,163,0.18))"
+                        : "linear-gradient(135deg, rgba(42,52,74,0.6), rgba(18,26,41,0.4))",
+                      borderLeft: isMine ? "none" : "3px solid rgba(125,211,252,0.4)",
+                      borderRight: isMine ? "3px solid rgba(139,92,246,0.5)" : "none",
+                      backdropFilter: "blur(8px)",
                     }}
                   >
-                    <div className="mb-2 text-[9px] font-mono uppercase tracking-[0.2em]" style={{ color: "rgba(255,255,255,0.56)" }}>
-                      {msg.sender_role === "seller" ? "Менеджер" : "Клиент"}
+                    <div className="flex items-center justify-between gap-3 mb-1.5">
+                      <span className="text-xs font-mono uppercase tracking-wider" style={{
+                        color: isMine ? "rgba(139,92,246,0.8)" : "rgba(125,211,252,0.7)",
+                      }}>
+                        {msg.sender_role === "seller" ? "Менеджер" : "Клиент"}
+                      </span>
+                      {timeStr && (
+                        <span className="text-xs font-mono" style={{ color: "rgba(255,255,255,0.3)" }}>
+                          {timeStr}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-sm leading-6" style={{ color: "#F5F7FB" }}>
+                    <p className="text-sm leading-relaxed" style={{ color: "#F5F7FB" }}>
                       {msg.text}
                     </p>
                   </div>
@@ -135,29 +169,47 @@ export function DuelChat({ messages, myRole, input, onInputChange, onSend, disab
         <div ref={endRef} />
       </div>
 
+      {/* Input area */}
       <div
-        className="flex gap-2 border-t p-4 sm:p-5"
+        className="border-t p-4 sm:p-5"
         style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(5,8,18,0.88)" }}
       >
-        <textarea
-          value={input}
-          onChange={(e) => onInputChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={disabled ? "Ожидание..." : myRole === "seller" ? "Ваш ответ как менеджер..." : "Ответьте как клиент..."}
-          disabled={disabled}
-          rows={1}
-          className="vh-input flex-1 min-h-[48px] max-h-28 resize-none"
-          style={{ background: "rgba(255,255,255,0.05)", color: "#F5F7FB" }}
-        />
-        <motion.button
-          onClick={onSend}
-          disabled={disabled || !input.trim()}
-          className="shrink-0 flex h-[48px] w-[48px] items-center justify-center rounded-2xl text-white"
-          style={{ background: "linear-gradient(180deg, #9E6AF4, #6B39D1)", opacity: disabled || !input.trim() ? 0.4 : 1 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <Send size={16} />
-        </motion.button>
+        <div className="flex gap-2">
+          <textarea
+            value={input}
+            onChange={(e) => {
+              if (e.target.value.length <= MAX_MESSAGE_LENGTH) {
+                onInputChange(e.target.value);
+              }
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={disabled ? "Ожидание..." : myRole === "seller" ? "Ваш ответ как менеджер..." : "Ответьте как клиент..."}
+            disabled={disabled}
+            rows={1}
+            className="glow-input flex-1 min-h-[48px] max-h-28 resize-none"
+          />
+          <motion.button
+            onClick={onSend}
+            disabled={disabled || !input.trim()}
+            aria-label="Отправить сообщение"
+            className="btn-neon shrink-0 flex h-[48px] w-[48px] items-center justify-center rounded-2xl text-white"
+            style={{ opacity: disabled || !input.trim() ? 0.4 : 1 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Send size={16} />
+          </motion.button>
+        </div>
+        {/* Character counter */}
+        {charCount > 0 && (
+          <div className="mt-1.5 text-right">
+            <span
+              className="text-xs font-mono"
+              style={{ color: charWarning ? "var(--neon-red)" : "var(--text-muted)" }}
+            >
+              {charCount}/{MAX_MESSAGE_LENGTH}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { DuplicateWarning } from "./DuplicateWarning";
+import { logger } from "@/lib/logger";
 
 const SOURCES = [
   { value: "cold_call", label: "Холодный звонок" },
@@ -73,7 +74,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
     if (!isAdmin || !open) return;
     api.get("/users?role=manager&limit=100")
       .then((data: ManagerOption[]) => setManagers(Array.isArray(data) ? data : []))
-      .catch((err) => { console.error("Failed to load managers for client creation:", err); });
+      .catch((err) => { logger.error("Failed to load managers for client creation:", err); });
   }, [isAdmin, open]);
 
   const resetForm = () => {
@@ -236,7 +237,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
               </div>
 
               {/* Phone + Email row */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>ТЕЛЕФОН</label>
                   <input
@@ -262,7 +263,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
               </div>
 
               {/* Debt + Source row */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>СУММА ДОЛГА, ₽</label>
                   <input
@@ -308,7 +309,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
               </div>
 
               {/* Initial consent */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>НАЧАЛЬНОЕ СОГЛАСИЕ</label>
                   <select aria-label="НАЧАЛЬНОЕ СОГЛАСИЕ" value={consentType} onChange={(e) => setConsentType(e.target.value)} className="vh-input w-full">
@@ -343,7 +344,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
               <motion.button
                 type="submit"
                 disabled={saving}
-                className="vh-btn-primary w-full flex items-center justify-center gap-2 py-3"
+                className="btn-neon w-full flex items-center justify-center gap-2 py-3"
                 whileTap={{ scale: 0.97 }}
               >
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}

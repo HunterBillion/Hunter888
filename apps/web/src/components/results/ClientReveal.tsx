@@ -40,7 +40,7 @@ export default function ClientReveal({ clientCard }: ClientRevealProps) {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+          <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
             {revealed ? "Скрыть" : "Показать скрытые данные"}
           </span>
           <motion.span
@@ -84,7 +84,7 @@ export default function ClientReveal({ clientCard }: ClientRevealProps) {
                   >
                     <div className="flex items-center gap-2 mb-2">
                       <Icon size={13} style={{ color: item.color }} />
-                      <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                      <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                         {item.label}
                       </span>
                     </div>

@@ -7,6 +7,7 @@ import { KeyRound, ArrowRight, AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { PasswordInput } from "@/components/ui/PasswordInput";
+import { PasswordChecklist, isPasswordValid } from "@/components/ui/PasswordChecklist";
 
 export default function ChangePasswordPage() {
   const router = useRouter();
@@ -20,8 +21,8 @@ export default function ChangePasswordPage() {
     e.preventDefault();
     setError("");
 
-    if (newPassword.length < 8) {
-      setError("Пароль должен быть не менее 8 символов");
+    if (!isPasswordValid(newPassword)) {
+      setError("Пароль не соответствует требованиям безопасности");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -35,7 +36,7 @@ export default function ChangePasswordPage() {
         old_password: oldPassword,
         new_password: newPassword,
       });
-      router.push("/");
+      router.push("/home");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Ошибка смены пароля";
@@ -119,11 +120,11 @@ export default function ChangePasswordPage() {
               id="newPassword"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              minLength={8}
               placeholder="Минимум 8 символов"
               autoComplete="new-password"
               ariaLabel="Новый пароль"
             />
+            <PasswordChecklist value={newPassword} />
           </div>
 
           <div>
@@ -143,7 +144,7 @@ export default function ChangePasswordPage() {
           <motion.button
             type="submit"
             disabled={loading}
-            className="vh-btn-primary flex w-full items-center justify-center gap-2"
+            className="btn-neon flex w-full items-center justify-center gap-2"
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
           >

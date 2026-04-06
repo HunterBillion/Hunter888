@@ -2,6 +2,8 @@
 
 GET /api/dashboard/manager — stats + progress + assignments + recommendations + gamification
 GET /api/dashboard/rop — team stats + all members + leaderboard + tournament
+GET /api/dashboard/knowledge-stats — Arena knowledge stats (Block 5 cross-module)
+GET /api/dashboard/team-knowledge-stats — Team Arena stats for ROP (Block 5)
 """
 
 import json
@@ -9,8 +11,8 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import Integer, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -345,3 +347,628 @@ async def rop_dashboard(
 
     await _cache_set(cache_key, data)
     return data
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Block 5: Arena Knowledge Dashboard Stats
+# ══════════════════════════════════════════════════════════════════════════════
+
+CATEGORY_DISPLAY_NAMES: dict[str, str] = {
+    "eligibility": "Условия подачи",
+    "procedure": "Порядок процедуры",
+    "property": "Имущество",
+    "consequences": "Последствия",
+    "costs": "Стоимость",
+    "creditors": "Кредиторы",
+    "documents": "Документы",
+    "timeline": "Сроки",
+    "court": "Судебные процессы",
+    "rights": "Права должника",
+}
+
+
+@router.get("/knowledge-stats")
+async def knowledge_dashboard_stats(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID | None = Query(None, description="View another user (ROP/admin)"),
+):
+    """Dashboard stats for Arena Knowledge section.
+
+    Returns: overall_accuracy, category_progress, pvp_stats,
+    recent_sessions, weak_areas, recommendations.
+    Cached for 30 seconds.
+    """
+    # ROP/admin can view another user; others see only themselves
+    target_id = user.id
+    if user_id and user.role.value in ("rop", "admin", "methodologist"):
+        # Admin can view anyone; ROP/methodologist must be on same team
+        if user.role.value == "admin":
+            target_id = user_id
+        else:
+            target_user = (await db.execute(
+                select(User).where(User.id == user_id)
+            )).scalar_one_or_none()
+            if target_user and target_user.team_id == user.team_id:
+                target_id = user_id
+            # else: silently fall back to own stats (no IDOR)
+
+    cache_key = f"dashboard:knowledge:{target_id}"
+    cached = await _cache_get(cache_key)
+    if cached:
+        return cached
+
+    # ── Overall accuracy ──
+    from app.models.knowledge import (
+        KnowledgeAnswer,
+        KnowledgeQuizSession,
+        QuizSessionStatus,
+    )
+    from app.services.knowledge_quiz import get_category_progress, get_user_weak_areas
+
+    category_progress = await get_category_progress(target_id, db)
+    total_correct = sum(cp.get("correct_answers", 0) for cp in category_progress)
+    total_answered = sum(cp.get("total_answers", 0) for cp in category_progress)
+    overall_accuracy = (
+        round(total_correct / total_answered * 100, 1) if total_answered > 0 else 0
+    )
+
+    # ── PvP rating ──
+    pvp_stats = {}
+    try:
+        from app.services.arena_difficulty import get_arena_rating_for_user
+
+        pvp_stats = await get_arena_rating_for_user(target_id, db)
+    except Exception:
+        logger.debug("PvP rating unavailable", exc_info=True)
+        pvp_stats = {
+            "rating": 1500, "rank_tier": "unranked",
+            "wins": 0, "losses": 0, "current_streak": 0,
+        }
+
+    # ── Recent sessions (last 5) ──
+    recent_result = await db.execute(
+        select(KnowledgeQuizSession)
+        .where(
+            KnowledgeQuizSession.user_id == target_id,
+            KnowledgeQuizSession.status == QuizSessionStatus.completed,
+        )
+        .order_by(KnowledgeQuizSession.ended_at.desc())
+        .limit(5)
+    )
+    recent_sessions = [
+        {
+            "id": str(s.id),
+            "mode": s.mode.value,
+            "score": s.score,
+            "correct": s.correct_answers,
+            "total": s.total_questions,
+            "category": s.category,
+            "date": s.ended_at.isoformat() if s.ended_at else None,
+        }
+        for s in recent_result.scalars().all()
+    ]
+
+    # ── Weak areas ──
+    weak_areas = await get_user_weak_areas(target_id, db, limit=3)
+
+    # ── Cross-module recommendations ──
+    recommendations = []
+    try:
+        from app.services.cross_recommendations import CrossModuleRecommendationEngine
+
+        engine = CrossModuleRecommendationEngine()
+        recs = await engine.get_training_recommendations_from_arena(target_id, db)
+        recommendations = [
+            {
+                "category": r["category"],
+                "accuracy": r["accuracy"],
+                "recommendation": r["recommendation"],
+                "priority": r["priority"],
+                "suggested_action": r["suggested_action"],
+            }
+            for r in recs[:3]
+        ]
+    except Exception:
+        logger.debug("Cross-module recommendations unavailable", exc_info=True)
+
+    data = {
+        "overall_accuracy": overall_accuracy,
+        "total_quizzes": total_answered,
+        "category_progress": [
+            {
+                "category": cp["category"],
+                "display_name": CATEGORY_DISPLAY_NAMES.get(cp["category"], cp["category"]),
+                "accuracy": cp.get("mastery_pct", 0),
+                "total_answered": cp.get("total_answers", 0),
+                "correct_answers": cp.get("correct_answers", 0),
+            }
+            for cp in category_progress
+        ],
+        "pvp_stats": pvp_stats,
+        "recent_sessions": recent_sessions,
+        "weak_areas": weak_areas,
+        "recommendations": recommendations,
+    }
+
+    await _cache_set(cache_key, data)
+    return data
+
+
+@router.get("/team-knowledge-stats")
+async def team_knowledge_stats(
+    user: User = Depends(require_role("rop", "admin", "methodologist")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Team knowledge stats for ROP dashboard.
+
+    Returns per-member: accuracy, quiz sessions this week, needs_attention flag.
+    """
+    if not user.team_id and user.role.value not in ("admin", "methodologist"):
+        return {"error": err.NO_TEAM_ASSIGNED}
+
+    cache_key = f"dashboard:team_knowledge:{user.team_id or 'all'}"
+    cached = await _cache_get(cache_key)
+    if cached:
+        return cached
+
+    from app.models.knowledge import KnowledgeAnswer, KnowledgeQuizSession, QuizSessionStatus
+
+    # Get team members
+    if user.role.value in ("admin", "methodologist"):
+        team_filter = User.is_active == True  # noqa: E712
+    else:
+        team_filter = (User.team_id == user.team_id) & (User.is_active == True)  # noqa: E712
+
+    members_result = await db.execute(select(User).where(team_filter))
+    members = members_result.scalars().all()
+
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+
+    team_stats = []
+    for member in members:
+        # Per-member accuracy
+        ans_result = await db.execute(
+            select(
+                func.count(KnowledgeAnswer.id).label("total"),
+                func.sum(
+                    case((KnowledgeAnswer.is_correct == True, 1), else_=0)  # noqa: E712
+                ).label("correct"),
+            )
+            .where(KnowledgeAnswer.user_id == member.id)
+        )
+        ans_row = ans_result.one()
+        total_a = ans_row.total or 0
+        correct_a = ans_row.correct or 0
+        accuracy = round((correct_a / total_a * 100), 1) if total_a > 0 else 0
+
+        # Sessions this week
+        week_count = (await db.execute(
+            select(func.count()).where(
+                KnowledgeQuizSession.user_id == member.id,
+                KnowledgeQuizSession.started_at >= week_ago,
+                KnowledgeQuizSession.status == QuizSessionStatus.completed,
+            )
+        )).scalar() or 0
+
+        team_stats.append({
+            "user_id": str(member.id),
+            "name": member.full_name,
+            "accuracy": accuracy,
+            "total_answers": total_a,
+            "sessions_this_week": week_count,
+            "needs_attention": accuracy < 60 and total_a >= 5,
+        })
+
+    team_stats.sort(key=lambda m: m["accuracy"])
+
+    data = {
+        "team_members": team_stats,
+        "members_needing_attention": [m for m in team_stats if m["needs_attention"]],
+        "total_members": len(team_stats),
+    }
+
+    await _cache_set(cache_key, data)
+    return data
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ROP DASHBOARD V2 — Team Heatmap, Weak Links, Benchmark, ROI
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/rop/heatmap")
+async def rop_heatmap(
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Team skill heatmap: managers x 6 skills matrix with trends."""
+    if not user.team_id:
+        return {"team_name": "—", "skill_names": [], "rows": [], "team_avg": {}}
+
+    from app.services.team_analytics import get_team_heatmap
+    cache_key = f"dashboard:rop_heatmap:{user.team_id}"
+    cached = await _cache_get(cache_key)
+    if cached:
+        return cached
+
+    data = await get_team_heatmap(user.team_id, db)
+    await _cache_set(cache_key, data)
+    return data
+
+
+@router.get("/rop/weak-links")
+async def rop_weak_links(
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Managers needing attention: declining scores, inactivity, low performance."""
+    if not user.team_id:
+        return {"needs_attention": [], "total_team": 0, "attention_count": 0}
+
+    from app.services.team_analytics import get_weak_links
+    cache_key = f"dashboard:rop_weak_links:{user.team_id}"
+    cached = await _cache_get(cache_key)
+    if cached:
+        return cached
+
+    data = await get_weak_links(user.team_id, db)
+    await _cache_set(cache_key, data)
+    return data
+
+
+@router.get("/rop/benchmark")
+async def rop_benchmark(
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compare managers within team: each vs team average with percentiles."""
+    if not user.team_id:
+        return {"team_name": "—", "entries": [], "team_avg_score": 0}
+
+    from app.services.team_analytics import compare_managers
+    cache_key = f"dashboard:rop_benchmark:{user.team_id}"
+    cached = await _cache_get(cache_key)
+    if cached:
+        return cached
+
+    data = await compare_managers(user.team_id, db)
+    await _cache_set(cache_key, data)
+    return data
+
+
+@router.get("/rop/roi")
+async def rop_roi(
+    weeks: int = Query(8, ge=4, le=26),
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """ROI: correlation between training hours and score improvement."""
+    if not user.team_id:
+        return {"data_points": [], "correlation": 0.0, "summary": "Нет команды"}
+
+    from app.services.team_analytics import get_team_roi
+    data = await get_team_roi(user.team_id, db, weeks)
+    return data
+
+
+@router.get("/benchmark")
+async def platform_benchmark(
+    user: User = Depends(require_role("rop", "admin", "methodologist")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Team vs platform benchmark with percentiles."""
+    if not user.team_id:
+        return {"team_name": "—", "skills": [], "team_avg_score": 0, "platform_avg_score": 0}
+
+    from app.services.team_analytics import get_team_vs_platform
+    cache_key = f"dashboard:benchmark:{user.team_id}"
+    cached = await _cache_get(cache_key)
+    if cached:
+        return cached
+
+    data = await get_team_vs_platform(user.team_id, db)
+    await _cache_set(cache_key, data)
+    return data
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# WEEKLY REPORTS
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/weekly-report")
+async def get_weekly_report(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get latest weekly report for current user."""
+    from app.models.progress import WeeklyReport
+
+    result = await db.execute(
+        select(WeeklyReport).where(
+            WeeklyReport.user_id == user.id,
+        ).order_by(WeeklyReport.week_start.desc()).limit(1)
+    )
+    report = result.scalar_one_or_none()
+
+    if not report:
+        # GAP-3 fix: on-demand generation if no report exists yet
+        try:
+            from app.services.weekly_report import generate_weekly_report as gen_report
+            await gen_report(db, user.id)
+            await db.commit()
+            # Re-fetch
+            result = await db.execute(
+                select(WeeklyReport).where(
+                    WeeklyReport.user_id == user.id,
+                ).order_by(WeeklyReport.week_start.desc()).limit(1)
+            )
+            report = result.scalar_one_or_none()
+        except Exception:
+            pass
+    if not report:
+        return {"message": "Нет данных для отчёта. Проведите хотя бы одну тренировку."}
+
+    return {
+        "id": str(report.id),
+        "user_id": str(report.user_id),
+        "week_start": report.week_start.isoformat(),
+        "week_end": report.week_end.isoformat(),
+        "sessions_completed": report.sessions_completed,
+        "total_time_minutes": report.total_time_minutes,
+        "average_score": float(report.average_score) if report.average_score else None,
+        "best_score": report.best_score,
+        "worst_score": report.worst_score,
+        "score_trend": report.score_trend,
+        "skills_snapshot": report.skills_snapshot,
+        "skills_change": report.skills_change,
+        "weak_points": report.weak_points,
+        "recommendations": report.recommendations,
+        "report_text": report.report_text,
+        "weekly_rank": report.weekly_rank,
+        "rank_change": report.rank_change,
+        "new_achievements": report.new_achievements,
+        "xp_earned": report.xp_earned,
+    }
+
+
+@router.get("/weekly-report/history")
+async def get_weekly_report_history(
+    weeks: int = Query(12, ge=1, le=52),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get weekly report history."""
+    from app.models.progress import WeeklyReport
+
+    result = await db.execute(
+        select(WeeklyReport).where(
+            WeeklyReport.user_id == user.id,
+        ).order_by(WeeklyReport.week_start.desc()).limit(weeks)
+    )
+    reports = result.scalars().all()
+
+    return {
+        "reports": [
+            {
+                "id": str(r.id),
+                "week_start": r.week_start.isoformat(),
+                "week_end": r.week_end.isoformat(),
+                "sessions_completed": r.sessions_completed,
+                "average_score": float(r.average_score) if r.average_score else None,
+                "score_trend": r.score_trend,
+                "weekly_rank": r.weekly_rank,
+                "xp_earned": r.xp_earned,
+            }
+            for r in reports
+        ],
+        "total": len(reports),
+    }
+
+
+@router.get("/rop/weekly-digest")
+async def rop_weekly_digest(
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Team weekly digest for ROP: top improvements, degrading members."""
+    if not user.team_id:
+        return {"team_name": "—", "members": []}
+
+    from app.services.weekly_report_generator import get_team_weekly_digest
+    data = await get_team_weekly_digest(user.team_id, db)
+    return data
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Block M3: Team Trends, Activity, Alerts, Sessions, PDF Export
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/rop/trends")
+async def rop_trends(
+    period: str = Query("month", regex="^(week|month|all)$"),
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Weekly trend data: avg score, sessions, active managers over time."""
+    if not user.team_id:
+        return {"weeks": [], "period": period}
+
+    from app.services.team_analytics import get_team_trends
+    cache_key = f"dashboard:rop_trends:{user.team_id}:{period}"
+    cached = await _cache_get(cache_key)
+    if cached:
+        return cached
+
+    data = await get_team_trends(user.team_id, db, period)
+    await _cache_set(cache_key, data)
+    return data
+
+
+@router.get("/rop/activity")
+async def rop_activity(
+    days: int = Query(14, ge=7, le=30),
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Daily session counts for the team over the last N days."""
+    if not user.team_id:
+        return {"days": [], "total_sessions": 0}
+
+    from app.services.team_analytics import get_daily_activity
+    cache_key = f"dashboard:rop_activity:{user.team_id}:{days}"
+    cached = await _cache_get(cache_key)
+    if cached:
+        return cached
+
+    data = await get_daily_activity(user.team_id, db, days)
+    await _cache_set(cache_key, data)
+    return data
+
+
+@router.get("/rop/alerts")
+async def rop_alerts(
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Auto-generated alerts: inactive managers, records, skill drops."""
+    if not user.team_id:
+        return {"alerts": [], "total": 0}
+
+    from app.services.rop_alerts import get_active_alerts
+    cache_key = f"dashboard:rop_alerts:{user.team_id}"
+    cached = await _cache_get(cache_key)
+    if cached:
+        return cached
+
+    data = await get_active_alerts(user.team_id, db)
+    await _cache_set(cache_key, data)
+    return data
+
+
+@router.get("/rop/sessions")
+async def rop_member_sessions(
+    manager_id: str = Query(..., description="Manager UUID"),
+    limit: int = Query(20, ge=1, le=50),
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """List training sessions for a specific team member (ROP access)."""
+    if not user.team_id:
+        return {"sessions": [], "total": 0}
+
+    # Verify the manager belongs to the same team
+    manager_uuid = uuid.UUID(manager_id)
+    member_r = await db.execute(
+        select(User).where(User.id == manager_uuid, User.team_id == user.team_id)
+    )
+    member = member_r.scalar_one_or_none()
+    if not member:
+        return {"sessions": [], "total": 0, "error": "Manager not in your team"}
+
+    sessions_r = await db.execute(
+        select(TrainingSession).where(
+            TrainingSession.user_id == manager_uuid,
+            TrainingSession.status == SessionStatus.completed,
+        ).order_by(TrainingSession.started_at.desc()).limit(limit)
+    )
+    sessions = sessions_r.scalars().all()
+
+    return {
+        "manager_name": member.full_name,
+        "sessions": [
+            {
+                "id": str(s.id),
+                "scenario_id": str(s.scenario_id) if s.scenario_id else None,
+                "score_total": round(float(s.score_total or 0), 1),
+                "duration_seconds": s.duration_seconds,
+                "started_at": s.started_at.isoformat() if s.started_at else None,
+                "status": s.status.value if s.status else "unknown",
+            }
+            for s in sessions
+        ],
+        "total": len(sessions),
+    }
+
+
+@router.get("/rop/export")
+async def rop_export_pdf(
+    period: str = Query("week", regex="^(week|month)$"),
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export team report as PDF."""
+    if not user.team_id:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "No team assigned"}, status_code=400)
+
+    from app.services.rop_export import generate_team_report_pdf
+    pdf_bytes = await generate_team_report_pdf(user.team_id, user.full_name, period, db)
+
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="team_report_{period}.pdf"',
+        },
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RAG Feedback Analytics — knowledge base health and effectiveness
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/rag/feedback-summary")
+async def rag_feedback_summary(
+    days: int = Query(30, ge=1, le=365),
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """RAG feedback summary: retrieval stats, accuracy rates, weak chunks."""
+    from app.services.rag_feedback import get_feedback_summary
+    return await get_feedback_summary(db, days=days)
+
+
+@router.get("/rag/category-errors")
+async def rag_category_errors(
+    days: int = Query(30, ge=1, le=365),
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Per-category error rates: which legal topics are hardest for managers."""
+    from app.services.rag_feedback import get_category_error_rates
+    return await get_category_error_rates(db, days=days)
+
+
+@router.get("/rag/weak-chunks")
+async def rag_weak_chunks(
+    limit: int = Query(20, ge=1, le=100),
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Chunks with lowest effectiveness (most user errors). For methodologist review."""
+    from app.services.rag_legal import get_weak_chunks
+    return await get_weak_chunks(db, limit=limit)
+
+
+@router.get("/rag/unused-chunks")
+async def rag_unused_chunks(
+    limit: int = Query(20, ge=1, le=100),
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Active chunks that have never been retrieved. Content gap analysis."""
+    from app.services.rag_legal import get_unused_chunks
+    return await get_unused_chunks(db, limit=limit)
+
+
+@router.get("/rag/user-weak-areas/{user_id}")
+async def rag_user_weak_areas(
+    user_id: uuid.UUID,
+    days: int = Query(30, ge=1, le=365),
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Individual manager's weak legal categories based on answer history."""
+    from app.services.rag_feedback import get_user_weak_areas
+    return await get_user_weak_areas(db, user_id=user_id, days=days)

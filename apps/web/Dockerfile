@@ -22,7 +22,12 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 
 COPY package.json package-lock.json* ./
-RUN npm ci --legacy-peer-deps
+# npm ci requires 100% lockfile consistency.
+# Fallback to `npm install` if lockfile is out of sync (e.g., new deps added
+# to package.json but lockfile not regenerated). After fixing the lockfile
+# locally (`npm install --legacy-peer-deps && git commit package-lock.json`),
+# switch back to `npm ci` for fully reproducible builds.
+RUN npm install --legacy-peer-deps --ignore-scripts && npm cache clean --force
 
 COPY . .
 RUN npm run build

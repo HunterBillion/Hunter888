@@ -4,139 +4,147 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { logger } from "@/lib/logger";
+import { useNotificationStore } from "@/stores/useNotificationStore";
 import {
-  Brain,
-  Briefcase,
-  Wallet,
-  Zap,
-  ArrowRight,
-  ArrowLeft,
-  Loader2,
-  Sparkles,
-  RotateCcw,
-  Check,
-  Save,
-  CheckCircle2,
+  Brain, Briefcase, Radio, Users as UsersIcon, Heart, Gauge, Cloud, FileSearch,
+  ArrowRight, ArrowLeft, Loader2, Sparkles, RotateCcw, Check, Save, CheckCircle2,
+  Lock, SkipForward,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { ArchetypeCode, LeadSource, ProfessionCategory } from "@/types";
+import type {
+  ArchetypeCode, ArchetypeGroup, ArchetypeTier, LeadSource, ProfessionCategory,
+  FamilyPreset, CreditorsPreset, DebtStage, DebtRange, EmotionPreset,
+  BackgroundNoise, TimeOfDay, ClientFatigue,
+} from "@/types";
+import { ARCHETYPES, ARCHETYPE_GROUPS, getTierColor } from "@/lib/archetypes";
+import type { ArchetypeInfo } from "@/lib/archetypes";
+import { PROFESSIONS, PROFESSION_GROUPS } from "@/lib/professions";
+import type { ProfessionInfo } from "@/lib/professions";
+import { LEAD_SOURCES, LEAD_SOURCE_GROUPS } from "@/lib/leadSources";
 
-// ─── Data maps ───────────────────────────────────────────────────────────────
-
-interface ArchetypeInfo {
-  code: ArchetypeCode;
-  name: string;
-  description: string;
-  group: string;
-  difficulty: number; // base difficulty 1-10
-  color: string;
-}
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface CharacterBuilderProps {
   storyCalls?: number;
+  userLevel?: number;
 }
 
-const ARCHETYPE_GROUPS: Record<string, { label: string; color: string }> = {
-  resistance: { label: "Сопротивление", color: "#FF3333" },
-  emotional: { label: "Эмоциональные", color: "#E028CC" },
-  control: { label: "Контроль", color: "#FFD700" },
-  avoidance: { label: "Избегание", color: "#3B82F6" },
-  special: { label: "Особые", color: "#00FF94" },
-};
+type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
-const ARCHETYPES: ArchetypeInfo[] = [
-  // Resistance
-  { code: "skeptic", name: "Скептик", description: "Сомневается в легальности, требует доказательств", group: "resistance", difficulty: 5, color: "#FF3333" },
-  { code: "aggressive", name: "Агрессор", description: "Враждебный, обвиняет всех вокруг", group: "resistance", difficulty: 7, color: "#FF3333" },
-  { code: "hostile", name: "Враждебный", description: "Открыто конфликтует, провоцирует", group: "resistance", difficulty: 8, color: "#FF3333" },
-  { code: "blamer", name: "Обвинитель", description: "Перекладывает вину на всех", group: "resistance", difficulty: 6, color: "#FF3333" },
-  { code: "sarcastic", name: "Саркастичный", description: "Язвительный, обесценивает усилия", group: "resistance", difficulty: 6, color: "#FF3333" },
-  // Emotional
-  { code: "anxious", name: "Тревожный", description: "Боится юридических последствий", group: "emotional", difficulty: 4, color: "#E028CC" },
-  { code: "crying", name: "Плачущий", description: "Эмоционально подавлен, плачет", group: "emotional", difficulty: 5, color: "#E028CC" },
-  { code: "desperate", name: "Отчаявшийся", description: "На грани, потерял надежду", group: "emotional", difficulty: 6, color: "#E028CC" },
-  { code: "ashamed", name: "Стыдящийся", description: "Стесняется своей ситуации", group: "emotional", difficulty: 4, color: "#E028CC" },
-  { code: "overwhelmed", name: "Перегруженный", description: "Запутался, не может принять решение", group: "emotional", difficulty: 5, color: "#E028CC" },
-  { code: "grateful", name: "Благодарный", description: "Готов сотрудничать, ценит помощь", group: "emotional", difficulty: 2, color: "#E028CC" },
-  // Control
-  { code: "manipulator", name: "Манипулятор", description: "Контролирует разговор, тестирует границы", group: "control", difficulty: 8, color: "#FFD700" },
-  { code: "know_it_all", name: "Всезнайка", description: "Считает себя экспертом, поучает", group: "control", difficulty: 7, color: "#FFD700" },
-  { code: "negotiator", name: "Торговец", description: "Выбивает скидки и условия", group: "control", difficulty: 6, color: "#FFD700" },
-  { code: "shopper", name: "Шоппер", description: "Сравнивает предложения, не торопится", group: "control", difficulty: 5, color: "#FFD700" },
-  { code: "pragmatic", name: "Прагматик", description: "Фокус на цифрах и ROI", group: "control", difficulty: 5, color: "#FFD700" },
-  { code: "lawyer_client", name: "Юрист-клиент", description: "Знает законы, проверяет каждое слово", group: "control", difficulty: 9, color: "#FFD700" },
-  // Avoidance
-  { code: "passive", name: "Пассивный", description: "Безнадёжный, хочет чтобы спасли", group: "avoidance", difficulty: 3, color: "#3B82F6" },
-  { code: "delegator", name: "Делегатор", description: "Избегает решений, хочет простоты", group: "avoidance", difficulty: 4, color: "#3B82F6" },
-  { code: "avoidant", name: "Уклонист", description: "Избегает разговора, уходит от темы", group: "avoidance", difficulty: 5, color: "#3B82F6" },
-  { code: "paranoid", name: "Параноик", description: "Не доверяет никому, ищет подвох", group: "avoidance", difficulty: 7, color: "#3B82F6" },
-  // Special
-  { code: "couple", name: "Пара", description: "Два человека с разными мнениями", group: "special", difficulty: 8, color: "#00FF94" },
-  { code: "returner", name: "Возвращенец", description: "Уже отказывался, звонит снова", group: "special", difficulty: 6, color: "#00FF94" },
-  { code: "referred", name: "По рекомендации", description: "Пришёл по совету знакомого", group: "special", difficulty: 3, color: "#00FF94" },
-  { code: "rushed", name: "Спешащий", description: "Нет времени, хочет быстро", group: "special", difficulty: 5, color: "#00FF94" },
+const STEPS: {
+  icon: React.ComponentType<{ size: number; style?: React.CSSProperties }>;
+  label: string;
+  unlockLevel: number;
+  required: boolean;
+}[] = [
+  { icon: Brain, label: "Архетип", unlockLevel: 1, required: true },        // 0
+  { icon: Briefcase, label: "Профессия", unlockLevel: 1, required: true },   // 1
+  { icon: Radio, label: "Источник", unlockLevel: 1, required: true },        // 2
+  { icon: UsersIcon, label: "Контекст", unlockLevel: 3, required: false },   // 3 — FIX-4
+  { icon: Heart, label: "Настроение", unlockLevel: 5, required: false },     // 4 — FIX-4
+  { icon: Gauge, label: "Сложность", unlockLevel: 1, required: true },       // 5
+  { icon: Cloud, label: "Среда", unlockLevel: 8, required: false },           // 6
+  { icon: FileSearch, label: "Превью", unlockLevel: 1, required: false },     // 7 — FIX-4: level 9
 ];
 
-interface ProfessionInfo {
-  code: ProfessionCategory;
-  name: string;
-  icon: string;
-  debtRange: string;
-}
+// ─── Emotion presets data ───────────────────────────────────────────────────
 
-const PROFESSIONS: ProfessionInfo[] = [
-  { code: "budget", name: "Бюджетник", icon: "🏛️", debtRange: "100K–1M" },
-  { code: "government", name: "Госслужащий", icon: "🏢", debtRange: "200K–2M" },
-  { code: "military", name: "Военный", icon: "🎖️", debtRange: "150K–1.5M" },
-  { code: "pensioner", name: "Пенсионер", icon: "👴", debtRange: "50K–500K" },
-  { code: "entrepreneur", name: "Предприниматель", icon: "💼", debtRange: "500K–5M" },
-  { code: "worker", name: "Рабочий", icon: "🔧", debtRange: "100K–800K" },
-  { code: "it_office", name: "IT / Офис", icon: "💻", debtRange: "300K–3M" },
-  { code: "trade_service", name: "Торговля/Сервис", icon: "🛒", debtRange: "100K–1M" },
-  { code: "homemaker", name: "Домохозяйка", icon: "🏠", debtRange: "50K–500K" },
-  { code: "special", name: "Другое", icon: "✨", debtRange: "100K–2M" },
+const EMOTION_PRESETS: { code: EmotionPreset; name: string; icon: string; desc: string }[] = [
+  { code: "neutral", name: "Нейтральный", icon: "\u{1F610}", desc: "Стандартное состояние" },
+  { code: "anxious", name: "Тревожный", icon: "\u{1F630}", desc: "Нервничает, насторожен" },
+  { code: "angry", name: "Злой", icon: "\u{1F620}", desc: "Раздражён ещё до звонка" },
+  { code: "hopeful", name: "Надеющийся", icon: "\u{1F91E}", desc: "Верит что помогут" },
+  { code: "tired", name: "Уставший", icon: "\u{1F634}", desc: "Мало энергии, апатичен" },
+  { code: "rushed", name: "Спешащий", icon: "\u23F0", desc: "Нет времени, нетерпелив" },
+  { code: "trusting", name: "Доверчивый", icon: "\u{1F91D}", desc: "Открыт к разговору" },
 ];
 
-const LEAD_SOURCES: { code: LeadSource; name: string }[] = [
-  { code: "cold_base", name: "Холодная база" },
-  { code: "website_form", name: "Заявка с сайта" },
-  { code: "referral", name: "Рекомендация" },
-  { code: "social_media", name: "Соцсети" },
-  { code: "repeat_call", name: "Повторный звонок" },
-  { code: "incoming", name: "Входящий" },
-  { code: "partner", name: "Партнёр" },
-  { code: "chatbot", name: "Чат-бот" },
-  { code: "webinar", name: "Вебинар" },
-  { code: "churned", name: "Отвалившийся" },
+// ─── Context data ───────────────────────────────────────────────────────────
+
+const FAMILY_PRESETS: { code: FamilyPreset; label: string }[] = [
+  { code: "random", label: "Случайно" },
+  { code: "single", label: "Холост" },
+  { code: "married", label: "В браке" },
+  { code: "married_kids", label: "В браке + дети" },
+  { code: "divorced", label: "Разведён" },
+  { code: "widow", label: "Вдовец/вдова" },
 ];
 
-// ─── Steps ───────────────────────────────────────────────────────────────────
-
-type Step = 0 | 1 | 2 | 3;
-
-const STEPS: { icon: React.ComponentType<{ size: number; style?: React.CSSProperties }>; label: string }[] = [
-  { icon: Brain, label: "Архетип" },
-  { icon: Briefcase, label: "Профессия" },
-  { icon: Wallet, label: "Контекст" },
-  { icon: Zap, label: "Сложность" },
+const CREDITORS_PRESETS: { code: CreditorsPreset; label: string }[] = [
+  { code: "random", label: "Случайно" },
+  { code: "1", label: "1" },
+  { code: "2_3", label: "2-3" },
+  { code: "4_5", label: "4-5" },
+  { code: "6_plus", label: "6+" },
 ];
 
-// ─── Component ───────────────────────────────────────────────────────────────
+const DEBT_STAGES: { code: DebtStage; label: string }[] = [
+  { code: "random", label: "Случайно" },
+  { code: "pre_court", label: "До суда" },
+  { code: "court_started", label: "Суд начался" },
+  { code: "execution", label: "Исп. производство" },
+  { code: "arrest", label: "Арест имущества" },
+];
 
-export default function CharacterBuilder({ storyCalls = 3 }: CharacterBuilderProps) {
+const DEBT_RANGES: { code: DebtRange; label: string }[] = [
+  { code: "random", label: "Случайно" },
+  { code: "under_500k", label: "<500K" },
+  { code: "500k_1m", label: "500K\u20131M" },
+  { code: "1m_3m", label: "1M\u20133M" },
+  { code: "3m_10m", label: "3M\u201310M" },
+  { code: "over_10m", label: "10M+" },
+];
+
+const NOISES: { code: BackgroundNoise; label: string }[] = [
+  { code: "none", label: "Тишина" }, { code: "office", label: "Офис" },
+  { code: "street", label: "Улица" }, { code: "children", label: "Дети" }, { code: "tv", label: "ТВ" },
+];
+
+const TIMES: { code: TimeOfDay; label: string }[] = [
+  { code: "morning", label: "Утро" }, { code: "afternoon", label: "День" },
+  { code: "evening", label: "Вечер" }, { code: "night", label: "Ночь" },
+];
+
+const FATIGUES: { code: ClientFatigue; label: string }[] = [
+  { code: "fresh", label: "Бодрый" }, { code: "normal", label: "Нормальный" },
+  { code: "tired", label: "Уставший" }, { code: "exhausted", label: "Измотанный" },
+];
+
+// ─── Component ──────────────────────────────────────────────────────────────
+
+export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: CharacterBuilderProps) {
   const router = useRouter();
   const [step, setStep] = useState<Step>(0);
+  // Step 0
   const [archetype, setArchetype] = useState<ArchetypeCode | null>(null);
+  const [groupFilter, setGroupFilter] = useState<ArchetypeGroup | null>(null);
+  const [tierFilter, setTierFilter] = useState<ArchetypeTier | null>(null);
+  // Step 1
   const [profession, setProfession] = useState<ProfessionCategory | null>(null);
+  // Step 2
   const [leadSource, setLeadSource] = useState<LeadSource>("cold_base");
+  // Step 3
+  const [familyPreset, setFamilyPreset] = useState<FamilyPreset>("random");
+  const [creditorsPreset, setCreditorsPreset] = useState<CreditorsPreset>("random");
+  const [debtStage, setDebtStage] = useState<DebtStage>("random");
+  const [debtRange, setDebtRange] = useState<DebtRange>("random");
+  // Step 4
+  const [emotionPreset, setEmotionPreset] = useState<EmotionPreset>("neutral");
+  // Step 5
   const [difficulty, setDifficulty] = useState(5);
+  // Step 6
+  const [bgNoise, setBgNoise] = useState<BackgroundNoise>("none");
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>("afternoon");
+  const [clientFatigue, setClientFatigue] = useState<ClientFatigue>("normal");
+  // UI state
   const [starting, setStarting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [groupFilter, setGroupFilter] = useState<string | null>(null);
 
   const selectedArchetype = ARCHETYPES.find((a) => a.code === archetype);
   const selectedProfession = PROFESSIONS.find((p) => p.code === profession);
+
+  const isStepLocked = (s: number) => STEPS[s].unlockLevel > userLevel;
 
   const canNext = (): boolean => {
     if (step === 0) return archetype !== null;
@@ -144,14 +152,24 @@ export default function CharacterBuilder({ storyCalls = 3 }: CharacterBuilderPro
     return true;
   };
 
+  const nextStep = () => {
+    let next = step + 1;
+    // Skip locked steps
+    while (next < 7 && isStepLocked(next)) next++;
+    if (next <= 7) setStep(next as Step);
+  };
+
+  const prevStep = () => {
+    let prev = step - 1;
+    while (prev > 0 && isStepLocked(prev)) prev--;
+    if (prev >= 0) setStep(prev as Step);
+  };
+
   const buildStoryQuery = (scenarioId: string) => {
     const params = new URLSearchParams({
-      mode: "story",
-      calls: String(storyCalls),
-      custom_archetype: archetype || "",
-      custom_profession: profession || "",
-      custom_lead_source: leadSource,
-      custom_difficulty: String(difficulty),
+      mode: "story", calls: String(storyCalls),
+      custom_archetype: archetype || "", custom_profession: profession || "",
+      custom_lead_source: leadSource, custom_difficulty: String(difficulty),
     });
     return `/training/${scenarioId}?${params.toString()}`;
   };
@@ -160,7 +178,6 @@ export default function CharacterBuilder({ storyCalls = 3 }: CharacterBuilderPro
     if (!archetype || !profession) return;
     setStarting(true);
     try {
-      // Try to find a matching scenario for script/checkpoints context
       let scenarioId: string | undefined;
       try {
         const scenarios = await api.get("/scenarios/");
@@ -171,27 +188,27 @@ export default function CharacterBuilder({ storyCalls = 3 }: CharacterBuilderPro
           );
           scenarioId = sorted[0].id;
         }
-      } catch {
-        // Scenarios endpoint might fail — proceed without
-      }
+      } catch { /* proceed without */ }
 
-      // Send custom character params to backend (scenario_id is now optional)
-      if (storyMode && scenarioId) {
-        router.push(buildStoryQuery(scenarioId));
-        return;
-      }
+      if (storyMode && scenarioId) { router.push(buildStoryQuery(scenarioId)); return; }
 
       const session = await api.post("/training/sessions", {
         ...(scenarioId ? { scenario_id: scenarioId } : {}),
-        custom_archetype: archetype,
-        custom_profession: profession,
-        custom_lead_source: leadSource,
-        custom_difficulty: difficulty,
+        custom_archetype: archetype, custom_profession: profession,
+        custom_lead_source: leadSource, custom_difficulty: difficulty,
+        custom_family_preset: familyPreset !== "random" ? familyPreset : undefined,
+        custom_creditors_preset: creditorsPreset !== "random" ? creditorsPreset : undefined,
+        custom_debt_stage: debtStage !== "random" ? debtStage : undefined,
+        custom_debt_range: debtRange !== "random" ? debtRange : undefined,
+        custom_emotion_preset: emotionPreset !== "neutral" ? emotionPreset : undefined,
+        custom_bg_noise: bgNoise !== "none" ? bgNoise : undefined,
+        custom_time_of_day: timeOfDay !== "afternoon" ? timeOfDay : undefined,
+        custom_fatigue: clientFatigue !== "normal" ? clientFatigue : undefined,
       });
       router.push(`/training/${session.id}`);
     } catch (err) {
       logger.error("Failed to start:", err);
-      alert("Не удалось создать сессию. Проверьте, что бэкенд запущен и сценарии загружены (seed_db).");
+      alert("Не удалось создать сессию.");
       setStarting(false);
     }
   };
@@ -200,77 +217,97 @@ export default function CharacterBuilder({ storyCalls = 3 }: CharacterBuilderPro
     if (!archetype || !profession) return;
     setSaving(true);
     try {
-      const selectedArch = ARCHETYPES.find((a) => a.code === archetype);
-      const selectedProf = PROFESSIONS.find((p) => p.code === profession);
+      const a = ARCHETYPES.find((x) => x.code === archetype);
+      const p = PROFESSIONS.find((x) => x.code === profession);
       await api.post("/characters/custom", {
-        name: `${selectedArch?.name || archetype} · ${selectedProf?.name || profession}`,
-        archetype,
-        profession,
-        lead_source: leadSource,
-        difficulty,
+        name: `${a?.name || archetype} \u00B7 ${p?.name || profession} \u00B7 ${difficulty}/10`,
+        archetype, profession, lead_source: leadSource, difficulty,
+        family_preset: familyPreset !== "random" ? familyPreset : null,
+        creditors_preset: creditorsPreset !== "random" ? creditorsPreset : null,
+        debt_stage: debtStage !== "random" ? debtStage : null,
+        debt_range: debtRange !== "random" ? debtRange : null,
+        emotion_preset: emotionPreset !== "neutral" ? emotionPreset : null,
+        bg_noise: bgNoise !== "none" ? bgNoise : null,
+        time_of_day: timeOfDay !== "afternoon" ? timeOfDay : null,
+        client_fatigue: clientFatigue !== "normal" ? clientFatigue : null,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
-      logger.error("Failed to save character:", err);
-    } finally {
-      setSaving(false);
-    }
+      logger.error("Save error:", err);
+      useNotificationStore.getState().addToast({ title: "Ошибка", body: "Не удалось сохранить", type: "error" });
+    } finally { setSaving(false); }
   };
 
   const reset = () => {
-    setStep(0);
-    setArchetype(null);
-    setProfession(null);
-    setLeadSource("cold_base");
-    setDifficulty(5);
-    setGroupFilter(null);
+    setStep(0); setArchetype(null); setProfession(null); setLeadSource("cold_base");
+    setFamilyPreset("random"); setCreditorsPreset("random"); setDebtStage("random"); setDebtRange("random");
+    setEmotionPreset("neutral"); setDifficulty(5);
+    setBgNoise("none"); setTimeOfDay("afternoon"); setClientFatigue("normal");
+    setGroupFilter(null); setTierFilter(null);
   };
 
-  const filteredArchetypes = groupFilter
-    ? ARCHETYPES.filter((a) => a.group === groupFilter)
-    : ARCHETYPES;
+  const filteredArchetypes = ARCHETYPES.filter((a) => {
+    if (groupFilter && a.group !== groupFilter) return false;
+    if (tierFilter && a.tier !== tierFilter) return false;
+    return true;
+  });
+
+  // ── Radio button row helper ──
+  const RadioRow = ({ label, options, value, onChange }: {
+    label: string; options: { code: string; label: string }[]; value: string; onChange: (v: string) => void;
+  }) => (
+    <div className="mb-4">
+      <div className="text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((o) => (
+          <button key={o.code} onClick={() => onChange(o.code)}
+            className="rounded-lg px-3 py-1.5 text-xs transition-all"
+            style={{
+              background: value === o.code ? "var(--accent-muted)" : "var(--input-bg)",
+              border: `1px solid ${value === o.code ? "var(--accent)" : "var(--border-color)"}`,
+              color: value === o.code ? "var(--accent)" : "var(--text-secondary)",
+            }}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div className="mt-8">
-      {/* Stepper */}
-      <div className="flex items-center justify-between mb-8">
+      {/* Stepper — 8 steps */}
+      <div className="flex items-center justify-between mb-8 overflow-x-auto pb-2">
         {STEPS.map((s, i) => {
           const Icon = s.icon;
           const done = i < step;
           const active = i === step;
+          const locked = isStepLocked(i);
           return (
-            <div key={i} className="flex items-center flex-1">
+            <div key={i} className="flex items-center flex-1 min-w-0">
               <button
-                onClick={() => i <= step && setStep(i as Step)}
-                className="flex items-center gap-2"
-                disabled={i > step}
+                onClick={() => !locked && i <= step && setStep(i as Step)}
+                className="flex items-center gap-1.5 flex-shrink-0"
+                disabled={locked || i > step}
               >
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center transition-all"
+                <div className="w-7 h-7 rounded-full flex items-center justify-center transition-all"
                   style={{
-                    background: done ? "var(--accent)" : active ? "var(--accent-muted)" : "var(--input-bg)",
+                    background: locked ? "var(--input-bg)" : done ? "var(--accent)" : active ? "var(--accent-muted)" : "var(--input-bg)",
                     border: active ? "2px solid var(--accent)" : "2px solid transparent",
-                  }}
-                >
-                  {done ? (
-                    <Check size={14} className="text-white" />
-                  ) : (
-                    <Icon size={14} style={{ color: active ? "var(--accent)" : "var(--text-muted)" }} />
-                  )}
+                    opacity: locked ? 0.4 : 1,
+                  }}>
+                  {locked ? <Lock size={10} style={{ color: "var(--text-muted)" }} />
+                    : done ? <Check size={12} className="text-white" />
+                    : <Icon size={12} style={{ color: active ? "var(--accent)" : "var(--text-muted)" }} />}
                 </div>
-                <span
-                  className="font-mono text-[10px] uppercase tracking-wider hidden sm:inline"
-                  style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
-                >
+                <span className="font-mono text-[9px] uppercase tracking-wider hidden lg:inline"
+                  style={{ color: locked ? "var(--text-muted)" : active ? "var(--text-primary)" : "var(--text-muted)", opacity: locked ? 0.4 : 1 }}>
                   {s.label}
                 </span>
               </button>
               {i < STEPS.length - 1 && (
-                <div
-                  className="flex-1 h-px mx-3"
-                  style={{ background: done ? "var(--accent)" : "var(--border-color)" }}
-                />
+                <div className="flex-1 h-px mx-2 min-w-2" style={{ background: done ? "var(--accent)" : "var(--border-color)" }} />
               )}
             </div>
           );
@@ -279,338 +316,287 @@ export default function CharacterBuilder({ storyCalls = 3 }: CharacterBuilderPro
 
       {/* Step content */}
       <AnimatePresence mode="wait">
-        {/* Step 0: Archetype */}
-        {step === 0 && (
-          <motion.div key="s0" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-            {/* Group filters */}
-            <div className="flex flex-wrap gap-2 mb-5">
-              <button
-                onClick={() => setGroupFilter(null)}
-                className="rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors"
-                style={{
-                  background: !groupFilter ? "var(--accent)" : "var(--input-bg)",
-                  color: !groupFilter ? "white" : "var(--text-muted)",
-                }}
-              >
+        <motion.div key={`s${step}`} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
+
+          {/* ═══ Step 0: Archetype ═══ */}
+          {step === 0 && (<>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              <button onClick={() => setGroupFilter(null)}
+                className="rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider"
+                style={{ background: !groupFilter ? "var(--accent)" : "var(--input-bg)", color: !groupFilter ? "white" : "var(--text-muted)" }}>
                 Все ({ARCHETYPES.length})
               </button>
-              {Object.entries(ARCHETYPE_GROUPS).map(([key, g]) => {
+              {(Object.entries(ARCHETYPE_GROUPS) as [ArchetypeGroup, typeof ARCHETYPE_GROUPS[ArchetypeGroup]][]).map(([key, g]) => {
                 const count = ARCHETYPES.filter((a) => a.group === key).length;
                 return (
-                  <button
-                    key={key}
-                    onClick={() => setGroupFilter(groupFilter === key ? null : key)}
-                    className="rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors"
-                    style={{
-                      background: groupFilter === key ? g.color + "20" : "var(--input-bg)",
-                      color: groupFilter === key ? g.color : "var(--text-muted)",
-                      border: groupFilter === key ? `1px solid ${g.color}40` : "1px solid transparent",
-                    }}
-                  >
-                    {g.label} ({count})
+                  <button key={key} onClick={() => setGroupFilter(groupFilter === key ? null : key)}
+                    className="rounded-full px-2 py-1 font-mono text-[10px] uppercase tracking-wider"
+                    style={{ background: groupFilter === key ? g.color + "20" : "var(--input-bg)", color: groupFilter === key ? g.color : "var(--text-muted)", border: groupFilter === key ? `1px solid ${g.color}40` : "1px solid transparent" }}>
+                    {g.icon} {g.label} ({count})
                   </button>
                 );
               })}
             </div>
-
-            {/* Archetype grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {([1, 2, 3, 4] as ArchetypeTier[]).map((t) => {
+                const tc = getTierColor(t); const labels = ["T1", "T2", "T3", "T4"];
+                return (
+                  <button key={t} onClick={() => setTierFilter(tierFilter === t ? null : t)}
+                    className="rounded-full px-2 py-1 font-mono text-[10px] uppercase"
+                    style={{ background: tierFilter === t ? tc + "20" : "var(--input-bg)", color: tierFilter === t ? tc : "var(--text-muted)", border: tierFilter === t ? `1px solid ${tc}40` : "1px solid transparent" }}>
+                    {labels[t - 1]}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[55vh] overflow-y-auto pr-1">
               {filteredArchetypes.map((a) => {
-                const selected = archetype === a.code;
+                const sel = archetype === a.code;
+                const gi = ARCHETYPE_GROUPS[a.group]; const tc = getTierColor(a.tier);
                 return (
-                  <motion.button
-                    key={a.code}
-                    onClick={() => setArchetype(a.code)}
-                    className="glass-panel p-4 text-left transition-all relative overflow-hidden"
-                    style={{
-                      borderColor: selected ? a.color + "60" : undefined,
-                      boxShadow: selected ? `0 0 20px ${a.color}15` : undefined,
-                    }}
-                    whileHover={{ y: -2 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    {selected && (
-                      <div className="absolute top-2 right-2">
-                        <Check size={14} style={{ color: a.color }} />
-                      </div>
-                    )}
-                    <div
-                      className="font-display text-sm font-semibold"
-                      style={{ color: selected ? a.color : "var(--text-primary)" }}
-                    >
-                      {a.name}
+                  <motion.button key={a.code} onClick={() => setArchetype(a.code)}
+                    className="glass-panel p-3.5 text-left transition-all relative overflow-hidden rounded-xl"
+                    style={{ borderColor: sel ? gi.color + "60" : undefined, boxShadow: sel ? `0 0 20px ${gi.color}20` : undefined }}
+                    whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
+                    <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: sel ? `linear-gradient(90deg, ${gi.color}, ${tc})` : "transparent" }} />
+                    <div className="absolute top-2 right-2 flex gap-1">
+                      {sel && <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ background: gi.color }}><Check size={8} className="text-white" /></div>}
+                      <span className="rounded px-1 py-0.5 text-[8px] font-mono font-bold" style={{ background: tc + "20", color: tc }}>T{a.tier}</span>
                     </div>
-                    <p className="mt-1 text-[11px] leading-snug" style={{ color: "var(--text-muted)" }}>
-                      {a.description}
-                    </p>
-                    <div className="mt-2 flex items-center gap-2">
-                      <span
-                        className="rounded-full px-1.5 py-0.5 font-mono text-[9px]"
-                        style={{
-                          background: a.color + "15",
-                          color: a.color,
-                        }}
-                      >
-                        {ARCHETYPE_GROUPS[a.group]?.label}
-                      </span>
-                      <span className="font-mono text-[9px]" style={{ color: "var(--text-muted)" }}>
-                        ⚡{a.difficulty}
-                      </span>
+                    <div className="flex items-center gap-1 mb-0.5"><span className="text-sm">{a.icon}</span><span className="font-display text-xs font-bold truncate" style={{ color: sel ? gi.color : "var(--text-primary)" }}>{a.name}</span></div>
+                    <p className="text-[10px] italic mb-1" style={{ color: "var(--text-muted)" }}>&laquo;{a.subtitle}&raquo;</p>
+                    <p className="text-[10px] leading-relaxed line-clamp-2" style={{ color: "var(--text-secondary)" }}>{a.description}</p>
+                    <div className="mt-2 flex items-center gap-1">
+                      <span className="rounded-full px-1 py-0.5 text-[8px]" style={{ background: gi.color + "15", color: gi.color }}>{gi.icon}</span>
+                      <div className="flex gap-0.5">{Array.from({ length: 10 }, (_, j) => (<div key={j} className="w-0.5 h-0.5 rounded-full" style={{ background: j < a.difficulty ? tc : "var(--border-color)", opacity: j < a.difficulty ? 0.8 : 0.3 }} />))}</div>
+                      <span className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Lv{a.unlock_level}</span>
                     </div>
                   </motion.button>
                 );
               })}
             </div>
-          </motion.div>
-        )}
+          </>)}
 
-        {/* Step 1: Profession */}
-        {step === 1 && (
-          <motion.div key="s1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {PROFESSIONS.map((p) => {
-                const selected = profession === p.code;
+          {/* ═══ Step 1: Profession (25) ═══ */}
+          {step === 1 && (<>
+            <h3 className="font-display text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>Профессия клиента</h3>
+            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>Определяет доход, стиль общения, лексику и модификаторы OCEAN</p>
+            <div className="space-y-5 max-h-[55vh] overflow-y-auto pr-1">
+              {Object.entries(PROFESSION_GROUPS).map(([key, group]) => (
+                <div key={key}>
+                  <div className="text-[10px] uppercase tracking-wider mb-2 font-mono" style={{ color: "var(--text-muted)" }}>{group.label}</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {PROFESSIONS.filter((p) => p.group === key).map((p) => {
+                      const sel = profession === p.code;
+                      return (
+                        <motion.button key={p.code} onClick={() => setProfession(p.code)}
+                          className="glass-panel p-3 text-left rounded-xl relative"
+                          style={{ borderColor: sel ? "var(--accent)60" : undefined, boxShadow: sel ? "0 0 16px rgba(99,102,241,0.15)" : undefined }}
+                          whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
+                          {sel && <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "var(--accent)" }}><Check size={8} className="text-white" /></div>}
+                          <div className="text-xl mb-1">{p.icon}</div>
+                          <div className="text-xs font-bold" style={{ color: sel ? "var(--accent)" : "var(--text-primary)" }}>{p.name}</div>
+                          <div className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>{p.debtRange} \u20BD</div>
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>)}
+
+          {/* ═══ Step 2: Lead Source (20) ═══ */}
+          {step === 2 && (<>
+            <h3 className="font-display text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>Источник лида</h3>
+            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>Определяет уровень доверия, осведомлённость и ожидания клиента</p>
+            <div className="space-y-5 max-h-[55vh] overflow-y-auto pr-1">
+              {Object.entries(LEAD_SOURCE_GROUPS).map(([key, group]) => (
+                <div key={key}>
+                  <div className="text-[10px] uppercase tracking-wider mb-2 font-mono" style={{ color: "var(--text-muted)" }}>{group.label}</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {LEAD_SOURCES.filter((s) => s.group === key).map((s) => {
+                      const sel = leadSource === s.code;
+                      return (
+                        <button key={s.code} onClick={() => setLeadSource(s.code)}
+                          className="rounded-xl px-3 py-2.5 text-left transition-all"
+                          style={{ background: sel ? "var(--accent-muted)" : "var(--input-bg)", border: `1px solid ${sel ? "var(--accent)" : "var(--border-color)"}`, color: sel ? "var(--accent)" : "var(--text-secondary)" }}>
+                          <div className="text-xs font-bold">{s.name}</div>
+                          <div className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                            Trust: {s.trust > 0 ? "+" : ""}{s.trust} \u00B7 Aware: {s.awareness}/3
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>)}
+
+          {/* ═══ Step 3: Client Context (NEW) ═══ */}
+          {step === 3 && (<>
+            <h3 className="font-display text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>Контекст клиента</h3>
+            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>Жизненная ситуация влияет на страхи, мотивы и бэкстори</p>
+            <div className="glass-panel p-5 rounded-2xl space-y-1">
+              <RadioRow label="Семейное положение" options={FAMILY_PRESETS} value={familyPreset} onChange={(v) => setFamilyPreset(v as FamilyPreset)} />
+              <RadioRow label="Количество кредиторов" options={CREDITORS_PRESETS} value={creditorsPreset} onChange={(v) => setCreditorsPreset(v as CreditorsPreset)} />
+              <RadioRow label="Стадия долга" options={DEBT_STAGES} value={debtStage} onChange={(v) => setDebtStage(v as DebtStage)} />
+              <RadioRow label="Общий долг" options={DEBT_RANGES} value={debtRange} onChange={(v) => setDebtRange(v as DebtRange)} />
+            </div>
+          </>)}
+
+          {/* ═══ Step 4: Emotion Preset (NEW) ═══ */}
+          {step === 4 && (<>
+            <h3 className="font-display text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>Эмоциональный пресет</h3>
+            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>Начальное настроение клиента при звонке</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {EMOTION_PRESETS.map((ep) => {
+                const sel = emotionPreset === ep.code;
                 return (
-                  <motion.button
-                    key={p.code}
-                    onClick={() => setProfession(p.code)}
-                    className="glass-panel p-4 text-center transition-all"
-                    style={{
-                      borderColor: selected ? "var(--accent)" + "60" : undefined,
-                      boxShadow: selected ? "0 0 20px rgba(139,92,246,0.15)" : undefined,
-                    }}
-                    whileHover={{ y: -2 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <div className="text-2xl mb-2">{p.icon}</div>
-                    <div
-                      className="font-display text-xs font-semibold"
-                      style={{ color: selected ? "var(--accent)" : "var(--text-primary)" }}
-                    >
-                      {p.name}
-                    </div>
-                    <div className="mt-1 font-mono text-[9px]" style={{ color: "var(--text-muted)" }}>
-                      {p.debtRange} ₽
-                    </div>
-                    {selected && (
-                      <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="mt-2 mx-auto w-4 h-4 rounded-full flex items-center justify-center"
-                        style={{ background: "var(--accent)" }}
-                      >
-                        <Check size={10} className="text-white" />
-                      </motion.div>
-                    )}
+                  <motion.button key={ep.code} onClick={() => setEmotionPreset(ep.code)}
+                    className="glass-panel p-4 text-center rounded-xl relative"
+                    style={{ borderColor: sel ? "var(--accent)60" : undefined, boxShadow: sel ? "0 0 16px rgba(99,102,241,0.15)" : undefined }}
+                    whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
+                    {sel && <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "var(--accent)" }}><Check size={8} className="text-white" /></div>}
+                    <div className="text-2xl mb-2">{ep.icon}</div>
+                    <div className="text-xs font-bold" style={{ color: sel ? "var(--accent)" : "var(--text-primary)" }}>{ep.name}</div>
+                    <div className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>{ep.desc}</div>
                   </motion.button>
                 );
               })}
             </div>
-          </motion.div>
-        )}
+          </>)}
 
-        {/* Step 2: Context (lead source) */}
-        {step === 2 && (
-          <motion.div key="s2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-            <h3 className="font-display text-sm tracking-wider mb-4" style={{ color: "var(--text-primary)" }}>
-              Источник лида
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-              {LEAD_SOURCES.map((ls) => {
-                const selected = leadSource === ls.code;
-                return (
-                  <button
-                    key={ls.code}
-                    onClick={() => setLeadSource(ls.code)}
-                    className="rounded-xl px-3 py-2.5 font-mono text-xs text-left transition-all"
-                    style={{
-                      background: selected ? "var(--accent-muted)" : "var(--input-bg)",
-                      border: `1px solid ${selected ? "var(--accent)" : "var(--border-color)"}`,
-                      color: selected ? "var(--accent)" : "var(--text-secondary)",
-                    }}
-                  >
-                    {ls.name}
-                  </button>
-                );
-              })}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Step 3: Difficulty + Summary */}
-        {step === 3 && (
-          <motion.div key="s3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-            {/* Difficulty slider */}
-            <div className="glass-panel p-6 mb-6">
-              <h3 className="font-display text-sm tracking-wider mb-4" style={{ color: "var(--text-primary)" }}>
-                Уровень сложности
-              </h3>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min={1}
-                  max={10}
-                  value={difficulty}
-                  onChange={(e) => setDifficulty(Number(e.target.value))}
-                  className="flex-1 accent-purple-500"
-                  style={{ accentColor: "var(--accent)" }}
-                />
-                <span
-                  className="font-display text-3xl font-bold w-12 text-center"
-                  style={{
-                    color:
-                      difficulty <= 3 ? "#00FF66" : difficulty <= 6 ? "var(--warning)" : "#FF3333",
-                  }}
-                >
-                  {difficulty}
-                </span>
+          {/* ═══ Step 5: Difficulty (existing, enhanced) ═══ */}
+          {step === 5 && (<>
+            <div className="glass-panel p-6 rounded-2xl">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h3 className="font-display text-sm font-bold" style={{ color: "var(--text-primary)" }}>Уровень сложности</h3>
+                  <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>Влияет на агрессивность, ловушки и адаптивную сложность</p>
+                </div>
+                <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: `${difficulty <= 3 ? "rgba(0,255,102,0.08)" : difficulty <= 6 ? "rgba(255,215,0,0.08)" : "rgba(255,51,51,0.08)"}` }}>
+                  <span className="font-display text-2xl font-black tabular-nums" style={{ color: difficulty <= 3 ? "#00FF66" : difficulty <= 6 ? "#FFD700" : "#FF3333" }}>{difficulty}</span>
+                  <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>/10</span>
+                </div>
               </div>
-              <div className="flex justify-between mt-1 font-mono text-[9px]" style={{ color: "var(--text-muted)" }}>
-                <span>Легко</span>
-                <span>Средне</span>
-                <span>Хардкор</span>
+              <div className="flex gap-1.5">
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((level) => {
+                  const active = level === difficulty; const filled = level <= difficulty;
+                  const cc = level <= 3 ? "#00FF66" : level <= 6 ? "#FFD700" : level <= 8 ? "#FF3333" : "#FF0055";
+                  return (
+                    <motion.button key={level} onClick={() => setDifficulty(level)}
+                      className="relative flex-1 rounded-lg" style={{ height: active ? 36 : 28, background: filled ? `linear-gradient(180deg, ${cc}, ${cc}88)` : "var(--input-bg)", border: active ? `2px solid ${cc}` : "1px solid var(--border-color)", opacity: filled ? 1 : 0.35 }}
+                      whileHover={{ scale: 1.1, y: -2 }} whileTap={{ scale: 0.93 }}>
+                      <span className="absolute inset-0 flex items-center justify-center font-mono text-[10px] font-bold" style={{ color: filled ? "#fff" : "var(--text-muted)" }}>{level}</span>
+                    </motion.button>
+                  );
+                })}
               </div>
             </div>
+          </>)}
 
-            {/* Summary card */}
-            <div className="glass-panel p-6">
+          {/* ═══ Step 6: Environment (NEW) ═══ */}
+          {step === 6 && (<>
+            <h3 className="font-display text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>Модификаторы среды</h3>
+            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>Условия, в которых находится клиент во время звонка</p>
+            <div className="glass-panel p-5 rounded-2xl space-y-1">
+              <RadioRow label="Фоновый шум" options={NOISES} value={bgNoise} onChange={(v) => setBgNoise(v as BackgroundNoise)} />
+              <RadioRow label="Время суток" options={TIMES} value={timeOfDay} onChange={(v) => setTimeOfDay(v as TimeOfDay)} />
+              <RadioRow label="Усталость клиента" options={FATIGUES} value={clientFatigue} onChange={(v) => setClientFatigue(v as ClientFatigue)} />
+            </div>
+          </>)}
+
+          {/* ═══ Step 7: Preview + Summary ═══ */}
+          {step === 7 && (<>
+            <div className="glass-panel p-6 rounded-2xl">
               <div className="flex items-center gap-2 mb-4">
                 <Sparkles size={16} style={{ color: "var(--accent)" }} />
-                <h3 className="font-display text-sm tracking-wider" style={{ color: "var(--text-primary)" }}>
-                  Ваш персонаж
-                </h3>
+                <h3 className="font-display text-sm font-bold" style={{ color: "var(--text-primary)" }}>Ваш персонаж</h3>
               </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div>
-                  <div className="font-mono text-[9px] uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>
-                    Архетип
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
+                  <div className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Архетип</div>
+                  <div className="text-sm font-bold" style={{ color: selectedArchetype ? ARCHETYPE_GROUPS[selectedArchetype.group]?.color : "var(--text-primary)" }}>
+                    {selectedArchetype ? `${selectedArchetype.icon} ${selectedArchetype.name}` : "\u2014"}
                   </div>
-                  <div className="text-sm font-medium" style={{ color: selectedArchetype?.color ?? "var(--text-primary)" }}>
-                    {selectedArchetype?.name ?? "—"}
-                  </div>
+                  {selectedArchetype && <div className="text-[9px] mt-0.5 italic" style={{ color: "var(--text-muted)" }}>T{selectedArchetype.tier} \u00B7 Lv{selectedArchetype.unlock_level}+</div>}
                 </div>
-                <div>
-                  <div className="font-mono text-[9px] uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>
-                    Профессия
-                  </div>
-                  <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                    {selectedProfession ? `${selectedProfession.icon} ${selectedProfession.name}` : "—"}
-                  </div>
+                <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
+                  <div className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Профессия</div>
+                  <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{selectedProfession ? `${selectedProfession.icon} ${selectedProfession.name}` : "\u2014"}</div>
                 </div>
-                <div>
-                  <div className="font-mono text-[9px] uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>
-                    Источник
-                  </div>
-                  <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                    {LEAD_SOURCES.find((l) => l.code === leadSource)?.name ?? "—"}
-                  </div>
+                <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
+                  <div className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Источник</div>
+                  <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{LEAD_SOURCES.find((l) => l.code === leadSource)?.name ?? "\u2014"}</div>
                 </div>
-                <div>
-                  <div className="font-mono text-[9px] uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>
-                    Сложность
-                  </div>
-                  <div
-                    className="text-sm font-bold font-mono"
-                    style={{
-                      color:
-                        difficulty <= 3 ? "#00FF66" : difficulty <= 6 ? "var(--warning)" : "#FF3333",
-                    }}
-                  >
-                    {difficulty}/10
-                  </div>
+                <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
+                  <div className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Сложность</div>
+                  <div className="text-lg font-black font-mono" style={{ color: difficulty <= 3 ? "#00FF66" : difficulty <= 6 ? "var(--warning)" : "#FF3333" }}>{difficulty}/10</div>
                 </div>
               </div>
-
-              <p className="mt-4 text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                Психология, страхи, точка слома и ловушки будут сгенерированы автоматически на основе архетипа и сложности.
+              {/* Extra params summary */}
+              <div className="flex flex-wrap gap-1.5 mb-4">
+                {familyPreset !== "random" && <span className="rounded-full px-2 py-0.5 text-[9px] font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Семья: {FAMILY_PRESETS.find(f => f.code === familyPreset)?.label}</span>}
+                {creditorsPreset !== "random" && <span className="rounded-full px-2 py-0.5 text-[9px] font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Кредиторы: {creditorsPreset}</span>}
+                {debtStage !== "random" && <span className="rounded-full px-2 py-0.5 text-[9px] font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Стадия: {DEBT_STAGES.find(d => d.code === debtStage)?.label}</span>}
+                {debtRange !== "random" && <span className="rounded-full px-2 py-0.5 text-[9px] font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Долг: {DEBT_RANGES.find(d => d.code === debtRange)?.label}</span>}
+                {emotionPreset !== "neutral" && <span className="rounded-full px-2 py-0.5 text-[9px] font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Настроение: {EMOTION_PRESETS.find(e => e.code === emotionPreset)?.name}</span>}
+                {bgNoise !== "none" && <span className="rounded-full px-2 py-0.5 text-[9px] font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Шум: {NOISES.find(n => n.code === bgNoise)?.label}</span>}
+                {timeOfDay !== "afternoon" && <span className="rounded-full px-2 py-0.5 text-[9px] font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Время: {TIMES.find(t => t.code === timeOfDay)?.label}</span>}
+                {clientFatigue !== "normal" && <span className="rounded-full px-2 py-0.5 text-[9px] font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Усталость: {FATIGUES.find(f => f.code === clientFatigue)?.label}</span>}
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                AI создаст реалистичный портрет клиента на основе всех выбранных параметров.
               </p>
             </div>
-          </motion.div>
-        )}
+          </>)}
+
+        </motion.div>
       </AnimatePresence>
 
       {/* Navigation */}
       <div className="mt-8 flex items-center justify-between">
         <div className="flex gap-2">
           {step > 0 && (
-            <motion.button
-              onClick={() => setStep((step - 1) as Step)}
-              className="vh-btn-outline flex items-center gap-2"
-              whileTap={{ scale: 0.97 }}
-            >
-              <ArrowLeft size={14} /> Назад
+            <motion.button onClick={prevStep} className="btn-neon flex items-center gap-1.5 text-xs" whileTap={{ scale: 0.97 }}>
+              <ArrowLeft size={12} /> Назад
             </motion.button>
           )}
           {(archetype || profession) && (
-            <motion.button
-              onClick={reset}
-              className="vh-btn-outline flex items-center gap-2"
-              style={{ color: "var(--text-muted)" }}
-              whileTap={{ scale: 0.97 }}
-            >
-              <RotateCcw size={14} /> Сбросить
+            <motion.button onClick={reset} className="btn-neon flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }} whileTap={{ scale: 0.97 }}>
+              <RotateCcw size={12} /> Сбросить
             </motion.button>
           )}
         </div>
 
-        {step < 3 ? (
-          <motion.button
-            onClick={() => setStep((step + 1) as Step)}
-            disabled={!canNext()}
-            className="vh-btn-primary flex items-center gap-2"
-            style={{ opacity: canNext() ? 1 : 0.4 }}
-            whileTap={canNext() ? { scale: 0.97 } : {}}
-          >
-            Далее <ArrowRight size={14} />
-          </motion.button>
-        ) : (
-          <>
-            <motion.button
-              onClick={handleSave}
-              disabled={saving || saved || !archetype || !profession}
-              className="vh-btn-outline flex items-center gap-2"
-              whileTap={{ scale: 0.97 }}
-            >
-              {saved ? (
-                <><CheckCircle2 size={14} style={{ color: "var(--neon-green, #00FF66)" }} /> Сохранён</>
-              ) : saving ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <><Save size={14} /> Сохранить</>
-              )}
+        <div className="flex gap-2">
+          {/* Skip button for optional steps */}
+          {step < 7 && !STEPS[step].required && (
+            <motion.button onClick={nextStep} className="btn-neon flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }} whileTap={{ scale: 0.97 }}>
+              <SkipForward size={12} /> Пропустить
             </motion.button>
-            <motion.button
-              onClick={() => handleStart(false)}
-              disabled={starting || !archetype || !profession}
-              className="vh-btn-primary flex items-center gap-2"
-              whileTap={{ scale: 0.97 }}
-            >
-              {starting ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <>
-                  <Sparkles size={14} /> Начать тренировку
-                </>
-              )}
+          )}
+
+          {step < 7 ? (
+            <motion.button onClick={nextStep} disabled={!canNext()} className="btn-neon flex items-center gap-1.5 text-xs" whileTap={canNext() ? { scale: 0.97 } : {}}>
+              Далее <ArrowRight size={12} />
             </motion.button>
-            <motion.button
-              onClick={() => handleStart(true)}
-              disabled={starting || !archetype || !profession}
-              className="vh-btn-outline flex items-center gap-2"
-              style={{ borderColor: "rgba(139,92,246,0.28)", color: "var(--accent)" }}
-              whileTap={{ scale: 0.97 }}
-            >
-              {starting ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <>
-                  <Sparkles size={14} /> AI-story x{storyCalls}
-                </>
-              )}
-            </motion.button>
-          </>
-        )}
+          ) : (
+            <div className="flex gap-2">
+              <motion.button onClick={handleSave} disabled={saving || saved || !archetype || !profession} className="btn-neon flex items-center gap-1.5 text-xs" whileTap={{ scale: 0.97 }}>
+                {saved ? <><CheckCircle2 size={12} style={{ color: "var(--neon-green)" }} /> Сохранён</> : saving ? <Loader2 size={12} className="animate-spin" /> : <><Save size={12} /> Сохранить</>}
+              </motion.button>
+              <motion.button onClick={() => handleStart(false)} disabled={starting || !archetype || !profession} className="btn-neon flex items-center gap-1.5 text-xs" whileTap={{ scale: 0.97 }}>
+                {starting ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={12} /> Начать</>}
+              </motion.button>
+              <motion.button onClick={() => handleStart(true)} disabled={starting || !archetype || !profession} className="btn-neon flex items-center gap-1.5 text-xs" style={{ borderColor: "rgba(99,102,241,0.28)", color: "var(--accent)" }} whileTap={{ scale: 0.97 }}>
+                {starting ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={12} /> AI x{storyCalls}</>}
+              </motion.button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -28,6 +28,7 @@ import redis.asyncio as aioredis
 
 from app.models.character import EmotionState, TERMINAL_STATES, FINAL_STATES
 from app.config import settings
+from app.core.redis_pool import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +43,9 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "curious": {"considering", "testing", "callback", "cold"},
     "considering": {"negotiating", "testing", "callback", "cold"},
     "negotiating": {"deal", "testing", "callback", "cold"},
-    "deal": {"testing", "considering"},  # mostly terminal, can lose on critical_error
+    "deal": {"testing", "considering", "hostile"},  # can crash to hostile on critical failure
     "testing": {"guarded", "callback", "hostile", "cold", "considering"},
-    "callback": {"guarded", "curious", "cold"},
+    "callback": {"guarded", "curious", "cold", "deal"},  # client can upgrade during callback wait
     "hostile": {"guarded", "hangup"},  # can only exit via calm_response/empathy or hangup
     "hangup": set(),  # terminal, no exits
 }
@@ -166,14 +167,28 @@ class MoodBuffer:
 class InteractionMemory:
     """Tracks interaction history and progression patterns."""
     last_5_triggers: list[str] = field(default_factory=list)
+    last_3_states: list[str] = field(default_factory=list)
     rollback_count: int = 0
     peak_state: str = "cold"
+    consecutive_rollbacks: int = 0
+
+    def is_oscillating(self) -> bool:
+        """Detect A→B→A ping-pong pattern in recent states."""
+        if len(self.last_3_states) < 3:
+            return False
+        return (
+            self.last_3_states[0] == self.last_3_states[2]
+            and self.last_3_states[0] != self.last_3_states[1]
+        )
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     @staticmethod
     def from_dict(data: dict) -> InteractionMemory:
+        # Backward compat: old data may lack new fields
+        data.setdefault("last_3_states", [])
+        data.setdefault("consecutive_rollbacks", 0)
         return InteractionMemory(**data)
 
 
@@ -276,7 +291,8 @@ ARCHETYPE_CONFIGS: dict[str, ArchetypeConfig] = {
         threshold_negative=-0.6,
         decay_rate=0.12,
         ema_alpha=0.3,
-        energy_modifiers={"empathy": 1.8, "acknowledge": 1.5, "pressure": 1.3},
+        # pressure is NEGATIVE for ashamed: causes shame spiral, blocks progress
+        energy_modifiers={"empathy": 1.8, "acknowledge": 1.5, "pressure": -1.5},
     ),
     "aggressive": ArchetypeConfig(
         initial_state="cold",
@@ -487,20 +503,17 @@ def _message_index_key(session_id: uuid.UUID) -> str:
 _KEY_TTL = 7200  # 2 hours
 
 # ============================================================================
-# Redis Connection Pooling
+# Redis Connection (uses centralized pool from app.core.redis_pool)
 # ============================================================================
 
-_pool: Optional[aioredis.ConnectionPool] = None
-
 async def _get_redis() -> Optional[aioredis.Redis]:
-    """Get Redis connection from shared connection pool."""
-    global _pool
+    """Get Redis connection from the centralized shared connection pool.
+
+    Returns None on failure to preserve graceful degradation — all callers
+    fall back to defaults (e.g. "cold" emotion) when Redis is unavailable.
+    """
     try:
-        if _pool is None:
-            _pool = aioredis.ConnectionPool.from_url(
-                settings.redis_url, decode_responses=True, max_connections=20
-            )
-        return aioredis.Redis(connection_pool=_pool)
+        return get_redis()
     except Exception as e:
         logger.warning(f"Failed to connect to Redis: {e}")
         return None
@@ -725,6 +738,10 @@ async def cleanup_emotion(session_id: uuid.UUID) -> list[dict]:
                 break
 
         await redis.delete(*keys_to_delete)
+
+        # Clean up per-session lock (prevents memory leak on long-running server)
+        remove_session_lock(session_id)
+
         return timeline
     except Exception as e:
         logger.warning(f"Failed to cleanup emotion: {e}")
@@ -740,6 +757,42 @@ async def transition_emotion(session_id: uuid.UUID, response_quality: str) -> st
     next_state = get_next_emotion(current, response_quality)
     await set_emotion(session_id, next_state)
     return next_state
+
+
+# ============================================================================
+# V3 Engine: Per-Session Lock (prevents concurrent emotion updates)
+# ============================================================================
+
+_session_locks: dict[str, asyncio.Lock] = {}
+_session_locks_guard = asyncio.Lock()
+
+_MAX_SESSION_LOCKS = 10000  # Prevent unbounded growth
+
+
+async def _get_session_lock(session_id: uuid.UUID) -> asyncio.Lock:
+    """Get or create a per-session asyncio.Lock to serialize emotion state mutations.
+
+    Emotion updates do GET→mutate→SET on Redis. Without locking, concurrent
+    WebSocket messages can interleave and lose each other's state changes.
+    """
+    key = str(session_id)
+    if key in _session_locks:
+        return _session_locks[key]
+    async with _session_locks_guard:
+        if key not in _session_locks:
+            # Evict oldest if too many locks (stale sessions)
+            if len(_session_locks) >= _MAX_SESSION_LOCKS:
+                # Remove first 20% of keys (FIFO approximation)
+                to_remove = list(_session_locks.keys())[: _MAX_SESSION_LOCKS // 5]
+                for k in to_remove:
+                    _session_locks.pop(k, None)
+            _session_locks[key] = asyncio.Lock()
+        return _session_locks[key]
+
+
+def remove_session_lock(session_id: uuid.UUID) -> None:
+    """Clean up lock when session ends."""
+    _session_locks.pop(str(session_id), None)
 
 
 # ============================================================================
@@ -802,22 +855,26 @@ async def _update_memory(
     new_state: str,
     rollback: bool = False,
 ) -> InteractionMemory:
-    """
-    Update interaction memory with new triggers and state.
-    Maintains ring buffer of last 5 triggers, tracks rollbacks, peak state.
-    """
     try:
         memory = await _get_memory(session_id)
 
-        # Update ring buffer
+        # Update trigger ring buffer
         for trigger in triggers:
             memory.last_5_triggers.append(trigger)
             if len(memory.last_5_triggers) > 5:
                 memory.last_5_triggers.pop(0)
 
-        # Track rollbacks
+        # Update state ring buffer for oscillation detection
+        memory.last_3_states.append(new_state)
+        if len(memory.last_3_states) > 3:
+            memory.last_3_states.pop(0)
+
+        # Track rollbacks (total + consecutive streak)
         if rollback:
             memory.rollback_count += 1
+            memory.consecutive_rollbacks += 1
+        else:
+            memory.consecutive_rollbacks = 0
 
         # Track peak state (closer to "deal" is better)
         state_rank = {
@@ -953,11 +1010,18 @@ def build_fake_transition_prompt(fake: FakeTransition, archetype_code: str) -> s
         return ""
 
     # Russian-language prompt for psychological immersion
+    reveal_hint = ""
+    if fake.turns_remaining <= 1 and not fake.trigger_reveal:
+        reveal_hint = (
+            " Вы вот-вот раскроете своё истинное отношение — "
+            "начните проявлять лёгкие признаки недоверия и подозрительности."
+        )
+
     prompt = (
         f"\n[СКРЫТАЯ ИНСТРУКЦИЯ: Вы находитесь в состоянии '{fake.apparent_state}', "
         f"но на самом деле в состоянии '{fake.real_state}'. "
         f"Ведите себя как будто в '{fake.apparent_state}', "
-        f"но сохраняйте истинное отношение '{fake.real_state}'.]"
+        f"но сохраняйте истинное отношение '{fake.real_state}'.{reveal_hint}]"
     )
     return prompt
 
@@ -1107,12 +1171,23 @@ async def _check_fake_transition(
 
     # Check reveal trigger
     if fake.trigger_reveal and fake.trigger_reveal in triggers:
-        # Reveal happens next turn
+        # Reveal happens now
         fake.turns_remaining = 0
 
-    # Check auto-reveal by duration
+    # Check auto-reveal by duration expiry
     if fake.turns_remaining <= 0:
         await _clear_fake(session_id)
+        # When no explicit trigger_reveal, the fake expires with a "dramatic reveal":
+        # inject negative energy penalty to represent the client dropping the mask
+        if not fake.trigger_reveal:
+            buffer = await _get_mood_buffer(session_id)
+            buffer.current_energy -= 0.4  # trust penalty for deception reveal
+            buffer.apply_ema()
+            await _set_mood_buffer(session_id, buffer)
+            logger.info(
+                f"Fake transition auto-revealed for session {session_id}: "
+                f"{fake.apparent_state} → {fake.real_state} (energy penalty applied)"
+            )
         return None
 
     # Update fake transition
@@ -1213,6 +1288,23 @@ async def transition_emotion_v3(
             - peak_state: best state achieved
             - message_index: auto-incremented message index
     """
+    # Serialize entire emotion transition per session to prevent concurrent
+    # GET→mutate→SET races on buffer, memory, and state.
+    lock = await _get_session_lock(session_id)
+    async with lock:
+        return await _transition_emotion_v3_inner(
+            session_id, archetype_code, triggers, blend, secondary_archetype,
+        )
+
+
+async def _transition_emotion_v3_inner(
+    session_id: uuid.UUID,
+    archetype_code: str,
+    triggers: list[str],
+    blend: float = 1.0,
+    secondary_archetype: Optional[str] = None,
+) -> tuple[str, dict]:
+    """Inner implementation of transition_emotion_v3 (called under session lock)."""
     try:
         # Get archetype config
         if archetype_code not in ARCHETYPE_CONFIGS:
@@ -1308,15 +1400,48 @@ async def transition_emotion_v3(
 
                 buffer.reset_after_transition()
 
-        # Check for force hangup on excessive rollbacks
+        # Update memory with new state
         memory = await _update_memory(session_id, applied_triggers, new_state, rollback)
-        if memory.rollback_count >= 5:
-            new_state = "hangup"
-            transition_occurred = True
 
-        # Apply negative effect multiplier for rollbacks
+        # --- Anti-oscillation: suppress A→B→A ping-pong ---
+        if transition_occurred and memory.is_oscillating():
+            # Revert transition — client is stuck, don't let them bounce
+            new_state = current_state
+            transition_occurred = False
+            rollback = False
+            # Dampen energy to break the cycle
+            buffer.current_energy *= 0.5
+            buffer.energy_smoothed *= 0.5
+            await _set_mood_buffer(session_id, buffer)
+            logger.info(f"Anti-oscillation dampened for session {session_id}: suppressed {current_state}→{new_state}")
+
+        # --- Rollback frustration escalation ---
         if memory.rollback_count >= 3:
-            trigger_delta *= 1.5
+            # Each rollback beyond 2 adds cumulative frustration penalty
+            frustration_penalty = -0.1 * (memory.rollback_count - 2)
+            buffer.current_energy += frustration_penalty
+            buffer.apply_ema()
+            await _set_mood_buffer(session_id, buffer)
+
+        # 3+ consecutive rollbacks: tighten negative threshold (easier to regress further)
+        if memory.consecutive_rollbacks >= 3:
+            buffer.threshold_negative *= 0.8  # 20% more sensitive to regression
+            await _set_mood_buffer(session_id, buffer)
+
+        # Force hangup on excessive total rollbacks — but only from valid states
+        if memory.rollback_count >= 5:
+            if "hangup" in ALLOWED_TRANSITIONS.get(new_state, set()):
+                new_state = "hangup"
+                transition_occurred = True
+            else:
+                # Can't reach hangup from current state (e.g. "deal") — mark hostile if allowed
+                if "hostile" in ALLOWED_TRANSITIONS.get(new_state, set()):
+                    new_state = "hostile"
+                    transition_occurred = True
+                logger.warning(
+                    "Session %s: 5+ rollbacks but hangup unreachable from %s",
+                    session_id, new_state,
+                )
 
         # Maybe activate fake transition
         if transition_occurred:
@@ -1380,6 +1505,76 @@ async def transition_emotion_v2(
     Backward-compatible interface for clients using single-trigger model.
     """
     return await transition_emotion_v3(session_id, archetype_code, [trigger])
+
+
+async def save_journey_snapshot(session_id: uuid.UUID) -> dict:
+    """
+    Package the full emotion journey for DB persistence before Redis cleanup.
+
+    Returns a dict containing:
+      - timeline: list of enriched timeline entries (state, triggers, energy, is_fake, rollback...)
+      - summary: stats about the journey (total_transitions, rollbacks, peak_state, fake_count...)
+      - mood_buffer_final: final MoodBuffer snapshot
+      - memory_final: final InteractionMemory snapshot
+    """
+    try:
+        timeline = await get_emotion_timeline(session_id)
+        buffer = await _get_mood_buffer(session_id)
+        memory = await _get_memory(session_id)
+        fake = await _get_fake(session_id)
+
+        # Compute summary stats
+        total_transitions = sum(
+            1 for e in timeline
+            if e.get("previous_state") and e["state"] != e.get("previous_state")
+        )
+        rollback_entries = [e for e in timeline if e.get("rollback")]
+        fake_entries = [e for e in timeline if e.get("is_fake")]
+        unique_states = list(dict.fromkeys(e["state"] for e in timeline))
+
+        # Identify turning points: transitions where direction changes
+        turning_points = []
+        state_rank = {
+            "cold": 0, "guarded": 1, "curious": 2, "considering": 3,
+            "negotiating": 4, "deal": 5, "testing": 2, "callback": 1,
+            "hostile": -1, "hangup": -2,
+        }
+        prev_direction = 0  # 1 = forward, -1 = backward
+        for entry in timeline:
+            if not entry.get("previous_state"):
+                continue
+            rank_diff = state_rank.get(entry["state"], 0) - state_rank.get(entry["previous_state"], 0)
+            direction = 1 if rank_diff > 0 else (-1 if rank_diff < 0 else 0)
+            if direction != 0 and direction != prev_direction and prev_direction != 0:
+                turning_points.append({
+                    "message_index": entry.get("message_index"),
+                    "from_state": entry["previous_state"],
+                    "to_state": entry["state"],
+                    "direction": "forward" if direction > 0 else "backward",
+                    "triggers": entry.get("triggers", []),
+                })
+            if direction != 0:
+                prev_direction = direction
+
+        return {
+            "timeline": timeline,
+            "summary": {
+                "total_entries": len(timeline),
+                "total_transitions": total_transitions,
+                "rollback_count": memory.rollback_count,
+                "peak_state": memory.peak_state,
+                "fake_count": len(fake_entries),
+                "unique_states": unique_states,
+                "turning_points": turning_points,
+                "final_state": timeline[-1]["state"] if timeline else "cold",
+                "has_active_fake": fake is not None,
+            },
+            "mood_buffer_final": buffer.to_dict(),
+            "memory_final": memory.to_dict(),
+        }
+    except Exception as e:
+        logger.warning(f"Failed to save journey snapshot: {e}")
+        return {"timeline": [], "summary": {}, "mood_buffer_final": {}, "memory_final": {}}
 
 
 def get_archetype_matrices(archetype_code: str) -> dict:

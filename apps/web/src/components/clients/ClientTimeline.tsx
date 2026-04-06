@@ -82,14 +82,14 @@ export function ClientTimeline({ interactions }: ClientTimelineProps) {
                 <span className="text-xs font-mono" style={{ color: "var(--accent)" }}>
                   {TYPE_LABELS[item.interaction_type]}
                 </span>
-                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                   {dateStr}
                 </span>
               </div>
               <p className="text-sm mt-0.5" style={{ color: "var(--text-primary)" }}>
                 {item.content}
               </p>
-              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                 {item.manager_name}
               </span>
             </div>

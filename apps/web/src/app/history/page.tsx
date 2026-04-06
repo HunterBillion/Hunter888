@@ -10,7 +10,6 @@ import {
   AlertTriangle,
   Inbox,
   ArrowRight,
-  History,
   BarChart3,
   Layers3,
   Sparkles,
@@ -76,12 +75,27 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchHistory = () => {
     api
       .get("/training/history?limit=50")
       .then(setEntries)
       .catch((err) => setError(err.message || "Ошибка загрузки"))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  // Refetch sessions when user returns to the tab
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        fetchHistory();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
   // Aggregate stats
@@ -118,18 +132,9 @@ export default function HistoryPage() {
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
         <div className="mx-auto max-w-4xl px-4 py-8">
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="flex items-center gap-2">
-              <History size={20} style={{ color: "var(--accent)" }} />
-              <h1
-                className="font-display text-2xl font-bold tracking-[0.15em]"
-                style={{ color: "var(--text-primary)" }}
-              >
-                ИСТОРИЯ ТРЕНИРОВОК
-              </h1>
-            </div>
-            <p className="mt-2 font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>
-              ВСЕ ВАШИ ПРОШЛЫЕ СЕССИИ
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              Все ваши прошлые сессии
             </p>
           </motion.div>
 
@@ -152,7 +157,7 @@ export default function HistoryPage() {
                   <div key={item.label} className="glass-panel p-4 text-center">
                     <Icon size={14} className="mx-auto mb-1" style={{ color: "var(--accent)" }} />
                     <div className="font-display text-xl font-bold" style={{ color: "var(--text-primary)" }}>{item.value}</div>
-                    <div className="font-mono text-[9px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{item.label}</div>
+                    <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{item.label}</div>
                   </div>
                 );
               })}
@@ -189,7 +194,7 @@ export default function HistoryPage() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-16 flex flex-col items-center">
               <Inbox size={40} style={{ color: "var(--text-muted)" }} />
               <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>Вы ещё не проходили тренировок</p>
-              <motion.button onClick={() => router.push("/training")} className="vh-btn-primary mt-4 flex items-center gap-2" whileTap={{ scale: 0.97 }}>
+              <motion.button onClick={() => router.push("/training")} className="btn-neon mt-4 flex items-center gap-2" whileTap={{ scale: 0.97 }}>
                 Начать первую тренировку <ArrowRight size={16} />
               </motion.button>
             </motion.div>
@@ -198,9 +203,9 @@ export default function HistoryPage() {
               {groupedEntries.map((group) => (
                 <div key={group.label}>
                   <div className="flex items-center gap-3 mb-3">
-                    <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--accent)" }}>{group.label}</span>
+                    <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--accent)" }}>{group.label}</span>
                     <div className="flex-1 h-px" style={{ background: "var(--border-color)" }} />
-                    <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>{group.entries.length}</span>
+                    <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{group.entries.length}</span>
                   </div>
                   <div className="space-y-3">
                     {group.entries.map((entry, i) => {
@@ -223,13 +228,13 @@ export default function HistoryPage() {
                           whileHover={canOpenEntry ? { y: -2, boxShadow: "0 4px 20px rgba(139, 92, 246, 0.1)" } : undefined}
                           onClick={() => canOpenEntry && router.push(targetHref)}
                         >
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: `${st.color}15` }}>
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: `color-mix(in srgb, ${st.color} 8%, transparent)` }}>
                             {story ? <Sparkles size={18} style={{ color: "var(--accent)" }} /> : <Icon size={18} style={{ color: st.color }} />}
                           </div>
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full" style={{ background: `${story ? "var(--accent)" : st.color}15`, color: story ? "var(--accent)" : st.color }}>
+                              <span className="font-mono text-xs uppercase tracking-wider px-2 py-0.5 rounded-full" style={{ background: `color-mix(in srgb, ${story ? "var(--accent)" : st.color} 8%, transparent)`, color: story ? "var(--accent)" : st.color }}>
                                 {story ? "AI Story" : st.label}
                               </span>
                               <span className="text-xs" style={{ color: "var(--text-muted)" }}>{formatDate(session.started_at)}</span>
@@ -245,13 +250,13 @@ export default function HistoryPage() {
                             </div>
                             {story && (
                               <div className="mt-2 flex flex-wrap gap-2">
-                                <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+                                <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                                   Статус: {story.game_status}
                                 </span>
-                                <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+                                <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                                   Факторов: {story.active_factors.length}
                                 </span>
-                                <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+                                <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                                   Последствий: {story.consequences.length}
                                 </span>
                               </div>

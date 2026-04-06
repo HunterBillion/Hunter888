@@ -31,46 +31,44 @@ export default function VibeMeter({ emotion, archetype, trigger }: VibeMeterProp
 
   return (
     <div
-      className="rounded-xl p-5 flex flex-col relative overflow-hidden"
+      className="rounded-xl p-4 flex flex-col relative overflow-hidden"
       style={{
         background: "var(--glass-bg)",
         border: "1px solid var(--glass-border)",
-        borderRight: "2px solid var(--glass-border)",
         backdropFilter: "blur(20px)",
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <h3 className="font-display tracking-widest text-sm flex justify-between items-center w-full mb-4" style={{ color: "var(--text-secondary)" }}>
-        <span>VIBE METER</span>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-display tracking-widest text-sm font-semibold uppercase" style={{ color: "var(--text-secondary)" }}>
+          Настроение
+        </h3>
         <Activity size={16} style={{ color: "var(--accent)" }} />
-      </h3>
+      </div>
 
-      <div className="flex justify-center py-2 relative">
-        {/* Labels on left — 10-state scale (top=deal, bottom=hostile) */}
-        <div className="absolute left-0 top-2 bottom-2 flex flex-col justify-between items-end pr-3 border-r font-mono text-[9px] leading-tight" style={{ borderColor: "var(--border-color)" }}>
-          <span className="font-bold" style={{ color: EMOTION_MAP.deal.color }}>{EMOTION_MAP.deal.labelRu}</span>
+      <div className="flex gap-4 items-center">
+        {/* Compact labels */}
+        <div className="flex flex-col justify-between text-xs font-mono leading-snug shrink-0" style={{ height: 130 }}>
+          <span className="font-semibold" style={{ color: EMOTION_MAP.deal.color }}>{EMOTION_MAP.deal.labelRu}</span>
           <span style={{ color: EMOTION_MAP.negotiating.color }}>{EMOTION_MAP.negotiating.labelRu}</span>
-          <span style={{ color: EMOTION_MAP.considering.color }}>{EMOTION_MAP.considering.labelRu}</span>
           <span style={{ color: EMOTION_MAP.curious.color }}>{EMOTION_MAP.curious.labelRu}</span>
-          <span style={{ color: EMOTION_MAP.testing.color }}>{EMOTION_MAP.testing.labelRu}</span>
           <span style={{ color: EMOTION_MAP.guarded.color }}>{EMOTION_MAP.guarded.labelRu}</span>
-          <span style={{ color: EMOTION_MAP.cold.color }}>{EMOTION_MAP.cold.labelRu}</span>
           <span style={{ color: EMOTION_MAP.hostile.color }}>{EMOTION_MAP.hostile.labelRu}</span>
         </div>
 
         {/* Thermometer tube */}
         <div
-          className="w-14 h-40 rounded-full border relative overflow-hidden ml-16"
+          className="w-12 rounded-full border relative overflow-hidden flex-shrink-0"
           style={{
+            height: 130,
             background: "var(--input-bg)",
             borderColor: "var(--border-color)",
-            boxShadow: "inset 0 4px 20px var(--shadow-sm)",
           }}
         >
           {/* Grid lines */}
           <div className="absolute inset-0 flex flex-col justify-between py-2 pointer-events-none opacity-20">
-            {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+            {[0, 1, 2, 3, 4].map((i) => (
               <div key={i} className="w-full h-px bg-white" />
             ))}
           </div>
@@ -79,50 +77,55 @@ export default function VibeMeter({ emotion, archetype, trigger }: VibeMeterProp
           <motion.div
             className="absolute bottom-0 left-0 w-full"
             style={{
-              background: `linear-gradient(to top, ${EMOTION_MAP.hostile.color}, ${EMOTION_MAP.cold.color}, ${EMOTION_MAP.guarded.color}, ${EMOTION_MAP.curious.color}, ${EMOTION_MAP.considering.color}, ${EMOTION_MAP.negotiating.color}, ${EMOTION_MAP.deal.color})`,
-              boxShadow: `0 0 20px ${config.glow}`,
+              background: `linear-gradient(to top, ${EMOTION_MAP.hostile.color}, ${EMOTION_MAP.cold.color}, ${EMOTION_MAP.curious.color}, ${EMOTION_MAP.negotiating.color}, ${EMOTION_MAP.deal.color})`,
+              boxShadow: `0 0 16px ${config.glow}`,
             }}
             animate={{ height: fillPercent }}
-            transition={{ duration: 1.5, ease: "easeOut" }}
+            transition={{ duration: 1.2, ease: "easeOut" }}
           >
-            <div className="absolute top-0 w-full h-2 bg-white/30 blur-[2px] rounded-t-full" />
+            <div className="absolute top-0 w-full h-1.5 bg-white/30 blur-[2px] rounded-t-full" />
           </motion.div>
+        </div>
+
+        {/* Current state — right side, large */}
+        <div className="flex-1 flex flex-col items-center justify-center min-w-0">
+          <AnimatePresence mode="wait">
+            <motion.div
+              className="font-mono text-base font-bold tracking-widest text-center"
+              style={{ color: config.color, textShadow: `0 0 12px ${config.glow}` }}
+              key={emotion}
+              initial={{ opacity: 0, scale: 1.2 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.35 }}
+            >
+              <motion.span
+                className="inline-block"
+                animate={reducedMotion ? {} : {
+                  textShadow: [
+                    `0 0 10px ${config.glow}`,
+                    `0 0 22px ${config.glow}`,
+                    `0 0 10px ${config.glow}`,
+                  ],
+                }}
+                transition={reducedMotion ? {} : { duration: 1.5, ease: "easeInOut" }}
+              >
+                {config.labelRu}
+              </motion.span>
+            </motion.div>
+          </AnimatePresence>
+
+          <div className="mt-1.5 text-2xl font-bold font-mono" style={{ color: config.color }}>
+            {config.value}%
+          </div>
         </div>
       </div>
 
-      {/* Current state label with pulse-glow on change */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          className="mt-3 text-center font-mono text-xs font-bold tracking-widest"
-          style={{ color: config.color, textShadow: `0 0 10px ${config.glow}` }}
-          key={emotion}
-          initial={{ opacity: 0, y: 5, scale: 1.15 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -5 }}
-          transition={{ duration: 0.4 }}
-        >
-          {/* Pulse ring on emotion change */}
-          <motion.span
-            className="inline-block"
-            animate={reducedMotion ? {} : {
-              textShadow: [
-                `0 0 10px ${config.glow}`,
-                `0 0 25px ${config.glow}`,
-                `0 0 10px ${config.glow}`,
-              ],
-            }}
-            transition={reducedMotion ? {} : { duration: 1.5, ease: "easeInOut" }}
-          >
-            {config.labelRu}
-          </motion.span>
-        </motion.div>
-      </AnimatePresence>
-
-      {/* Archetype hint — e.g. "Скептик: нужны факты и цифры" */}
+      {/* Archetype hint */}
       {archetype && (
         <div
-          className="mt-2 text-center text-[10px] font-mono truncate"
-          style={{ color: "var(--text-muted)" }}
+          className="mt-3 text-center text-xs font-mono truncate"
+          style={{ color: "var(--text-secondary)" }}
           title={trigger || ARCHETYPE_HINTS[archetype] || archetype}
         >
           {trigger || ARCHETYPE_HINTS[archetype] || archetype}
@@ -136,15 +139,15 @@ export default function VibeMeter({ emotion, archetype, trigger }: VibeMeterProp
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4 }}
-            className="absolute bottom-2 left-2 right-2 rounded-lg p-2 text-[10px] font-mono z-10"
+            className="absolute bottom-2 left-2 right-2 rounded-lg p-2.5 text-xs font-mono z-10"
             style={{
               background: "var(--bg-secondary)",
               border: "1px solid var(--border-color)",
-              color: "var(--text-muted)",
+              color: "var(--text-secondary)",
             }}
           >
-            Эмоция клиента: {config.labelRu}.{" "}
-            {archetype ? (ARCHETYPE_HINTS[archetype] || "Подберите подход") : "Влияйте через правильные техники продаж."}
+            Эмоция: {config.labelRu}.{" "}
+            {archetype ? (ARCHETYPE_HINTS[archetype] || "Подберите подход") : "Влияйте через правильные техники."}
           </motion.div>
         )}
       </AnimatePresence>

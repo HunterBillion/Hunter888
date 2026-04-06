@@ -457,6 +457,165 @@ async def detect_anti_patterns(user_text: str) -> list[dict]:
     return detected
 
 
+# ─── In-memory checkpoint cache (per process) ──────────────────────────────
+# Caches checkpoint definitions by script_id to avoid DB queries every message.
+_checkpoint_cache: dict[str, list[dict]] = {}
+_CHECKPOINT_CACHE_MAX = 50
+
+
+def _cache_checkpoints(script_id: str, checkpoints: list[dict]) -> None:
+    """Cache checkpoint definitions for a script_id (LRU-style)."""
+    if len(_checkpoint_cache) >= _CHECKPOINT_CACHE_MAX:
+        # Remove oldest entry
+        oldest = next(iter(_checkpoint_cache))
+        del _checkpoint_cache[oldest]
+    _checkpoint_cache[script_id] = checkpoints
+
+
+def _get_cached_checkpoints(script_id: str) -> list[dict] | None:
+    return _checkpoint_cache.get(script_id)
+
+
+async def check_checkpoints_with_accumulation(
+    user_text: str,
+    script_id: uuid.UUID,
+    already_matched: set[str],
+    threshold: float = SIMILARITY_THRESHOLD,
+) -> tuple[list[dict], list[dict]]:
+    """Check checkpoints with accumulation of already-matched ones.
+
+    Preserves previously matched checkpoints and only checks remaining ones
+    against the current user message. Returns (all_checkpoints, new_matches).
+
+    Args:
+        user_text: Current user message text
+        script_id: UUID of the script to check against
+        already_matched: Set of checkpoint IDs already matched in this session
+        threshold: Similarity threshold for matching
+
+    Returns:
+        Tuple of (all_checkpoints_with_status, newly_matched_checkpoints)
+        Each checkpoint: {"checkpoint_id", "title", "order_index", "score", "matched", "weight"}
+    """
+    sid = str(script_id)
+    cached = _get_cached_checkpoints(sid)
+
+    if cached is None:
+        async with async_session() as db:
+            result = await db.execute(
+                select(Script)
+                .options(selectinload(Script.checkpoints))
+                .where(Script.id == script_id)
+            )
+            script = result.scalar_one_or_none()
+
+        if script is None:
+            return [], []
+
+        cached = [
+            {
+                "checkpoint_id": str(cp.id),
+                "title": cp.title,
+                "description": cp.description,
+                "order_index": cp.order_index,
+                "keywords": cp.keywords if isinstance(cp.keywords, list) else [],
+                "weight": cp.weight,
+            }
+            for cp in script.checkpoints
+        ]
+        _cache_checkpoints(sid, cached)
+
+    # Separate already-matched from remaining
+    remaining = [cp for cp in cached if cp["checkpoint_id"] not in already_matched]
+
+    # Check remaining checkpoints against current message
+    new_matches: list[dict] = []
+    for cp in remaining:
+        score = await _get_similarity(user_text, cp["description"])
+        if score is not None:
+            matched = score >= threshold
+        else:
+            score = _keyword_similarity(user_text, cp["keywords"])
+            matched = score >= KEYWORD_THRESHOLD
+
+        if matched:
+            new_matches.append({
+                "checkpoint_id": cp["checkpoint_id"],
+                "title": cp["title"],
+                "order_index": cp["order_index"],
+                "score": round(score, 3),
+                "matched": True,
+                "weight": cp["weight"],
+            })
+
+    # Build full result: already_matched + new_matches + unmatched
+    all_matched_ids = already_matched | {m["checkpoint_id"] for m in new_matches}
+    all_results = []
+    for cp in cached:
+        if cp["checkpoint_id"] in all_matched_ids:
+            # Find score from new_matches or default to 1.0 for previously matched
+            nm = next((m for m in new_matches if m["checkpoint_id"] == cp["checkpoint_id"]), None)
+            all_results.append({
+                "checkpoint_id": cp["checkpoint_id"],
+                "title": cp["title"],
+                "order_index": cp["order_index"],
+                "score": nm["score"] if nm else 1.0,
+                "matched": True,
+                "weight": cp["weight"],
+            })
+        else:
+            all_results.append({
+                "checkpoint_id": cp["checkpoint_id"],
+                "title": cp["title"],
+                "order_index": cp["order_index"],
+                "score": 0.0,
+                "matched": False,
+                "weight": cp["weight"],
+            })
+
+    all_results.sort(key=lambda x: x["order_index"])
+    return all_results, new_matches
+
+
+def generate_checkpoints_from_template(stages: list[dict]) -> list[dict]:
+    """Generate virtual checkpoint definitions from ScenarioTemplate stages.
+
+    Used as fallback when a Scenario has no script_id assigned.
+    Each manager_goal becomes a checkpoint with auto-generated keywords.
+
+    Args:
+        stages: List of stage dicts from ScenarioTemplate.stages JSONB field
+
+    Returns:
+        List of checkpoint-like dicts compatible with accumulation logic
+    """
+    checkpoints = []
+    for stage in stages:
+        order = stage.get("order", 0)
+        name = stage.get("name", f"Этап {order}")
+        goals = stage.get("manager_goals", [])
+
+        if not goals:
+            continue
+
+        # Each goal = one checkpoint
+        for gi, goal in enumerate(goals):
+            # Extract keywords from goal text (words > 3 chars)
+            words = [w.strip(".,!?;:()\"'") for w in goal.lower().split()]
+            keywords = [w for w in words if len(w) > 3][:8]
+
+            checkpoints.append({
+                "checkpoint_id": f"tmpl-{order}-{gi}",
+                "title": f"{name}: {goal[:60]}",
+                "description": goal,
+                "order_index": order * 10 + gi,
+                "keywords": keywords,
+                "weight": 1.0,
+            })
+
+    return checkpoints
+
+
 async def get_session_checkpoint_progress(
     script_id: uuid.UUID,
     message_history: list[dict],

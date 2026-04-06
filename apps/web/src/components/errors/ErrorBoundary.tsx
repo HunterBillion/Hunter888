@@ -1,8 +1,9 @@
 "use client";
 
 import { Component, type ReactNode, type ErrorInfo } from "react";
-import { AlertTriangle, RotateCcw, Home } from "lucide-react";
+import { RotateCcw, Home } from "lucide-react";
 import Link from "next/link";
+import { logger } from "@/lib/logger";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -18,7 +19,6 @@ interface ErrorBoundaryState {
 /**
  * Generic error boundary component.
  * Catches rendering errors in child tree and shows a recovery UI.
- * Especially important for complex pages like training sessions (#7).
  */
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
@@ -31,7 +31,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("[ErrorBoundary] Caught error:", error, errorInfo);
+    logger.error("[ErrorBoundary] Caught error:", error, errorInfo);
   }
 
   handleRetry = () => {
@@ -43,41 +43,104 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       const title = this.props.fallbackTitle || "Что-то пошло не так";
       const description =
         this.props.fallbackDescription ||
-        "Произошла ошибка при загрузке страницы. Попробуйте перезагрузить.";
+        "Произошла ошибка при загрузке. Попробуйте перезагрузить.";
 
       return (
         <div className="flex min-h-[400px] items-center justify-center p-8">
-          <div className="text-center max-w-md">
+          <div className="relative text-center max-w-md w-full">
+            {/* Background ghost text */}
             <div
-              className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl"
-              style={{ background: "rgba(255,51,51,0.1)" }}
+              className="pointer-events-none absolute inset-0 flex items-center justify-center select-none"
+              style={{ overflow: "hidden" }}
             >
-              <AlertTriangle size={28} style={{ color: "#FF3333" }} />
+              <span
+                className="font-display font-black leading-none"
+                style={{
+                  fontSize: "120px",
+                  color: "transparent",
+                  WebkitTextStroke: "1px rgba(255,42,109,0.08)",
+                }}
+              >
+                ERR
+              </span>
             </div>
-            <h2 className="mb-2 text-xl font-bold" style={{ color: "var(--text-primary)" }}>
-              {title}
-            </h2>
-            <p className="mb-6 text-sm" style={{ color: "var(--text-secondary)" }}>
-              {description}
-            </p>
-            {this.state.error && (
-              <pre
-                className="mb-6 max-h-32 overflow-auto rounded-lg p-3 text-left text-xs"
-                style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}
+
+            {/* Content */}
+            <div className="relative z-10">
+              {/* Pulsing dot */}
+              <div
+                className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full"
+                style={{
+                  background: "rgba(255,42,109,0.08)",
+                  border: "1.5px solid rgba(255,42,109,0.15)",
+                }}
               >
-                {this.state.error.message}
-              </pre>
-            )}
-            <div className="flex items-center justify-center gap-3">
-              <button
-                onClick={this.handleRetry}
-                className="vh-btn-primary flex items-center gap-2"
+                <div
+                  className="h-3 w-3 rounded-full"
+                  style={{
+                    background: "var(--neon-red, #FF2A6D)",
+                    boxShadow: "0 0 12px rgba(255,42,109,0.4)",
+                    animation: "pulse 2s ease-in-out infinite",
+                  }}
+                />
+              </div>
+
+              <div
+                className="font-mono text-[10px] tracking-[0.25em] uppercase mb-2"
+                style={{ color: "rgba(255,42,109,0.5)" }}
               >
-                <RotateCcw size={14} /> Попробовать снова
-              </button>
-              <Link href="/home" className="vh-btn-outline flex items-center gap-2">
-                <Home size={14} /> На главную
-              </Link>
+                {"// ОШИБКА_КОМПОНЕНТА"}
+              </div>
+
+              <h2
+                className="mb-2 text-lg font-bold"
+                style={{ color: "var(--text-primary)" }}
+              >
+                {title}
+              </h2>
+
+              <p className="mb-4 text-sm" style={{ color: "var(--text-muted)" }}>
+                {description}
+              </p>
+
+              {this.state.error && (
+                <div
+                  className="mb-5 rounded-lg px-4 py-2.5 text-left font-mono text-xs"
+                  style={{
+                    background: "var(--input-bg)",
+                    border: "1px solid var(--border-color)",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  <span style={{ color: "rgba(255,42,109,0.5)" }}>{">"} </span>
+                  {this.state.error.message}
+                </div>
+              )}
+
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={this.handleRetry}
+                  className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all"
+                  style={{
+                    background: "var(--accent)",
+                    color: "#fff",
+                    boxShadow: "0 0 16px var(--accent-glow)",
+                  }}
+                >
+                  <RotateCcw size={14} /> Повторить
+                </button>
+                <Link
+                  href="/home"
+                  className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all"
+                  style={{
+                    background: "var(--input-bg)",
+                    color: "var(--text-primary)",
+                    border: "1px solid var(--border-color)",
+                  }}
+                >
+                  <Home size={14} /> На главную
+                </Link>
+              </div>
             </div>
           </div>
         </div>

@@ -7,7 +7,9 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Query, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +30,7 @@ MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_VIDEO_SIZE = 15 * 1024 * 1024  # 15MB
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -61,6 +64,8 @@ class ChangePasswordRequest(BaseModel):
 
 class UserPreferencesRequest(BaseModel):
     team: str | None = Field(None, max_length=200)
+    role: str | None = Field(None, pattern="^(manager|rop)$")
+    specialization: str | None = Field(None, max_length=100)
     experience_level: str | None = Field(None, pattern="^(beginner|intermediate|advanced)$")
     tts_enabled: bool | None = None
     notifications: bool | None = None
@@ -283,7 +288,9 @@ async def search_users_for_friends(
 
 
 @router.post("/friends", response_model=FriendItemResponse)
+@limiter.limit("10/minute")
 async def send_friend_request(
+    request: Request,
     body: FriendRequestBody,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -392,7 +399,9 @@ async def remove_friend(
 
 
 @router.put("/me/password", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("3/minute")
 async def change_password(
+    request: Request,
     body: ChangePasswordRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -495,8 +504,8 @@ async def get_user_stats(
     )
     row = stats_result.one()
     total_sessions = row[0] or 0
-    avg_score = round(float(row[1]), 2) if row[1] is not None else None
-    best_score = round(float(row[2]), 2) if row[2] is not None else None
+    avg_score = round(float(row[1]), 1) if row[1] is not None else None
+    best_score = round(float(row[2]), 1) if row[2] is not None else None
     total_duration_sec = row[3] or 0
 
     # Completed sessions
@@ -536,7 +545,9 @@ async def get_user_stats(
 
 
 @router.post("/me/avatar")
+@limiter.limit("5/minute")
 async def upload_avatar(
+    request: Request,
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -685,6 +696,13 @@ async def update_preferences(
     """
     from app.models.user import Team
 
+    # Handle role change (only allowed during onboarding, not for admin/methodologist)
+    if body.role and not user.onboarding_completed:
+        from app.models.user import UserRole
+        allowed_roles = {"manager", "rop"}
+        if body.role in allowed_roles:
+            user.role = UserRole(body.role)
+
     # Handle team assignment
     if body.team:
         team_result = await db.execute(select(Team).where(Team.name == body.team))
@@ -696,7 +714,7 @@ async def update_preferences(
         user.team_id = team.id
 
     current_prefs = dict(user.preferences or {})
-    update_data = body.model_dump(exclude_none=True, exclude={"team"})
+    update_data = body.model_dump(exclude_none=True, exclude={"team", "role"})
     current_prefs.update(update_data)
     user.preferences = current_prefs
     user.onboarding_completed = True
@@ -743,7 +761,7 @@ async def get_team_stats(
     )
     row = sessions_result.one()
     total_sessions = row[0] or 0
-    avg_score = round(float(row[1]), 2) if row[1] is not None else None
+    avg_score = round(float(row[1]), 1) if row[1] is not None else None
 
     completed_result = await db.execute(
         select(func.count(TrainingSession.id)).where(

@@ -20,8 +20,10 @@ All inter-agent communication flows through this module.
 Agents do NOT import each other — they import game_director.
 """
 
+import asyncio
 import logging
 import uuid
+from collections import defaultdict
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from typing import Optional
@@ -217,6 +219,47 @@ STORYLET_TEMPLATES = [
         "priority": 6,
         "cooldown_days": 20,
     },
+    # ── Wave 1 iteration: 5 new storylets ──────────────────
+    {
+        "code": "debt_penalty_increase",
+        "preconditions": {"lifecycle_state": "THINKING", "min_days_in_state": 7, "min_debt": 200_000},
+        "narrative": "Пени и штрафы увеличили долг клиента на 15%. Время работает против него.",
+        "effects": {"arousal_delta": 0.3, "activate_factors": ["anxiety", "urgency"]},
+        "priority": 5,
+        "cooldown_days": 14,
+    },
+    {
+        "code": "manager_empathy_detected",
+        "preconditions": {"lifecycle_state": "INTERESTED", "min_calls": 2, "min_avg_score": 70},
+        "narrative": "Клиент почувствовал искреннее участие менеджера. Доверие укрепляется.",
+        "effects": {"relationship_delta": 15, "pleasure_delta": 0.3, "activate_factors": ["trust"]},
+        "priority": 4,
+        "cooldown_days": 10,
+    },
+    {
+        "code": "competing_firm_call",
+        "preconditions": {"lifecycle_state": "CALLBACK_SCHEDULED", "min_days_in_state": 2},
+        "narrative": "Клиенту позвонили из другой юридической фирмы. Он сравнивает предложения.",
+        "effects": {"activate_factors": ["competitiveness", "doubt"], "relationship_delta": -5},
+        "priority": 7,
+        "cooldown_days": 15,
+    },
+    {
+        "code": "family_support_emerges",
+        "preconditions": {"lifecycle_state": "THINKING", "family_status": "married", "min_calls": 3},
+        "narrative": "Супруг(а) клиента поддержал(а) идею банкротства. Семейное давление снизилось.",
+        "effects": {"relationship_delta": 10, "pleasure_delta": 0.4, "activate_factors": ["relief", "optimism"]},
+        "priority": 5,
+        "cooldown_days": 30,
+    },
+    {
+        "code": "isolation_deepens",
+        "preconditions": {"lifecycle_state": "GHOSTING", "min_days_in_state": 10},
+        "narrative": "Клиент всё больше замыкается в себе. Долги давят, но просить помощь стыдно.",
+        "effects": {"pleasure_delta": -0.5, "dominance_delta": -0.3, "activate_factors": ["shame", "isolation"]},
+        "priority": 6,
+        "cooldown_days": 20,
+    },
 ]
 
 
@@ -239,6 +282,16 @@ class GameDirectorEngine:
         # Agent 7: get pending events
         events = await game_director.get_pending_events(story_id, db)
     """
+
+    def __init__(self) -> None:
+        # Per-story asyncio locks to prevent concurrent advance_story calls
+        # on the same story (TOCTOU fix for storylet cooldown & state mutations).
+        # defaultdict creates a new Lock per story_id on first access.
+        self._story_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+
+    def _get_story_lock(self, story_id: str) -> asyncio.Lock:
+        """Get or create an asyncio.Lock for the given story_id."""
+        return self._story_locks[story_id]
 
     # ─── STORY LIFECYCLE ────────────────────────────────
 
@@ -337,6 +390,14 @@ class GameDirectorEngine:
             )
         for f in active_factors[:3]:  # max 3 active
             lines.append(f"[FACTOR:{f['code']}] intensity={f.get('intensity', 0.5):.1f}")
+
+        # Inject behavioral modifiers from personality profile (Wave 1.2)
+        from app.services.llm import format_personality_for_prompt
+        profile = story.personality_profile or {}
+        modifier_text = format_personality_for_prompt(profile)
+        if modifier_text:
+            lines.append(modifier_text)
+
         return "\n".join(lines)
 
     async def _build_tier2(self, story, db: AsyncSession) -> str:
@@ -346,7 +407,7 @@ class GameDirectorEngine:
         # Episodic memories (key moments from past calls)
         result = await db.execute(
             select(EpisodicMemory)
-            .where(EpisodicMemory.client_story_id == story.id)
+            .where(EpisodicMemory.story_id == story.id)
             .order_by(EpisodicMemory.created_at.desc())
             .limit(10)
         )
@@ -390,77 +451,91 @@ class GameDirectorEngine:
         3. Evaluates and activates storylets
         4. Generates between-call events
         Returns summary of changes for Agent 7 (CRM) display.
+
+        Uses per-story asyncio lock to prevent TOCTOU races on concurrent calls
+        (e.g., two training sessions finishing simultaneously for the same story).
         """
-        story = await self.load_story(result.client_story_id, db)
-        if not story:
-            logger.error(f"ClientStory {result.client_story_id} not found")
-            return {"error": "story_not_found"}
+        # Per-story lock prevents concurrent advance_story calls from racing
+        # on storylet cooldowns, relationship_score, lifecycle_state, etc.
+        # IMPORTANT: load_story MUST be inside the lock so that a queued
+        # coroutine loads fresh data after the previous one has flushed.
+        async with self._get_story_lock(str(result.client_story_id)):
+            story = await self.load_story(result.client_story_id, db)
+            if not story:
+                logger.error(f"ClientStory {result.client_story_id} not found")
+                raise ValueError(f"ClientStory {result.client_story_id} not found")
 
-        changes = {"story_id": story.id, "changes": []}
+            changes = {"story_id": story.id, "changes": []}
 
-        # 1. Update call count
-        story.total_calls = (story.total_calls or 0) + 1
+            # 1. Update call count
+            story.total_calls = (story.total_calls or 0) + 1
 
-        # 2. Calculate relationship delta
-        rel_delta = self._calculate_relationship_delta(result)
-        old_rel = story.relationship_score or 50.0
-        story.relationship_score = max(0, min(100, old_rel + rel_delta))
-        if rel_delta != 0:
-            changes["changes"].append(
-                f"Relationship: {old_rel:.0f} → {story.relationship_score:.0f} ({rel_delta:+.0f})"
-            )
-
-        # 3. Transition lifecycle state
-        new_state = self._determine_next_state(story, result)
-        if new_state and new_state != story.lifecycle_state:
-            old_state = story.lifecycle_state
-            story.lifecycle_state = new_state
-            changes["changes"].append(f"State: {old_state} → {new_state}")
-
-            # Create status_change event for CRM timeline
-            await self._create_game_event(
-                story, "status_change", db,
-                title=f"Статус: {old_state} → {new_state}",
-                content=f"После звонка #{story.total_calls}",
-            )
-
-        # 4. Save promises and key moments to memory
-        memory = story.memory or {}
-        for p in result.promises_made:
-            memory.setdefault("promises", []).append({
-                "text": p, "call_number": story.total_calls,
-                "fulfilled": False, "created_at": datetime.utcnow().isoformat(),
-            })
-        for km in result.key_moments:
-            memory.setdefault("key_moments", []).append({
-                "text": km, "call_number": story.total_calls,
-                "created_at": datetime.utcnow().isoformat(),
-            })
-        story.memory = memory
-
-        # 5. Process consequences from stage directions
-        for sd in result.stage_directions:
-            if sd.get("type") == "consequence":
-                consequence = ConsequenceEvent(
-                    level=sd.get("level", CONSEQUENCE_LOCAL),
-                    trigger_action=sd.get("trigger", ""),
-                    effect_description=sd.get("description", ""),
-                    source_agent="agent_1",
+            # 2. Calculate relationship delta
+            rel_delta = self._calculate_relationship_delta(result)
+            old_rel = story.relationship_score or 50.0
+            story.relationship_score = max(0, min(100, old_rel + rel_delta))
+            if rel_delta != 0:
+                changes["changes"].append(
+                    f"Relationship: {old_rel:.0f} → {story.relationship_score:.0f} ({rel_delta:+.0f})"
                 )
-                await self.apply_consequence(consequence, story, db)
 
-        # 6. Evaluate storylets
-        activated = await self._evaluate_storylets(story, result, db)
-        for s in activated:
-            changes["changes"].append(f"Storylet activated: {s.storylet_code}")
+            # 3. Transition lifecycle state
+            new_state = self._determine_next_state(story, result)
+            if new_state and new_state != story.lifecycle_state:
+                old_state = story.lifecycle_state
+                story.lifecycle_state = new_state
+                changes["changes"].append(f"State: {old_state} → {new_state}")
 
-        # 7. Generate between-call events for frontend panel
-        events = await self._generate_between_call_events(story, result, db)
-        changes["between_call_events"] = len(events)
+                # Record state entry timestamp for time-based gates (Task 1.2)
+                director = story.director_state or {}
+                director["state_entered_at"] = datetime.utcnow().isoformat()
+                director["previous_state"] = old_state
+                story.director_state = director
 
-        await db.flush()
-        logger.info(f"Story {story.id} advanced: {changes}")
-        return changes
+                # Create status_change event for CRM timeline
+                await self._create_game_event(
+                    story, "status_change", db,
+                    title=f"Статус: {old_state} → {new_state}",
+                    content=f"После звонка #{story.total_calls}",
+                )
+
+            # 4. Save promises and key moments to memory
+            memory = story.memory or {}
+            for p in result.promises_made:
+                memory.setdefault("promises", []).append({
+                    "text": p, "call_number": story.total_calls,
+                    "fulfilled": False, "created_at": datetime.utcnow().isoformat(),
+                })
+            for km in result.key_moments:
+                memory.setdefault("key_moments", []).append({
+                    "text": km, "call_number": story.total_calls,
+                    "created_at": datetime.utcnow().isoformat(),
+                })
+            story.memory = memory
+
+            # 5. Process consequences from stage directions
+            for sd in result.stage_directions:
+                if sd.get("type") == "consequence":
+                    consequence = ConsequenceEvent(
+                        level=sd.get("level", CONSEQUENCE_LOCAL),
+                        trigger_action=sd.get("trigger", ""),
+                        effect_description=sd.get("description", ""),
+                        source_agent="agent_1",
+                    )
+                    await self.apply_consequence(consequence, story, db)
+
+            # 6. Evaluate storylets
+            activated = await self._evaluate_storylets(story, result, db)
+            for s in activated:
+                changes["changes"].append(f"Storylet activated: {s.storylet_code}")
+
+            # 7. Generate between-call events for frontend panel
+            events = await self._generate_between_call_events(story, result, db)
+            changes["between_call_events"] = len(events)
+
+            await db.flush()
+            logger.info(f"Story {story.id} advanced: {changes}")
+            return changes
 
     def _calculate_relationship_delta(self, result: SessionResult) -> float:
         """Compute relationship_score change from session."""
@@ -480,7 +555,15 @@ class GameDirectorEngine:
         return delta
 
     def _determine_next_state(self, story, result: SessionResult) -> Optional[str]:
-        """Determine lifecycle state transition based on session outcome."""
+        """Determine lifecycle state transition based on multi-factor gates.
+
+        Gate hierarchy (Wave 1, Task 1.2):
+        1. Emotion gates (primary signal from AI client)
+        2. Relationship score gates (prevents unrealistic jumps)
+        3. Minimum call count gates (ensures narrative progression)
+        4. Time-based gates (prevents rushing through states)
+        5. Score fallbacks (catch-all for ambiguous emotions)
+        """
         current = story.lifecycle_state
         allowed = LIFECYCLE_TRANSITIONS.get(current, [])
         if not allowed:
@@ -488,30 +571,68 @@ class GameDirectorEngine:
 
         emotion = result.final_emotion_state
         score = result.score_total
+        rel_score = story.relationship_score or 50.0
+        total_calls = story.total_calls or 0
 
-        # Emotion-gated transitions
+        # ── Helper: check time-based gate ──
+        def _min_time_in_state_ok(min_hours: int = 0) -> bool:
+            """Check if enough time has passed since entering current state."""
+            if min_hours <= 0:
+                return True
+            director = story.director_state or {}
+            state_entered_at = director.get("state_entered_at")
+            if not state_entered_at:
+                return True  # No timestamp recorded — allow transition
+            try:
+                entered = datetime.fromisoformat(state_entered_at)
+                return datetime.utcnow() - entered >= timedelta(hours=min_hours)
+            except (ValueError, TypeError):
+                return True
+
+        # ── Negative gates: rejection/hangup (always allowed) ──
         if emotion in ("hostile", "hangup"):
             if "REJECTED" in allowed:
                 return "REJECTED"
+
+        # ── DEAL_CLOSED: strictest gate ──
+        # Requires: emotion=deal, score>=70, relationship>=60, min 3 calls total
         if emotion == "deal" and score >= 70:
-            if "MEETING_SET" in allowed:
-                return "MEETING_SET"
-            if "DEAL_CLOSED" in allowed:
+            if "DEAL_CLOSED" in allowed and rel_score >= 60 and total_calls >= 3:
                 return "DEAL_CLOSED"
+            # If not ready for DEAL_CLOSED, try MEETING_SET instead
+            if "MEETING_SET" in allowed and rel_score >= 50 and total_calls >= 2:
+                return "MEETING_SET"
+
+        # ── MEETING_SET: requires relationship >= 50, min 2 calls ──
+        if emotion == "deal" and score >= 60:
+            if "MEETING_SET" in allowed and rel_score >= 50 and total_calls >= 2:
+                return "MEETING_SET"
+
+        # ── INTERESTED: requires min 1 call from FIRST_CONTACT ──
         if emotion in ("curious", "considering", "negotiating"):
             if "INTERESTED" in allowed:
-                return "INTERESTED"
+                # From FIRST_CONTACT: need at least 1 completed call
+                if current == "FIRST_CONTACT" and total_calls < 1:
+                    pass  # Stay in FIRST_CONTACT
+                else:
+                    return "INTERESTED"
+
+        # ── CALLBACK_SCHEDULED: always available if emotion matches ──
         if emotion == "callback":
             if "CALLBACK_SCHEDULED" in allowed:
                 return "CALLBACK_SCHEDULED"
 
-        # Score-gated fallbacks
+        # ── Score-gated fallbacks ──
         if score >= 50 and "INTERESTED" in allowed:
-            return "INTERESTED"
+            if current != "FIRST_CONTACT" or total_calls >= 1:
+                return "INTERESTED"
+        # Mid-range score (30-50): client is unsure, goes to THINKING
+        if 30 <= score < 50 and "THINKING" in allowed:
+            return "THINKING"
         if score < 30 and "REJECTED" in allowed:
             return "REJECTED"
 
-        # Default: stay in current state if follow-up
+        # ── Default: advance from CALLBACK_SCHEDULED to FOLLOW_UP ──
         if current == "CALLBACK_SCHEDULED" and "FOLLOW_UP_CALL" in allowed:
             return "FOLLOW_UP_CALL"
 
@@ -580,6 +701,40 @@ class GameDirectorEngine:
             if tpl["code"] in already_active:
                 continue
             if self._check_storylet_preconditions(tpl, story, result):
+                # Capture pre-effect values so we can revert on failure
+                _prev_lifecycle = story.lifecycle_state
+                _prev_rel_score = story.relationship_score
+
+                # Apply effects to the in-memory story object
+                effects = tpl["effects"]
+                if "force_state" in effects:
+                    story.lifecycle_state = effects["force_state"]
+                if "relationship_delta" in effects:
+                    story.relationship_score = max(0, min(100,
+                        (story.relationship_score or 50) + effects["relationship_delta"]
+                    ))
+
+                # Savepoint makes effects + event creation atomic:
+                # if the event flush fails, only this savepoint rolls back —
+                # the outer transaction (and all prior ops in advance_story) survive.
+                try:
+                    async with db.begin_nested():
+                        await self._create_game_event(
+                            story, "storylet", db,
+                            title=tpl["code"].replace("_", " ").title(),
+                            content=tpl["narrative"],
+                        )
+                        await db.flush()
+                except Exception as exc:
+                    logger.warning(
+                        "Storylet %s activation failed, reverting effects: %s",
+                        tpl["code"], exc,
+                    )
+                    story.lifecycle_state = _prev_lifecycle
+                    story.relationship_score = _prev_rel_score
+                    db.expire(story)
+                    continue
+
                 activation = StoryletActivation(
                     storylet_code=tpl["code"],
                     narrative_text=tpl["narrative"],
@@ -589,28 +744,33 @@ class GameDirectorEngine:
                 activated.append(activation)
                 already_active.add(tpl["code"])
 
-                # Apply effects
-                effects = tpl["effects"]
-                if "force_state" in effects:
-                    story.lifecycle_state = effects["force_state"]
-                if "relationship_delta" in effects:
-                    story.relationship_score = max(0, min(100,
-                        (story.relationship_score or 50) + effects["relationship_delta"]
-                    ))
-
-                # Create storylet event for CRM
-                await self._create_game_event(
-                    story, "storylet", db,
-                    title=tpl["code"].replace("_", " ").title(),
-                    content=tpl["narrative"],
-                )
+                # ── Persist activation timestamp for cooldown enforcement (Task 1.3) ──
+                director = story.director_state or {}
+                activations = director.get("storylet_activations", {})
+                activations[tpl["code"]] = datetime.utcnow().isoformat()
+                director["storylet_activations"] = activations
+                story.director_state = director
 
         story.active_storylets = list(already_active)
         return activated
 
     def _check_storylet_preconditions(self, tpl: dict, story: ClientStory, result: SessionResult) -> bool:
-        """Check if a storylet's preconditions are met."""
+        """Check if a storylet's preconditions are met, including cooldown enforcement."""
         pre = tpl["preconditions"]
+
+        # ── Cooldown enforcement (Wave 1, Task 1.3) ──
+        cooldown_days = tpl.get("cooldown_days", 0)
+        if cooldown_days > 0:
+            director = story.director_state or {}
+            activations = director.get("storylet_activations", {})
+            last_activated = activations.get(tpl["code"])
+            if last_activated:
+                try:
+                    last_dt = datetime.fromisoformat(last_activated)
+                    if datetime.utcnow() - last_dt < timedelta(days=cooldown_days):
+                        return False  # Still in cooldown
+                except (ValueError, TypeError):
+                    pass  # Invalid date — allow activation
 
         if "lifecycle_state" in pre and story.lifecycle_state != pre["lifecycle_state"]:
             return False
@@ -625,7 +785,10 @@ class GameDirectorEngine:
             if debt > pre["max_debt"]:
                 return False
         if "min_difficulty" in pre:
-            if (story.difficulty or 5) < pre["min_difficulty"]:
+            # difficulty is derived from personality_profile, not a direct field
+            _profile = story.personality_profile or {}
+            _difficulty = _profile.get("difficulty", 5)
+            if _difficulty < pre["min_difficulty"]:
                 return False
         if "family_status" in pre:
             family = (story.personality_profile or {}).get("family_status", "")
@@ -639,33 +802,118 @@ class GameDirectorEngine:
     async def _generate_between_call_events(
         self, story: ClientStory, result: SessionResult, db: AsyncSession
     ) -> list[BetweenCallEvent]:
-        """Generate events for frontend panel between calls. NOT SMS — panel only."""
+        """Generate dynamic between-call events using scenario_engine weighted pool.
+
+        Wave 1, Task 1.1: Replaces hardcoded 5-message random.choice() with:
+        - 10 weighted events from scenario_engine with archetype/outcome modifiers
+        - Dynamic probability scaled by relationship_score and lifecycle_state
+        - Typed events (client_message, external_event, storylet_triggered)
+        - Client messages generated from event context, not hardcoded strings
+        """
+        from app.services.scenario_engine import apply_between_calls_context
+
         events = []
         state = story.lifecycle_state
+        rel_score = story.relationship_score or 50.0
+        total_calls = story.total_calls or 0
 
-        # Client messages based on state
-        if state in ("THINKING", "CALLBACK_SCHEDULED"):
-            import random
-            if random.random() < 0.6:  # 60% chance
-                messages = [
-                    "Я поговорил с женой, она беспокоится. Можете ещё раз объяснить про квартиру?",
-                    "Спасибо за информацию. Я думаю.",
-                    "А если я просто не буду платить, что будет?",
-                    "Мне друг сказал что банкротство это позор. Это правда?",
-                    "Сколько точно будет стоить вся процедура?",
-                ]
-                msg = random.choice(messages)
+        # ── 1. Generate CRM events from weighted pool ──
+        # Only generate if we have at least 1 completed call
+        if total_calls >= 1:
+            archetype_code = (story.personality_profile or {}).get("archetype", "skeptic")
+            existing_events = story.between_call_events if hasattr(story, "between_call_events") else []
+
+            crm_events = apply_between_calls_context(
+                call_number=total_calls + 1,
+                archetype_code=archetype_code,
+                previous_outcome=result.final_emotion_state,
+                previous_emotion=result.final_emotion_state,
+                existing_events=existing_events if isinstance(existing_events, list) else [],
+                relationship_score=rel_score,
+                lifecycle_state=state or "FIRST_CONTACT",
+                active_storylets=story.active_storylets or [],
+                consequence_log=story.consequence_log or [],
+            )
+
+            for ce in crm_events:
                 event = BetweenCallEvent(
-                    event_type="message",
-                    title="Сообщение от клиента",
-                    content=msg,
+                    event_type="external_event",
+                    title=ce.get("description", "Событие"),
+                    content=ce.get("description", ""),
+                    payload={
+                        "event_code": ce.get("event"),
+                        "impact": ce.get("impact"),
+                        "emotion_shift": ce.get("emotion_shift", {}),
+                    },
                 )
                 events.append(event)
                 await self._create_game_event(
-                    story, "message", db, title="Сообщение от клиента", content=msg,
+                    story, "consequence", db,
+                    title=ce.get("description", "Событие"),
+                    content=ce.get("description", ""),
+                    payload={
+                        "event_code": ce.get("event"),
+                        "impact": ce.get("impact"),
+                    },
                 )
 
-        # Consequence notifications
+        # ── 2. Generate client message based on state + relationship ──
+        # Higher relationship = more likely client reaches out
+        # States where client would message between calls
+        import random
+        msg_probability = 0.0
+        if state in ("THINKING", "CALLBACK_SCHEDULED"):
+            msg_probability = 0.5 + (rel_score / 200)  # 50-100% based on relationship
+        elif state in ("INTERESTED", "OBJECTING"):
+            msg_probability = 0.3 + (rel_score / 250)  # 30-70%
+        elif state == "GHOSTING":
+            msg_probability = 0.1  # Low but possible
+
+        if msg_probability > 0 and random.random() < msg_probability:
+            # Try LLM-powered message first, fallback to template
+            client_msg = None
+            try:
+                from app.services.between_call_narrator import (
+                    generate_client_message_llm,
+                    NarratorContext,
+                )
+                _narrator_ctx = NarratorContext(
+                    lifecycle_state=state or "FIRST_CONTACT",
+                    relationship_score=rel_score,
+                    call_number=total_calls,
+                    archetype_code=(story.personality_profile or {}).get("archetype", "skeptic"),
+                    client_name=story.story_name or "Клиент",
+                    last_outcome=result.final_emotion_state,
+                    last_emotion=result.final_emotion_state,
+                    last_score=result.score_total,
+                    key_memories=[
+                        {"content": m} for m in (result.key_moments or [])[:3]
+                    ],
+                    active_storylets=story.active_storylets or [],
+                    between_events=[
+                        {"description": e.content} for e in events if e.event_type == "external_event"
+                    ],
+                )
+                client_msg = await generate_client_message_llm(_narrator_ctx)
+            except Exception:
+                logger.debug("LLM client message generation failed, using template")
+
+            if not client_msg:
+                client_msg = self._generate_client_message(state, rel_score, result)
+
+            event = BetweenCallEvent(
+                event_type="client_message",
+                title="Сообщение от клиента",
+                content=client_msg,
+            )
+            events.append(event)
+            await self._create_game_event(
+                story, "message", db,
+                title="Сообщение от клиента",
+                content=client_msg,
+            )
+
+        # ── 3. Consequence notifications ──
         for c in (story.consequence_log or []):
             if c.get("is_active") and c.get("level") != CONSEQUENCE_COSMETIC:
                 event = BetweenCallEvent(
@@ -675,24 +923,144 @@ class GameDirectorEngine:
                 )
                 events.append(event)
 
+        # ── 4. Active storylet reminders ──
+        for s_code in (story.active_storylets or []):
+            tpl = next((t for t in STORYLET_TEMPLATES if t["code"] == s_code), None)
+            if tpl:
+                event = BetweenCallEvent(
+                    event_type="storylet_triggered",
+                    title=tpl["code"].replace("_", " ").title(),
+                    content=tpl["narrative"][:200],
+                    payload={"storylet_code": s_code, "priority": tpl["priority"]},
+                )
+                events.append(event)
+
         return events
+
+    def _generate_client_message(
+        self, state: str, rel_score: float, result: SessionResult
+    ) -> str:
+        """Generate a contextual client message based on state and relationship.
+
+        Messages are grouped by state and modulated by relationship quality.
+        """
+        import random
+
+        # State-specific message pools with relationship-aware variants
+        _messages_by_state = {
+            "THINKING": {
+                "low_rel": [  # rel < 40
+                    "Я подумаю... но не уверен, что это мне нужно.",
+                    "Мне нужно больше времени. Пока не звоните.",
+                    "А если я просто не буду платить, что будет?",
+                ],
+                "mid_rel": [  # 40 <= rel < 70
+                    "Я поговорил с женой, она беспокоится. Можете ещё раз объяснить про квартиру?",
+                    "Сколько точно будет стоить вся процедура?",
+                    "Мне друг сказал что банкротство — это позор. Это правда?",
+                    "Я прочитал в интернете, что имущество забирают. Это так?",
+                ],
+                "high_rel": [  # rel >= 70
+                    "Спасибо за подробные объяснения. У меня ещё пара вопросов...",
+                    "Я обсудил всё с семьёй. Мы склоняемся к тому, чтобы начать процедуру.",
+                    "Можете прислать список документов, которые нужно подготовить?",
+                ],
+            },
+            "CALLBACK_SCHEDULED": {
+                "low_rel": [
+                    "Мне сейчас неудобно разговаривать. Перезвоните позже.",
+                    "Я ещё не решил. Не давите на меня.",
+                ],
+                "mid_rel": [
+                    "Спасибо за информацию. Я думаю.",
+                    "Жду вашего звонка. Подготовлю вопросы.",
+                    "Скажите, а судебный приказ — это плохо? Мне пришло уведомление.",
+                ],
+                "high_rel": [
+                    "Жду звонка! У меня новые вопросы по процедуре.",
+                    "Я собрал часть документов. Что ещё нужно?",
+                ],
+            },
+            "INTERESTED": {
+                "low_rel": [
+                    "А какие гарантии вы даёте?",
+                    "Я нашёл другую компанию. Почему у вас дороже?",
+                ],
+                "mid_rel": [
+                    "Расскажите подробнее про сроки процедуры.",
+                    "А что будет с моей машиной?",
+                ],
+                "high_rel": [
+                    "Я готов двигаться дальше. Что нужно сделать?",
+                    "Спасибо за терпение. Вы очень помогли разобраться.",
+                ],
+            },
+            "OBJECTING": {
+                "low_rel": [
+                    "Мне всё это не подходит.",
+                    "Слишком дорого. У конкурентов дешевле.",
+                ],
+                "mid_rel": [
+                    "Я всё ещё сомневаюсь. Объясните ещё раз про последствия.",
+                    "А если банк предложит реструктуризацию?",
+                ],
+                "high_rel": [
+                    "У меня осталось одно сомнение... можем обсудить?",
+                ],
+            },
+            "GHOSTING": {
+                "low_rel": [
+                    "...",  # Client not responding
+                ],
+                "mid_rel": [
+                    "Извините, был занят. Давайте поговорим позже.",
+                ],
+                "high_rel": [
+                    "Простите, что пропал. Были сложные обстоятельства. Можно продолжить?",
+                ],
+            },
+        }
+
+        state_msgs = _messages_by_state.get(state, _messages_by_state.get("THINKING", {}))
+
+        if rel_score < 40:
+            pool = state_msgs.get("low_rel", [])
+        elif rel_score < 70:
+            pool = state_msgs.get("mid_rel", [])
+        else:
+            pool = state_msgs.get("high_rel", [])
+
+        if not pool:
+            pool = state_msgs.get("mid_rel", ["Спасибо за информацию. Я думаю."])
+
+        return random.choice(pool)
 
     # ─── HELPER: Create GameClientEvent for CRM ─────────
 
     async def _create_game_event(
         self, story: ClientStory, event_type: str, db: AsyncSession,
-        title: str = "", content: str = "", payload: dict = None,
+        title: str = "", content: str = "", payload: dict | None = None,
     ) -> None:
         """Create a GameClientEvent for the CRM timeline (Agent 7)."""
+        # Map string event_type to GameEventType enum
+        _type_map = {
+            "call": GameEventType.call,
+            "message": GameEventType.message,
+            "consequence": GameEventType.consequence,
+            "storylet": GameEventType.storylet,
+            "status_change": GameEventType.status_change,
+            "callback": GameEventType.callback,
+        }
+        _evt_type = _type_map.get(event_type, GameEventType.consequence)
+
         event = GameClientEvent(
-            id=str(uuid.uuid4()),
-            client_story_id=story.id,
+            story_id=story.id,
             user_id=story.user_id,
-            event_type=event_type,
-            title=title,
-            narrative_content=content,
-            game_timestamp=datetime.utcnow(),
-            metadata_=payload or {},
+            event_type=_evt_type,
+            source="game_director",
+            title=title or "Событие",
+            content=content,
+            payload=payload or {},
         )
         db.add(event)
 
@@ -722,9 +1090,9 @@ class GameDirectorEngine:
         """Get pending between-call events for Agent 7 (CRM) display."""
         result = await db.execute(
             select(GameClientEvent)
-            .where(GameClientEvent.client_story_id == story_id)
+            .where(GameClientEvent.story_id == story_id)
             .where(GameClientEvent.is_read == False)
-            .order_by(GameClientEvent.game_timestamp.desc())
+            .order_by(GameClientEvent.created_at.desc())
             .limit(20)
         )
         events = result.scalars().all()
@@ -733,9 +1101,9 @@ class GameDirectorEngine:
                 "id": str(e.id),
                 "type": e.event_type,
                 "title": e.title,
-                "content": e.narrative_content,
-                "timestamp": e.game_timestamp.isoformat() if e.game_timestamp else "",
-                "payload": e.metadata_ or {},
+                "content": e.content,
+                "timestamp": e.created_at.isoformat() if e.created_at else "",
+                "payload": e.payload or {},
             }
             for e in events
         ]

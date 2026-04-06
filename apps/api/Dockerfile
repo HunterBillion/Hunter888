@@ -42,5 +42,6 @@ ENTRYPOINT ["/docker-entrypoint.sh"]
 # --timeout 120: allow long WebSocket training sessions
 # --graceful-timeout 30: wait 30s for WS connections to close on deploy
 ENV WEB_CONCURRENCY=4
+ENV PYTHONPATH=/app
 
 CMD ["gunicorn", "app.main:app", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--graceful-timeout", "30", "--access-logfile", "-"]

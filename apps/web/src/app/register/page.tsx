@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { PasswordInput } from "@/components/ui/PasswordInput";
+import { PasswordChecklist, isPasswordValid } from "@/components/ui/PasswordChecklist";
 import dynamic from "next/dynamic";
 import { FishermanError } from "@/components/errors/FishermanError";
 const WaveScene = dynamic(
@@ -42,20 +43,8 @@ export default function RegisterPage() {
       setError("Пароли не совпадают");
       return;
     }
-    if (password.length < 8) {
-      setError("Пароль должен быть не короче 8 символов");
-      return;
-    }
-    if (!/[A-Z]/.test(password)) {
-      setError("Пароль должен содержать хотя бы одну заглавную букву");
-      return;
-    }
-    if (!/[a-z]/.test(password)) {
-      setError("Пароль должен содержать хотя бы одну строчную букву");
-      return;
-    }
-    if (!/[0-9]/.test(password)) {
-      setError("Пароль должен содержать хотя бы одну цифру");
+    if (!isPasswordValid(password)) {
+      setError("Пароль не соответствует требованиям безопасности");
       return;
     }
 
@@ -81,7 +70,6 @@ export default function RegisterPage() {
     }
   };
 
-  const passwordStrength = password.length >= 12 ? "strong" : password.length >= 8 ? "medium" : "weak";
   const passwordsMatch = confirmPassword.length === 0 || password === confirmPassword;
 
   if (networkError) {
@@ -116,7 +104,7 @@ export default function RegisterPage() {
             animate={{ scale: 1 }}
             transition={{ type: "spring", stiffness: 300, delay: 0.1 }}
             className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
-            style={{ background: "var(--accent)", boxShadow: "0 0 30px rgba(139,92,246,0.3)" }}
+            style={{ background: "var(--accent)", boxShadow: "0 0 30px rgba(99,102,241,0.3)" }}
           >
             <UserPlus size={26} className="text-white" />
           </motion.div>
@@ -169,35 +157,7 @@ export default function RegisterPage() {
               ariaLabel="Пароль"
               ariaDescribedBy="password-requirements"
             />
-            {password.length > 0 && (
-              <div className="mt-2 flex items-center gap-2">
-                <div className="flex flex-1 gap-1">
-                  {[1, 2, 3].map((i) => (
-                    <motion.div
-                      key={i}
-                      className="h-1.5 flex-1 rounded-full"
-                      initial={{ scaleX: 0 }}
-                      animate={{ scaleX: 1 }}
-                      style={{
-                        background:
-                          i <= (passwordStrength === "strong" ? 3 : passwordStrength === "medium" ? 2 : 1)
-                            ? passwordStrength === "strong" ? "var(--neon-green)" : passwordStrength === "medium" ? "var(--warning)" : "var(--neon-red)"
-                            : "var(--border-color)",
-                        boxShadow: i <= (passwordStrength === "strong" ? 3 : passwordStrength === "medium" ? 2 : 1)
-                          ? passwordStrength === "strong" ? "0 0 8px rgba(0,255,102,0.3)" : "none"
-                          : "none",
-                      }}
-                    />
-                  ))}
-                </div>
-                <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                  {passwordStrength === "strong" ? "НАДЁЖНЫЙ" : passwordStrength === "medium" ? "СРЕДНИЙ" : "СЛАБЫЙ"}
-                </span>
-              </div>
-            )}
-            <div id="password-requirements" className="mt-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
-              Требования: 8+ символов, заглавная, строчная буква и цифра.
-            </div>
+            <PasswordChecklist value={password} />
           </div>
 
           <div>
@@ -211,7 +171,7 @@ export default function RegisterPage() {
               ariaLabel="Подтвердите пароль"
             />
             {!passwordsMatch && (
-              <div className="mt-2 text-[11px]" style={{ color: "var(--neon-red)" }}>
+              <div className="mt-2 text-xs" style={{ color: "var(--neon-red)" }}>
                 Пароли не совпадают.
               </div>
             )}
@@ -220,7 +180,7 @@ export default function RegisterPage() {
           <motion.button
             type="submit"
             disabled={loading || !passwordsMatch}
-            className="vh-btn-primary flex w-full items-center justify-center gap-2"
+            className="btn-neon flex w-full items-center justify-center gap-2"
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
           >

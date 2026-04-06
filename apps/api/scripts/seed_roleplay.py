@@ -7,7 +7,7 @@ from app.database import async_session, engine, Base
 from app.models import *  # noqa: F401,F403
 from app.models.roleplay import (
     ArchetypeCode,
-    EmotionProfile,
+    ArchetypeEmotionProfile,
     LeadSource,
     ObjectionChain,
     ProfessionCategory,
@@ -171,7 +171,7 @@ async def _seed_professions(db):
 
 async def _seed_emotion_profiles(db):
     profiles = [
-        EmotionProfile(
+        ArchetypeEmotionProfile(
             archetype_code="skeptic",
             transition_matrix={
                 "cold":      {"empathy": 0, "facts": 1, "pressure": 0, "bad_response": -1, "acknowledge": 0, "name_use": 0},
@@ -187,7 +187,7 @@ async def _seed_emotion_profiles(db):
             max_state_first_call="deal",
             fake_transitions=False,
         ),
-        EmotionProfile(
+        ArchetypeEmotionProfile(
             archetype_code="anxious",
             transition_matrix={
                 "cold":      {"empathy": 1, "facts": 0, "pressure": -2, "bad_response": -1, "acknowledge": 1, "name_use": 1},
@@ -203,7 +203,7 @@ async def _seed_emotion_profiles(db):
             max_state_first_call="considering",
             fake_transitions=False,
         ),
-        EmotionProfile(
+        ArchetypeEmotionProfile(
             archetype_code="aggressive",
             transition_matrix={
                 "cold":      {"empathy": 0, "facts": 0, "pressure": -1, "bad_response": -1, "acknowledge": 1, "name_use": 0},
@@ -219,7 +219,7 @@ async def _seed_emotion_profiles(db):
             max_state_first_call="deal",
             fake_transitions=False,
         ),
-        EmotionProfile(
+        ArchetypeEmotionProfile(
             archetype_code="passive",
             transition_matrix={
                 "cold":      {"empathy": 0, "facts": 0, "pressure": 0, "bad_response": 0, "motivator": 2, "name_use": 0},
@@ -235,7 +235,7 @@ async def _seed_emotion_profiles(db):
             max_state_first_call="deal",
             fake_transitions=False,
         ),
-        EmotionProfile(
+        ArchetypeEmotionProfile(
             archetype_code="pragmatic",
             transition_matrix={
                 "cold":      {"empathy": 0, "facts": 1, "pressure": 0, "bad_response": -1, "speed": 1, "name_use": 0},
@@ -251,7 +251,7 @@ async def _seed_emotion_profiles(db):
             max_state_first_call="deal",
             fake_transitions=False,
         ),
-        EmotionProfile(
+        ArchetypeEmotionProfile(
             archetype_code="manipulator",
             transition_matrix={
                 "cold":      {"empathy": 1, "facts": 1, "pressure": 0, "bad_response": 0, "boundary": 0, "name_use": 1},
@@ -267,7 +267,7 @@ async def _seed_emotion_profiles(db):
             max_state_first_call="deal",
             fake_transitions=True,
         ),
-        EmotionProfile(
+        ArchetypeEmotionProfile(
             archetype_code="delegator",
             transition_matrix={
                 "cold":      {"empathy": 0, "facts": 0, "pressure": -1, "bad_response": -1, "personal": 1, "name_use": 0},

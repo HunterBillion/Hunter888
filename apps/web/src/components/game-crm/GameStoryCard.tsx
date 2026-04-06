@@ -35,11 +35,11 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
           }}
         >
           <div className="mb-3 flex items-center justify-between gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.24em]" style={{ color: "var(--text-muted)" }}>
+            <span className="font-mono text-xs uppercase tracking-[0.24em]" style={{ color: "var(--text-muted)" }}>
               Client Story
             </span>
             <span
-              className="rounded-full px-2.5 py-1 text-[10px] font-mono"
+              className="rounded-full px-2.5 py-1 text-xs font-mono"
               style={{
                 background: `${color}15`,
                 color,
@@ -62,12 +62,12 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
                 {story.story_name}
               </div>
               <div className="mt-1 flex flex-wrap gap-2">
-                <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-mono" style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)" }}>
+                <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-mono" style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)" }}>
                   <Phone size={10} />
                   {story.calls_completed}/{story.total_calls_planned}
                 </span>
                 {story.avg_score !== null && (
-                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-mono" style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)" }}>
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-mono" style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)" }}>
                     <Trophy size={10} />
                     {Math.round(story.avg_score)}/100
                   </span>
@@ -79,7 +79,7 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
 
         <div className="flex items-start justify-between gap-2">
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: "var(--text-muted)" }}>
+            <div className="font-mono text-xs uppercase tracking-[0.2em]" style={{ color: "var(--text-muted)" }}>
               Progress Matrix
             </div>
             <div className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
@@ -92,13 +92,13 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
         <div className="mt-3">
           <div className="flex items-center justify-between mb-1">
             <span
-              className="text-[10px] font-mono"
+              className="text-xs font-mono"
               style={{ color: "var(--text-muted)" }}
             >
               Звонок {story.current_call_number} / {story.total_calls_planned}
             </span>
             <span
-              className="text-[10px] font-mono"
+              className="text-xs font-mono"
               style={{ color: "var(--text-muted)" }}
             >
               {progressPct}%
@@ -120,7 +120,7 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
 
         <div className="mt-4 grid grid-cols-2 gap-2">
           <div className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
-            <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+            <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
               Tension
             </div>
             <div className="mt-1 text-lg font-semibold" style={{ color }}>
@@ -128,7 +128,7 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
             </div>
           </div>
           <div className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
-            <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+            <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
               Best Score
             </div>
             <div className="mt-1 text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
@@ -140,7 +140,7 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
         <div className="flex items-center gap-3 mt-4 flex-wrap">
           {story.tension > 0 && (
             <span
-              className="flex items-center gap-1 text-[10px] font-mono"
+              className="flex items-center gap-1 text-xs font-mono"
               style={{ color: "var(--text-muted)" }}
             >
               <AlertTriangle size={10} />
@@ -149,7 +149,7 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
           )}
           {story.event_count > 0 && (
             <span
-              className="flex items-center gap-1 text-[10px] font-mono"
+              className="flex items-center gap-1 text-xs font-mono"
               style={{ color: "var(--text-muted)" }}
             >
               <Clock size={10} />
@@ -158,7 +158,7 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
           )}
           {story.is_completed && (
             <span
-              className="flex items-center gap-1 text-[10px] font-mono"
+              className="flex items-center gap-1 text-xs font-mono"
               style={{ color: "#00FF66" }}
             >
               <CheckCircle size={10} />
@@ -166,7 +166,7 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
             </span>
           )}
           {!story.is_completed && (
-            <span className="flex items-center gap-1 text-[10px] font-mono" style={{ color: "var(--accent)" }}>
+            <span className="flex items-center gap-1 text-xs font-mono" style={{ color: "var(--accent)" }}>
               <Sparkles size={10} />
               Активная continuity
             </span>

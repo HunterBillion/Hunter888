@@ -34,7 +34,7 @@ const EVENT_COLORS: Record<GameEventType, string> = {
   call: "#3B82F6",
   message: "#10B981",
   consequence: "#F59E0B",
-  storylet: "#8B5CF6",
+  storylet: "#6366F1",
   status_change: "#6B7280",
   callback: "#F97316",
 };
@@ -144,7 +144,7 @@ export function GameTimeline({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                      className="text-xs font-mono px-1.5 py-0.5 rounded"
                       style={{
                         background: `${color}10`,
                         color,
@@ -154,7 +154,7 @@ export function GameTimeline({
                       {GAME_EVENT_LABELS[event.type]}
                     </span>
                     <span
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                      className="text-xs font-mono px-1.5 py-0.5 rounded"
                       style={{
                         background: "rgba(255,255,255,0.06)",
                         color: "var(--text-secondary)",
@@ -165,7 +165,7 @@ export function GameTimeline({
                     </span>
                     {event.narrative_date && (
                       <span
-                        className="text-[10px] font-mono"
+                        className="text-xs font-mono"
                         style={{ color: "var(--text-muted)" }}
                       >
                         {event.narrative_date}
@@ -187,7 +187,7 @@ export function GameTimeline({
                   </p>
 
                   <span
-                    className="text-[10px] font-mono"
+                    className="text-xs font-mono"
                     style={{ color: "var(--text-muted)", opacity: 0.7 }}
                   >
                     {formatTime(event.timestamp)}
@@ -211,7 +211,7 @@ export function GameTimeline({
                         </p>
                         {event.payload && Object.keys(event.payload).length > 0 && (
                           <div
-                            className="mt-2 p-2 rounded text-[10px] font-mono"
+                            className="mt-2 p-2 rounded text-xs font-mono"
                             style={{
                               background: "var(--input-bg)",
                               color: "var(--text-muted)",

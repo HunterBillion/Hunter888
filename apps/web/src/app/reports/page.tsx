@@ -21,11 +21,14 @@ import {
   Lightbulb,
   ArrowUp,
   ArrowDown,
+  ShieldCheck,
 } from "lucide-react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { scoreColor } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { BackButton } from "@/components/ui/BackButton";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 
 /* ─── Types ─── */
@@ -94,16 +97,17 @@ function trendIcon(trend: string | null) {
 
 function SkillBar({ name, value, change }: { name: string; value: number; change: number }) {
   const label = SKILL_LABELS[name] || name;
+  const barColor = value >= 70 ? "var(--neon-green, #34D399)" : value >= 40 ? "var(--warning, #FBBF24)" : "var(--neon-red, #F87171)";
   return (
-    <div style={{ marginBottom: 8 }}>
-      <div className="flex items-center justify-between" style={{ fontSize: 11 }}>
+    <div className="mb-2.5">
+      <div className="flex items-center justify-between text-xs">
         <span style={{ color: "var(--text-secondary)" }}>{label}</span>
         <span className="flex items-center gap-1">
-          <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>{value}</span>
+          <span className="font-semibold" style={{ color: "var(--text-primary)" }}>{value}</span>
           {change !== 0 && (
             <span
-              className="flex items-center gap-0.5"
-              style={{ color: change > 0 ? "#34D399" : "#F87171", fontSize: 10 }}
+              className="flex items-center gap-0.5 text-xs"
+              style={{ color: change > 0 ? "var(--neon-green, #34D399)" : "var(--neon-red, #F87171)" }}
             >
               {change > 0 ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
               {Math.abs(change)}
@@ -111,24 +115,13 @@ function SkillBar({ name, value, change }: { name: string; value: number; change
           )}
         </span>
       </div>
-      <div
-        style={{
-          height: 6,
-          borderRadius: 3,
-          background: "var(--input-bg)",
-          overflow: "hidden",
-          marginTop: 3,
-        }}
-      >
+      <div className="h-1.5 rounded-full overflow-hidden mt-1" style={{ background: "var(--input-bg)" }}>
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${value}%` }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          style={{
-            height: "100%",
-            borderRadius: 3,
-            background: value >= 70 ? "#34D399" : value >= 40 ? "#FBBF24" : "#F87171",
-          }}
+          className="h-full rounded-full"
+          style={{ background: barColor }}
         />
       </div>
     </div>
@@ -145,8 +138,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
-      className="glass-panel rounded-xl overflow-hidden"
-      style={{ marginBottom: 12 }}
+      className="glass-panel rounded-xl overflow-hidden mb-3"
     >
       {/* Header */}
       <div
@@ -166,12 +158,12 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: 15 }}>
+              <span className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
                 {formatWeek(report.week_start)} — {formatWeek(report.week_end)}
               </span>
               {trendIcon(report.score_trend)}
             </div>
-            <div className="flex items-center gap-3" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            <div className="flex items-center gap-3 text-xs" style={{ color: "var(--text-muted)" }}>
               <span>{report.sessions_completed} сессий</span>
               <span>·</span>
               <span>{report.total_time_minutes} мин</span>
@@ -189,7 +181,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                   <span className="flex items-center gap-0.5">
                     #{report.weekly_rank}
                     {report.rank_change !== null && report.rank_change !== 0 && (
-                      <span style={{ color: report.rank_change > 0 ? "#34D399" : "#F87171", fontSize: 10 }}>
+                      <span className="text-xs" style={{ color: report.rank_change > 0 ? "var(--neon-green, #34D399)" : "var(--neon-red, #F87171)" }}>
                         {report.rank_change > 0 ? `+${report.rank_change}` : report.rank_change}
                       </span>
                     )}
@@ -218,15 +210,15 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
             <div style={{ padding: "0 20px 20px", borderTop: "1px solid var(--border-color)" }}>
               {/* Report text */}
               {report.report_text && (
-                <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "16px 0", lineHeight: 1.6 }}>
+                <p className="text-sm my-4 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                   {report.report_text}
                 </p>
               )}
 
               {/* Stats grid */}
               <div
-                className="grid gap-3"
-                style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", marginBottom: 16 }}
+                className="grid gap-3 mb-4"
+                style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}
               >
                 <StatCard icon={Target} label="Ср. балл" value={report.average_score != null ? Number(report.average_score).toFixed(0) : "—"} color={scoreColor(report.average_score)} />
                 <StatCard icon={Star} label="Лучший" value={report.best_score != null ? String(report.best_score) : "—"} color="#FFD700" />
@@ -246,8 +238,8 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
 
               {/* Outcomes */}
               {Object.keys(report.outcomes).length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", marginBottom: 8 }}>
+                <div className="mb-4">
+                  <div className="text-xs font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
                     Исходы
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -270,8 +262,8 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
 
               {/* Skills */}
               {Object.keys(report.skills_snapshot).length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", marginBottom: 8 }}>
+                <div className="mb-4">
+                  <div className="text-xs font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
                     Навыки
                   </div>
                   <div className="grid gap-x-6" style={{ gridTemplateColumns: "1fr 1fr" }}>
@@ -289,8 +281,8 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
 
               {/* Achievements */}
               {report.new_achievements.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <div className="flex items-center gap-1.5" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", marginBottom: 8 }}>
+                <div className="mb-4">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
                     <Award size={13} /> Достижения недели
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -309,8 +301,8 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
 
               {/* Weak points */}
               {report.weak_points.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <div className="flex items-center gap-1.5" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", marginBottom: 8 }}>
+                <div className="mb-4">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
                     <AlertTriangle size={13} /> Слабые места
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -334,7 +326,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {/* Recommendations */}
               {report.recommendations.length > 0 && (
                 <div>
-                  <div className="flex items-center gap-1.5" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", marginBottom: 8 }}>
+                  <div className="flex items-center gap-1.5 text-xs font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
                     <Lightbulb size={13} /> Рекомендации
                   </div>
                   <div className="space-y-2">
@@ -366,11 +358,11 @@ function StatCard({ icon: Icon, label, value, color }: { icon: typeof Target; la
       className="rounded-lg px-3 py-2.5"
       style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}
     >
-      <div className="flex items-center gap-1.5" style={{ marginBottom: 4 }}>
+      <div className="flex items-center gap-1.5 mb-1">
         <Icon size={12} style={{ color }} />
-        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{label}</span>
+        <span className="text-xs" style={{ color: "var(--text-muted)" }}>{label}</span>
       </div>
-      <span style={{ fontSize: 18, fontWeight: 700, color, fontFamily: "var(--font-mono)" }}>
+      <span className="text-lg font-bold font-mono" style={{ color }}>
         {value}
       </span>
     </div>
@@ -389,11 +381,12 @@ export default function ReportsPage() {
   const fetchReports = useCallback(async () => {
     if (!user) return;
     setLoading(true);
+    setError(null);
     try {
-      const data: WeeklyReport[] = await api.get(`/reports/weekly/${user.id}?limit=12`);
-      setReports(data);
+      const data = await api.get(`/reports/weekly/${user.id}?limit=12`);
+      setReports(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Ошибка загрузки");
+      setError(err instanceof Error ? err.message : "Ошибка загрузки отчётов");
     } finally {
       setLoading(false);
     }
@@ -406,11 +399,16 @@ export default function ReportsPage() {
   const handleGenerate = async () => {
     if (!user) return;
     setGenerating(true);
+    setError(null);
     try {
       await api.post(`/reports/weekly/${user.id}/generate`, {});
+      // Small delay to let backend finish writing
+      await new Promise((r) => setTimeout(r, 1000));
       await fetchReports();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Ошибка генерации");
+      const msg = err instanceof Error ? err.message : "Ошибка генерации отчёта";
+      setError(msg);
+      // Don't crash — show error inline
     } finally {
       setGenerating(false);
     }
@@ -420,66 +418,61 @@ export default function ReportsPage() {
     <AuthLayout>
       <div className="panel-grid-bg min-h-screen w-full">
         <div className="mx-auto" style={{ maxWidth: 800, padding: "24px 16px" }}>
-        {/* Header */}
+        <BackButton href="/home" label="На главную" />
+        {/* Header — compact */}
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between flex-wrap gap-3"
-          style={{ marginBottom: 24 }}
+          className="flex items-center justify-between flex-wrap gap-3 mb-6"
         >
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-10 w-10 items-center justify-center rounded-lg"
-              style={{ background: "var(--accent)", color: "#000" }}
-            >
-              <FileBarChart size={20} />
-            </div>
-            <div>
-              <h1
+          <p className="text-sm" style={{ color: "var(--text-muted)", margin: 0 }}>
+            Прогресс, навыки, рекомендации
+          </p>
+
+          <div className="flex items-center gap-2">
+            {user?.role === "admin" && (
+              <Link
+                href="/admin/audit-log"
+                className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
                 style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: 22,
-                  fontWeight: 700,
-                  color: "var(--text-primary)",
-                  margin: 0,
+                  background: "var(--input-bg)",
+                  color: "var(--text-secondary)",
+                  border: "1px solid var(--border-color)",
                 }}
               >
-                Еженедельные отчёты
-              </h1>
-              <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0 }}>
-                Прогресс, навыки, рекомендации
-              </p>
-            </div>
-          </div>
-
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={handleGenerate}
-            disabled={generating}
-            className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
-            style={{
-              background: "var(--accent)",
-              color: "#000",
-              border: "none",
-              cursor: generating ? "wait" : "pointer",
-              opacity: generating ? 0.7 : 1,
-            }}
-          >
-            {generating ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : (
-              <RefreshCw size={15} />
+                <ShieldCheck size={15} />
+                Журнал аудита
+              </Link>
             )}
-            {generating ? "Генерация..." : "Обновить отчёт"}
-          </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleGenerate}
+              disabled={generating}
+              className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
+              style={{
+                background: "var(--accent)",
+                color: "#000",
+                border: "none",
+                cursor: generating ? "wait" : "pointer",
+                opacity: generating ? 0.7 : 1,
+              }}
+            >
+              {generating ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <RefreshCw size={15} />
+              )}
+              {generating ? "Генерация..." : "Обновить отчёт"}
+            </motion.button>
+          </div>
         </motion.div>
 
         {/* Error */}
         {error && (
           <div
-            className="glass-panel rounded-xl"
-            style={{ padding: 16, marginBottom: 16, color: "#F87171", textAlign: "center" }}
+            className="glass-panel rounded-xl p-4 mb-4 text-center"
+            style={{ color: "var(--neon-red, #F87171)" }}
           >
             {error}
           </div>
@@ -497,8 +490,7 @@ export default function ReportsPage() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="glass-panel rounded-xl"
-            style={{ padding: 48, textAlign: "center" }}
+            className="glass-panel rounded-xl p-12 text-center"
           >
             <FileBarChart size={40} style={{ margin: "0 auto 12px", color: "var(--text-muted)", opacity: 0.3 }} />
             <p style={{ color: "var(--text-muted)", margin: 0 }}>

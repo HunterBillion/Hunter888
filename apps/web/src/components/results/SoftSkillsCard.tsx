@@ -86,9 +86,9 @@ export default function SoftSkillsCard({ skills }: SoftSkillsCardProps) {
       animate="show"
       className="glass-panel rounded-2xl p-6"
     >
-      <h3 className="font-display text-sm tracking-widest flex items-center gap-2 mb-4" style={{ color: "var(--text-primary)" }}>
+      <h3 className="font-display text-base tracking-widest flex items-center gap-2 mb-4" style={{ color: "var(--text-primary)" }}>
         <BarChart3 size={16} style={{ color: "var(--accent)" }} />
-        SOFT SKILLS
+        НАВЫКИ ОБЩЕНИЯ
       </h3>
 
       <div className="space-y-3">
@@ -99,14 +99,14 @@ export default function SoftSkillsCard({ skills }: SoftSkillsCardProps) {
             <motion.div key={m.label} variants={item}>
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
-                  <Icon size={13} style={{ color: "var(--text-muted)" }} />
-                  <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{m.label}</span>
+                  <Icon size={14} style={{ color: "var(--text-muted)" }} />
+                  <span className="text-sm" style={{ color: "var(--text-secondary)" }}>{m.label}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs" style={{ color }}>{m.value}</span>
+                  <span className="font-mono text-sm" style={{ color }}>{m.value}</span>
                   <span
-                    className="rounded-full px-1.5 py-0.5 text-[9px] font-mono"
-                    style={{ background: `${color}15`, color }}
+                    className="rounded-full px-2 py-0.5 text-sm font-mono"
+                    style={{ background: `color-mix(in srgb, ${color} 8%, transparent)`, color }}
                   >
                     {getRatingLabel(m.rating)}
                   </span>

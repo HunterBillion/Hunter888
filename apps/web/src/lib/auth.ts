@@ -1,38 +1,36 @@
 /**
- * Auth utilities — httpOnly cookies (primary) + localStorage (fallback for migration).
+ * Auth utilities — httpOnly cookies (primary) + in-memory cache (current tab).
  *
- * In production, tokens are stored in httpOnly cookies set by the backend.
- * The frontend only needs to know IF the user is authenticated (via `vh_authenticated` cookie).
- * Tokens in localStorage are kept temporarily for backward compatibility.
+ * Tokens are stored exclusively in httpOnly cookies set by the backend.
+ * This prevents XSS attacks from stealing tokens via JavaScript.
+ *
+ * The in-memory cache (_accessToken) holds the current token for the
+ * Authorization header on API requests — it is populated on login/refresh
+ * and cleared on logout. It does NOT persist across page reloads; on
+ * reload the client calls /auth/refresh using the httpOnly refresh_token cookie.
+ *
+ * localStorage is NOT used — storing JWT tokens in localStorage violates OWASP
+ * guidance and makes them accessible to any injected script.
  */
 
-const ACCESS_TOKEN_KEY = "ai_trainer_access_token";
-const REFRESH_TOKEN_KEY = "ai_trainer_refresh_token";
-
-// In-memory cache (for backward compat during migration)
+// In-memory token cache — lives only for the current tab session.
 let _accessToken: string | null = null;
 let _refreshToken: string | null = null;
 
 export function getToken(): string | null {
   // httpOnly cookies can't be read by JS — that's the point.
-  // For Bearer header fallback, check in-memory / localStorage.
-  if (_accessToken) return _accessToken;
-  if (typeof window === "undefined") return null;
-  try {
-    const stored = localStorage.getItem(ACCESS_TOKEN_KEY);
-    if (stored) {
-      _accessToken = stored;
-      _refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-    }
-  } catch {}
+  // Return the in-memory copy for Bearer header on API requests.
   return _accessToken;
 }
 
+const _SS_REFRESH_KEY = "vh_rt";
+
 export function getRefreshToken(): string | null {
   if (_refreshToken) return _refreshToken;
-  if (typeof window === "undefined") return null;
+  // Fallback: sessionStorage survives page reloads within the same tab.
+  // Used when in-memory token is cleared by a full-page navigation.
   try {
-    return localStorage.getItem(REFRESH_TOKEN_KEY);
+    return sessionStorage.getItem(_SS_REFRESH_KEY);
   } catch {
     return null;
   }
@@ -41,11 +39,15 @@ export function getRefreshToken(): string | null {
 export function setTokens(accessToken: string, refreshToken: string): void {
   _accessToken = accessToken;
   _refreshToken = refreshToken;
-  // Still persist to localStorage for backward compat (will be removed in next release)
+  // Persist refresh token in sessionStorage so page reloads don't lose the session.
+  try {
+    sessionStorage.setItem(_SS_REFRESH_KEY, refreshToken);
+  } catch {}
+  // Set marker cookie so Next.js middleware knows user is authenticated.
+  // This is NOT the auth token — just a presence flag (not httpOnly so middleware can read it).
   if (typeof window !== "undefined") {
     try {
-      localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-      localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+      document.cookie = "vh_authenticated=1; path=/; max-age=604800; samesite=lax";
     } catch {}
   }
 }
@@ -53,14 +55,14 @@ export function setTokens(accessToken: string, refreshToken: string): void {
 export function clearTokens(): void {
   _accessToken = null;
   _refreshToken = null;
+  // Clear sessionStorage fallback.
+  try {
+    sessionStorage.removeItem(_SS_REFRESH_KEY);
+  } catch {}
+  // Clear the JS-readable marker cookie to prevent redirect loops.
+  // The httpOnly access_token/refresh_token cookies are cleared by the
+  // server /auth/logout endpoint via Set-Cookie headers.
   if (typeof window !== "undefined") {
-    try {
-      localStorage.removeItem(ACCESS_TOKEN_KEY);
-      localStorage.removeItem(REFRESH_TOKEN_KEY);
-    } catch {}
-    // Clear the JS-readable marker cookie to prevent redirect loops.
-    // The httpOnly access_token/refresh_token cookies can only be cleared
-    // by the server (via Set-Cookie), so we clear what we can.
     try {
       document.cookie = "vh_authenticated=; path=/; max-age=0; samesite=lax";
     } catch {}

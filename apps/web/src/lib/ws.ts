@@ -44,9 +44,17 @@ export function createReconnectingWebSocket(
     const ws = new WebSocket(url);
     currentWs = ws;
 
-    ws.addEventListener("open", () => {
+    ws.addEventListener("open", async () => {
       attempt = 0; // Reset on successful connection
-      const token = getToken();
+      let token = getToken();
+      // If no in-memory token, try REST refresh first (page reload scenario)
+      if (!token) {
+        try {
+          const { tryRefreshToken } = await import("./api");
+          const refreshed = await tryRefreshToken();
+          if (refreshed) token = getToken();
+        } catch { /* let WS auth fail → triggers 1008 reconnect flow */ }
+      }
       if (token) {
         ws.send(JSON.stringify({ type: "auth", data: { token } }));
       }
@@ -113,8 +121,18 @@ export function createWebSocket(path: string): WebSocket {
   const url = `${getWsBaseUrl()}${path}`;
   const ws = new WebSocket(url);
 
-  ws.addEventListener("open", () => {
-    const token = getToken();
+  ws.addEventListener("open", async () => {
+    let token = getToken();
+    // If no in-memory token, try REST refresh first (page reload scenario)
+    if (!token) {
+      try {
+        const { tryRefreshToken } = await import("./api");
+        const refreshed = await tryRefreshToken();
+        if (refreshed) token = getToken();
+      } catch {
+        // Refresh failed — let WS auth fail, triggering 1008 → refreshAndReconnect
+      }
+    }
     if (token) {
       ws.send(JSON.stringify({ type: "auth", data: { token } }));
     }

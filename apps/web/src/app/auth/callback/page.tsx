@@ -87,7 +87,7 @@ function OAuthCallbackContent() {
             </p>
             <motion.button
               onClick={() => router.replace("/login")}
-              className="vh-btn-primary mt-6"
+              className="btn-neon mt-6"
               whileTap={{ scale: 0.97 }}
             >
               Вернуться к входу

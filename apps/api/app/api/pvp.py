@@ -11,8 +11,10 @@ Provides:
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, desc
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from sqlalchemy import select, func, desc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors as err
@@ -20,13 +22,11 @@ from app.core.deps import get_current_user, require_role
 from app.database import get_db
 from app.models.pvp import (
     AntiCheatLog,
-    DuelStatus,
     PvPDuel,
     PvPRating,
     PvPRankTier,
     PvPSeason,
     RANK_DISPLAY_NAMES,
-    rank_from_rating,
 )
 from app.models.user import User, UserFriendship
 from app.schemas.pvp import (
@@ -43,6 +43,7 @@ from app.services.pvp_matchmaker import join_queue
 from app.ws.notifications import notification_manager
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +282,9 @@ async def get_duel(
 # ---------------------------------------------------------------------------
 
 @router.post("/accept-pve")
+@limiter.limit("10/minute")
 async def accept_pve(
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -293,7 +296,9 @@ async def accept_pve(
 
 
 @router.post("/challenge/{target_user_id}")
+@limiter.limit("10/minute")
 async def challenge_friend(
+    request: Request,
     target_user_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -393,14 +398,25 @@ async def get_anti_cheat_flags(
     ]
 
 
+_VALID_RESOLUTIONS = {"clean", "cheating_confirmed", "false_positive"}
+
+
 @router.put("/admin/anti-cheat/resolve/{flag_id}")
+@limiter.limit("10/minute")
 async def resolve_anti_cheat_flag(
+    request: Request,
     flag_id: uuid.UUID,
-    resolution: str,  # "clean" | "cheating_confirmed" | "false_positive"
+    resolution: str,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_role("admin")),
 ):
     """Resolve an anti-cheat flag (admin only)."""
+    if resolution not in _VALID_RESOLUTIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid resolution. Must be one of: {', '.join(sorted(_VALID_RESOLUTIONS))}",
+        )
+
     result = await db.execute(
         select(AntiCheatLog).where(AntiCheatLog.id == flag_id)
     )
@@ -421,7 +437,9 @@ async def resolve_anti_cheat_flag(
 # ---------------------------------------------------------------------------
 
 @router.post("/admin/season/create", response_model=SeasonResponse)
+@limiter.limit("3/minute")
 async def create_season(
+    request: Request,
     name: str,
     start_date: datetime,
     end_date: datetime,

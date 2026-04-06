@@ -21,7 +21,7 @@ interface SavedCharacter {
   created_at: string;
 }
 
-type TypeFilter = "all" | "cold" | "warm" | "objection" | "in" | "upsell" | "rescue" | "couple_call" | "vip_debtor";
+type TypeFilter = "all" | "cold" | "warm" | "in" | "special" | "follow_up" | "crisis" | "compliance" | "multi_party";
 type DifficultyFilter = "all" | "easy" | "medium" | "hard";
 
 interface TrainingState {
@@ -99,16 +99,17 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   filteredScenarios: () => {
     const { scenarios, typeFilter, difficultyFilter } = get();
     return scenarios.filter((s) => {
-      // Type filter
+      // Type filter — 8 scenario groups (DOC_05)
       if (typeFilter !== "all") {
-        const typePrefix = s.scenario_type.split("_")[0];
-        if (typeFilter === "cold" && !s.scenario_type.startsWith("cold")) return false;
-        if (typeFilter === "warm" && !s.scenario_type.startsWith("warm")) return false;
-        if (typeFilter === "objection" && typePrefix !== "objection") return false;
-        if (typeFilter === "in" && !s.scenario_type.startsWith("in_")) return false;
-        if (!["cold", "warm", "objection", "in", "all"].includes(typeFilter)) {
-          if (s.scenario_type !== typeFilter) return false;
-        }
+        const sType = s.scenario_type || "";
+        if (typeFilter === "cold" && !sType.startsWith("cold")) return false;
+        if (typeFilter === "warm" && !sType.startsWith("warm")) return false;
+        if (typeFilter === "in" && !sType.startsWith("in_")) return false;
+        if (typeFilter === "special" && !["special_", "upsell", "rescue", "vip_debtor"].some((p) => sType.startsWith(p))) return false;
+        if (typeFilter === "follow_up" && !sType.startsWith("follow_up")) return false;
+        if (typeFilter === "crisis" && !sType.startsWith("crisis")) return false;
+        if (typeFilter === "compliance" && !sType.startsWith("compliance")) return false;
+        if (typeFilter === "multi_party" && !sType.startsWith("multi_party")) return false;
       }
       // Difficulty filter
       if (difficultyFilter === "easy" && s.difficulty > 3) return false;

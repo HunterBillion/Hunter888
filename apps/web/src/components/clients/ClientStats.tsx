@@ -45,7 +45,7 @@ export function ClientStats({ stats }: ClientStatsProps) {
             <div className="text-2xl font-bold mt-2" style={{ color: "var(--text-primary)" }}>
               {card.value}
             </div>
-            <div className="text-[10px] font-mono tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>
+            <div className="text-xs font-mono tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>
               {card.label.toUpperCase()}
             </div>
           </motion.div>
@@ -74,7 +74,7 @@ export function ClientStats({ stats }: ClientStatsProps) {
             const s = stats.find((st) => st.status === status);
             if (!s || !s.count) return null;
             return (
-              <span key={status} className="flex items-center gap-1 text-[10px]" style={{ color: "var(--text-muted)" }}>
+              <span key={status} className="flex items-center gap-1 text-xs" style={{ color: "var(--text-muted)" }}>
                 <div className="w-1.5 h-1.5 rounded-full" style={{ background: CLIENT_STATUS_COLORS[status] }} />
                 {CLIENT_STATUS_LABELS[status]} ({s.count})
               </span>

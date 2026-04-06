@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, Zap } from "lucide-react";
 import type { ConsequenceEvent } from "@/types/story";
+import { useScreenShake } from "@/components/ui/ScreenShake";
+import { useHaptic } from "@/hooks/useHaptic";
 
 interface Props {
   consequence: ConsequenceEvent | null;
@@ -10,15 +13,25 @@ interface Props {
 }
 
 export function ConsequenceToast({ consequence, onDismiss }: Props) {
-  if (!consequence) return null;
+  const shake = useScreenShake();
+  const haptic = useHaptic();
 
-  const isHigh = consequence.severity >= 0.7;
+  // Trigger haptic + screen shake when consequence appears
+  useEffect(() => {
+    if (!consequence) return;
+    const isHigh = consequence.severity >= 0.7;
+    shake(isHigh ? "heavy" : "medium");
+    haptic(isHigh ? "error" : "impact");
+  }, [consequence, shake, haptic]);
+
+  const isHigh = consequence ? consequence.severity >= 0.7 : false;
   const color = isHigh ? "var(--neon-red, #FF3333)" : "var(--warning, #F59E0B)";
   const bgColor = isHigh ? "rgba(255,51,51,0.1)" : "rgba(245,158,11,0.1)";
   const borderColor = isHigh ? "rgba(255,51,51,0.3)" : "rgba(245,158,11,0.3)";
 
   return (
     <AnimatePresence>
+      {consequence && (
       <motion.div
         initial={{ opacity: 0, y: 40, scale: 0.9 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -43,7 +56,7 @@ export function ConsequenceToast({ consequence, onDismiss }: Props) {
               )}
             </div>
             <div>
-              <div className="font-mono text-[10px] tracking-widest uppercase" style={{ color }}>
+              <div className="font-mono text-xs tracking-widest uppercase" style={{ color }}>
                 ПОСЛЕДСТВИЕ · ЗВОНОК {consequence.call}
               </div>
               <div className="text-sm mt-1 font-medium" style={{ color: "var(--text-primary)" }}>
@@ -66,6 +79,7 @@ export function ConsequenceToast({ consequence, onDismiss }: Props) {
           </div>
         </div>
       </motion.div>
+      )}
     </AnimatePresence>
   );
 }

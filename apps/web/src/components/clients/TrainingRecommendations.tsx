@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Crosshair, TrendingDown, ArrowRight, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { logger } from "@/lib/logger";
 
 interface LossPattern {
   pattern: string;
@@ -33,7 +34,7 @@ export function TrainingRecommendations({ managerId }: TrainingRecommendationsPr
 
     api.get(endpoint)
       .then((resp: RecommendationsResponse) => setData(resp.patterns || []))
-      .catch((err) => { console.error("Failed to load training recommendations:", err); })
+      .catch((err) => { logger.error("Failed to load training recommendations:", err); })
       .finally(() => setLoading(false));
   }, [managerId]);
 
@@ -79,7 +80,7 @@ export function TrainingRecommendations({ managerId }: TrainingRecommendationsPr
               <div className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>
                 {item.scenario_title}
               </div>
-              <div className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+              <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
                 {item.pattern} ({item.count} потерь)
               </div>
             </div>

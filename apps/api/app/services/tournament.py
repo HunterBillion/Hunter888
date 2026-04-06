@@ -138,6 +138,29 @@ async def submit_entry(
         logger.info("User %s exceeded max attempts (%d) for tournament %s", user_id, t.max_attempts, tournament_id)
         return None
 
+    # Anti-cheat check before accepting tournament entry
+    try:
+        from app.services.anti_cheat import run_anti_cheat, save_anti_cheat_result, AntiCheatAction
+        from app.models.training import Message as TrainingMessage
+        msgs_result = await db.execute(
+            select(TrainingMessage.role, TrainingMessage.content)
+            .where(TrainingMessage.session_id == session_id, TrainingMessage.role == "user")
+            .order_by(TrainingMessage.sequence_number)
+        )
+        user_messages = [{"role": r.role, "content": r.content} for r in msgs_result.all()]
+
+        if user_messages:
+            ac_result = await run_anti_cheat(user_id, session_id, user_messages, db, run_llm_check=True)
+            await save_anti_cheat_result(ac_result, db)
+            if ac_result.recommended_action in (AntiCheatAction.rating_freeze,):
+                logger.warning(
+                    "Tournament entry rejected by anti-cheat: user=%s session=%s flags=%d",
+                    user_id, session_id, len(ac_result.flagged_signals),
+                )
+                return None
+    except Exception as e:
+        logger.warning("Anti-cheat check failed for tournament entry (allowing): %s", e)
+
     entry = TournamentEntry(
         tournament_id=tournament_id,
         user_id=user_id,

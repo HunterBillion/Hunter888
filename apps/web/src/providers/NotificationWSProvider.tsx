@@ -5,9 +5,17 @@ import { getToken } from "@/lib/auth";
 import { getWsBaseUrl } from "@/lib/public-origin";
 import { useNotificationStore, type NotificationItem } from "@/stores/useNotificationStore";
 import { api } from "@/lib/api";
+import { logger } from "@/lib/logger";
 
 const MAX_RECONNECT_DELAY = 30_000;
 const PING_INTERVAL = 30_000;
+
+// Module-level flags — survive component remounts during SPA navigation.
+// Prevents re-fetching notifications and re-connecting WS on every route change.
+// BUG-4 fix: track which token the flags belong to — reset on user change.
+let _initialFetchDone = false;
+let _wsConnected = false;
+let _lastTokenHash = "";
 
 /**
  * Global WebSocket provider for notifications.
@@ -27,6 +35,23 @@ export function NotificationWSProvider({ children }: { children: React.ReactNode
     if (!token) return;
     if (!mountedRef.current) return;
 
+    // BUG-4 fix: detect user change (different token) → reset module flags
+    const tokenHash = token.slice(-16);
+    if (_lastTokenHash && _lastTokenHash !== tokenHash) {
+      _initialFetchDone = false;
+      _wsConnected = false;
+      // Close stale connection from previous user
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch {}
+        wsRef.current = null;
+      }
+      useNotificationStore.getState().clear();
+    }
+    _lastTokenHash = tokenHash;
+
+    // Already have a live WS from a previous mount — skip
+    if (_wsConnected && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
+
     // FIX 19: Close any existing connection before opening a new one.
     // Prevents duplicate WS connections after rapid reconnect/token refresh.
     if (wsRef.current) {
@@ -41,6 +66,7 @@ export function NotificationWSProvider({ children }: { children: React.ReactNode
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: "auth", token }));
         reconnectAttempt.current = 0;
+        _wsConnected = true;
         // Start ping
         if (pingTimer.current) clearInterval(pingTimer.current);
         pingTimer.current = setInterval(() => {
@@ -133,6 +159,7 @@ export function NotificationWSProvider({ children }: { children: React.ReactNode
       ws.onclose = () => {
         // FIX 18: Clear ref immediately so no stale onmessage callbacks fire
         if (wsRef.current === ws) wsRef.current = null;
+        _wsConnected = false;
         if (!mountedRef.current) return;
         useNotificationStore.getState().setWsConnected(false);
         if (pingTimer.current) clearInterval(pingTimer.current);
@@ -152,10 +179,12 @@ export function NotificationWSProvider({ children }: { children: React.ReactNode
     }
   }, []);
 
-  // Fetch initial notifications via REST (only if authenticated)
+  // Fetch initial notifications via REST — only once per browser session
   const fetchInitial = useCallback(() => {
+    if (_initialFetchDone) return;
     const token = getToken();
     if (!token) return;
+    _initialFetchDone = true;
     api.get("/notifications?limit=10")
       .then((data: unknown) => {
         if (!mountedRef.current) return;
@@ -169,7 +198,7 @@ export function NotificationWSProvider({ children }: { children: React.ReactNode
       .catch((err: unknown) => {
         // Non-critical: WS will provide live data; log for debugging
         if (mountedRef.current) {
-          console.error("Failed to fetch initial notifications:", err);
+          logger.error("Failed to fetch initial notifications:", err);
         }
       });
   }, []);
@@ -181,9 +210,9 @@ export function NotificationWSProvider({ children }: { children: React.ReactNode
 
     return () => {
       mountedRef.current = false;
-      if (wsRef.current) wsRef.current.close();
+      // Don't close WS on unmount — it survives SPA navigation via module-level refs.
+      // Only cancel pending reconnect timers for this mount cycle.
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
-      if (pingTimer.current) clearInterval(pingTimer.current);
     };
   }, [connect, fetchInitial]);
 

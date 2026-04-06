@@ -30,7 +30,7 @@ def warn(msg): print(f"    {YELLOW}⚠{RESET} {msg}")
 
 def main():
     print(f"\n{BOLD}{'=' * 60}")
-    print("  VibeHunter TTS Diagnostic")
+    print("  Hunter888 TTS Diagnostic")
     print(f"{'=' * 60}{RESET}\n")
 
     # ── Step 1: Environment variables ──

@@ -5,9 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { logger } from "@/lib/logger";
 import {
-  Crosshair,
   Clock,
-  Zap,
   Loader2,
   ArrowRight,
   Inbox,
@@ -17,20 +15,28 @@ import {
   ClipboardList,
   Filter,
   AlertTriangle,
+  Target,
+  Sparkles,
+  TrendingUp,
+  Lock,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import AuthLayout from "@/components/layout/AuthLayout";
 import CharacterBuilder from "@/components/training/CharacterBuilder";
+import { ScenarioDossierCard } from "@/components/training/ScenarioDossierCard";
 import { useTrainingStore } from "@/stores/useTrainingStore";
+import { ARCHETYPES, ARCHETYPE_GROUPS, getTierColor } from "@/lib/archetypes";
+import type { ArchetypeInfo } from "@/lib/archetypes";
 import type { Scenario } from "@/types";
 
-type Tab = "scenarios" | "assigned" | "builder" | "saved";
+type Tab = "recommended" | "scenarios" | "assigned" | "builder" | "saved";
 
 const TABS: { id: Tab; label: string; icon: React.ComponentType<{ size: number; style?: React.CSSProperties }> }[] = [
+  { id: "recommended", label: "Рекомендуемые", icon: Target },
   { id: "scenarios", label: "Сценарии", icon: BookOpen },
   { id: "assigned", label: "Назначенные", icon: ClipboardList },
   { id: "builder", label: "Конструктор", icon: Puzzle },
-  { id: "saved", label: "Мои персонажи", icon: Users },
+  { id: "saved", label: "Мои клиенты", icon: Users },
 ];
 
 const TYPE_FILTERS = [
@@ -38,7 +44,11 @@ const TYPE_FILTERS = [
   { key: "cold", label: "Холодные" },
   { key: "warm", label: "Тёплые" },
   { key: "in", label: "Входящие" },
-  { key: "objection", label: "Возражения" },
+  { key: "special", label: "Особые" },
+  { key: "follow_up", label: "Follow-up" },
+  { key: "crisis", label: "Кризис" },
+  { key: "compliance", label: "Комплаенс" },
+  { key: "multi_party", label: "Мультипарти" },
 ] as const;
 
 const DIFF_FILTERS = [
@@ -49,32 +59,36 @@ const DIFF_FILTERS = [
 ] as const;
 
 function getDifficultyConfig(d: number) {
-  if (d <= 3) return { label: "Легко", color: "#00FF66", bg: "rgba(0,255,102,0.08)", border: "rgba(0,255,102,0.2)" };
-  if (d <= 6) return { label: "Средне", color: "var(--warning)", bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.2)" };
-  return { label: "Сложно", color: "#FF3333", bg: "rgba(255,51,51,0.08)", border: "rgba(255,51,51,0.2)" };
+  if (d <= 3) return { label: "Легко", emoji: "🟢", color: "var(--neon-green, #00FF94)", bg: "rgba(0,255,148,0.08)", border: "rgba(0,255,148,0.2)", desc: "Клиент лояльный, мало возражений" };
+  if (d <= 6) return { label: "Средне", emoji: "🟡", color: "var(--warning)", bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.2)", desc: "Стандартные возражения и ловушки" };
+  if (d <= 8) return { label: "Сложно", emoji: "🔴", color: "var(--neon-red, #FF3333)", bg: "rgba(255,51,51,0.08)", border: "rgba(255,51,51,0.2)", desc: "Агрессивный клиент, каскад ловушек" };
+  return { label: "Босс", emoji: "💀", color: "#FF0055", bg: "rgba(255,0,85,0.1)", border: "rgba(255,0,85,0.3)", desc: "Максимальная сложность, все ловушки" };
 }
 
 function TrainingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<Tab>("scenarios");
+  // Extract tab param as string to avoid unstable searchParams object reference
+  const tabParam = searchParams.get("tab");
+  const [tab, setTab] = useState<Tab>("recommended");
   const [starting, setStarting] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [storyCalls, setStoryCalls] = useState<number>(3);
 
-  const store = useTrainingStore();
+  const fetchScenarios = useTrainingStore((s) => s.fetchScenarios);
+  const fetchAssigned = useTrainingStore((s) => s.fetchAssigned);
+  const assigned = useTrainingStore((s) => s.assigned);
 
   useEffect(() => {
-    store.fetchScenarios();
-    store.fetchAssigned();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    fetchScenarios();
+    fetchAssigned();
+  }, [fetchScenarios, fetchAssigned]);
 
   useEffect(() => {
-    const nextTab = searchParams.get("tab");
-    if (nextTab === "assigned" || nextTab === "builder" || nextTab === "saved" || nextTab === "scenarios") {
-      setTab(nextTab);
+    if (tabParam === "recommended" || tabParam === "assigned" || tabParam === "builder" || tabParam === "saved" || tabParam === "scenarios") {
+      setTab(tabParam);
     }
-  }, [searchParams]);
+  }, [tabParam]);
 
   // Auto-dismiss error after 5 seconds
   useEffect(() => {
@@ -107,8 +121,8 @@ function TrainingPageContent() {
     router.push(`/training/${scenarioId}?mode=story&calls=${calls}`);
   };
 
-  const overdueCount = store.assigned.filter((a) => new Date(a.deadline) < new Date()).length;
-  const assignedCount = store.assigned.length;
+  const overdueCount = assigned.filter((a) => new Date(a.deadline) < new Date()).length;
+  const assignedCount = assigned.length;
 
   return (
     <AuthLayout>
@@ -135,21 +149,18 @@ function TrainingPageContent() {
 
         <div className="app-page">
           {/* Header */}
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="flex items-center gap-2">
-              <Crosshair size={20} style={{ color: "var(--accent)" }} />
-              <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
-                ТРЕНИРОВКА
-              </h1>
-            </div>
-            <p className="mt-2 font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>
-              ВЫБЕРИТЕ ФОРМАТ ТРЕНИРОВКИ
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+            <h1 className="font-display text-2xl font-bold tracking-wide" style={{ color: "var(--text-primary)" }}>
+              Тренировки
+            </h1>
+            <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
+              Выберите формат и сложность тренировки
             </p>
           </motion.div>
 
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-color)" }}>
+          <div className="mt-5 flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 rounded-2xl px-4 py-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-color)" }}>
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.22em]" style={{ color: "var(--accent)" }}>
+              <div className="font-mono text-xs uppercase tracking-[0.22em]" style={{ color: "var(--accent)" }}>
                 STORY PRESET
               </div>
               <div className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
@@ -163,8 +174,8 @@ function TrainingPageContent() {
                   onClick={() => setStoryCalls(calls)}
                   className="rounded-xl px-4 py-2 font-mono text-xs uppercase tracking-[0.14em] transition-all"
                   style={{
-                    background: storyCalls === calls ? "rgba(139,92,246,0.14)" : "var(--input-bg)",
-                    border: `1px solid ${storyCalls === calls ? "rgba(139,92,246,0.42)" : "var(--border-color)"}`,
+                    background: storyCalls === calls ? "rgba(99,102,241,0.14)" : "var(--input-bg)",
+                    border: `1px solid ${storyCalls === calls ? "rgba(99,102,241,0.42)" : "var(--border-color)"}`,
                     color: storyCalls === calls ? "var(--accent)" : "var(--text-muted)",
                   }}
                 >
@@ -175,7 +186,7 @@ function TrainingPageContent() {
           </div>
 
           {/* Tabs */}
-          <div className="mt-6 flex gap-1 rounded-xl p-1" style={{ background: "var(--input-bg)" }}>
+          <div className="mt-6 flex gap-1 rounded-xl p-1 overflow-x-auto" style={{ background: "var(--input-bg)" }}>
             {TABS.map((t) => {
               const Icon = t.icon;
               const active = tab === t.id;
@@ -183,7 +194,7 @@ function TrainingPageContent() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className="relative flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-mono text-xs tracking-wider transition-colors"
+                  className="relative flex-1 flex items-center justify-center gap-1.5 sm:gap-2 rounded-lg px-2 sm:px-4 py-2.5 font-mono text-xs sm:text-sm tracking-wider transition-colors whitespace-nowrap min-w-0"
                   style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
                 >
                   {active && (
@@ -200,7 +211,7 @@ function TrainingPageContent() {
                     {/* Badge for assigned tab */}
                     {t.id === "assigned" && assignedCount > 0 && (
                       <span
-                        className="min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[9px] font-bold text-white px-1"
+                        className="min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-xs font-bold text-white px-1"
                         style={{ background: overdueCount > 0 ? "var(--neon-red, #FF3333)" : "var(--accent)" }}
                       >
                         {assignedCount}
@@ -214,6 +225,17 @@ function TrainingPageContent() {
 
           {/* Tab content */}
           <AnimatePresence mode="wait">
+            {tab === "recommended" && (
+              <motion.div key="recommended" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+                <RecommendedTab
+                  onStart={startTraining}
+                  onStartStory={startStoryTraining}
+                  starting={starting}
+                  storyCalls={storyCalls}
+                />
+              </motion.div>
+            )}
+
             {tab === "scenarios" && (
               <motion.div key="scenarios" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
                 <ScenariosTab
@@ -258,6 +280,216 @@ export default function TrainingPage() {
   );
 }
 
+/* ─── Recommended Tab ────────────────────────────────────────────────────── */
+
+function RecommendedTab({
+  onStart,
+  onStartStory,
+  starting,
+  storyCalls,
+}: {
+  onStart: (id: string) => void;
+  onStartStory: (id: string, calls?: number) => void;
+  starting: string | null;
+  storyCalls: number;
+}) {
+  const scenarios = useTrainingStore((s) => s.scenarios);
+  const scenariosLoading = useTrainingStore((s) => s.scenariosLoading);
+
+  // Build recommendations: pick archetypes from different groups/tiers
+  // In production this would come from backend /training/recommended
+  const recommendations = (() => {
+    // Simple client-side recommendation engine
+    // Groups recommendations into: main, skill-gap, challenge, new-group
+    const groups: { title: string; subtitle: string; color: string; archetypes: ArchetypeInfo[] }[] = [];
+
+    // 1. Main recommendation — moderate difficulty, varied groups
+    const t1t2 = ARCHETYPES.filter((a) => a.tier <= 2 && a.difficulty <= 6);
+    const mainPick = t1t2.slice(0, 3);
+    if (mainPick.length) {
+      groups.push({
+        title: "Рекомендуемые сегодня",
+        subtitle: "На основе сложности и разнообразия",
+        color: "var(--accent)",
+        archetypes: mainPick,
+      });
+    }
+
+    // 2. New groups — COGNITIVE, SOCIAL, TEMPORAL, PROFESSIONAL, COMPOUND
+    const newGroups: Array<{ key: string; archetypes: ArchetypeInfo[] }> = [
+      { key: "cognitive", archetypes: ARCHETYPES.filter((a) => a.group === "cognitive" && a.tier <= 2) },
+      { key: "social", archetypes: ARCHETYPES.filter((a) => a.group === "social" && a.tier <= 2) },
+      { key: "temporal", archetypes: ARCHETYPES.filter((a) => a.group === "temporal" && a.tier <= 2) },
+      { key: "professional", archetypes: ARCHETYPES.filter((a) => a.group === "professional" && a.tier <= 2) },
+    ];
+    for (const ng of newGroups) {
+      const g = ARCHETYPE_GROUPS[ng.key as keyof typeof ARCHETYPE_GROUPS];
+      if (g && ng.archetypes.length > 0) {
+        groups.push({
+          title: `${g.icon} ${g.label}`,
+          subtitle: g.description,
+          color: g.color,
+          archetypes: ng.archetypes.slice(0, 3),
+        });
+      }
+    }
+
+    // 3. Challenge — high tier
+    const challenges = ARCHETYPES.filter((a) => a.tier >= 3 && a.difficulty >= 7).slice(0, 3);
+    if (challenges.length) {
+      groups.push({
+        title: "Вызов",
+        subtitle: "Для опытных менеджеров",
+        color: "#EF4444",
+        archetypes: challenges,
+      });
+    }
+
+    return groups;
+  })();
+
+  if (scenariosLoading) {
+    return (
+      <div className="grid grid-cols-1 gap-4 mt-6">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="glass-panel rounded-2xl h-32 animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 space-y-8">
+      {recommendations.map((group, gi) => (
+        <div key={gi}>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-2">
+              {gi === 0 && <Sparkles size={18} style={{ color: group.color }} />}
+              {gi === recommendations.length - 1 && <TrendingUp size={18} style={{ color: group.color }} />}
+              <h3 className="font-display text-base font-bold tracking-wide" style={{ color: "var(--text-primary)" }}>
+                {group.title}
+              </h3>
+            </div>
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {group.subtitle}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {group.archetypes.map((arch) => {
+              const groupInfo = ARCHETYPE_GROUPS[arch.group];
+              const tierColor = getTierColor(arch.tier);
+              // Find a matching scenario by difficulty
+              const matchScenario = scenarios.length
+                ? [...scenarios].sort((a, b) => Math.abs(a.difficulty - arch.difficulty) - Math.abs(b.difficulty - arch.difficulty))[0]
+                : null;
+
+              return (
+                <motion.div
+                  key={arch.code}
+                  className="glass-panel p-5 rounded-2xl relative overflow-hidden"
+                  whileHover={{ y: -4, boxShadow: `0 8px 24px ${groupInfo.color}15` }}
+                >
+                  {/* Top gradient accent */}
+                  <div
+                    className="absolute top-0 left-0 right-0 h-1"
+                    style={{ background: `linear-gradient(90deg, ${groupInfo.color}, ${tierColor})` }}
+                  />
+
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">{arch.icon}</span>
+                      <div>
+                        <div className="font-display text-sm font-bold" style={{ color: groupInfo.color }}>
+                          {arch.name}
+                        </div>
+                        <div className="text-[10px] italic" style={{ color: "var(--text-muted)" }}>
+                          &laquo;{arch.subtitle}&raquo;
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <span className="rounded px-1.5 py-0.5 text-[9px] font-mono font-bold" style={{ background: tierColor + "20", color: tierColor }}>
+                        T{arch.tier}
+                      </span>
+                      <span className="rounded px-1.5 py-0.5 text-[9px] font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>
+                        Diff {arch.difficulty}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs leading-relaxed mb-3" style={{ color: "var(--text-secondary)" }}>
+                    {arch.description}
+                  </p>
+
+                  {/* Skill counters */}
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {arch.counters.map((skill) => (
+                      <span
+                        key={skill}
+                        className="rounded-full px-2 py-0.5 text-[9px] font-mono"
+                        style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--border-color)" }}
+                      >
+                        {skill.replace(/_/g, " ")}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Weakness hint */}
+                  <div className="rounded-lg p-2 mb-3" style={{ background: "rgba(255,215,0,0.05)", border: "1px solid rgba(255,215,0,0.1)" }}>
+                    <div className="text-[9px] uppercase font-mono mb-0.5" style={{ color: "rgba(255,215,0,0.6)" }}>
+                      Слабое место
+                    </div>
+                    <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                      {arch.weakness}
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-2">
+                    {matchScenario ? (
+                      <>
+                        <motion.button
+                          onClick={() => onStart(matchScenario.id)}
+                          disabled={starting === matchScenario.id}
+                          className="flex-1 btn-neon flex items-center justify-center gap-1.5 py-2 text-xs"
+                          whileTap={{ scale: 0.97 }}
+                          style={{ background: `linear-gradient(135deg, ${groupInfo.color}20, ${tierColor}10)` }}
+                        >
+                          {starting === matchScenario.id ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <>
+                              <Sparkles size={12} /> Начать
+                            </>
+                          )}
+                        </motion.button>
+                        <motion.button
+                          onClick={() => onStartStory(matchScenario.id, storyCalls)}
+                          disabled={!!starting}
+                          className="btn-neon flex items-center gap-1.5 px-3 py-2 text-xs"
+                          whileTap={{ scale: 0.97 }}
+                          style={{ borderColor: groupInfo.color + "30", color: groupInfo.color }}
+                        >
+                          AI x{storyCalls}
+                        </motion.button>
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+                        <Lock size={12} /> Загрузите сценарии
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ─── Scenarios Tab with Filters ──────────────────────────────────────────── */
 
 function ScenariosTab({
@@ -278,20 +510,31 @@ function ScenariosTab({
 
   if (scenariosLoading) {
     return (
-      <div className="mt-8 grid gap-5 sm:grid-cols-2">
+      <div className="mt-6 grid gap-5 sm:grid-cols-2">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="glass-panel p-6 space-y-4 animate-pulse relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-[var(--input-bg)]" />
-            <div className="h-5 w-3/4 rounded bg-[var(--input-bg)]" />
-            <div className="space-y-1.5">
-              <div className="h-3 w-full rounded bg-[var(--input-bg)]" />
-              <div className="h-3 w-2/3 rounded bg-[var(--input-bg)]" />
+          <div key={i} className="glass-panel p-6 space-y-4 animate-pulse relative overflow-hidden rounded-2xl">
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-[var(--input-bg)]" />
+            <div className="flex items-start gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-[var(--input-bg)]" />
+              <div className="flex-1 space-y-2">
+                <div className="h-5 w-2/3 rounded bg-[var(--input-bg)]" />
+                <div className="h-3 w-full rounded bg-[var(--input-bg)]" />
+              </div>
+              <div className="h-6 w-12 rounded-lg bg-[var(--input-bg)]" />
             </div>
-            <div className="flex gap-3">
-              <div className="h-5 w-24 rounded-full bg-[var(--input-bg)]" />
-              <div className="h-5 w-16 rounded bg-[var(--input-bg)]" />
+            <div className="h-4 w-3/4 rounded bg-[var(--input-bg)]" />
+            <div className="flex gap-1">
+              {[...Array(10)].map((_, j) => <div key={j} className="h-2 flex-1 rounded-full bg-[var(--input-bg)]" />)}
             </div>
-            <div className="h-10 w-full rounded-xl bg-[var(--input-bg)]" />
+            <div className="flex gap-2">
+              <div className="h-6 w-20 rounded-lg bg-[var(--input-bg)]" />
+              <div className="h-6 w-20 rounded-lg bg-[var(--input-bg)]" />
+              <div className="h-6 w-16 rounded-lg bg-[var(--input-bg)]" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="h-12 rounded-xl bg-[var(--input-bg)]" />
+              <div className="h-12 rounded-xl bg-[var(--input-bg)]" />
+            </div>
           </div>
         ))}
       </div>
@@ -304,13 +547,13 @@ function ScenariosTab({
         className="mt-6 overflow-hidden rounded-2xl"
         style={{
           background: "linear-gradient(135deg, rgba(5,5,6,0.95), rgba(18,18,22,0.94))",
-          border: "1px solid rgba(139,92,246,0.18)",
+          border: "1px solid rgba(99,102,241,0.18)",
           boxShadow: "0 18px 45px rgba(0,0,0,0.28)",
         }}
       >
-        <div className="grid gap-5 px-5 py-5 md:grid-cols-[1.15fr_0.85fr] md:px-6">
+        <div className="grid gap-6 px-5 py-5 md:grid-cols-[1.1fr_0.9fr] md:px-6">
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.28em]" style={{ color: "var(--accent)" }}>
+            <div className="font-mono text-xs uppercase tracking-[0.28em]" style={{ color: "var(--accent)" }}>
               AI STORY MODE
             </div>
             <h2 className="mt-3 font-display text-2xl font-bold tracking-[0.08em]" style={{ color: "var(--text-primary)" }}>
@@ -331,12 +574,12 @@ function ScenariosTab({
                 onClick={() => onStoryCallsChange(item.calls)}
                 className="rounded-xl px-4 py-3 text-left transition-all"
                 style={{
-                  background: storyCalls === item.calls ? "rgba(139,92,246,0.14)" : "rgba(255,255,255,0.03)",
-                  border: storyCalls === item.calls ? "1px solid rgba(139,92,246,0.42)" : "1px solid rgba(255,255,255,0.08)",
-                  boxShadow: storyCalls === item.calls ? "0 0 0 1px rgba(139,92,246,0.12) inset" : "none",
+                  background: storyCalls === item.calls ? "rgba(99,102,241,0.14)" : "rgba(255,255,255,0.03)",
+                  border: storyCalls === item.calls ? "1px solid rgba(99,102,241,0.42)" : "1px solid rgba(255,255,255,0.08)",
+                  boxShadow: storyCalls === item.calls ? "0 0 0 1px rgba(99,102,241,0.12) inset" : "none",
                 }}
               >
-                <div className="font-mono text-[11px] uppercase tracking-widest" style={{ color: storyCalls === item.calls ? "var(--accent)" : "var(--text-primary)" }}>
+                <div className="font-mono text-xs uppercase tracking-widest" style={{ color: storyCalls === item.calls ? "var(--accent)" : "var(--text-primary)" }}>
                   {item.label}
                 </div>
                 <div className="mt-1 text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
@@ -349,16 +592,16 @@ function ScenariosTab({
       </div>
 
       {/* ── Filters ──────────────────────────────────── */}
-      <div className="mt-6 flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <Filter size={13} style={{ color: "var(--text-muted)" }} />
-          <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--text-muted)" }}>Тип:</span>
-          <div className="flex gap-1">
+      <div className="mt-6 flex flex-wrap items-center gap-5">
+        <div className="flex items-center gap-2.5">
+          <Filter size={14} style={{ color: "var(--text-muted)" }} />
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>Тип:</span>
+          <div className="flex gap-1.5">
             {TYPE_FILTERS.map((f) => (
               <button
                 key={f.key}
                 onClick={() => setTypeFilter(f.key as typeof typeFilter)}
-                className="rounded-lg px-2.5 py-1 font-mono text-[11px] transition-all"
+                className="rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
                 style={{
                   background: typeFilter === f.key ? "var(--accent-muted)" : "var(--input-bg)",
                   border: `1px solid ${typeFilter === f.key ? "var(--accent)" : "var(--border-color)"}`,
@@ -371,14 +614,14 @@ function ScenariosTab({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--text-muted)" }}>Сложность:</span>
-          <div className="flex gap-1">
+        <div className="flex items-center gap-2.5">
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>Сложность:</span>
+          <div className="flex gap-1.5">
             {DIFF_FILTERS.map((f) => (
               <button
                 key={f.key}
                 onClick={() => setDifficultyFilter(f.key as typeof difficultyFilter)}
-                className="rounded-lg px-2.5 py-1 font-mono text-[11px] transition-all"
+                className="rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
                 style={{
                   background: difficultyFilter === f.key ? "var(--accent-muted)" : "var(--input-bg)",
                   border: `1px solid ${difficultyFilter === f.key ? "var(--accent)" : "var(--border-color)"}`,
@@ -404,79 +647,17 @@ function ScenariosTab({
         </motion.div>
       ) : (
         <div className="mt-6 grid gap-5 sm:grid-cols-2">
-          {filtered.map((scenario, i) => {
-            const diff = getDifficultyConfig(scenario.difficulty);
-            const isStarting = starting === scenario.id;
-            return (
-              <motion.div
-                key={scenario.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className="glass-panel p-6 transition-all relative overflow-hidden"
-                whileHover={{
-                  y: -3,
-                  boxShadow: "0 8px 30px rgba(139, 92, 246, 0.15)",
-                  borderColor: "rgba(139, 92, 246, 0.3)",
-                }}
-              >
-                <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: `linear-gradient(90deg, transparent, ${diff.color}, transparent)` }} />
-                <h3 className="font-display text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
-                  {scenario.title}
-                </h3>
-                {scenario.character_name && (
-                  <div className="mt-1.5 flex items-center gap-1.5 font-mono text-[10px] tracking-wider" style={{ color: "var(--text-muted)" }}>
-                    <Users size={10} />
-                    <span>{scenario.character_name}</span>
-                  </div>
-                )}
-                <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                  {scenario.description}
-                </p>
-                <div className="mt-4 flex items-center gap-3">
-                  <span
-                    className="rounded-full px-2.5 py-0.5 text-xs font-medium font-mono"
-                    style={{ background: diff.bg, color: diff.color, border: `1px solid ${diff.border}` }}
-                  >
-                    <Zap size={10} className="mr-1 inline" />
-                    {diff.label} ({scenario.difficulty}/10)
-                  </span>
-                  <span className="flex items-center gap-1 text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-                    <Clock size={12} />
-                    {scenario.estimated_duration_minutes} мин
-                  </span>
-                </div>
-                <motion.button
-                  onClick={() => onStart(scenario.id)}
-                  disabled={isStarting}
-                  className="vh-btn-primary mt-5 flex w-full items-center justify-center gap-2"
-                  whileTap={{ scale: 0.98 }}
-                >
-                  {isStarting ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <>
-                      Начать тренировку
-                      <ArrowRight size={16} />
-                    </>
-                  )}
-                </motion.button>
-                <motion.button
-                  onClick={() => onStartStory(scenario.id, storyCalls)}
-                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 font-mono text-xs tracking-[0.12em] transition-all"
-                  style={{
-                    borderColor: "rgba(139,92,246,0.24)",
-                    background: "rgba(139,92,246,0.08)",
-                    color: "var(--text-primary)",
-                  }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Puzzle size={14} style={{ color: "var(--accent)" }} />
-                  Запустить AI-story x{storyCalls}
-                </motion.button>
-              </motion.div>
-            );
-          })}
+          {filtered.map((scenario, i) => (
+            <ScenarioDossierCard
+              key={scenario.id}
+              scenario={scenario}
+              index={i}
+              isStarting={starting === scenario.id}
+              onStart={onStart}
+              onStartStory={onStartStory}
+              storyCalls={storyCalls}
+            />
+          ))}
         </div>
       )}
     </>
@@ -541,16 +722,21 @@ function AssignedTab({
             initial={{ opacity: 0, x: -12 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: i * 0.08 }}
-            className="glass-panel p-5 flex items-center justify-between gap-4"
+            className="glass-panel p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4"
             style={{
               borderLeft: `3px solid ${isOverdue ? "var(--neon-red, #FF3333)" : "var(--accent)"}`,
             }}
           >
             <div className="flex-1 min-w-0">
-              <h3 className="font-display font-semibold truncate" style={{ color: "var(--text-primary)" }}>
-                {item.scenario_title}
-              </h3>
-              <div className="mt-1.5 flex items-center gap-3 font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>
+              <div className="flex items-center gap-2">
+                <h3 className="font-display font-semibold truncate" style={{ color: "var(--text-primary)" }}>
+                  {item.scenario_title}
+                </h3>
+                {isOverdue && (
+                  <AlertTriangle size={16} style={{ color: "var(--neon-red, #FF3333)", flexShrink: 0 }} />
+                )}
+              </div>
+              <div className="mt-1.5 flex items-center gap-3 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                 <span className="flex items-center gap-1">
                   <Clock size={11} />
                   {isOverdue ? (
@@ -567,15 +753,11 @@ function AssignedTab({
               </div>
             </div>
 
-            {isOverdue && (
-              <AlertTriangle size={18} style={{ color: "var(--neon-red, #FF3333)", flexShrink: 0 }} />
-            )}
-
             <div className="flex shrink-0 gap-2">
               <motion.button
                 onClick={() => onStart(item.scenario_id)}
                 disabled={isStarting}
-                className="vh-btn-primary flex items-center gap-2"
+                className="btn-neon flex items-center gap-2"
                 whileTap={{ scale: 0.97 }}
               >
                 {isStarting ? (
@@ -589,8 +771,8 @@ function AssignedTab({
               </motion.button>
               <motion.button
                 onClick={() => onStartStory(item.scenario_id, storyCalls)}
-                className="vh-btn-outline flex items-center gap-2"
-                style={{ borderColor: "rgba(139,92,246,0.24)", color: "var(--accent)" }}
+                className="btn-neon flex items-center gap-2"
+                style={{ borderColor: "rgba(99,102,241,0.24)", color: "var(--accent)" }}
                 whileTap={{ scale: 0.97 }}
               >
                 AI x{storyCalls}
@@ -628,10 +810,11 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
   };
 
   const handleStart = async (
-    char: { archetype: string; profession: string; lead_source: string; difficulty: number },
+    char: { id?: string; archetype: string; profession: string; lead_source: string; difficulty: number },
     storyMode = false,
   ) => {
-    setStarting(char.archetype);
+    const charKey = char.id || char.archetype;
+    setStarting(charKey);
     try {
       const scenarios = await api.get("/scenarios/");
       let scenarioId: string | undefined;
@@ -701,49 +884,52 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
   return (
     <div className="mt-8 grid gap-4 sm:grid-cols-2">
       {savedCharacters.map((char, i) => {
-        const diff = getDifficultyConfig(char.difficulty);
         return (
           <motion.div
             key={char.id}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             transition={{ delay: i * 0.05 }}
             className="glass-panel p-5 relative overflow-hidden"
           >
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: `linear-gradient(90deg, transparent, ${diff.color}, transparent)` }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, transparent, var(--accent), transparent)" }} />
             <h3 className="font-display font-semibold" style={{ color: "var(--text-primary)" }}>
               {char.name}
             </h3>
             <div className="mt-2 flex items-center gap-2 flex-wrap">
-              <span className="rounded-full px-2 py-0.5 text-[10px] font-mono" style={{ background: diff.bg, color: diff.color, border: `1px solid ${diff.border}` }}>
-                {diff.label} ({char.difficulty}/10)
+              <span className="rounded-full px-2 py-0.5 text-xs font-mono" style={{ background: "var(--accent-muted)", color: "var(--accent)", border: "1px solid var(--accent)" }}>
+                {char.archetype}
               </span>
-              <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+              <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
                 {char.lead_source}
               </span>
             </div>
             <div className="mt-4 flex gap-2">
               <motion.button
                 onClick={() => handleStart(char, false)}
-                disabled={starting === char.archetype}
-                className="vh-btn-primary flex-1 flex items-center justify-center gap-2 text-xs"
+                disabled={starting === (char.id || char.archetype)}
+                className="btn-neon flex-1 flex items-center justify-center gap-2 text-xs"
                 whileTap={{ scale: 0.97 }}
               >
-                {starting === char.archetype ? <Loader2 size={14} className="animate-spin" /> : <><ArrowRight size={14} /> Тренироваться</>}
+                {starting === (char.id || char.archetype) ? <Loader2 size={14} className="animate-spin" /> : <><ArrowRight size={14} /> Тренироваться</>}
               </motion.button>
               <motion.button
                 onClick={() => handleStart(char, true)}
-                disabled={starting === char.archetype}
-                className="vh-btn-outline flex items-center justify-center gap-2 px-3 text-xs"
-                style={{ borderColor: "rgba(139,92,246,0.24)", color: "var(--accent)" }}
+                disabled={starting === (char.id || char.archetype)}
+                className="btn-neon flex items-center justify-center gap-2 px-3 text-xs"
+                style={{ borderColor: "rgba(99,102,241,0.24)", color: "var(--accent)" }}
                 whileTap={{ scale: 0.97 }}
               >
                 AI x{storyCalls}
               </motion.button>
               <motion.button
-                onClick={() => handleDelete(char.id)}
+                onClick={() => {
+                  if (window.confirm(`Удалить персонажа "${char.name}"?`)) {
+                    handleDelete(char.id);
+                  }
+                }}
                 disabled={deleting === char.id}
-                className="vh-btn-outline px-3 text-xs"
+                className="btn-neon px-3 text-xs"
                 style={{ color: "var(--neon-red, #FF3333)", borderColor: "rgba(255,51,51,0.3)" }}
                 whileTap={{ scale: 0.97 }}
               >

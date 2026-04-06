@@ -19,17 +19,93 @@ from app.services.llm import generate_response
 from app.services.pvp_judge import judge_full_duel, judge_round
 from app.services.rag_legal import retrieve_legal_context
 from app.services.anti_cheat import run_anti_cheat, save_anti_cheat_result
+from app.services.anti_cheat_realtime import (
+    init_player as ac_init_player,
+    check_message as ac_check_message,
+    cleanup_duel as ac_cleanup_duel,
+)
+from app.services.content_filter import filter_ai_output, filter_user_input
 from app.services.glicko2 import update_rating_after_duel
+from app.services.pvp_bot_engine import (
+    generate_bot_reply,
+    generate_bot_opener,
+    cleanup_bot_state,
+)
+from app.core.ws_rate_limiter import pvp_limiter
+
 logger = logging.getLogger(__name__)
+
+# Archetype pool for PvP duels (subset suitable for competitive play)
+_PVP_ARCHETYPES = [
+    "skeptic", "anxious", "passive", "pragmatic", "desperate",
+    "aggressive", "sarcastic", "know_it_all", "paranoid", "manipulator",
+]
+
+# Character briefs for role swap — help the client-role player get into character
+_ARCHETYPE_BRIEFS: dict[str, dict[str, str]] = {
+    "skeptic": {
+        "name": "Скептик",
+        "brief": "Не верит в эффективность банкротства. Требует фактов и доказательств. Задаёт много уточняющих вопросов. Не поддаётся на эмоции.",
+        "behavior": "Сомневайтесь в каждом утверждении. Просите конкретные статьи закона и реальные кейсы.",
+    },
+    "anxious": {
+        "name": "Тревожный",
+        "brief": "Боится последствий банкротства: потери имущества, публичности, влияния на семью. Эмоционален и нерешителен.",
+        "behavior": "Выражайте страхи: 'А что будет с квартирой?', 'А если узнают на работе?'. Меняйте мнение.",
+    },
+    "passive": {
+        "name": "Пассивный",
+        "brief": "Избегает принятия решений. Отвечает коротко и уклончиво. Говорит 'я подумаю', 'перезвоните позже'.",
+        "behavior": "Отвечайте односложно. Не проявляйте инициативу. Уходите от прямых вопросов.",
+    },
+    "pragmatic": {
+        "name": "Прагматик",
+        "brief": "Интересуют только цифры и сроки. Не терпит общих фраз. Хочет конкретный план с датами.",
+        "behavior": "Требуйте конкретику: 'Сколько это стоит?', 'Какие сроки?', 'Что именно я получу?'.",
+    },
+    "desperate": {
+        "name": "Отчаявшийся",
+        "brief": "Загнан в угол долгами. Готов на всё, но не верит что ему помогут. Эмоционально нестабилен.",
+        "behavior": "Рассказывайте о безвыходности. Быстро соглашайтесь, но потом снова сомневайтесь.",
+    },
+    "aggressive": {
+        "name": "Агрессивный",
+        "brief": "Раздражён ситуацией. Грубит, перебивает, угрожает жалобой. Воспринимает звонок как вторжение.",
+        "behavior": "Будьте резки: 'Зачем вы звоните?', 'Меня это не интересует!'. Повышайте голос.",
+    },
+    "sarcastic": {
+        "name": "Саркастичный",
+        "brief": "Использует иронию как защиту. Обесценивает предложения шутками. На самом деле заинтересован.",
+        "behavior": "Отвечайте с сарказмом: 'Да-да, спасите меня', 'Очередные чудо-юристы'. Но слушайте.",
+    },
+    "know_it_all": {
+        "name": "Всезнайка",
+        "brief": "Считает что знает закон лучше менеджера. Цитирует (часто неверно) статьи. Проверяет компетентность.",
+        "behavior": "Указывайте на ошибки (реальные и мнимые). Цитируйте статьи 127-ФЗ. Задавайте каверзные вопросы.",
+    },
+    "paranoid": {
+        "name": "Параноик",
+        "brief": "Подозревает мошенничество. Боится утечки данных. Не доверяет никому.",
+        "behavior": "Спрашивайте про гарантии. Подозревайте подвох: 'Откуда у вас мои данные?', 'Это развод?'.",
+    },
+    "manipulator": {
+        "name": "Манипулятор",
+        "brief": "Пытается получить бесплатную консультацию. Давит на жалость, потом резко меняет тему.",
+        "behavior": "Выуживайте информацию. Давите на жалость. Пытайтесь получить максимум бесплатно.",
+    },
+}
 
 BOT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 ROUND_TIME_LIMIT = 600
 ROUND_MESSAGE_LIMIT = 8
 
-_active_connections: dict[uuid.UUID, WebSocket] = {}
+# (websocket, conn_id) — conn_id prevents race condition on connection swap
+_active_connections: dict[uuid.UUID, tuple[WebSocket, str]] = {}
 _duel_messages: dict[uuid.UUID, dict[int, list[dict[str, Any]]]] = {}
 _duel_sessions: dict[uuid.UUID, dict[str, Any]] = {}
 _disconnect_tasks: dict[tuple[uuid.UUID, uuid.UUID], asyncio.Task] = {}
+# Lock to protect concurrent access to _duel_sessions (race condition prevention)
+_duel_sessions_lock = asyncio.Lock()
 
 
 async def _send(ws: WebSocket, msg_type: str, data: dict | None = None) -> None:
@@ -40,9 +116,15 @@ async def _send(ws: WebSocket, msg_type: str, data: dict | None = None) -> None:
 
 
 async def _send_to_user(user_id: uuid.UUID, msg_type: str, data: dict | None = None) -> None:
-    ws = _active_connections.get(user_id)
-    if ws:
+    """Send message to a connected user. Logs warning if user not connected."""
+    entry = _active_connections.get(user_id)
+    if entry:
+        ws, _ = entry
         await _send(ws, msg_type, data)
+    else:
+        logger.warning(
+            "PvP message lost: user %s not connected, type=%s", user_id, msg_type
+        )
 
 
 async def _auth_websocket(ws: WebSocket) -> tuple[uuid.UUID, str] | None:
@@ -153,6 +235,9 @@ def _match_found_payload(match: dict[str, Any], viewer_id: uuid.UUID) -> dict[st
 
 
 async def _load_duel_context(duel_id: uuid.UUID) -> dict[str, Any] | None:
+    from app.models.scenario import Scenario
+    import random as _rand
+
     async with async_session() as db:
         duel = (await db.execute(select(PvPDuel).where(PvPDuel.id == duel_id))).scalar_one_or_none()
         if not duel:
@@ -164,44 +249,70 @@ async def _load_duel_context(duel_id: uuid.UUID) -> dict[str, Any] | None:
 
         result = await db.execute(select(User).where(User.id.in_(player_ids)))
         users = {user.id: user for user in result.scalars().all()}
+
+        # Load scenario — use duel's scenario_id or pick random active one
+        scenario_title = None
+        if duel.scenario_id:
+            sc = (await db.execute(
+                select(Scenario).where(Scenario.id == duel.scenario_id)
+            )).scalar_one_or_none()
+            scenario_title = sc.title if sc else None
+        else:
+            sc_result = await db.execute(
+                select(Scenario).where(Scenario.is_active == True)
+            )
+            scenarios = sc_result.scalars().all()
+            if scenarios:
+                picked = _rand.choice(scenarios)
+                scenario_title = picked.title
+                duel.scenario_id = picked.id
+                db.add(duel)
+                await db.commit()
+
         return {
             "duel": duel,
             "player1_name": users.get(duel.player1_id).full_name if users.get(duel.player1_id) else "Player 1",
             "player2_name": users.get(duel.player2_id).full_name if users.get(duel.player2_id) else "AI Бот",
+            "scenario_title": scenario_title,
         }
 
 
-def _ensure_session(duel_id: uuid.UUID, duel: PvPDuel, player1_name: str, player2_name: str) -> dict[str, Any]:
-    session = _duel_sessions.get(duel_id)
-    if session:
-        return session
+async def _ensure_session(duel_id: uuid.UUID, duel: PvPDuel, player1_name: str, player2_name: str) -> dict[str, Any]:
+    async with _duel_sessions_lock:
+        session = _duel_sessions.get(duel_id)
+        if session:
+            return session
 
-    session = {
-        "duel_id": duel_id,
-        "player1_id": duel.player1_id,
-        "player2_id": duel.player2_id,
-        "player_names": {
-            duel.player1_id: player1_name,
-            duel.player2_id: player2_name,
-        },
-        "difficulty": duel.difficulty,
-        "scenario_title": None,
-        "is_pve": duel.is_pve,
-        "ready": set(),
-        "round": 1,
-        "started": False,
-        "round_task": None,
-        "round_started_at": None,
-        "completed": False,
-        "last_ai_message": "",
-        "history": {
-            1: [],
-            2: [],
-        },
-    }
-    _duel_sessions[duel_id] = session
-    _duel_messages.setdefault(duel_id, {1: [], 2: []})
-    return session
+        import random as _rand
+        archetype = _rand.choice(_PVP_ARCHETYPES)
+
+        session = {
+            "duel_id": duel_id,
+            "player1_id": duel.player1_id,
+            "player2_id": duel.player2_id,
+            "player_names": {
+                duel.player1_id: player1_name,
+                duel.player2_id: player2_name,
+            },
+            "difficulty": duel.difficulty,
+            "scenario_title": None,
+            "archetype": archetype,
+            "is_pve": duel.is_pve,
+            "ready": set(),
+            "round": 1,
+            "started": False,
+            "round_task": None,
+            "round_started_at": None,
+            "completed": False,
+            "last_ai_message": "",
+            "history": {
+                1: [],
+                2: [],
+            },
+        }
+        _duel_sessions[duel_id] = session
+        _duel_messages.setdefault(duel_id, {1: [], 2: []})
+        return session
 
 
 async def _update_duel_row(duel_id: uuid.UUID, **updates: Any) -> None:
@@ -221,7 +332,8 @@ async def _send_duel_state(user_id: uuid.UUID, session: dict[str, Any]) -> None:
     await _send_to_user(user_id, "duel.brief", {
         "duel_id": str(session["duel_id"]),
         "your_role": role,
-        "archetype": "skeptic" if role == "client" else None,
+        "archetype": session["archetype"] if role == "client" else None,
+        "character_brief": _ARCHETYPE_BRIEFS.get(session["archetype"]) if role == "client" else None,
         "human_factors": None,
         "difficulty": session["difficulty"].value,
         "scenario_title": session["scenario_title"],
@@ -245,14 +357,21 @@ def _cancel_disconnect_task(user_id: uuid.UUID, duel_id: uuid.UUID) -> None:
 
 
 async def _cleanup_duel_runtime(duel_id: uuid.UUID) -> None:
-    session = _duel_sessions.pop(duel_id, None)
+    async with _duel_sessions_lock:
+        session = _duel_sessions.pop(duel_id, None)
     if session:
         round_task = session.get("round_task")
         if round_task and not round_task.done():
             round_task.cancel()
+            try:
+                await round_task
+            except asyncio.CancelledError:
+                pass
         for participant_id in [session["player1_id"], session["player2_id"]]:
             _cancel_disconnect_task(participant_id, duel_id)
     _duel_messages.pop(duel_id, None)
+    # Clean up bot emotion/state memory for this duel
+    cleanup_bot_state(str(duel_id))
 
 
 async def _cancel_duel_after_disconnect(user_id: uuid.UUID, duel_id: uuid.UUID) -> None:
@@ -322,36 +441,25 @@ async def _send_ai_message(duel_id: uuid.UUID, round_number: int, ai_role: str, 
         "timestamp": time.time(),
     })
     session["history"][round_number].append({"role": "assistant", "content": text})
-    await _send_to_user(session["player1_id"], "duel.message", payload)
+    # PvP-1 fix: send AI message to BOTH players, not just player1
+    for pid in [session["player1_id"], session["player2_id"]]:
+        if pid != BOT_ID:
+            await _send_to_user(pid, "duel.message", payload)
 
 
 async def _generate_ai_reply(session: dict[str, Any], round_number: int, user_text: str, ai_role: str) -> str:
-    async with async_session() as db:
-        rag_context = await retrieve_legal_context(user_text, db, top_k=3)
-
-    if ai_role == "client":
-        system_prompt = (
-            "Ты играешь клиента в PvP-арене по банкротству физлиц. "
-            "Отвечай по-русски, живо, короткими репликами, с сопротивлением и эмоцией. "
-            "Не раскрывай, что ты ИИ. Держи 1-3 предложения."
-        )
-    else:
-        system_prompt = (
-            "Ты играешь менеджера по банкротству физлиц в PvP-арене. "
-            "Говори уверенно, предметно, коротко. Веди к следующему шагу и не ломай роль."
-        )
-
-    system_prompt += f"\nСложность: {session['difficulty'].value}."
-    if rag_context.has_results:
-        system_prompt += "\n" + rag_context.to_prompt_context()
-
-    response = await generate_response(
-        system_prompt=system_prompt,
-        messages=session["history"][round_number][-8:],
-        emotion_state="testing" if ai_role == "client" else "considering",
-        user_id=str(session["player1_id"]),
+    """Delegate to pvp_bot_engine for intelligent archetype-aware responses."""
+    return await generate_bot_reply(
+        duel_id=str(session["duel_id"]),
+        round_number=round_number,
+        archetype=session["archetype"],
+        difficulty=session["difficulty"],
+        ai_role=ai_role,
+        user_text=user_text,
+        history=session["history"][round_number],
+        player_id=str(session["player1_id"]),
+        scenario_title=session.get("scenario_title"),
     )
-    return response.content.strip()
 
 
 async def _start_round(duel_id: uuid.UUID, round_number: int) -> None:
@@ -371,10 +479,12 @@ async def _start_round(duel_id: uuid.UUID, round_number: int) -> None:
         if user_id == BOT_ID:
             continue
         role = _player_role_for_round(session, user_id, round_number)
+        archetype = session["archetype"]
         await _send_to_user(user_id, "duel.brief", {
             "duel_id": str(duel_id),
             "your_role": role,
-            "archetype": "skeptic" if role == "client" else None,
+            "archetype": archetype if role == "client" else None,
+            "character_brief": _ARCHETYPE_BRIEFS.get(archetype) if role == "client" else None,
             "human_factors": None,
             "difficulty": session["difficulty"].value,
             "scenario_title": session["scenario_title"],
@@ -384,7 +494,7 @@ async def _start_round(duel_id: uuid.UUID, round_number: int) -> None:
         await _send_to_user(user_id, "round.start", {
             "round": round_number,
             "your_role": role,
-            "archetype": "skeptic" if role == "client" else None,
+            "archetype": archetype if role == "client" else None,
             "time_limit": ROUND_TIME_LIMIT,
         })
 
@@ -396,7 +506,15 @@ async def _start_round(duel_id: uuid.UUID, round_number: int) -> None:
     if session["is_pve"]:
         user_role = _player_role_for_round(session, session["player1_id"], round_number)
         if user_role == "client":
-            opener = await _generate_ai_reply(session, round_number, "Начни диалог и захвати инициативу.", "seller")
+            opener = await generate_bot_opener(
+                duel_id=str(duel_id),
+                round_number=round_number,
+                archetype=session["archetype"],
+                difficulty=session["difficulty"],
+                ai_role="seller",
+                player_id=str(session["player1_id"]),
+                scenario_title=session.get("scenario_title"),
+            )
             await _send_ai_message(duel_id, round_number, "seller", opener)
 
 
@@ -420,7 +538,7 @@ async def _advance_round(duel_id: uuid.UUID) -> None:
                 client_id=client_id,
                 seller_name=seller_name,
                 client_name=client_name,
-                archetype="skeptic",
+                archetype=session["archetype"],
                 difficulty=session["difficulty"],
                 round_number=round_number,
                 db=db,
@@ -487,7 +605,13 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
         if not duel:
             return
 
-        # Idempotency guard: if DB already shows completed/judging, skip
+        # Idempotency guard with SELECT FOR UPDATE to prevent race condition:
+        # Two concurrent _finish_duel calls could both pass the check without locking.
+        duel = (await db.execute(
+            select(PvPDuel).where(PvPDuel.id == duel_id).with_for_update()
+        )).scalar_one_or_none()
+        if not duel:
+            return
         if duel.status in (DuelStatus.completed, DuelStatus.judging):
             logger.warning("Duel %s already finalized (status=%s), skipping", duel_id, duel.status.value)
             return
@@ -504,7 +628,7 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
                 player2_id=session["player2_id"],
                 player1_name=session["player_names"][session["player1_id"]],
                 player2_name=session["player_names"][session["player2_id"]],
-                archetype="skeptic",
+                archetype=session["archetype"],
                 difficulty=duel.difficulty,
                 db=db,
             )
@@ -560,9 +684,23 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
                 logger.error("Rating update failed for duel %s: %s", duel_id, exc, exc_info=True)
                 # Continue — duel result is still valid even if rating update fails
 
+            # Collect real-time signals before cleanup
+            rt_signals = ac_cleanup_duel(duel_id)
+
             for uid in [duel.player1_id, duel.player2_id]:
                 try:
                     ac_result = await run_anti_cheat(uid, duel_id, round1_messages + round2_messages, db)
+                    # Merge real-time signals into post-match result
+                    player_rt = rt_signals.get(uid)
+                    if player_rt and player_rt.get("flagged"):
+                        ac_result.overall_flagged = True
+                        from app.services.anti_cheat import AntiCheatSignal, AntiCheatCheckType
+                        ac_result.signals.append(AntiCheatSignal(
+                            check_type=AntiCheatCheckType.behavioral,
+                            score=min(1.0, player_rt["realtime_warning_score"] / 5.0),
+                            flagged=True,
+                            details={"source": "realtime", **player_rt},
+                        ))
                     await save_anti_cheat_result(ac_result, db)
                     if ac_result.overall_flagged:
                         flags = list(duel.anti_cheat_flags or [])
@@ -577,6 +715,36 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
         db.add(duel)
         await db.commit()
 
+    # Auto-complete bracket match if this duel belongs to one
+    try:
+        from app.models.tournament import BracketMatch
+        from app.services.bracket import complete_bracket_match
+        async with async_session() as bracket_db:
+            bm_result = await bracket_db.execute(
+                select(BracketMatch).where(BracketMatch.duel_id == duel_id)
+            )
+            bm = bm_result.scalar_one_or_none()
+            if bm and judge_result.winner_id:
+                await complete_bracket_match(
+                    match_id=bm.id,
+                    winner_id=judge_result.winner_id,
+                    player1_score=judge_result.player1_total,
+                    player2_score=judge_result.player2_total,
+                    duel_id=duel_id,
+                    db=bracket_db,
+                )
+                await bracket_db.commit()
+                logger.info("Bracket match %s auto-completed from duel %s", bm.id, duel_id)
+    except Exception:
+        logger.debug("Bracket match update skipped for duel %s", duel_id, exc_info=True)
+
+    # Build detailed breakdown dicts for frontend
+    def _breakdown_to_dict(bd):
+        if bd is None:
+            return None
+        from dataclasses import asdict
+        return asdict(bd)
+
     result_data = {
         "duel_id": str(duel_id),
         "player1_total": judge_result.player1_total,
@@ -588,10 +756,67 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
         "player1_rating_delta": p1_delta,
         "player2_rating_delta": p2_delta,
         "summary": judge_result.summary if not session["is_pve"] else f"{judge_result.summary} PvE-результат без рейтингового изменения.",
+        # Post-duel breakdown (Task 2.5)
+        "player1_breakdown": _breakdown_to_dict(judge_result.player1_breakdown),
+        "player2_breakdown": _breakdown_to_dict(judge_result.player2_breakdown),
+        "turning_point": judge_result.turning_point,
     }
     for user_id in [session["player1_id"], session["player2_id"]]:
         if user_id != BOT_ID:
             await _send_to_user(user_id, "duel.result", result_data)
+
+    # ── 3.4: EventBus → PvP achievements + gamification ──
+    try:
+        from app.services.event_bus import event_bus, GameEvent, EVENT_PVP_COMPLETED
+        async with async_session() as ev_db:
+            for uid in [session["player1_id"], session["player2_id"]]:
+                if uid == BOT_ID:
+                    continue
+                is_winner = (winner_id is not None and uid == winner_id)
+                await event_bus.emit(GameEvent(
+                    kind=EVENT_PVP_COMPLETED,
+                    user_id=uid,
+                    db=ev_db,
+                    payload={
+                        "duel_id": str(duel_id),
+                        "is_win": is_winner,
+                        "is_pve": session.get("is_pve", False),
+                    },
+                ))
+            await ev_db.commit()
+    except Exception:
+        logger.debug("PvP EventBus emit failed for duel %s", duel_id)
+
+    # ── 3.5: Cross-module PvP notifications ──
+    try:
+        from app.ws.notifications import send_typed_notification, NotificationType
+        for uid, delta in [
+            (session["player1_id"], p1_delta),
+            (session["player2_id"], p2_delta),
+        ]:
+            if uid == BOT_ID:
+                continue
+            uid_str = str(uid)
+            # Significant rating gain → rank up notification
+            if delta and delta > 30:
+                await send_typed_notification(
+                    uid_str,
+                    NotificationType.PVP_RANK_UP,
+                    f"Рейтинг +{int(delta)} ELO!",
+                    "Отличная победа! Ваш рейтинг значительно вырос.",
+                    action_url="/pvp",
+                )
+            # Winner scored high
+            if str(uid) == str(winner_id) and max(p1_total, p2_total) >= 80:
+                await send_typed_notification(
+                    uid_str,
+                    NotificationType.GAMIFICATION_ACHIEVEMENT,
+                    "Доминирующая победа!",
+                    f"Вы набрали {int(max(p1_total, p2_total))} в PvP дуэли.",
+                    action_url=f"/pvp/duel/{duel_id}",
+                )
+    except Exception:
+        logger.debug("PvP cross-module notification failed for duel %s", duel_id)
 
     await matchmaker.cleanup_duel_state(duel_id)
     await _cleanup_duel_runtime(duel_id)
@@ -616,7 +841,10 @@ async def _handle_duel_ready(user_id: uuid.UUID, duel_id: uuid.UUID) -> None:
         await _send_to_user(user_id, "error", {"detail": "Нет доступа к дуэли"})
         return
 
-    session = _ensure_session(duel_id, duel, context["player1_name"], context["player2_name"])
+    session = await _ensure_session(duel_id, duel, context["player1_name"], context["player2_name"])
+    # Apply scenario title from loaded context
+    if context.get("scenario_title") and not session.get("scenario_title"):
+        session["scenario_title"] = context["scenario_title"]
     session["ready"].add(user_id)
     _cancel_disconnect_task(user_id, duel_id)
 
@@ -629,6 +857,9 @@ async def _handle_duel_ready(user_id: uuid.UUID, duel_id: uuid.UUID) -> None:
         return
 
     session["started"] = True
+    # Initialize real-time anti-cheat tracking for both players
+    ac_init_player(session["player1_id"], duel_id)
+    ac_init_player(session["player2_id"], duel_id)
     await _start_round(duel_id, 1)
 
 
@@ -648,6 +879,21 @@ async def _handle_duel_message(user_id: uuid.UUID, text: str) -> None:
     if session["completed"] or _remaining_round_time(session) <= 0:
         await _send_to_user(user_id, "error", {"detail": "Раунд уже завершён"})
         return
+
+    # Security: filter user input (jailbreak detection + profanity)
+    text, input_violations = filter_user_input(text)
+    if input_violations:
+        logger.warning("PvP user input violations [user=%s]: %s", user_id, input_violations)
+
+    # Real-time anti-cheat: lightweight per-message checks (no IO)
+    ac_result = ac_check_message(user_id, session["duel_id"], text)
+    if ac_result.should_warn:
+        await _send_to_user(user_id, "anti_cheat.warning", {
+            "message": "Система обнаружила подозрительную активность. "
+                       "Пожалуйста, формулируйте ответы самостоятельно.",
+        })
+    if ac_result.flags:
+        logger.info("AC realtime [user=%s]: %s", user_id, ac_result.flags)
 
     round_number = session["round"]
     role = _player_role_for_round(session, user_id, round_number)
@@ -680,64 +926,129 @@ async def _handle_duel_message(user_id: uuid.UUID, text: str) -> None:
     await _maybe_finish_round(session["duel_id"])
 
 
-async def _matchmaking_loop(ws: WebSocket, user_id: uuid.UUID) -> dict | None:
+# ── Non-blocking background matchmaking (replaces _matchmaking_loop) ──
+_matchmaking_tasks: dict[uuid.UUID, asyncio.Task] = {}
+
+
+async def _background_matchmaking(user_id: uuid.UUID) -> None:
+    """Background task: polls find_match() every 3s, sends results via _send_to_user.
+
+    This runs as an asyncio.Task, NOT inside the main WS receive loop,
+    so the main handler stays free to process duel.ready, duel.message, etc.
+    """
     start_time = time.time()
-    while True:
-        elapsed = time.time() - start_time
-        async with async_session() as db:
-            match = await matchmaker.find_match(user_id, db)
-            if match:
-                await db.commit()
-                return match
-
-        if elapsed >= matchmaker.MATCH_TIMEOUT_SECONDS:
-            await matchmaker.leave_queue(user_id)
-            return {"status": "timed_out"}
-
-        queue_size = await matchmaker.get_queue_size()
-        await _send(ws, "queue.status", {
-            "position": queue_size,
-            "queue_size": queue_size,
-            "wait_seconds": int(elapsed),
-            "estimated_remaining": max(0, int(matchmaker.MATCH_TIMEOUT_SECONDS - elapsed)),
-        })
-        try:
-            msg = await asyncio.wait_for(ws.receive_json(), timeout=3.0)
-        except asyncio.TimeoutError:
-            continue
-        except WebSocketDisconnect:
-            await matchmaker.leave_queue(user_id)
-            raise
-
-        if msg.get("type") == "queue.leave":
-            await matchmaker.leave_queue(user_id)
-            await _send(ws, "queue.left")
-            return "cancelled"
-        if msg.get("type") == "ping":
-            await _send(ws, "pong")
-
-
-async def _watch_existing_queue(websocket: WebSocket, user_id: uuid.UUID) -> dict | str | None:
-    async with async_session() as db:
-        queue_result = await matchmaker.join_queue(user_id, db)
-        await db.commit()
-    await _send(websocket, "queue.joined", queue_result)
     try:
-        return await _matchmaking_loop(websocket, user_id)
-    except WebSocketDisconnect:
+        while True:
+            elapsed = time.time() - start_time
+
+            # Check if user left queue (via REST accept-pve or queue.leave)
+            if not await matchmaker.is_in_queue(user_id):
+                return
+
+            async with async_session() as db:
+                match = await matchmaker.find_match(user_id, db)
+                # PvP-2 fix: always commit — find_match may flush queue metadata
+                await db.commit()
+                if match:
+                    opponent_id = match["opponent_id"]
+                    await _send_to_user(
+                        user_id, "match.found",
+                        _match_found_payload(match, user_id),
+                    )
+                    await _send_to_user(
+                        opponent_id, "match.found",
+                        _match_found_payload(match, opponent_id),
+                    )
+                    return
+
+            if elapsed >= matchmaker.MATCH_TIMEOUT_SECONDS:
+                # Timeout → auto-create PvE duel
+                async with async_session() as db:
+                    duel = await matchmaker.create_pve_duel(user_id, db)
+                    await db.commit()
+                await _send_to_user(user_id, "match.found", {
+                    "duel_id": str(duel.id),
+                    "difficulty": duel.difficulty.value,
+                    "is_pve": True,
+                })
+                return
+
+            # Send status update
+            queue_size = await matchmaker.get_queue_size()
+            await _send_to_user(user_id, "queue.status", {
+                "position": queue_size,
+                "queue_size": queue_size,
+                "wait_seconds": int(elapsed),
+                "estimated_remaining": max(
+                    0, int(matchmaker.MATCH_TIMEOUT_SECONDS - elapsed)
+                ),
+            })
+
+            await asyncio.sleep(3.0)
+    except asyncio.CancelledError:
+        # Cleanup: leave queue if task was cancelled (user disconnected / left)
         await matchmaker.leave_queue(user_id)
-        raise
+    except Exception as exc:
+        logger.error(
+            "Background matchmaking error for %s: %s", user_id, exc, exc_info=True,
+        )
+        await matchmaker.leave_queue(user_id)
+        await _send_to_user(
+            user_id, "error",
+            {"detail": "Ошибка подбора соперника. Попробуйте снова."},
+        )
+    finally:
+        _matchmaking_tasks.pop(user_id, None)
+
+
+def _cancel_matchmaking_task(user_id: uuid.UUID) -> None:
+    """Cancel a running background matchmaking task for the user."""
+    task = _matchmaking_tasks.pop(user_id, None)
+    if task and not task.done():
+        task.cancel()
 
 
 async def pvp_websocket(websocket: WebSocket) -> None:
     await websocket.accept()
     auth = await _auth_websocket(websocket)
     if not auth:
-        await websocket.close(code=1008)
+        try:
+            await websocket.close(code=1008)
+        except RuntimeError:
+            pass  # Already closed by client
         return
 
     user_id, _ = auth
-    _active_connections[user_id] = websocket
+
+    # ── B.2: Connection race guard ──────────────────────────────────────
+    # Each connection gets a unique ID so the finally block only removes
+    # its own entry (prevents new connection being popped by old one).
+    conn_id = str(uuid.uuid4())
+    old_entry = _active_connections.get(user_id)
+    if old_entry:
+        old_ws, _ = old_entry
+        try:
+            await old_ws.close(code=4001)  # "superseded by new connection"
+        except Exception:
+            pass
+    _active_connections[user_id] = (websocket, conn_id)
+
+    # Record fingerprint for multi-account detection
+    try:
+        from app.services.anti_cheat import record_fingerprint
+        _ip = websocket.client.host if websocket.client else None
+        _ua = dict(websocket.headers).get("user-agent")
+        async with async_session() as _fp_db:
+            await record_fingerprint(
+                user_id=user_id,
+                ip_address=_ip,
+                user_agent=_ua,
+                event_type="pvp_connect",
+                db=_fp_db,
+            )
+            await _fp_db.commit()
+    except Exception:
+        logger.debug("Failed to record fingerprint for %s", user_id)
 
     try:
         reconnect = await matchmaker.check_reconnect(user_id)
@@ -748,11 +1059,16 @@ async def pvp_websocket(websocket: WebSocket) -> None:
                 "seconds_remaining": reconnect["seconds_remaining"],
             })
 
+        _rate_limiter = pvp_limiter()
         while True:
             try:
                 msg = await websocket.receive_json()
             except WebSocketDisconnect:
                 break
+
+            if not _rate_limiter.is_allowed():
+                await _send(websocket, "error", {"code": "rate_limited", "detail": "Too many messages"})
+                continue
 
             msg_type = msg.get("type")
 
@@ -765,23 +1081,36 @@ async def pvp_websocket(websocket: WebSocket) -> None:
                 if not duel_id_raw:
                     await _send(websocket, "error", {"detail": "duel_id is required"})
                     continue
-                await _handle_duel_ready(user_id, uuid.UUID(str(duel_id_raw)))
+                try:
+                    duel_id_parsed = uuid.UUID(str(duel_id_raw))
+                except (TypeError, ValueError):
+                    await _send(websocket, "error", {"detail": "Invalid duel_id format"})
+                    continue
+                await _handle_duel_ready(user_id, duel_id_parsed)
                 continue
 
             if msg_type == "duel.message":
                 text = (msg.get("text") or "").strip()
+                # B.3: Defense-in-depth — truncate before any processing
+                text = text[:2000]
                 if text:
                     await _handle_duel_message(user_id, text)
                 continue
 
             if msg_type == "queue.leave":
+                _cancel_matchmaking_task(user_id)
                 await matchmaker.leave_queue(user_id)
                 await _send(websocket, "queue.left")
                 continue
 
+            # ── B.1: Non-blocking queue.join ─────────────────────────────
             if msg_type == "queue.join":
+                # Cancel any existing matchmaking task first
+                _cancel_matchmaking_task(user_id)
+
                 invitation_challenger_id = msg.get("invitation_challenger_id")
                 if invitation_challenger_id:
+                    # Invitation flow — synchronous, fast
                     try:
                         cid = uuid.UUID(invitation_challenger_id)
                     except (TypeError, ValueError):
@@ -799,62 +1128,30 @@ async def pvp_websocket(websocket: WebSocket) -> None:
                     await _send_to_user(cid, "match.found", _match_found_payload(match, cid))
                     continue
 
-                try:
-                    match = await _watch_existing_queue(websocket, user_id)
-                except WebSocketDisconnect:
-                    break
+                # Regular queue join → background task (NON-BLOCKING)
+                async with async_session() as db:
+                    queue_result = await matchmaker.join_queue(user_id, db)
+                    await db.commit()
+                await _send(websocket, "queue.joined", queue_result)
 
-                if match == "cancelled":
-                    continue
-
-                if isinstance(match, dict) and match.get("status") == "timed_out":
-                    async with async_session() as db:
-                        duel = await matchmaker.create_pve_duel(user_id, db)
-                        await db.commit()
-                    await _send(websocket, "match.found", {
-                        "duel_id": str(duel.id),
-                        "difficulty": duel.difficulty.value,
-                        "is_pve": True,
-                    })
-                    continue
-
-                if match is None:
-                    continue
-
-                opponent_id = match["opponent_id"]
-                await _send(websocket, "match.found", _match_found_payload(match, user_id))
-                await _send_to_user(opponent_id, "match.found", _match_found_payload(match, opponent_id))
+                # Launch background matchmaking — main loop stays free!
+                task = asyncio.create_task(_background_matchmaking(user_id))
+                _matchmaking_tasks[user_id] = task
                 continue
 
+            # queue.watch: same as queue.join (backwards compat for FriendsPanel)
             if msg_type == "queue.watch":
-                try:
-                    match = await _watch_existing_queue(websocket, user_id)
-                except WebSocketDisconnect:
-                    break
-
-                if match == "cancelled":
-                    continue
-
-                if isinstance(match, dict) and match.get("status") == "timed_out":
-                    async with async_session() as db:
-                        duel = await matchmaker.create_pve_duel(user_id, db)
-                        await db.commit()
-                    await _send(websocket, "match.found", {
-                        "duel_id": str(duel.id),
-                        "difficulty": duel.difficulty.value,
-                        "is_pve": True,
-                    })
-                    continue
-
-                if match is None:
-                    continue
-
-                opponent_id = match["opponent_id"]
-                await _send(websocket, "match.found", _match_found_payload(match, user_id))
-                await _send_to_user(opponent_id, "match.found", _match_found_payload(match, opponent_id))
+                _cancel_matchmaking_task(user_id)
+                async with async_session() as db:
+                    queue_result = await matchmaker.join_queue(user_id, db)
+                    await db.commit()
+                await _send(websocket, "queue.joined", queue_result)
+                task = asyncio.create_task(_background_matchmaking(user_id))
+                _matchmaking_tasks[user_id] = task
                 continue
 
             if msg_type == "pve.accept":
+                _cancel_matchmaking_task(user_id)
                 async with async_session() as db:
                     duel = await matchmaker.create_pve_duel(user_id, db)
                     await db.commit()
@@ -876,7 +1173,15 @@ async def pvp_websocket(websocket: WebSocket) -> None:
         except Exception:
             pass  # Connection already closed
     finally:
-        _active_connections.pop(user_id, None)
+        # ── B.2: Only remove OUR connection (not a newer one) ───────────
+        entry = _active_connections.get(user_id)
+        if entry and entry[1] == conn_id:
+            _active_connections.pop(user_id, None)
+
+        # Cancel matchmaking task
+        _cancel_matchmaking_task(user_id)
+
+        # Handle active duel disconnection
         for duel_id, session in list(_duel_sessions.items()):
             if user_id in (session["player1_id"], session["player2_id"]) and not session["completed"]:
                 await matchmaker.set_reconnect_grace(user_id, duel_id)

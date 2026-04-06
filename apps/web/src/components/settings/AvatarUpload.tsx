@@ -107,7 +107,7 @@ export function AvatarUpload({ currentUrl, userName, size = 48, onUploaded, onDe
         <Info size={14} style={{ color: "var(--text-muted)", cursor: "help" }} />
         {showTooltip && (
           <div
-            className="absolute left-6 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-mono z-50"
+            className="absolute left-6 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-mono z-50"
             style={{
               background: "var(--bg-tertiary)",
               border: "1px solid var(--border-color)",
@@ -135,7 +135,7 @@ export function AvatarUpload({ currentUrl, userName, size = 48, onUploaded, onDe
       )}
 
       {error && (
-        <span className="text-[11px] ml-1" style={{ color: "var(--neon-red, #FF3333)" }}>
+        <span className="text-xs ml-1" style={{ color: "var(--neon-red, #FF3333)" }}>
           {error}
         </span>
       )}

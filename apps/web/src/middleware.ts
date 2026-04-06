@@ -2,16 +2,64 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 /**
- * Next.js middleware for route protection.
- * Checks for access token in cookies/localStorage (via header).
- * Since middleware runs on Edge, we check the cookie-based token.
- * Note: tokens are in localStorage, so we check for a specific cookie
- * that we set, OR we just redirect unauthenticated users client-side.
+ * Next.js middleware — route protection + nonce-based Content-Security-Policy.
  *
- * For now: check if the access token cookie exists.
- * The actual auth validation happens client-side in AuthLayout/useAuth.
- * This middleware provides a fast-fail redirect for obvious non-auth cases.
+ * 1. Generates a cryptographic nonce per request.
+ * 2. Sets the CSP header with `'nonce-<value>'` for script-src (production)
+ *    or `'unsafe-eval'` for script-src (development — required for HMR).
+ * 3. Passes the nonce to the App Router via the `x-nonce` response header
+ *    so layout.tsx can embed it in a <meta> tag for client scripts.
+ * 4. Performs the same auth-guard redirect logic as before.
  */
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** API origin for CSP — avatars & video assets load from API host. */
+function apiOriginForCsp(): string {
+  const raw = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return "http://localhost:8000";
+  }
+}
+
+/** Build the full CSP header value for a given nonce. */
+function buildCsp(nonce: string): string {
+  const apiOrigin = apiOriginForCsp();
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const wsUrl = (process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000").replace(/^ws/, "ws");
+  const isDev = process.env.NODE_ENV !== "production";
+
+  // Development: unsafe-eval is required for Next.js Fast Refresh / HMR.
+  // Production: strict nonce — no unsafe-inline, no unsafe-eval.
+  const scriptSrc = isDev
+    ? `script-src 'self' 'unsafe-inline' 'unsafe-eval'`
+    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`;
+
+  // Tailwind injects styles at runtime — unsafe-inline is required.
+  const styleSrc = "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com";
+
+  return [
+    "default-src 'self'",
+    scriptSrc,
+    styleSrc,
+    `img-src 'self' data: blob: https: http: ${apiOrigin}`,
+    "font-src 'self' data: https://fonts.gstatic.com",
+    `connect-src 'self' http: https: ws: wss: ${apiUrl} ${wsUrl}`,
+    `media-src 'self' blob: https: http: ${apiOrigin}`,
+    "worker-src 'self' blob:",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join("; ");
+}
+
+// ---------------------------------------------------------------------------
+// Route protection
+// ---------------------------------------------------------------------------
 
 const PUBLIC_ROUTES = [
   "/",
@@ -20,6 +68,8 @@ const PUBLIC_ROUTES = [
   "/consent/verify",
   "/auth/callback",
   "/change-password",
+  "/reset-password",
+  "/test",
 ];
 
 function isPublicRoute(pathname: string): boolean {
@@ -32,10 +82,18 @@ function isPublicRoute(pathname: string): boolean {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Middleware entry point
+// ---------------------------------------------------------------------------
+
 export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
 
-  // Skip public routes, static files, API routes
+  // ── 1. Generate nonce ────────────────────────────────────────────────
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const cspHeaderValue = buildCsp(nonce);
+
+  // ── 2. Skip auth guard for public/static routes ──────────────────────
   if (
     isPublicRoute(pathname) ||
     pathname.startsWith("/_next") ||
@@ -43,35 +101,44 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/sw-") ||
     pathname.includes(".")
   ) {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    response.headers.set("Content-Security-Policy", cspHeaderValue);
+    response.headers.set("x-nonce", nonce);
+    return response;
   }
 
-  // Check for httpOnly access_token cookie OR marker cookie
+  // ── 3. Auth guard ────────────────────────────────────────────────────
   const hasAccessToken = request.cookies.get("access_token");
   const hasMarker = request.cookies.get("vh_authenticated");
 
   if (!hasAccessToken && !hasMarker) {
     // GUARD: Prevent infinite redirect loops.
-    // If the client was ALREADY redirected once (indicated by ?redirect= param
-    // pointing at /login), don't redirect again — break the loop.
     const redirectTarget = searchParams.get("redirect");
     if (redirectTarget === "/login" || pathname === "/login") {
-      return NextResponse.next();
+      const response = NextResponse.next();
+      response.headers.set("Content-Security-Policy", cspHeaderValue);
+      response.headers.set("x-nonce", nonce);
+      return response;
     }
 
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     const response = NextResponse.redirect(loginUrl);
 
-    // Clear potentially stale/invalid auth cookies that might cause loops
-    // (e.g., expired access_token still present as a cookie)
+    // Clear potentially stale/invalid auth cookies
     response.cookies.delete("access_token");
     response.cookies.delete("vh_authenticated");
 
+    response.headers.set("Content-Security-Policy", cspHeaderValue);
+    response.headers.set("x-nonce", nonce);
     return response;
   }
 
-  return NextResponse.next();
+  // ── 4. Authenticated request — pass through ──────────────────────────
+  const response = NextResponse.next();
+  response.headers.set("Content-Security-Policy", cspHeaderValue);
+  response.headers.set("x-nonce", nonce);
+  return response;
 }
 
 export const config = {

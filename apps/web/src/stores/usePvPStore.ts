@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { api } from "@/lib/api";
 import type { PvPRating, PvPDuel, DuelBrief, PvPLeaderboardEntry, PvPSeason } from "@/types";
+import { logger } from "@/lib/logger";
 
 type QueueStatus = "idle" | "searching" | "matched" | "in_duel";
 
@@ -18,6 +19,19 @@ interface JudgeScore {
   legal_accuracy: number;
 }
 
+interface PlayerBreakdown {
+  selling_score: number;
+  acting_score: number;
+  legal_score: number;
+  total: number;
+  selling_breakdown?: Record<string, number>;
+  acting_breakdown?: Record<string, number>;
+  legal_details?: { claim: string; accuracy: string; explanation: string }[];
+  best_reply?: string;
+  recommendations?: string[];
+  flags?: string[];
+}
+
 interface DuelResult {
   duel_id: string;
   player1_total: number;
@@ -29,6 +43,9 @@ interface DuelResult {
   player1_rating_delta: number;
   player2_rating_delta: number;
   summary: string;
+  player1_breakdown?: PlayerBreakdown | null;
+  player2_breakdown?: PlayerBreakdown | null;
+  turning_point?: { round?: number; description?: string } | null;
 }
 
 interface PvPState {
@@ -153,7 +170,7 @@ export const usePvPStore = create<PvPState>((set, get) => ({
       const data = await api.get("/pvp/season/active");
       set({ activeSeason: data || null });
     } catch (err) {
-      console.warn("[PvP] Failed to fetch active season:", err);
+      logger.warn("[PvP] Failed to fetch active season:", err);
       set({ activeSeason: null });
     }
   },

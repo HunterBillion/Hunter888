@@ -1,5 +1,5 @@
 // ============================================================================
-// Hunter888 / VibeHunter — Complete Type Definitions
+// Hunter888 — Complete Type Definitions
 // 1:1 mapping with backend Pydantic schemas + SQLAlchemy models
 // ============================================================================
 
@@ -20,26 +20,139 @@ export type EmotionState =
 
 export type ObjectionCategory = "price" | "trust" | "need" | "timing" | "competitor";
 
+// DOC_08: Emotion v6 extensions
+export type IntensityLevel = "low" | "medium" | "high";
+
+export type CompoundEmotionCode =
+  | "cold_curiosity" | "resigned_acceptance" | "desperate_hope" | "cautious_interest"
+  | "grudging_respect" | "hopeful_anxiety" | "fake_warmth" | "volatile_anger";
+
+export type MicroExpressionCode =
+  | "surprise_flash" | "anger_spike" | "relief_moment"
+  | "humor_break" | "shame_flash" | "doubt_flicker";
+
 export type ArchetypeCode =
-  | "skeptic" | "anxious" | "aggressive" | "passive" | "pragmatic"
-  | "manipulator" | "delegator" | "avoidant" | "paranoid" | "ashamed"
-  | "hostile" | "blamer" | "sarcastic" | "know_it_all" | "negotiator"
-  | "shopper" | "desperate" | "crying" | "grateful" | "overwhelmed"
-  | "returner" | "referred" | "rushed" | "lawyer_client" | "couple";
+  // Group 1: RESISTANCE (10)
+  | "skeptic" | "blamer" | "sarcastic" | "aggressive" | "hostile"
+  | "stubborn" | "conspiracy" | "righteous" | "litigious" | "scorched_earth"
+  // Group 2: EMOTIONAL (10)
+  | "grateful" | "anxious" | "ashamed" | "overwhelmed" | "desperate"
+  | "crying" | "guilty" | "mood_swinger" | "frozen" | "hysteric"
+  // Group 3: CONTROL (10)
+  | "pragmatic" | "shopper" | "negotiator" | "know_it_all" | "manipulator"
+  | "lawyer_client" | "auditor" | "strategist" | "power_player" | "puppet_master"
+  // Group 4: AVOIDANCE (10)
+  | "passive" | "delegator" | "avoidant" | "paranoid"
+  | "procrastinator" | "ghosting" | "deflector" | "agreeable_ghost" | "fortress" | "smoke_screen"
+  // Group 5: SPECIAL (10)
+  | "referred" | "returner" | "rushed" | "couple"
+  | "elderly" | "young_debtor" | "foreign_speaker" | "intermediary" | "repeat_caller" | "celebrity"
+  // Group 6: COGNITIVE (10)
+  | "overthinker" | "concrete" | "storyteller" | "misinformed" | "selective_listener"
+  | "black_white" | "memory_issues" | "technical" | "magical_thinker" | "lawyer_level_2"
+  // Group 7: SOCIAL (10)
+  | "family_man" | "influenced" | "reputation_guard" | "community_leader" | "breadwinner"
+  | "divorced" | "guarantor" | "widow" | "caregiver" | "multi_debtor_family"
+  // Group 8: TEMPORAL (10)
+  | "just_fired" | "collector_call" | "court_notice" | "salary_arrest" | "pre_court"
+  | "post_refusal" | "inheritance_trap" | "business_collapse" | "medical_crisis" | "criminal_risk"
+  // Group 9: PROFESSIONAL (10)
+  | "teacher" | "doctor" | "military" | "accountant" | "salesperson"
+  | "it_specialist" | "government" | "journalist" | "psychologist" | "competitor_employee"
+  // Group 10: COMPOUND (10)
+  | "aggressive_desperate" | "manipulator_crying" | "know_it_all_paranoid" | "passive_aggressive"
+  | "couple_disagreeing" | "elderly_paranoid" | "hysteric_litigious" | "puppet_master_lawyer"
+  | "shifting" | "ultimate";
+
+export type ArchetypeGroup =
+  | "resistance" | "emotional" | "control" | "avoidance" | "special"
+  | "cognitive" | "social" | "temporal" | "professional" | "compound";
+
+export type ArchetypeTier = 1 | 2 | 3 | 4;
+
+export type BehaviorTag =
+  // Стиль общения
+  | "yelling" | "silence" | "long_stories" | "monosyllabic" | "polite" | "rude"
+  // Мотивация
+  | "fear" | "anger" | "shame" | "hope" | "nihilism" | "pride"
+  // Тактика
+  | "manipulation" | "avoidance" | "confrontation" | "cooperation" | "deception"
+  // Сложность
+  | "legal_traps" | "emotional_pressure" | "time_pressure" | "information_warfare"
+  // Контекст
+  | "family" | "business" | "crisis" | "inheritance" | "criminal";
+
+export type SkillCode =
+  | "empathy" | "knowledge" | "objection_handling" | "stress_resistance" | "closing"
+  | "qualification" | "time_management" | "adaptation" | "legal_knowledge" | "rapport_building";
 
 export type ScenarioType =
-  | "cold_ad" | "cold_base" | "cold_referral" | "cold_partner"
+  // Group A: Outbound Cold (10)
+  | "cold_ad" | "cold_referral" | "cold_social" | "cold_database" | "cold_base"
+  | "cold_partner" | "cold_premium" | "cold_event" | "cold_expired" | "cold_insurance"
+  // Group B: Outbound Warm (10)
   | "warm_callback" | "warm_noanswer" | "warm_refused" | "warm_dropped"
-  | "in_website" | "in_hotline" | "in_social"
-  | "upsell" | "rescue" | "couple_call" | "vip_debtor";
+  | "warm_repeat" | "warm_webinar" | "warm_vip" | "warm_ghosted" | "warm_complaint" | "warm_competitor"
+  // Group C: Inbound (8)
+  | "in_website" | "in_hotline" | "in_social" | "in_chatbot"
+  | "in_partner" | "in_complaint" | "in_urgent" | "in_corporate"
+  // Group D: Special (12)
+  | "special_ghosted" | "special_urgent" | "special_guarantor" | "special_couple"
+  | "upsell" | "rescue" | "special_inheritance" | "vip_debtor"
+  | "special_psychologist" | "special_vip" | "special_medical" | "special_boss"
+  // Group E: Follow-up (5)
+  | "follow_up_first" | "follow_up_second" | "follow_up_third" | "follow_up_rescue" | "follow_up_memory"
+  // Group F: Crisis (5)
+  | "crisis_collector" | "crisis_pre_court" | "crisis_business" | "crisis_criminal" | "crisis_full"
+  // Group G: Compliance (5)
+  | "compliance_basic" | "compliance_docs" | "compliance_legal" | "compliance_advanced" | "compliance_full"
+  // Group H: Multi-party (5)
+  | "multi_party_basic" | "multi_party_lawyer" | "multi_party_creditors" | "multi_party_family" | "multi_party_full";
+
+export type ScenarioGroup = "cold" | "warm" | "inbound" | "special" | "follow_up" | "crisis" | "compliance" | "multi_party";
 
 export type LeadSource =
-  | "cold_base" | "website_form" | "referral" | "social_media"
-  | "repeat_call" | "incoming" | "partner" | "chatbot" | "webinar" | "churned";
+  // Холодные
+  | "cold_base" | "cold_social" | "cold_event"
+  // Тёплые
+  | "website_form" | "social_media" | "webinar" | "warm_complaint" | "warm_competitor" | "lead_nurture" | "ad_retarget"
+  // Входящие
+  | "incoming" | "in_chat" | "chatbot" | "in_referral_direct" | "in_urgent"
+  // Повторные
+  | "referral" | "repeat_call" | "partner" | "churned" | "callback_scheduled";
+
+export type LeadSourceGroup = "cold" | "warm" | "inbound" | "repeat";
 
 export type ProfessionCategory =
-  | "budget" | "government" | "military" | "pensioner" | "entrepreneur"
-  | "worker" | "it_office" | "trade_service" | "homemaker" | "special";
+  // Бюджет и государство
+  | "budget" | "government" | "medical" | "education"
+  // Силовые
+  | "military" | "law_enforcement"
+  // Бизнес и финансы
+  | "entrepreneur" | "finance" | "freelancer"
+  // Рабочие
+  | "worker" | "construction" | "transport" | "agriculture"
+  // IT и интеллектуальные
+  | "it_office" | "science" | "creative"
+  // Торговля и сервис
+  | "trade_service" | "sports"
+  // Особые
+  | "pensioner" | "homemaker" | "student" | "unemployed" | "disabled" | "clergy" | "special";
+
+export type ProfessionGroup =
+  | "budget_gov" | "military_law" | "business" | "workers"
+  | "intellectual" | "trade_sport" | "special_cat";
+
+// ─── Constructor Step Types ──────────────────────────────────────────────────
+
+export type FamilyPreset = "random" | "single" | "married" | "married_kids" | "divorced" | "widow";
+export type CreditorsPreset = "random" | "1" | "2_3" | "4_5" | "6_plus";
+export type DebtStage = "random" | "pre_court" | "court_started" | "execution" | "arrest";
+export type DebtRange = "random" | "under_500k" | "500k_1m" | "1m_3m" | "3m_10m" | "over_10m";
+export type EmotionPreset = "neutral" | "anxious" | "angry" | "hopeful" | "tired" | "rushed" | "trusting";
+export type BackgroundNoise = "none" | "office" | "street" | "children" | "tv";
+export type TimeOfDay = "morning" | "afternoon" | "evening" | "night";
+export type ClientFatigue = "fresh" | "normal" | "tired" | "exhausted";
 
 export type TrapCategory =
   | "legal" | "emotional" | "manipulative" | "expert"
@@ -249,6 +362,12 @@ export interface TrainingSession {
   score_anti_patterns: number | null;
   score_result: number | null;
   score_total: number | null;
+  // Wave 5: L6-L10 direct score fields
+  score_chain_traversal: number | null;
+  score_trap_handling: number | null;
+  score_human_factor: number | null;
+  score_narrative: number | null;
+  score_legal: number | null;
   scoring_details: Record<string, unknown> | null;
   emotion_timeline: Array<{ state: string; timestamp: number }> | null;
   feedback_text: string | null;
@@ -318,6 +437,14 @@ export interface TrapResultItem {
   caught: boolean;
   bonus: number | null;
   penalty: number | null;
+  status?: string | null;
+  client_phrase?: string | null;
+  correct_example?: string | null;
+  explanation?: string | null;
+  law_reference?: string | null;
+  correct_keywords?: string[] | null;
+  wrong_keywords?: string[] | null;
+  category?: string | null;
 }
 
 export interface SoftSkillsResult {
@@ -366,6 +493,24 @@ export interface SessionResultResponse {
   client_card: ClientProfile | null;
   story: StorySummary | null;
   story_calls: StoryCallSummary[];
+  // Wave 4-5 additions
+  weak_legal_categories?: Array<{
+    category: string;
+    display_name: string;
+    accuracy_pct: number;
+    article_refs: string[];
+  }> | null;
+  promise_fulfillment?: Array<{
+    text: string;
+    call_number: number;
+    fulfilled: boolean;
+    impact: string;
+  }> | null;
+  // XP/level data from session.ended WS message
+  xp_breakdown?: Record<string, number> | null;
+  level_up?: boolean;
+  new_level?: number | null;
+  new_level_name?: string | null;
 }
 
 // ─── Client Profile (CRM card) ────────────────────────────────────────────
@@ -428,6 +573,27 @@ export interface CheckpointHint {
   status: "not_reached" | "in_progress";
 }
 
+// ─── Stage Update (WS) ────────────────────────────────────────────────────
+
+export interface StageUpdate {
+  stage_number: number;       // 1-7
+  stage_name: string;         // "greeting", "contact", etc.
+  stage_label: string;        // "Приветствие", "Контакт", etc.
+  total_stages: number;       // 7
+  stages_completed: number[]; // [1, 2, 3]
+  stage_scores: Record<string, number>;  // {"1": 0.8, "2": 0.6}
+  confidence: number;         // 0-1
+}
+
+// ─── Hangup Data (WS) ─────────────────────────────────────────────────────
+
+export interface HangupData {
+  reason: string;
+  hangupPhrase: string;
+  canContinue: boolean;   // multi-call: can redial
+  triggers: string[];
+}
+
 // ─── Score Update (WS) ────────────────────────────────────────────────────
 
 export interface ScoreUpdate {
@@ -435,9 +601,30 @@ export interface ScoreUpdate {
   checkpoints_hit: number;
   checkpoints_total: number;
   checkpoints: Array<{
-    name: string;
-    reached: boolean;
+    id: string;
+    title: string;
+    order: number;
+    hit: boolean;
+    score: number;
   }>;
+  /** Title of newly matched checkpoint (for toast/flash) */
+  new_checkpoint?: string;
+  /** True while session is active (real-time, ~70% accuracy) */
+  is_preliminary?: boolean;
+}
+
+// ─── Coaching Whisper (WS) ────────────────────────────────────────────────
+
+export type WhisperType = "legal" | "emotion" | "stage" | "objection" | "transition";
+
+export interface CoachingWhisper {
+  type: WhisperType;
+  message: string;
+  stage: string;
+  priority: "high" | "medium" | "low";
+  icon: string;
+  /** Timestamp when received (set on frontend) */
+  timestamp: number;
 }
 
 // ─── Soft Skills Update (WS) ──────────────────────────────────────────────
@@ -761,11 +948,11 @@ export const CLIENT_STATUS_COLORS: Record<ClientStatus, string> = {
   new: "#9CA3AF",
   contacted: "#FFD700",
   interested: "#3B82F6",
-  consultation: "#8B5CF6",
+  consultation: "#6366F1",
   thinking: "#A78BFA",
   consent_given: "#10B981",
   contract_signed: "#F97316",
-  in_process: "#7C3AED",
+  in_process: "#4F46E5",
   paused: "#6B7280",
   completed: "#00FF66",
   lost: "#FF3333",
@@ -926,6 +1113,24 @@ export interface PipelineStats {
   total_debt: number;
 }
 
+// ─── Activity Feed ────────────────────────────────────────────────────────
+
+export type ActivityEventType =
+  | "session_completed"
+  | "new_record"
+  | "rank_change"
+  | "achievement_unlocked";
+
+export interface ActivityFeedItem {
+  id: string;
+  type: ActivityEventType;
+  user_id: string;
+  user_name: string;
+  message: string;
+  score?: number | null;
+  created_at: string;
+}
+
 // ─── Notifications ────────────────────────────────────────────────────────
 
 export type NotificationType =
@@ -969,11 +1174,37 @@ export interface ReminderItem {
 
 // ─── WebSocket ─────────────────────────────────────────────────────────────
 
-export type WSConnectionState = "connecting" | "connected" | "disconnected" | "error";
+export type WSConnectionState = "connecting" | "connected" | "disconnected" | "reconnecting" | "error";
 
 export interface WSMessage {
   type: string;
   data: Record<string, unknown>;
+}
+
+// ─── v6: Session Resume + Token Refresh WS payloads ──────────────────────
+
+export interface WSSessionResumed {
+  session_id: string;
+  elapsed_seconds: number;
+  message_count: number;
+  emotion: string;
+}
+
+export interface WSMessageReplay {
+  role: "user" | "assistant";
+  content: string;
+  emotion?: string;
+  sequence_number?: number;
+  timestamp?: number;
+}
+
+export interface WSAuthRefreshed {
+  access_token: string;
+  refresh_token: string;
+}
+
+export interface WSAuthRefreshError {
+  reason: "no_token" | "refresh_expired" | "invalid_token" | "user_mismatch" | "invalid_token_type";
 }
 
 // ─── Microphone ────────────────────────────────────────────────────────────
@@ -994,6 +1225,12 @@ export interface ChatBubble {
   content: string;
   emotion?: EmotionState;
   timestamp: string;
+  /** Backend sequence number (used for session resume replay) */
+  sequenceNumber?: number;
+  /** True if this message was replayed during session resume */
+  isReplay?: boolean;
+  /** True if this is a fallback response from the server */
+  is_fallback?: boolean;
 }
 
 // ─── Transcription ─────────────────────────────────────────────────────────
@@ -1096,7 +1333,7 @@ export const GAME_STATUS_COLORS: Record<GameClientStatus, string> = {
   consent_given: "#10B981",
   documents: "#F59E0B",
   contract_signed: "#F97316",
-  in_process: "#7C3AED",
+  in_process: "#4F46E5",
   completed: "#00FF66",
   lost: "#FF3333",
 };
@@ -1209,6 +1446,8 @@ export const PVP_RANK_COLORS: Record<PvPRankTier, string> = {
   diamond: "#A78BFA",
 };
 
+export type RatingType = "training_duel" | "knowledge_arena";
+
 export const PVP_DIFFICULTY_LABELS: Record<DuelDifficulty, string> = {
   easy: "Лёгкий",
   medium: "Средний",
@@ -1288,13 +1527,151 @@ export interface PvPSeason {
   rewards: Record<string, unknown> | null;
 }
 
+export interface CharacterBrief {
+  name: string;
+  brief: string;
+  behavior: string;
+}
+
 export interface DuelBrief {
   duel_id: string;
   your_role: "seller" | "client";
   archetype: string | null;
+  character_brief: CharacterBrief | null;
   human_factors: Record<string, unknown> | null;
   difficulty: DuelDifficulty;
   scenario_title: string | null;
   round_number: number;
   time_limit_seconds: number;
 }
+
+// ─── Arena Knowledge PvP Types ─────────────────────────────────────────────
+
+export interface ArenaPlayer {
+  user_id: string;
+  name: string;
+  score: number;
+  correct: number;
+  is_bot: boolean;
+  rating: number;
+  rating_delta?: number;
+}
+
+export interface ArenaRoundResult {
+  round_number: number;
+  question: string;
+  correct_answer: string;
+  explanation: string;
+  article_ref: string | null;
+  players: {
+    user_id: string;
+    name: string;
+    answer: string;
+    score: number;
+    speed_bonus: number;
+    is_correct: boolean;
+    comment: string;
+  }[];
+}
+
+export interface ArenaFinalResults {
+  rankings: (ArenaPlayer & { rank: number })[];
+  total_rounds: number;
+  contains_bot: boolean;
+}
+
+export interface ArenaChallenge {
+  challenge_id: string;
+  challenger_id: string;
+  challenger_name: string;
+  category: string | null;
+  max_players: number;
+}
+
+// ─── Wave 5: Replay Mode ──────────────────────────────────────────────────
+
+export interface IdealResponseResult {
+  message_id: string;
+  message_index: number;
+  original_text: string;
+  ideal_text: string;
+  explanation: string;
+  original_score_estimate: number | null;
+  ideal_score_estimate: number | null;
+  score_delta: number | null;
+  layer_impact: Record<string, string> | null;
+  original_emotion: string | null;
+  ideal_emotion_prediction: string | null;
+  emotion_explanation: string | null;
+  trap_handling: Array<{
+    trap: string;
+    original: string;
+    ideal: string;
+    how?: string;
+  }> | null;
+}
+
+// ─── DOC_17: Frontend UI Types ───────────────────────────────────────────────
+
+export interface CheckpointMarker {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  progress: { current: number; required: number };
+  status: "completed" | "in_progress" | "locked";
+  xp_reward: number;
+  category: string;
+  recommended_scenario?: string;
+}
+
+export interface CheckpointProgressBarProps {
+  level: number;
+  levelName: string;
+  currentXP: number;
+  requiredXP: number;
+  checkpoints: CheckpointMarker[];
+}
+
+export interface HunterCardData {
+  nickname: string;
+  level: number;
+  levelName: string;
+  pvpRank: string;
+  pvpRating: number;
+  wins: number;
+  losses: number;
+  knowledgeAccuracy: number;
+  streak: number;
+  featuredAchievements: string[];
+  reputationTier: number;
+  hunterScore: number;
+  seasonName: string;
+  skillRadar: Record<SkillCode, number>;
+}
+
+export interface CrossRecommendation {
+  source: "correlation" | "pvp_weakness" | "gap_analysis" | "achievement";
+  title: string;
+  description: string;
+  actions: Array<{ mode: string; label: string; params?: Record<string, unknown> }>;
+  priority: "critical" | "high" | "medium" | "low";
+}
+
+export interface SeasonPassTier {
+  tier: number;
+  sp_required: number;
+  reward_free: string | null;
+  reward_premium: string | null;
+  is_claimed: boolean;
+}
+
+export type PvPRankTierDisplay =
+  | "iron_3" | "iron_2" | "iron_1"
+  | "bronze_3" | "bronze_2" | "bronze_1"
+  | "silver_3" | "silver_2" | "silver_1"
+  | "gold_3" | "gold_2" | "gold_1"
+  | "platinum_3" | "platinum_2" | "platinum_1"
+  | "diamond_3" | "diamond_2" | "diamond_1"
+  | "master_3" | "master_2" | "master_1"
+  | "grandmaster" | "unranked";

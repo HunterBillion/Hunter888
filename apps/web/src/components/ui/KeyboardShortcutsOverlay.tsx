@@ -102,7 +102,7 @@ export function KeyboardShortcutsOverlay() {
             <div className="space-y-5">
               {SHORTCUT_GROUPS.map((group) => (
                 <div key={group.title}>
-                  <h3 className="font-mono text-[10px] tracking-widest uppercase mb-2" style={{ color: "var(--text-muted)" }}>
+                  <h3 className="font-mono text-xs tracking-widest uppercase mb-2" style={{ color: "var(--text-muted)" }}>
                     {group.title}
                   </h3>
                   <div className="space-y-1.5">
@@ -119,7 +119,7 @@ export function KeyboardShortcutsOverlay() {
                           {sc.keys.map((k, j) => (
                             <kbd
                               key={j}
-                              className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded font-mono text-[10px] font-bold"
+                              className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded font-mono text-xs font-bold"
                               style={{
                                 background: "var(--bg-tertiary)",
                                 border: "1px solid var(--border-color)",
@@ -138,8 +138,8 @@ export function KeyboardShortcutsOverlay() {
               ))}
             </div>
 
-            <p className="mt-5 text-center text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-              Нажмите <kbd className="inline-flex items-center justify-center w-5 h-5 rounded font-mono text-[9px] font-bold mx-0.5" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)", color: "var(--text-primary)" }}>?</kbd> чтобы закрыть
+            <p className="mt-5 text-center text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+              Нажмите <kbd className="inline-flex items-center justify-center w-5 h-5 rounded font-mono text-xs font-bold mx-0.5" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)", color: "var(--text-primary)" }}>?</kbd> чтобы закрыть
             </p>
           </motion.div>
         </motion.div>

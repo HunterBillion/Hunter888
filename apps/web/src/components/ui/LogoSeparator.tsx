@@ -48,7 +48,7 @@ export function LogoSeparator({ size = 20, color = "var(--accent)" }: Props) {
           width: s,
           height: s,
           border: `1.5px solid ${color}`,
-          boxShadow: `0 0 ${s * 0.3}px ${color}40`,
+          boxShadow: `0 0 ${s * 0.3}px color-mix(in srgb, ${color} 25%, transparent)`,
         }}
         animate={{
           borderRadius: MORPH_SHAPES,

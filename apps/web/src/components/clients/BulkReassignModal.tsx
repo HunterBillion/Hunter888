@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Loader2, UserCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { logger } from "@/lib/logger";
 
 interface ManagerOption {
   id: string;
@@ -29,7 +30,7 @@ export function BulkReassignModal({ open, clientIds, onClose, onDone }: BulkReas
     if (!open) return;
     api.get("/users?role=manager&limit=100")
       .then((data: ManagerOption[]) => setManagers(Array.isArray(data) ? data : []))
-      .catch((err) => { console.error("Failed to load managers for reassignment:", err); });
+      .catch((err) => { logger.error("Failed to load managers for reassignment:", err); });
   }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -135,7 +136,7 @@ export function BulkReassignModal({ open, clientIds, onClose, onDone }: BulkReas
               <motion.button
                 type="submit"
                 disabled={saving}
-                className="vh-btn-primary w-full flex items-center justify-center gap-2 py-3"
+                className="btn-neon w-full flex items-center justify-center gap-2 py-3"
                 whileTap={{ scale: 0.97 }}
               >
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <UserCheck size={16} />}

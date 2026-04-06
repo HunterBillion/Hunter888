@@ -9,6 +9,7 @@ Usage:
 """
 
 import asyncio
+import hashlib
 import logging
 import sys
 from pathlib import Path
@@ -16,7 +17,7 @@ from pathlib import Path
 # Allow running from apps/api/
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, text, update
 
 from app.database import async_session, engine
 from app.models.rag import LegalCategory, LegalKnowledgeChunk
@@ -2670,6 +2671,14 @@ async def seed_legal_knowledge() -> None:
         category_counts: dict[str, int] = {}
 
         for idx, fact in enumerate(LEGAL_FACTS, start=1):
+            # Compute content_hash for idempotent upserts
+            hash_input = fact["fact_text"] + "::" + fact["law_article"]
+            content_hash = hashlib.md5(hash_input.encode()).hexdigest()
+
+            # Derive v2 fields if not explicitly set
+            difficulty = fact.get("difficulty_level", _infer_difficulty(fact))
+            is_court = fact.get("is_court_practice", _is_court_practice(fact))
+
             chunk = LegalKnowledgeChunk(
                 category=fact["category"],
                 fact_text=fact["fact_text"],
@@ -2679,6 +2688,16 @@ async def seed_legal_knowledge() -> None:
                 correct_response_hint=fact["correct_response_hint"],
                 error_frequency=fact["error_frequency"],
                 is_active=True,
+                # v2 fields
+                difficulty_level=difficulty,
+                is_court_practice=is_court,
+                question_templates=fact.get("question_templates"),
+                follow_up_questions=fact.get("follow_up_questions"),
+                blitz_question=fact.get("blitz_question"),
+                blitz_answer=fact.get("blitz_answer"),
+                court_case_reference=fact.get("court_case_reference"),
+                content_hash=content_hash,
+                content_version=1,
             )
             session.add(chunk)
 
@@ -2703,8 +2722,561 @@ async def seed_legal_knowledge() -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# V2 HELPERS — Difficulty inference and blitz question generation
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _infer_difficulty(fact: dict) -> int:
+    """Infer difficulty_level from error_frequency and content heuristics."""
+    freq = fact.get("error_frequency", 5)
+    text_lower = fact["fact_text"].lower()
+
+    # Court practice = harder
+    if _is_court_practice(fact):
+        return 4 if freq >= 6 else 5
+
+    # High error frequency = tricky = harder
+    if freq >= 8:
+        return 4
+    if freq >= 6:
+        return 3
+    if freq >= 4:
+        return 2
+
+    # Short simple facts = easy
+    if len(fact["fact_text"]) < 150:
+        return 1
+
+    return 3
+
+
+def _is_court_practice(fact: dict) -> bool:
+    """Detect if a fact is based on court practice."""
+    article = fact["law_article"].lower()
+    text_lower = fact["fact_text"].lower()
+    markers = ["пленум", "вс рф", "определение", "постановление", "верховный суд"]
+    return any(m in article or m in text_lower for m in markers)
+
+
+def _generate_blitz_from_fact(fact: dict) -> tuple[str | None, str | None]:
+    """Auto-generate blitz question/answer from fact text and hint."""
+    hint = fact.get("correct_response_hint", "")
+    if not hint or len(hint) > 200:
+        return None, None
+
+    # Short hint can serve as blitz answer
+    text = fact["fact_text"]
+    if len(text) > 300:
+        return None, None
+
+    # Simple heuristic: transform hint into a question
+    return None, None  # Will be filled per-chunk in enrichment
+
+
+async def update_seed_v2() -> None:
+    """Backfill v2 fields (difficulty_level, blitz_question, etc.) on existing chunks.
+
+    Safe to run multiple times — only updates rows missing v2 data.
+    """
+    logger.info("=" * 70)
+    logger.info("  Updating existing chunks with v2 fields")
+    logger.info("=" * 70)
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(LegalKnowledgeChunk).where(LegalKnowledgeChunk.is_active.is_(True))
+        )
+        chunks = result.scalars().all()
+
+        if not chunks:
+            logger.info("  No chunks found to update.")
+            return
+
+        updated = 0
+        for chunk in chunks:
+            changed = False
+
+            # Set content_hash if missing
+            if not chunk.content_hash:
+                hash_input = chunk.fact_text + "::" + chunk.law_article
+                chunk.content_hash = hashlib.md5(hash_input.encode()).hexdigest()
+                changed = True
+
+            # Set is_court_practice if still default
+            article_lower = chunk.law_article.lower()
+            text_lower = chunk.fact_text.lower()
+            markers = ["пленум", "вс рф", "определение", "постановление", "верховный суд"]
+            is_court = any(m in article_lower or m in text_lower for m in markers)
+            if is_court and not chunk.is_court_practice:
+                chunk.is_court_practice = True
+                changed = True
+
+            # Infer difficulty if still default (3)
+            if chunk.difficulty_level == 3:
+                freq = chunk.error_frequency or 5
+                if is_court:
+                    chunk.difficulty_level = 4 if freq >= 6 else 5
+                elif freq >= 8:
+                    chunk.difficulty_level = 4
+                elif freq >= 6:
+                    chunk.difficulty_level = 3  # keep as is
+                elif freq >= 4:
+                    chunk.difficulty_level = 2
+                elif len(chunk.fact_text) < 150:
+                    chunk.difficulty_level = 1
+                changed = True
+
+            # Set content_version if missing
+            if not chunk.content_version:
+                chunk.content_version = 1
+                changed = True
+
+            if changed:
+                updated += 1
+
+        if updated > 0:
+            await session.commit()
+
+        logger.info("  ✓ Updated %d/%d chunks with v2 fields.", updated, len(chunks))
+        logger.info("=" * 70)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# V2 ENRICHMENT — Add blitz questions and question templates to existing chunks
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Blitz Q&A pairs for commonly tested facts (by law_article)
+BLITZ_ENRICHMENT: dict[str, dict] = {
+    "127-ФЗ ст. 213.4 п. 1": {
+        "blitz_question": "При какой сумме долга гражданин ОБЯЗАН подать на банкротство?",
+        "blitz_answer": "500 000 рублей при просрочке более 3 месяцев",
+        "question_templates": [
+            "Каков минимальный порог долга для обязательного банкротства ФЛ?",
+            "При какой сумме и сроке просрочки возникает обязанность подать на банкротство?",
+        ],
+        "follow_up_questions": [
+            "А знаете ли вы, можно ли подать на банкротство при долге менее 500 000?",
+        ],
+    },
+    "127-ФЗ ст. 213.4 п. 2": {
+        "blitz_question": "Можно ли подать на банкротство при долге менее 500 000 руб?",
+        "blitz_answer": "Да, если есть признаки неплатёжеспособности или недостаточности имущества",
+        "question_templates": [
+            "Верно ли, что банкротство ФЛ невозможно при долге менее 500 000?",
+            "В чём разница между правом и обязанностью подачи на банкротство?",
+        ],
+        "follow_up_questions": [
+            "Что такое признаки неплатёжеспособности по ФЗ-127?",
+        ],
+    },
+    "127-ФЗ ст. 213.2": {
+        "blitz_question": "Какие процедуры применяются при банкротстве гражданина?",
+        "blitz_answer": "Реструктуризация долгов и реализация имущества",
+        "question_templates": [
+            "Перечислите процедуры банкротства физического лица по ФЗ-127.",
+        ],
+    },
+    "127-ФЗ ст. 213.11": {
+        "blitz_question": "Какой максимальный срок процедуры реструктуризации долгов?",
+        "blitz_answer": "Не более 3 лет (план утверждается на срок до 3 лет)",
+        "question_templates": [
+            "На какой срок может быть утверждён план реструктуризации долгов?",
+        ],
+    },
+    "127-ФЗ ст. 213.24 п. 2": {
+        "blitz_question": "Каков срок процедуры реализации имущества?",
+        "blitz_answer": "6 месяцев (с возможностью продления судом)",
+        "question_templates": [
+            "Какой стандартный срок реализации имущества при банкротстве ФЛ?",
+        ],
+    },
+    "127-ФЗ ст. 213.25 п. 3": {
+        "blitz_question": "Какое имущество нельзя включить в конкурсную массу?",
+        "blitz_answer": "Единственное жильё, предметы обихода, личные вещи (ст. 446 ГПК)",
+        "question_templates": [
+            "Что защищено от изъятия при банкротстве физического лица?",
+        ],
+    },
+    "127-ФЗ ст. 213.28 п. 3": {
+        "blitz_question": "Освобождается ли должник от долгов после завершения банкротства?",
+        "blitz_answer": "Да, от большинства долгов, кроме перечня исключений (алименты, вред здоровью и др.)",
+        "question_templates": [
+            "От каких долгов НЕ освобождает банкротство?",
+        ],
+        "follow_up_questions": [
+            "Какие конкретно долги не списываются при банкротстве?",
+        ],
+    },
+    "127-ФЗ ст. 213.28 п. 4": {
+        "blitz_question": "Может ли суд отказать в списании долгов при банкротстве?",
+        "blitz_answer": "Да, если должник действовал недобросовестно (ст. 213.28 п.4)",
+        "question_templates": [
+            "При каких условиях суд может отказать в освобождении от обязательств?",
+        ],
+    },
+    "127-ФЗ ст. 213.30": {
+        "blitz_question": "Какие ограничения действуют после банкротства гражданина?",
+        "blitz_answer": "5 лет нельзя повторное банкротство, 5 лет обязанность сообщать о банкротстве при кредитах, 3 года запрет на руководство",
+        "question_templates": [
+            "Сколько лет после банкротства нельзя повторно подать на банкротство?",
+            "Какие последствия банкротства для гражданина в сфере занятия руководящих должностей?",
+        ],
+    },
+    "127-ФЗ ст. 20.6": {
+        "blitz_question": "Каков размер вознаграждения финансового управляющего?",
+        "blitz_answer": "25 000 рублей единовременно за каждую процедуру + 7% от стоимости реализованного имущества",
+        "question_templates": [
+            "Сколько стоит финансовый управляющий при банкротстве ФЛ?",
+        ],
+    },
+    "127-ФЗ ст. 213.9 п. 1": {
+        "blitz_question": "Обязательно ли участие финансового управляющего?",
+        "blitz_answer": "Да, финансовый управляющий обязателен при банкротстве гражданина",
+        "question_templates": [
+            "Можно ли обойтись без финансового управляющего при банкротстве ФЛ?",
+        ],
+    },
+    "127-ФЗ ст. 213.4 п. 4": {
+        "blitz_question": "Какие документы нужны для подачи заявления о банкротстве ФЛ?",
+        "blitz_answer": "Списки кредиторов, опись имущества, справки о доходах, копии документов о сделках за 3 года",
+        "question_templates": [
+            "Перечислите основные документы для подачи на банкротство гражданина.",
+        ],
+    },
+    "127-ФЗ ст. 213.32": {
+        "blitz_question": "Можно ли оспорить сделки должника при банкротстве?",
+        "blitz_answer": "Да, сделки за последние 3 года могут быть оспорены финансовым управляющим или кредиторами",
+        "question_templates": [
+            "За какой период могут быть оспорены сделки должника при банкротстве?",
+        ],
+        "follow_up_questions": [
+            "Какие сделки считаются подозрительными при банкротстве?",
+        ],
+    },
+    "127-ФЗ ст. 213.5": {
+        "blitz_question": "Может ли кредитор подать на банкротство должника?",
+        "blitz_answer": "Да, если долг подтверждён решением суда или нотариально",
+        "question_templates": [
+            "При каких условиях кредитор вправе инициировать банкротство гражданина?",
+        ],
+    },
+    "127-ФЗ ст. 213.25 п. 3, ГПК ст. 446 ч. 1": {
+        "blitz_question": "Единственное жильё — защищено при банкротстве?",
+        "blitz_answer": "Да, единственное жильё (не в ипотеке) не включается в конкурсную массу",
+        "question_templates": [
+            "Может ли единственная квартира должника быть продана при банкротстве?",
+            "Какие исключения из имущественного иммунитета существуют для жилья?",
+        ],
+        "follow_up_questions": [
+            "А если единственное жильё — это роскошная квартира стоимостью 50 млн?",
+        ],
+    },
+    "127-ФЗ ст. 213.11 п. 2": {
+        "blitz_question": "Что происходит с исполнительными производствами при введении банкротства?",
+        "blitz_answer": "Приостанавливаются (кроме алиментов и вреда здоровью)",
+        "question_templates": [
+            "Какие последствия введения процедуры реструктуризации для исполнительных производств?",
+        ],
+    },
+    "127-ФЗ ст. 213.12 п. 1, ст. 213.14 п. 2": {
+        "blitz_question": "Кто утверждает план реструктуризации долгов?",
+        "blitz_answer": "Собрание кредиторов, с последующим утверждением арбитражным судом",
+        "question_templates": [
+            "Какова процедура утверждения плана реструктуризации?",
+        ],
+    },
+    "127-ФЗ ст. 213.32, ст. 61.2": {
+        "blitz_question": "За какой период можно оспорить сделки должника?",
+        "blitz_answer": "Подозрительные сделки — за 1-3 года до заявления о банкротстве",
+        "question_templates": [
+            "Какие сделки должника могут быть оспорены при банкротстве?",
+        ],
+        "follow_up_questions": [
+            "Что такое подозрительная сделка по ст. 61.2?",
+        ],
+    },
+    "127-ФЗ ст. 213.8 п. 1, ст. 12 п. 1": {
+        "blitz_question": "Может ли кредитор голосовать на собрании кредиторов?",
+        "blitz_answer": "Да, пропорционально размеру включённых в реестр требований",
+        "question_templates": [
+            "Как определяется количество голосов кредитора на собрании?",
+        ],
+    },
+    "127-ФЗ ст. 213.7": {
+        "blitz_question": "Где публикуются сведения о банкротстве гражданина?",
+        "blitz_answer": "В Едином федеральном реестре сведений о банкротстве (ЕФРСБ) и газете Коммерсантъ",
+        "question_templates": [
+            "Какие сведения о банкротстве гражданина публикуются и где?",
+        ],
+    },
+    "127-ФЗ ст. 213.9 п. 1": {
+        "blitz_question": "Обязательно ли участие финансового управляющего?",
+        "blitz_answer": "Да, финансовый управляющий обязателен при банкротстве гражданина",
+        "question_templates": [
+            "Можно ли обойтись без финансового управляющего при банкротстве ФЛ?",
+        ],
+    },
+    "127-ФЗ ст. 213.26 п. 7, СК РФ ст. 34": {
+        "blitz_question": "Что происходит с совместным имуществом супругов при банкротстве?",
+        "blitz_answer": "Общее имущество включается в конкурсную массу, супруг получает долю от реализации",
+        "question_templates": [
+            "Как банкротство одного супруга влияет на совместное имущество?",
+        ],
+        "follow_up_questions": [
+            "Может ли супруг должника выкупить свою долю?",
+        ],
+    },
+    "127-ФЗ ст. 213.27 п. 5": {
+        "blitz_question": "В каком порядке погашаются требования кредиторов при банкротстве ФЛ?",
+        "blitz_answer": "Сначала текущие (внеочередные), затем 1 очередь (алименты, вред здоровью), 2 очередь (зарплата), 3 очередь (остальные)",
+        "question_templates": [
+            "Сколько очередей кредиторов при банкротстве физического лица?",
+        ],
+    },
+    "127-ФЗ ст. 223.2": {
+        "blitz_question": "Что такое внесудебное (упрощённое) банкротство?",
+        "blitz_answer": "Бесплатная процедура через МФЦ при долге от 50 000 до 500 000 руб. и завершённом исполнительном производстве",
+        "question_templates": [
+            "При каком размере долга возможно внесудебное банкротство?",
+            "Какие условия для подачи на внесудебное банкротство через МФЦ?",
+        ],
+        "follow_up_questions": [
+            "Чем отличается внесудебное банкротство от судебного?",
+        ],
+    },
+}
+
+
+async def enrich_with_blitz() -> None:
+    """Add blitz questions and question templates to existing chunks by matching law_article."""
+    logger.info("=" * 70)
+    logger.info("  Enriching chunks with blitz questions and templates")
+    logger.info("=" * 70)
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(LegalKnowledgeChunk).where(LegalKnowledgeChunk.is_active.is_(True))
+        )
+        chunks = result.scalars().all()
+        enriched = 0
+
+        for chunk in chunks:
+            enrichment = BLITZ_ENRICHMENT.get(chunk.law_article)
+            if not enrichment:
+                continue
+
+            changed = False
+            if not chunk.blitz_question and enrichment.get("blitz_question"):
+                chunk.blitz_question = enrichment["blitz_question"]
+                chunk.blitz_answer = enrichment.get("blitz_answer")
+                changed = True
+
+            if not chunk.question_templates and enrichment.get("question_templates"):
+                chunk.question_templates = enrichment["question_templates"]
+                changed = True
+
+            if not chunk.follow_up_questions and enrichment.get("follow_up_questions"):
+                chunk.follow_up_questions = enrichment["follow_up_questions"]
+                changed = True
+
+            if changed:
+                enriched += 1
+
+        if enriched > 0:
+            await session.commit()
+
+        logger.info("  ✓ Enriched %d chunks with blitz Q&A and templates.", enriched)
+        logger.info("=" * 70)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# V2 EXPANDED SEED — 250+ additional chunks from data/ directory
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def seed_expanded_data() -> None:
+    """Insert 250+ expanded chunks from data/ directory.
+
+    Uses content_hash for idempotent upserts — safe to run multiple times.
+    Skips chunks that already exist (by hash).
+    """
+    logger.info("=" * 70)
+    logger.info("  Seeding expanded legal knowledge (v2 data files)")
+    logger.info("=" * 70)
+
+    # Import all data lists
+    all_facts: list[dict] = []
+    try:
+        from app.seeds.data.facts_eligibility_procedure import ELIGIBILITY_FACTS, PROCEDURE_FACTS
+        all_facts.extend(ELIGIBILITY_FACTS)
+        all_facts.extend(PROCEDURE_FACTS)
+        logger.info("  → Loaded eligibility (%d) + procedure (%d)", len(ELIGIBILITY_FACTS), len(PROCEDURE_FACTS))
+    except ImportError as e:
+        logger.warning("  ⚠ Could not import eligibility/procedure: %s", e)
+
+    try:
+        from app.seeds.data.facts_property_consequences import PROPERTY_FACTS, CONSEQUENCES_FACTS
+        all_facts.extend(PROPERTY_FACTS)
+        all_facts.extend(CONSEQUENCES_FACTS)
+        logger.info("  → Loaded property (%d) + consequences (%d)", len(PROPERTY_FACTS), len(CONSEQUENCES_FACTS))
+    except ImportError as e:
+        logger.warning("  ⚠ Could not import property/consequences: %s", e)
+
+    try:
+        from app.seeds.data.facts_remaining import (
+            COSTS_FACTS, CREDITORS_FACTS, DOCUMENTS_FACTS,
+            TIMELINE_FACTS, COURT_FACTS, RIGHTS_FACTS,
+        )
+        all_facts.extend(COSTS_FACTS)
+        all_facts.extend(CREDITORS_FACTS)
+        all_facts.extend(DOCUMENTS_FACTS)
+        all_facts.extend(TIMELINE_FACTS)
+        all_facts.extend(COURT_FACTS)
+        all_facts.extend(RIGHTS_FACTS)
+        logger.info("  → Loaded 6 remaining categories (%d total)",
+                     len(COSTS_FACTS) + len(CREDITORS_FACTS) + len(DOCUMENTS_FACTS) +
+                     len(TIMELINE_FACTS) + len(COURT_FACTS) + len(RIGHTS_FACTS))
+    except ImportError as e:
+        logger.warning("  ⚠ Could not import remaining categories: %s", e)
+
+    try:
+        from app.seeds.data.court_practice import COURT_PRACTICE_FACTS
+        all_facts.extend(COURT_PRACTICE_FACTS)
+        logger.info("  → Loaded court practice (%d)", len(COURT_PRACTICE_FACTS))
+    except ImportError as e:
+        logger.warning("  ⚠ Could not import court_practice: %s", e)
+
+    try:
+        from app.seeds.data.tricky_questions import TRICKY_FACTS
+        all_facts.extend(TRICKY_FACTS)
+        logger.info("  → Loaded tricky questions (%d)", len(TRICKY_FACTS))
+    except ImportError as e:
+        logger.warning("  ⚠ Could not import tricky_questions: %s", e)
+
+    # === NEW DATA MODULES (v3) ===
+
+    try:
+        from app.seeds.data.sales_objections import ALL_SALES_OBJECTIONS
+        all_facts.extend({**f, "_content_version": 3} for f in ALL_SALES_OBJECTIONS)
+        logger.info("  → Loaded sales objections (%d) [v3]", len(ALL_SALES_OBJECTIONS))
+    except ImportError as e:
+        logger.warning("  ⚠ Could not import sales_objections: %s", e)
+
+    try:
+        from app.seeds.data.advanced_court_practice import ALL_ADVANCED_COURT_PRACTICE
+        all_facts.extend({**f, "_content_version": 3} for f in ALL_ADVANCED_COURT_PRACTICE)
+        logger.info("  → Loaded advanced court practice (%d) [v3]", len(ALL_ADVANCED_COURT_PRACTICE))
+    except ImportError as e:
+        logger.warning("  ⚠ Could not import advanced_court_practice: %s", e)
+
+    try:
+        from app.seeds.data.myths_and_errors import ALL_MYTHS_AND_ERRORS
+        all_facts.extend({**f, "_content_version": 3} for f in ALL_MYTHS_AND_ERRORS)
+        logger.info("  → Loaded myths and errors (%d) [v3]", len(ALL_MYTHS_AND_ERRORS))
+    except ImportError as e:
+        logger.warning("  ⚠ Could not import myths_and_errors: %s", e)
+
+    if not all_facts:
+        logger.warning("  No expanded data to seed.")
+        return
+
+    logger.info("  Total expanded chunks to process: %d", len(all_facts))
+
+    async with async_session() as session:
+        # Get existing content hashes to avoid duplicates
+        result = await session.execute(
+            select(LegalKnowledgeChunk.content_hash)
+            .where(LegalKnowledgeChunk.content_hash.isnot(None))
+        )
+        existing_hashes = {row[0] for row in result.all()}
+        logger.info("  Existing chunks with hash: %d", len(existing_hashes))
+
+        inserted = 0
+        skipped = 0
+        category_counts: dict[str, int] = {}
+
+        for fact in all_facts:
+            # Compute content hash
+            fact_text = fact.get("fact_text", "")
+            law_article = fact.get("law_article", "")
+            content_hash = hashlib.md5(f"{fact_text}::{law_article}".encode()).hexdigest()
+
+            if content_hash in existing_hashes:
+                skipped += 1
+                continue
+
+            # Resolve category
+            category = fact.get("category")
+            if isinstance(category, str):
+                try:
+                    category = LegalCategory(category)
+                except ValueError:
+                    logger.warning("  ⚠ Unknown category '%s', skipping chunk", category)
+                    continue
+
+            # Determine content version: v3 for new modules, v2 for existing
+            _cv = fact.get("_content_version", 2)
+
+            chunk = LegalKnowledgeChunk(
+                category=category,
+                fact_text=fact_text,
+                law_article=law_article,
+                common_errors=fact.get("common_errors", []),
+                match_keywords=fact.get("match_keywords", []),
+                correct_response_hint=fact.get("correct_response_hint"),
+                error_frequency=fact.get("error_frequency", 5),
+                is_active=True,
+                difficulty_level=fact.get("difficulty_level", 3),
+                is_court_practice=fact.get("is_court_practice", False),
+                court_case_reference=fact.get("court_case_reference"),
+                question_templates=fact.get("question_templates"),
+                follow_up_questions=fact.get("follow_up_questions"),
+                blitz_question=fact.get("blitz_question"),
+                blitz_answer=fact.get("blitz_answer"),
+                tags=fact.get("tags"),
+                content_hash=content_hash,
+                content_version=_cv,
+            )
+            session.add(chunk)
+            existing_hashes.add(content_hash)
+            inserted += 1
+
+            cat_name = category.value if hasattr(category, "value") else str(category)
+            category_counts[cat_name] = category_counts.get(cat_name, 0) + 1
+
+            # Batch commit every 50 inserts to avoid OOM on large datasets
+            if inserted % 50 == 0:
+                await session.flush()
+                logger.info("    [%d inserted, %d skipped]...", inserted, skipped)
+
+        if inserted > 0:
+            await session.commit()
+
+        logger.info("")
+        logger.info("  ✓ Inserted %d new chunks, skipped %d duplicates.", inserted, skipped)
+        if category_counts:
+            logger.info("  Category breakdown (new):")
+            for cat, count in sorted(category_counts.items()):
+                logger.info("    %-15s : %d facts", cat, count)
+        logger.info("=" * 70)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # ENTRYPOINT
 # ═══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    asyncio.run(seed_legal_knowledge())
+    import sys as _sys
+
+    if len(_sys.argv) > 1 and _sys.argv[1] == "--update-v2":
+        asyncio.run(update_seed_v2())
+        asyncio.run(enrich_with_blitz())
+    elif len(_sys.argv) > 1 and _sys.argv[1] == "--expand":
+        # Seed expanded 250+ chunks from data/ directory
+        asyncio.run(seed_expanded_data())
+    elif len(_sys.argv) > 1 and _sys.argv[1] == "--full":
+        # Full pipeline: base seed + v2 update + expand + enrich
+        asyncio.run(seed_legal_knowledge())
+        asyncio.run(update_seed_v2())
+        asyncio.run(enrich_with_blitz())
+        asyncio.run(seed_expanded_data())
+    else:
+        asyncio.run(seed_legal_knowledge())

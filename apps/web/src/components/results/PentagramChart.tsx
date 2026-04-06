@@ -40,10 +40,18 @@ export default function PentagramChart({ data }: { data: PentagramData }) {
   const tooltipText = isDark ? "#fff" : "#1a1a1a";
   const pointBorder = isDark ? "#fff" : "#1a1a1a";
 
+  // Guard: ensure labels and values arrays are the same length.
+  // If mismatched, pad the shorter array to prevent Chart.js rendering artifacts.
+  const safeLabels = data.labels;
+  const safeValues =
+    data.values.length === safeLabels.length
+      ? data.values
+      : [...data.values, ...Array(Math.max(0, safeLabels.length - data.values.length)).fill(0)].slice(0, safeLabels.length);
+
   const datasets = [
     {
       label: "Текущая сессия",
-      data: data.values,
+      data: safeValues,
       backgroundColor: "rgba(138, 43, 226, 0.3)",
       borderColor: "var(--accent)",
       pointBackgroundColor: "#BF55EC",
@@ -54,7 +62,7 @@ export default function PentagramChart({ data }: { data: PentagramData }) {
     },
   ];
 
-  if (data.previousValues?.length === data.values.length) {
+  if (data.previousValues?.length === safeLabels.length) {
     datasets.push({
       label: "Предыдущая сессия",
       data: data.previousValues,
@@ -100,7 +108,7 @@ export default function PentagramChart({ data }: { data: PentagramData }) {
 
   return (
     <div className="relative w-full" style={{ minHeight: 300 }}>
-      <Radar data={{ labels: data.labels, datasets }} options={options} />
+      <Radar data={{ labels: safeLabels, datasets }} options={options} />
     </div>
   );
 }

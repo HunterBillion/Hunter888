@@ -153,7 +153,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
               <span className="font-mono text-xs tracking-[0.3em]" style={{ color: "var(--accent)" }}>
                 {scenarioTypeLabel(scenario.scenario_type)}
               </span>
-              <span className="font-mono text-xs px-2 py-0.5 rounded-full" style={{ background: `${diff.color}15`, color: diff.color }}>
+              <span className="font-mono text-xs px-2 py-0.5 rounded-full" style={{ background: `color-mix(in srgb, ${diff.color} 8%, transparent)`, color: diff.color }}>
                 {diff.text} ({scenario.difficulty}/10)
               </span>
             </div>
@@ -197,7 +197,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                 <div className="mb-4 p-3 rounded-lg" style={{ background: "var(--input-bg)" }}>
                   <div className="flex items-center gap-2 mb-2">
                     <Banknote size={14} style={{ color: "var(--neon-red)" }} />
-                    <span className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>ДОЛГИ</span>
+                    <span className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>ДОЛГИ</span>
                   </div>
                   <div className="font-display text-2xl font-bold" style={{ color: "var(--neon-red)" }}>
                     {formatDebt(client.total_debt)}
@@ -219,11 +219,11 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                   <div className="mb-4">
                     <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle size={14} style={{ color: "var(--neon-amber)" }} />
-                      <span className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>СТРАХИ</span>
+                      <span className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>СТРАХИ</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {client.fears.slice(0, 5).map((fear, i) => (
-                        <span key={i} className="rounded-full px-2.5 py-0.5 text-[11px]" style={{ background: "rgba(255,215,0,0.08)", color: "var(--neon-amber)", border: "1px solid rgba(255,215,0,0.15)" }}>
+                        <span key={i} className="rounded-full px-2.5 py-0.5 text-xs" style={{ background: "rgba(255,215,0,0.08)", color: "var(--neon-amber)", border: "1px solid rgba(255,215,0,0.15)" }}>
                           {fear}
                         </span>
                       ))}
@@ -241,7 +241,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                 {/* Initial state */}
                 <div className="mt-4 flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full" style={{ background: emotionConfig.color, boxShadow: `0 0 6px ${emotionConfig.glow}` }} />
-                  <span className="font-mono text-[10px] tracking-wider" style={{ color: emotionConfig.color }}>
+                  <span className="font-mono text-xs tracking-wider" style={{ color: emotionConfig.color }}>
                     НАЧАЛЬНОЕ СОСТОЯНИЕ: {emotionConfig.label}
                   </span>
                 </div>
@@ -264,7 +264,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                   <div className="space-y-2">
                     {scenario.script.checkpoints.map((cp, i) => (
                       <div key={i} className="flex items-start gap-3">
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-bold" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-xs font-bold" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
                           {i + 1}
                         </div>
                         <div>
@@ -300,7 +300,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
           >
             <motion.button
               onClick={() => handleStart("voice")}
-              className="vh-btn-primary flex items-center gap-3 text-lg px-8 py-4"
+              className="btn-neon flex items-center gap-3 text-lg px-8 py-4"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
@@ -310,7 +310,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
             </motion.button>
             <motion.button
               onClick={() => handleStart("text")}
-              className="vh-btn-outline flex items-center gap-3 px-6 py-4"
+              className="btn-neon flex items-center gap-3 px-6 py-4"
               whileTap={{ scale: 0.98 }}
             >
               <Keyboard size={18} />

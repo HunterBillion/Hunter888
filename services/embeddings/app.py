@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 logger = logging.getLogger("embeddings")
 
-app = FastAPI(title="VibeHunter Embeddings Service")
+app = FastAPI(title="Hunter888 Embeddings Service")
 
 MODEL_NAME = os.environ.get("MODEL_NAME", "intfloat/multilingual-e5-large")
 

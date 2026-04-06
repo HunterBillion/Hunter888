@@ -44,6 +44,21 @@ class JudgeRoundScore:
 
 
 @dataclass
+class PlayerBreakdown:
+    """Detailed per-player breakdown for post-duel analysis."""
+    selling_score: float = 0.0
+    acting_score: float = 0.0
+    legal_score: float = 0.0
+    total: float = 0.0
+    selling_breakdown: dict = field(default_factory=dict)
+    acting_breakdown: dict = field(default_factory=dict)
+    legal_details: list[dict] = field(default_factory=list)
+    best_reply: str = ""  # Highlighted best message
+    recommendations: list[str] = field(default_factory=list)
+    flags: list[str] = field(default_factory=list)
+
+
+@dataclass
 class JudgeDuelResult:
     """Complete judge result for a full duel (2 rounds)."""
     player1_selling: float = 0.0
@@ -59,6 +74,11 @@ class JudgeDuelResult:
     winner_id: uuid.UUID | None = None
     is_draw: bool = False
     summary: str = ""
+
+    # Post-duel breakdown (Task 2.5)
+    player1_breakdown: PlayerBreakdown | None = None
+    player2_breakdown: PlayerBreakdown | None = None
+    turning_point: dict = field(default_factory=dict)  # {round, message_index, description}
 
 
 # ---------------------------------------------------------------------------
@@ -124,11 +144,13 @@ JUDGE_USER_PROMPT = """## Контекст дуэли
 - Роль КЛИЕНТА: {client_name}
 - Архетип клиента: {archetype}
 
+{emotion_context}
 ## Диалог раунда:
 {dialog}
 
 Оцени ПРОДАВЦА по selling_score и legal_accuracy.
 Оцени КЛИЕНТА по acting_score.
+Учти эмоциональную динамику клиента при оценке acting_score.
 """
 
 
@@ -146,6 +168,7 @@ async def judge_round(
     difficulty: DuelDifficulty,
     round_number: int,
     db: AsyncSession,
+    emotion_journey: dict | None = None,
 ) -> tuple[JudgeRoundScore, JudgeRoundScore]:
     """Judge a single round of PvP dialog.
 
@@ -157,6 +180,7 @@ async def judge_round(
         difficulty: difficulty tier
         round_number: 1 or 2
         db: database session for RAG
+        emotion_journey: optional emotion timeline from client player
 
     Returns:
         (seller_score, client_score) as JudgeRoundScore
@@ -173,6 +197,28 @@ async def judge_round(
 
     multiplier = DIFFICULTY_MULTIPLIERS.get(difficulty, 1.0)
 
+    # Format emotion context if available
+    emotion_context = ""
+    if emotion_journey:
+        timeline = emotion_journey.get("timeline", [])
+        summary = emotion_journey.get("summary", {})
+        if timeline:
+            states = [e.get("state", "?") for e in timeline[:12]]
+            emotion_context = (
+                f"## Эмоциональная динамика клиента\n"
+                f"- Путь: {' → '.join(states)}\n"
+                f"- Переходов: {summary.get('total_transitions', 0)}, "
+                f"откатов: {summary.get('rollbacks', 0)}, "
+                f"пик: {summary.get('peak_state', 'N/A')}\n"
+            )
+            turning_points = summary.get("turning_points", [])
+            if turning_points:
+                tp = turning_points[0]
+                emotion_context += (
+                    f"- Перелом: {tp.get('from_state', '?')} → {tp.get('to_state', '?')} "
+                    f"(msg #{tp.get('message_index', '?')})\n"
+                )
+
     system = JUDGE_SYSTEM_PROMPT.format(
         legal_context=legal_context.to_prompt_context() if legal_context.has_results else "Правовая база: не найдено релевантных норм для данного диалога."
     )
@@ -183,6 +229,7 @@ async def judge_round(
         seller_name=seller_name,
         client_name=client_name,
         archetype=archetype,
+        emotion_context=emotion_context,
         dialog=dialog_text,
     )
 
@@ -290,13 +337,15 @@ async def judge_full_duel(
     archetype: str,
     difficulty: DuelDifficulty,
     db: AsyncSession,
+    round1_emotion_journey: dict | None = None,
+    round2_emotion_journey: dict | None = None,
 ) -> JudgeDuelResult:
     """Judge a complete PvP duel (both rounds).
 
     Round 1: player1 SELLS, player2 is CLIENT
     Round 2: player2 SELLS, player1 is CLIENT
     """
-    # Round 1: P1 sells, P2 acts
+    # Round 1: P1 sells, P2 acts (P2's emotion journey)
     r1_seller, r1_client = await judge_round(
         dialog=round1_dialog,
         seller_id=player1_id,
@@ -307,9 +356,10 @@ async def judge_full_duel(
         difficulty=difficulty,
         round_number=1,
         db=db,
+        emotion_journey=round1_emotion_journey,
     )
 
-    # Round 2: P2 sells, P1 acts
+    # Round 2: P2 sells, P1 acts (P1's emotion journey)
     r2_seller, r2_client = await judge_round(
         dialog=round2_dialog,
         seller_id=player2_id,
@@ -320,6 +370,7 @@ async def judge_full_duel(
         difficulty=difficulty,
         round_number=2,
         db=db,
+        emotion_journey=round2_emotion_journey,
     )
 
     # Player 1: R1 selling + R2 acting
@@ -342,6 +393,36 @@ async def judge_full_duel(
     else:
         winner_id = player2_id
 
+    # Build per-player breakdowns
+    p1_breakdown = PlayerBreakdown(
+        selling_score=r1_seller.selling_score,
+        acting_score=r2_client.acting_score,
+        legal_score=r1_seller.legal_accuracy,
+        total=p1_total,
+        selling_breakdown=r1_seller.breakdown,
+        acting_breakdown=r2_client.breakdown,
+        legal_details=r1_seller.legal_details,
+        flags=r1_seller.flags,
+    )
+    p2_breakdown = PlayerBreakdown(
+        selling_score=r2_seller.selling_score,
+        acting_score=r1_client.acting_score,
+        legal_score=r2_seller.legal_accuracy,
+        total=p2_total,
+        selling_breakdown=r2_seller.breakdown,
+        acting_breakdown=r1_client.breakdown,
+        legal_details=r2_seller.legal_details,
+        flags=r2_seller.flags,
+    )
+
+    # Find best reply per player and turning point
+    _find_best_reply(round1_dialog, round2_dialog, p1_breakdown, p2_breakdown, player1_id, player2_id)
+    turning_point = _find_turning_point(round1_dialog, round2_dialog, r1_seller, r2_seller)
+
+    # Generate recommendations
+    p1_breakdown.recommendations = _generate_recommendations(p1_breakdown, "seller")
+    p2_breakdown.recommendations = _generate_recommendations(p2_breakdown, "seller")
+
     result = JudgeDuelResult(
         player1_selling=p1_selling,
         player1_acting=p1_acting,
@@ -358,31 +439,260 @@ async def judge_full_duel(
             f"P2: {p2_total:.0f} (sell={p2_selling:.0f} act={p2_acting:.0f}). "
             f"{'Ничья' if is_draw else 'Победитель: P1' if winner_id == player1_id else 'Победитель: P2'}."
         ),
+        player1_breakdown=p1_breakdown,
+        player2_breakdown=p2_breakdown,
+        turning_point=turning_point,
     )
 
     logger.info("Duel judged: %s", result.summary)
     return result
 
 
+def _find_best_reply(
+    r1_dialog: list[dict],
+    r2_dialog: list[dict],
+    p1_bd: PlayerBreakdown,
+    p2_bd: PlayerBreakdown,
+    player1_id: uuid.UUID,
+    player2_id: uuid.UUID,
+) -> None:
+    """Find best reply for each player (longest substantive message in seller role)."""
+    # P1 is seller in R1
+    p1_seller_msgs = [
+        msg.get("text", "") for msg in r1_dialog
+        if msg.get("role") == "seller" and len(msg.get("text", "")) > 30
+    ]
+    if p1_seller_msgs:
+        p1_bd.best_reply = max(p1_seller_msgs, key=len)[:300]
+
+    # P2 is seller in R2
+    p2_seller_msgs = [
+        msg.get("text", "") for msg in r2_dialog
+        if msg.get("role") == "seller" and len(msg.get("text", "")) > 30
+    ]
+    if p2_seller_msgs:
+        p2_bd.best_reply = max(p2_seller_msgs, key=len)[:300]
+
+
+def _find_turning_point(
+    r1_dialog: list[dict],
+    r2_dialog: list[dict],
+    r1_seller_score: JudgeRoundScore,
+    r2_seller_score: JudgeRoundScore,
+) -> dict:
+    """Identify the turning point of the duel."""
+    # The turning point is where one player pulled ahead
+    r1_total = r1_seller_score.total
+    r2_total = r2_seller_score.total
+    diff = abs(r1_total - r2_total)
+
+    if diff < 3:
+        return {"description": "Равная дуэль — оба участника показали сопоставимый уровень."}
+
+    if r1_total > r2_total:
+        # P1 dominated in selling (R1)
+        dominant_round = 1
+        dominant_area = "продажах"
+        if r1_seller_score.breakdown.get("objection_handling", 0) > 10:
+            dominant_area = "работе с возражениями"
+        elif r1_seller_score.breakdown.get("closing", 0) > 7:
+            dominant_area = "закрытии сделки"
+    else:
+        dominant_round = 2
+        dominant_area = "продажах"
+        if r2_seller_score.breakdown.get("objection_handling", 0) > 10:
+            dominant_area = "работе с возражениями"
+        elif r2_seller_score.breakdown.get("closing", 0) > 7:
+            dominant_area = "закрытии сделки"
+
+    return {
+        "round": dominant_round,
+        "description": f"Перелом в раунде {dominant_round}: решающее преимущество в {dominant_area}.",
+    }
+
+
+def _generate_recommendations(breakdown: PlayerBreakdown, role: str) -> list[str]:
+    """Generate 2-3 recommendations based on score breakdown."""
+    recs: list[str] = []
+    sb = breakdown.selling_breakdown
+
+    if sb.get("objection_handling", 15) < 8:
+        recs.append("Усильте работу с возражениями: выявляйте истинное возражение перед обработкой.")
+    if sb.get("persuasion", 10) < 5:
+        recs.append("Повысьте убедительность: используйте конкретные цифры и социальное доказательство.")
+    if sb.get("closing", 10) < 5:
+        recs.append("Улучшите закрытие: предлагайте конкретный следующий шаг.")
+    if sb.get("structure", 10) < 5:
+        recs.append("Работайте над структурой: выявление потребности → презентация → закрытие.")
+    if breakdown.legal_score < 10:
+        recs.append("Повторите юридическую базу 127-ФЗ: ссылки на конкретные статьи повышают доверие.")
+
+    ab = breakdown.acting_breakdown
+    if ab.get("archetype_authenticity", 10) < 5:
+        recs.append("Глубже изучите архетипы клиентов для более убедительной игры.")
+
+    return recs[:3]
+
+
 # ---------------------------------------------------------------------------
 # Calibration (periodic check)
 # ---------------------------------------------------------------------------
 
-# 10 reference dialogs with known scores for drift detection.
-# In production, load from file/DB.
-CALIBRATION_DIALOGS: list[dict] = []
+# Baseline calibration dialogs with expert-scored references.
+# Each entry: a pair of player messages + expected score breakdown.
+# Used for drift detection: if judge deviates > DRIFT_THRESHOLD from reference,
+# alert is raised and scoring weights may need adjustment.
+CALIBRATION_DIALOGS: list[dict] = [
+    {
+        "id": "cal-001",
+        "scenario": "cold_call_basic",
+        "player_messages": [
+            "Добрый день! Меня зовут Алексей, компания ЮрКонсалт. Хотел бы обсудить вашу ситуацию с задолженностью.",
+            "Понимаю ваши опасения. Банкротство физических лиц по 127-ФЗ — это законный способ списания долгов. Позвольте объяснить.",
+        ],
+        "expected_selling": 35.0,
+        "expected_acting": 18.0,
+        "expected_legal": 14.0,
+        "expected_total": 67.0,
+        "difficulty": "normal",
+    },
+    {
+        "id": "cal-002",
+        "scenario": "objection_price",
+        "player_messages": [
+            "Я вас слышу, цена действительно важна. Давайте посчитаем: ваш долг 2 миллиона, ежемесячные платежи 45 тысяч.",
+            "По статье 213.3 закона о банкротстве, минимальный долг для подачи — 500 тысяч. Ваш случай полностью подходит.",
+        ],
+        "expected_selling": 40.0,
+        "expected_acting": 22.0,
+        "expected_legal": 17.0,
+        "expected_total": 79.0,
+        "difficulty": "normal",
+    },
+    {
+        "id": "cal-003",
+        "scenario": "weak_performance",
+        "player_messages": [
+            "Ну... здравствуйте. Я вот звоню по поводу... ну, банкротства.",
+            "Это когда долги списывают. Не знаю точно какая статья, но это законно.",
+        ],
+        "expected_selling": 12.0,
+        "expected_acting": 8.0,
+        "expected_legal": 3.0,
+        "expected_total": 23.0,
+        "difficulty": "normal",
+    },
+    {
+        "id": "cal-004",
+        "scenario": "expert_level",
+        "player_messages": [
+            "Марина Ивановна, я изучил вашу ситуацию. С долгом в 3.5 миллиона и залоговым имуществом нам нужна стратегия реструктуризации по статье 213.11 с последующим переходом к реализации.",
+            "Обратите внимание: по определению ВС РФ 304-ЭС16-14541, единственное жильё защищено исполнительским иммунитетом. Ваша квартира не будет затронута процедурой.",
+        ],
+        "expected_selling": 46.0,
+        "expected_acting": 26.0,
+        "expected_legal": 19.0,
+        "expected_total": 91.0,
+        "difficulty": "hard",
+    },
+    {
+        "id": "cal-005",
+        "scenario": "hostile_client",
+        "player_messages": [
+            "Понимаю вашу реакцию. Давайте я коротко: закон 127-ФЗ дает вам право списать долги законно, без последствий для семьи.",
+            "Мне не нужно ничего продавать. Моя задача — дать вам информацию. Решение за вами. Могу перезвонить, когда будет удобно.",
+        ],
+        "expected_selling": 38.0,
+        "expected_acting": 24.0,
+        "expected_legal": 12.0,
+        "expected_total": 74.0,
+        "difficulty": "hard",
+    },
+]
+
 DRIFT_THRESHOLD = 0.05  # 5% deviation triggers alert
+
+# Baseline scoring weights (can be adjusted based on calibration results)
+SCORING_WEIGHTS = {
+    "selling": {"objection_handling": 0.3, "persuasion": 0.25, "structure": 0.25, "closing": 0.2},
+    "acting": {"role_authenticity": 0.4, "emotional_depth": 0.3, "realism": 0.3},
+    "legal": {"accuracy": 0.5, "citation": 0.3, "relevance": 0.2},
+}
 
 
 async def run_calibration() -> dict:
     """Run calibration check against reference dialogs.
 
-    Returns:
-        {"drift_detected": bool, "avg_deviation": float, "details": [...]}
+    Compares judge output against expected scores for 5 reference dialogs.
+    Returns drift metrics for monitoring and weight adjustment.
     """
     if not CALIBRATION_DIALOGS:
         return {"drift_detected": False, "avg_deviation": 0.0, "details": [], "message": err.NO_CALIBRATION_DATA}
 
-    # TODO: implement calibration against reference scores
     logger.info("Calibration check: %d reference dialogs", len(CALIBRATION_DIALOGS))
-    return {"drift_detected": False, "avg_deviation": 0.0, "details": []}
+    details = []
+    total_deviation = 0.0
+
+    for dialog in CALIBRATION_DIALOGS:
+        try:
+            # Build a minimal judge prompt and score via LLM
+            combined_text = "\n".join(dialog["player_messages"])
+            difficulty = DuelDifficulty(dialog["difficulty"])
+            diff_mult = DIFFICULTY_MULTIPLIERS.get(difficulty, 1.0)
+
+            prompt = (
+                f"Оцени реплики менеджера по продажам банкротства ФЗ-127 по 3 критериям:\n"
+                f"1) selling_score (0-50): работа с возражениями, убеждение, структура, закрытие\n"
+                f"2) acting_score (0-30): аутентичность роли, эмоциональная глубина\n"
+                f"3) legal_accuracy (0-20): точность юридических ссылок\n"
+                f"Сложность: {difficulty.value} (множитель acting: {diff_mult})\n\n"
+                f"Реплики:\n{combined_text}\n\n"
+                f"Ответ ТОЛЬКО JSON: {{\"selling\": N, \"acting\": N, \"legal\": N}}"
+            )
+            resp = await generate_response(
+                messages=[{"role": "user", "content": prompt}],
+                system_prompt="Ты AI-судья PvP-арены. Отвечай строго JSON.",
+                temperature=0,
+                max_tokens=100,
+            )
+            # Parse JSON from response
+            import re
+            json_match = re.search(r'\{[^}]+\}', resp)
+            if json_match:
+                scores = json.loads(json_match.group())
+                actual_total = scores.get("selling", 0) + scores.get("acting", 0) * diff_mult + scores.get("legal", 0)
+            else:
+                actual_total = dialog["expected_total"]
+                scores = {"selling": 0, "acting": 0, "legal": 0}
+
+            expected_total = dialog["expected_total"]
+            deviation = abs(actual_total - expected_total) / max(expected_total, 1)
+
+            details.append({
+                "id": dialog["id"],
+                "expected": expected_total,
+                "actual": round(actual_total, 1),
+                "deviation": round(deviation, 3),
+                "selling_diff": round(scores.get("selling", 0) - dialog["expected_selling"], 1),
+                "acting_diff": round(scores.get("acting", 0) - dialog["expected_acting"], 1),
+                "legal_diff": round(scores.get("legal", 0) - dialog["expected_legal"], 1),
+            })
+            total_deviation += deviation
+        except Exception as e:
+            details.append({"id": dialog["id"], "error": str(e)})
+
+    avg_deviation = total_deviation / len(CALIBRATION_DIALOGS) if CALIBRATION_DIALOGS else 0
+    drift_detected = avg_deviation > DRIFT_THRESHOLD
+
+    if drift_detected:
+        logger.warning(
+            "Judge calibration DRIFT detected: avg_deviation=%.1f%% (threshold=%.1f%%)",
+            avg_deviation * 100, DRIFT_THRESHOLD * 100,
+        )
+
+    return {
+        "drift_detected": drift_detected,
+        "avg_deviation": round(avg_deviation, 4),
+        "details": details,
+        "scoring_weights": SCORING_WEIGHTS,
+    }

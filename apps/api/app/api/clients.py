@@ -8,6 +8,8 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -80,6 +82,7 @@ from app.services.client_service import (
 from app.ws.notifications import send_ws_notification
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 def _consent_verify_url(token: str) -> str:
@@ -104,6 +107,7 @@ def _default_consent_legal_text(consent_type: str) -> str:
 
 
 @router.post("", response_model=ClientCreateResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
 async def api_create_client(
     body: ClientCreateRequest,
     request: Request,
@@ -232,6 +236,7 @@ async def api_get_duplicates(
 
 
 @router.post("/bulk/reassign", response_model=BulkReassignResponse)
+@limiter.limit("5/minute")
 async def api_bulk_reassign(
     body: BulkReassignRequest,
     request: Request,
@@ -267,6 +272,7 @@ async def api_bulk_reassign(
 
 
 @router.post("/bulk/export")
+@limiter.limit("3/minute")
 async def api_bulk_export(
     body: ClientExportRequest | None = None,
     user: User = Depends(require_role("rop", "admin", "methodologist")),
@@ -283,7 +289,10 @@ async def api_bulk_export(
             except HTTPException:
                 continue
     else:
-        clients, _ = await list_clients(db, user=user, per_page=10000)
+        # Cap export at 500 clients per request to prevent OOM on large datasets.
+        # Admin/methodologist can use selected_ids for targeted exports.
+        _EXPORT_MAX = 500
+        clients, _ = await list_clients(db, user=user, per_page=_EXPORT_MAX)
     total = len(clients)
 
     await write_audit_log(
@@ -300,6 +309,74 @@ async def api_bulk_export(
         "count": total,
         "role": user.role.value,
     }
+
+
+# ─── B-FIX-4: Audit Log — MUST be before /{client_id} to avoid UUID parse ──
+from app.models.client import AuditLog
+
+
+@router.get("/audit-log", response_model=AuditLogListResponse)
+async def api_get_audit_log(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    actor_id: uuid.UUID | None = Query(None, description="Фильтр по исполнителю"),
+    entity_type: str | None = Query(None, description="Фильтр по типу сущности (real_clients, client_consents)"),
+    action: str | None = Query(None, description="Фильтр по действию (create_client, revoke_consent...)"),
+    date_from: datetime | None = Query(None, description="Начало периода (ISO 8601)"),
+    date_to: datetime | None = Query(None, description="Конец периода (ISO 8601)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """
+    Просмотр audit log (152-ФЗ compliance). Доступ: только admin.
+    """
+    query = select(AuditLog).order_by(AuditLog.created_at.desc())
+
+    if actor_id:
+        query = query.where(AuditLog.actor_id == actor_id)
+    if entity_type:
+        query = query.where(AuditLog.entity_type == entity_type)
+    if action:
+        query = query.where(AuditLog.action == action)
+    if date_from:
+        query = query.where(AuditLog.created_at >= date_from)
+    if date_to:
+        query = query.where(AuditLog.created_at <= date_to)
+
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar() or 0
+
+    offset = (page - 1) * per_page
+    rows = await db.execute(query.offset(offset).limit(per_page))
+    logs = list(rows.scalars().all())
+
+    items = []
+    for log in logs:
+        actor_name = None
+        if log.actor:
+            actor_name = log.actor.full_name or log.actor.email
+        items.append(
+            AuditLogResponse(
+                id=log.id,
+                actor_id=log.actor_id,
+                actor_name=actor_name,
+                actor_role=log.actor_role,
+                action=log.action,
+                entity_type=log.entity_type,
+                entity_id=log.entity_id,
+                old_values=log.old_values,
+                new_values=log.new_values,
+                ip_address=log.ip_address,
+                created_at=log.created_at,
+            )
+        )
+
+    return AuditLogListResponse(
+        items=items,
+        total=total,
+        page=page,
+        per_page=per_page,
+    )
 
 
 @router.get("/{client_id}", response_model=ClientResponse)
@@ -328,6 +405,7 @@ async def api_get_client(
 
 
 @router.put("/{client_id}", response_model=ClientResponse)
+@limiter.limit("20/minute")
 async def api_update_client(
     client_id: uuid.UUID,
     body: ClientUpdateRequest,
@@ -344,6 +422,7 @@ async def api_update_client(
 
 
 @router.patch("/{client_id}/status", response_model=ClientResponse)
+@limiter.limit("20/minute")
 async def api_change_status(
     client_id: uuid.UUID,
     body: ClientStatusChangeRequest,
@@ -364,6 +443,7 @@ async def api_change_status(
 
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("10/minute")
 async def api_delete_client(
     client_id: uuid.UUID,
     request: Request,
@@ -375,6 +455,7 @@ async def api_delete_client(
 
 
 @router.post("/{client_id}/merge")
+@limiter.limit("5/minute")
 async def api_merge_clients(
     client_id: uuid.UUID,
     body: ClientMergeRequest,
@@ -424,6 +505,7 @@ async def api_merge_clients(
 
 
 @router.post("/{client_id}/consents", response_model=ConsentResponse, status_code=201)
+@limiter.limit("10/minute")
 async def api_create_consent(
     client_id: uuid.UUID,
     body: ConsentCreateRequest,
@@ -464,6 +546,7 @@ async def api_list_consents(
 
 
 @router.post("/{client_id}/consents/{consent_id}/revoke", response_model=ConsentResponse)
+@limiter.limit("5/minute")
 async def api_revoke_consent(
     client_id: uuid.UUID,
     consent_id: uuid.UUID,
@@ -480,6 +563,7 @@ async def api_revoke_consent(
 
 
 @router.post("/{client_id}/consents/send-link")
+@limiter.limit("3/minute")
 async def api_send_consent_link(
     client_id: uuid.UUID,
     consent_type: str = Query(...),
@@ -575,6 +659,7 @@ async def api_verify_consent_get(
 
 
 @router.post("/consents/verify/{token}")
+@limiter.limit("10/minute")
 async def api_verify_consent_post(
     token: str,
     request: Request,
@@ -601,9 +686,11 @@ async def api_verify_consent_post(
 
 
 @router.post("/{client_id}/interactions", response_model=InteractionResponse, status_code=201)
+@limiter.limit("20/minute")
 async def api_create_interaction(
     client_id: uuid.UUID,
     body: InteractionCreateRequest,
+    request: Request,
     user: User = Depends(require_role("manager", "rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -661,6 +748,7 @@ async def api_interaction_summary(
 
 
 @router.post("/{client_id}/notify")
+@limiter.limit("10/minute")
 async def api_send_notification(
     client_id: uuid.UUID,
     body: SendNotificationRequest,
@@ -1202,77 +1290,8 @@ async def get_manager_recommendations(
     return report_to_dict(report)
 
 
-# ─── B-FIX-4: Audit Log Viewer (admin only) ─────────────────────────────────
 
-from app.models.client import AuditLog
-
-
-@router.get("/audit-log", response_model=AuditLogListResponse)
-async def api_get_audit_log(
-    page: int = Query(1, ge=1),
-    per_page: int = Query(50, ge=1, le=200),
-    actor_id: uuid.UUID | None = Query(None, description="Фильтр по исполнителю"),
-    entity_type: str | None = Query(None, description="Фильтр по типу сущности (real_clients, client_consents)"),
-    action: str | None = Query(None, description="Фильтр по действию (create_client, revoke_consent...)"),
-    date_from: datetime | None = Query(None, description="Начало периода (ISO 8601)"),
-    date_to: datetime | None = Query(None, description="Конец периода (ISO 8601)"),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
-):
-    """
-    B-FIX-4: Просмотр audit log (152-ФЗ compliance).
-    Доступ: только admin.
-    """
-    query = select(AuditLog).order_by(AuditLog.created_at.desc())
-
-    # ── Filters ──
-    if actor_id:
-        query = query.where(AuditLog.actor_id == actor_id)
-    if entity_type:
-        query = query.where(AuditLog.entity_type == entity_type)
-    if action:
-        query = query.where(AuditLog.action == action)
-    if date_from:
-        query = query.where(AuditLog.created_at >= date_from)
-    if date_to:
-        query = query.where(AuditLog.created_at <= date_to)
-
-    # ── Count ──
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
-
-    # ── Paginate ──
-    offset = (page - 1) * per_page
-    rows = await db.execute(query.offset(offset).limit(per_page))
-    logs = list(rows.scalars().all())
-
-    items = []
-    for log in logs:
-        actor_name = None
-        if log.actor:
-            actor_name = log.actor.full_name or log.actor.email
-        items.append(
-            AuditLogResponse(
-                id=log.id,
-                actor_id=log.actor_id,
-                actor_name=actor_name,
-                actor_role=log.actor_role,
-                action=log.action,
-                entity_type=log.entity_type,
-                entity_id=log.entity_id,
-                old_values=log.old_values,
-                new_values=log.new_values,
-                ip_address=log.ip_address,
-                created_at=log.created_at,
-            )
-        )
-
-    return AuditLogListResponse(
-        items=items,
-        total=total,
-        page=page,
-        per_page=per_page,
-    )
+# (audit-log route moved above /{client_id} to fix UUID parse error)
 
 
 # ─── Graph Visualization Data ────────────────────────────────────────────────

@@ -2,13 +2,15 @@
 
 Supports:
 - AI Examiner mode (solo, text-based Q&A)
-- PvP Arena mode (2-4 players, real-time competition)
+- PvP Arena mode (2-4 players, real-time competition via Redis)
 
 Protocol:
   Client -> Server:
     auth                  - JWT token (first message, same as training WS)
-    quiz.start            - {mode, category?, difficulty?, max_players?}
+    quiz.start            - {mode, category?, difficulty?, max_players?, session_size?}
     text.message          - {text: string} (user's answer)
+    srs.stats             - {} (request SRS statistics)
+    srs.mastery           - {} (request per-category mastery breakdown)
     quiz.skip             - {} (skip current question)
     quiz.hint             - {} (request hint, -2 points penalty)
     quiz.end              - {} (end quiz early)
@@ -17,6 +19,9 @@ Protocol:
     pvp.find_opponent     - {max_players: 2|4, category?}
     pvp.accept_challenge  - {challenge_id: string}
     pvp.decline_challenge - {challenge_id: string}
+    pvp.answer            - {text: string, round_number: int}
+    pvp.cancel_search     - {}
+    pvp.play_with_bot     - {}
 
     ping                  - keepalive
 
@@ -30,14 +35,28 @@ Protocol:
     quiz.completed        - {results: QuizResults}
     quiz.timeout          - {question_number}
 
+    # SRS specific:
+    srs.session_info      - {stats, category_breakdown, session_size, estimated_time_minutes}
+    srs.progress          - {question_number, answered_in_session, leitner_box_before/after, streak, ...}
+    srs.stats             - {total_items, overdue_count, avg_ef, accuracy_pct, leitner_distribution, ...}
+    srs.mastery           - {categories: [{category, total, mastered, overdue, mastery_pct, accuracy_pct}]}
+
     # PvP specific:
     pvp.searching         - {challenge_id, max_players, expires_in_seconds}
-    pvp.opponent_found    - {opponent_name, opponent_id}
+    pvp.player_joined     - {player_name, players_count, players_needed}
     pvp.challenge         - {challenge_id, challenger_name, category, max_players}
     pvp.match_ready       - {session_id, players, total_rounds}
-    pvp.waiting_answers   - {question_number, time_limit_seconds}
-    pvp.round_result      - {question, players, correct_answer, explanation}
-    pvp.final_results     - {rankings, total_rounds}
+    pvp.round_question    - {question_text, category, difficulty, round_number, total_rounds, time_limit_seconds}
+    pvp.player_answered   - {user_id} (content hidden)
+    pvp.round_result      - {round_number, question, players, correct_answer, explanation, article_ref}
+    pvp.scoreboard        - {players: [{user_id, name, total_score, correct_count}]}
+    pvp.final_results     - {rankings, total_rounds, contains_bot}
+    pvp.no_opponents      - {offer_bot: true}
+    pvp.bot_joined        - {bot_name, bot_id}
+    pvp.player_disconnected  - {user_id, grace_seconds}
+    pvp.player_reconnected   - {user_id}
+    pvp.player_replaced_by_bot - {original_user_id, bot_id}
+    pvp.match_state_restore  - {full state for reconnect}
 
     error                 - {message, code}
 """
@@ -45,6 +64,7 @@ Protocol:
 import asyncio
 import json
 import logging
+import random
 import time
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -68,13 +88,43 @@ from app.models.knowledge import (
 from app.services.knowledge_quiz import (
     QuizQuestion,
     evaluate_answer,
+    evaluate_answer_v2,
     evaluate_pvp_round,
     generate_question,
+    generate_follow_up,
+    generate_guiding_hint,
     get_total_questions,
     get_time_limit_seconds,
     get_user_weak_areas,
     calculate_quiz_results,
+    calculate_blitz_speed_bonus,
+    themed_difficulty_range,
 )
+from app.services.spaced_repetition import (
+    record_review as srs_record_review,
+    get_review_priority_queue as srs_get_review_queue,
+    start_srs_session,
+    get_user_srs_stats,
+    get_category_mastery,
+)
+from app.services.ai_personalities import (
+    PersonalityConfig,
+    get_personality,
+    get_personality_reaction,
+)
+from app.services.rag_legal import blitz_pool, RetrievalConfig, retrieve_legal_context
+from app.core.ws_rate_limiter import knowledge_limiter
+from app.services.arena_redis import (
+    ArenaRedis,
+    get_arena_redis,
+    MATCH_EVENTS_CHANNEL,
+    GLOBAL_EVENTS_CHANNEL,
+)
+from app.services.arena_round_collector import (
+    calculate_speed_bonuses,
+    wait_for_all_answers,
+)
+from app.services.content_filter import filter_answer_text, filter_user_input, detect_jailbreak
 
 logger = logging.getLogger(__name__)
 
@@ -82,20 +132,9 @@ logger = logging.getLogger(__name__)
 
 AUTH_TIMEOUT_SEC = 10.0
 BLITZ_TIME_LIMIT_SEC = 60
-PVP_ROUND_TIME_LIMIT_SEC = 90
+PVP_ROUND_TIME_LIMIT_SEC = 45
 PVP_CHALLENGE_EXPIRY_SEC = 60
-PVP_ANSWER_TIMEOUT_SEC = 60
-
-# ── Module-level state for PvP cross-connection tracking ─────────────────────
-
-# session_id -> [(ws, user_id, username)]
-_pvp_connections: dict[str, list[tuple[WebSocket, uuid.UUID, str]]] = {}
-
-# challenge_id -> challenge metadata dict
-_pvp_challenges: dict[str, dict] = {}
-
-# user_id -> WebSocket (for sending PvP challenge notifications)
-_knowledge_connections: dict[uuid.UUID, WebSocket] = {}
+PVP_TOTAL_ROUNDS = 10
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -208,6 +247,54 @@ class _SoloQuizState:
         self.timer_task: asyncio.Task | None = None
         self.finished: bool = False
 
+        # V2: Adaptive difficulty & personality
+        self.consecutive_correct: int = 0
+        self.consecutive_incorrect: int = 0
+        self.current_difficulty: int = difficulty
+        self.best_streak: int = 0
+        self.personality: PersonalityConfig | None = None
+        self.follow_up_counter: int = 0
+        self.pending_follow_up: bool = False
+        self.session_start_time: float = time.time()
+        self.asked_chunk_ids: set[uuid.UUID] = set()
+        self.previous_questions: list[str] = []
+
+        # SRS Review Mode state
+        self.srs_queue: list[dict] = []  # preloaded review items from start_srs_session
+        self.srs_current_item: dict | None = None  # currently shown SRS item (has leitner_box, streak, etc.)
+        self.srs_answers_in_session: int = 0  # number of SRS items answered this session
+
+    def update_adaptive_difficulty(self, is_correct: bool) -> int:
+        """Update difficulty based on answer streaks. Returns new difficulty."""
+        if is_correct:
+            self.consecutive_correct += 1
+            self.consecutive_incorrect = 0
+            if self.consecutive_correct > self.best_streak:
+                self.best_streak = self.consecutive_correct
+            if self.consecutive_correct >= 3:
+                self.current_difficulty = min(5, self.current_difficulty + 1)
+                self.consecutive_correct = 0
+        else:
+            self.consecutive_incorrect += 1
+            self.consecutive_correct = 0
+            if self.consecutive_incorrect >= 2:
+                self.current_difficulty = max(1, self.current_difficulty - 1)
+                self.consecutive_incorrect = 0
+        return self.current_difficulty
+
+    def should_follow_up(self) -> bool:
+        """Check if this is a follow-up turn (every 3rd answer in free_dialog)."""
+        if self.mode != QuizMode.free_dialog:
+            return False
+        self.follow_up_counter += 1
+        return self.follow_up_counter % 3 == 0
+
+
+# ── Session limits for free_dialog ──
+FREE_DIALOG_SOFT_LIMIT = 30
+FREE_DIALOG_HARD_LIMIT = 50
+FREE_DIALOG_TIME_LIMIT = 1800  # 30 minutes
+
 
 async def _start_solo_quiz(
     ws: WebSocket,
@@ -230,7 +317,28 @@ async def _start_solo_quiz(
     difficulty = int(data.get("difficulty", 3))
     difficulty = max(1, min(5, difficulty))
 
-    total_questions = get_total_questions(mode)
+    # ── SRS Review Mode: preload review queue ──
+    srs_queue: list[dict] = []
+    if mode == QuizMode.srs_review:
+        try:
+            async with async_session() as srs_db:
+                srs_session_data = await start_srs_session(
+                    srs_db, user_id,
+                    category=category,
+                    session_size=int(data.get("session_size", 10)),
+                )
+                srs_queue = srs_session_data.get("review_queue", [])
+                await _send(ws, "srs.session_info", {
+                    "stats": srs_session_data.get("stats", {}),
+                    "category_breakdown": srs_session_data.get("category_breakdown", []),
+                    "session_size": len(srs_queue),
+                    "estimated_time_minutes": srs_session_data.get("estimated_time_minutes", 5),
+                })
+        except Exception:
+            logger.warning("SRS session init failed, falling back to themed mode", exc_info=True)
+            mode = QuizMode.themed
+
+    total_questions = get_total_questions(mode) if not srs_queue else len(srs_queue)
     time_limit = get_time_limit_seconds(mode)
 
     # Create session in DB
@@ -256,6 +364,17 @@ async def _start_solo_quiz(
         db.add(participant)
         await db.commit()
 
+    # V2: Select AI personality
+    ai_personality_pref = data.get("ai_personality")
+    personality = get_personality(mode_str, ai_personality_pref)
+
+    # Save personality to DB session
+    async with async_session() as db:
+        db_session = await db.get(KnowledgeQuizSession, session_id)
+        if db_session:
+            db_session.ai_personality = personality.name
+            await db.commit()
+
     state = _SoloQuizState(
         session_id=session_id,
         user_id=user_id,
@@ -265,13 +384,24 @@ async def _start_solo_quiz(
         category=category,
         difficulty=difficulty,
     )
+    state.personality = personality
 
-    # Send quiz.ready
+    # SRS: store preloaded queue into state
+    if srs_queue:
+        state.srs_queue = srs_queue
+
+    # Send quiz.ready with personality data
     await _send(ws, "quiz.ready", {
         "session_id": str(session_id),
         "mode": mode.value,
         "total_questions": total_questions,
         "time_limit_per_question": time_limit,
+        "ai_personality": {
+            "name": personality.name,
+            "display_name": personality.display_name,
+            "avatar_emoji": personality.avatar_emoji,
+            "greeting": personality.greeting,
+        },
     })
 
     # Generate and send first question
@@ -281,6 +411,24 @@ async def _start_solo_quiz(
 
 async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
     """Generate the next question and send it to the client."""
+
+    # V2: Soft/hard limits for free_dialog
+    if state.mode == QuizMode.free_dialog:
+        elapsed = time.time() - state.session_start_time
+        if state.current_question >= FREE_DIALOG_HARD_LIMIT or elapsed >= FREE_DIALOG_TIME_LIMIT:
+            await _send(ws, "quiz.system_message", {
+                "text": "Сессия завершена. Подводим итоги!",
+            })
+            await _finish_solo_quiz(ws, state)
+            return
+        if state.current_question == FREE_DIALOG_SOFT_LIMIT:
+            await _send(ws, "quiz.soft_limit", {
+                "text": f"Вы ответили на {FREE_DIALOG_SOFT_LIMIT} вопросов! "
+                        "Хотите продолжить или подвести итоги?",
+                "questions_answered": state.current_question,
+                "can_continue": True,
+            })
+
     if state.current_question >= state.total_questions:
         await _finish_solo_quiz(ws, state)
         return
@@ -288,26 +436,134 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
     state.current_question += 1
     state.hint_used_for_current = False
 
-    # Get user weak areas for adaptive difficulty
-    weak_areas = await get_user_weak_areas(state.user_id)
+    question: QuizQuestion | None = None
 
-    question = await generate_question(
-        mode=state.mode,
-        category=state.category,
-        difficulty=state.difficulty,
-        question_number=state.current_question,
-        weak_areas=weak_areas,
-    )
+    # ── SRS Review Mode: serve questions from preloaded queue ──
+    if state.mode == QuizMode.srs_review and state.srs_queue:
+        srs_item = state.srs_queue.pop(0)
+        state.srs_current_item = srs_item
+        question = QuizQuestion(
+            question_text=srs_item["question_text"],
+            category=srs_item["question_category"],
+            difficulty=max(1, min(5, 6 - (srs_item.get("leitner_box", 0) + 1))),
+            expected_article="",
+            question_number=state.current_question,
+            total_questions=state.total_questions,
+            generation_strategy=f"srs_{srs_item.get('priority', 'review')}",
+        )
+
+    # V2: Blitz mode — try BlitzQuestionPool first
+    if question is None and state.mode == QuizMode.blitz and blitz_pool.loaded:
+        blitz_q = blitz_pool.get_question(
+            category=state.category,
+            difficulty_range=(
+                max(1, state.current_difficulty - 1),
+                min(5, state.current_difficulty + 1),
+            ),
+            exclude_ids=state.asked_chunk_ids,
+        )
+        if blitz_q:
+            question = QuizQuestion(
+                question_text=blitz_q["question"],
+                category=blitz_q["category"],
+                difficulty=blitz_q["difficulty"],
+                expected_article=blitz_q["article"],
+                question_number=state.current_question,
+                total_questions=state.total_questions,
+                chunk_id=blitz_q["chunk_id"],
+                blitz_answer=blitz_q["answer"],
+                generation_strategy="blitz_pool",
+            )
+            state.asked_chunk_ids.add(blitz_q["chunk_id"])
+
+    # SM-2: Adaptive SRS injection for regular (non-SRS) modes
+    # Ratio: if many overdue items → more frequent injection (every 2nd); otherwise every 4th
+    if question is None and state.mode not in (QuizMode.srs_review, QuizMode.blitz):
+        try:
+            from app.services.spaced_repetition import get_review_priority_queue
+            async with async_session() as srs_db:
+                overdue_queue = await get_review_priority_queue(
+                    srs_db, state.user_id, category=state.category, limit=5,
+                )
+                overdue_count = len(overdue_queue)
+                # Adaptive ratio: 10+ overdue → every 2nd; 5+ → every 3rd; else every 4th
+                if overdue_count >= 10:
+                    inject_every = 2
+                elif overdue_count >= 5:
+                    inject_every = 3
+                else:
+                    inject_every = 4
+                if overdue_queue and state.current_question % inject_every == 0:
+                    srs_item = overdue_queue[0]
+                    state.srs_current_item = srs_item
+                    question = QuizQuestion(
+                        question_text=srs_item["question_text"],
+                        category=srs_item["question_category"],
+                        difficulty=state.current_difficulty,
+                        expected_article="",
+                        question_number=state.current_question,
+                        total_questions=state.total_questions,
+                        generation_strategy=f"srs_{srs_item['priority']}",
+                    )
+        except Exception:
+            logger.debug("SRS priority queue unavailable", exc_info=True)
+
+    # Generate via LLM if no pool question
+    if question is None:
+        async with async_session() as db:
+            weak_areas = await get_user_weak_areas(state.user_id, db)
+
+            # V2: Use adaptive difficulty instead of fixed
+            diff = state.current_difficulty
+
+            # V2: Themed mode uses progressive difficulty
+            if state.mode == QuizMode.themed:
+                diff_range = themed_difficulty_range(state.current_question, state.total_questions)
+                diff = (diff_range[0] + diff_range[1]) // 2
+
+            question = await generate_question(
+                db,
+                mode=state.mode,
+                category=state.category,
+                difficulty=diff,
+                question_number=state.current_question,
+                user_weak_areas=weak_areas,
+                used_chunk_ids=state.asked_chunk_ids,
+            )
+
     state.current_q = question
+    # Track question text for dedup
+    if question:
+        state.previous_questions.append(question.question_text)
     state.question_start_time = time.time()
+    if question.chunk_id:
+        state.asked_chunk_ids.add(question.chunk_id)
 
-    await _send(ws, "quiz.question", {
-        "text": question.text,
+    # V2: Add personality comment and hint_available flag
+    hint_available = state.mode != QuizMode.blitz
+
+    question_msg: dict = {
+        "text": question.question_text,
         "category": question.category,
         "difficulty": question.difficulty,
         "question_number": state.current_question,
         "total_questions": state.total_questions,
-    })
+        "hint_available": hint_available,
+        "current_difficulty": state.current_difficulty,
+    }
+    # SRS mode: include Leitner box and review metadata
+    if state.mode == QuizMode.srs_review and state.srs_current_item:
+        question_msg["srs_meta"] = {
+            "leitner_box": state.srs_current_item.get("leitner_box", 0),
+            "current_streak": state.srs_current_item.get("current_streak", 0),
+            "total_reviews": state.srs_current_item.get("total_reviews", 0),
+            "priority": state.srs_current_item.get("priority", "review"),
+            "remaining_in_queue": len(state.srs_queue),
+        }
+    # Also mark injected SRS questions in regular modes
+    elif question.generation_strategy and question.generation_strategy.startswith("srs_"):
+        question_msg["is_srs_review"] = True
+    await _send(ws, "quiz.question", question_msg)
 
     # Start blitz timer if needed
     if state.timer_task and not state.timer_task.done():
@@ -340,27 +596,54 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
         await _send_error(ws, "No active question", "no_question")
         return
 
+    # Security: filter user input (jailbreak + profanity)
+    if detect_jailbreak(text):
+        logger.warning("Jailbreak attempt in knowledge quiz from user")
+    text, _input_violations = filter_user_input(text)
+
     # Cancel blitz timer
     if state.timer_task and not state.timer_task.done():
         state.timer_task.cancel()
 
     response_time_ms = int((time.time() - state.question_start_time) * 1000)
 
-    # Evaluate via service
-    result = await evaluate_answer(
-        question=state.current_q,
-        user_answer=text,
-        difficulty=state.difficulty,
-    )
+    # V2: Use evaluate_answer_v2 with personality prompt
+    personality_prompt = state.personality.system_prompt if state.personality else None
+    async with async_session() as db:
+        result = await evaluate_answer_v2(
+            db,
+            question=state.current_q,
+            user_answer=text,
+            mode=state.mode,
+            personality_prompt=personality_prompt,
+        )
 
     # Calculate score delta
+    speed_bonus = 0.0
     if result.is_correct:
         score_delta = 10.0 if not state.hint_used_for_current else 8.0
         state.correct += 1
+        # V2: Blitz speed bonus
+        if state.mode == QuizMode.blitz:
+            speed_bonus = calculate_blitz_speed_bonus(response_time_ms)
+            score_delta += speed_bonus
     else:
         score_delta = -2.0
         state.incorrect += 1
     state.score += score_delta
+
+    # V2: Update adaptive difficulty
+    new_difficulty = state.update_adaptive_difficulty(result.is_correct)
+
+    # V2: Get personality reaction
+    personality_comment = ""
+    if state.personality:
+        personality_comment = get_personality_reaction(
+            state.personality,
+            result.is_correct,
+            state.consecutive_correct,
+            correct_answer=result.correct_answer_summary,
+        )
 
     # Save to DB
     await _save_answer(
@@ -370,24 +653,89 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
         explanation=result.explanation,
         score_delta=score_delta,
         article_reference=result.article_reference,
-        rag_chunks=result.rag_chunks_used,
+        rag_chunks=None,
         hint_used=state.hint_used_for_current,
         response_time_ms=response_time_ms,
     )
 
-    # Send feedback
+    # SM-2 spaced repetition: record review for long-term tracking
+    _is_srs = state.mode == QuizMode.srs_review
+    _source = "srs_review" if _is_srs else (
+        "blitz" if state.mode == QuizMode.blitz else "quiz"
+    )
+    srs_history_record = None
+    try:
+        async with async_session() as srs_db:
+            srs_history_record = await srs_record_review(
+                srs_db,
+                user_id=state.user_id,
+                question_text=state.current_q.question_text,
+                question_category=state.current_q.category,
+                is_correct=result.is_correct,
+                response_time_ms=response_time_ms,
+                hint_used=state.hint_used_for_current,
+                source_type=_source,
+                is_srs_review=_is_srs,
+            )
+            await srs_db.commit()
+    except Exception:
+        logger.debug("SRS record_review failed", exc_info=True)
+
+    # SRS Review Mode: send detailed progress with box/streak changes
+    if _is_srs and srs_history_record is not None:
+        state.srs_answers_in_session += 1
+        _old_item = state.srs_current_item or {}
+        await _send(ws, "srs.progress", {
+            "question_number": state.current_question,
+            "total_in_session": state.total_questions,
+            "answered_in_session": state.srs_answers_in_session,
+            "remaining": len(state.srs_queue),
+            "is_correct": result.is_correct,
+            "leitner_box_before": _old_item.get("leitner_box", 0),
+            "leitner_box_after": srs_history_record.leitner_box,
+            "current_streak": srs_history_record.current_streak,
+            "best_streak": srs_history_record.best_streak,
+            "ease_factor": round(srs_history_record.ease_factor, 2),
+            "next_review_days": srs_history_record.interval_days,
+            "category": state.current_q.category,
+        })
+        state.srs_current_item = None  # reset for next question
+
+    # Send feedback with V2 fields
     feedback_data: dict = {
         "is_correct": result.is_correct,
         "explanation": result.explanation,
         "article_reference": result.article_reference,
         "score_delta": score_delta,
+        "personality_comment": personality_comment,
+        "current_difficulty": new_difficulty,
+        "streak": state.consecutive_correct,
+        "best_streak": state.best_streak,
     }
+    if speed_bonus > 0:
+        feedback_data["speed_bonus"] = speed_bonus
     if not result.is_correct:
-        feedback_data["correct_answer"] = result.correct_answer
+        feedback_data["correct_answer"] = result.correct_answer_summary
     await _send(ws, "quiz.feedback", feedback_data)
 
     # Send progress
     await _send_progress(ws, state)
+
+    # V2: Check for follow-up question
+    if state.should_follow_up() and state.current_q:
+        follow_up_text = await generate_follow_up(
+            state.current_q,
+            text,
+            result.is_correct,
+            personality_prompt=personality_prompt,
+        )
+        if follow_up_text:
+            state.pending_follow_up = True
+            await _send(ws, "quiz.follow_up", {
+                "text": follow_up_text,
+                "is_optional": True,
+            })
+            return  # Wait for follow-up answer or skip
 
     # Next question
     await _next_question(ws, state)
@@ -414,6 +762,11 @@ async def _handle_hint(ws: WebSocket, state: _SoloQuizState) -> None:
         await _send_error(ws, "No active question", "no_question")
         return
 
+    # V2: Block hints in blitz mode
+    if state.mode == QuizMode.blitz:
+        await _send_error(ws, "Подсказки недоступны в блиц-режиме!", "hint_blocked_blitz")
+        return
+
     if state.hint_used_for_current:
         await _send_error(ws, "Hint already used for this question", "hint_already_used")
         return
@@ -422,7 +775,9 @@ async def _handle_hint(ws: WebSocket, state: _SoloQuizState) -> None:
     penalty = -2.0
     state.score += penalty
 
-    hint_text = state.current_q.hint or "Review the relevant articles of 127-FZ."
+    # V2: Use guiding hint generator with personality
+    personality_name = state.personality.name if state.personality else None
+    hint_text = await generate_guiding_hint(state.current_q, personality_name)
 
     await _send(ws, "quiz.hint", {
         "text": hint_text,
@@ -462,7 +817,7 @@ async def _save_answer(
             session_id=state.session_id,
             user_id=state.user_id,
             question_number=state.current_question,
-            question_text=state.current_q.text,
+            question_text=state.current_q.question_text,
             question_category=state.current_q.category or "general",
             user_answer=user_answer,
             is_correct=is_correct,
@@ -476,6 +831,29 @@ async def _save_answer(
         db.add(answer)
         await db.commit()
 
+        # ── RAG Feedback: record quiz answer outcome ──
+        try:
+            if rag_chunks and isinstance(rag_chunks, list):
+                from app.services.rag_feedback import record_quiz_feedback
+                feedback_answers = []
+                for chunk_ref in rag_chunks[:3]:
+                    cid = chunk_ref if isinstance(chunk_ref, str) else str(chunk_ref)
+                    feedback_answers.append({
+                        "chunk_id": cid,
+                        "is_correct": is_correct,
+                        "user_answer": user_answer,
+                        "score_delta": score_delta,
+                    })
+                if feedback_answers:
+                    await record_quiz_feedback(
+                        db,
+                        quiz_session_id=state.session_id,
+                        user_id=state.user_id,
+                        answers=feedback_answers,
+                    )
+        except Exception as _rag_err:
+            logger.warning("RAG feedback recording failed for session=%s: %s", state.session_id, _rag_err)
+
 
 async def _finish_solo_quiz(ws: WebSocket, state: _SoloQuizState) -> None:
     """Finalize solo quiz, calculate results, update DB, send completed."""
@@ -486,12 +864,7 @@ async def _finish_solo_quiz(ws: WebSocket, state: _SoloQuizState) -> None:
     if state.timer_task and not state.timer_task.done():
         state.timer_task.cancel()
 
-    results = await calculate_quiz_results(
-        session_id=state.session_id,
-        user_id=state.user_id,
-    )
-
-    # Update DB session
+    # Update DB session and calculate results
     async with async_session() as db:
         db_session = await db.get(KnowledgeQuizSession, state.session_id)
         if db_session:
@@ -508,14 +881,150 @@ async def _finish_solo_quiz(ws: WebSocket, state: _SoloQuizState) -> None:
                 )
             await db.commit()
 
-    await _send(ws, "quiz.completed", {"results": results})
+        results = await calculate_quiz_results(db_session, db)
+        # Convert dataclass to dict for JSON serialization and extension
+        from dataclasses import asdict
+        results_data = asdict(results) if hasattr(results, '__dataclass_fields__') else (results if isinstance(results, dict) else {"score": 0})
+
+        # --- Gamification: XP, streaks, achievements ---
+        try:
+            from app.services.arena_xp import (
+                calculate_arena_xp, update_arena_streak, apply_arena_xp_to_progress,
+            )
+            from app.services.gamification import check_arena_achievements
+
+            await update_arena_streak(
+                user_id=state.user_id,
+                correct_in_session=state.correct,
+                total_in_session=state.correct + state.incorrect + state.skipped,
+                answer_streak_at_end=getattr(state, "best_streak", 0),
+                db=db,
+            )
+
+            from app.models.progress import ManagerProgress
+            prog_r = await db.execute(
+                select(ManagerProgress).where(ManagerProgress.user_id == state.user_id)
+            )
+            prog = prog_r.scalar_one_or_none()
+            streak_days = prog.arena_daily_streak if prog else 0
+
+            xp_info = calculate_arena_xp(
+                mode=state.mode,
+                score=state.score,
+                correct=state.correct,
+                total=max(1, state.correct + state.incorrect + state.skipped),
+                streak_days=streak_days,
+            )
+            await apply_arena_xp_to_progress(state.user_id, xp_info["total"], db)
+
+            # EventBus handles arena achievements + notifications
+            from app.services.event_bus import event_bus, GameEvent, EVENT_ARENA_COMPLETED
+            await event_bus.emit(GameEvent(
+                kind=EVENT_ARENA_COMPLETED,
+                user_id=state.user_id,
+                db=db,
+                payload={"mode": state.mode, "score": state.score, "xp": xp_info},
+            ))
+            await db.commit()
+
+            results_data["xp_earned"] = xp_info
+        except Exception as e:
+            logger.warning("Gamification hook error in quiz completion: %s", e, exc_info=True)
+
+    # --- Behavioral Intelligence: track behavior + update emotion profile ---
+    try:
+        from app.services.behavior_tracker import analyze_session_behavior, save_behavior_snapshot
+        from app.services.manager_emotion_profiler import update_emotion_profile
+        from app.services.progress_detector import detect_trends
+
+        # Build message list from DB answers for behavior analysis
+        async with async_session() as db_beh:
+            from app.models.knowledge import KnowledgeAnswer
+            ans_result = await db_beh.execute(
+                select(KnowledgeAnswer)
+                .where(KnowledgeAnswer.session_id == state.session_id)
+                .order_by(KnowledgeAnswer.question_number)
+            )
+            answers = ans_result.scalars().all()
+            messages_for_behavior = [
+                {
+                    "role": "user",
+                    "content": a.user_answer or "",
+                    "response_time_ms": a.response_time_ms,
+                    "sequence": a.question_number,
+                }
+                for a in answers if a.user_answer and a.user_answer != "(skipped)"
+            ]
+
+            if messages_for_behavior:
+                analysis = analyze_session_behavior(
+                    user_id=state.user_id,
+                    session_id=state.session_id,
+                    session_type="quiz",
+                    messages=messages_for_behavior,
+                )
+                snapshot = await save_behavior_snapshot(analysis, db_beh)
+                await update_emotion_profile(
+                    user_id=state.user_id,
+                    db=db_beh,
+                    session_snapshot=snapshot,
+                    session_score=state.score,
+                )
+                await db_beh.commit()
+
+                # Detect trends (non-blocking, runs periodically)
+                try:
+                    await detect_trends(state.user_id, db_beh, period_days=7)
+                    await db_beh.commit()
+                except Exception:
+                    pass
+
+                logger.info(
+                    "Behavioral hooks: user=%s confidence=%.0f stress=%.0f",
+                    state.user_id, analysis.confidence_score, analysis.stress_level,
+                )
+    except Exception as e:
+        logger.warning("Behavioral hook error in quiz completion: %s", e, exc_info=True)
+
+    # SRS Review Mode: append SRS completion summary
+    if state.mode == QuizMode.srs_review:
+        try:
+            async with async_session() as srs_db:
+                srs_stats = await get_user_srs_stats(srs_db, state.user_id)
+                mastery = await get_category_mastery(srs_db, state.user_id)
+            results_data["srs_summary"] = {
+                "items_reviewed": state.srs_answers_in_session,
+                "accuracy_pct": round(
+                    (state.correct / max(1, state.correct + state.incorrect)) * 100, 1
+                ),
+                "updated_stats": srs_stats,
+                "category_mastery": mastery,
+            }
+        except Exception:
+            logger.debug("SRS completion summary failed", exc_info=True)
+
+    await _send(ws, "quiz.completed", {"results": results_data})
+
+    # GAP-2 fix: Auto-backfill SRS from quiz answers
+    try:
+        from app.services.spaced_repetition import backfill_from_quiz_answers
+        async with async_session() as srs_db:
+            backfilled = await backfill_from_quiz_answers(srs_db, user_id)
+            if backfilled:
+                await srs_db.commit()
+                logger.info("SRS backfilled %d records for user %s after quiz", backfilled, user_id)
+    except Exception:
+        logger.debug("SRS backfill after quiz failed (non-critical)", exc_info=True)
+
+    # Send achievement notifications separately for toast display
+    if results_data.get("achievements_earned"):
+        for ach in results_data["achievements_earned"]:
+            await _send(ws, "achievement.earned", ach)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PVP ARENA MODE
+# PVP ARENA MODE — Redis-based state machine
 # ══════════════════════════════════════════════════════════════════════════════
-
-PVP_TOTAL_ROUNDS = 10
 
 
 async def _handle_find_opponent(
@@ -524,14 +1033,25 @@ async def _handle_find_opponent(
     username: str,
     data: dict,
 ) -> None:
-    """Create a PvP challenge and wait for opponents."""
-    max_players = int(data.get("max_players", 2))
+    """Create a PvP challenge via Redis and broadcast to all workers."""
+    arena = get_arena_redis()
+
+    # Check if user is already in an active match
+    active_match = await arena.get_user_active_match(str(user_id))
+    if active_match:
+        await _send_error(ws, "Already in an active match", "already_in_match")
+        return
+
+    try:
+        max_players = int(data.get("max_players", 2))
+    except (ValueError, TypeError):
+        max_players = 2
     if max_players not in (2, 4):
         max_players = 2
     category = data.get("category")
 
     challenge_id = str(uuid.uuid4())
-    expires_at = datetime.now(timezone.utc) + timedelta(seconds=PVP_CHALLENGE_EXPIRY_SEC)
+    expires_at = time.time() + PVP_CHALLENGE_EXPIRY_SEC
 
     # Save challenge to DB
     async with async_session() as db:
@@ -542,21 +1062,20 @@ async def _handle_find_opponent(
             max_players=max_players,
             is_active=True,
             accepted_by=[],
-            expires_at=expires_at,
+            expires_at=datetime.fromtimestamp(expires_at, tz=timezone.utc),
         )
         db.add(challenge)
         await db.commit()
 
-    # Track in memory
-    _pvp_challenges[challenge_id] = {
-        "challenger_ws": ws,
-        "challenger_id": user_id,
-        "challenger_name": username,
-        "max_players": max_players,
-        "category": category,
-        "accepted": [],  # list of (ws, user_id, username)
-        "expires_at": expires_at,
-    }
+    # Create challenge in Redis
+    await arena.create_challenge(
+        challenge_id=challenge_id,
+        challenger_id=str(user_id),
+        challenger_name=username,
+        category=category,
+        max_players=max_players,
+        expires_at=expires_at,
+    )
 
     await _send(ws, "pvp.searching", {
         "challenge_id": challenge_id,
@@ -564,27 +1083,50 @@ async def _handle_find_opponent(
         "expires_in_seconds": PVP_CHALLENGE_EXPIRY_SEC,
     })
 
-    # Broadcast challenge to all connected knowledge WS users (except challenger)
-    for uid, conn_ws in _knowledge_connections.items():
-        if uid != user_id:
-            await _send(conn_ws, "pvp.challenge", {
-                "challenge_id": challenge_id,
+    # Broadcast challenge to all connected clients via Redis Pub/Sub
+    await arena.publish_global_event({
+        "type": "pvp.challenge",
+        "challenge_id": challenge_id,
+        "challenger_id": str(user_id),
+        "challenger_name": username,
+        "category": category,
+        "max_players": max_players,
+    })
+
+    # Block 5: Also broadcast via notification WS (reaches users not on Arena page)
+    try:
+        from app.services.arena_notifications import broadcast_arena_notification
+
+        cat_display = category or "Любая"
+        await broadcast_arena_notification(
+            "arena.challenge",
+            {
                 "challenger_name": username,
-                "category": category,
+                "category": cat_display,
+                "challenge_id": challenge_id,
                 "max_players": max_players,
-            })
+            },
+            exclude_user_id=user_id,
+        )
+    except Exception:
+        logger.debug("Notification broadcast failed for PvP challenge", exc_info=True)
 
     # Schedule expiry
-    asyncio.create_task(_challenge_expiry_timer(challenge_id))
+    asyncio.create_task(_challenge_expiry_timer(ws, user_id, challenge_id))
 
 
-async def _challenge_expiry_timer(challenge_id: str) -> None:
+async def _challenge_expiry_timer(
+    ws: WebSocket, challenger_id: uuid.UUID, challenge_id: str,
+) -> None:
     """Expire challenge after timeout if not enough players joined."""
     try:
         await asyncio.sleep(PVP_CHALLENGE_EXPIRY_SEC)
-        challenge = _pvp_challenges.pop(challenge_id, None)
-        if challenge is None:
+        arena = get_arena_redis()
+        challenge = await arena.get_challenge(challenge_id)
+        if challenge is None or not challenge.is_active:
             return  # Already started or cancelled
+
+        await arena.expire_challenge(challenge_id)
 
         # Mark expired in DB
         async with async_session() as db:
@@ -593,11 +1135,9 @@ async def _challenge_expiry_timer(challenge_id: str) -> None:
                 db_challenge.is_active = False
                 await db.commit()
 
-        # Notify challenger
-        await _send(challenge["challenger_ws"], "error", {
-            "message": "Challenge expired, no opponents found",
-            "code": "challenge_expired",
-        })
+        # Notify challenger: offer bot fallback
+        await _send(ws, "pvp.no_opponents", {"offer_bot": True})
+
     except asyncio.CancelledError:
         pass
     except Exception as e:
@@ -616,41 +1156,47 @@ async def _handle_accept_challenge(
         await _send_error(ws, "challenge_id required", "missing_field")
         return
 
-    challenge = _pvp_challenges.get(challenge_id)
-    if not challenge:
+    arena = get_arena_redis()
+
+    # Check if user is already in a match
+    active_match = await arena.get_user_active_match(str(user_id))
+    if active_match:
+        await _send_error(ws, "Already in an active match", "already_in_match")
+        return
+
+    challenge = await arena.get_challenge(challenge_id)
+    if challenge is None or not challenge.is_active:
         await _send_error(ws, "Challenge not found or expired", "challenge_not_found")
         return
 
-    if user_id == challenge["challenger_id"]:
-        await _send_error(ws, "Cannot accept your own challenge", "self_challenge")
+    # Atomic accept via Redis Lua script
+    accepted, is_full = await arena.accept_challenge(
+        challenge_id=challenge_id,
+        user_id=str(user_id),
+        user_name=username,
+        max_players=challenge.max_players,
+    )
+
+    if not accepted:
+        await _send_error(ws, "Cannot accept this challenge", "accept_failed")
         return
 
-    # Check if already accepted
-    for _, uid, _ in challenge["accepted"]:
-        if uid == user_id:
-            await _send_error(ws, "Already accepted this challenge", "already_accepted")
-            return
+    # Broadcast player joined event
+    updated_challenge = await arena.get_challenge(challenge_id)
+    accepted_count = len(updated_challenge.accepted_by) if updated_challenge else 0
 
-    challenge["accepted"].append((ws, user_id, username))
-
-    # Notify challenger
-    await _send(challenge["challenger_ws"], "pvp.opponent_found", {
-        "opponent_name": username,
-        "opponent_id": str(user_id),
+    await arena.publish_global_event({
+        "type": "pvp.player_joined",
+        "challenge_id": challenge_id,
+        "player_name": username,
+        "player_id": str(user_id),
+        "players_count": accepted_count + 1,  # +1 for challenger
+        "players_needed": challenge.max_players,
     })
 
-    # Notify acceptor
-    await _send(ws, "pvp.opponent_found", {
-        "opponent_name": challenge["challenger_name"],
-        "opponent_id": str(challenge["challenger_id"]),
-    })
-
-    # Check if we have enough players
-    needed = challenge["max_players"] - 1  # minus challenger
-    if len(challenge["accepted"]) >= needed:
-        # Remove from challenges, start match
-        _pvp_challenges.pop(challenge_id, None)
-        await _start_pvp_match(challenge)
+    # If match is full, start the game
+    if is_full and updated_challenge:
+        await _start_pvp_match_redis(arena, challenge_id, updated_challenge)
 
 
 async def _handle_decline_challenge(
@@ -658,294 +1204,845 @@ async def _handle_decline_challenge(
     user_id: uuid.UUID,
     data: dict,
 ) -> None:
-    """Decline a PvP challenge (just ignore it)."""
-    # Nothing to do server-side, just acknowledge
+    """Decline a PvP challenge."""
     challenge_id = data.get("challenge_id")
     await _send(ws, "pvp.decline.ok", {"challenge_id": challenge_id})
 
 
-async def _start_pvp_match(challenge: dict) -> None:
-    """Create a PvP session and start the match for all players."""
-    session_id = uuid.uuid4()
-    session_id_str = str(session_id)
-    category = challenge.get("category")
-    max_players = challenge["max_players"]
+async def _handle_pvp_answer(
+    ws: WebSocket,
+    user_id: uuid.UUID,
+    data: dict,
+) -> None:
+    """Handle a PvP answer submission (simultaneous mode)."""
+    arena = get_arena_redis()
 
-    # Collect all players: challenger + accepted
-    all_players: list[tuple[WebSocket, uuid.UUID, str]] = [
-        (challenge["challenger_ws"], challenge["challenger_id"], challenge["challenger_name"]),
+    session_id = await arena.get_user_active_match(str(user_id))
+    if not session_id:
+        await _send_error(ws, "Not in an active match", "no_active_match")
+        return
+
+    text = data.get("text", "").strip()
+    round_number = data.get("round_number")
+
+    if not text:
+        await _send_error(ws, "Empty answer", "empty_text")
+        return
+
+    # Validate round_number: must be a positive integer within valid range
+    if round_number is None:
+        await _send_error(ws, "Missing round_number", "invalid_field")
+        return
+    try:
+        round_number = int(round_number)
+        if round_number < 1 or round_number > 50:  # Sane upper bound
+            raise ValueError("out of range")
+    except (ValueError, TypeError):
+        await _send_error(ws, "Invalid round_number", "invalid_field")
+        return
+
+    # Security: filter user input for PvP (jailbreak + profanity)
+    text, _input_violations = filter_user_input(text)
+    if round_number is None:
+        await _send_error(ws, "round_number required", "missing_field")
+        return
+
+    # Real-time anti-cheat (lightweight, non-blocking)
+    try:
+        from app.services.nlp_cheat_detector import real_time_check
+        _rt_response_ms = data.get("response_time_ms")
+        _rt_question = data.get("question_text", "")
+        _rt_check = real_time_check(text, response_time_ms=_rt_response_ms, question_text=_rt_question)
+        if _rt_check.get("should_flag_for_review"):
+            logger.warning(
+                "Real-time cheat flag: user=%s, flags=%s, risk=%s",
+                user_id,
+                _rt_check.get("flags"),
+                _rt_check.get("risk_level"),
+            )
+    except Exception:
+        pass  # Never block answer submission due to cheat detection
+
+    result = await arena.submit_answer(
+        session_id=session_id,
+        round_number=int(round_number),
+        user_id=str(user_id),
+        answer_text=text,
+    )
+
+    if not result.accepted:
+        await _send_error(ws, result.reason or "Answer not accepted", "answer_rejected")
+        return
+
+    # Broadcast that this player answered (without content!)
+    await arena.publish_match_event(session_id, {
+        "type": "pvp.player_answered",
+        "user_id": str(user_id),
+        "round_number": round_number,
+    })
+
+    # If all answered, the game loop will detect this via polling
+
+
+async def _handle_cancel_search(
+    ws: WebSocket,
+    user_id: uuid.UUID,
+) -> None:
+    """Cancel PvP opponent search."""
+    # Find and expire any active challenges by this user
+    arena = get_arena_redis()
+    active_ids = await arena.get_active_challenges()
+    for cid in active_ids:
+        challenge = await arena.get_challenge(cid)
+        if challenge and challenge.challenger_id == str(user_id) and challenge.is_active:
+            await arena.expire_challenge(cid)
+            # Update DB
+            async with async_session() as db:
+                db_challenge = await db.get(QuizChallenge, uuid.UUID(cid))
+                if db_challenge and db_challenge.is_active:
+                    db_challenge.is_active = False
+                    await db.commit()
+            break
+    await _send(ws, "pvp.search_cancelled", {})
+
+
+async def _handle_play_with_bot(
+    ws: WebSocket,
+    user_id: uuid.UUID,
+    username: str,
+) -> None:
+    """Start a PvP match with an AI bot (fallback when no opponents found)."""
+    arena = get_arena_redis()
+
+    # Check not already in match
+    active_match = await arena.get_user_active_match(str(user_id))
+    if active_match:
+        await _send_error(ws, "Already in an active match", "already_in_match")
+        return
+
+    bot_id = f"bot_{uuid.uuid4().hex[:8]}"
+    bot_names = ["AI Юрист", "AI Знаток", "AI Арбитр"]
+    bot_name = random.choice(bot_names)
+
+    # Notify bot joined
+    await _send(ws, "pvp.bot_joined", {"bot_name": bot_name, "bot_id": bot_id})
+
+    session_id = str(uuid.uuid4())
+
+    players_info = [
+        {"user_id": str(user_id), "name": username, "is_bot": False, "rating": 1500.0},
+        {"user_id": bot_id, "name": bot_name, "is_bot": True, "rating": 1500.0},
     ]
-    all_players.extend(challenge["accepted"])
 
     # Create session in DB
     async with async_session() as db:
         session = KnowledgeQuizSession(
-            id=session_id,
-            user_id=challenge["challenger_id"],
+            id=uuid.UUID(session_id),
+            user_id=user_id,
             mode=QuizMode.pvp,
-            category=category,
+            category=None,
             difficulty=3,
             total_questions=PVP_TOTAL_ROUNDS,
-            max_players=max_players,
+            max_players=2,
+            status=QuizSessionStatus.active,
+        )
+        db.add(session)
+        participant = QuizParticipant(
+            session_id=uuid.UUID(session_id),
+            user_id=user_id,
+            score=0.0,
+        )
+        db.add(participant)
+        await db.commit()
+
+    # Create match in Redis
+    await arena.create_match(
+        session_id=session_id,
+        players_info=players_info,
+        total_rounds=PVP_TOTAL_ROUNDS,
+        category=None,
+        contains_bot=True,
+    )
+
+    # Notify match ready
+    await _send(ws, "pvp.match_ready", {
+        "session_id": session_id,
+        "players": players_info,
+        "total_rounds": PVP_TOTAL_ROUNDS,
+    })
+
+    # Start game loop
+    asyncio.create_task(_pvp_game_loop_redis(session_id))
+
+
+async def _start_pvp_match_redis(
+    arena: ArenaRedis,
+    challenge_id: str,
+    challenge: "ChallengeData",
+) -> None:
+    """Create a PvP session from a filled challenge and start the game loop."""
+    from app.services.arena_redis import ChallengeData
+
+    session_id = str(uuid.uuid4())
+
+    # Build players list
+    players_info = [
+        {
+            "user_id": challenge.challenger_id,
+            "name": challenge.challenger_name,
+            "is_bot": False,
+            "rating": 1500.0,
+        },
+    ]
+    for accepted in challenge.accepted_by:
+        players_info.append({
+            "user_id": accepted["user_id"],
+            "name": accepted["name"],
+            "is_bot": False,
+            "rating": 1500.0,
+        })
+
+    # Create session in DB
+    async with async_session() as db:
+        session = KnowledgeQuizSession(
+            id=uuid.UUID(session_id),
+            user_id=uuid.UUID(challenge.challenger_id),
+            mode=QuizMode.pvp,
+            category=challenge.category,
+            difficulty=3,
+            total_questions=PVP_TOTAL_ROUNDS,
+            max_players=challenge.max_players,
             status=QuizSessionStatus.active,
         )
         db.add(session)
 
-        for _ws, uid, _name in all_players:
-            participant = QuizParticipant(
-                session_id=session_id,
-                user_id=uid,
-                score=0.0,
-            )
-            db.add(participant)
+        for p in players_info:
+            if not p["is_bot"]:
+                participant = QuizParticipant(
+                    session_id=uuid.UUID(session_id),
+                    user_id=uuid.UUID(p["user_id"]),
+                    score=0.0,
+                )
+                db.add(participant)
         await db.commit()
 
     # Update challenge in DB
     async with async_session() as db:
-        db_challenge_id = challenge.get("challenge_db_id")
-        # Find the challenge by challenger_id (most recent active)
-        result = await db.execute(
-            select(QuizChallenge)
-            .where(
-                QuizChallenge.challenger_id == challenge["challenger_id"],
-                QuizChallenge.is_active == True,
-            )
-            .order_by(QuizChallenge.created_at.desc())
-            .limit(1)
-        )
-        db_challenge = result.scalar_one_or_none()
+        db_challenge = await db.get(QuizChallenge, uuid.UUID(challenge_id))
         if db_challenge:
             db_challenge.is_active = False
-            db_challenge.session_id = session_id
-            db_challenge.accepted_by = [str(uid) for _, uid, _ in challenge["accepted"]]
+            db_challenge.session_id = uuid.UUID(session_id)
+            db_challenge.accepted_by = [a["user_id"] for a in challenge.accepted_by]
             await db.commit()
 
-    # Track PvP connections
-    _pvp_connections[session_id_str] = list(all_players)
+    # Create match in Redis
+    await arena.create_match(
+        session_id=session_id,
+        players_info=players_info,
+        total_rounds=PVP_TOTAL_ROUNDS,
+        category=challenge.category,
+        contains_bot=False,
+    )
 
-    # Notify all players
-    players_data = [
-        {"user_id": str(uid), "name": name}
-        for _ws, uid, name in all_players
+    # Broadcast match ready to all players via Pub/Sub
+    await arena.publish_global_event({
+        "type": "pvp.match_ready",
+        "session_id": session_id,
+        "players": players_info,
+        "total_rounds": PVP_TOTAL_ROUNDS,
+    })
+
+    # Start the game loop
+    asyncio.create_task(_pvp_game_loop_redis(session_id))
+
+
+def _get_round_difficulty(round_num: int, total: int, rating_profile: dict | None = None) -> int:
+    """Progressive difficulty adjusted by Arena PvP rating.
+
+    Base: rounds 1-3 easy, 4-7 medium, 8-10 hard.
+    Arena adjustment: if rating_profile provided, clamp to rating-based range.
+    """
+    progress = round_num / total
+    if progress <= 0.3:
+        base = random.randint(1, 2)
+    elif progress <= 0.7:
+        base = random.randint(2, 4)
+    else:
+        base = random.randint(4, 5)
+
+    if rating_profile and rating_profile.get("has_pvp_data"):
+        lo, hi = rating_profile["difficulty_range"]
+        return max(lo, min(hi, base))
+    return base
+
+
+async def _generate_bot_answer(
+    question: QuizQuestion,
+    target_accuracy: float = 0.7,
+) -> str:
+    """Generate a bot answer for PvP. Simple heuristic-based."""
+    should_be_correct = random.random() < target_accuracy
+
+    if should_be_correct and question.rag_context and question.rag_context.has_results:
+        top = question.rag_context.results[0]
+        # Rephrase correct answer
+        sentences = top.fact_text.split(".")
+        if len(sentences) > 2:
+            answer = ". ".join(sentences[:2]) + "."
+        else:
+            answer = top.fact_text
+        if random.random() > 0.5 and top.law_article:
+            answer += f" (ст. {top.law_article})"
+        return answer
+
+    # Plausible wrong or generic answer
+    generic_wrong = [
+        "Полагаю, что в данном случае применяются общие нормы гражданского законодательства.",
+        "Думаю, это регулируется статьями ГК РФ, а не 127-ФЗ напрямую.",
+        "Если не ошибаюсь, данный вопрос решается судом по усмотрению.",
+        "Не уверен точно, но кажется срок составляет 3 месяца.",
+        "По моему мнению, это зависит от конкретных обстоятельств дела.",
     ]
-    for ws, _uid, _name in all_players:
-        await _send(ws, "pvp.match_ready", {
-            "session_id": session_id_str,
-            "players": players_data,
-            "total_rounds": PVP_TOTAL_ROUNDS,
-        })
-
-    # Start the PvP game loop in a background task
-    asyncio.create_task(_pvp_game_loop(session_id_str, session_id, all_players, category))
+    return random.choice(generic_wrong)
 
 
-async def _pvp_game_loop(
-    session_id_str: str,
-    session_id: uuid.UUID,
-    players: list[tuple[WebSocket, uuid.UUID, str]],
-    category: str | None,
-) -> None:
-    """Run the PvP quiz: generate questions, collect answers, judge rounds."""
-    scores: dict[uuid.UUID, float] = {uid: 0.0 for _, uid, _ in players}
+async def _pvp_game_loop_redis(session_id: str) -> None:
+    """Run the PvP quiz using Redis state machine.
+
+    This runs on ONE worker (acquired via distributed lock).
+    Events are broadcast via Redis Pub/Sub to all connected workers.
+    """
+    arena = get_arena_redis()
+
+    # Acquire distributed lock — only one worker runs the game
+    if not await arena.acquire_game_lock(session_id):
+        logger.debug("Game lock already held for session=%s, skipping", session_id)
+        return
 
     try:
-        for round_num in range(1, PVP_TOTAL_ROUNDS + 1):
+        match_data = await arena.get_match(session_id)
+        if not match_data:
+            logger.error("Match not found in Redis: session=%s", session_id)
+            return
+
+        player_ids = match_data.player_ids
+        total_rounds = match_data.total_rounds
+        category = match_data.category
+        contains_bot = match_data.contains_bot
+        previous_questions: list[str] = []
+
+        # Get arena difficulty profile for players (Block 5: Cross-Module)
+        _arena_rating_profile = None
+        try:
+            from app.services.arena_difficulty import get_arena_difficulty_profile
+            async with async_session() as _db:
+                profiles = []
+                for pid in player_ids:
+                    p = await get_arena_difficulty_profile(uuid.UUID(pid), _db)
+                    if p.get("has_pvp_data"):
+                        profiles.append(p)
+                if profiles:
+                    # Use the LOWER-rated player's profile (fairness)
+                    _arena_rating_profile = min(profiles, key=lambda x: x["rating"])
+        except Exception:
+            pass  # Graceful degradation: use default progressive difficulty
+
+        for round_num in range(1, total_rounds + 1):
+            # Extend lock heartbeat
+            await arena.extend_game_lock(session_id, 120)
+            await arena.set_match_round(session_id, round_num)
+
+            difficulty = _get_round_difficulty(round_num, total_rounds, _arena_rating_profile)
+
             # Generate question
-            question = await generate_question(
-                mode=QuizMode.pvp,
-                category=category,
-                difficulty=3,
-                question_number=round_num,
+            async with async_session() as db:
+                question = await generate_question(
+                    db,
+                    mode=QuizMode.pvp,
+                    category=category,
+                    difficulty=difficulty,
+                    question_number=round_num,
+                    total_questions=total_rounds,
+                    previous_questions=previous_questions,
+                )
+            previous_questions.append(question.question_text)
+
+            # Count real players (non-bot) for expected answers
+            players = await arena.get_all_players(session_id)
+            real_player_count = sum(1 for p in players if not p.is_bot)
+            expected_answers = real_player_count  # Bots answer separately
+
+            # Start round in Redis
+            await arena.start_round(
+                session_id=session_id,
+                round_number=round_num,
+                question={
+                    "text": question.question_text,
+                    "category": question.category,
+                    "difficulty": question.difficulty,
+                },
+                expected_answers=expected_answers,
+                timeout_seconds=PVP_ROUND_TIME_LIMIT_SEC,
             )
 
-            # Send question to all players
-            q_data = {
-                "text": question.text,
+            # Broadcast question to all players
+            await arena.publish_match_event(session_id, {
+                "type": "pvp.round_question",
+                "question_text": question.question_text,
                 "category": question.category,
                 "difficulty": question.difficulty,
-                "question_number": round_num,
-                "total_questions": PVP_TOTAL_ROUNDS,
-            }
-            await _send_to_pvp_session(session_id_str, "quiz.question", q_data)
-            await _send_to_pvp_session(session_id_str, "pvp.waiting_answers", {
-                "question_number": round_num,
-                "time_limit_seconds": PVP_ANSWER_TIMEOUT_SEC,
+                "round_number": round_num,
+                "total_rounds": total_rounds,
+                "time_limit_seconds": PVP_ROUND_TIME_LIMIT_SEC,
             })
 
-            # Collect answers from all players (with timeout)
-            answers: dict[uuid.UUID, str] = {}
-            deadline = time.time() + PVP_ANSWER_TIMEOUT_SEC
-            answer_futures: dict[uuid.UUID, asyncio.Task] = {}
-
-            for ws, uid, _name in players:
-                answer_futures[uid] = asyncio.create_task(
-                    _wait_for_pvp_answer(ws, uid, deadline)
+            # Generate bot answers (with realistic delay)
+            bot_players = [p for p in players if p.is_bot]
+            for bot in bot_players:
+                bot_delay = random.uniform(5, 20)
+                asyncio.create_task(
+                    _submit_bot_answer(arena, session_id, round_num, bot.user_id, question, bot_delay)
                 )
 
-            # Wait for all answers or timeout
-            done, pending = await asyncio.wait(
-                answer_futures.values(),
-                timeout=PVP_ANSWER_TIMEOUT_SEC + 2,
-                return_when=asyncio.ALL_COMPLETED,
+            # Wait for all answers (real players + bots) or timeout
+            all_answered = await wait_for_all_answers(
+                arena, session_id, round_num,
+                expected_count=len(player_ids),  # All players including bots (bots submit via _submit_bot_answer)
+                timeout_seconds=PVP_ROUND_TIME_LIMIT_SEC + 5,  # Extra buffer for bot delays
             )
 
-            for uid, task in answer_futures.items():
-                if task.done() and not task.cancelled():
-                    try:
-                        answers[uid] = task.result()
-                    except Exception:
-                        answers[uid] = ""
+            # Collect all answers
+            answers = await arena.get_round_answers(session_id, round_num)
+
+            # Fill missing answers (timeout)
+            for pid in player_ids:
+                if pid not in answers:
+                    answers[pid] = {"text": "", "submitted_at": None}
+
+            # Build player_answers for evaluation
+            # Get round start time for response_time calculation
+            round_started = await arena.get_round_started_at(session_id, round_num)
+            player_answers = []
+            for pid in player_ids:
+                ans = answers.get(pid, {"text": "", "submitted_at": None})
+                if ans.get("submitted_at") and round_started:
+                    resp_ms = int((ans["submitted_at"] - round_started) * 1000)
                 else:
-                    task.cancel()
-                    answers[uid] = ""
+                    resp_ms = PVP_ROUND_TIME_LIMIT_SEC * 1000
+                player_answers.append({
+                    "user_id": pid,
+                    "answer": ans.get("text", ""),
+                    "response_time_ms": max(0, resp_ms),
+                })
 
-            # Evaluate all answers
-            round_results = await evaluate_pvp_round(
-                question=question,
-                answers=answers,
-            )
-
-            # Build per-player result data and update scores
-            player_results = []
-            for ws, uid, name in players:
-                result = round_results.get(uid)
-                if result:
-                    score_delta = result.score_delta
-                    scores[uid] += score_delta
-                    player_results.append({
-                        "user_id": str(uid),
-                        "name": name,
-                        "answer": answers.get(uid, ""),
-                        "score": scores[uid],
-                        "score_delta": score_delta,
-                        "is_correct": result.is_correct,
-                        "comment": result.comment,
-                    })
-                else:
-                    player_results.append({
-                        "user_id": str(uid),
-                        "name": name,
-                        "answer": answers.get(uid, ""),
-                        "score": scores[uid],
-                        "score_delta": 0.0,
-                        "is_correct": False,
-                        "comment": "No evaluation available",
-                    })
-
-            # Save answers to DB
+            # Evaluate all answers via AI judge
             async with async_session() as db:
-                for uid, answer_text in answers.items():
-                    r = round_results.get(uid)
+                evaluation = await evaluate_pvp_round(
+                    db,
+                    question=question,
+                    player_answers=player_answers,
+                )
+
+            # Parse evaluation results
+            eval_players = evaluation.get("players", [])
+            eval_by_uid = {}
+            for ep in eval_players:
+                eval_by_uid[ep.get("user_id", "")] = ep
+
+            # Calculate speed bonuses
+            speed_rankings = await arena.get_speed_rankings(session_id, round_num)
+            speed_bonuses = calculate_speed_bonuses(speed_rankings, eval_players)
+
+            # Update scores in Redis and build result data
+            player_results = []
+            for pid in player_ids:
+                ep = eval_by_uid.get(pid, {})
+                score = ep.get("score", 0)
+                is_correct = ep.get("is_correct", False)
+                bonus = speed_bonuses.get(pid, 0)
+                total_score = score + bonus
+
+                await arena.update_player_score(session_id, pid, total_score, is_correct)
+
+                player_data = await arena.get_player(session_id, pid)
+                player_results.append({
+                    "user_id": pid,
+                    "name": player_data.name if player_data else pid,
+                    "answer": filter_answer_text(answers.get(pid, {}).get("text", "(no answer)"))[0],
+                    "score": ep.get("score", 0),
+                    "speed_bonus": bonus,
+                    "is_correct": is_correct,
+                    "comment": ep.get("comment", ""),
+                })
+
+            # Save answers to DB + SRS tracking
+            async with async_session() as db:
+                for pid in player_ids:
+                    if pid.startswith("bot_"):
+                        continue  # Don't persist bot answers
+                    ans = answers.get(pid, {})
+                    ep = eval_by_uid.get(pid, {})
+                    _pvp_is_correct = ep.get("is_correct", False)
                     answer_record = KnowledgeAnswer(
-                        session_id=session_id,
-                        user_id=uid,
+                        session_id=uuid.UUID(session_id),
+                        user_id=uuid.UUID(pid),
                         question_number=round_num,
-                        question_text=question.text,
+                        question_text=question.question_text,
                         question_category=question.category or "general",
-                        user_answer=answer_text or "(no answer)",
-                        is_correct=r.is_correct if r else False,
-                        explanation=r.explanation if r else "Timeout",
-                        article_reference=r.article_reference if r else None,
-                        score_delta=r.score_delta if r else 0.0,
+                        user_answer=ans.get("text", "(no answer)"),
+                        is_correct=_pvp_is_correct,
+                        explanation=ep.get("comment", ""),
+                        article_reference=question.expected_article,
+                        score_delta=ep.get("score", 0) + speed_bonuses.get(pid, 0),
                     )
                     db.add(answer_record)
+
+                    # SM-2: record PvP answer for spaced repetition
+                    try:
+                        await srs_record_review(
+                            db,
+                            user_id=uuid.UUID(pid),
+                            question_text=question.question_text,
+                            question_category=question.category or "general",
+                            is_correct=_pvp_is_correct,
+                            response_time_ms=None,
+                            hint_used=False,
+                            source_type="pvp",
+                        )
+                    except Exception:
+                        logger.debug("SRS record_review failed for PvP user=%s", pid)
                 await db.commit()
 
-            # Send round results to all players
-            await _send_to_pvp_session(session_id_str, "pvp.round_result", {
-                "question": question.text,
-                "question_number": round_num,
+            # Broadcast round result
+            await arena.publish_match_event(session_id, {
+                "type": "pvp.round_result",
+                "round_number": round_num,
+                "question": question.question_text,
+                "correct_answer": evaluation.get("correct_answer", ""),
+                "explanation": evaluation.get("explanation", ""),
+                "article_ref": question.expected_article,
                 "players": player_results,
-                "correct_answer": question.correct_answer if hasattr(question, "correct_answer") else None,
-                "explanation": round_results.get(next(iter(answers)), None)
-                    and round_results[next(iter(answers))].explanation or "",
             })
 
-            # Brief pause between rounds
-            await asyncio.sleep(3)
+            # Broadcast scoreboard
+            all_players = await arena.get_all_players(session_id)
+            scoreboard = sorted(
+                [
+                    {
+                        "user_id": p.user_id,
+                        "name": p.name,
+                        "total_score": p.score,
+                        "correct_count": p.correct,
+                    }
+                    for p in all_players
+                ],
+                key=lambda x: x["total_score"],
+                reverse=True,
+            )
+            await arena.publish_match_event(session_id, {
+                "type": "pvp.scoreboard",
+                "players": scoreboard,
+            })
 
-        # ── All rounds complete ──
-        # Calculate final rankings
-        rankings = sorted(
-            [
-                {"user_id": str(uid), "name": name, "score": scores[uid]}
-                for _, uid, name in players
-            ],
-            key=lambda x: x["score"],
-            reverse=True,
-        )
-        for i, r in enumerate(rankings):
-            r["rank"] = i + 1
+            # Pause between rounds
+            if round_num < total_rounds:
+                await asyncio.sleep(3)
 
-        # Update DB
-        async with async_session() as db:
-            db_session = await db.get(KnowledgeQuizSession, session_id)
-            if db_session:
-                db_session.status = QuizSessionStatus.completed
-                db_session.ended_at = datetime.now(timezone.utc)
-                started = db_session.started_at
-                if started:
-                    db_session.duration_seconds = int(
-                        (datetime.now(timezone.utc) - started).total_seconds()
-                    )
-                await db.commit()
-
-            # Update participant scores and ranks
-            for ranking in rankings:
-                uid = uuid.UUID(ranking["user_id"])
-                result = await db.execute(
-                    select(QuizParticipant).where(
-                        QuizParticipant.session_id == session_id,
-                        QuizParticipant.user_id == uid,
-                    )
-                )
-                participant = result.scalar_one_or_none()
-                if participant:
-                    participant.score = ranking["score"]
-                    participant.final_rank = ranking["rank"]
-            await db.commit()
-
-        # Send final results
-        await _send_to_pvp_session(session_id_str, "pvp.final_results", {
-            "rankings": rankings,
-            "total_rounds": PVP_TOTAL_ROUNDS,
-        })
+        # ═══ MATCH COMPLETE ═══
+        await _finalize_match(arena, session_id, player_ids, contains_bot)
 
     except Exception as e:
-        logger.error("PvP game loop error session=%s: %s", session_id_str, e, exc_info=True)
-        await _send_to_pvp_session(session_id_str, "error", {
+        logger.error("PvP game loop error session=%s: %s", session_id, e, exc_info=True)
+        arena_err = get_arena_redis()
+        await arena_err.publish_match_event(session_id, {
+            "type": "error",
             "message": "Game error, session terminated",
             "code": "game_error",
         })
     finally:
-        # Cleanup
-        _pvp_connections.pop(session_id_str, None)
+        await arena.release_game_lock(session_id)
+        await arena.cleanup_match(session_id)
 
 
-async def _wait_for_pvp_answer(ws: WebSocket, user_id: uuid.UUID, deadline: float) -> str:
-    """Wait for a single player's answer within the time limit.
-
-    Listens for text.message, ignores pings and other message types.
-    Returns the answer text or empty string on timeout/error.
-    """
+async def _submit_bot_answer(
+    arena: ArenaRedis,
+    session_id: str,
+    round_number: int,
+    bot_id: str,
+    question: QuizQuestion,
+    delay: float,
+) -> None:
+    """Submit a bot answer after a realistic delay."""
     try:
-        while True:
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                return ""
-            raw = await asyncio.wait_for(ws.receive_text(), timeout=remaining)
-            try:
-                msg = json.loads(raw)
-            except json.JSONDecodeError:
+        await asyncio.sleep(delay)
+        bot_answer = await _generate_bot_answer(question)
+        await arena.submit_answer(session_id, round_number, bot_id, bot_answer)
+    except Exception as e:
+        logger.error("Bot answer error: %s", e)
+
+
+async def _finalize_match(
+    arena: ArenaRedis,
+    session_id: str,
+    player_ids: list[str],
+    contains_bot: bool,
+) -> None:
+    """Finalize PvP match: anti-cheat, ratings, rankings, DB update, broadcast."""
+    # Calculate final rankings from Redis
+    all_players = await arena.get_all_players(session_id)
+    rankings = sorted(
+        [
+            {
+                "user_id": p.user_id,
+                "name": p.name,
+                "score": p.score,
+                "correct": p.correct,
+                "is_bot": p.is_bot,
+                "rating_delta": 0.0,
+            }
+            for p in all_players
+        ],
+        key=lambda x: x["score"],
+        reverse=True,
+    )
+    for i, r in enumerate(rankings):
+        r["rank"] = i + 1
+
+    # ── Anti-cheat check (only for real players in non-bot matches) ──
+    anti_cheat_flags = []
+    flagged_users: set[str] = set()
+
+    if not contains_bot:
+        try:
+            from app.services.anti_cheat import run_anti_cheat, save_anti_cheat_result
+
+            async with async_session() as db:
+                for pid in player_ids:
+                    if pid.startswith("bot_"):
+                        continue
+                    try:
+                        result = await run_anti_cheat(
+                            user_id=uuid.UUID(pid),
+                            duel_id=uuid.UUID(session_id),
+                            messages=[],  # Knowledge arena doesn't use chat messages
+                            db=db,
+                        )
+                        if result and result.overall_flagged:
+                            await save_anti_cheat_result(result, db)
+                            anti_cheat_flags.append({
+                                "user_id": pid,
+                                "action": result.recommended_action,
+                            })
+                            if result.recommended_action in ("rating_freeze", "disqualification"):
+                                flagged_users.add(pid)
+                    except Exception as e:
+                        logger.warning("Anti-cheat check failed for user=%s: %s", pid, e)
+        except ImportError:
+            logger.warning("Anti-cheat module not available")
+
+    # ── Update ratings (only real players, not flagged, no bots) ──
+    if not contains_bot:
+        try:
+            from app.services.arena_rating import update_arena_rating_after_pvp
+
+            # Filter out flagged users from rankings
+            eligible_rankings = [
+                r for r in rankings
+                if not r["is_bot"] and r["user_id"] not in flagged_users
+            ]
+
+            if len(eligible_rankings) >= 2:
+                async with async_session() as db:
+                    deltas = await update_arena_rating_after_pvp(
+                        session_id=uuid.UUID(session_id),
+                        rankings=eligible_rankings,
+                        db=db,
+                    )
+                    for r in rankings:
+                        r["rating_delta"] = deltas.get(r["user_id"], 0.0)
+                    await db.commit()
+        except Exception as e:
+            logger.error("Failed to update arena ratings: %s", e)
+
+    # ── Update DB ──
+    async with async_session() as db:
+        db_session = await db.get(KnowledgeQuizSession, uuid.UUID(session_id))
+        if db_session:
+            db_session.status = QuizSessionStatus.completed
+            db_session.ended_at = datetime.now(timezone.utc)
+            db_session.contains_bot = contains_bot
+            db_session.anti_cheat_flags = anti_cheat_flags if anti_cheat_flags else None
+            db_session.rating_changes_applied = not contains_bot and not flagged_users
+            started = db_session.started_at
+            if started:
+                db_session.duration_seconds = int(
+                    (datetime.now(timezone.utc) - started).total_seconds()
+                )
+            await db.commit()
+
+        # Update participant scores and ranks
+        for ranking in rankings:
+            if ranking["is_bot"]:
                 continue
-            msg_type = msg.get("type")
-            if msg_type == "text.message":
-                return (msg.get("data") or {}).get("text", "")
-            elif msg_type == "ping":
-                await _send(ws, "pong", {})
-            # Ignore other messages during answer collection
-    except (asyncio.TimeoutError, WebSocketDisconnect, Exception):
-        return ""
+            uid = uuid.UUID(ranking["user_id"])
+            result = await db.execute(
+                select(QuizParticipant).where(
+                    QuizParticipant.session_id == uuid.UUID(session_id),
+                    QuizParticipant.user_id == uid,
+                )
+            )
+            participant = result.scalar_one_or_none()
+            if participant:
+                participant.score = ranking["score"]
+                participant.final_rank = ranking["rank"]
+                participant.correct_answers = ranking["correct"]
+        await db.commit()
+
+    # ── Gamification: XP, streaks, achievements for each human player ──
+    pvp_achievements: dict[str, list] = {}
+    try:
+        from app.services.arena_xp import (
+            calculate_arena_xp, update_arena_streak, apply_arena_xp_to_progress,
+        )
+        from app.services.gamification import check_arena_achievements
+        from app.models.progress import ManagerProgress
+
+        async with async_session() as db:
+            for ranking in rankings:
+                if ranking["is_bot"]:
+                    continue
+                uid = uuid.UUID(ranking["user_id"])
+                is_win = ranking["rank"] == 1
+
+                await update_arena_streak(
+                    user_id=uid,
+                    correct_in_session=ranking.get("correct", 0),
+                    total_in_session=PVP_TOTAL_ROUNDS,
+                    answer_streak_at_end=0,
+                    db=db,
+                )
+
+                prog_r = await db.execute(
+                    select(ManagerProgress).where(ManagerProgress.user_id == uid)
+                )
+                prog = prog_r.scalar_one_or_none()
+                streak_days = prog.arena_daily_streak if prog else 0
+
+                opponent_rating = None
+                player_rating_val = None
+                try:
+                    from app.services.arena_rating import get_arena_rating as _get_ar
+                    player_r = await _get_ar(uid, db)
+                    player_rating_val = player_r.rating
+                    if is_win and len(rankings) >= 2:
+                        loser = next((r for r in rankings if r["rank"] == 2 and not r["is_bot"]), None)
+                        if loser:
+                            opp_r = await _get_ar(uuid.UUID(loser["user_id"]), db)
+                            opponent_rating = opp_r.rating
+                except Exception:
+                    pass
+
+                xp_info = calculate_arena_xp(
+                    mode="pvp",
+                    score=ranking["score"],
+                    correct=ranking.get("correct", 0),
+                    total=PVP_TOTAL_ROUNDS,
+                    streak_days=streak_days,
+                    is_pvp_win=is_win,
+                    pvp_opponent_rating=opponent_rating,
+                    player_rating=player_rating_val,
+                )
+                await apply_arena_xp_to_progress(uid, xp_info["total"], db)
+
+                # EventBus handles PvP achievements + notifications
+                from app.services.event_bus import event_bus, GameEvent, EVENT_PVP_COMPLETED
+                await event_bus.emit(GameEvent(
+                    kind=EVENT_PVP_COMPLETED,
+                    user_id=uid,
+                    db=db,
+                    payload={"is_win": is_win, "rank": ranking["rank"], "xp": xp_info},
+                ))
+
+                ranking["xp_earned"] = xp_info
+
+            await db.commit()
+    except Exception as e:
+        logger.warning("PvP gamification hook error: %s", e, exc_info=True)
+
+    await arena.complete_match(session_id)
+
+    # Broadcast final results
+    await arena.publish_match_event(session_id, {
+        "type": "pvp.final_results",
+        "rankings": rankings,
+        "total_rounds": PVP_TOTAL_ROUNDS,
+        "contains_bot": contains_bot,
+        "achievements": pvp_achievements,
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PUB/SUB LISTENER — bridges Redis events to WebSocket
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def _pubsub_listener(
+    ws: WebSocket,
+    user_id: uuid.UUID,
+    arena: ArenaRedis,
+) -> None:
+    """Background task: listen to Redis Pub/Sub and forward events to this WS client.
+
+    Subscribes to:
+    - Global events (challenges, match_ready broadcasts)
+    - Match-specific events (when user joins a match)
+    """
+    pubsub = arena.redis.pubsub()
+    try:
+        await arena.subscribe_global_events(pubsub)
+
+        async for message in pubsub.listen():
+            if message["type"] != "message":
+                continue
+            try:
+                event = json.loads(message["data"])
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            event_type = event.get("type", "")
+
+            # Don't send challenges back to the challenger
+            if event_type == "pvp.challenge":
+                if event.get("challenger_id") == str(user_id):
+                    continue
+
+            # pvp.match_ready — subscribe to match channel if user is a participant
+            if event_type == "pvp.match_ready":
+                players = event.get("players", [])
+                is_participant = any(
+                    p.get("user_id") == str(user_id) for p in players
+                )
+                if is_participant:
+                    match_session_id = event.get("session_id")
+                    if match_session_id:
+                        await arena.subscribe_match_events(match_session_id, pubsub)
+
+            # pvp.player_joined — notify relevant users
+            if event_type == "pvp.player_joined":
+                pass  # Forward to all
+
+            # Forward event to this WebSocket client
+            await _send(ws, event_type, event)
+
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        pass
+    except Exception as e:
+        logger.debug("PubSub listener error for user=%s: %s", user_id, e)
+    finally:
+        try:
+            await pubsub.unsubscribe()
+            await pubsub.aclose()
+        except Exception:
+            pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -957,11 +2054,13 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
 
     Handles authentication, then dispatches messages to either
     AI Examiner (solo) or PvP Arena mode handlers.
+    Starts a background Pub/Sub listener for PvP events.
     """
     await websocket.accept()
     user_id: uuid.UUID | None = None
     username: str = ""
     quiz_state: _SoloQuizState | None = None
+    pubsub_task: asyncio.Task | None = None
 
     try:
         # ── Step 1: Authenticate ──
@@ -971,14 +2070,55 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
             return
         user_id, username = auth_result
 
-        # Track connection for PvP challenge broadcasts
-        _knowledge_connections[user_id] = websocket
-
         logger.info("WS Knowledge authenticated: user=%s (%s)", user_id, username)
 
+        # ── Step 1b: Start Pub/Sub listener for PvP events ──
+        arena = get_arena_redis()
+        pubsub_task = asyncio.create_task(
+            _pubsub_listener(websocket, user_id, arena)
+        )
+
+        # ── Step 1c: Check for reconnect (PvP match in progress) ──
+        reconnect_session = await arena.check_reconnect(str(user_id))
+        if reconnect_session:
+            await arena.clear_reconnect(str(user_id))
+            await arena.set_player_connected(reconnect_session, str(user_id), True)
+
+            # Subscribe to match channel
+            match_pubsub = arena.redis.pubsub()
+            await arena.subscribe_match_events(reconnect_session, match_pubsub)
+
+            # Send current match state
+            match_data = await arena.get_match(reconnect_session)
+            if match_data and match_data.status == "active":
+                players = await arena.get_all_players(reconnect_session)
+                await _send(websocket, "pvp.match_state_restore", {
+                    "session_id": reconnect_session,
+                    "players": [
+                        {
+                            "user_id": p.user_id,
+                            "name": p.name,
+                            "score": p.score,
+                            "correct": p.correct,
+                            "is_bot": p.is_bot,
+                        }
+                        for p in players
+                    ],
+                    "current_round": match_data.current_round,
+                    "total_rounds": match_data.total_rounds,
+                })
+                await arena.publish_match_event(reconnect_session, {
+                    "type": "pvp.player_reconnected",
+                    "user_id": str(user_id),
+                })
+
         # ── Step 2: Message loop ──
+        _rate_limiter = knowledge_limiter()
         while True:
             raw = await websocket.receive_text()
+            if not _rate_limiter.is_allowed():
+                await _send_error(websocket, "Too many messages", "rate_limited")
+                continue
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
@@ -999,9 +2139,9 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
                     continue
                 quiz_state = await _start_solo_quiz(websocket, user_id, data)
 
-            # ── Answer (solo mode) ──
-            elif msg_type == "text.message":
-                text = data.get("text", "").strip()
+            # ── Answer (solo mode) — supports both "text.message" and "answer" from frontend ──
+            elif msg_type in ("text.message", "answer"):
+                text = (data.get("text") or msg.get("content") or "").strip()
                 if not text:
                     await _send_error(websocket, "Empty answer", "empty_text")
                     continue
@@ -1011,14 +2151,14 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
                     await _send_error(websocket, "No active quiz session", "no_session")
 
             # ── Skip question (solo) ──
-            elif msg_type == "quiz.skip":
+            elif msg_type in ("quiz.skip", "skip"):
                 if quiz_state and not quiz_state.finished:
                     await _handle_skip(websocket, quiz_state)
                 else:
                     await _send_error(websocket, "No active quiz session", "no_session")
 
             # ── Hint (solo) ──
-            elif msg_type == "quiz.hint":
+            elif msg_type in ("quiz.hint", "hint_request"):
                 if quiz_state and not quiz_state.finished:
                     await _handle_hint(websocket, quiz_state)
                 else:
@@ -1031,6 +2171,43 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
                 else:
                     await _send_error(websocket, "No active quiz session", "no_session")
 
+            # ── V2: Follow-up answer/skip ──
+            elif msg_type == "quiz.follow_up_response":
+                if quiz_state and not quiz_state.finished and quiz_state.pending_follow_up:
+                    action = data.get("action", "skip")
+                    quiz_state.pending_follow_up = False
+                    if action == "answer":
+                        text_fu = data.get("text", "").strip()
+                        if text_fu:
+                            # Evaluate follow-up answer (lightweight, no score impact)
+                            await _send(websocket, "quiz.follow_up_feedback", {
+                                "text": "Спасибо за развёрнутый ответ! Продолжаем.",
+                            })
+                    # Proceed to next question regardless
+                    await _next_question(websocket, quiz_state)
+                elif quiz_state and not quiz_state.finished:
+                    await _next_question(websocket, quiz_state)
+
+            # ── SRS: Get user SRS stats ──
+            elif msg_type == "srs.stats":
+                try:
+                    async with async_session() as srs_db:
+                        stats = await get_user_srs_stats(srs_db, user_id)
+                        await _send(websocket, "srs.stats", stats)
+                except Exception:
+                    logger.debug("SRS stats failed", exc_info=True)
+                    await _send_error(websocket, "Failed to load SRS stats", "srs_error")
+
+            # ── SRS: Get category mastery breakdown ──
+            elif msg_type == "srs.mastery":
+                try:
+                    async with async_session() as srs_db:
+                        mastery = await get_category_mastery(srs_db, user_id)
+                        await _send(websocket, "srs.mastery", {"categories": mastery})
+                except Exception:
+                    logger.debug("SRS mastery failed", exc_info=True)
+                    await _send_error(websocket, "Failed to load mastery data", "srs_error")
+
             # ── PvP: Find opponent ──
             elif msg_type == "pvp.find_opponent":
                 await _handle_find_opponent(websocket, user_id, username, data)
@@ -1042,6 +2219,18 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
             # ── PvP: Decline challenge ──
             elif msg_type == "pvp.decline_challenge":
                 await _handle_decline_challenge(websocket, user_id, data)
+
+            # ── PvP: Submit answer (simultaneous mode) ──
+            elif msg_type == "pvp.answer":
+                await _handle_pvp_answer(websocket, user_id, data)
+
+            # ── PvP: Cancel search ──
+            elif msg_type == "pvp.cancel_search":
+                await _handle_cancel_search(websocket, user_id)
+
+            # ── PvP: Play with bot (fallback) ──
+            elif msg_type == "pvp.play_with_bot":
+                await _handle_play_with_bot(websocket, user_id, username)
 
             # ── Unknown ──
             else:
@@ -1066,9 +2255,13 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
         except Exception:
             pass
     finally:
-        # Cleanup
-        if user_id:
-            _knowledge_connections.pop(user_id, None)
+        # Cancel Pub/Sub listener
+        if pubsub_task and not pubsub_task.done():
+            pubsub_task.cancel()
+            try:
+                await pubsub_task
+            except asyncio.CancelledError:
+                pass
 
         # If solo quiz was in progress, mark as abandoned
         if quiz_state and not quiz_state.finished:
@@ -1085,11 +2278,20 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
             except Exception as e:
                 logger.error("Failed to mark quiz as abandoned: %s", e)
 
-        # Remove from any PvP session connections
+        # Handle PvP disconnect: set reconnect grace period
         if user_id:
-            for sid, conns in list(_pvp_connections.items()):
-                _pvp_connections[sid] = [
-                    (ws, uid, name) for ws, uid, name in conns if uid != user_id
-                ]
-                if not _pvp_connections[sid]:
-                    _pvp_connections.pop(sid, None)
+            try:
+                arena = get_arena_redis()
+                active_match = await arena.get_user_active_match(str(user_id))
+                if active_match:
+                    match_data = await arena.get_match(active_match)
+                    if match_data and match_data.status == "active":
+                        await arena.set_player_connected(active_match, str(user_id), False)
+                        await arena.set_reconnect_grace(str(user_id), active_match)
+                        await arena.publish_match_event(active_match, {
+                            "type": "pvp.player_disconnected",
+                            "user_id": str(user_id),
+                            "grace_seconds": 60,
+                        })
+            except Exception as e:
+                logger.error("Failed to handle PvP disconnect: %s", e)

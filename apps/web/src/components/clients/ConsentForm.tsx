@@ -76,7 +76,7 @@ export function ConsentForm({ onSubmit }: ConsentFormProps) {
       <motion.button
         type="submit"
         disabled={saving}
-        className="vh-btn-primary flex items-center gap-2 w-full justify-center"
+        className="btn-neon flex items-center gap-2 w-full justify-center"
         whileTap={{ scale: 0.97 }}
       >
         {saving ? <Loader2 size={14} className="animate-spin" /> : <ShieldPlus size={14} />}

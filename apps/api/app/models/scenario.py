@@ -30,27 +30,76 @@ from app.database import Base
 
 
 class ScenarioCode(str, enum.Enum):
-    """15 canonical scenario codes (ТЗ-05)."""
+    """60 canonical scenario codes (DOC_05: 8 groups)."""
 
-    # Group A: Outbound cold
+    # ── Group A: Outbound Cold (10) ──
     cold_ad = "cold_ad"
-    cold_base = "cold_base"
     cold_referral = "cold_referral"
+    cold_social = "cold_social"
+    cold_database = "cold_database"
+    cold_base = "cold_base"
     cold_partner = "cold_partner"
-    # Group B: Outbound warm
+    cold_premium = "cold_premium"
+    cold_event = "cold_event"
+    cold_expired = "cold_expired"
+    cold_insurance = "cold_insurance"
+    # ── Group B: Outbound Warm (10) ──
     warm_callback = "warm_callback"
     warm_noanswer = "warm_noanswer"
     warm_refused = "warm_refused"
     warm_dropped = "warm_dropped"
-    # Group C: Inbound
+    warm_repeat = "warm_repeat"
+    warm_webinar = "warm_webinar"
+    warm_vip = "warm_vip"
+    warm_ghosted = "warm_ghosted"
+    warm_complaint = "warm_complaint"
+    warm_competitor = "warm_competitor"
+    # ── Group C: Inbound (8) ──
     in_website = "in_website"
     in_hotline = "in_hotline"
     in_social = "in_social"
-    # Group D: Special
+    in_chatbot = "in_chatbot"
+    in_partner = "in_partner"
+    in_complaint = "in_complaint"
+    in_urgent = "in_urgent"
+    in_corporate = "in_corporate"
+    # ── Group D: Special (12) ──
+    special_ghosted = "special_ghosted"
+    special_urgent = "special_urgent"
+    special_guarantor = "special_guarantor"
+    special_couple = "special_couple"      # was: couple_call
     upsell = "upsell"
     rescue = "rescue"
-    couple_call = "couple_call"
+    special_inheritance = "special_inheritance"
     vip_debtor = "vip_debtor"
+    special_psychologist = "special_psychologist"
+    special_vip = "special_vip"
+    special_medical = "special_medical"
+    special_boss = "special_boss"
+    # ── Group E: Follow-up (5) ──
+    follow_up_first = "follow_up_first"
+    follow_up_second = "follow_up_second"
+    follow_up_third = "follow_up_third"
+    follow_up_rescue = "follow_up_rescue"
+    follow_up_memory = "follow_up_memory"
+    # ── Group F: Crisis (5) ──
+    crisis_collector = "crisis_collector"
+    crisis_pre_court = "crisis_pre_court"
+    crisis_business = "crisis_business"
+    crisis_criminal = "crisis_criminal"
+    crisis_full = "crisis_full"
+    # ── Group G: Compliance (5) ──
+    compliance_basic = "compliance_basic"
+    compliance_docs = "compliance_docs"
+    compliance_legal = "compliance_legal"
+    compliance_advanced = "compliance_advanced"
+    compliance_full = "compliance_full"
+    # ── Group H: Multi-party (5) ──
+    multi_party_basic = "multi_party_basic"
+    multi_party_lawyer = "multi_party_lawyer"
+    multi_party_creditors = "multi_party_creditors"
+    multi_party_family = "multi_party_family"
+    multi_party_full = "multi_party_full"
 
 
 class FunnelStage(str, enum.Enum):
@@ -244,14 +293,14 @@ class Scenario(Base):
         Enum(ScenarioType), nullable=False
     )
     character_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("characters.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("characters.id", ondelete="SET NULL"), nullable=False, index=True
     )
     script_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("scripts.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("scripts.id", ondelete="SET NULL"), nullable=True, index=True
     )
     # Link to v2 template (nullable for legacy scenarios)
     template_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("scenario_templates.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("scenario_templates.id", ondelete="SET NULL"), nullable=True, index=True
     )
     difficulty: Mapped[int] = mapped_column(Integer, default=5)
     estimated_duration_minutes: Mapped[int] = mapped_column(Integer, default=10)

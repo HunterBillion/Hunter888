@@ -4,70 +4,148 @@
 
 /* ── CSS Custom Properties for Dark/Light theming ────────────────────── */
 :root {
+  /* ── Layout ─────────────────────────────────────────── */
   --app-shell-max: 1760px;
   --app-content-max: 1440px;
   --app-shell-padding: clamp(16px, 2vw, 32px);
   --app-section-padding-y: clamp(20px, 2.4vw, 40px);
-  --bg-primary: #fafafa;
-  --bg-secondary: #f4f4f5;
-  --bg-tertiary: #e4e4e7;
-  --bg-panel: rgba(255, 255, 255, 0.8);
-  --text-primary: #18181b;
-  --text-secondary: #52525b;
-  --text-muted: #71717a;
-  --border-color: rgba(0, 0, 0, 0.08);
-  --border-hover: rgba(0, 0, 0, 0.15);
-  --accent: #905CED;
-  --accent-hover: #7C3AED;
-  --accent-muted: rgba(144, 92, 237, 0.12);
-  --accent-glow: rgba(144, 92, 237, 0.2);
-  --magenta: #E028CC;
-  --magenta-muted: rgba(224, 40, 204, 0.12);
-  --neon-green: #00FF94;
-  --neon-red: #FF2A6D;
-  --neon-amber: #FFD700;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.1);
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(0, 0, 0, 0.06);
-  --scrollbar-track: #f4f4f5;
-  --scrollbar-thumb: #d4d4d8;
-  --selection-bg: rgba(144, 92, 237, 0.2);
-  --input-bg: rgba(0, 0, 0, 0.03);
-  --success: #00FF94;
-  --warning: #FFD700;
-  --danger: #FF2A6D;
+
+  /* ── Fluid type scale (clamp: min, preferred, max) — enlarged ── */
+  --fs-2xs:  clamp(0.625rem,  0.8vw,  0.75rem);    /* 10–12px */
+  --fs-xs:   clamp(0.75rem,   0.9vw,  0.875rem);   /* 12–14px */
+  --fs-sm:   clamp(0.875rem,  1vw,    1rem);        /* 14–16px */
+  --fs-base: clamp(1rem,      1.1vw,  1.125rem);   /* 16–18px */
+  --fs-md:   clamp(1.125rem,  1.3vw,  1.25rem);    /* 18–20px */
+  --fs-lg:   clamp(1.25rem,   1.7vw,  1.5rem);     /* 20–24px */
+  --fs-xl:   clamp(1.5rem,    2.2vw,  1.875rem);   /* 24–30px */
+  --fs-2xl:  clamp(1.875rem,  3.2vw,  2.75rem);    /* 30–44px */
+  --fs-3xl:  clamp(2.5rem,    5vw,    4rem);        /* 40–64px */
+  --fs-4xl:  clamp(3.25rem,   7.5vw,  6.5rem);     /* 52–104px */
+  --fs-hero: clamp(5rem,      16vw,   14rem);       /* 80–224px */
+
+  /* ── Letter spacing ─────────────────────────────────── */
+  --ls-tight:  -0.025em;
+  --ls-normal: 0em;
+  --ls-wide:   0.05em;
+  --ls-wider:  0.12em;
+  --ls-widest: 0.28em;
+  --ls-mono:   0.1em;
+
+  /* ── Colors — Light mode ────────────────────────────── */
+  --bg-primary: #f8f9fc;
+  --bg-secondary: #f0f1f5;
+  --bg-tertiary: #e2e4eb;
+  --bg-panel: rgba(255, 255, 255, 0.85);
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+  --border-color: rgba(0, 0, 0, 0.10);
+  --border-hover: rgba(79, 70, 229, 0.25);
+  --accent: #4F46E5;
+  --accent-hover: #4338CA;
+  --accent-muted: rgba(79, 70, 229, 0.10);
+  --accent-glow: rgba(79, 70, 229, 0.18);
+  --magenta: #C026D3;
+  --magenta-muted: rgba(192, 38, 211, 0.10);
+  --neon-green: #059669;
+  --neon-red: #DC2626;
+  --neon-amber: #D97706;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.04), 0 2px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.06), 0 4px 32px rgba(0, 0, 0, 0.10);
+  --glass-bg: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(0, 0, 0, 0.09);
+  --scrollbar-track: #f0f1f5;
+  --scrollbar-thumb: #c7c9d1;
+  --selection-bg: rgba(79, 70, 229, 0.18);
+  --input-bg: rgba(0, 0, 0, 0.04);
+  --success: #059669;
+  --warning: #D97706;
+  --danger: #DC2626;
+
+  /* ── Rank & streak tokens ──────────────────────────── */
+  --rank-gold: #FFD700;
+  --rank-gold-muted: rgba(255, 215, 0, 0.10);
+  --rank-silver: #C0C0C0;
+  --rank-silver-muted: rgba(192, 192, 192, 0.08);
+  --rank-bronze: #CD7F32;
+  --rank-bronze-muted: rgba(205, 127, 50, 0.08);
+  --streak-color: #E68A00;
+  --streak-muted: rgba(230, 138, 0, 0.10);
+
+  /* ── Header (light mode) ────────────────────────────── */
+  --header-bg: linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,249,252,0.94) 100%);
+  --header-border: rgba(0, 0, 0, 0.08);
+  --header-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(79,70,229,0.06);
+  --header-text: #111827;
+  --header-text-muted: rgba(17, 24, 39, 0.55);
+  --header-text-active: #111827;
+  --header-nav-active-bg: linear-gradient(135deg, rgba(79,70,229,0.12), rgba(99,102,241,0.06));
+  --header-nav-active-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 4px rgba(79,70,229,0.12);
+  --header-btn-bg: rgba(0,0,0,0.03);
+  --header-btn-border: rgba(0,0,0,0.07);
+
+  /* ── Grid background (light mode) ──────────────────── */
+  --grid-dot-color: rgba(79, 70, 229, 0.10);
+  --grid-dot-color-major: rgba(79, 70, 229, 0.18);
+  --grid-glow: rgba(79, 70, 229, 0.05);
 }
 
 .dark {
-  --bg-primary: #050505;
-  --bg-secondary: #0a0a0f;
-  --bg-tertiary: #1a1a2e;
-  --bg-panel: rgba(15, 15, 20, 0.6);
-  --text-primary: #fafafa;
-  --text-secondary: #a1a1aa;
-  --text-muted: #8b8b95;
-  --border-color: rgba(139, 92, 246, 0.12);
-  --border-hover: rgba(139, 92, 246, 0.25);
-  --accent: #8A2BE2;
-  --accent-hover: #BF55EC;
-  --accent-muted: rgba(138, 43, 226, 0.15);
-  --accent-glow: rgba(191, 85, 236, 0.3);
-  --magenta: #E028CC;
-  --magenta-muted: rgba(224, 40, 204, 0.15);
+  --bg-primary: #030306;
+  --bg-secondary: #08081a;
+  --bg-tertiary: #141432;
+  --bg-panel: rgba(10, 10, 22, 0.7);
+  --text-primary: #f2f2f8;
+  --text-secondary: #b4b4cc;
+  --text-muted: #9494ad;
+  --border-color: rgba(99, 102, 241, 0.16);
+  --border-hover: rgba(99, 102, 241, 0.32);
+  --accent: #6366F1;
+  --accent-hover: #818CF8;
+  --accent-muted: rgba(99, 102, 241, 0.20);
+  --accent-glow: rgba(129, 140, 248, 0.35);
+  --magenta: #D926B8;
+  --magenta-muted: rgba(217, 38, 184, 0.18);
   --neon-green: #00FF94;
   --neon-red: #FF2A6D;
   --neon-amber: #FFD700;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.5);
-  --glass-bg: rgba(20, 20, 25, 0.6);
-  --glass-border: rgba(138, 43, 226, 0.15);
-  --scrollbar-track: #0a0a0f;
-  --scrollbar-thumb: #3f3f46;
-  --selection-bg: rgba(138, 43, 226, 0.3);
-  --input-bg: rgba(255, 255, 255, 0.05);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 36px rgba(0, 0, 0, 0.6);
+  --glass-bg: rgba(12, 12, 28, 0.72);
+  --glass-border: rgba(99, 102, 241, 0.22);
+  --scrollbar-track: #08081a;
+  --scrollbar-thumb: #2a2a40;
+  --selection-bg: rgba(79, 70, 229, 0.35);
+  --input-bg: rgba(255, 255, 255, 0.06);
+
+  /* ── Rank & streak tokens (dark — brighter for contrast) ── */
+  --rank-gold: #FFD700;
+  --rank-gold-muted: rgba(255, 215, 0, 0.12);
+  --rank-silver: #D0D0D0;
+  --rank-silver-muted: rgba(208, 208, 208, 0.10);
+  --rank-bronze: #E09050;
+  --rank-bronze-muted: rgba(224, 144, 80, 0.10);
+  --streak-color: #FF9900;
+  --streak-muted: rgba(255, 153, 0, 0.12);
+
+  /* ── Header (dark mode) ─────────────────────────────── */
+  --header-bg: linear-gradient(180deg, rgba(3,3,6,0.98) 0%, rgba(7,7,10,0.94) 100%);
+  --header-border: rgba(255, 255, 255, 0.08);
+  --header-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12);
+  --header-text: #F5F7FB;
+  --header-text-muted: rgba(255, 255, 255, 0.48);
+  --header-text-active: #F5F7FB;
+  --header-nav-active-bg: linear-gradient(135deg, rgba(99,102,241,0.26), rgba(99,102,241,0.12));
+  --header-nav-active-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 0 16px rgba(79,70,229,0.18);
+  --header-btn-bg: rgba(255,255,255,0.03);
+  --header-btn-border: rgba(255,255,255,0.07);
+
+  /* ── Grid background (dark mode) ───────────────────── */
+  --grid-dot-color: rgba(99, 102, 241, 0.24);
+  --grid-dot-color-major: rgba(99, 102, 241, 0.40);
+  --grid-glow: rgba(79, 70, 229, 0.14);
 }
 
 /* ── Accent Color Variants ────────────────────────────────────────── */
@@ -139,6 +217,41 @@
   --accent-glow: rgba(225, 29, 72, 0.2);
 }
 
+/* ── Seasonal Theme Accents ───────────────────────────────────────── */
+/* Applied via class on <html> — subtle changes to grid dots and glow.
+   Use ThemeProvider or admin toggle to activate seasonally.          */
+
+.season-winter.dark {
+  --grid-dot-color: rgba(100, 180, 255, 0.18);
+  --grid-dot-color-major: rgba(100, 180, 255, 0.32);
+  --grid-glow: rgba(100, 180, 255, 0.08);
+}
+.season-winter:not(.dark) {
+  --grid-dot-color: rgba(60, 130, 200, 0.08);
+  --grid-dot-color-major: rgba(60, 130, 200, 0.14);
+}
+
+.season-spring.dark {
+  --grid-dot-color: rgba(52, 211, 153, 0.20);
+  --grid-dot-color-major: rgba(52, 211, 153, 0.34);
+  --grid-glow: rgba(16, 185, 129, 0.10);
+}
+.season-spring:not(.dark) {
+  --grid-dot-color: rgba(5, 150, 105, 0.08);
+  --grid-dot-color-major: rgba(5, 150, 105, 0.14);
+}
+
+.season-tournament.dark {
+  --grid-dot-color: rgba(255, 215, 0, 0.18);
+  --grid-dot-color-major: rgba(255, 215, 0, 0.30);
+  --grid-glow: rgba(255, 215, 0, 0.06);
+  --accent-glow: rgba(255, 215, 0, 0.25);
+}
+.season-tournament:not(.dark) {
+  --grid-dot-color: rgba(217, 119, 6, 0.08);
+  --grid-dot-color-major: rgba(217, 119, 6, 0.14);
+}
+
 /* ── Compact Mode ─────────────────────────────────────────────────── */
 body.compact-mode .glass-panel { padding: 12px; }
 body.compact-mode .glass-panel p,
@@ -150,7 +263,7 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
   body {
     background-color: var(--bg-primary);
     color: var(--text-primary);
-    font-family: "Inter", system-ui, sans-serif;
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
@@ -185,14 +298,51 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    box-shadow: var(--shadow-md);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    backdrop-filter: blur(24px) saturate(1.6) brightness(1.02);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6) brightness(1.02);
+    /* Layered shadow: depth + top highlight + subtle bottom line + ambient glow */
+    box-shadow:
+      var(--shadow-md),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+      0 0 0 0.5px rgba(255, 255, 255, 0.04);
+    transition:
+      border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    isolation: isolate;
   }
 
   .glass-panel:hover {
     border-color: var(--border-hover);
+    box-shadow:
+      var(--shadow-lg),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+      0 0 0 1px var(--accent-muted),
+      0 0 40px rgba(79, 70, 229, 0.06);
+  }
+
+  /* Thin top accent line — signals premium glass surface */
+  .glass-panel::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 12px;
+    right: 12px;
+    height: 1px;
+    border-radius: 0 0 4px 4px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--accent-muted) 20%,
+      rgba(99, 102, 241, 0.3) 50%,
+      var(--accent-muted) 80%,
+      transparent 100%
+    );
+    pointer-events: none;
+    z-index: 0;
   }
 
   .app-shell {
@@ -212,39 +362,70 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
     width: min(100%, var(--app-shell-max));
   }
 
+  /* ── Training session: independently-scrollable 3-column layout ── */
+  /* Each column fills the remaining viewport height below the HUD     */
+  /* header and scrolls internally — no content is lost off-screen.    */
   .training-session-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 1rem;
+    gap: 0.75rem;
     min-height: 0;
+    height: 100%;
   }
 
   .training-session-panel {
     min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* Thin scrollbar so it doesn't eat into panel width */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99,102,241,0.25) transparent;
+  }
+
+  .training-session-panel::-webkit-scrollbar {
+    width: 4px;
+  }
+  .training-session-panel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .training-session-panel::-webkit-scrollbar-thumb {
+    background: rgba(99,102,241,0.25);
+    border-radius: 4px;
+  }
+  .training-session-panel::-webkit-scrollbar-thumb:hover {
+    background: rgba(99,102,241,0.4);
   }
 
   .training-session-center {
-    min-height: min(72vh, 920px);
+    /* On mobile the center column can grow, on desktop it's constrained by the grid row */
+    min-height: min(60vh, 600px);
   }
 
+  /* Desktop: 20% transcript / 40% center / 40% tools — keeps input visible */
   @media (min-width: 1024px) {
     .training-session-grid {
-      grid-template-columns: minmax(280px, 0.95fr) minmax(420px, 1.25fr) minmax(300px, 0.95fr);
+      grid-template-columns: 1fr 2fr 2fr;
       align-items: stretch;
+    }
+
+    /* Center column: avatar is fixed, no internal scroll needed */
+    .training-session-center {
+      overflow: hidden;
+      min-height: 0;
     }
   }
 
   @media (min-width: 1440px) {
     .training-session-grid {
-      grid-template-columns: minmax(320px, 0.92fr) minmax(520px, 1.4fr) minmax(340px, 0.98fr);
-      gap: 1.25rem;
+      grid-template-columns: minmax(260px, 1fr) minmax(440px, 2fr) minmax(380px, 2fr);
+      gap: 0.875rem;
     }
   }
 
   @media (min-width: 1800px) {
     .training-session-grid {
-      grid-template-columns: minmax(360px, 0.9fr) minmax(640px, 1.5fr) minmax(360px, 1fr);
-      gap: 1.5rem;
+      grid-template-columns: minmax(300px, 1fr) minmax(520px, 2fr) minmax(420px, 2fr);
+      gap: 1rem;
     }
   }
 
@@ -284,7 +465,7 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
 
   /* ── Glow text effects ──────────────────────────────── */
   .glow-text-purple {
-    text-shadow: 0 0 15px rgba(139, 92, 246, 0.8);
+    text-shadow: 0 0 15px rgba(99, 102, 241, 0.8);
   }
 
   .glow-text-green {
@@ -297,9 +478,9 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
 
   .pvp-pyramid-grid {
     background:
-      radial-gradient(circle at top, rgba(144, 92, 237, 0.18), transparent 42%),
-      linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+      radial-gradient(circle at top, rgba(79, 70, 229, 0.18), transparent 42%),
+      linear-gradient(var(--grid-dot-color) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-dot-color) 1px, transparent 1px);
     background-size: auto, 32px 32px, 32px 32px;
     background-position: center top, center center, center center;
   }
@@ -322,6 +503,8 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
     background: var(--input-bg);
     border: 1px solid var(--border-color);
     color: var(--text-primary);
+    backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
   }
 
   .vh-input::placeholder {
@@ -331,7 +514,7 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
   .vh-input:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-muted);
+    box-shadow: 0 0 0 3px var(--accent-muted), 0 0 12px var(--accent-glow);
     animation: input-focus-ripple 0.6s ease-out;
   }
 
@@ -343,31 +526,51 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
 
   /* ── Labels ──────────────────────────────────────────── */
   .vh-label {
-    @apply mb-1.5 block font-mono text-[11px] font-medium uppercase tracking-wider;
+    @apply mb-1.5 block font-mono text-[12px] font-medium tracking-wide;
     color: var(--text-muted);
   }
 
   /* ── Buttons ─────────────────────────────────────────── */
   .vh-btn-primary {
-    @apply relative overflow-hidden rounded-xl px-6 py-3 font-semibold text-white transition-all duration-200;
-    background: var(--accent);
-    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
+    @apply relative overflow-hidden rounded-xl px-6 py-3 font-semibold text-white;
+    background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, var(--magenta)) 100%);
+    box-shadow: 0 2px 12px rgba(79, 70, 229, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .vh-btn-primary:hover:not(:disabled) {
-    background: var(--accent-hover);
-    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.35);
-    transform: translateY(-1px);
+    background: linear-gradient(135deg, var(--accent-hover) 0%, color-mix(in srgb, var(--accent-hover) 70%, var(--magenta)) 100%);
+    box-shadow: 0 6px 24px rgba(79, 70, 229, 0.45), 0 0 0 1px rgba(129, 140, 248, 0.2);
+    transform: translateY(-2px);
   }
 
   .vh-btn-primary:active:not(:disabled) {
-    transform: translateY(0);
-    box-shadow: 0 1px 4px rgba(139, 92, 246, 0.2);
+    transform: translateY(0) scale(0.98);
+    box-shadow: 0 1px 6px rgba(79, 70, 229, 0.2);
+    transition-duration: 0.1s;
   }
 
   .vh-btn-primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  /* ── Focus-visible ring for all interactive elements ── */
+  .vh-btn-primary:focus-visible,
+  .vh-btn-outline:focus-visible,
+  .vh-btn-danger:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .vh-btn-outline {
@@ -448,12 +651,46 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
   .xp-bar-fill {
     @apply h-full rounded-full transition-all duration-700 ease-out;
     background: linear-gradient(90deg, var(--accent), var(--magenta));
-    box-shadow: 0 0 8px rgba(139, 92, 246, 0.4);
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.4);
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ── Score change pulse (training session) ──────────── */
+  @keyframes score-bump {
+    0%   { transform: scale(1); }
+    30%  { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+
+  .score-bump {
+    animation: score-bump 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* ── Checkpoint celebration ring ────────────────────── */
+  @keyframes checkpoint-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(0, 255, 148, 0.4); }
+    70%  { box-shadow: 0 0 0 8px rgba(0, 255, 148, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(0, 255, 148, 0); }
+  }
+
+  .checkpoint-ring {
+    animation: checkpoint-ring 0.8s ease-out;
+  }
+
+  /* ── Breathing glow for live indicators ─────────────── */
+  @keyframes breathe-glow {
+    0%, 100% { opacity: 0.5; }
+    50%      { opacity: 1; }
+  }
+
+  .breathe-glow {
+    animation: breathe-glow 2s ease-in-out infinite;
   }
 
   /* ── Global mic glow (radial background pulse) ──────── */
   .global-mic-glow {
-    background: radial-gradient(circle at center, rgba(139, 92, 246, 0.12) 0%, transparent 70%);
+    background: radial-gradient(circle at center, rgba(99, 102, 241, 0.12) 0%, transparent 70%);
     opacity: 0;
     transition: opacity 0.4s ease;
     pointer-events: none;
@@ -490,50 +727,198 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
   }
 }
 
+/* ── Light Mode Component Overrides ──────────────────────── */
+/* IMPORTANT: :root:not(.dark) ensures these ONLY apply in light mode */
+:root:not(.dark) .glass-panel {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 4px 12px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+:root:not(.dark) .glass-panel:hover {
+  border-color: rgba(79, 70, 229, 0.2);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.05),
+    0 8px 24px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 1px rgba(79, 70, 229, 0.08);
+}
+
+/* Scanlines: much subtler in light mode */
+:root:not(.dark) .scanlines {
+  opacity: 0.02 !important;
+}
+
+/* Grid dots: toned down in light mode */
+:root:not(.dark) .app-grid-layer {
+  opacity: 0.5;
+}
+
+/* Glass panel top accent line — lighter */
+:root:not(.dark) .glass-panel::before {
+  opacity: 0.5;
+}
+
+/* Badge colors — legible on white */
+:root:not(.dark) .badge-success { background: rgba(5, 150, 105, 0.10); color: #047857; }
+:root:not(.dark) .badge-warning { background: rgba(217, 119, 6, 0.10); color: #B45309; }
+:root:not(.dark) .badge-danger  { background: rgba(220, 38, 38, 0.10); color: #DC2626; }
+
+/* Status chip glow — softer in light mode */
+:root:not(.dark) .stat-chip {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* btn-neon in light mode — solid accent, not glowy */
+:root:not(.dark) .btn-neon {
+  box-shadow: 0 1px 3px rgba(79, 70, 229, 0.12);
+}
+:root:not(.dark) .btn-neon:hover {
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.18);
+}
+
+/* Badge-neon in light mode */
+:root:not(.dark) .badge-neon {
+  box-shadow: none;
+  border-color: rgba(79, 70, 229, 0.15);
+}
+
+/* Input fields — visible border in light mode */
+:root:not(.dark) .vh-input {
+  background: rgba(0, 0, 0, 0.025);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+:root:not(.dark) .vh-input:focus {
+  border-color: #4F46E5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}
+
+/* Glow text effects — use solid colors in light mode instead of neon glow */
+:root:not(.dark) .glow-text-purple { text-shadow: none; color: #4F46E5; }
+:root:not(.dark) .glow-text-green  { text-shadow: none; color: #059669; }
+:root:not(.dark) .glow-text-magenta { text-shadow: none; color: #C026D3; }
+
+/* Keyword highlight — darker green on white */
+:root:not(.dark) .kw-highlight {
+  color: #059669;
+  text-shadow: none;
+  border-bottom-color: rgba(5, 150, 105, 0.4);
+}
+
+/* XP bar glow — subtle in light mode */
+:root:not(.dark) .xp-bar-fill {
+  box-shadow: 0 0 4px rgba(79, 70, 229, 0.2);
+}
+
 /* ── Typography System ─────────────────────────────────── */
-/* Standardized text styles for consistent visual hierarchy */
+/* Full 9-step fluid scale. All sizes respond to viewport.  */
 
-.t-page-title {
-  font-family: "Outfit", system-ui, sans-serif;
-  font-size: 1.875rem; /* text-3xl */
+/* DISPLAY — Hero titles, massive editorial moments */
+.t-hero {
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  font-size: var(--fs-hero);
   font-weight: 800;
-  letter-spacing: 0.05em;
+  line-height: 0.9;
+  letter-spacing: var(--ls-tight);
   color: var(--text-primary);
 }
 
-.t-section-title {
-  font-family: "Outfit", system-ui, sans-serif;
-  font-size: 1.25rem; /* text-xl */
+/* DISPLAY XL — Section hero (landing h1 level) */
+.t-display-xl {
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  font-size: var(--fs-4xl);
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: var(--ls-tight);
+  color: var(--text-primary);
+}
+
+/* DISPLAY LG — Feature titles, big numbers */
+.t-display-lg {
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  font-size: var(--fs-3xl);
   font-weight: 700;
-  letter-spacing: 0.025em;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
 }
 
-.t-card-title {
-  font-family: "Outfit", system-ui, sans-serif;
-  font-size: 1.125rem; /* text-lg */
+/* PAGE TITLE — Dashboard page heading */
+.t-page-title {
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+/* SECTION TITLE — Card group heading */
+.t-section-title {
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  font-size: var(--fs-xl);
   font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
   color: var(--text-primary);
 }
 
-.t-label {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.625rem; /* text-[10px] */
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+/* CARD TITLE — Individual card heading */
+.t-card-title {
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
 }
 
-.t-body {
-  font-size: 0.875rem; /* text-sm */
-  line-height: 1.625;
+/* LEAD — Prominent body text, subheadings */
+.t-lead {
+  font-size: var(--fs-md);
+  font-weight: 450;
+  line-height: 1.7;
   color: var(--text-secondary);
 }
 
+/* BODY — Standard content */
+.t-body {
+  font-size: var(--fs-base);
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+/* CAPTION — Metadata, timestamps */
+.t-caption {
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* LABEL — Mono tag, no uppercase */
+.t-label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+/* MICRO — Tiny annotation, no uppercase */
+.t-micro {
+  font-family: "JetBrains Mono", monospace;
+  font-size: var(--fs-2xs);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* SMALL (legacy compat) */
 .t-small {
   font-family: "JetBrains Mono", monospace;
-  font-size: 0.75rem; /* text-xs */
+  font-size: var(--fs-xs);
   color: var(--text-muted);
 }
 
@@ -598,41 +983,122 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
   text-shadow: -2px 0 #00ffff;
 }
 
-/* ── Panel grid background (Центр, Тренировки, Арена, Dashboard и др.) ─────
-   Layered: radial glow → coarse grid → fine grid. All via background-image.
-   Opacity increased for better visibility on various displays.
+/* ── App-level dot-grid layer ────────────────────────────────────────────────
+   SINGLE global layer rendered ONCE by AuthLayout.
+
+   Why: panel-grid-bg::before used position:fixed which meant every page
+   created its own fixed overlay → dots stacked & doubled during transitions.
+   The fix: one .app-grid-layer div in AuthLayout, no duplication ever.
+
+   Architecture:
+     AuthLayout
+       └─ .app-grid-layer  (fixed, z-index:0, single grid for ALL pages)
+       └─ Header           (sticky, z-index:30, above grid)
+       └─ main
+            └─ PageTransition
+                 └─ Page (.panel-grid-bg = just position:relative, transparent bg)
+                      └─ Content  (z-index:1, above grid)
+
+   The grid is now always visible behind ALL authenticated pages — header,
+   breadcrumbs, content — everywhere. No gaps, no breaks, no duplication.
 */
-.panel-grid-bg {
-  background-color: var(--bg-primary);
+
+/* Single global grid layer — used only in AuthLayout */
+.app-grid-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+
+  /* Five background layers:
+     1. Ambient orb — top-right (purple/indigo glow)
+     2. Ambient orb — bottom-left (magenta glow)
+     3. Subtle top-center accent glow
+     4. Major accent dots (120px grid) — structural rhythm
+     5. Minor dots (24px grid) — fine texture */
   background-image:
     radial-gradient(
-      ellipse 120% 80% at 50% -15%,
-      rgba(139, 92, 246, 0.12) 0%,
-      transparent 50%
+      ellipse 45% 50% at 78% 15%,
+      rgba(99, 102, 241, 0.06) 0%,
+      transparent 70%
     ),
-    linear-gradient(rgba(139, 92, 246, 0.1) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(139, 92, 246, 0.1) 1px, transparent 1px),
-    linear-gradient(rgba(139, 92, 246, 0.14) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(139, 92, 246, 0.14) 1px, transparent 1px);
-  background-size: 100% 100%, 32px 32px, 32px 32px, 160px 160px, 160px 160px;
-  background-position: 0 0, 0 0, 0 0, -1px -1px, -1px -1px;
+    radial-gradient(
+      ellipse 40% 45% at 18% 75%,
+      rgba(192, 38, 211, 0.04) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 75% 60% at 50% 22%,
+      var(--grid-glow) 0%,
+      transparent 68%
+    ),
+    radial-gradient(circle, var(--grid-dot-color-major) 1.5px, transparent 1.5px),
+    radial-gradient(circle, var(--grid-dot-color) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    120px 120px,
+    24px 24px;
+  background-position:
+    center top,
+    center top,
+    center top,
+    0 0,
+    0 0;
+
+  /* Radial vignette mask: dots vivid in center, fade to edges.
+     Creates depth without harsh borders. */
+  mask-image: radial-gradient(
+    ellipse 95% 90% at 50% 42%,
+    black 0%,
+    rgba(0,0,0,0.88) 40%,
+    rgba(0,0,0,0.45) 70%,
+    transparent 100%
+  );
+  -webkit-mask-image: radial-gradient(
+    ellipse 95% 90% at 50% 42%,
+    black 0%,
+    rgba(0,0,0,0.88) 40%,
+    rgba(0,0,0,0.45) 70%,
+    transparent 100%
+  );
 }
 
-/* PvP Arena — усиленная сетка с золотым акцентом */
+/* panel-grid-bg: no longer responsible for the grid.
+   Just provides correct stacking context & transparent background
+   so the single app-grid-layer shines through. */
+.panel-grid-bg {
+  position: relative;
+  /* IMPORTANT: transparent — do NOT set background-color here.
+     Body/AuthLayout wrapper handles the bg. */
+}
+
+/* Keep content above the grid layer */
+.panel-grid-bg > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* PvP Arena — overrides the base grid layer with a gold-tinted version.
+   Uses app-grid-layer-arena class added alongside app-grid-layer in PvP pages. */
 .arena-grid-bg {
-  background-color: var(--bg-primary);
+  position: relative;
+}
+
+.arena-grid-bg > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Override grid layer for arena pages */
+.app-grid-layer--arena {
   background-image:
-    radial-gradient(
-      ellipse 100% 60% at 50% 0%,
-      rgba(139, 92, 246, 0.14) 0%,
-      transparent 45%
-    ),
-    linear-gradient(rgba(139, 92, 246, 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(139, 92, 246, 0.12) 1px, transparent 1px),
-    linear-gradient(rgba(255, 215, 0, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 215, 0, 0.06) 1px, transparent 1px);
-  background-size: 100% 100%, 36px 36px, 36px 36px, 144px 144px, 144px 144px;
-  background-position: 0 0, 0 0, 0 0, -1px -1px, -1px -1px;
+    radial-gradient(ellipse 70% 55% at 50% 15%, var(--grid-glow) 0%, transparent 65%),
+    radial-gradient(circle, rgba(255, 215, 0, 0.28) 1.5px, transparent 1.5px),
+    radial-gradient(circle, var(--grid-dot-color) 1px, transparent 1px);
+  background-size: 100% 100%, 120px 120px, 24px 24px;
+  background-position: center top, 0 0, 0 0;
 }
 
 /* ── Rank badge glow ──────────────────────────────────── */
@@ -651,6 +1117,893 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
 }
 
 .bento-card:hover {
-  border-color: rgba(139, 92, 246, 0.3);
-  box-shadow: 0 0 20px rgba(139, 92, 246, 0.08);
+  border-color: rgba(79, 70, 229, 0.35);
+  box-shadow: 0 0 24px rgba(79, 70, 229, 0.1);
+}
+
+/* ── Glow Card — rotating neon border ────────────────── */
+.glow-card {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.glow-card::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  background: conic-gradient(
+    from 0deg,
+    var(--accent),
+    var(--magenta),
+    var(--neon-green),
+    var(--accent)
+  );
+  border-radius: inherit;
+  animation: glow-rotate 6s linear infinite;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.glow-card:hover::before {
+  opacity: 1;
+  animation-duration: 3s;
+}
+
+.glow-card > .glow-card-inner {
+  position: relative;
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px) saturate(1.3);
+  border-radius: 15px;
+  z-index: 1;
+}
+
+@keyframes glow-rotate {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Neon skeleton pulse ─────────────────────────────── */
+@keyframes skeleton-neon {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 0.35; }
+}
+
+.skeleton-neon {
+  background: linear-gradient(90deg,
+    var(--accent-muted) 0%,
+    var(--accent-glow) 50%,
+    var(--accent-muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-neon 1.8s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* ── Smooth page-level transitions ───────────────────── */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Stagger cascade children ────────────────────────── */
+.stagger-cascade > * {
+  opacity: 0;
+  animation: fade-in-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.stagger-cascade > *:nth-child(1) { animation-delay: 0.04s; }
+.stagger-cascade > *:nth-child(2) { animation-delay: 0.08s; }
+.stagger-cascade > *:nth-child(3) { animation-delay: 0.12s; }
+.stagger-cascade > *:nth-child(4) { animation-delay: 0.16s; }
+.stagger-cascade > *:nth-child(5) { animation-delay: 0.20s; }
+.stagger-cascade > *:nth-child(6) { animation-delay: 0.24s; }
+.stagger-cascade > *:nth-child(7) { animation-delay: 0.28s; }
+.stagger-cascade > *:nth-child(8) { animation-delay: 0.32s; }
+.stagger-cascade > *:nth-child(9) { animation-delay: 0.36s; }
+.stagger-cascade > *:nth-child(10) { animation-delay: 0.40s; }
+.stagger-cascade > *:nth-child(n+11) { animation-delay: 0.44s; }
+
+/* ── XP bar pulse on leading edge ────────────────────── */
+.xp-bar-fill::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3));
+  border-radius: inherit;
+  animation: xp-pulse 2s ease-in-out infinite;
+}
+
+@keyframes xp-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ── Smooth focus ring for all interactive elements ──── */
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  transition: outline-offset 0.2s ease;
+}
+
+/* ── Better link transitions ─────────────────────────── */
+a {
+  transition: color 0.2s ease, opacity 0.2s ease;
+}
+
+/* ── Shimmer sweep on primary buttons ───────────────── */
+@keyframes btn-shimmer {
+  0%   { transform: translateX(-100%) skewX(-15deg); }
+  100% { transform: translateX(220%) skewX(-15deg); }
+}
+
+.vh-btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    rgba(255,255,255,0.18) 50%,
+    transparent 65%
+  );
+  transform: translateX(-100%) skewX(-15deg);
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.vh-btn-primary:hover::after {
+  animation: btn-shimmer 0.65s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* ── Header scroll-shrink state ─────────────────────── */
+/* Add .header--scrolled via JS on scroll */
+.header--scrolled {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+
+.header--scrolled .header-inner {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+
+/* ── Gradient text utility ───────────────────────────── */
+.text-gradient-accent {
+  background: linear-gradient(135deg, var(--accent), var(--magenta));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-neon {
+  background: linear-gradient(135deg, var(--accent), var(--neon-green));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Animated underline for nav links ────────────────── */
+.nav-underline {
+  position: relative;
+}
+
+.nav-underline::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--accent);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-underline:hover::after,
+.nav-underline.active::after {
+  width: 100%;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Enhanced Micro-Interactions & Premium Utilities (uiverse.io inspired)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Improved skeleton shimmer — sliding highlight wave ─── */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--input-bg) 25%,
+    rgba(99,102,241,0.08) 37%,
+    var(--input-bg) 63%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* ── Neon glow pulse — for accent elements ────────────── */
+@keyframes neon-pulse {
+  0%, 100% { box-shadow: 0 0 5px var(--accent-glow), 0 0 12px transparent; }
+  50% { box-shadow: 0 0 8px var(--accent-glow), 0 0 20px var(--accent-glow); }
+}
+
+.neon-pulse {
+  animation: neon-pulse 2.5s ease-in-out infinite;
+}
+
+/* ── Interactive card lift — better depth on hover ─────── */
+.card-lift {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-lift:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 12px 40px rgba(0,0,0,0.15),
+    0 0 0 1px var(--accent-muted);
+}
+
+.card-lift:active {
+  transform: translateY(-1px);
+  transition-duration: 0.1s;
+}
+
+/* ── Glow border on focus — elegant form fields ────────── */
+.glow-focus:focus-within {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-muted), 0 0 12px var(--accent-glow);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+/* ── Text reveal animation ─────────────────────────────── */
+@keyframes text-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.animate-text-reveal {
+  animation: text-reveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Subtle breathing glow — for active status indicators ── */
+@keyframes breathe {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.animate-breathe {
+  animation: breathe 3s ease-in-out infinite;
+}
+
+/* ── Glass panel interactive variant — stronger hover ──── */
+.glass-panel-interactive {
+  cursor: pointer;
+}
+
+.glass-panel-interactive:hover {
+  border-color: rgba(99,102,241,0.3);
+  box-shadow:
+    var(--shadow-lg),
+    0 0 0 1px rgba(99,102,241,0.15),
+    0 0 24px rgba(99,102,241,0.06);
+  transform: translateY(-2px);
+}
+
+.glass-panel-interactive:active {
+  transform: translateY(0) scale(0.98);
+  transition-duration: 0.1s;
+}
+
+/* ── Table row accent hover ──────────────────────────── */
+.table-row-accent {
+  border-left: 3px solid transparent;
+  transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+.table-row-accent:hover {
+  border-left-color: var(--accent);
+  transform: translateX(2px);
+  background: var(--accent-muted);
+}
+
+/* ── Subtle float animation for empty states ─────────── */
+@keyframes float-subtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-float-subtle {
+  animation: float-subtle 3s ease-in-out infinite;
+}
+
+/* ── Smooth number counter tick ────────────────────────── */
+@keyframes count-tick {
+  0%, 100% { transform: translateY(0); }
+  25% { transform: translateY(-2px); }
+}
+
+/* ── vh-btn-outline enhanced hover ─────────────────────── */
+.vh-btn-outline {
+  position: relative;
+  overflow: hidden;
+}
+
+.vh-btn-outline::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--accent-muted), transparent);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.vh-btn-outline:hover::before {
+  opacity: 1;
+}
+
+/* ── Responsive padding utilities ──────────────────────── */
+@media (max-width: 639px) {
+  .app-page {
+    padding-inline: max(12px, env(safe-area-inset-left));
+  }
+
+  .glass-panel {
+    border-radius: 12px;
+  }
+
+  .vh-btn-primary,
+  .vh-btn-outline {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+    font-size: 0.8125rem;
+  }
+}
+
+/* ── Safe area padding for notched phones ────────────── */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .app-page {
+    padding-bottom: max(var(--app-section-padding-y), env(safe-area-inset-bottom));
+  }
+}
+
+/* ── Smooth scrolling with rubber-band feel ─────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ── Animated gradient border on hover (uiverse.io inspired) ── */
+.glass-panel-glow {
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-panel-glow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(99,102,241,0) 0%,
+    rgba(99,102,241,0.4) 50%,
+    rgba(99,102,241,0) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.glass-panel-glow:hover::before {
+  opacity: 1;
+}
+
+/* ── XP progress bar with shine sweep ───────────────────── */
+.xp-bar-fill::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255,255,255,0.25),
+    transparent
+  );
+  animation: xp-shine 2.5s ease-in-out infinite;
+}
+
+@keyframes xp-shine {
+  0%   { left: -100%; }
+  100% { left: 200%; }
+}
+
+/* ── Neon badge with subtle glow ────────────────────────── */
+.badge-neon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-radius: 100px;
+  border: 1px solid;
+  backdrop-filter: blur(8px);
+  transition: box-shadow 0.3s ease, transform 0.2s ease, background 0.2s ease;
+}
+
+.badge-neon:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 12px currentColor;
+}
+
+/* ── Pulsing live dot (for active indicators) ───────────── */
+.dot-live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: dot-live-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes dot-live-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 currentColor; }
+  50%      { opacity: 0.7; box-shadow: 0 0 0 4px transparent; }
+}
+
+/* ── Tooltip via data attribute ─────────────────────────── */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  padding: 6px 12px;
+  background: rgba(17,25,40,0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(99,102,241,0.25);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  z-index: 50;
+}
+
+[data-tooltip]:hover::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ── Scan line transition effect ────────────────────────── */
+@keyframes scan-down {
+  from { top: 0; opacity: 1; }
+  to   { top: 100%; opacity: 0; }
+}
+
+/* ── Striped progress bar fill ──────────────────────────── */
+.progress-striped::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    rgba(255,255,255,0.08) 4px,
+    rgba(255,255,255,0.08) 8px
+  );
+  animation: stripe-scroll 0.8s linear infinite;
+}
+
+@keyframes stripe-scroll {
+  to { background-position: 12px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   WAVE 1.2: Premium UI Components (uiverse.io-inspired)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Neon Button ──────────────────────────────────────────────────────
+   Usage: <button class="btn-neon">Start Training</button>
+   Variants: btn-neon--accent, btn-neon--green, btn-neon--danger           */
+.btn-neon {
+  position: relative;
+  padding: 12px 28px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  background: var(--glass-bg);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 0 0.5px rgba(99, 102, 241, 0.12);
+}
+
+.btn-neon::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--accent), var(--magenta), var(--accent));
+  background-size: 200% 200%;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.btn-neon:hover::before {
+  opacity: 1;
+  animation: gradient-rotate 3s linear infinite;
+}
+
+.btn-neon:hover {
+  box-shadow:
+    0 0 24px var(--accent-glow),
+    0 0 48px rgba(79, 70, 229, 0.12),
+    inset 0 0 24px rgba(79, 70, 229, 0.06);
+  transform: translateY(-2px);
+  border-color: transparent;
+  color: #fff;
+}
+
+.btn-neon:active {
+  transform: translateY(0);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.btn-neon:disabled,
+.btn-neon[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-neon:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn-neon--green { --accent: var(--neon-green); --accent-glow: rgba(0, 255, 148, 0.25); }
+.btn-neon--danger { --accent: var(--neon-red); --accent-glow: rgba(255, 42, 109, 0.25); }
+
+@keyframes gradient-rotate {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ── Cyber Card ────────────────────────────────────────────────────────
+   Usage: <div class="cyber-card"> ... </div>
+   Enhanced glass-panel with animated border + corner accents            */
+.cyber-card {
+  position: relative;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 24px;
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  box-shadow: var(--shadow-md), 0 0 0 0.5px rgba(255, 255, 255, 0.03);
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+/* Corner accent lines */
+.cyber-card::before,
+.cyber-card::after {
+  content: "";
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-color: var(--accent);
+  border-style: solid;
+  transition: all 0.35s ease;
+  opacity: 0.4;
+}
+
+.cyber-card::before {
+  top: -1px;
+  left: -1px;
+  border-width: 2px 0 0 2px;
+  border-radius: 14px 0 0 0;
+}
+
+.cyber-card::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 2px 2px 0;
+  border-radius: 0 0 14px 0;
+}
+
+.cyber-card:hover {
+  border-color: var(--border-hover);
+  box-shadow:
+    var(--shadow-lg),
+    0 0 40px rgba(79, 70, 229, 0.08),
+    0 0 0 1px rgba(99, 102, 241, 0.1);
+  transform: translateY(-3px);
+}
+
+.cyber-card:hover::before,
+.cyber-card:hover::after {
+  width: 32px;
+  height: 32px;
+  opacity: 0.8;
+}
+
+/* ── Glow Input ───────────────────────────────────────────────────────
+   Usage: <input class="glow-input" placeholder="Поиск..." />            */
+.glow-input {
+  width: 100%;
+  padding: 10px 16px;
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  outline: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glow-input::placeholder {
+  color: var(--text-muted);
+}
+
+.glow-input:focus {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px var(--accent-muted),
+    0 0 20px rgba(79, 70, 229, 0.08);
+  background: var(--bg-secondary);
+}
+
+.glow-input:hover:not(:focus) {
+  border-color: var(--border-hover);
+}
+
+/* ── Status Badge ─────────────────────────────────────────────────────
+   Usage: <span class="status-badge status-badge--online">Online</span>  */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid;
+}
+
+.status-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+.status-badge--online {
+  color: var(--neon-green);
+  background: rgba(0, 255, 148, 0.08);
+  border-color: rgba(0, 255, 148, 0.2);
+}
+.status-badge--online::before { background: var(--neon-green); }
+
+.status-badge--warning {
+  color: var(--neon-amber);
+  background: rgba(255, 215, 0, 0.08);
+  border-color: rgba(255, 215, 0, 0.2);
+}
+.status-badge--warning::before { background: var(--neon-amber); }
+
+.status-badge--danger {
+  color: var(--neon-red);
+  background: rgba(255, 42, 109, 0.08);
+  border-color: rgba(255, 42, 109, 0.2);
+}
+.status-badge--danger::before { background: var(--neon-red); }
+
+.status-badge--neutral {
+  color: var(--text-muted);
+  background: rgba(122, 122, 144, 0.08);
+  border-color: rgba(122, 122, 144, 0.2);
+}
+.status-badge--neutral::before { background: var(--text-muted); }
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* ── Score Ring ────────────────────────────────────────────────────────
+   SVG-based score ring with glow. Combine with JS to set stroke-dasharray.
+   Usage: <div class="score-ring"> <svg>...</svg> </div>                 */
+.score-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-ring svg circle.track {
+  fill: none;
+  stroke: var(--bg-tertiary);
+  stroke-width: 4;
+}
+
+.score-ring svg circle.fill {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  filter: drop-shadow(0 0 4px var(--accent-glow));
+}
+
+/* ── Stat Chip ────────────────────────────────────────────────────────
+   Usage: <div class="stat-chip"><span class="stat-chip__value">42</span>
+          <span class="stat-chip__label">XP</span></div>                */
+.stat-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 7px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.stat-chip__value {
+  font-size: var(--fs-md);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.stat-chip__label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-wider);
+}
+
+.stat-chip:hover {
+  border-color: var(--accent-muted);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+/* ── Emotion Indicator Dot ────────────────────────────────────────────
+   Small glowing dot for inline emotion state display.
+   Usage: <span class="emotion-dot emotion-dot--deal"></span>            */
+.emotion-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.emotion-dot--cold { color: #60A5FA; background: #60A5FA; }
+.emotion-dot--guarded { color: #94A3B8; background: #94A3B8; }
+.emotion-dot--curious { color: #FBBF24; background: #FBBF24; }
+.emotion-dot--considering { color: #F59E0B; background: #F59E0B; }
+.emotion-dot--negotiating { color: #FB923C; background: #FB923C; }
+.emotion-dot--deal { color: #34D399; background: #34D399; }
+.emotion-dot--testing { color: #A78BFA; background: #A78BFA; }
+.emotion-dot--callback { color: #67E8F9; background: #67E8F9; }
+.emotion-dot--hostile { color: #F87171; background: #F87171; }
+.emotion-dot--hangup { color: #EF4444; background: #EF4444; }
+
+/* ── Skeleton Shimmer Enhanced ────────────────────────────────────────
+   Drop-in replacement for loading states with accent color shimmer.     */
+.skeleton-neon {
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--accent-muted) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer-neon 1.5s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+@keyframes shimmer-neon {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Toast glow pulse — entrance effect for notification toasts ── */
+@keyframes glow-pulse {
+  0%   { box-shadow: 0 0 0 0 var(--accent-glow, rgba(0, 255, 148, 0.3)); }
+  40%  { box-shadow: 0 0 12px 4px var(--accent-glow, rgba(0, 255, 148, 0.15)); }
+  100% { box-shadow: var(--shadow-lg); }
+}
+
+/* ── Tooltip Arrow ────────────────────────────────────────────────────
+   Dark glass tooltip.
+   Usage: <div class="glass-tooltip">Hint text</div>                    */
+.glass-tooltip {
+  position: absolute;
+  padding: 6px 12px;
+  font-size: var(--fs-xs);
+  color: #f0f0f5;
+  background: rgba(10, 10, 22, 0.9);
+  border: 1px solid rgba(79, 70, 229, 0.25);
+  border-radius: 8px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 50;
 }

@@ -10,7 +10,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { hasRole } from "@/lib/guards";
+import { RANK } from "@/lib/constants";
 import type { TournamentLeaderboardEntry, ActiveTournamentResponse, Scenario } from "@/types";
+import { logger } from "@/lib/logger";
 
 interface GamificationEntry {
   rank: number;
@@ -22,19 +24,31 @@ interface GamificationEntry {
   avg_score: number;
 }
 
-type Tab = "general" | "tournament";
+interface CompositeEntry {
+  rank: number;
+  user_id: string;
+  full_name: string;
+  avatar_url?: string | null;
+  composite_score: number;
+  training_avg: number;
+  pvp_rating_norm: number;
+  knowledge_score: number;
+  streak_bonus: number;
+}
+
+type Tab = "general" | "tournament" | "composite";
 
 function getRankIcon(rank: number) {
-  if (rank === 1) return <Crown size={18} style={{ color: "#FFD700" }} />;
-  if (rank === 2) return <Medal size={18} style={{ color: "#C0C0C0" }} />;
-  if (rank === 3) return <Medal size={18} style={{ color: "#CD7F32" }} />;
+  if (rank === 1) return <Crown size={18} style={{ color: RANK.gold }} />;
+  if (rank === 2) return <Medal size={18} style={{ color: RANK.silver }} />;
+  if (rank === 3) return <Medal size={18} style={{ color: RANK.bronze }} />;
   return <span className="font-mono text-sm font-bold" style={{ color: "var(--text-muted)" }}>{rank}</span>;
 }
 
 function getRankStyle(rank: number) {
-  if (rank === 1) return { bg: "rgba(255,215,0,0.08)", border: "rgba(255,215,0,0.2)", glow: "0 0 15px rgba(255,215,0,0.15)" };
-  if (rank === 2) return { bg: "rgba(192,192,192,0.06)", border: "rgba(192,192,192,0.15)", glow: "none" };
-  if (rank === 3) return { bg: "rgba(205,127,50,0.06)", border: "rgba(205,127,50,0.15)", glow: "none" };
+  if (rank === 1) return { bg: RANK.goldRgba(0.08), border: RANK.goldRgba(0.2), glow: `0 0 15px ${RANK.goldRgba(0.15)}` };
+  if (rank === 2) return { bg: RANK.silverRgba(0.06), border: RANK.silverRgba(0.15), glow: "none" };
+  if (rank === 3) return { bg: RANK.bronzeRgba(0.06), border: RANK.bronzeRgba(0.15), glow: "none" };
   return { bg: "var(--glass-bg)", border: "var(--glass-border)", glow: "none" };
 }
 
@@ -60,6 +74,10 @@ export default function LeaderboardPage() {
   const [tournamentEntries, setTournamentEntries] = useState<TournamentLeaderboardEntry[]>([]);
   const [tournamentLoading, setTournamentLoading] = useState(true);
 
+  // Composite leaderboard state
+  const [compositeEntries, setCompositeEntries] = useState<CompositeEntry[]>([]);
+  const [compositeLoading, setCompositeLoading] = useState(false);
+
   // Create tournament modal
   const [showCreate, setShowCreate] = useState(false);
 
@@ -69,7 +87,7 @@ export default function LeaderboardPage() {
     api
       .get(`/gamification/leaderboard?period=${period}`)
       .then((data: GamificationEntry[]) => setEntries(data))
-      .catch((err) => { console.error("Failed to load leaderboard:", err); setEntries([]); })
+      .catch((err) => { logger.error("Failed to load leaderboard:", err); setEntries([]); })
       .finally(() => setLoading(false));
   }, [period]);
 
@@ -82,31 +100,36 @@ export default function LeaderboardPage() {
           // Fetch full leaderboard (top 20)
           api.get(`/tournament/leaderboard/${data.tournament.id}`)
             .then((lb: TournamentLeaderboardEntry[]) => setTournamentEntries(lb))
-            .catch((err) => { console.error("Failed to load tournament leaderboard:", err); setTournamentEntries(data.leaderboard); });
+            .catch((err) => { logger.error("Failed to load tournament leaderboard:", err); setTournamentEntries(data.leaderboard); });
         }
       })
-      .catch((err) => { console.error("Failed to load active tournament:", err); })
+      .catch((err) => { logger.error("Failed to load active tournament:", err); })
       .finally(() => setTournamentLoading(false));
   }, []);
+
+  // Fetch composite leaderboard when tab switches
+  useEffect(() => {
+    if (tab !== "composite") return;
+    setCompositeLoading(true);
+    api.get("/gamification/leaderboard/composite")
+      .then((data: CompositeEntry[]) => setCompositeEntries(data))
+      .catch((err) => { logger.error("Failed to load composite leaderboard:", err); setCompositeEntries([]); })
+      .finally(() => setCompositeLoading(false));
+  }, [tab]);
 
   const TABS: { id: Tab; label: string; icon: React.ComponentType<{ size: number; style?: React.CSSProperties }> }[] = [
     { id: "general", label: "Общий", icon: Trophy },
     { id: "tournament", label: "Турнир", icon: Swords },
+    { id: "composite", label: "Комплексный", icon: Zap },
   ];
 
   return (
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
         <div className="mx-auto max-w-3xl px-4 py-8">
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="flex items-center gap-2">
-              <Trophy size={20} style={{ color: "var(--accent)" }} />
-              <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
-                ЛИДЕРБОРД
-              </h1>
-            </div>
-            <p className="mt-2 font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>
-              TOP HUNTERS · BEST SCORES
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              Лучшие результаты за период
             </p>
           </motion.div>
 
@@ -146,7 +169,7 @@ export default function LeaderboardPage() {
             {tab === "general" && (
               <motion.div key="general" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
                 {/* Period selector */}
-                <div className="mt-6 flex gap-2">
+                <div className="mt-6 flex gap-2 overflow-x-auto scrollbar-hide">
                   {([
                     { key: "week", label: "Неделя" },
                     { key: "month", label: "Месяц" },
@@ -155,7 +178,7 @@ export default function LeaderboardPage() {
                     <motion.button
                       key={p.key}
                       onClick={() => setPeriod(p.key)}
-                      className="rounded-lg px-4 py-2 font-mono text-xs tracking-wider transition-all"
+                      className="rounded-lg px-3 sm:px-4 py-2.5 font-mono text-xs sm:text-xs tracking-wider transition-all whitespace-nowrap"
                       style={{
                         background: period === p.key ? "var(--accent-muted)" : "var(--input-bg)",
                         border: `1px solid ${period === p.key ? "var(--accent)" : "var(--border-color)"}`,
@@ -191,7 +214,7 @@ export default function LeaderboardPage() {
                   <div className="mt-6 flex justify-end">
                     <motion.button
                       onClick={() => setShowCreate(true)}
-                      className="vh-btn-primary flex items-center gap-2 text-xs"
+                      className="btn-neon flex items-center gap-2 text-xs"
                       whileTap={{ scale: 0.97 }}
                     >
                       <Plus size={14} /> Создать турнир
@@ -206,17 +229,17 @@ export default function LeaderboardPage() {
                       style={{ background: "rgba(255,215,0,0.06)", border: "1px solid rgba(255,215,0,0.15)" }}
                     >
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(255,215,0,0.1)" }}>
-                        <Swords size={18} style={{ color: "#FFD700" }} />
+                        <Swords size={18} style={{ color: RANK.gold }} />
                       </div>
                       <div className="flex-1">
                         <div className="font-display text-sm font-bold" style={{ color: "var(--text-primary)" }}>
                           {tournament.tournament.title}
                         </div>
-                        <div className="flex items-center gap-3 mt-1 font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+                        <div className="flex items-center gap-3 mt-1 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                           <span className="flex items-center gap-1">
                             <Clock size={10} /> {formatTimeLeft(tournament.tournament.week_end)}
                           </span>
-                          <span className="flex items-center gap-1" style={{ color: "#FFD700" }}>
+                          <span className="flex items-center gap-1" style={{ color: RANK.gold }}>
                             <Crown size={10} /> {tournament.tournament.bonus_xp[0]} XP
                           </span>
                           <span className="flex items-center gap-1">
@@ -251,6 +274,79 @@ export default function LeaderboardPage() {
                 )}
               </motion.div>
             )}
+
+            {tab === "composite" && (
+              <motion.div key="composite" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+                {compositeLoading ? (
+                  <div className="flex justify-center py-12">
+                    <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
+                  </div>
+                ) : compositeEntries.length > 0 ? (
+                  <div className="mt-6 space-y-2">
+                    {/* Formula legend */}
+                    <div className="glass-panel p-3 mb-4 flex flex-wrap gap-3 text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                      <span className="badge-neon text-xs">40% Тренировки</span>
+                      <span className="badge-neon text-xs">30% PvP</span>
+                      <span className="badge-neon text-xs">20% Знания</span>
+                      <span className="badge-neon text-xs">10% Серия</span>
+                    </div>
+
+                    {compositeEntries.map((entry) => {
+                      const rankStyle = getRankStyle(entry.rank);
+                      const isMe = entry.user_id === user?.id;
+                      return (
+                        <motion.div
+                          key={entry.user_id}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={`cyber-card flex items-center gap-3 px-4 py-3 ${isMe ? "neon-pulse" : ""}`}
+                          style={{
+                            background: rankStyle.bg,
+                            border: `1px solid ${rankStyle.border}`,
+                            boxShadow: rankStyle.glow,
+                          }}
+                        >
+                          <div className="w-8 text-center">{getRankIcon(entry.rank)}</div>
+                          <UserAvatar fullName={entry.full_name} avatarUrl={entry.avatar_url} size={32} />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate" style={{ color: isMe ? "var(--accent)" : "var(--text-primary)" }}>
+                              {entry.full_name}
+                            </div>
+                            <div className="flex gap-2 mt-1 flex-wrap">
+                              <span className="stat-chip text-xs" style={{ color: "var(--accent)" }}>
+                                T:{Math.round(entry.training_avg)}
+                              </span>
+                              <span className="stat-chip text-xs" style={{ color: "var(--neon-green, #00FF94)" }}>
+                                P:{Math.round(entry.pvp_rating_norm)}
+                              </span>
+                              <span className="stat-chip text-xs" style={{ color: "var(--neon-amber, #FFD700)" }}>
+                                K:{Math.round(entry.knowledge_score)}
+                              </span>
+                              <span className="stat-chip text-xs" style={{ color: "var(--warning)" }}>
+                                S:{Math.round(entry.streak_bonus)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-mono text-lg font-bold" style={{ color: "var(--accent)" }}>
+                              {Math.round(entry.composite_score)}
+                            </div>
+                            <div className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>очков</div>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mt-16 flex flex-col items-center py-8">
+                    <Zap size={32} style={{ color: "var(--text-muted)" }} />
+                    <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
+                      Недостаточно данных для комплексного рейтинга
+                    </p>
+                  </div>
+                )}
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
       </div>
@@ -268,10 +364,10 @@ export default function LeaderboardPage() {
                   if (data.tournament) {
                     api.get(`/tournament/leaderboard/${data.tournament.id}`)
                       .then((lb: TournamentLeaderboardEntry[]) => setTournamentEntries(lb))
-                      .catch((err) => { console.error("Failed to reload tournament leaderboard:", err); });
+                      .catch((err) => { logger.error("Failed to reload tournament leaderboard:", err); });
                   }
                 })
-                .catch((err) => { console.error("Failed to reload tournament data:", err); });
+                .catch((err) => { logger.error("Failed to reload tournament data:", err); });
             }}
           />
         )}
@@ -294,7 +390,7 @@ function CreateTournamentModal({ onClose, onCreated }: { onClose: () => void; on
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.get("/scenarios/").then(setScenarios).catch((err) => { console.error("Failed to load scenarios:", err); });
+    api.get("/scenarios/").then(setScenarios).catch((err) => { logger.error("Failed to load scenarios:", err); });
   }, []);
 
   const handleCreate = async () => {
@@ -338,7 +434,7 @@ function CreateTournamentModal({ onClose, onCreated }: { onClose: () => void; on
       >
         <div className="flex items-center justify-between mb-5">
           <h2 className="font-display text-lg font-bold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-            <Swords size={18} style={{ color: "#FFD700" }} /> Новый турнир
+            <Swords size={18} style={{ color: RANK.gold }} /> Новый турнир
           </h2>
           <button onClick={onClose} className="p-1 rounded-lg" style={{ color: "var(--text-muted)" }}>
             <XIcon size={18} />
@@ -382,7 +478,7 @@ function CreateTournamentModal({ onClose, onCreated }: { onClose: () => void; on
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="vh-label">🥇 XP</label>
               <input type="number" value={bonusFirst} onChange={(e) => setBonusFirst(Number(e.target.value))} className="vh-input w-full" />
@@ -404,7 +500,7 @@ function CreateTournamentModal({ onClose, onCreated }: { onClose: () => void; on
           <motion.button
             onClick={handleCreate}
             disabled={creating}
-            className="vh-btn-primary w-full flex items-center justify-center gap-2"
+            className="btn-neon w-full flex items-center justify-center gap-2"
             whileTap={{ scale: 0.98 }}
           >
             {creating ? <Loader2 size={16} className="animate-spin" /> : <><Swords size={16} /> Создать турнир</>}
@@ -440,6 +536,7 @@ function LeaderboardList({
         icon={Trophy}
         title={emptyText}
         description="Пройдите тренировки, чтобы попасть в рейтинг"
+        hint="1 сессия — и вы в игре"
       />
     );
   }
@@ -451,36 +548,47 @@ function LeaderboardList({
         return (
           <motion.div
             key={entry.userId}
-            initial={{ opacity: 0, x: -16 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
-            className="flex items-center gap-4 rounded-xl p-4 transition-all"
+            className="cyber-card flex items-center gap-2 sm:gap-4 p-3 sm:p-4 transition-all relative overflow-hidden group"
             style={{
               background: style.bg,
               border: `1px solid ${style.border}`,
               boxShadow: style.glow,
-              backdropFilter: "blur(20px)",
             }}
-            whileHover={{ y: -2, boxShadow: "0 4px 20px rgba(139,92,246,0.1)" }}
+            whileHover={{ y: -2, boxShadow: `0 4px 20px ${entry.rank <= 3 ? style.border : "rgba(99,102,241,0.1)"}` }}
           >
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center shrink-0">
+            {/* Rank accent bar — slides in on hover */}
+            <div
+              className="absolute left-0 top-0 bottom-0 w-0 group-hover:w-[3px] transition-all duration-300"
+              style={{ background: entry.rank === 1 ? RANK.gold : entry.rank === 2 ? RANK.silver : entry.rank === 3 ? RANK.bronze : "var(--accent)" }}
+            />
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              <div className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center">
                 {getRankIcon(entry.rank)}
               </div>
-              <UserAvatar avatarUrl={entry.avatarUrl} fullName={entry.name} size={36} />
+              <UserAvatar avatarUrl={entry.avatarUrl} fullName={entry.name} size={32} />
             </div>
-            <div className="flex-1">
-              <div className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>{entry.name}</div>
-              <div className="mt-0.5 font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>{entry.subtitle}</div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-xs sm:text-sm truncate" style={{ color: "var(--text-primary)" }}>{entry.name}</div>
+              <div className="mt-0.5 font-mono text-xs sm:text-xs truncate" style={{ color: "var(--text-muted)" }}>{entry.subtitle}</div>
             </div>
-            <div className="text-right">
+            <div className="text-right shrink-0">
               <div className="flex items-center gap-1">
-                <TrendingUp size={12} style={{ color: "var(--accent)" }} />
-                <span className="font-display text-lg font-bold" style={{ color: "var(--accent)" }}>
+                <TrendingUp size={12} style={{ color: entry.rank === 1 ? RANK.gold : entry.rank === 2 ? RANK.silver : entry.rank === 3 ? RANK.bronze : "var(--accent)" }} />
+                <motion.span
+                  className="font-display text-base sm:text-lg font-bold inline-block"
+                  style={{ color: entry.rank === 1 ? RANK.gold : entry.rank === 2 ? RANK.silver : entry.rank === 3 ? RANK.bronze : "var(--accent)" }}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: i * 0.05 + 0.15, type: "spring", stiffness: 400, damping: 25 }}
+                  whileHover={{ scale: 1.12 }}
+                >
                   {entry.score}
-                </span>
+                </motion.span>
               </div>
-              <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>{entry.scoreLabel}</span>
+              <span className="font-mono text-xs sm:text-xs" style={{ color: "var(--text-muted)" }}>{entry.scoreLabel}</span>
             </div>
           </motion.div>
         );

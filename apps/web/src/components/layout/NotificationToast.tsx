@@ -48,7 +48,7 @@ export function NotificationToastProvider() {
 
   return (
     <div
-      className="fixed top-16 right-4 z-[200] flex flex-col gap-2 w-80 pointer-events-none"
+      className="fixed top-[4.5rem] right-3 z-[200] flex flex-col gap-2 w-[340px] pointer-events-none"
       role="status"
       aria-live="polite"
       aria-atomic="false"
@@ -59,11 +59,11 @@ export function NotificationToastProvider() {
           return (
             <motion.div
               key={t.id}
-              initial={{ opacity: 0, x: 60, scale: 0.9 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 60, scale: 0.9 }}
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="rounded-xl p-3 flex items-start gap-3 pointer-events-auto"
+              initial={{ opacity: 0, x: 30, y: -20, scale: 0.85 }}
+              animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 40, y: -10, scale: 0.85 }}
+              transition={{ type: "spring", stiffness: 500, damping: 28 }}
+              className="rounded-xl p-3 flex items-start gap-3 pointer-events-auto animate-[glow-pulse_0.6s_ease-out]"
               style={{
                 background: "var(--glass-bg)",
                 backdropFilter: "blur(20px)",
@@ -75,18 +75,18 @@ export function NotificationToastProvider() {
                 className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                 style={{ background: "var(--accent-muted)" }}
               >
-                <Icon size={14} style={{ color: "var(--accent)" }} />
+                <Icon size={16} style={{ color: "var(--accent)" }} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
                   {t.title}
                 </div>
-                <div className="text-[11px] mt-0.5 line-clamp-2" style={{ color: "var(--text-muted)" }}>
+                <div className="text-xs mt-0.5 line-clamp-2" style={{ color: "var(--text-muted)" }}>
                   {t.body}
                 </div>
               </div>
               <button onClick={() => dismiss(t.id)} className="shrink-0 mt-0.5" style={{ color: "var(--text-muted)" }} aria-label="Закрыть уведомление">
-                <X size={12} />
+                <X size={14} />
               </button>
             </motion.div>
           );

@@ -198,3 +198,39 @@ class ChallengeResponse(BaseModel):
 
 class ActiveChallengesResponse(BaseModel):
     challenges: list[ChallengeResponse]
+
+
+# ---------------------------------------------------------------------------
+# Arena Leaderboard (3-period)
+# ---------------------------------------------------------------------------
+
+class ArenaLeaderboardEntryElo(BaseModel):
+    """Leaderboard entry for all-time ELO-based ranking."""
+    rank: int
+    user_id: uuid.UUID
+    username: str
+    avatar_url: str | None = None
+    rating: float = 1500.0
+    rank_tier: str = "unranked"
+    wins: int = 0
+    losses: int = 0
+    streak: int = 0
+    best_streak: int = 0
+
+
+class ArenaLeaderboardEntryScore(BaseModel):
+    """Leaderboard entry for time-period score-based ranking."""
+    rank: int
+    user_id: uuid.UUID
+    username: str
+    avatar_url: str | None = None
+    total_score: float = 0.0
+    sessions_count: int = 0
+    avg_score: float = 0.0
+
+
+class ArenaLeaderboardResponse(BaseModel):
+    period: str  # "week" | "month" | "all"
+    entries: list[ArenaLeaderboardEntryElo | ArenaLeaderboardEntryScore]
+    user_rank: dict | None = None
+    total_players: int = 0

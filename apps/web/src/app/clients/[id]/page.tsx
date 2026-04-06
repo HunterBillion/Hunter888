@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  ArrowLeft, Phone, Mail, MapPin, DollarSign,
+  Phone, Mail, MapPin, DollarSign,
   Calendar, ShieldCheck, Loader2, Plus, Bell, Send,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/BackButton";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -24,7 +25,6 @@ import { logger } from "@/lib/logger";
 export default function ClientDetailPage() {
   const { user } = useAuth();
   const params = useParams();
-  const router = useRouter();
   const id = typeof params.id === "string" ? params.id : String(params.id ?? "");
 
   const isReadOnly = user?.role === "methodologist";
@@ -40,7 +40,7 @@ export default function ClientDetailPage() {
   useEffect(() => {
     api.get(`/clients/${id}`)
       .then((data: CRMClientDetail) => setClient(data))
-      .catch((err) => { console.error("Failed to load client details:", err); })
+      .catch((err) => { logger.error("Failed to load client details:", err); })
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -123,13 +123,9 @@ export default function ClientDetailPage() {
         <div className="mx-auto max-w-4xl px-4 py-8">
         {/* Back + status */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-          <button
-            onClick={() => router.back()}
-            className="flex items-center gap-1.5 text-sm mb-4 transition-colors"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <ArrowLeft size={14} /> Назад
-          </button>
+          <div className="mb-4">
+            <BackButton href="/clients" label="К клиентам" />
+          </div>
 
           <div className="flex items-start justify-between">
             <div>
@@ -139,7 +135,7 @@ export default function ClientDetailPage() {
                 </h1>
                 <span
                   className="text-xs font-mono px-2 py-1 rounded-full"
-                  style={{ background: `${statusColor}15`, color: statusColor, border: `1px solid ${statusColor}30` }}
+                  style={{ background: `color-mix(in srgb, ${statusColor} 9%, transparent)`, color: statusColor, border: `1px solid color-mix(in srgb, ${statusColor} 19%, transparent)` }}
                 >
                   {CLIENT_STATUS_LABELS[client.status]}
                 </span>
@@ -212,7 +208,7 @@ export default function ClientDetailPage() {
                 )}
                 {client.creditors.length > 0 && (
                   <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--border-color)" }}>
-                    <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>КРЕДИТОРЫ</span>
+                    <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>КРЕДИТОРЫ</span>
                     {client.creditors.map((cr, i) => (
                       <div key={i} className="flex justify-between mt-1">
                         <span className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>{cr.name}</span>
@@ -319,7 +315,7 @@ export default function ClientDetailPage() {
                   {client.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="text-[10px] font-mono px-2 py-0.5 rounded-full"
+                      className="text-xs font-mono px-2 py-0.5 rounded-full"
                       style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--border-color)" }}
                     >
                       {tag}

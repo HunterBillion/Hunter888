@@ -183,7 +183,7 @@ class RealClient(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     manager_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False, index=True
     )
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(20), index=True)
@@ -262,7 +262,7 @@ class ClientConsent(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     client_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("real_clients.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("real_clients.id", ondelete="CASCADE"), nullable=False, index=True
     )
     consent_type: Mapped[str] = mapped_column(String(50), nullable=False)
     channel: Mapped[ConsentChannel | None] = mapped_column(consent_channel_enum)
@@ -281,7 +281,7 @@ class ClientConsent(Base):
     user_agent: Mapped[str | None] = mapped_column(String(500))
 
     recorded_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id")
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     evidence_url: Mapped[str | None] = mapped_column(String(500))
 
@@ -342,10 +342,10 @@ class ClientInteraction(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     client_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("real_clients.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("real_clients.id", ondelete="CASCADE"), nullable=False, index=True
     )
     manager_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id")
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     interaction_type: Mapped[InteractionType] = mapped_column(
         interaction_type_enum, nullable=False
@@ -397,7 +397,7 @@ class ClientNotification(Base):
         UUID(as_uuid=True), nullable=False
     )
     client_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("real_clients.id")
+        UUID(as_uuid=True), ForeignKey("real_clients.id", ondelete="CASCADE"), index=True
     )
     channel: Mapped[NotificationChannel] = mapped_column(
         notification_channel_enum, nullable=False
@@ -451,10 +451,10 @@ class ManagerReminder(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     manager_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     client_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("real_clients.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("real_clients.id", ondelete="CASCADE"), nullable=False, index=True
     )
     remind_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
@@ -496,7 +496,7 @@ class AuditLog(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     actor_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id")
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     actor_role: Mapped[str | None] = mapped_column(String(20))
     action: Mapped[str] = mapped_column(String(50), nullable=False)

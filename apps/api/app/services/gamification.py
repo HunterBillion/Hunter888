@@ -45,6 +45,7 @@ PERFECT_SCORE_BONUS = 100    # score >= 90
 # Achievement rarity → XP multiplier
 RARITY_XP: dict[str, int] = {
     "common": 50,
+    "uncommon": 75,
     "rare": 200,
     "epic": 500,
     "legendary": 1000,
@@ -55,18 +56,27 @@ REPEAT_EARN_MULTIPLIER = 0.2
 
 
 def xp_for_level(level: int) -> int:
-    """Total XP required to reach a given level."""
+    """Total XP required to reach a given level.
+
+    Uses explicit table from seed_levels.py (DOC_03 §3.4).
+    Fallback to formula only for levels > 20.
+    """
+    from scripts.seed_levels import LEVEL_XP_THRESHOLDS
+    if level in LEVEL_XP_THRESHOLDS:
+        return LEVEL_XP_THRESHOLDS[level]
     if level <= 1:
         return 0
+    # Fallback for hypothetical levels beyond 20
     return int(100 * math.pow(level, 1.5))
 
 
 def level_from_xp(total_xp: int) -> int:
-    """Calculate level from total accumulated XP."""
-    level = 1
-    while xp_for_level(level + 1) <= total_xp:
-        level += 1
-    return level
+    """Calculate level from total accumulated XP.
+
+    Uses explicit table from seed_levels.py (DOC_03 §3.4).
+    """
+    from scripts.seed_levels import get_level_for_xp
+    return get_level_for_xp(total_xp)
 
 
 def calculate_session_xp(score_total: float | None, streak_days: int) -> int:
@@ -139,7 +149,8 @@ async def calculate_streak(user_id: uuid.UUID, db: AsyncSession) -> int:
 # ═════════════════════════════════════════════════════════════════════════════
 
 async def get_user_total_xp(user_id: uuid.UUID, db: AsyncSession) -> int:
-    """Calculate total XP from all completed sessions."""
+    """Calculate total XP from all completed sessions (training + arena)."""
+    # Training XP
     result = await db.execute(
         select(TrainingSession.score_total)
         .where(
@@ -154,6 +165,33 @@ async def get_user_total_xp(user_id: uuid.UUID, db: AsyncSession) -> int:
     for i, score in enumerate(scores):
         streak_at_time = min(i, 5)
         total_xp += calculate_session_xp(score, streak_at_time)
+
+    # Arena XP — estimated from completed quiz sessions
+    from app.models.knowledge import KnowledgeQuizSession, QuizSessionStatus
+    from app.services.arena_xp import calculate_arena_xp
+
+    arena_result = await db.execute(
+        select(KnowledgeQuizSession)
+        .where(
+            KnowledgeQuizSession.user_id == user_id,
+            KnowledgeQuizSession.status == QuizSessionStatus.completed,
+        )
+        .order_by(KnowledgeQuizSession.started_at)
+    )
+    arena_sessions = arena_result.scalars().all()
+
+    for i, session in enumerate(arena_sessions):
+        mode = session.mode.value if hasattr(session.mode, 'value') else str(session.mode)
+        is_pvp = mode == "pvp"
+        xp_info = calculate_arena_xp(
+            mode=mode if not is_pvp else "pvp",
+            score=session.score or 0,
+            correct=session.correct_answers or 0,
+            total=session.total_questions or 1,
+            streak_days=min(i, 6),
+            is_pvp_win=False,  # Approximation — exact data requires participant lookup
+        )
+        total_xp += xp_info["total"]
 
     return total_xp
 
@@ -261,6 +299,130 @@ BASIC_ACHIEVEMENTS: list[AchievementDef] = [
         category="basic",
         data_source="stats",
         check_lambda=lambda stats: stats["unique_characters"] >= 3,
+    ),
+    # ── Level milestones ──
+    AchievementDef(
+        slug="level_5",
+        title="Кадет",
+        description="Достигните 5 уровня",
+        icon="chevrons-up",
+        rarity="rare",
+        category="basic",
+        data_source="stats",
+        check_lambda=lambda stats: stats.get("level", 0) >= 5,
+    ),
+    AchievementDef(
+        slug="level_10",
+        title="Лейтенант",
+        description="Достигните 10 уровня",
+        icon="shield-check",
+        rarity="epic",
+        category="basic",
+        data_source="stats",
+        check_lambda=lambda stats: stats.get("level", 0) >= 10,
+    ),
+    AchievementDef(
+        slug="level_20",
+        title="Капитан",
+        description="Достигните 20 уровня",
+        icon="crown",
+        rarity="legendary",
+        category="basic",
+        data_source="stats",
+        check_lambda=lambda stats: stats.get("level", 0) >= 20,
+    ),
+    # ── Extended streaks ──
+    AchievementDef(
+        slug="streak_14",
+        title="Двухнедельный марафон",
+        description="Тренируйтесь 14 дней подряд",
+        icon="calendar-check",
+        rarity="epic",
+        category="basic",
+        data_source="stats",
+        check_lambda=lambda stats: stats["streak"] >= 14,
+    ),
+    AchievementDef(
+        slug="streak_30",
+        title="Несгибаемый",
+        description="Тренируйтесь 30 дней подряд",
+        icon="medal",
+        rarity="legendary",
+        category="basic",
+        data_source="stats",
+        check_lambda=lambda stats: stats["streak"] >= 30,
+    ),
+    # ── Session performance ──
+    AchievementDef(
+        slug="script_master",
+        title="Мастер скрипта",
+        description="Пройдите все 7 стадий продажи за одну сессию",
+        icon="list-checks",
+        rarity="rare",
+        category="basic",
+        data_source="stats",
+        check_fn="check_script_master",
+    ),
+    AchievementDef(
+        slug="marathon_runner",
+        title="Марафонец",
+        description="Полностью пройдите 5-звонковую историю",
+        icon="route",
+        rarity="rare",
+        category="basic",
+        data_source="stats",
+        check_fn="check_marathon_runner",
+    ),
+    AchievementDef(
+        slug="perfect_qualification",
+        title="Идеальная квалификация",
+        description="100% качества на этапе квалификации",
+        icon="clipboard-check",
+        rarity="common",
+        category="basic",
+        data_source="stats",
+        check_fn="check_perfect_qualification",
+    ),
+    AchievementDef(
+        slug="trap_master",
+        title="Повелитель ловушек",
+        description="Обезвредьте 5 ловушек за одну сессию",
+        icon="shield-alert",
+        rarity="epic",
+        category="basic",
+        data_source="stats",
+        check_fn="check_trap_master",
+    ),
+    AchievementDef(
+        slug="no_hints_needed",
+        title="Без подсказок",
+        description="Наберите 80+ баллов без использования подсказок",
+        icon="brain",
+        rarity="rare",
+        category="basic",
+        data_source="stats",
+        check_fn="check_no_hints_needed",
+    ),
+    # ── Archetype mastery ──
+    AchievementDef(
+        slug="all_archetypes_easy",
+        title="Знаток новичков",
+        description="Пройдите все архетипы на лёгкой сложности",
+        icon="users-round",
+        rarity="rare",
+        category="basic",
+        data_source="stats",
+        check_fn="check_all_archetypes_easy",
+    ),
+    AchievementDef(
+        slug="all_archetypes_hard",
+        title="Покоритель всех",
+        description="Пройдите все архетипы на высокой сложности",
+        icon="users-cog",
+        rarity="legendary",
+        category="basic",
+        data_source="stats",
+        check_fn="check_all_archetypes_hard",
     ),
 ]
 
@@ -378,9 +540,144 @@ ANTI_ACHIEVEMENTS: list[AchievementDef] = [
     ),
 ]
 
+# ── v3 Arena Knowledge achievements ────────────────────────────────────────
+
+ARENA_ACHIEVEMENTS: list[AchievementDef] = [
+    AchievementDef(
+        slug="arena_first_fight",
+        title="Первый бой",
+        description="Провести первый PvP матч в Арене знаний",
+        icon="swords",
+        rarity="common",
+        category="arena",
+        data_source="arena_stats",
+        check_lambda=lambda stats: stats.get("arena_pvp_matches", 0) >= 1,
+    ),
+    AchievementDef(
+        slug="arena_legal_expert",
+        title="Юридический грамотей",
+        description="Набрать 80%+ в тематическом тесте по любой категории",
+        icon="book-open",
+        rarity="common",
+        category="arena",
+        data_source="arena_stats",
+        check_lambda=lambda stats: stats.get("best_themed_accuracy", 0) >= 80,
+    ),
+    AchievementDef(
+        slug="arena_blitz_master",
+        title="Блиц-мастер",
+        description="Ответить правильно на 15+ вопросов в блице",
+        icon="zap",
+        rarity="rare",
+        category="arena",
+        data_source="arena_stats",
+        check_lambda=lambda stats: stats.get("best_blitz_correct", 0) >= 15,
+    ),
+    AchievementDef(
+        slug="arena_duelist",
+        title="Дуэлянт",
+        description="Одержать 10 побед в PvP Арене",
+        icon="sword",
+        rarity="rare",
+        category="arena",
+        data_source="arena_stats",
+        check_lambda=lambda stats: stats.get("arena_pvp_wins", 0) >= 10,
+    ),
+    AchievementDef(
+        slug="arena_invincible",
+        title="Непобедимый",
+        description="Одержать 5 побед подряд в PvP Арене",
+        icon="shield",
+        rarity="epic",
+        category="arena",
+        data_source="arena_stats",
+        check_lambda=lambda stats: stats.get("arena_best_win_streak", 0) >= 5,
+    ),
+    AchievementDef(
+        slug="arena_fz127_expert",
+        title="Эксперт 127-ФЗ",
+        description="Набрать 90%+ по всем 10 категориям знаний",
+        icon="award",
+        rarity="epic",
+        category="arena",
+        data_source="arena_stats",
+        check_lambda=lambda stats: stats.get("categories_above_90", 0) >= 10,
+    ),
+    AchievementDef(
+        slug="arena_grandmaster",
+        title="Гроссмейстер",
+        description="Достигнуть ELO > 1800 в Арене знаний",
+        icon="chess",
+        rarity="epic",
+        category="arena",
+        data_source="arena_stats",
+        check_lambda=lambda stats: stats.get("arena_rating", 0) > 1800,
+    ),
+    AchievementDef(
+        slug="arena_legend",
+        title="Легенда Арены",
+        description="ELO > 2000 и 50+ матчей в Арене знаний",
+        icon="crown",
+        rarity="legendary",
+        category="arena",
+        data_source="arena_stats",
+        check_lambda=lambda stats: (
+            stats.get("arena_rating", 0) > 2000
+            and stats.get("arena_pvp_matches", 0) >= 50
+        ),
+    ),
+    AchievementDef(
+        slug="arena_streak_10",
+        title="Стрик-10",
+        description="10 правильных ответов подряд в любом режиме Арены",
+        icon="flame",
+        rarity="rare",
+        category="arena",
+        data_source="arena_stats",
+        check_lambda=lambda stats: stats.get("arena_best_answer_streak", 0) >= 10,
+    ),
+    AchievementDef(
+        slug="arena_teacher",
+        title="Учитель",
+        description="Помочь 3 коллегам улучшить знания (80%+ после вашего вызова)",
+        icon="graduation-cap",
+        rarity="rare",
+        category="arena",
+        data_source="arena_stats",
+        check_fn="check_arena_teacher",
+    ),
+]
+
+# ── v4 Team achievements ───────────────────────────────────────────────────
+
+TEAM_ACHIEVEMENTS: list[AchievementDef] = [
+    AchievementDef(
+        slug="team_week_champion",
+        title="Лучшая команда недели",
+        description="Ваша команда заняла 1 место по среднему баллу за неделю",
+        icon="trophy",
+        rarity="rare",
+        category="team",
+        data_source="stats",
+        check_fn="check_team_week_champion",
+        repeatable=True,
+    ),
+    AchievementDef(
+        slug="team_streak_5",
+        title="Командный дух",
+        description="Вся команда тренировалась 5 дней подряд",
+        icon="users",
+        rarity="epic",
+        category="team",
+        data_source="stats",
+        check_fn="check_team_streak_5",
+    ),
+]
+
 # Combined registry
 ALL_ACHIEVEMENT_DEFS: list[AchievementDef] = (
     BASIC_ACHIEVEMENTS + NARRATIVE_ACHIEVEMENTS + ANTI_ACHIEVEMENTS
+    + ARENA_ACHIEVEMENTS + TEAM_ACHIEVEMENTS
 )
 
 
@@ -426,6 +723,19 @@ class AchievementValidator:
             "check_short_talks": self._check_short_talks,
             "check_diy_lawyer": self._check_diy_lawyer,
             "check_by_the_book": self._check_by_the_book,
+            # Arena
+            "check_arena_teacher": self._check_arena_teacher,
+            # v4 Basic (session-based)
+            "check_script_master": self._check_script_master,
+            "check_marathon_runner": self._check_marathon_runner,
+            "check_perfect_qualification": self._check_perfect_qualification,
+            "check_trap_master": self._check_trap_master,
+            "check_no_hints_needed": self._check_no_hints_needed,
+            "check_all_archetypes_easy": self._check_all_archetypes_easy,
+            "check_all_archetypes_hard": self._check_all_archetypes_hard,
+            # v4 Team
+            "check_team_week_champion": self._check_team_week_champion,
+            "check_team_streak_5": self._check_team_streak_5,
         }
 
     async def check_all(
@@ -678,6 +988,261 @@ class AchievementValidator:
         low_variability = sum(1 for s in scores if s < 40)
         return low_variability >= 5
 
+    # ── v4 Session-based achievement checks ─────────────────────────────────
+
+    async def _check_script_master(
+        self, user_id: uuid.UUID, db: AsyncSession, stats: dict
+    ) -> bool:
+        """Rare: completed all 7 sales stages in a single session."""
+        result = await db.execute(
+            select(TrainingSession.score_details).where(
+                TrainingSession.user_id == user_id,
+                TrainingSession.status == SessionStatus.completed,
+            ).order_by(TrainingSession.started_at.desc()).limit(10)
+        )
+        for (details,) in result.all():
+            if not details or not isinstance(details, dict):
+                continue
+            stages = details.get("stages_completed") or details.get("script_adherence", {}).get("stages_completed")
+            if isinstance(stages, (list, int)):
+                count = stages if isinstance(stages, int) else len(stages)
+                if count >= 7:
+                    return True
+        return False
+
+    async def _check_marathon_runner(
+        self, user_id: uuid.UUID, db: AsyncSession, stats: dict
+    ) -> bool:
+        """Rare: completed a full 5-call story."""
+        result = await db.execute(
+            select(TrainingSession.score_details).where(
+                TrainingSession.user_id == user_id,
+                TrainingSession.status == SessionStatus.completed,
+                TrainingSession.story_mode.is_(True),
+            ).order_by(TrainingSession.started_at.desc()).limit(20)
+        )
+        for (details,) in result.all():
+            if not details or not isinstance(details, dict):
+                continue
+            call_number = details.get("call_number") or details.get("story_call_number", 0)
+            total_calls = details.get("total_calls") or details.get("story_total_calls", 0)
+            if call_number >= 5 and call_number >= total_calls:
+                return True
+        return False
+
+    async def _check_perfect_qualification(
+        self, user_id: uuid.UUID, db: AsyncSession, stats: dict
+    ) -> bool:
+        """Common: 100% quality on qualification stage."""
+        result = await db.execute(
+            select(TrainingSession.score_details).where(
+                TrainingSession.user_id == user_id,
+                TrainingSession.status == SessionStatus.completed,
+            ).order_by(TrainingSession.started_at.desc()).limit(10)
+        )
+        for (details,) in result.all():
+            if not details or not isinstance(details, dict):
+                continue
+            stages = details.get("stage_scores", {})
+            qual_score = stages.get("qualification", {}).get("quality")
+            if qual_score is not None and qual_score >= 100:
+                return True
+        return False
+
+    async def _check_trap_master(
+        self, user_id: uuid.UUID, db: AsyncSession, stats: dict
+    ) -> bool:
+        """Epic: dodged 5+ traps in a single session."""
+        from app.models.progress import SessionHistory
+        result = await db.execute(
+            select(SessionHistory.traps_dodged).where(
+                SessionHistory.user_id == user_id,
+            ).order_by(SessionHistory.completed_at.desc()).limit(20)
+        )
+        for (dodged,) in result.all():
+            if dodged is not None and dodged >= 5:
+                return True
+        return False
+
+    async def _check_no_hints_needed(
+        self, user_id: uuid.UUID, db: AsyncSession, stats: dict
+    ) -> bool:
+        """Rare: scored 80+ without using any hints."""
+        result = await db.execute(
+            select(TrainingSession.score_total, TrainingSession.score_details).where(
+                TrainingSession.user_id == user_id,
+                TrainingSession.status == SessionStatus.completed,
+            ).order_by(TrainingSession.started_at.desc()).limit(10)
+        )
+        for score_total, details in result.all():
+            if score_total is None or score_total < 80:
+                continue
+            if not details or not isinstance(details, dict):
+                continue
+            hints_used = details.get("hints_used", details.get("objection_hints_shown", 0))
+            if isinstance(hints_used, int) and hints_used == 0:
+                return True
+        return False
+
+    async def _check_all_archetypes_easy(
+        self, user_id: uuid.UUID, db: AsyncSession, stats: dict
+    ) -> bool:
+        """Rare: completed all archetypes on easy difficulty (≤3)."""
+        return await self._check_all_archetypes_at_difficulty(user_id, db, max_difficulty=3)
+
+    async def _check_all_archetypes_hard(
+        self, user_id: uuid.UUID, db: AsyncSession, stats: dict
+    ) -> bool:
+        """Legendary: completed all archetypes on hard difficulty (≥7)."""
+        return await self._check_all_archetypes_at_difficulty(user_id, db, min_difficulty=7)
+
+    async def _check_all_archetypes_at_difficulty(
+        self, user_id: uuid.UUID, db: AsyncSession,
+        min_difficulty: int = 0, max_difficulty: int = 10,
+    ) -> bool:
+        """Helper: check if user completed all known archetypes within difficulty range."""
+        from app.models.progress import SessionHistory
+
+        result = await db.execute(
+            select(func.array_agg(func.distinct(SessionHistory.archetype_code))).where(
+                SessionHistory.user_id == user_id,
+                SessionHistory.difficulty >= min_difficulty,
+                SessionHistory.difficulty <= max_difficulty,
+            )
+        )
+        completed = result.scalar()
+        if not completed:
+            return False
+        # Minimum 5 unique archetypes to qualify
+        return len([a for a in completed if a]) >= 5
+
+    # ── v4 Team achievement checks ────────────────────────────────────────────
+
+    async def _check_team_week_champion(
+        self, user_id: uuid.UUID, db: AsyncSession, stats: dict
+    ) -> bool:
+        """Rare (repeatable): user's team is #1 by avg score this week."""
+        from app.models.user import User, Team
+
+        # Get user's team
+        user_result = await db.execute(select(User.team_id).where(User.id == user_id))
+        team_id = user_result.scalar()
+        if not team_id:
+            return False
+
+        week_ago = datetime.utcnow() - timedelta(days=7)
+
+        # Get all teams' average scores this week
+        team_scores = await db.execute(
+            select(
+                User.team_id,
+                func.avg(TrainingSession.score_total).label("avg_score"),
+            )
+            .join(TrainingSession, TrainingSession.user_id == User.id)
+            .where(
+                TrainingSession.status == SessionStatus.completed,
+                TrainingSession.started_at >= week_ago,
+                User.team_id.isnot(None),
+            )
+            .group_by(User.team_id)
+            .having(func.count(TrainingSession.id) >= 3)  # Min 3 sessions to qualify
+            .order_by(func.avg(TrainingSession.score_total).desc())
+        )
+        rows = team_scores.all()
+        if not rows:
+            return False
+        # User's team must be #1
+        return rows[0][0] == team_id
+
+    async def _check_team_streak_5(
+        self, user_id: uuid.UUID, db: AsyncSession, stats: dict
+    ) -> bool:
+        """Epic: all team members trained 5 consecutive days."""
+        from app.models.user import User
+
+        user_result = await db.execute(select(User.team_id).where(User.id == user_id))
+        team_id = user_result.scalar()
+        if not team_id:
+            return False
+
+        # Get all team members
+        members_result = await db.execute(
+            select(User.id).where(User.team_id == team_id, User.is_active.is_(True))
+        )
+        member_ids = [row[0] for row in members_result.all()]
+        if len(member_ids) < 2:
+            return False
+
+        # Check each member has streak >= 5
+        for mid in member_ids:
+            member_streak = await calculate_streak(mid, db)
+            if member_streak < 5:
+                return False
+        return True
+
+    # ── Arena achievement checks ──────────────────────────────────────────────
+
+    async def _check_arena_teacher(
+        self, user_id: uuid.UUID, db: AsyncSession, stats: dict
+    ) -> bool:
+        """Rare: helped 3 colleagues improve (they scored 80%+ within 7 days of your challenge).
+
+        Logic: user A challenged user B via QuizChallenge. If B completed a themed quiz
+        with score >= 80 within 7 days after the challenge → A gets +1 teaching_impact.
+        """
+        from app.models.knowledge import QuizChallenge, KnowledgeQuizSession, QuizSessionStatus
+
+        # Find all challenges created by this user
+        challenges_result = await db.execute(
+            select(QuizChallenge).where(
+                QuizChallenge.challenger_id == user_id,
+                QuizChallenge.session_id.isnot(None),  # Challenge was accepted
+            )
+        )
+        challenges = challenges_result.scalars().all()
+
+        if not challenges:
+            return False
+
+        teaching_impact = 0
+        checked_opponents: set[uuid.UUID] = set()
+
+        for challenge in challenges:
+            if not challenge.accepted_by:
+                continue
+
+            accepted_ids = challenge.accepted_by
+            if isinstance(accepted_ids, list):
+                opponent_ids = [uuid.UUID(uid) if isinstance(uid, str) else uid for uid in accepted_ids]
+            else:
+                continue
+
+            for opponent_id in opponent_ids:
+                if opponent_id == user_id or opponent_id in checked_opponents:
+                    continue
+                checked_opponents.add(opponent_id)
+
+                # Check if opponent completed a themed quiz with 80%+ within 7 days
+                challenge_date = challenge.created_at
+                week_later = challenge_date + timedelta(days=7)
+
+                good_session = await db.execute(
+                    select(KnowledgeQuizSession.id).where(
+                        KnowledgeQuizSession.user_id == opponent_id,
+                        KnowledgeQuizSession.status == QuizSessionStatus.completed,
+                        KnowledgeQuizSession.mode == "themed",
+                        KnowledgeQuizSession.score >= 80,
+                        KnowledgeQuizSession.started_at >= challenge_date,
+                        KnowledgeQuizSession.started_at <= week_later,
+                    ).limit(1)
+                )
+                if good_session.scalar_one_or_none():
+                    teaching_impact += 1
+                    if teaching_impact >= 3:
+                        return True
+
+        return teaching_impact >= 3
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # BACKWARD-COMPATIBLE check_and_award_achievements (v1 API preserved)
@@ -720,11 +1285,19 @@ async def check_and_award_achievements(
     )
     unique_characters = chars_result.scalar() or 0
 
+    # Get user level for level-based achievements
+    from app.models.progress import ManagerProgress
+    level_result = await db.execute(
+        select(ManagerProgress.current_level).where(ManagerProgress.user_id == user_id)
+    )
+    user_level = level_result.scalar() or 1
+
     stats = {
         "completed_sessions": completed_sessions,
         "best_score": best_score,
         "streak": streak,
         "unique_characters": unique_characters,
+        "level": user_level,
     }
 
     # Use validator (without optional services — narrative checks will be skipped)
@@ -810,3 +1383,286 @@ async def get_leaderboard(
         }
         for i, row in enumerate(rows)
     ]
+
+
+async def get_leaderboard_extended(
+    db: AsyncSession,
+    sort_by: str = "xp",
+    period: str = "week",
+    team_id: uuid.UUID | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    """Extended leaderboard with multiple sort criteria.
+
+    sort_by:
+      - "xp" — total XP earned in period
+      - "score" — average score in period
+      - "streak" — current streak days
+      - "combined" — weighted: 40% avg_score + 30% XP + 20% streak + 10% sessions
+    """
+    from app.models.user import User
+    from app.models.progress import ManagerProgress
+
+    if period == "week":
+        since = datetime.now(timezone.utc) - timedelta(days=7)
+    elif period == "month":
+        since = datetime.now(timezone.utc) - timedelta(days=30)
+    else:
+        since = datetime.min.replace(tzinfo=timezone.utc)
+
+    # Base query: sessions in period
+    base_query = (
+        select(
+            TrainingSession.user_id,
+            User.full_name,
+            User.avatar_url,
+            func.count(TrainingSession.id).label("sessions_count"),
+            func.coalesce(func.sum(TrainingSession.score_total), 0).label("total_score"),
+            func.coalesce(func.avg(TrainingSession.score_total), 0).label("avg_score"),
+        )
+        .join(User, User.id == TrainingSession.user_id)
+        .where(
+            TrainingSession.status == SessionStatus.completed,
+            TrainingSession.started_at >= since,
+        )
+        .group_by(TrainingSession.user_id, User.full_name, User.avatar_url)
+        .limit(limit)
+    )
+
+    if team_id:
+        base_query = base_query.where(User.team_id == team_id)
+
+    # Sort by chosen criteria
+    if sort_by == "score":
+        base_query = base_query.order_by(func.avg(TrainingSession.score_total).desc())
+    else:
+        # Default: XP (total_score as proxy), or will be sorted in Python for combined/streak
+        base_query = base_query.order_by(func.sum(TrainingSession.score_total).desc())
+
+    result = await db.execute(base_query)
+    rows = result.all()
+
+    entries = []
+    for row in rows:
+        user_id_val = row[0]
+
+        entry = {
+            "user_id": str(user_id_val),
+            "full_name": row[1],
+            "avatar_url": row[2],
+            "sessions_count": row[3],
+            "total_score": round(float(row[4]), 1),
+            "avg_score": round(float(row[5]), 1),
+        }
+
+        # Get XP and streak from ManagerProgress
+        progress_result = await db.execute(
+            select(ManagerProgress.total_xp, ManagerProgress.level).where(
+                ManagerProgress.user_id == user_id_val
+            )
+        )
+        progress_row = progress_result.one_or_none()
+        entry["total_xp"] = progress_row[0] if progress_row else 0
+        entry["level"] = progress_row[1] if progress_row else 1
+
+        # Calculate streak
+        streak = await calculate_streak(user_id_val, db)
+        entry["streak"] = streak
+
+        entries.append(entry)
+
+    # Sort by chosen criteria
+    if sort_by == "streak":
+        entries.sort(key=lambda e: e["streak"], reverse=True)
+    elif sort_by == "combined":
+        # Normalize and combine: 40% avg_score + 30% XP + 20% streak + 10% sessions
+        max_xp = max((e["total_xp"] for e in entries), default=1) or 1
+        max_streak = max((e["streak"] for e in entries), default=1) or 1
+        max_sessions = max((e["sessions_count"] for e in entries), default=1) or 1
+
+        for e in entries:
+            e["combined_score"] = round(
+                0.4 * (e["avg_score"] / 100)
+                + 0.3 * (e["total_xp"] / max_xp)
+                + 0.2 * (e["streak"] / max_streak)
+                + 0.1 * (e["sessions_count"] / max_sessions),
+                4,
+            )
+        entries.sort(key=lambda e: e.get("combined_score", 0), reverse=True)
+
+    # Assign ranks
+    for i, entry in enumerate(entries):
+        entry["rank"] = i + 1
+
+    return entries
+
+
+async def get_team_leaderboard(
+    db: AsyncSession,
+    period: str = "week",
+    limit: int = 10,
+) -> list[dict]:
+    """Team leaderboard: weighted average score of all team members.
+
+    Visible to ROP role. Teams ranked by average score.
+    """
+    from app.models.user import User, Team
+
+    if period == "week":
+        since = datetime.now(timezone.utc) - timedelta(days=7)
+    elif period == "month":
+        since = datetime.now(timezone.utc) - timedelta(days=30)
+    else:
+        since = datetime.min.replace(tzinfo=timezone.utc)
+
+    result = await db.execute(
+        select(
+            User.team_id,
+            Team.name.label("team_name"),
+            func.count(func.distinct(TrainingSession.user_id)).label("active_members"),
+            func.count(TrainingSession.id).label("total_sessions"),
+            func.coalesce(func.avg(TrainingSession.score_total), 0).label("avg_score"),
+            func.coalesce(func.sum(TrainingSession.score_total), 0).label("total_score"),
+        )
+        .join(User, User.id == TrainingSession.user_id)
+        .join(Team, Team.id == User.team_id)
+        .where(
+            TrainingSession.status == SessionStatus.completed,
+            TrainingSession.started_at >= since,
+            User.team_id.isnot(None),
+        )
+        .group_by(User.team_id, Team.name)
+        .having(func.count(TrainingSession.id) >= 3)
+        .order_by(func.avg(TrainingSession.score_total).desc())
+        .limit(limit)
+    )
+    rows = result.all()
+
+    return [
+        {
+            "rank": i + 1,
+            "team_id": str(row[0]),
+            "team_name": row[1],
+            "active_members": row[2],
+            "total_sessions": row[3],
+            "avg_score": round(float(row[4]), 1),
+            "total_score": round(float(row[5]), 1),
+        }
+        for i, row in enumerate(rows)
+    ]
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# ARENA ACHIEVEMENTS — stats collection and checking
+# ═════════════════════════════════════════════════════════════════════════════
+
+async def collect_arena_stats(user_id: uuid.UUID, db: AsyncSession) -> dict:
+    """Collect all stats needed for arena achievement checking.
+
+    Called after each quiz/PvP session completion in the Arena.
+    """
+    from app.models.pvp import PvPRating
+    from app.models.knowledge import KnowledgeQuizSession, KnowledgeAnswer, QuizSessionStatus
+    from app.models.progress import ManagerProgress
+    from app.services.knowledge_quiz import get_category_progress
+
+    stats: dict = {}
+
+    # PvP rating stats
+    rating_result = await db.execute(
+        select(PvPRating).where(
+            PvPRating.user_id == user_id,
+            PvPRating.rating_type == "knowledge_arena",
+        )
+    )
+    arena_rating = rating_result.scalar_one_or_none()
+    if arena_rating:
+        stats["arena_rating"] = arena_rating.rating
+        stats["arena_pvp_matches"] = arena_rating.total_duels
+        stats["arena_pvp_wins"] = arena_rating.wins
+        stats["arena_best_win_streak"] = arena_rating.best_streak
+    else:
+        stats["arena_rating"] = 0
+        stats["arena_pvp_matches"] = 0
+        stats["arena_pvp_wins"] = 0
+        stats["arena_best_win_streak"] = 0
+
+    # Quiz session stats
+    sessions_result = await db.execute(
+        select(KnowledgeQuizSession).where(
+            KnowledgeQuizSession.user_id == user_id,
+            KnowledgeQuizSession.status == QuizSessionStatus.completed,
+        )
+    )
+    completed_sessions = sessions_result.scalars().all()
+
+    # Best blitz score
+    blitz_sessions = [s for s in completed_sessions if s.mode.value == "blitz"]
+    stats["best_blitz_correct"] = max(
+        (s.correct_answers for s in blitz_sessions), default=0
+    )
+
+    # Best themed accuracy
+    themed_sessions = [s for s in completed_sessions if s.mode.value == "themed"]
+    stats["best_themed_accuracy"] = max(
+        (s.score for s in themed_sessions), default=0
+    )
+
+    # Category mastery (how many categories have 90%+ accuracy)
+    try:
+        category_progress = await get_category_progress(user_id, db)
+        stats["categories_above_90"] = sum(
+            1 for cp in category_progress
+            if cp.get("mastery_pct", 0) >= 90
+        )
+    except Exception:
+        stats["categories_above_90"] = 0
+
+    # Answer streaks from ManagerProgress
+    progress_result = await db.execute(
+        select(ManagerProgress).where(ManagerProgress.user_id == user_id)
+    )
+    progress = progress_result.scalar_one_or_none()
+    if progress:
+        stats["arena_best_answer_streak"] = progress.arena_best_answer_streak
+    else:
+        stats["arena_best_answer_streak"] = 0
+
+    # Also include training stats for combined achievement checking
+    streak = await calculate_streak(user_id, db)
+    training_result = await db.execute(
+        select(
+            func.count(TrainingSession.id),
+            func.max(TrainingSession.score_total),
+        ).where(
+            TrainingSession.user_id == user_id,
+            TrainingSession.status == SessionStatus.completed,
+        )
+    )
+    t_row = training_result.one()
+    stats["completed_sessions"] = t_row[0] or 0
+    stats["best_score"] = float(t_row[1]) if t_row[1] is not None else None
+    stats["streak"] = streak
+
+    chars_result = await db.execute(
+        select(func.count(func.distinct(TrainingSession.scenario_id))).where(
+            TrainingSession.user_id == user_id,
+            TrainingSession.status == SessionStatus.completed,
+        )
+    )
+    stats["unique_characters"] = chars_result.scalar() or 0
+
+    return stats
+
+
+async def check_arena_achievements(
+    user_id: uuid.UUID, db: AsyncSession
+) -> list[dict]:
+    """Check and award arena achievements after a quiz/PvP session.
+
+    Returns list of newly earned achievements (for WS notification).
+    """
+    stats = await collect_arena_stats(user_id, db)
+
+    validator = AchievementValidator()
+    return await validator.check_all(user_id, db, stats)

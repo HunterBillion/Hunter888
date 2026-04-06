@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Bell, Calendar, DollarSign, ExternalLink, MessageSquarePlus, Phone, AlertTriangle } from "lucide-react";
 import Link from "next/link";
+import { sanitizeText } from "@/lib/sanitize";
 import type { CRMClient, UserRole } from "@/types";
 import { CLIENT_STATUS_COLORS } from "@/types";
 
@@ -102,7 +103,7 @@ export function PipelineCard({
             className="text-[13px] font-medium leading-tight truncate"
             style={{ color: "var(--text-primary)" }}
           >
-            {client.full_name}
+            {sanitizeText(client.full_name)}
           </span>
           <div className="flex items-center gap-1">
             {overdue && (
@@ -120,7 +121,7 @@ export function PipelineCard({
         <div className="mt-2 flex items-center gap-3 flex-wrap">
           {showField("debt") && (client.debt_amount ?? 0) > 0 && (
             <span
-              className="flex items-center gap-0.5 text-[10px] font-mono"
+              className="flex items-center gap-0.5 text-xs font-mono"
               style={{ color: "var(--text-muted)" }}
             >
               <DollarSign size={10} />
@@ -129,7 +130,7 @@ export function PipelineCard({
           )}
           {showField("phone") && client.phone && (
             <span
-              className="flex items-center gap-0.5 text-[10px] font-mono"
+              className="flex items-center gap-0.5 text-xs font-mono"
               style={{ color: "var(--text-muted)" }}
             >
               <Phone size={10} />
@@ -138,7 +139,7 @@ export function PipelineCard({
           )}
           {showField("source") && client.source && (
             <span
-              className="text-[10px] font-mono"
+              className="text-xs font-mono"
               style={{ color: "var(--text-muted)" }}
             >
               {client.source}
@@ -151,7 +152,7 @@ export function PipelineCard({
           <div className="mt-2 flex items-center gap-1">
             <Calendar size={10} style={{ color: overdue ? "var(--neon-red, #FF3333)" : color }} />
             <span
-              className="text-[10px] font-mono"
+              className="text-xs font-mono"
               style={{ color: overdue ? "var(--neon-red, #FF3333)" : "var(--text-muted)" }}
             >
               {nextContactLabel}
@@ -163,7 +164,7 @@ export function PipelineCard({
         {showField("manager") && (userRole === "admin" || userRole === "rop") && client.manager_name && (
           <div className="mt-1.5">
             <span
-              className="text-[9px] font-mono"
+              className="text-xs font-mono"
               style={{ color: "var(--text-muted)", opacity: 0.7 }}
             >
               {client.manager_name}
@@ -175,7 +176,7 @@ export function PipelineCard({
         {showField("updated") && client.updated_at && (
           <div className="mt-1.5">
             <span
-              className="text-[9px] font-mono"
+              className="text-xs font-mono"
               style={{ color: "var(--text-muted)", opacity: 0.6 }}
             >
               Обновлён {timeAgo(client.updated_at)}
@@ -196,7 +197,7 @@ export function PipelineCard({
                 e.stopPropagation();
                 setComposerOpen((prev) => !prev);
               }}
-              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono"
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-mono"
               style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
             >
               <MessageSquarePlus size={11} />
@@ -210,7 +211,7 @@ export function PipelineCard({
                 e.stopPropagation();
                 onQuickNote(client);
               }}
-              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono"
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-mono"
               style={{ background: "var(--input-bg)", color: "var(--text-secondary)" }}
             >
               <MessageSquarePlus size={11} />
@@ -224,7 +225,7 @@ export function PipelineCard({
                 e.stopPropagation();
                 onReminder(client);
               }}
-              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono"
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-mono"
               style={{ background: "var(--input-bg)", color: "var(--text-secondary)" }}
             >
               <Bell size={11} />
@@ -248,7 +249,7 @@ export function PipelineCard({
             style={{ resize: "vertical" }}
           />
           <div className="mt-2 flex items-center justify-between gap-2">
-            <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+            <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
               {draft.length}/1000
             </span>
             <div className="flex items-center gap-2">
@@ -258,7 +259,7 @@ export function PipelineCard({
                   setComposerOpen(false);
                   setDraft("");
                 }}
-                className="rounded-lg px-2.5 py-1 text-[10px] font-mono"
+                className="rounded-lg px-2.5 py-1 text-xs font-mono"
                 style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}
               >
                 Скрыть
@@ -270,7 +271,7 @@ export function PipelineCard({
                   void handleInlineSave();
                 }}
                 disabled={!draft.trim() || saving}
-                className="rounded-lg px-2.5 py-1 text-[10px] font-mono"
+                className="rounded-lg px-2.5 py-1 text-xs font-mono"
                 style={{
                   background: draft.trim() ? "var(--accent)" : "var(--input-bg)",
                   color: draft.trim() ? "#050505" : "var(--text-muted)",

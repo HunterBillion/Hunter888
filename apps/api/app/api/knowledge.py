@@ -16,7 +16,9 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +37,9 @@ from app.models.user import User
 from app.schemas.knowledge import (
     ActiveChallengesResponse,
     AnswerResponse,
+    ArenaLeaderboardEntryElo,
+    ArenaLeaderboardEntryScore,
+    ArenaLeaderboardResponse,
     CategoriesResponse,
     CategoryProgress,
     CategoryProgressDetail,
@@ -56,6 +61,7 @@ from app.schemas.knowledge import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 # Display names for legal categories
 CATEGORY_DISPLAY_NAMES: dict[str, str] = {
@@ -144,7 +150,9 @@ async def list_categories(
 # ---------------------------------------------------------------------------
 
 @router.post("/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("15/minute")
 async def create_session(
+    request: Request,
     body: SessionCreateRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -658,7 +666,9 @@ async def get_leaderboard(
 # ---------------------------------------------------------------------------
 
 @router.post("/challenges", response_model=ChallengeResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 async def create_challenge(
+    request: Request,
     body: ChallengeCreateRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -752,3 +762,160 @@ async def list_active_challenges(
             for c in challenges
         ]
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /arena/leaderboard — Arena Knowledge leaderboard with 3 time periods
+# ---------------------------------------------------------------------------
+
+@router.get("/arena/leaderboard", response_model=ArenaLeaderboardResponse)
+async def get_arena_leaderboard(
+    period: str = Query("all", pattern="^(week|month|all)$"),
+    limit: int = Query(20, ge=5, le=100),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Arena leaderboard with 3 time periods.
+
+    - all: ELO-based ranking (Glicko-2 rating from PvP Arena matches)
+    - week: Score-based ranking for last 7 days
+    - month: Score-based ranking for last 30 days
+    """
+    from app.models.pvp import PvPRating
+
+    entries: list = []
+    user_rank_entry = None
+
+    if period == "all":
+        # ELO-based ranking
+        result = await db.execute(
+            select(PvPRating, User)
+            .join(User, PvPRating.user_id == User.id)
+            .where(
+                PvPRating.rating_type == "knowledge_arena",
+                PvPRating.total_duels > 0,
+            )
+            .order_by(PvPRating.rating.desc())
+            .limit(limit)
+        )
+        for idx, (rating, u) in enumerate(result.all(), 1):
+            entry = ArenaLeaderboardEntryElo(
+                rank=idx,
+                user_id=u.id,
+                username=u.full_name or "Anonymous",
+                avatar_url=getattr(u, "avatar_url", None),
+                rating=rating.rating,
+                rank_tier=rating.rank_tier.value if hasattr(rating.rank_tier, 'value') else str(rating.rank_tier),
+                wins=rating.wins,
+                losses=rating.losses,
+                streak=rating.current_streak,
+                best_streak=rating.best_streak,
+            )
+            entries.append(entry)
+            if u.id == user.id:
+                user_rank_entry = entry.model_dump()
+
+    else:
+        # Score-based ranking for time period
+        if period == "week":
+            since = datetime.now(timezone.utc) - timedelta(days=7)
+        else:
+            since = datetime.now(timezone.utc) - timedelta(days=30)
+
+        result = await db.execute(
+            select(
+                KnowledgeQuizSession.user_id,
+                User.full_name,
+                func.sum(KnowledgeQuizSession.score).label("total_score"),
+                func.count(KnowledgeQuizSession.id).label("sessions_count"),
+                func.avg(KnowledgeQuizSession.score).label("avg_score"),
+            )
+            .join(User, KnowledgeQuizSession.user_id == User.id)
+            .where(
+                KnowledgeQuizSession.status == QuizSessionStatus.completed,
+                KnowledgeQuizSession.started_at >= since,
+            )
+            .group_by(KnowledgeQuizSession.user_id, User.full_name)
+            .order_by(func.sum(KnowledgeQuizSession.score).desc())
+            .limit(limit)
+        )
+        for idx, row in enumerate(result.all(), 1):
+            entry = ArenaLeaderboardEntryScore(
+                rank=idx,
+                user_id=row.user_id,
+                username=row.full_name or "Anonymous",
+                total_score=round(float(row.total_score or 0), 1),
+                sessions_count=row.sessions_count,
+                avg_score=round(float(row.avg_score or 0), 1),
+            )
+            entries.append(entry)
+            if row.user_id == user.id:
+                user_rank_entry = entry.model_dump()
+
+    return ArenaLeaderboardResponse(
+        period=period,
+        entries=entries,
+        user_rank=user_rank_entry,
+        total_players=len(entries),
+    )
+
+
+# ---------------------------------------------------------------------------
+# SM-2 Spaced Repetition Stats
+# ---------------------------------------------------------------------------
+
+@router.get("/srs/stats")
+async def get_srs_stats(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get user's SM-2 spaced repetition statistics with next review queue preview."""
+    from app.services.spaced_repetition import get_user_srs_stats, get_review_priority_queue
+    stats = await get_user_srs_stats(db, user.id)
+    queue = await get_review_priority_queue(db, user.id, limit=5)
+    return {
+        **stats,
+        "review_queue_preview": queue,
+    }
+
+
+@router.get("/srs/mastery")
+async def get_srs_mastery(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get per-category mastery breakdown (Leitner boxes, accuracy, overdue counts)."""
+    from app.services.spaced_repetition import get_category_mastery
+    mastery = await get_category_mastery(db, user.id)
+    return {"categories": mastery}
+
+
+@router.get("/srs/review-queue")
+async def get_srs_review_queue(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    category: str | None = Query(None, description="Filter by legal category"),
+    limit: int = Query(20, ge=1, le=50, description="Max items to return"),
+):
+    """Get prioritized review queue (overdue → weak → learning → rest)."""
+    from app.services.spaced_repetition import get_review_priority_queue
+    queue = await get_review_priority_queue(db, user.id, category=category, limit=limit)
+    return {"items": queue, "total": len(queue)}
+
+
+@router.post("/srs/backfill", status_code=status.HTTP_200_OK)
+@limiter.limit("3/hour")
+async def backfill_srs_from_history(
+    request: Request,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Backfill SRS records from existing KnowledgeAnswer history.
+
+    Useful for users who played quizzes before SRS was enabled.
+    Rate-limited to 3/hour to prevent abuse.
+    """
+    from app.services.spaced_repetition import backfill_from_quiz_answers
+    result = await backfill_from_quiz_answers(db, user.id)
+    await db.commit()
+    return result

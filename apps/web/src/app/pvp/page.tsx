@@ -8,9 +8,11 @@ import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { usePvPStore } from "@/stores/usePvPStore";
+import { useNotificationStore } from "@/stores/useNotificationStore";
 import { RatingCard } from "@/components/pvp/RatingCard";
 import { MatchmakingOverlay } from "@/components/pvp/MatchmakingOverlay";
 import { FriendsPanel } from "@/components/pvp/FriendsPanel";
+import { logger } from "@/lib/logger";
 
 const DUEL_STATUS_LABELS: Record<string, string> = {
   pending: "Ожидание",
@@ -27,10 +29,16 @@ function PvPLobbyContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const store = usePvPStore();
-  const [tab, setTab] = useState<"arena" | "knowledge" | "history">("arena");
+  // 3.1: Pre-select knowledge tab + category from URL params
+  const tabParam = searchParams.get("tab");
+  const categoryParam = searchParams.get("category");
+  const [tab, setTab] = useState<"arena" | "knowledge" | "history">(
+    tabParam === "knowledge" ? "knowledge" : "arena"
+  );
   const [quizMode, setQuizMode] = useState<"free_dialog" | "blitz" | "themed" | null>(null);
-  const [quizCategory, setQuizCategory] = useState<string | null>(null);
+  const [quizCategory, setQuizCategory] = useState<string | null>(categoryParam || null);
   const [quizStarting, setQuizStarting] = useState(false);
+  const [aiPersonality, setAiPersonality] = useState<string | null>(null);
   const [pveAccepting, setPveAccepting] = useState(false);
   const inviteSentRef = useRef(false);
   const autoPvERef = useRef(false);
@@ -40,7 +48,7 @@ function PvPLobbyContent() {
     store.fetchRating();
     store.fetchMyDuels();
     store.fetchActiveSeason();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only init; store actions are stable Zustand refs
 
   // PvP WebSocket
   const { sendMessage, connectionState } = useWebSocket({
@@ -135,8 +143,14 @@ function PvPLobbyContent() {
         store.setQueueStatus("matched");
         router.push(`/pvp/duel/${duelId}`);
       })
-      .catch(() => {
+      .catch((err) => {
+        logger.error("Auto PvE match failed:", err);
         autoPvERef.current = false;
+        useNotificationStore.getState().addToast({
+          title: "Ошибка подбора",
+          body: "Не удалось найти PvE-соперника. Попробуйте позже.",
+          type: "error",
+        });
       })
       .finally(() => {
         setPveAccepting(false);
@@ -152,23 +166,43 @@ function PvPLobbyContent() {
     <AuthLayout>
       <div className="relative arena-grid-bg min-h-screen">
         <div className="mx-auto max-w-6xl px-4 py-8">
+          {/* PvP-4 fix: connection status banner */}
+          {connectionState !== "connected" && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm"
+              style={{
+                borderColor: connectionState === "error" ? "rgba(255,42,109,0.3)" : "rgba(255,180,0,0.3)",
+                background: connectionState === "error" ? "rgba(255,42,109,0.08)" : "rgba(255,180,0,0.08)",
+                color: connectionState === "error" ? "#FF889B" : "#FFB400",
+              }}
+            >
+              <Loader2 size={16} className="animate-spin" />
+              {connectionState === "error"
+                ? "Не удалось подключиться к серверу PvP. Проверьте, что бэкенд запущен."
+                : connectionState === "reconnecting"
+                  ? "Переподключение к серверу PvP..."
+                  : "Подключение к серверу PvP..."}
+            </motion.div>
+          )}
           {/* Header */}
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
             <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Swords size={20} style={{ color: "var(--accent)" }} />
-                  <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
-                    PVP АРЕНА
+              <div className="flex items-center gap-3">
+                <Swords size={28} style={{ color: "var(--accent)" }} />
+                <div>
+                  <h1 className="font-display text-2xl sm:text-3xl font-black tracking-wide" style={{ color: "var(--text-primary)" }}>
+                    PVP Арена
                   </h1>
+                  <p className="text-xs font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    Дуэли 1 на 1 · Glicko-2 рейтинг
+                  </p>
                 </div>
-                <p className="mt-1 font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>
-                  ДУЭЛИ 1 НА 1 · GLICKO-2 РЕЙТИНГ
-                </p>
               </div>
               <motion.button
                 onClick={() => router.push("/pvp/leaderboard")}
-                className="vh-btn-outline flex items-center gap-2 text-xs"
+                className="btn-neon flex items-center gap-2 text-xs"
                 whileTap={{ scale: 0.97 }}
               >
                 <Trophy size={14} /> Рейтинг
@@ -211,7 +245,7 @@ function PvPLobbyContent() {
                 <motion.button
                   onClick={handleFindMatch}
                   disabled={store.queueStatus !== "idle"}
-                  className="vh-btn-primary w-full flex items-center justify-center gap-3 text-lg py-5"
+                  className="btn-neon w-full flex items-center justify-center gap-3 text-lg py-5"
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.98 }}
                 >
@@ -248,13 +282,86 @@ function PvPLobbyContent() {
                 ))}
               </div>
 
+              {/* Arena (Duels) */}
+              <AnimatePresence mode="wait">
+                {tab === "arena" && (
+                  <motion.div key="arena" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                    <div className="space-y-4">
+                      {/* Quick info */}
+                      <div className="glass-panel p-4 flex items-center gap-3">
+                        <Swords size={18} style={{ color: "var(--accent)" }} />
+                        <div>
+                          <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Голосовая дуэль</p>
+                          <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                            Два раунда · смена ролей · Glicko-2 рейтинг
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* How it works */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {[
+                          { step: "01", title: "Подбор", desc: "Система находит соперника по рейтингу" },
+                          { step: "02", title: "2 раунда", desc: "Вы и соперник по очереди продаёте и оцениваете" },
+                          { step: "03", title: "Результат", desc: "ИИ-судья выносит вердикт, рейтинг обновляется" },
+                        ].map((item) => (
+                          <div key={item.step} className="glass-panel p-4 flex flex-col">
+                            <span className="font-mono text-xs tracking-wider" style={{ color: "var(--accent)" }}>{item.step}</span>
+                            <p className="text-sm font-medium mt-1" style={{ color: "var(--text-primary)" }}>{item.title}</p>
+                            <p className="text-xs mt-0.5 flex-1" style={{ color: "var(--text-muted)" }}>{item.desc}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Recent duels preview */}
+                      {store.myDuels.length > 0 && (
+                        <div>
+                          <p className="text-xs font-mono tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>ПОСЛЕДНИЕ ДУЭЛИ</p>
+                          <div className="space-y-2">
+                            {store.myDuels.slice(0, 3).map((duel) => {
+                              const isP1 = store.rating?.user_id === duel.player1_id;
+                              const isWinner = duel.winner_id === store.rating?.user_id;
+                              return (
+                                <div
+                                  key={duel.id}
+                                  className="glass-panel p-3 flex items-center gap-3 cursor-pointer"
+                                  style={{ borderLeft: `3px solid ${duel.is_draw ? "var(--warning)" : isWinner ? "var(--neon-green)" : "var(--neon-red)"}` }}
+                                  onClick={() => router.push(`/pvp/duel/${duel.id}`)}
+                                >
+                                  <span className="text-xs font-medium" style={{ color: isWinner ? "var(--neon-green)" : duel.is_draw ? "var(--warning)" : "var(--neon-red)" }}>
+                                    {duel.is_draw ? "Ничья" : isWinner ? "Победа" : "Поражение"}
+                                  </span>
+                                  <span className="text-xs font-mono ml-auto" style={{ color: "var(--text-muted)" }}>
+                                    {DUEL_STATUS_LABELS[duel.status] || duel.status}
+                                  </span>
+                                  <ArrowRight size={12} style={{ color: "var(--text-muted)" }} />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {store.myDuels.length > 3 && (
+                            <button
+                              onClick={() => setTab("history")}
+                              className="mt-2 text-xs font-mono"
+                              style={{ color: "var(--accent)" }}
+                            >
+                              Вся история →
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Knowledge ФЗ-127 */}
               <AnimatePresence mode="wait">
                 {tab === "knowledge" && (
                   <motion.div key="knowledge" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                     <div className="space-y-4">
                       {/* Mode selection */}
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {([
                           { mode: "free_dialog" as const, icon: BookOpen, label: "Свободный диалог", desc: "Без ограничений", color: "#6366F1" },
                           { mode: "blitz" as const, icon: Clock, label: "Блиц", desc: "20 × 60 сек", color: "#F59E0B" },
@@ -268,19 +375,19 @@ function PvPLobbyContent() {
                             className="glass-panel rounded-xl p-4 text-left transition-all"
                             style={{
                               borderColor: quizMode === mode ? color : "var(--glass-border)",
-                              borderWidth: quizMode === mode ? 2 : 1,
+                              boxShadow: quizMode === mode ? `0 0 0 1px ${color}, 0 0 12px ${color}20` : "none",
                             }}
                           >
                             <Icon size={20} style={{ color }} />
                             <p className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>{label}</p>
-                            <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>{desc}</p>
+                            <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{desc}</p>
                           </motion.button>
                         ))}
                       </div>
 
                       {/* Category selection for themed mode */}
                       {quizMode === "themed" && (
-                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}>
+                        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
                           <p className="text-xs font-mono mb-2" style={{ color: "var(--text-secondary)" }}>ВЫБЕРИТЕ КАТЕГОРИЮ:</p>
                           <div className="grid grid-cols-2 gap-2">
                             {[
@@ -312,6 +419,46 @@ function PvPLobbyContent() {
                         </motion.div>
                       )}
 
+                      {/* V2: AI Personality selector */}
+                      {quizMode && quizMode !== "blitz" && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                        >
+                          <p className="text-xs font-mono tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
+                            ЭКЗАМЕНАТОР
+                          </p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {([
+                              { id: "professor", emoji: "\uD83C\uDF93", name: "Профессор Кодексов", desc: "Академичный, с юмором" },
+                              { id: "detective", emoji: "\uD83D\uDD0D", name: "Арбитражный Следопыт", desc: "Кейсы и расследования" },
+                            ] as const).map(({ id, emoji, name, desc }) => (
+                              <button
+                                key={id}
+                                onClick={() => setAiPersonality(aiPersonality === id ? null : id)}
+                                className="rounded-lg p-3 text-left text-xs transition-all"
+                                style={{
+                                  background: aiPersonality === id ? "rgba(99,102,241,0.15)" : "var(--input-bg)",
+                                  color: aiPersonality === id ? "#6366F1" : "var(--text-secondary)",
+                                  border: aiPersonality === id ? "1px solid rgba(99,102,241,0.3)" : "1px solid transparent",
+                                }}
+                              >
+                                <span className="text-lg mr-1">{emoji}</span>
+                                <span className="font-medium">{name}</span>
+                                <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>{desc}</p>
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+
+                      {/* Blitz mode: show auto-assigned personality */}
+                      {quizMode === "blitz" && (
+                        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                          <span className="text-lg mr-1">&#x26A1;</span> Ваш ведущий — <strong>Блиц-Мастер</strong>
+                        </p>
+                      )}
+
                       {/* Start quiz button */}
                       {quizMode && (quizMode !== "themed" || quizCategory) && (
                         <motion.button
@@ -319,18 +466,24 @@ function PvPLobbyContent() {
                           animate={{ opacity: 1, y: 0 }}
                           whileTap={{ scale: 0.98 }}
                           disabled={quizStarting}
-                          className="vh-btn-primary w-full flex items-center justify-center gap-2 py-3"
+                          className="btn-neon w-full flex items-center justify-center gap-2 py-3"
                           onClick={async () => {
                             setQuizStarting(true);
                             try {
                               const res = await api.post("/knowledge/sessions", {
                                 mode: quizMode,
                                 category: quizCategory,
+                                ai_personality: quizMode === "blitz" ? "showman" : aiPersonality,
                               }) as { id?: string; session_id?: string };
                               const sid = res?.id || res?.session_id;
-                              if (sid) router.push(`/pvp/quiz/${sid}`);
+                              if (sid) {
+                                router.push(`/pvp/quiz/${sid}?mode=${quizMode}${quizCategory ? `&category=${quizCategory}` : ""}${aiPersonality ? `&personality=${aiPersonality}` : ""}`);
+                              } else {
+                                useNotificationStore.getState().addToast({ title: "Ошибка", body: "Не удалось создать сессию. Попробуйте ещё раз.", type: "error" });
+                              }
                             } catch (e) {
-                              console.error("Failed to start quiz:", e);
+                              logger.error("Failed to start quiz:", e);
+                              useNotificationStore.getState().addToast({ title: "Ошибка", body: "Не удалось начать тест. Проверьте подключение.", type: "error" });
                             } finally {
                               setQuizStarting(false);
                             }
@@ -340,6 +493,73 @@ function PvPLobbyContent() {
                           Начать тест
                         </motion.button>
                       )}
+
+                      {/* Tournament widget */}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="mt-4 rounded-xl p-4 cursor-pointer"
+                        style={{
+                          background: "linear-gradient(135deg, rgba(255,215,0,0.06), rgba(255,165,0,0.03))",
+                          border: "1px solid rgba(255,215,0,0.15)",
+                        }}
+                        onClick={() => router.push("/pvp/tournament")}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-lg">{"\uD83C\uDFC6"}</span>
+                          <span className="text-sm font-bold" style={{ color: "#FFD700" }}>Турнир недели</span>
+                          <span className="ml-auto text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                            Подробнее →
+                          </span>
+                        </div>
+                        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                          Соревнуйтесь за призы и место на подиуме
+                        </p>
+                      </motion.div>
+
+                      {/* PvP Arena Knowledge Section */}
+                      <div className="mt-6 pt-4" style={{ borderTop: "1px solid var(--glass-border)" }}>
+                        <p className="text-xs font-mono tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>
+                          PVP АРЕНА ЗНАНИЙ
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => {
+                              // Navigate to knowledge WS and send pvp.find_opponent
+                              router.push("/pvp/arena/lobby?mode=2");
+                            }}
+                            className="glass-panel rounded-xl p-4 text-left"
+                            style={{ borderColor: "var(--neon-red)", borderWidth: 1 }}
+                          >
+                            <Swords size={20} style={{ color: "var(--neon-red)" }} />
+                            <p className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                              Дуэль 1 на 1
+                            </p>
+                            <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                              2 игрока · 10 раундов
+                            </p>
+                          </motion.button>
+                          <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => {
+                              router.push("/pvp/arena/lobby?mode=4");
+                            }}
+                            className="glass-panel rounded-xl p-4 text-left"
+                            style={{ borderColor: "var(--warning)", borderWidth: 1 }}
+                          >
+                            <Trophy size={20} style={{ color: "var(--warning)" }} />
+                            <p className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                              Командный бой
+                            </p>
+                            <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                              4 игрока · 10 раундов
+                            </p>
+                          </motion.button>
+                        </div>
+                      </div>
                     </div>
                   </motion.div>
                 )}
@@ -385,12 +605,12 @@ function PvPLobbyContent() {
                                   <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                                     {duel.is_draw ? "Ничья" : isWinner ? "Победа" : "Поражение"}
                                   </span>
-                                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>
+                                  <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>
                                     {DUEL_STATUS_LABELS[duel.status] || duel.status}
                                   </span>
-                                  {duel.is_pve && <span className="font-mono text-[10px]" style={{ color: "var(--warning)" }}>PvE</span>}
+                                  {duel.is_pve && <span className="font-mono text-xs" style={{ color: "var(--warning)" }}>PvE</span>}
                                 </div>
-                                <div className="mt-1 font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+                                <div className="mt-1 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                                   {formatTime(duel.created_at)} · {Math.round(myScore)} vs {Math.round(oppScore)}
                                 </div>
                               </div>
@@ -413,7 +633,6 @@ function PvPLobbyContent() {
 
             <FriendsPanel onChallengeSent={() => {
               store.setQueueStatus("searching");
-              sendMessage({ type: "queue.watch" });
             }} />
           </div>
         </div>
@@ -487,7 +706,7 @@ function PvPLobbyContent() {
                 </motion.button>
                 <motion.button
                   whileTap={{ scale: 0.98 }}
-                  className="flex-1 py-2.5 rounded-xl font-mono text-xs font-bold uppercase tracking-wider vh-btn-outline"
+                  className="flex-1 py-2.5 rounded-xl font-mono text-xs font-bold uppercase tracking-wider btn-neon"
                   onClick={() => {
                     sendMessage({ type: "queue.leave" });
                     store.resetQueue();

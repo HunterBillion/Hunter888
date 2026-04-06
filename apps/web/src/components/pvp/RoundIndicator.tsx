@@ -55,10 +55,10 @@ export function RoundIndicator({ roundNumber, myRole, timeRemaining }: Props) {
 
       {/* Role badge */}
       <div
-        className="font-mono text-[10px] tracking-widest uppercase px-3 py-1 rounded-lg"
+        className="font-mono text-xs tracking-widest uppercase px-3 py-1 rounded-lg"
         style={{
-          background: myRole === "seller" ? "rgba(139,92,246,0.1)" : "rgba(59,130,246,0.1)",
-          border: `1px solid ${myRole === "seller" ? "rgba(139,92,246,0.3)" : "rgba(59,130,246,0.3)"}`,
+          background: myRole === "seller" ? "rgba(99,102,241,0.1)" : "rgba(59,130,246,0.1)",
+          border: `1px solid ${myRole === "seller" ? "rgba(99,102,241,0.3)" : "rgba(59,130,246,0.3)"}`,
           color: myRole === "seller" ? "var(--accent)" : "#3B82F6",
         }}
       >

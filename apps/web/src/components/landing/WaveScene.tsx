@@ -21,6 +21,7 @@ const vertexShader = /* glsl */ `
   varying float vHeight;
   varying float vDepth;
   varying float vMouseDist;
+  varying float vEdgeFade;
 
   vec3 gerstner(vec2 p, float steep, float wl, vec2 dir, float spd, float t) {
     float k = 6.28318 / wl;
@@ -90,6 +91,10 @@ const vertexShader = /* glsl */ `
     }
 
     vHeight = pos.y - uLayerOffset;
+    // Soft edge fade — points near boundaries fade out smoothly
+    float xEdge = 1.0 - smoothstep(0.7, 1.0, abs(position.x) / (uAmplitude > 0.5 ? 80.0 : 70.0));
+    float zEdge = 1.0 - smoothstep(0.7, 1.0, abs(position.z) / (uAmplitude > 0.5 ? 50.0 : 40.0));
+    vEdgeFade = xEdge * zEdge;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
     float dist = length((modelViewMatrix * vec4(pos, 1.0)).xyz);
     gl_PointSize = max(1.0, (3.0 + vDepth * 5.0) * (80.0 / dist));
@@ -108,6 +113,7 @@ const fragmentShader = /* glsl */ `
   varying float vHeight;
   varying float vDepth;
   varying float vMouseDist;
+  varying float vEdgeFade;
 
   void main() {
     vec2 c = gl_PointCoord - 0.5;
@@ -139,6 +145,7 @@ const fragmentShader = /* glsl */ `
     }
 
     if (h > 0.55) alpha = min(1.0, alpha + (h - 0.55) * 0.5);
+    alpha *= vEdgeFade;
     gl_FragColor = vec4(color, alpha);
   }
 `;
@@ -205,7 +212,7 @@ function OceanLayer({
     uColorMid: { value: colors.mid.clone() },
     uColorCrest: { value: colors.crest.clone() },
     uColorFoam: { value: colors.foam.clone() },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- uniforms created once, updated via useFrame (not deps)
   }), []);
 
   useEffect(() => {
@@ -281,7 +288,7 @@ function MouseCatcher({
       onPointerLeave={() => mouseWorld.current.set(-999, -999)}
       onClick={click}
     >
-      <planeGeometry args={[200, 200]} />
+      <planeGeometry args={[300, 300]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} side={THREE.DoubleSide} />
     </mesh>
   );
@@ -310,34 +317,51 @@ function Tick({
   return null;
 }
 
-// ── Layer configs ──────────────────────────────────────────
-const LAYER_MAIN: LayerCfg = {
-  layerOffset: 0,
-  amplitude: 1.0,
-  timeOffset: 0,
-  alphaBase: 0.18,
-  alphaDepthMul: 0.55,
-  cols: 220,
-  rows: 80,
-  xSpan: 85,
-  zSpan: 65,
-  colorsDark:  { deep: 0x0c0423, mid: 0x501c9b, crest: 0x8a2be2, foam: 0xd282ff },
-  colorsLight: { deep: 0x7b68ae, mid: 0x8b6cc2, crest: 0x905ced, foam: 0xc4a8f0 },
-};
+// ── Adaptive quality ──────────────────────────────────────
+// Detect low-power devices: mobile, low-res screens, or touch-primary devices
+function getQualityScale(): number {
+  if (typeof window === "undefined") return 1;
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  const isLowRes = window.devicePixelRatio <= 1;
+  const isSmall = window.innerWidth < 768;
+  if (isMobile || (isTouch && isSmall)) return 0.4;  // ~15K → ~6K points
+  if (isLowRes || isSmall) return 0.6;                // ~15K → ~9K points
+  return 1;
+}
 
-const LAYER_SUB: LayerCfg = {
-  layerOffset: -1.8,
-  amplitude: 0.35,
-  timeOffset: 5.0,
-  alphaBase: 0.05,
-  alphaDepthMul: 0.25,
-  cols: 100,
-  rows: 35,
-  xSpan: 70,
-  zSpan: 45,
-  colorsDark:  { deep: 0x080318, mid: 0x2e0f6b, crest: 0x6a1fb0, foam: 0x9b5cd6 },
-  colorsLight: { deep: 0x9080b8, mid: 0xa090d0, crest: 0x7b5cb0, foam: 0xb8a0d8 },
-};
+// ── Layer configs ──────────────────────────────────────────
+function getLayerConfigs(): { main: LayerCfg; sub: LayerCfg } {
+  const q = getQualityScale();
+  return {
+    main: {
+      layerOffset: 0,
+      amplitude: 1.0,
+      timeOffset: 0,
+      alphaBase: 0.18,
+      alphaDepthMul: 0.55,
+      cols: Math.round(300 * q),
+      rows: Math.round(100 * q),
+      xSpan: 160,
+      zSpan: 100,
+      colorsDark:  { deep: 0x0c0423, mid: 0x501c9b, crest: 0x8a2be2, foam: 0xd282ff },
+      colorsLight: { deep: 0x7b68ae, mid: 0x8b6cc2, crest: 0x905ced, foam: 0xc4a8f0 },
+    },
+    sub: {
+      layerOffset: -1.8,
+      amplitude: 0.35,
+      timeOffset: 5.0,
+      alphaBase: 0.05,
+      alphaDepthMul: 0.25,
+      cols: Math.round(140 * q),
+      rows: Math.round(50 * q),
+      xSpan: 140,
+      zSpan: 80,
+      colorsDark:  { deep: 0x080318, mid: 0x2e0f6b, crest: 0x6a1fb0, foam: 0x9b5cd6 },
+      colorsLight: { deep: 0x9080b8, mid: 0xa090d0, crest: 0x7b5cb0, foam: 0xb8a0d8 },
+    },
+  };
+}
 
 // ── Floating Particles ─────────────────────────────────────
 function FloatingParticles({ isDark }: { isDark: boolean }) {
@@ -348,9 +372,9 @@ function FloatingParticles({ isDark }: { isDark: boolean }) {
     const pos = new Float32Array(count * 3);
     const spd = new Float32Array(count);
     for (let i = 0; i < count; i++) {
-      pos[i * 3] = (Math.random() - 0.5) * 80;
+      pos[i * 3] = (Math.random() - 0.5) * 150;
       pos[i * 3 + 1] = Math.random() * 25 - 5;
-      pos[i * 3 + 2] = (Math.random() - 0.5) * 60;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 90;
       spd[i] = 0.3 + Math.random() * 0.8;
     }
     return [pos, spd];
@@ -364,8 +388,8 @@ function FloatingParticles({ isDark }: { isDark: boolean }) {
       // Reset when above view
       if (posArr[i * 3 + 1] > 25) {
         posArr[i * 3 + 1] = -5;
-        posArr[i * 3] = (Math.random() - 0.5) * 80;
-        posArr[i * 3 + 2] = (Math.random() - 0.5) * 60;
+        posArr[i * 3] = (Math.random() - 0.5) * 150;
+        posArr[i * 3 + 2] = (Math.random() - 0.5) * 90;
       }
     }
     ref.current.geometry.attributes.position.needsUpdate = true;
@@ -378,7 +402,7 @@ function FloatingParticles({ isDark }: { isDark: boolean }) {
       </bufferGeometry>
       <pointsMaterial
         size={0.15}
-        color={isDark ? "#8B5CF6" : "#7C3AED"}
+        color={isDark ? "#6366F1" : "#4F46E5"}
         transparent
         opacity={0.5}
         sizeAttenuation
@@ -397,6 +421,9 @@ export function WaveScene() {
   const mouseActive = useRef(0);
   const clicksRef = useRef<{ x: number; z: number; age: number }[]>([]);
 
+  // Compute layer configs once on mount (adapts to device capability)
+  const layers = useMemo(() => getLayerConfigs(), []);
+
   useEffect(() => {
     const check = () => setIsDark(document.documentElement.classList.contains("dark"));
     check();
@@ -409,15 +436,15 @@ export function WaveScene() {
 
   return (
     <Canvas
-      camera={{ position: [0, 18, 30], fov: 55, near: 0.1, far: 200 }}
+      camera={{ position: [0, 20, 35], fov: 60, near: 0.1, far: 300 }}
       style={{ position: "absolute", inset: 0 }}
       gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
       dpr={[1, 1.5]}
       eventPrefix="client"
     >
       <Tick mouseWorld={mouseWorld} {...shared} />
-      <OceanLayer cfg={LAYER_SUB} isDark={isDark} {...shared} />
-      <OceanLayer cfg={LAYER_MAIN} isDark={isDark} {...shared} />
+      <OceanLayer cfg={layers.sub} isDark={isDark} {...shared} />
+      <OceanLayer cfg={layers.main} isDark={isDark} {...shared} />
       <MouseCatcher mouseWorld={mouseWorld} clicksRef={clicksRef} />
       <FloatingParticles isDark={isDark} />
     </Canvas>

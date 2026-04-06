@@ -13,8 +13,11 @@ import logging
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user, require_role
@@ -25,6 +28,7 @@ from app.services.game_crm_service import GameCRMService
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -89,7 +93,7 @@ async def get_story_detail(
     service = GameCRMService(db)
 
     # Access control
-    owner_id = _resolve_owner(user, story_id)
+    owner_id = await _resolve_owner(user, story_id, db)
 
     return await service.get_story_detail(story_id, user_id=owner_id)
 
@@ -108,7 +112,7 @@ async def get_timeline(
     Таймлайн игрового клиента — агрегация из всех источников.
     """
     service = GameCRMService(db)
-    owner_id = _resolve_owner(user, story_id)
+    owner_id = await _resolve_owner(user, story_id, db)
 
     # Parse event types
     types_list = None
@@ -126,7 +130,9 @@ async def get_timeline(
 
 
 @router.post("/stories/{story_id}/message")
+@limiter.limit("20/minute")
 async def send_message(
+    request: Request,
     story_id: uuid.UUID,
     body: SendMessageRequest,
     user: User = Depends(require_role("manager", "admin", "rop")),
@@ -134,7 +140,7 @@ async def send_message(
 ):
     """Отправить сообщение игровому клиенту (запись в таймлайн)."""
     service = GameCRMService(db)
-    owner_id = _resolve_owner(user, story_id)  # None для admin — доступ ко всем
+    owner_id = await _resolve_owner(user, story_id, db)  # None для admin — доступ ко всем
     return await service.send_game_message(
         story_id,
         owner_id,
@@ -145,7 +151,9 @@ async def send_message(
 
 
 @router.post("/stories/{story_id}/callback")
+@limiter.limit("10/minute")
 async def schedule_callback(
+    request: Request,
     story_id: uuid.UUID,
     body: ScheduleCallbackRequest,
     user: User = Depends(require_role("manager", "admin")),
@@ -153,7 +161,7 @@ async def schedule_callback(
 ):
     """Запланировать обратный звонок игровому клиенту."""
     service = GameCRMService(db)
-    owner_id = _resolve_owner(user, story_id)
+    owner_id = await _resolve_owner(user, story_id, db)
     return await service.schedule_callback(
         story_id,
         owner_id,
@@ -172,7 +180,7 @@ async def change_status(
 ):
     """Сменить игровой статус клиента."""
     service = GameCRMService(db)
-    owner_id = _resolve_owner(user, story_id)
+    owner_id = await _resolve_owner(user, story_id, db)
     return await service.change_game_status(
         story_id,
         owner_id,
@@ -183,7 +191,9 @@ async def change_status(
 
 
 @router.post("/stories/{story_id}/read")
+@limiter.limit("20/minute")
 async def mark_read(
+    request: Request,
     story_id: uuid.UUID,
     body: MarkReadRequest,
     user: User = Depends(get_current_user),
@@ -231,13 +241,29 @@ async def portfolio_stats_by_manager(
 # Helpers
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _resolve_owner(user: User, story_id: uuid.UUID) -> uuid.UUID | None:
+async def _resolve_owner(user: User, story_id: uuid.UUID, db: AsyncSession) -> uuid.UUID | None:
     """
     Access control: определяем чей user_id использовать для фильтрации.
     - admin/methodologist: None (все), но story_detail проверит по story_id
     - manager: свой user_id
-    - rop: TODO — проверка команды
+    - rop: None, но проверяем что story принадлежит менеджеру из команды
     """
-    if user.role.value in ("admin", "methodologist", "rop"):
-        return None  # get_story_detail will find by story_id
+    if user.role.value in ("admin", "methodologist"):
+        return None
+
+    if user.role.value == "rop":
+        if not user.team_id:
+            raise HTTPException(status_code=403, detail="РОП не привязан к команде")
+        # Проверяем что story принадлежит менеджеру из команды РОП
+        from app.models.roleplay import ClientStory
+        result = await db.execute(
+            select(User.team_id)
+            .join(ClientStory, ClientStory.user_id == User.id)
+            .where(ClientStory.id == story_id)
+        )
+        story_owner_team = result.scalar_one_or_none()
+        if story_owner_team != user.team_id:
+            raise HTTPException(status_code=403, detail="История не в вашей команде")
+        return None
+
     return user.id

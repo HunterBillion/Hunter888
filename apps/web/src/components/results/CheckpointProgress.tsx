@@ -80,7 +80,7 @@ export default function CheckpointProgress({ checkpoints }: CheckpointProgressPr
 
               {/* Label */}
               <span
-                className="text-[10px] font-mono text-center leading-tight max-w-[80px] truncate"
+                className="text-xs font-mono text-center leading-tight max-w-[80px] truncate"
                 style={{
                   color: cp.hit ? "var(--text-primary)" : "var(--text-muted)",
                 }}
@@ -91,7 +91,7 @@ export default function CheckpointProgress({ checkpoints }: CheckpointProgressPr
 
               {/* Time stamp */}
               {cp.time && (
-                <span className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                <span className="text-xs font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
                   {cp.time}
                 </span>
               )}

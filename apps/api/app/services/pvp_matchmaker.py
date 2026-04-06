@@ -29,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.redis_pool import get_redis as _redis
 from app.models.pvp import (
     DuelDifficulty,
     DuelStatus,
@@ -42,13 +43,8 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Redis connection
+# Redis connection (uses centralized pool from app.core.redis_pool)
 # ---------------------------------------------------------------------------
-
-import asyncio as _asyncio
-
-_pool: aioredis.ConnectionPool | None = None
-_pool_lock = _asyncio.Lock()
 
 QUEUE_KEY = "pvp:queue"
 QUEUE_META_KEY = "pvp:queue:{user_id}"
@@ -57,20 +53,11 @@ RECONNECT_KEY = "pvp:reconnect:{user_id}"
 INVITATION_KEY = "pvp:invitation:{challenger_id}"
 INVITATION_MATCHED_KEY = "pvp:invitation:matched:{challenger_id}"
 
-MATCH_TIMEOUT_SECONDS = 60          # After this, offer PvE (was 90)
+MATCH_TIMEOUT_SECONDS = 90          # After this, offer PvE
 RANGE_EXPANSION_RATE = 5.0          # Points per second
 BASE_MATCH_RANGE = 200.0
 DUEL_STATE_TTL = 3600               # 1 hour TTL for duel state in Redis
 RECONNECT_GRACE_SECONDS = 60        # Grace period for reconnection
-
-
-def _redis() -> aioredis.Redis:
-    global _pool
-    if _pool is None:
-        _pool = aioredis.ConnectionPool.from_url(
-            settings.redis_url, decode_responses=True, max_connections=20
-        )
-    return aioredis.Redis(connection_pool=_pool)
 
 
 # ---------------------------------------------------------------------------
@@ -340,20 +327,17 @@ async def find_match(
                 status=DuelStatus.pending,
                 difficulty=difficulty,
             )
-            db.add(duel)
-            await db.flush()
 
-            # Remove both from queue
-            await r.zrem(QUEUE_KEY, str(user_id), candidate_id_str)
-
-            # Update meta
+            # BUG-6 fix: execute Redis pipeline BEFORE db.flush() to prevent
+            # race where duel exists in DB but Redis state is not yet ready.
+            # duel.id is available pre-flush because PvPDuel uses default=uuid.uuid4.
+            duel_state_key = DUEL_STATE_KEY.format(duel_id=duel.id)
+            pipe = r.pipeline(transaction=True)
+            pipe.zrem(QUEUE_KEY, str(user_id), candidate_id_str)
             for uid in [str(user_id), candidate_id_str]:
                 mk = QUEUE_META_KEY.format(user_id=uid)
-                await r.hset(mk, "status", MatchQueueStatus.matched.value)
-
-            # Store duel state in Redis for WS
-            duel_state_key = DUEL_STATE_KEY.format(duel_id=duel.id)
-            await r.hset(duel_state_key, mapping={
+                pipe.hset(mk, "status", MatchQueueStatus.matched.value)
+            pipe.hset(duel_state_key, mapping={
                 "player1_id": str(user_id),
                 "player2_id": str(candidate_id),
                 "status": DuelStatus.pending.value,
@@ -361,7 +345,12 @@ async def find_match(
                 "round": "1",
                 "created_at": str(time.time()),
             })
-            await r.expire(duel_state_key, DUEL_STATE_TTL)
+            pipe.expire(duel_state_key, DUEL_STATE_TTL)
+            await pipe.execute()
+
+            # Now persist to DB — Redis state is already ready for reconnecting clients
+            db.add(duel)
+            await db.flush()
 
             logger.info(
                 "PvP match: %s (%.0f) vs %s (%.0f), difficulty=%s, duel=%s",
@@ -502,6 +491,12 @@ async def cleanup_duel_state(duel_id: uuid.UUID) -> None:
     r = _redis()
     key = DUEL_STATE_KEY.format(duel_id=duel_id)
     await r.delete(key)
+
+
+async def is_in_queue(user_id: uuid.UUID) -> bool:
+    """Check if player is currently in the matchmaking queue."""
+    r = _redis()
+    return await r.zscore(QUEUE_KEY, str(user_id)) is not None
 
 
 async def get_queue_size() -> int:

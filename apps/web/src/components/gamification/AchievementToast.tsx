@@ -6,6 +6,8 @@ import { Award } from "lucide-react";
 import { useSound } from "@/hooks/useSound";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { Confetti } from "@/components/ui/Confetti";
+import { useScreenShake } from "@/components/ui/ScreenShake";
+import { useHaptic } from "@/hooks/useHaptic";
 
 interface Achievement {
   id: string;
@@ -23,14 +25,17 @@ export function AchievementToast({ achievement, onClose }: AchievementToastProps
   const { playSound } = useSound();
   const reducedMotion = useReducedMotion();
   const [confettiTrigger, setConfettiTrigger] = useState(0);
+  const shake = useScreenShake();
+  const haptic = useHaptic();
 
-  // Play sound + confetti when achievement appears
   useEffect(() => {
     if (achievement) {
       playSound("success");
       setConfettiTrigger((n) => n + 1);
+      shake("victory");
+      haptic("success");
     }
-  }, [achievement, playSound]);
+  }, [achievement, playSound, shake, haptic]);
 
   return (
     <>
@@ -38,43 +43,77 @@ export function AchievementToast({ achievement, onClose }: AchievementToastProps
     <AnimatePresence>
       {achievement && (
         <motion.div
-          initial={{ opacity: 0, y: -50, x: "-50%" }}
-          animate={{ opacity: 1, y: 0, x: "-50%" }}
-          exit={{ opacity: 0, y: -30, x: "-50%" }}
-          className="fixed top-6 left-1/2 z-[200] glass-panel px-6 py-4 flex items-center gap-4"
+          initial={{ opacity: 0, y: -60, x: "-50%", scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
+          exit={{ opacity: 0, y: -40, x: "-50%", scale: 0.95 }}
+          transition={{ type: "spring", stiffness: 400, damping: 25 }}
+          className="fixed top-6 left-1/2 z-[200] glass-panel overflow-hidden flex items-center gap-4"
           style={{
-            borderColor: "rgba(139,92,246,0.3)",
-            boxShadow: "0 0 30px rgba(139,92,246,0.2)",
-            minWidth: "300px",
+            borderColor: "rgba(99,102,241,0.35)",
+            boxShadow: "0 0 40px rgba(99,102,241,0.25), 0 0 80px rgba(99,102,241,0.08)",
+            minWidth: "340px",
+            padding: "0",
           }}
           onAnimationComplete={(def) => {
             if (typeof def === "object" && "opacity" in def && def.opacity === 1) {
-              setTimeout(onClose, 3000);
+              setTimeout(onClose, 4000);
             }
           }}
         >
+          {/* Animated top border — sweep effect */}
           <motion.div
-            className="flex h-12 w-12 items-center justify-center rounded-xl"
-            style={{ background: "var(--accent)", boxShadow: "0 0 20px rgba(139,92,246,0.4)" }}
+            className="absolute top-0 left-0 right-0 h-[2px]"
+            style={{ background: "linear-gradient(90deg, transparent, var(--accent), var(--magenta), transparent)" }}
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
+          />
+
+          {/* Icon */}
+          <motion.div
+            className="flex h-full items-center justify-center px-5 py-5 self-stretch"
+            style={{
+              background: "linear-gradient(135deg, var(--accent), rgba(99,102,241,0.7))",
+            }}
             animate={reducedMotion ? {} : { rotate: [0, -10, 10, -5, 5, 0] }}
             transition={reducedMotion ? {} : { duration: 0.6, delay: 0.3 }}
           >
             {achievement.icon ? (
-              <span className="text-xl">{achievement.icon}</span>
+              <span className="text-2xl">{achievement.icon}</span>
             ) : (
-              <Award size={22} className="text-white" />
+              <Award size={26} className="text-white" />
             )}
           </motion.div>
-          <div>
-            <div className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--accent)" }}>
-              ACHIEVEMENT UNLOCKED
-            </div>
-            <div className="font-display text-sm font-bold mt-0.5" style={{ color: "var(--text-primary)" }}>
+
+          {/* Content */}
+          <div className="py-4 pr-5">
+            <motion.div
+              className="font-mono text-xs uppercase tracking-[0.2em] font-bold"
+              style={{ color: "var(--accent)" }}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.15 }}
+            >
+              {"> ACHIEVEMENT_UNLOCKED"}
+            </motion.div>
+            <motion.div
+              className="font-display text-base font-black mt-1"
+              style={{ color: "var(--text-primary)" }}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.25 }}
+            >
               {achievement.title}
-            </div>
-            <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+            </motion.div>
+            <motion.div
+              className="text-xs mt-1"
+              style={{ color: "var(--text-muted)" }}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.35 }}
+            >
               {achievement.description}
-            </div>
+            </motion.div>
           </div>
         </motion.div>
       )}

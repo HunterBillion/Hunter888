@@ -12,7 +12,7 @@ const FACTOR_CONFIG: Record<string, { icon: typeof Brain; color: string; label: 
   distrust: { icon: Shield, color: "#3B82F6", label: "Недоверие" },
   sadness: { icon: Frown, color: "#60A5FA", label: "Грусть" },
   empathy: { icon: Heart, color: "#EC4899", label: "Эмпатия" },
-  default: { icon: Brain, color: "#8B5CF6", label: "Фактор" },
+  default: { icon: Brain, color: "#6366F1", label: "Фактор" },
 };
 
 interface Props {
@@ -24,7 +24,7 @@ export function HumanFactorIcons({ factors }: Props) {
 
   return (
     <div className="flex items-center gap-1.5">
-      <span className="font-mono text-[9px] tracking-widest uppercase mr-1" style={{ color: "var(--text-muted)" }}>
+      <span className="font-mono text-xs tracking-widest uppercase mr-1" style={{ color: "var(--text-muted)" }}>
         FACTORS
       </span>
       <AnimatePresence>
@@ -59,7 +59,7 @@ export function HumanFactorIcons({ factors }: Props) {
               {/* Tooltip */}
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50">
                 <div
-                  className="rounded-lg px-2 py-1 text-[10px] font-mono whitespace-nowrap"
+                  className="rounded-lg px-2 py-1 text-xs font-mono whitespace-nowrap"
                   style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-color)", color: config.color }}
                 >
                   {config.label} {Math.round(f.intensity * 100)}%

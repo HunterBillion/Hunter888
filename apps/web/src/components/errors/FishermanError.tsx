@@ -50,7 +50,6 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
   const fishIdRef = useRef(0);
   const starIdRef = useRef(0);
   const animRef = useRef(0);
-  const timeRef = useRef(Date.now());
   const reducedMotion = useReducedMotion();
 
   // Stable star positions
@@ -73,8 +72,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
         const isGolden = Math.random() < 0.08;
         const template = ERROR_FISH[Math.floor(Math.random() * ERROR_FISH.length)];
         fishIdRef.current += 1;
-        // Fish swim from right to left (direction = 1) or left to right
-        const fromRight = Math.random() > 0.3; // 70% from right
+        const fromRight = Math.random() > 0.3;
         return [
           ...prev,
           {
@@ -95,10 +93,9 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // Animate fish movement (skip rAF loop for reduced motion — use slower interval)
+  // Animate fish movement
   useEffect(() => {
     if (reducedMotion) {
-      // Simplified: move fish via interval instead of rAF
       const id = setInterval(() => {
         setFish((prev) =>
           prev
@@ -127,7 +124,6 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
           }))
           .filter((f) => {
             if (f.caught) return f.y > 10;
-            // Remove fish that have swum off screen
             if (f.direction === 1) return f.x > -15;
             return f.x < 115;
           }),
@@ -152,7 +148,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
     }, 1500);
   }, []);
 
-  // Cast hook — hook drops down into the water
+  // Cast hook
   const castHook = useCallback(() => {
     if (casting) return;
     setCasting(true);
@@ -163,17 +159,13 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
     const animate = () => {
       frame++;
       const progress = frame / maxFrames;
-      // Hook goes down smoothly, pauses at bottom, comes back up
-      const drop = progress < 0.5
-        ? Math.sin(progress * Math.PI) // down
-        : Math.sin(progress * Math.PI); // up (same curve, symmetric)
+      const drop = Math.sin(progress * Math.PI);
       setHookDrop(drop);
 
-      // Check collision near the deepest point
       if (frame === Math.floor(maxFrames * 0.5)) {
         setFish((prev) => {
-          const hookX = 58; // rod tip X position (% of screen)
-          const hookDepth = 58 + drop * 24; // water surface ~58%, max depth ~82%
+          const hookX = 58;
+          const hookDepth = 58 + drop * 24;
           let caughtFish: Fish | null = null;
 
           const updated = prev.map((f) => {
@@ -224,8 +216,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [castHook]);
 
-  // Hook absolute position for the fishing line
-  const hookLineLength = hookDrop * 120; // pixels the hook drops
+  const hookLineLength = hookDrop * 120;
 
   return (
     <div
@@ -235,6 +226,14 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
       }}
       onClick={castHook}
     >
+      {/* Scanline overlay for atmosphere */}
+      <div
+        className="pointer-events-none absolute inset-0 z-50"
+        style={{
+          background: "repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(99,102,241,0.008) 3px, rgba(99,102,241,0.008) 6px)",
+        }}
+      />
+
       {/* Stars */}
       {stars.map((s) => (
         <motion.div
@@ -271,7 +270,6 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
                 fill="#FFD700"
               />
             </svg>
-            {/* Trail */}
             <motion.div
               className="absolute top-0 left-1/2 -translate-x-1/2 w-[2px]"
               style={{ background: "linear-gradient(180deg, #FFD700, transparent)", height: 40 }}
@@ -296,7 +294,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
         }}
       />
 
-      {/* Animated water surface — SVG wave */}
+      {/* Water surface — SVG wave */}
       <div className="absolute left-0 right-0" style={{ top: "55%" }}>
         <svg
           width="100%"
@@ -308,7 +306,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
           <motion.path
             d="M0,10 Q100,4 200,10 T400,10 T600,10 T800,10 T1000,10 T1200,10"
             fill="none"
-            stroke="rgba(138,43,226,0.4)"
+            stroke="rgba(99,102,241,0.4)"
             strokeWidth="2"
             animate={{
               d: [
@@ -322,7 +320,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
           <motion.path
             d="M0,12 Q150,6 300,12 T600,12 T900,12 T1200,12"
             fill="none"
-            stroke="rgba(138,43,226,0.2)"
+            stroke="rgba(99,102,241,0.2)"
             strokeWidth="1.5"
             animate={{
               d: [
@@ -341,11 +339,11 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
         className="absolute left-0 right-0 bottom-0"
         style={{
           top: "56%",
-          background: "linear-gradient(180deg, rgba(20,10,50,0.5) 0%, rgba(10,5,30,0.8) 100%)",
+          background: "linear-gradient(180deg, rgba(15,15,40,0.5) 0%, rgba(8,8,25,0.8) 100%)",
         }}
       />
 
-      {/* Boat + fisherman — sits on the water surface */}
+      {/* Boat + fisherman */}
       <motion.div
         className="absolute"
         style={{ top: "50%", left: "calc(50% - 50px)" }}
@@ -366,7 +364,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
             <motion.path
               d="M0,4 Q15,1 30,4 T60,4 T90,4 T116,4"
               fill="none"
-              stroke="rgba(138,43,226,0.3)"
+              stroke="rgba(99,102,241,0.3)"
               strokeWidth="1"
               animate={{
                 d: [
@@ -395,7 +393,6 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
 
         {/* Fisherman */}
         <div className="absolute" style={{ top: -32, left: 30 }}>
-          {/* Hat */}
           <div
             style={{
               width: 36,
@@ -417,7 +414,6 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
               }}
             />
           </div>
-          {/* Body */}
           <div
             style={{
               width: 20,
@@ -430,18 +426,16 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
           />
         </div>
 
-        {/* Fishing rod — swings on cast */}
+        {/* Fishing rod */}
         <motion.div
           className="absolute"
           style={{ top: -38, left: 55, transformOrigin: "bottom left" }}
           animate={{ rotate: casting ? [0, -25, 10, 0] : [0, -1.5, 0, 1, 0] }}
           transition={casting ? { duration: 0.6 } : { duration: 3, repeat: Infinity }}
         >
-          {/* Rod stick */}
           <svg width="90" height="60" viewBox="0 0 90 60" overflow="visible">
             <line x1="0" y1="55" x2="80" y2="0" stroke="#8b7355" strokeWidth="2.5" strokeLinecap="round" />
             <line x1="0" y1="55" x2="80" y2="0" stroke="#a08060" strokeWidth="1" strokeLinecap="round" />
-            {/* Fishing line drops from rod tip */}
             <line
               x1="80" y1="0"
               x2="80" y2={hookLineLength}
@@ -449,16 +443,15 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
               strokeWidth="0.8"
               strokeDasharray="4,2"
             />
-            {/* Hook/float at the end of the line */}
             <g transform={`translate(75, ${hookLineLength - 2})`}>
-              <circle r="5" fill="rgba(138,43,226,0.6)" stroke="rgba(200,150,255,0.5)" strokeWidth="1" />
+              <circle r="5" fill="rgba(99,102,241,0.6)" stroke="rgba(129,140,248,0.5)" strokeWidth="1" />
               <WifiIcon x={-3.5} y={-3.5} />
             </g>
           </svg>
         </motion.div>
       </motion.div>
 
-      {/* Swimming error fish — face the direction they swim */}
+      {/* Swimming error fish */}
       {fish.map((f) => (
         <motion.div
           key={f.id}
@@ -477,36 +470,30 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
               transform: `scale(${f.size}) scaleX(${f.direction === 1 ? 1 : -1})`,
             }}
           >
-            {/* Fish body — always faces left (mouth left, tail right) */}
-            <svg width="44" height="22" viewBox="-2 -1 48 22" style={{ filter: f.isGolden ? "drop-shadow(0 0 6px #FFD700)" : "drop-shadow(0 0 4px rgba(138,43,226,0.5))" }}>
-              {/* Tail */}
+            <svg width="44" height="22" viewBox="-2 -1 48 22" style={{ filter: f.isGolden ? "drop-shadow(0 0 6px #FFD700)" : "drop-shadow(0 0 4px rgba(99,102,241,0.5))" }}>
               <polygon
                 points="36,10 46,3 46,17"
-                fill={f.isGolden ? "#FFD700" : "rgba(140,80,220,0.7)"}
+                fill={f.isGolden ? "#FFD700" : "rgba(99,102,241,0.7)"}
               />
-              {/* Body */}
               <ellipse
                 cx="20" cy="10" rx="16" ry="8"
-                fill={f.isGolden ? "#FFD700" : "rgba(140,80,220,0.8)"}
-                stroke={f.isGolden ? "#FFA500" : "rgba(180,120,255,0.6)"}
+                fill={f.isGolden ? "#FFD700" : "rgba(99,102,241,0.8)"}
+                stroke={f.isGolden ? "#FFA500" : "rgba(129,140,248,0.6)"}
                 strokeWidth="1.5"
               />
-              {/* Eye */}
               <circle cx="10" cy="8" r="2.5" fill={f.isGolden ? "#333" : "rgba(255,255,255,0.9)"} />
-              <circle cx="9.5" cy="7.5" r="1" fill={f.isGolden ? "#111" : "rgba(60,20,120,0.9)"} />
-              {/* Fin */}
+              <circle cx="9.5" cy="7.5" r="1" fill={f.isGolden ? "#111" : "rgba(49,46,129,0.9)"} />
               <path
                 d="M18,16 Q22,22 26,16"
-                fill={f.isGolden ? "#FFC000" : "rgba(120,60,200,0.5)"}
+                fill={f.isGolden ? "#FFC000" : "rgba(79,70,229,0.5)"}
               />
             </svg>
           </div>
-          {/* Code label — always readable (not mirrored) */}
           <span
-            className="absolute -top-4 left-1/2 -translate-x-1/2 font-mono text-[10px] font-bold whitespace-nowrap"
+            className="absolute -top-4 left-1/2 -translate-x-1/2 font-mono text-xs font-bold whitespace-nowrap"
             style={{
-              color: f.isGolden ? "#FFD700" : "rgba(200,170,255,0.9)",
-              textShadow: f.isGolden ? "0 0 8px #FFD700" : "0 0 6px rgba(138,43,226,0.5)",
+              color: f.isGolden ? "#FFD700" : "rgba(165,180,252,0.9)",
+              textShadow: f.isGolden ? "0 0 8px #FFD700" : "0 0 6px rgba(99,102,241,0.5)",
             }}
           >
             {f.code}
@@ -521,13 +508,14 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
             initial={{ opacity: 0, y: 20, scale: 0.8 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20 }}
-            className="absolute font-mono text-sm font-bold px-4 py-2 rounded-xl"
+            className="absolute font-mono text-sm font-bold px-5 py-3 rounded-xl"
             style={{
               top: "38%",
-              background: caught === "golden" ? "rgba(255,215,0,0.2)" : "rgba(138,43,226,0.2)",
-              border: `1px solid ${caught === "golden" ? "rgba(255,215,0,0.4)" : "rgba(138,43,226,0.3)"}`,
-              color: caught === "golden" ? "#FFD700" : "rgba(200,180,255,0.8)",
-              boxShadow: caught === "golden" ? "0 0 20px rgba(255,215,0,0.3)" : "none",
+              background: caught === "golden" ? "rgba(255,215,0,0.15)" : "rgba(99,102,241,0.15)",
+              border: `1px solid ${caught === "golden" ? "rgba(255,215,0,0.3)" : "rgba(99,102,241,0.25)"}`,
+              color: caught === "golden" ? "#FFD700" : "rgba(165,180,252,0.9)",
+              boxShadow: caught === "golden" ? "0 0 30px rgba(255,215,0,0.2)" : "0 0 20px rgba(99,102,241,0.1)",
+              backdropFilter: "blur(12px)",
             }}
           >
             {caught === "golden" ? "🐟 Золотая рыбка! Соединение восстанавливается..." : `Поймана: ${caught}`}
@@ -559,31 +547,39 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
         >
-          <p className="font-mono text-sm mb-1" style={{ color: "rgba(200,180,230,0.7)" }}>
+          {/* Terminal label */}
+          <div
+            className="font-mono text-[10px] tracking-[0.25em] uppercase mb-3"
+            style={{ color: "rgba(99,102,241,0.4)" }}
+          >
+            {"// ПОТЕРЯ_СОЕДИНЕНИЯ"}
+          </div>
+
+          <p className="text-sm font-medium mb-1" style={{ color: "var(--text-primary)" }}>
             {message || "Похоже, рыба сегодня не клюёт..."}
           </p>
-          <p className="font-mono text-[10px] mb-4" style={{ color: "rgba(160,140,200,0.5)" }}>
+          <p className="font-mono text-xs mb-6" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
             как и твой интернет
           </p>
 
           <div className="flex items-center justify-center gap-3">
             <motion.button
               onClick={(e) => { e.stopPropagation(); onRetry(); }}
-              className="flex items-center gap-2 rounded-xl px-5 py-2.5 font-mono text-xs tracking-wider"
+              className="flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold"
               style={{
-                background: "rgba(138,43,226,0.15)",
-                border: "1px solid rgba(138,43,226,0.3)",
-                color: "rgba(200,180,255,0.8)",
+                background: "var(--accent)",
+                color: "#fff",
+                boxShadow: "0 0 20px var(--accent-glow)",
               }}
-              whileHover={{ background: "rgba(138,43,226,0.25)", borderColor: "rgba(138,43,226,0.5)" }}
+              whileHover={{ scale: 1.03, y: -1 }}
               whileTap={{ scale: 0.95 }}
             >
-              <RotateCcw size={14} />
-              Закинуть удочку ещё раз
+              <RotateCcw size={15} />
+              Переподключиться
             </motion.button>
           </div>
 
-          <p className="mt-4 font-mono text-[9px]" style={{ color: "rgba(140,120,180,0.4)" }}>
+          <p className="mt-5 font-mono text-xs" style={{ color: "var(--text-muted)", opacity: 0.35 }}>
             Пробел / Клик — забросить крючок &nbsp;|&nbsp; Счёт: {score}
           </p>
         </motion.div>

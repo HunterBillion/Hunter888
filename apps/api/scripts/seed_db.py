@@ -43,6 +43,10 @@ async def seed():
         # Auto-accept required consents for all seed users so training works immediately.
         await _seed_consents(db)
 
+        # Commit users+teams+consents early so they survive if later steps fail
+        await db.commit()
+        print("  ✓ Users, teams, and consents committed.")
+
         # Check if scripts exist
         existing_scripts = await db.execute(text("SELECT count(*) FROM scripts"))
         if existing_scripts.scalar() > 0:
@@ -69,11 +73,15 @@ async def seed():
             characters = await _seed_characters(db)
 
         # Check if scenarios exist
-        existing_scenarios = await db.execute(text("SELECT count(*) FROM scenarios"))
-        if existing_scenarios.scalar() > 0:
-            print("  ℹ Scenarios already exist, skipping...")
-        else:
-            await _seed_scenarios(db, characters, scripts)
+        try:
+            existing_scenarios = await db.execute(text("SELECT count(*) FROM scenarios"))
+            if existing_scenarios.scalar() > 0:
+                print("  ℹ Scenarios already exist, skipping...")
+            else:
+                await _seed_scenarios(db, characters, scripts)
+        except Exception as e:
+            print(f"  ⚠ Scenarios seed failed (non-critical): {e}")
+            await db.rollback()
 
         # Always try objections and achievements (they use ON CONFLICT or check)
         try:

@@ -209,7 +209,7 @@ export function InteractionCreateModal({
               <motion.button
                 type="submit"
                 disabled={saving}
-                className="vh-btn-primary w-full flex items-center justify-center gap-2 py-3"
+                className="btn-neon w-full flex items-center justify-center gap-2 py-3"
                 whileTap={{ scale: 0.97 }}
               >
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <MessageSquarePlus size={16} />}

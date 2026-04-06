@@ -25,6 +25,7 @@ import {
   Layers,
   Zap,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/BackButton";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { isAdmin } from "@/lib/guards";
@@ -228,38 +229,21 @@ export default function AuditLogPage() {
   return (
     <AuthLayout>
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 16px" }}>
-        {/* ── Header ── */}
+        {/* ── Header — compact ── */}
+        <div style={{ marginBottom: 16 }}>
+          <BackButton href="/home" label="Назад" />
+        </div>
+
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
           className="flex items-center justify-between flex-wrap gap-4"
           style={{ marginBottom: 24 }}
         >
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-10 w-10 items-center justify-center rounded-lg"
-              style={{ background: "var(--accent)", color: "#000" }}
-            >
-              <ShieldCheck size={22} />
-            </div>
-            <div>
-              <h1
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: 24,
-                  fontWeight: 700,
-                  color: "var(--text-primary)",
-                  margin: 0,
-                }}
-              >
-                Журнал аудита
-              </h1>
-              <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
-                152-ФЗ · Все действия с персональными данными
-              </p>
-            </div>
-          </div>
+          <p className="text-sm" style={{ color: "var(--text-muted)", margin: 0 }}>
+            152-ФЗ · Все действия с персональными данными
+          </p>
 
           <div className="flex items-center gap-2">
             <motion.button
@@ -278,7 +262,7 @@ export default function AuditLogPage() {
               Фильтры
               {hasActiveFilters && (
                 <span
-                  className="flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold"
+                  className="flex h-4 w-4 items-center justify-center rounded-full text-xs font-bold"
                   style={{ background: "#F87171", color: "#fff" }}
                 >
                   !
@@ -518,7 +502,7 @@ export default function AuditLogPage() {
 
                     {/* Role */}
                     <span
-                      className="inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium"
+                      className="inline-flex rounded px-1.5 py-0.5 text-xs font-medium"
                       style={{
                         background: "var(--input-bg)",
                         color: "var(--text-muted)",

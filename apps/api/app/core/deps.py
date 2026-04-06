@@ -37,6 +37,26 @@ async def _is_user_blacklisted(user_id: str) -> bool:
         return True
 
 
+async def _is_token_revoked(jti: str | None) -> bool:
+    """Check if a specific token (by JTI) has been revoked.
+
+    Used for per-token revocation (refresh token rotation, forced logout of specific sessions).
+    SECURITY: Fails CLOSED — if Redis is down, deny access.
+    """
+    if not jti:
+        return False  # Legacy tokens without JTI are not revoked (backward compat)
+    try:
+        r = get_redis()
+        result = await r.get(f"token:revoked:{jti}")
+        return result is not None
+    except aioredis.ConnectionError:
+        logger.error("Redis unavailable for JTI revocation check — DENYING access (fail-closed)")
+        return True
+    except Exception:
+        logger.error("Unexpected error in JTI revocation check — DENYING access", exc_info=True)
+        return True
+
+
 from fastapi import Cookie, Request
 
 
@@ -69,6 +89,13 @@ async def get_current_user(
     user_id = payload.get("sub")
     if user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=err.INVALID_TOKEN)
+
+    # Check if this specific token was revoked (per-token revocation via JTI)
+    if await _is_token_revoked(payload.get("jti")):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=err.TOKEN_REVOKED,
+        )
 
     # Check if user was logged out (token blacklisted)
     if await _is_user_blacklisted(user_id):

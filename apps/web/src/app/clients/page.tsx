@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Users, Search, Filter, Plus, Loader2, ChevronDown, Check, UserCheck, Download, X, Copy } from "lucide-react";
 import { api } from "@/lib/api";
 import { getApiBaseUrl } from "@/lib/public-origin";
+import { getToken } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { CRMClientCard } from "@/components/clients/CRMClientCard";
@@ -12,6 +13,7 @@ import { ClientStats } from "@/components/clients/ClientStats";
 import type { CRMClient, ClientStatus, PipelineStats, ClientListResponse, UserRole } from "@/types";
 import { CLIENT_STATUS_LABELS } from "@/types";
 import { ClientCreateModal } from "@/components/clients/ClientCreateModal";
+import { logger } from "@/lib/logger";
 import { BulkReassignModal } from "@/components/clients/BulkReassignModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import Link from "next/link";
@@ -68,7 +70,7 @@ export default function ClientsPage() {
     if (!isAdminOrRop) return;
     api.get("/users?role=manager&limit=100")
       .then((data: ManagerOption[]) => setManagers(Array.isArray(data) ? data : []))
-      .catch((err) => { console.error("Failed to load managers:", err); });
+      .catch((err) => { logger.error("Failed to load managers:", err); });
   }, [isAdminOrRop]);
 
   // Close dropdowns on outside click
@@ -98,7 +100,7 @@ export default function ClientsPage() {
       const data: ClientListResponse = await api.get(`/clients?${params}`);
       setClients(data.items);
       setTotal(data.total);
-    } catch { /* API may not exist yet */ }
+    } catch (err) { logger.error("Failed to fetch clients:", err); }
     setLoading(false);
   }, [search, statusFilter, managerFilter, page]);
 
@@ -106,7 +108,7 @@ export default function ClientsPage() {
     try {
       const data: PipelineStats[] = await api.get("/clients/pipeline/stats");
       setStats(data);
-    } catch { /* ignore */ }
+    } catch (err) { logger.error("Failed to fetch pipeline stats:", err); }
   }, []);
 
   useEffect(() => { fetchClients(); }, [fetchClients]);
@@ -139,7 +141,7 @@ export default function ClientsPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("ai_trainer_access_token")}`,
+            Authorization: `Bearer ${getToken() || ""}`,
           },
           body: JSON.stringify({ client_ids: Array.from(selected) }),
         },
@@ -164,23 +166,17 @@ export default function ClientsPage() {
     <AuthLayout>
       <div className="panel-grid-bg min-h-screen">
         <div className="mx-auto max-w-6xl px-4 py-8">
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="flex items-center justify-between gap-4">
+        {/* Header — compact */}
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
             <div>
-              <div className="flex items-center gap-2">
-                <Users size={20} style={{ color: "var(--accent)" }} />
-                <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
-                  КЛИЕНТЫ
-                </h1>
-              </div>
               {scopeLabel && (
-                <p className="mt-2 text-[11px] font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                <p className="text-sm" style={{ color: "var(--text-muted)" }}>
                   {scopeLabel}
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Link href="/clients/graph">
                 <motion.button
                   className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
@@ -213,7 +209,7 @@ export default function ClientsPage() {
               {!isReadOnly && (
                 <motion.button
                   onClick={() => setCreateOpen(true)}
-                  className="vh-btn-primary flex items-center gap-1.5 text-xs"
+                  className="btn-neon flex items-center gap-1.5 text-xs"
                   whileTap={{ scale: 0.97 }}
                 >
                   <Plus size={14} /> Добавить
@@ -443,7 +439,7 @@ export default function ClientsPage() {
               >
                 {selected.size === clients.length && <Check size={10} className="text-white" />}
               </motion.button>
-              <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>Выбрать все</span>
+              <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>Выбрать все</span>
             </div>
           )}
 
@@ -457,7 +453,7 @@ export default function ClientsPage() {
               title={search || statusFilter ? "Клиенты не найдены" : "Пока нет клиентов"}
               description={search || statusFilter ? "Попробуйте изменить параметры поиска" : "Добавьте первого клиента для начала работы с CRM"}
               actionLabel={!search && !statusFilter ? "Добавить клиента" : undefined}
-              onAction={!search && !statusFilter ? () => setShowCreate(true) : undefined}
+              onAction={undefined}
             />
           ) : (
             clients.map((c, i) => (

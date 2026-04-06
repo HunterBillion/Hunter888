@@ -1,45 +1,45 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Zap, TrendingUp, Target, Clock, ArrowRight, Crosshair,
-  Users, BarChart3, Loader2, X, Lightbulb, Flame, RotateCcw,
+  Users, BarChart3, Loader2, X, Flame, RotateCcw,
   Swords, Crown, Medal, ClipboardList,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { NavigatorBlock } from "@/components/ui/NavigatorBlock";
 import { ReminderWidget } from "@/components/clients/ReminderWidget";
 import { TrainingRecommendations } from "@/components/clients/TrainingRecommendations";
 import { useTrainingStore } from "@/stores/useTrainingStore";
 import type { DashboardManager } from "@/types";
 import { scoreColor } from "@/lib/utils";
 import { Sparkline } from "@/components/ui/Sparkline";
+import { AnimatedCounter } from "@/components/ui/AnimatedCounter";
+import { LoadingTip } from "@/components/ui/Skeleton";
+import { useNotificationStore } from "@/stores/useNotificationStore";
+import { logger } from "@/lib/logger";
+import { EASE_SNAP, TIMING, STORAGE, RANK, STREAK } from "@/lib/constants";
+// useTiltEffect kept in hooks/ for future use on non-motion elements
 
-// F4: Tips database
-const TIPS = [
-  "Задавайте открытые вопросы — клиент сам расскажет о своих проблемах",
-  "Не спорьте с возражениями — присоединяйтесь: «Я вас понимаю»",
-  "Называйте конкретные цифры и кейсы — это убеждает скептиков",
-  "Не торопитесь с презентацией — сначала выявите потребность",
-  "Молчание клиента — не отказ, а время на обдумывание",
-  "Используйте имя клиента — это повышает доверие на 30%",
-  "Завершайте разговор конкретным следующим шагом, а не «перезвоню»",
-  "Слушайте тон голоса — он говорит больше, чем слова",
-  "Первые 10 секунд определяют, будет ли клиент слушать дальше",
-  "Лучший аргумент — история похожего клиента, который уже решил проблему",
-];
 
-// F3: Daily challenges
-const CHALLENGES = [
-  { title: "Покорить скептика", desc: "Пройди сценарий с Алексеем Михайловым и набери 70+ баллов", type: "cold_call", minScore: 70 },
-  { title: "Мастер эмпатии", desc: "Доведи тревожного клиента до состояния OPEN без единого давления", type: "cold_call", minScore: 60 },
-  { title: "3 сессии за день", desc: "Пройди 3 тренировочных сессии за сегодня", type: "any", minScore: 0 },
-  { title: "Идеальный скрипт", desc: "Набери 90%+ по показателю «Следование скрипту»", type: "cold_call", minScore: 90 },
-  { title: "Укротитель агрессии", desc: "Пройди сценарий с агрессивным директором и доведи до сделки", type: "cold_call", minScore: 65 },
-];
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 8) return "Раннее утро — лучшее время";
+  if (h >= 8 && h < 12) return "Доброе утро";
+  if (h >= 12 && h < 14) return "Добрый день";
+  if (h >= 14 && h < 17) return "Продуктивного дня";
+  if (h >= 17 && h < 19) return "Добрый вечер";
+  if (h >= 19 && h < 22) return "Вечерняя тренировка";
+  if (h >= 22 && h < 24) return "Поздний сет";
+  return "Ночная смена";
+}
+
+// F3: Daily challenges — expanded pool in /lib/daily-challenges.ts
 
 export default function HomePage() {
   const router = useRouter();
@@ -47,68 +47,49 @@ export default function HomePage() {
   const [dashboard, setDashboard] = useState<DashboardManager | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
+  const [dailyChallenge, setDailyChallenge] = useState<{ title: string; desc: string; rewardXp: number } | null>(null);
+  const [dailyGoals, setDailyGoals] = useState<Array<{ id: string; title: string; xp: number; progress: number; target: number }>>([]);
 
-  // F1: Portal animation state — show once per browser session
-  const [showPortal, setShowPortal] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return !sessionStorage.getItem("vh_portal_shown");
-  });
-  // F2: Welcome toast
-  const [showWelcome, setShowWelcome] = useState(false);
-  // F3: Daily challenge
-  const [showChallenge, setShowChallenge] = useState(false);
-  const [challengeDismissed, setChallengeDissmissed] = useState(false);
 
-  // F4: Tip of the day (deterministic by date)
-  const todayTip = useMemo(() => {
-    const day = new Date();
-    const idx = (day.getFullYear() * 366 + day.getMonth() * 31 + day.getDate()) % TIPS.length;
-    return TIPS[idx];
-  }, []);
-
-  // F3: Today's challenge
-  const todayChallenge = useMemo(() => {
-    const day = new Date();
-    const idx = (day.getFullYear() * 366 + day.getMonth() * 31 + day.getDate() + 7) % CHALLENGES.length;
-    return CHALLENGES[idx];
-  }, []);
-
-  useEffect(() => {
+  const fetchDashboard = () => {
     if (!user) return;
     api
       .get("/dashboard/manager")
       .then((data: DashboardManager) => setDashboard(data))
-      .catch(console.error)
+      .catch((err) => { logger.error("Failed to load dashboard:", err); })
       .finally(() => setLoading(false));
+    // Fetch daily challenge + goals (non-blocking, safe parsing)
+    api.get("/gamification/daily-challenge")
+      .then((data: unknown) => {
+        if (data && typeof data === "object" && "title" in data && "desc" in data) {
+          setDailyChallenge(data as { title: string; desc: string; rewardXp: number });
+        }
+      })
+      .catch(() => { /* optional */ });
+    api.get("/gamification/goals")
+      .then((data: unknown) => {
+        if (data && typeof data === "object" && "goals" in data && Array.isArray((data as Record<string, unknown>).goals)) {
+          setDailyGoals((data as { goals: Array<{ id: string; title: string; xp: number; progress: number; target: number }> }).goals);
+        }
+      })
+      .catch(() => { /* optional */ });
+  };
+
+  useEffect(() => {
+    fetchDashboard();
   }, [user]);
 
-  // F1: Portal auto-dismiss
+  // Refetch gamification & stats when user returns to the tab
   useEffect(() => {
-    if (!showPortal) return;
-    sessionStorage.setItem("vh_portal_shown", "1");
-    const timer = setTimeout(() => {
-      setShowPortal(false);
-      // F2: Show welcome after portal
-      setTimeout(() => setShowWelcome(true), 300);
-      // F3: Show challenge after welcome
-      setTimeout(() => {
-        const lastChallenge = localStorage.getItem("vh_last_challenge");
-        const today = new Date().toDateString();
-        if (lastChallenge !== today) {
-          setShowChallenge(true);
-        }
-      }, 2500);
-    }, 1800);
-    return () => clearTimeout(timer);
-  }, []);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        fetchDashboard();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [user]);
 
-  // F2: Auto-dismiss welcome
-  useEffect(() => {
-    if (showWelcome) {
-      const t = setTimeout(() => setShowWelcome(false), 4000);
-      return () => clearTimeout(t);
-    }
-  }, [showWelcome]);
 
   const recommendations = dashboard?.recommendations ?? [];
   const recentSessions = dashboard?.recent_sessions ?? [];
@@ -124,13 +105,23 @@ export default function HomePage() {
         scenarioId = rec.scenario_id;
       } else {
         // Fallback: fetch scenarios directly and pick a random one
-        const scenarios: { id: string }[] = await api.get("/scenarios/");
+        const scenariosData = await api.get("/scenarios/");
+        const scenarios: { id: string }[] = Array.isArray(scenariosData) ? scenariosData : [];
         if (!scenarios.length) { setStarting(false); return; }
         scenarioId = scenarios[Math.floor(Math.random() * scenarios.length)].id;
       }
       const session = await api.post("/training/sessions", { scenario_id: scenarioId });
+      if (!session?.id) throw new Error("Invalid session response");
       router.push(`/training/${session.id}`);
-    } catch {
+      // Reset after navigation so the button works if user navigates back
+      setTimeout(() => setStarting(false), 1000);
+    } catch (err) {
+      useNotificationStore.getState().addToast({
+        title: "Ошибка запуска",
+        body: "Не удалось начать тренировку. Попробуйте ещё раз.",
+        type: "error",
+      });
+      logger.error("Quick start failed:", err);
       setStarting(false);
     }
   };
@@ -147,157 +138,138 @@ export default function HomePage() {
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
 
-        {/* F1: Portal entry animation */}
-        <AnimatePresence>
-          {showPortal && (
-            <motion.div
-              className="fixed inset-0 z-[200] flex items-center justify-center"
-              style={{ background: "var(--bg-primary)" }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.5 }}
-            >
-              {/* Tunnel rings */}
-              {[0, 1, 2, 3, 4].map((i) => (
-                <motion.div
-                  key={i}
-                  className="absolute rounded-full border"
-                  style={{ borderColor: "var(--accent)", opacity: 0.15 }}
-                  initial={{ width: 0, height: 0, opacity: 0 }}
-                  animate={{
-                    width: [0, 600 + i * 200],
-                    height: [0, 600 + i * 200],
-                    opacity: [0, 0.3, 0],
-                  }}
-                  transition={{
-                    duration: 1.5,
-                    delay: i * 0.2,
-                    ease: "easeOut",
-                  }}
-                />
-              ))}
-
-              {/* Center flash */}
-              <motion.div
-                className="absolute w-4 h-4 rounded-full"
-                style={{ background: "var(--accent)", boxShadow: "0 0 60px var(--accent-glow)" }}
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: [0.5, 3, 80], opacity: [0, 1, 0] }}
-                transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
-              />
-
-              {/* Logo */}
-              <motion.div
-                className="relative z-10"
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: [0, 1, 1, 0], scale: [0.8, 1, 1, 1.2] }}
-                transition={{ duration: 1.5, times: [0, 0.2, 0.6, 1] }}
-              >
-                <Crosshair size={40} style={{ color: "var(--accent)" }} />
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* F2: Welcome back toast */}
-        <AnimatePresence>
-          {showWelcome && (
-            <motion.div
-              initial={{ opacity: 0, y: -50, x: "-50%" }}
-              animate={{ opacity: 1, y: 0, x: "-50%" }}
-              exit={{ opacity: 0, y: -30, x: "-50%" }}
-              className="fixed top-20 left-1/2 z-[150] glass-panel px-6 py-4 flex items-center gap-4"
-              style={{ minWidth: 320, boxShadow: "0 0 30px var(--accent-glow)" }}
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "var(--accent)" }}>
-                {streakDays > 0 ? <Flame size={20} className="text-white" /> : <Crosshair size={20} className="text-white" />}
-              </div>
-              <div>
-                <div className="font-display text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                  С возвращением, {firstName}!
-                </div>
-                <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-                  {streakDays > 0 ? `${streakDays}-дневный streak 🔥 · Level ${level}` : `Level ${level} · ${xpCurrent} XP`}
-                </div>
-              </div>
-              <button onClick={() => setShowWelcome(false)} className="ml-auto" style={{ color: "var(--text-muted)" }}>
-                <X size={14} />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* F3: Daily challenge popup */}
-        <AnimatePresence>
-          {showChallenge && !challengeDismissed && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="fixed bottom-6 right-6 z-[150] glass-panel p-5 w-80"
-              style={{ boxShadow: "0 8px 40px var(--accent-glow)", borderColor: "var(--accent)" }}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "var(--accent-muted)" }}>
-                    <Target size={16} style={{ color: "var(--accent)" }} />
-                  </div>
-                  <div>
-                    <div className="font-mono text-[9px] uppercase tracking-widest" style={{ color: "var(--accent)" }}>ЗАДАНИЕ ДНЯ</div>
-                    <div className="font-display text-sm font-bold" style={{ color: "var(--text-primary)" }}>{todayChallenge.title}</div>
-                  </div>
-                </div>
-                <button onClick={() => { setChallengeDissmissed(true); localStorage.setItem("vh_last_challenge", new Date().toDateString()); }}
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-              <p className="text-xs mb-3" style={{ color: "var(--text-secondary)" }}>{todayChallenge.desc}</p>
-              <motion.button
-                onClick={() => { setChallengeDissmissed(true); localStorage.setItem("vh_last_challenge", new Date().toDateString()); router.push("/training"); }}
-                className="vh-btn-primary w-full flex items-center justify-center gap-2 text-sm py-2"
-                whileTap={{ scale: 0.97 }}
-              >
-                Принять вызов <ArrowRight size={14} />
-              </motion.button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         <div className="app-page">
-          {/* Welcome + Quick Start */}
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: showPortal ? 2 : 0 }}
-            className="flex flex-col md:flex-row md:items-end md:justify-between gap-4"
+
+          {/* ── COMMAND CENTER HERO ───────────────────────────────────────── */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0, duration: 0.6, ease: EASE_SNAP }}
+            className="relative rounded-2xl overflow-hidden p-6 sm:p-8 mb-6"
+            style={{
+              background: "linear-gradient(135deg, rgba(99,102,241,0.10) 0%, rgba(99,102,241,0.04) 50%, transparent 100%)",
+              border: "1px solid rgba(99,102,241,0.18)",
+            }}
           >
-            <div>
-              <h1 className="font-display text-3xl font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
-                Привет, {firstName}
-              </h1>
-              <p className="mt-1 font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>
-                LEVEL {level} · {streakDays > 0 ? `${streakDays}-ДНЕВНЫЙ STREAK 🔥` : "НАЧНИТЕ STREAK СЕГОДНЯ"}
-              </p>
+            {/* Accent corner glow */}
+            <div
+              className="absolute -top-16 -left-16 w-48 sm:w-64 h-48 sm:h-64 rounded-full pointer-events-none"
+              style={{ background: "radial-gradient(circle, rgba(99,102,241,0.14) 0%, transparent 70%)" }}
+            />
+
+            <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
+              {/* Left: identity + level */}
+              <div className="flex items-center gap-5">
+                {/* Level ring */}
+                <div className="relative shrink-0" style={{ width: 88, height: 88 }}>
+                  <svg width="88" height="88" viewBox="0 0 88 88" className="rotate-[-90deg]">
+                    {/* Background track */}
+                    <circle cx="44" cy="44" r="38" fill="none" stroke="rgba(99,102,241,0.12)" strokeWidth="5" />
+                    {/* Glow track (soft underlayer) */}
+                    <circle
+                      cx="44" cy="44" r="38" fill="none"
+                      stroke="var(--accent-glow)"
+                      strokeWidth="8"
+                      strokeLinecap="round"
+                      strokeDasharray={`${2 * Math.PI * 38}`}
+                      strokeDashoffset={`${2 * Math.PI * 38 * (1 - xpPct / 100)}`}
+                      style={{ filter: "blur(4px)", opacity: 0.5, transition: "stroke-dashoffset 1s ease" }}
+                    />
+                    {/* Main progress arc */}
+                    <circle
+                      cx="44" cy="44" r="38" fill="none"
+                      stroke="var(--accent)"
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                      strokeDasharray={`${2 * Math.PI * 38}`}
+                      strokeDashoffset={`${2 * Math.PI * 38 * (1 - xpPct / 100)}`}
+                      style={{ filter: "drop-shadow(0 0 8px var(--accent-glow))", transition: "stroke-dashoffset 1s ease" }}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="font-display font-black text-2xl" style={{ color: "var(--accent)" }}>
+                      {level}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Name + status */}
+                <div className="min-w-0">
+                  <div className="font-mono text-sm uppercase tracking-[0.2em] mb-1.5" style={{ color: "var(--accent)", opacity: 0.8 }}>
+                    {getGreeting()}
+                  </div>
+                  <h1
+                    className="font-display font-black leading-none truncate"
+                    style={{
+                      fontSize: "clamp(1.6rem, 5vw, 2.6rem)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    <span style={{ color: "var(--accent)" }}>{firstName}</span>
+                  </h1>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {streakDays > 0 && (
+                      <span
+                        className="inline-flex items-center gap-1 font-mono text-xs px-2.5 py-1 rounded-full uppercase tracking-wider"
+                        style={{ background: STREAK.rgba(0.1), border: `1px solid ${STREAK.rgba(0.25)}`, color: STREAK.light }}
+                      >
+                        <Flame size={10} /> {streakDays} дней
+                      </span>
+                    )}
+                    <span
+                      className="inline-flex items-center gap-1 font-mono text-xs px-2.5 py-1 rounded-full uppercase tracking-wider"
+                      style={{ background: "var(--accent-muted)", border: "1px solid rgba(99,102,241,0.25)", color: "var(--accent)" }}
+                    >
+                      <Zap size={10} /> {xpCurrent} / {xpNext} XP
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: Quick Start CTA */}
+              <motion.button
+                onClick={quickStart}
+                disabled={starting}
+                className="btn-neon flex items-center justify-center gap-3 font-display font-bold shrink-0"
+                style={{ fontSize: "clamp(0.95rem, 2vw, 1.1rem)", padding: "clamp(0.85rem, 2vw, 1.1rem) clamp(1.5rem, 4vw, 2.5rem)" }}
+                whileHover={{ scale: 1.04, boxShadow: "0 12px 40px rgba(79,70,229,0.55)" }}
+                whileTap={{ scale: 0.97 }}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.6, delay: 0, ease: EASE_SNAP }}
+              >
+                {starting
+                  ? <Loader2 size={20} className="animate-spin" />
+                  : <><Zap size={20} /><span>Быстрый старт</span><ArrowRight size={18} /></>
+                }
+              </motion.button>
             </div>
 
-            <motion.button
-              onClick={quickStart}
-              disabled={starting}
-              className="vh-btn-primary flex items-center gap-3 text-lg px-8 py-4 shrink-0"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+            {/* XP bar inside hero */}
+            <motion.div
+              className="relative z-10 mt-5"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
             >
-              {starting ? <Loader2 size={20} className="animate-spin" /> : <><Zap size={20} /> Quick Start <ArrowRight size={18} /></>}
-            </motion.button>
-          </motion.div>
-
-          {/* XP Progress */}
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: showPortal ? 2.1 : 0.1 }} className="mt-6">
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--text-muted)" }}>УРОВЕНЬ {level}</span>
-              <span className="font-mono text-[10px]" style={{ color: "var(--accent)" }}>{xpCurrent}/{xpNext} XP</span>
-            </div>
-            <div className="xp-bar h-3">
-              <motion.div className="xp-bar-fill" initial={{ width: 0 }} animate={{ width: `${xpPct}%` }} transition={{ duration: 1, delay: showPortal ? 2.3 : 0.3 }} />
-            </div>
+              <div className="xp-bar h-1.5 rounded-full" style={{ background: "rgba(99,102,241,0.1)" }}>
+                <motion.div
+                  className="xp-bar-fill h-full rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${xpPct}%` }}
+                  transition={{ duration: 1.2, delay: 0.35, ease: EASE_SNAP }}
+                />
+              </div>
+              {/* 2.6: "До уровня N" hint */}
+              <div className="mt-1.5 flex justify-between">
+                <span className="font-mono text-sm" style={{ color: "var(--text-muted)" }}>
+                  {xpCurrent} / {xpNext} XP
+                </span>
+                <span className="font-mono text-sm" style={{ color: "var(--accent)" }}>
+                  До уровня {level + 1}: {xpNext - xpCurrent} XP
+                </span>
+              </div>
+            </motion.div>
           </motion.div>
 
           {/* Tournament Banner */}
@@ -305,18 +277,18 @@ export default function HomePage() {
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: showPortal ? 2.15 : 0.12 }}
+              transition={{ delay: 0.12 }}
               className="mt-4 rounded-xl p-4 flex items-center gap-4 cursor-pointer transition-all"
-              style={{ background: "rgba(255,215,0,0.06)", border: "1px solid rgba(255,215,0,0.15)" }}
-              whileHover={{ y: -1, boxShadow: "0 4px 20px rgba(255,215,0,0.1)" }}
+              style={{ background: RANK.goldRgba(0.06), border: `1px solid ${RANK.goldRgba(0.15)}` }}
+              whileHover={{ y: -1, boxShadow: `0 4px 20px ${RANK.goldRgba(0.1)}` }}
               onClick={() => router.push("/leaderboard")}
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(255,215,0,0.1)" }}>
-                <Swords size={18} style={{ color: "#FFD700" }} />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: RANK.goldRgba(0.1) }}>
+                <Swords size={18} style={{ color: RANK.gold }} />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-[9px] uppercase tracking-widest" style={{ color: "#FFD700" }}>ТУРНИР</span>
+                  <span className="font-mono text-xs uppercase tracking-widest" style={{ color: RANK.gold }}>ТУРНИР</span>
                   <span className="flex h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: "var(--neon-green, #00FF66)" }} />
                 </div>
                 <div className="text-sm font-medium mt-0.5" style={{ color: "var(--text-primary)" }}>
@@ -326,15 +298,15 @@ export default function HomePage() {
                 {dashboard.tournament.leaderboard.length > 0 && (
                   <div className="flex items-center gap-2 mt-1">
                     {dashboard.tournament.leaderboard.slice(0, 3).map((e) => (
-                      <span key={e.user_id} className="font-mono text-[9px] flex items-center gap-0.5" style={{ color: "var(--text-muted)" }}>
-                        {e.rank === 1 ? <Crown size={9} style={{ color: "#FFD700" }} /> : e.rank === 2 ? <Medal size={9} style={{ color: "#C0C0C0" }} /> : <Medal size={9} style={{ color: "#CD7F32" }} />}
+                      <span key={e.user_id} className="font-mono text-xs flex items-center gap-0.5" style={{ color: "var(--text-muted)" }}>
+                        {e.rank === 1 ? <Crown size={9} style={{ color: RANK.gold }} /> : e.rank === 2 ? <Medal size={9} style={{ color: RANK.silver }} /> : <Medal size={9} style={{ color: RANK.bronze }} />}
                         {e.full_name.split(" ")[0]}
                       </span>
                     ))}
                   </div>
                 )}
               </div>
-              <ArrowRight size={16} style={{ color: "#FFD700" }} />
+              <ArrowRight size={16} style={{ color: RANK.gold }} />
             </motion.div>
           )}
 
@@ -343,7 +315,7 @@ export default function HomePage() {
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: showPortal ? 2.15 : 0.15 }}
+              transition={{ delay: 0.15 }}
               className="mt-4 glass-panel p-4 flex items-center gap-4 cursor-pointer transition-all"
               whileHover={{ y: -1, boxShadow: "0 4px 20px var(--accent-glow)" }}
               onClick={() => router.push(`/results/${lastSession.id}`)}
@@ -364,120 +336,201 @@ export default function HomePage() {
           {/* Assigned trainings badge */}
           <AssignedBadge />
 
-          {/* F4: Tip of the day */}
+          {/* НАВИГАТОР — 6-hour rotating quote */}
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: showPortal ? 2.2 : 0.2 }}
-            className="mt-6 rounded-xl p-4 flex items-start gap-3"
-            style={{ background: "var(--accent-muted)", border: "1px solid var(--glass-border)" }}
+            transition={{ delay: 0.2 }}
+            className="mt-5"
           >
-            <Lightbulb size={18} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
-            <div>
-              <div className="font-mono text-[9px] uppercase tracking-widest mb-1" style={{ color: "var(--accent)" }}>СОВЕТ ДНЯ</div>
-              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{todayTip}</p>
-            </div>
+            <NavigatorBlock />
           </motion.div>
+
+          {/* Keyboard shortcut discovery — first 3 visits */}
+          <ShortcutHint />
 
           {/* Stats Grid */}
           {!loading && (
-            <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="mt-2 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               {[
-                { label: "Сессий", value: stats?.completed_sessions ?? 0, icon: Target, color: "var(--accent)" },
-                { label: "Ср. балл", value: stats?.avg_score != null ? Math.round(stats.avg_score) : "—", icon: TrendingUp, color: scoreColor(stats?.avg_score ?? null), sparkData: [60, 65, 55, 70, 68, 75, 72] },
-                { label: "Лучший", value: stats?.best_score != null ? Math.round(stats.best_score) : "—", icon: BarChart3, color: scoreColor(stats?.best_score ?? null), sparkData: [50, 60, 65, 70, 75, 80, 85] },
-                { label: "На неделе", value: stats?.sessions_this_week ?? 0, icon: Clock, color: "var(--neon-amber, #FFD700)" },
-              ].map((card, i) => {
-                const Icon = card.icon;
-                return (
-                  <motion.div key={card.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: (showPortal ? 2.3 : 0.15) + i * 0.05 }} className="glass-panel p-5"
-                  >
-                    <Icon size={16} style={{ color: card.color }} />
-                    <div className="mt-2 font-display text-2xl font-bold" style={{ color: "var(--text-primary)" }}>{card.value}</div>
-                    {card.sparkData && stats?.avg_score != null && card.label === "Ср. балл" && (
-                      <div className="mt-2">
-                        <Sparkline data={card.sparkData} width={60} height={20} color={card.color} />
-                      </div>
-                    )}
-                    {card.sparkData && stats?.best_score != null && card.label === "Лучший" && (
-                      <div className="mt-2">
-                        <Sparkline data={card.sparkData} width={60} height={20} color={card.color} />
-                      </div>
-                    )}
-                    <div className="mt-0.5 font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{card.label}</div>
-                  </motion.div>
-                );
-              })}
+                { label: "Сессий", value: stats?.completed_sessions ?? 0, icon: Target, color: "var(--accent)", suffix: "", sparkData: [1, 2, 1, 3, 2, 4, stats?.completed_sessions ?? 0] },
+                { label: "Ср. балл", value: stats?.avg_score != null ? Math.round(stats.avg_score) : 0, icon: TrendingUp, color: scoreColor(stats?.avg_score ?? null), suffix: "", sparkData: [60, 65, 55, 70, 68, 75, Math.round(stats?.avg_score ?? 0)] },
+                { label: "Лучший", value: stats?.best_score != null ? Math.round(stats.best_score) : 0, icon: BarChart3, color: scoreColor(stats?.best_score ?? null), suffix: "", sparkData: [50, 60, 65, 70, 75, 80, Math.round(stats?.best_score ?? 0)] },
+                { label: "За неделю", value: stats?.sessions_this_week ?? 0, icon: Clock, color: STREAK.light, suffix: "", sparkData: [0, 1, 0, 2, 1, 1, stats?.sessions_this_week ?? 0] },
+              ].map((card, i) => (
+                <StatCard key={card.label} card={card} i={i} />
+              ))}
             </div>
+          )}
+
+          {/* Daily Challenge + Goals */}
+          {!loading && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4"
+            >
+              {/* Daily Challenge */}
+              {dailyChallenge && (
+                <div className="glass-panel rounded-2xl p-5 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Zap size={16} style={{ color: "#FFB400" }} />
+                      <span className="font-display font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
+                        Вызов дня
+                      </span>
+                    </div>
+                    <span className="font-mono text-sm" style={{ color: "#FFB400" }}>+{dailyChallenge.rewardXp} XP</span>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>{dailyChallenge.title}</p>
+                    <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>{dailyChallenge.desc}</p>
+                  </div>
+                  <Link href="/training">
+                    <span className="btn-neon text-xs inline-flex items-center gap-1.5">
+                      <Crosshair size={13} /> Начать
+                    </span>
+                  </Link>
+                </div>
+              )}
+              {/* Daily Goals */}
+              {dailyGoals.length > 0 && (
+                <div className="glass-panel rounded-2xl p-5 flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <Target size={16} style={{ color: "var(--accent)" }} />
+                    <span className="font-display font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
+                      Цели на сегодня
+                    </span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {dailyGoals.slice(0, 3).map((goal: { id: string; title: string; xp: number; progress: number; target: number }) => (
+                      <div key={goal.id}>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span style={{ color: goal.progress >= goal.target ? "#00FF66" : "var(--text-secondary)" }}>
+                            {goal.progress >= goal.target ? "✓ " : ""}{goal.title}
+                          </span>
+                          <span className="font-mono" style={{ color: "var(--text-muted)" }}>
+                            {goal.progress}/{goal.target}
+                          </span>
+                        </div>
+                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${Math.min(100, (goal.progress / goal.target) * 100)}%`,
+                              background: goal.progress >= goal.target ? "#00FF66" : "var(--accent)",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </motion.div>
           )}
 
           {/* Recommendations */}
           {!loading && recommendations.length > 0 && (
-            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: showPortal ? 2.5 : 0.35 }} className="mt-8">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-display text-lg font-bold tracking-wider flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="mt-8">
+              <div className="flex items-center justify-between mb-4 sm:mb-5">
+                <h2 className="font-display font-bold tracking-wider flex items-center gap-2.5" style={{ fontSize: "clamp(1rem, 2.5vw, 1.25rem)", color: "var(--text-primary)" }}>
                   <Crosshair size={18} style={{ color: "var(--accent)" }} /> РЕКОМЕНДАЦИИ
                 </h2>
-                <button onClick={() => router.push("/training")} className="font-mono text-xs flex items-center gap-1" style={{ color: "var(--accent)" }}>
-                  Все сценарии <ArrowRight size={12} />
-                </button>
+                <motion.button
+                  onClick={() => router.push("/training")}
+                  className="font-mono text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors"
+                  style={{ color: "var(--accent)", background: "var(--accent-muted)" }}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  Все сценарии <ArrowRight size={13} />
+                </motion.button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {recommendations.slice(0, 6).map((rec, i) => (
-                  <motion.div key={rec.scenario_id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: (showPortal ? 2.6 : 0.4) + i * 0.05 }}
-                    className="glass-panel p-4 cursor-pointer transition-all"
-                    whileHover={{ y: -2, boxShadow: "0 4px 20px var(--accent-glow)" }}
-                    onClick={async () => {
-                      try {
-                        const session = await api.post("/training/sessions", { scenario_id: rec.scenario_id });
-                        router.push(`/training/${session.id}`);
-                      } catch { /* ignore */ }
-                    }}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-mono text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
-                        {rec.archetype}
-                      </span>
-                      <span className="font-mono text-[10px]" style={{ color: rec.difficulty >= 7 ? "var(--neon-red, #FF3333)" : rec.difficulty >= 4 ? "var(--neon-amber, #FFD700)" : "var(--neon-green, #00FF94)" }}>
-                        {rec.difficulty}/10
-                      </span>
-                    </div>
-                    <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{rec.title}</div>
-                    {rec.tags.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {rec.tags.slice(0, 2).map((tag) => (
-                          <span key={tag} className="text-[9px] font-mono px-1.5 py-0.5 rounded" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>
-                            {tag}
-                          </span>
-                        ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {recommendations.slice(0, 6).map((rec, i) => {
+                  const diffColor = rec.difficulty >= 7 ? "var(--neon-red, #FF3333)" : rec.difficulty >= 4 ? "var(--neon-amber, #FFD700)" : "var(--neon-green, #00FF94)";
+                  return (
+                    <motion.div
+                      key={rec.scenario_id}
+                      initial={{ opacity: 0, y: 16, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ delay: (0.4) + i * TIMING.staggerStep, duration: 0.5, ease: EASE_SNAP }}
+                      className="glass-panel glass-panel-glow p-5 cursor-pointer group relative overflow-hidden"
+                      whileHover={{ y: -4, boxShadow: "0 8px 32px var(--accent-glow)", borderColor: "var(--border-hover)" }}
+                      onClick={async () => {
+                        try {
+                          const session = await api.post("/training/sessions", { scenario_id: rec.scenario_id });
+                          router.push(`/training/${session.id}`);
+                        } catch (err) {
+                          logger.error("Failed to start training session:", err);
+                          useNotificationStore.getState().addToast({ title: "Ошибка", body: "Не удалось начать тренировку", type: "error" });
+                        }
+                      }}
+                    >
+                      {/* Subtle top accent line */}
+                      <div className="absolute top-0 left-4 right-4 h-[1px] rounded-full" style={{ background: `linear-gradient(90deg, transparent, var(--accent), transparent)`, opacity: 0.4 }} />
+
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-mono text-xs uppercase tracking-wider px-2.5 py-1 rounded-full font-medium" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
+                          {rec.archetype}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex gap-0.5">
+                            {[...Array(5)].map((_, j) => (
+                              <div key={j} className="w-1.5 h-1.5 rounded-full transition-all duration-300" style={{
+                                background: j < Math.ceil(rec.difficulty / 2) ? diffColor : "var(--input-bg)",
+                                boxShadow: j < Math.ceil(rec.difficulty / 2) ? `0 0 4px ${diffColor}` : "none",
+                              }} />
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </motion.div>
-                ))}
+
+                      <div className="text-base font-semibold leading-snug group-hover:text-[var(--accent)] transition-colors duration-300" style={{ color: "var(--text-primary)" }}>
+                        {rec.title}
+                      </div>
+
+                      {rec.tags.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {rec.tags.slice(0, 3).map((tag) => (
+                            <span key={tag} className="text-xs font-mono px-2 py-0.5 rounded-md" style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--glass-border)" }}>
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Hover arrow */}
+                      <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-2 group-hover:translate-x-0">
+                        <ArrowRight size={16} style={{ color: "var(--accent)" }} />
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </div>
             </motion.div>
           )}
 
           {/* F6.1: Training recommendations based on client losses */}
           {!loading && user?.role && ["manager", "rop", "admin"].includes(user.role) && (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: showPortal ? 2.65 : 0.45 }} className="mt-6">
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }} className="mt-6">
               <TrainingRecommendations />
             </motion.div>
           )}
 
           {/* Client reminders — only for roles with client access */}
           {!loading && user?.role && ["manager", "rop", "admin"].includes(user.role) && (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: showPortal ? 2.7 : 0.5 }} className="mt-6">
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="mt-6">
               <ReminderWidget />
             </motion.div>
           )}
 
           {/* Team link for ROP */}
           {user?.role && (user.role === "rop" || user.role === "admin") && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: showPortal ? 2.8 : 0.6 }} className="mt-8">
-              <button onClick={() => router.push("/dashboard")} className="glass-panel p-5 w-full flex items-center gap-4 transition-all hover:brightness-110">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="mt-8">
+              <button onClick={() => router.push("/dashboard")} className="glass-panel glass-panel-interactive p-5 w-full flex items-center gap-4 transition-all">
                 <Users size={20} style={{ color: "var(--accent)" }} />
                 <div className="text-left">
                   <div className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>Панель команды</div>
@@ -489,32 +542,130 @@ export default function HomePage() {
           )}
 
           {loading && (
-            <div className="mt-8 space-y-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="mt-2 space-y-4 stagger-cascade">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="glass-panel p-5 space-y-3 animate-pulse">
-                    <div className="h-4 w-4 rounded bg-[var(--input-bg)]" />
-                    <div className="h-7 w-16 rounded bg-[var(--input-bg)]" />
-                    <div className="h-2.5 w-12 rounded bg-[var(--input-bg)]" />
+                  <div key={i} className="glass-panel p-4 sm:p-5 space-y-3" style={{ borderLeft: "3px solid rgba(99,102,241,0.2)" }}>
+                    <div className="h-9 w-9 rounded-xl skeleton-neon" />
+                    <div className="h-8 w-16 rounded-lg skeleton-neon" />
+                    <div className="h-2.5 w-12 rounded skeleton-neon" />
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {[1, 2, 3].map((j) => (
-                  <div key={j} className="glass-panel p-4 space-y-3 animate-pulse">
+                  <div key={j} className="glass-panel p-5 space-y-3">
                     <div className="flex justify-between">
-                      <div className="h-3 w-16 rounded-full bg-[var(--input-bg)]" />
-                      <div className="h-3 w-8 rounded bg-[var(--input-bg)]" />
+                      <div className="h-4 w-20 rounded-full skeleton-neon" />
+                      <div className="flex gap-0.5">{[1,2,3,4,5].map(d => <div key={d} className="w-1.5 h-1.5 rounded-full skeleton-neon" />)}</div>
                     </div>
-                    <div className="h-4 w-3/4 rounded bg-[var(--input-bg)]" />
+                    <div className="h-5 w-3/4 rounded-lg skeleton-neon" />
+                    <div className="flex gap-1.5">
+                      <div className="h-3.5 w-12 rounded-md skeleton-neon" />
+                      <div className="h-3.5 w-16 rounded-md skeleton-neon" />
+                    </div>
                   </div>
                 ))}
               </div>
+              <LoadingTip />
             </div>
           )}
         </div>
       </div>
     </AuthLayout>
+  );
+}
+
+/* ─── Assigned Trainings Badge ─────────────────────────────────────────────── */
+
+/* ─── Stat Card with Tilt Effect ───────────────────────────────────────── */
+
+interface StatCardProps {
+  card: { label: string; value: number; icon: typeof Target; color: string; suffix: string; sparkData?: number[] };
+  i: number;
+}
+
+function StatCard({ card, i }: StatCardProps) {
+  const Icon = card.icon;
+
+  return (
+    <motion.div
+      key={card.label}
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ delay: (0.15) + i * TIMING.staggerStep, duration: 0.5, ease: EASE_SNAP }}
+      whileHover={{ y: -3, boxShadow: `0 8px 32px color-mix(in srgb, ${card.color} 15%, transparent)` }}
+      className="glass-panel p-4 sm:p-5 group cursor-default relative overflow-hidden"
+      style={{ borderLeft: `3px solid ${card.color}`, transition: "box-shadow 0.3s ease-out" }}
+    >
+      {/* Subtle bg glow */}
+      <div
+        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
+        style={{ background: `radial-gradient(ellipse at top left, color-mix(in srgb, ${card.color} 3%, transparent) 0%, transparent 70%)` }}
+      />
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-3">
+          <div
+            className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110"
+            style={{ background: `color-mix(in srgb, ${card.color} 9%, transparent)` }}
+          >
+            <Icon size={18} style={{ color: card.color }} />
+          </div>
+          {card.sparkData && typeof card.value === "number" && card.value > 0 && (
+            <Sparkline data={card.sparkData} width={56} height={22} color={card.color} />
+          )}
+        </div>
+        <div
+          className="font-display font-black leading-none"
+          style={{ fontSize: "clamp(1.6rem, 4vw, 2.2rem)", color: "var(--text-primary)" }}
+        >
+          {typeof card.value === "number"
+            ? <AnimatedCounter value={card.value} duration={900} />
+            : "—"}
+        </div>
+        <div className="mt-1.5 font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+          {card.label}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─── Keyboard Shortcut Discovery Hint ─────────────────────────────────── */
+
+function ShortcutHint() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE.shortcutHintVisits);
+      const visits = raw ? parseInt(raw, 10) : 0;
+      if (visits >= 3) return;
+      localStorage.setItem(STORAGE.shortcutHintVisits, String(visits + 1));
+      setVisible(true);
+    } catch { /* localStorage unavailable */ }
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={{ opacity: 0, height: 0 }}
+      className="mt-3 flex items-center justify-between rounded-lg px-4 py-2.5"
+      style={{ background: "var(--accent-muted)", border: "1px solid var(--border-color)" }}
+    >
+      <span className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--accent)" }}>
+        PRO TIP: <kbd className="px-1.5 py-0.5 rounded text-[10px]" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>⌘K</kbd> — поиск · <kbd className="px-1.5 py-0.5 rounded text-[10px]" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>?</kbd> — все шорткаты
+      </span>
+      <button
+        onClick={() => { setVisible(false); try { localStorage.setItem(STORAGE.shortcutHintVisits, "3"); } catch {} }}
+        style={{ color: "var(--text-muted)" }}
+      >
+        <X size={12} />
+      </button>
+    </motion.div>
   );
 }
 
@@ -531,7 +682,7 @@ function AssignedBadge() {
   if (assignedLoading || assigned.length === 0) return null;
 
   const now = new Date();
-  const overdueCount = assigned.filter((a) => new Date(a.deadline) < now).length;
+  const overdueCount = assigned.filter((a) => a.deadline && new Date(a.deadline) < now).length;
 
   return (
     <motion.div

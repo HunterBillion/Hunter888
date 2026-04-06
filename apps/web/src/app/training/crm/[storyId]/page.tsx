@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    ArrowLeft,
     Loader2,
     Send,
     Calendar,
@@ -20,6 +19,7 @@ import {
     ShieldAlert,
   } from "lucide-react";
 import Link from "next/link";
+import { BackButton } from "@/components/ui/BackButton";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -31,6 +31,8 @@ import type {
   GameClientStatus,
 } from "@/types";
 import { GAME_STATUS_LABELS, GAME_STATUS_COLORS } from "@/types";
+import { useNotificationStore } from "@/stores/useNotificationStore";
+import { logger } from "@/lib/logger";
 
 export default function GameClientPanelPage() {
   const { storyId } = useParams<{ storyId: string }>();
@@ -77,8 +79,13 @@ export default function GameClientPanelPage() {
     try {
       const data: GameStoryDetail = await api.get(`/game/clients/stories/${storyId}`);
       setStory(data);
-    } catch {
-      /* ignore */
+    } catch (err) {
+      useNotificationStore.getState().addToast({
+        title: "Ошибка",
+        body: "Не удалось загрузить историю клиента.",
+        type: "error",
+      });
+      logger.error("Failed to load story:", err);
     }
     setLoading(false);
   }, [storyId]);
@@ -96,8 +103,8 @@ export default function GameClientPanelPage() {
         setEvents(data.items || []);
       }
       setTotalEvents(data.total || 0);
-    } catch {
-      /* ignore */
+    } catch (err) {
+      logger.error("Failed to load timeline:", err);
     }
     setEventsLoading(false);
   }, [storyId, events.length]);
@@ -105,7 +112,7 @@ export default function GameClientPanelPage() {
   useEffect(() => {
     fetchStory();
     fetchTimeline();
-  }, [fetchStory]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchStory, fetchTimeline]);
 
   useEffect(() => {
     if (connectionState === "connected" && storyId) {
@@ -136,8 +143,13 @@ export default function GameClientPanelPage() {
         setSending(false);
       }
       setMessageText("");
-    } catch {
-      /* ignore */
+    } catch (err) {
+      useNotificationStore.getState().addToast({
+        title: "Ошибка отправки",
+        body: "Сообщение не отправлено. Проверьте соединение.",
+        type: "error",
+      });
+      logger.error("Failed to send message:", err);
       setSending(false);
     }
   }, [messageText, storyId, sending, fetchTimeline, connectionState, sendMessage]);
@@ -156,8 +168,13 @@ export default function GameClientPanelPage() {
       setShowCallbackForm(false);
       setEventsLoading(true);
       await fetchTimeline();
-    } catch {
-      /* ignore */
+    } catch (err) {
+      useNotificationStore.getState().addToast({
+        title: "Ошибка",
+        body: "Не удалось запланировать звонок.",
+        type: "error",
+      });
+      logger.error("Failed to schedule callback:", err);
     }
     setSending(false);
   }, [callbackDate, callbackNote, storyId, sending, fetchTimeline]);
@@ -167,7 +184,7 @@ export default function GameClientPanelPage() {
     if (events.length > 0 && storyId) {
       const unread = events.filter((e) => !e.is_read).map((e) => e.id);
       if (unread.length > 0) {
-        api.post(`/game/clients/stories/${storyId}/read`, { event_ids: unread }).catch((err) => { console.error("Failed to mark events as read:", err); });
+        api.post(`/game/clients/stories/${storyId}/read`, { event_ids: unread }).catch((err) => { logger.error("Failed to mark events as read:", err); });
       }
     }
   }, [events, storyId]);
@@ -209,7 +226,7 @@ export default function GameClientPanelPage() {
 
   return (
     <AuthLayout>
-      <div className="flex flex-col min-h-[calc(100vh-64px)] bg-[radial-gradient(circle_at_top,rgba(139,92,246,0.15),transparent_32%),linear-gradient(180deg,#040405_0%,#09090c_55%,#0b0b0f_100%)]">
+      <div className="flex flex-col min-h-[calc(100vh-64px)] bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.15),transparent_32%),linear-gradient(180deg,#040405_0%,#09090c_55%,#0b0b0f_100%)]">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -221,18 +238,12 @@ export default function GameClientPanelPage() {
               <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                 <div className="max-w-2xl">
                   <div className="flex items-center gap-3 mb-3">
-                    <Link
-                      href="/training/crm"
-                      className="transition-colors hover:opacity-80"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      <ArrowLeft size={16} />
-                    </Link>
+                    <BackButton href="/training/crm" label="К историям" />
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: `${color}18`, border: `1px solid ${color}30` }}>
                       <BookOpen size={18} style={{ color }} />
                     </div>
                     <div>
-                      <div className="font-mono text-[10px] uppercase tracking-[0.28em]" style={{ color: "var(--accent)" }}>
+                      <div className="font-mono text-xs uppercase tracking-[0.28em]" style={{ color: "var(--accent)" }}>
                         Story Control Room
                       </div>
                       <h1 className="font-display text-2xl font-bold tracking-[0.08em]" style={{ color: "var(--text-primary)" }}>
@@ -240,7 +251,7 @@ export default function GameClientPanelPage() {
                       </h1>
                     </div>
                     <span
-                      className="text-[10px] font-mono px-2 py-0.5 rounded-full"
+                      className="text-xs font-mono px-2 py-0.5 rounded-full"
                       style={{
                         background: `${color}15`,
                         color,
@@ -256,17 +267,17 @@ export default function GameClientPanelPage() {
                   </p>
 
                   <div className="mt-4 flex flex-wrap gap-3">
-                    <span className="flex items-center gap-1 text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+                    <span className="flex items-center gap-1 text-xs font-mono" style={{ color: "var(--text-muted)" }}>
                       <Phone size={11} />
                       Звонок {story.current_call_number}/{story.total_calls_planned}
                     </span>
                     {story.tension_curve.length > 0 && (
-                      <span className="flex items-center gap-1 text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+                      <span className="flex items-center gap-1 text-xs font-mono" style={{ color: "var(--text-muted)" }}>
                         <Zap size={11} />
                         Напряжение: {(story.tension_curve[story.tension_curve.length - 1] * 10).toFixed(0)}/10
                       </span>
                     )}
-                    <span className="flex items-center gap-1 text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+                    <span className="flex items-center gap-1 text-xs font-mono" style={{ color: "var(--text-muted)" }}>
                       <Layers3 size={11} />
                       Событий: {story.event_count}
                     </span>
@@ -283,14 +294,14 @@ export default function GameClientPanelPage() {
                     <div key={item.label} className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
                       <item.icon size={14} style={{ color: "var(--accent)" }} />
                       <div className="mt-2 text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>{item.value}</div>
-                      <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{item.label}</div>
+                      <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{item.label}</div>
                     </div>
                   ))}
                 </div>
               </div>
 
               <div className="mt-5">
-                <div className="mb-2 flex items-center justify-between text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                <div className="mb-2 flex items-center justify-between text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
                   <span>Story Progress</span>
                   <span>{progressPct}%</span>
                 </div>
@@ -309,17 +320,17 @@ export default function GameClientPanelPage() {
             <div className="flex-1 min-w-0">
               <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Поток истории</div>
+                  <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Поток истории</div>
                   <div className="mt-2 text-xl font-semibold" style={{ color: "var(--text-primary)" }}>{totalEvents}</div>
                   <div className="text-xs" style={{ color: "var(--text-secondary)" }}>всех зафиксированных событий</div>
                 </div>
                 <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Между звонками</div>
+                  <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Между звонками</div>
                   <div className="mt-2 text-xl font-semibold" style={{ color: "var(--text-primary)" }}>{story.between_call_events.length}</div>
                   <div className="text-xs" style={{ color: "var(--text-secondary)" }}>изменений поведения клиента</div>
                 </div>
                 <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Pacing</div>
+                  <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Pacing</div>
                   <div className="mt-2 text-xl font-semibold capitalize" style={{ color: "var(--text-primary)" }}>{story.pacing}</div>
                   <div className="text-xs" style={{ color: "var(--text-secondary)" }}>режим развития истории</div>
                 </div>
@@ -334,7 +345,7 @@ export default function GameClientPanelPage() {
                 </span>
                 <button
                   onClick={() => { setEventsLoading(true); fetchTimeline(); }}
-                  className="text-[10px] font-mono flex items-center gap-1"
+                  className="text-xs font-mono flex items-center gap-1"
                   style={{ color: "var(--text-muted)" }}
                 >
                   <RefreshCw size={10} />
@@ -355,7 +366,7 @@ export default function GameClientPanelPage() {
                 className="rounded-2xl p-4"
                 style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
               >
-                <span className="text-[10px] font-mono font-semibold uppercase tracking-wider block mb-2" style={{ color: "var(--text-muted)" }}>
+                <span className="text-xs font-mono font-semibold uppercase tracking-wider block mb-2" style={{ color: "var(--text-muted)" }}>
                   Profile Snapshot
                 </span>
                 <div className="space-y-2 text-xs" style={{ color: "var(--text-secondary)" }}>
@@ -376,7 +387,7 @@ export default function GameClientPanelPage() {
                 style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
               >
                 <span
-                  className="text-[10px] font-mono font-semibold uppercase tracking-wider block mb-2"
+                  className="text-xs font-mono font-semibold uppercase tracking-wider block mb-2"
                   style={{ color: "var(--text-muted)" }}
                 >
                   Сообщение AI-клиенту
@@ -403,7 +414,7 @@ export default function GameClientPanelPage() {
                 <button
                   onClick={handleSendMessage}
                   disabled={!messageText.trim() || sending}
-                  className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[10px] font-mono transition-opacity"
+                  className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono transition-opacity"
                   style={{
                     background: "var(--accent)",
                     color: "#000",
@@ -422,7 +433,7 @@ export default function GameClientPanelPage() {
               >
                 <button
                   onClick={() => setShowCallbackForm((v) => !v)}
-                  className="w-full flex items-center justify-between text-[10px] font-mono font-semibold uppercase tracking-wider"
+                  className="w-full flex items-center justify-between text-xs font-mono font-semibold uppercase tracking-wider"
                   style={{ color: "var(--text-muted)" }}
                 >
                   Обратный звонок
@@ -470,9 +481,9 @@ export default function GameClientPanelPage() {
                         <button
                           onClick={handleScheduleCallback}
                           disabled={!callbackDate.trim() || sending}
-                          className="w-full flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[10px] font-mono transition-opacity"
+                          className="w-full flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono transition-opacity"
                           style={{
-                            background: "#F97316",
+                            background: "var(--warning)",
                             color: "#000",
                             opacity: callbackDate.trim() && !sending ? 1 : 0.5,
                           }}
@@ -493,7 +504,7 @@ export default function GameClientPanelPage() {
                   style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                 >
                   <span
-                    className="text-[10px] font-mono font-semibold uppercase tracking-wider block mb-2"
+                    className="text-xs font-mono font-semibold uppercase tracking-wider block mb-2"
                     style={{ color: "var(--text-muted)" }}
                   >
                     Последствия ({story.consequences.length})
@@ -502,13 +513,13 @@ export default function GameClientPanelPage() {
                     {(story.consequences as Array<Record<string, unknown>>).slice(0, 5).map((csq, i) => (
                       <div
                         key={i}
-                        className="text-[10px] font-mono p-1.5 rounded"
+                        className="text-xs font-mono p-1.5 rounded"
                         style={{
                           background: "var(--input-bg)",
                           color: "var(--text-muted)",
                         }}
                       >
-                        <span style={{ color: "#F59E0B" }}>⚡</span>{" "}
+                        <span style={{ color: "var(--warning)" }}>⚡</span>{" "}
                         {String(csq.type || csq.detail || "Последствие")}
                       </div>
                     ))}
@@ -521,13 +532,13 @@ export default function GameClientPanelPage() {
                   className="rounded-2xl p-4"
                   style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                 >
-                  <span className="text-[10px] font-mono font-semibold uppercase tracking-wider block mb-2" style={{ color: "var(--text-muted)" }}>
+                  <span className="text-xs font-mono font-semibold uppercase tracking-wider block mb-2" style={{ color: "var(--text-muted)" }}>
                     Активные факторы
                   </span>
                   <div className="space-y-2">
                     {(story.active_factors as Array<Record<string, unknown>>).slice(0, 6).map((factor, i) => (
                       <div key={i} className="rounded-xl px-3 py-2 text-xs" style={{ background: "var(--input-bg)", color: "var(--text-secondary)" }}>
-                        <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--accent)" }}>
+                        <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--accent)" }}>
                           {String(factor.factor || factor.name || "factor")}
                         </div>
                         <div className="mt-1">Intensity: {Math.round(Number(factor.intensity || 0) * 100)}%</div>

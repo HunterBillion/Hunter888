@@ -237,10 +237,14 @@ async def list_clients(
     count_query = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_query)).scalar() or 0
 
-    # ── Sort ──
-    sort_column = getattr(RealClient, sort_by, RealClient.created_at)
-    if sort_order == "asc":
-        query = query.order_by(sort_column.asc())
+    # ── Sort (allowlist to prevent IDOR via attribute reflection) ──
+    _ALLOWED_SORT_FIELDS = {
+        "created_at", "updated_at", "full_name", "status", "phone", "email",
+    }
+    safe_sort_by = sort_by if sort_by in _ALLOWED_SORT_FIELDS else "created_at"
+    sort_column = getattr(RealClient, safe_sort_by, RealClient.created_at)
+    if sort_order in ("asc", "desc"):
+        query = query.order_by(sort_column.asc() if sort_order == "asc" else sort_column.desc())
     else:
         query = query.order_by(sort_column.desc())
 

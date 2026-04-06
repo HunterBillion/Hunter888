@@ -40,6 +40,51 @@ from app.services.reputation import (
 logger = logging.getLogger(__name__)
 
 
+# ─── Prompt injection sanitizer ──────────────────────────────────────────────
+
+_INJECTION_PATTERNS = re.compile(
+    r"(?i)"
+    r"(ignore\s+(all\s+)?previous\s+instructions"
+    r"|forget\s+(everything|all|your)\s+(above|instructions|rules)"
+    r"|you\s+are\s+now\s+a"
+    r"|new\s+instructions?\s*:"
+    r"|system\s*:\s*"
+    r"|<\s*/?\s*system\s*>"
+    r"|act\s+as\s+(if\s+you\s+are|a)\b"
+    r"|pretend\s+(you\s+are|to\s+be)"
+    r"|do\s+not\s+follow\s+(any|the)\s+(previous|above)"
+    r"|override\s+(previous|all|system)\b"
+    r"|jailbreak"
+    r"|DAN\s+mode"
+    r"|ignore\s+safety"
+    r"|ignore\s+guardrails"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _sanitize_db_prompt(text: str, field_name: str = "unknown") -> str:
+    """Strip known prompt injection patterns from DB-sourced text.
+
+    DB fields like awareness_prompt, client_prompt_template, and stage_skip_reactions
+    are editable by admins. A compromised admin account or SQL injection could
+    plant prompt injection payloads that override LLM guardrails.
+    """
+    if not text:
+        return text
+    cleaned = _INJECTION_PATTERNS.sub("[FILTERED]", text)
+    if cleaned != text:
+        logger.warning(
+            "Prompt injection attempt detected in DB field '%s': patterns were filtered",
+            field_name,
+        )
+    # Length cap: no single DB field should exceed 2000 chars in prompt
+    if len(cleaned) > 2000:
+        cleaned = cleaned[:2000] + "\n[...обрезано: превышен лимит длины]"
+        logger.warning("DB field '%s' exceeded 2000 char limit, truncated", field_name)
+    return cleaned
+
+
 # ─── Data classes ────────────────────────────────────────────────────────────
 
 @dataclass
@@ -368,16 +413,18 @@ def build_scenario_prompt(config: SessionConfig, current_stage_order: int = 1) -
 
     # ── Section 4: Awareness prompt (scenario-specific) ──
     if config.awareness_prompt:
+        safe_awareness = _sanitize_db_prompt(config.awareness_prompt, "awareness_prompt")
         parts.append(
             f"## Дополнительные инструкции по сценарию\n"
-            f"{config.awareness_prompt}"
+            f"{safe_awareness}"
         )
 
     # ── Section 5: Stage-skip reactions ──
     if config.stage_skip_reactions:
         skip_lines = []
         for skip_key, reaction in config.stage_skip_reactions.items():
-            skip_lines.append(f"  — Если менеджер пропустил «{skip_key}»: \"{reaction}\"")
+            safe_reaction = _sanitize_db_prompt(reaction, f"stage_skip_reactions[{skip_key}]")
+            skip_lines.append(f"  — Если менеджер пропустил «{skip_key}»: \"{safe_reaction}\"")
         parts.append(
             "## Реакции на пропуск этапов\n"
             "Если менеджер пропускает важный этап разговора, используй эти реплики:\n"
@@ -386,9 +433,10 @@ def build_scenario_prompt(config: SessionConfig, current_stage_order: int = 1) -
 
     # ── Section 6: Client prompt template (if set) ──
     if config.client_prompt_template:
+        safe_template = _sanitize_db_prompt(config.client_prompt_template, "client_prompt_template")
         parts.append(
             "## Шаблон поведения клиента\n"
-            + config.client_prompt_template
+            + safe_template
         )
 
     return "\n\n---\n\n".join(parts)
@@ -422,21 +470,31 @@ def track_stage_progress(
 
     sorted_stages = sorted(stages, key=lambda s: s.get("order", 0))
 
-    # Calculate proportional boundaries
+    # Calculate proportional boundaries with weight factors
+    # Realistic call stages: greeting short, diagnosis/solution long
+    _DEFAULT_WEIGHTS = {
+        1: 0.6,   # Greeting — shorter
+        2: 1.2,   # Qualification / diagnosis — longer
+        3: 1.4,   # Solution / explanation — longest
+        4: 1.0,   # Objection handling — normal
+        5: 0.8,   # Closing — shorter
+    }
     total_duration = sum(
         (s.get("duration_min", 1) + s.get("duration_max", 2)) / 2
-        for s in sorted_stages
+        * s.get("weight_factor", _DEFAULT_WEIGHTS.get(s.get("order", i + 1), 1.0))
+        for i, s in enumerate(sorted_stages)
     )
     if total_duration == 0:
         total_duration = len(sorted_stages)
 
-    # Map message index to a stage
+    # Map message index to a stage (clamped to [0, 1] to handle overflow)
     cumulative = 0.0
-    progress = message_index / max(1, total_expected_messages)
+    progress = min(1.0, max(0.0, message_index / max(1, total_expected_messages)))
 
     for i, stage in enumerate(sorted_stages):
         avg_dur = (stage.get("duration_min", 1) + stage.get("duration_max", 2)) / 2
-        stage_fraction = avg_dur / total_duration
+        weight = stage.get("weight_factor", _DEFAULT_WEIGHTS.get(stage.get("order", i + 1), 1.0))
+        stage_fraction = (avg_dur * weight) / total_duration
         cumulative += stage_fraction
 
         if progress < cumulative or i == len(sorted_stages) - 1:
@@ -527,17 +585,37 @@ def _awareness_description(level: str) -> str:
     return descriptions.get(level, descriptions["zero"])
 
 
-def get_stage_skip_reaction(config: SessionConfig, skipped_stage: str) -> Optional[str]:
+def get_stage_skip_reaction(
+    config: SessionConfig, skipped_stage: str, cumulative_skips: int = 0
+) -> Optional[str]:
     """Get client's reaction phrase when manager skips a stage.
+
+    Cumulative skips escalate the client's frustration:
+    - 1st skip: configured reaction (mild)
+    - 2nd skip: reaction + irritation prefix
+    - 3+ skips: strong frustration phrase
 
     Args:
         config: Current session config
-        skipped_stage: Stage key that was skipped (e.g., 'greeting_skip', 'qualification_skip')
+        skipped_stage: Stage key that was skipped
+        cumulative_skips: Total skips so far in this session
 
     Returns:
         Reaction phrase or None if no reaction configured
     """
-    return config.stage_skip_reactions.get(skipped_stage)
+    base_reaction = config.stage_skip_reactions.get(skipped_stage)
+    if not base_reaction:
+        return None
+
+    if cumulative_skips >= 3:
+        return (
+            "Подождите, вы уже не первый раз перескакиваете! "
+            "Может, сначала разберёмся в моей ситуации? " + base_reaction
+        )
+    elif cumulative_skips >= 2:
+        return "Стоп, вы опять торопитесь... " + base_reaction
+
+    return base_reaction
 
 
 def estimate_total_messages(config: SessionConfig) -> int:
@@ -818,29 +896,33 @@ def apply_between_calls_context(
     previous_outcome: str | None = None,
     previous_emotion: str = "cold",
     existing_events: list[dict] | None = None,
+    *,
+    relationship_score: float = 50.0,
+    lifecycle_state: str = "FIRST_CONTACT",
+    active_storylets: list[str] | None = None,
+    consequence_log: list[dict] | None = None,
 ) -> list[dict]:
     """Generate simulated CRM events that happened between calls.
 
-    Events are selected probabilistically based on:
-    - Call number (more dramatic events in later calls)
-    - Archetype (anxious clients more likely to get creditor events)
-    - Previous call outcome (positive outcomes reduce negative events)
-
-    Args:
-        call_number: The upcoming call number (2, 3, etc.)
-        archetype_code: Client's archetype
-        previous_outcome: How the last call ended
-        previous_emotion: Last emotion state from previous call
-        existing_events: Already generated events from earlier calls
+    Intelligent selection based on:
+    - Call number progression (escalation arc)
+    - Archetype (personality-driven event bias)
+    - Previous call outcome (momentum effect)
+    - Relationship score (high trust → positive events, low → negative)
+    - Lifecycle state (GHOSTING → collector_visit, INTERESTED → positive_review)
+    - Active storylets (wife_found_out active → family_discussion more likely)
+    - Consequence history (avoids redundant events, chains related ones)
 
     Returns:
-        List of new event dicts: [{"event": "...", "impact": "...", "description": "..."}]
+        List of new event dicts with event/impact/description/emotion_shift.
     """
     existing_events = existing_events or []
-    existing_event_types = {e["event"] for e in existing_events}
-    new_events = []
+    active_storylets = active_storylets or []
+    consequence_log = consequence_log or []
+    existing_event_types = {e.get("event", "") for e in existing_events}
+    new_events: list[dict] = []
 
-    # Archetype modifiers — increase/decrease probability of certain events
+    # ── Archetype modifiers (personality bias) ──
     archetype_modifiers = {
         "anxious": {"creditor_called": 1.5, "collector_visit": 1.3, "court_letter": 1.3},
         "paranoid": {"found_competitor": 1.5, "client_googled_bankruptcy": 1.5},
@@ -848,32 +930,97 @@ def apply_between_calls_context(
         "desperate": {"creditor_called": 1.4, "salary_delayed": 1.5, "collector_visit": 1.5},
         "passive": {"nothing_happened": 1.5, "family_discussion": 0.5},
         "manipulator": {"found_competitor": 1.5, "client_googled_bankruptcy": 1.3},
+        "skeptic": {"client_googled_bankruptcy": 1.3, "found_competitor": 1.2},
+        "aggressive": {"collector_visit": 1.3, "court_letter": 1.4},
+        "sarcastic": {"found_competitor": 1.2, "nothing_happened": 1.3},
+        "know_it_all": {"client_googled_bankruptcy": 1.6, "found_competitor": 1.3},
     }
     arch_mod = archetype_modifiers.get(archetype_code, {})
 
-    # Previous outcome modifiers
+    # ── Outcome momentum modifier ──
     outcome_mod = 1.0
     if previous_outcome in ("deal", "scheduled_meeting"):
-        outcome_mod = 0.5  # Good outcomes reduce bad events
+        outcome_mod = 0.5
     elif previous_outcome in ("hangup", "hostile"):
-        outcome_mod = 1.3  # Bad outcomes increase dramatic events
+        outcome_mod = 1.3
+    elif previous_outcome in ("callback", "considering"):
+        outcome_mod = 0.9  # Slightly calmer
 
-    # Select 1-3 events
-    num_events = random.choices([1, 2, 3], weights=[0.4, 0.4, 0.2], k=1)[0]
+    # ── Relationship modifier: high trust → more positive, low → more negative ──
+    rel_mod_positive = 1.0 + max(0, (relationship_score - 50)) / 100  # 50→1.0, 100→1.5
+    rel_mod_negative = 1.0 + max(0, (50 - relationship_score)) / 100  # 50→1.0, 0→1.5
 
+    # ── Lifecycle state modifier: drives event relevance ──
+    lifecycle_event_boost: dict[str, dict[str, float]] = {
+        "GHOSTING": {"collector_visit": 1.5, "court_letter": 1.4, "nothing_happened": 0.3},
+        "THINKING": {"family_discussion": 1.4, "client_googled_bankruptcy": 1.3},
+        "INTERESTED": {"positive_review_seen": 1.5, "friend_went_through": 1.4},
+        "OBJECTING": {"found_competitor": 1.4, "creditor_called": 1.2},
+        "CALLBACK_SCHEDULED": {"nothing_happened": 1.3, "client_googled_bankruptcy": 1.2},
+        "REJECTED": {"collector_visit": 1.5, "court_letter": 1.5, "salary_delayed": 1.3},
+    }
+    lc_mod = lifecycle_event_boost.get(lifecycle_state, {})
+
+    # ── Storylet coherence: active storylets bias related events ──
+    storylet_event_affinity: dict[str, dict[str, float]] = {
+        "wife_found_out": {"family_discussion": 1.8, "creditor_called": 0.7},
+        "collectors_arrived": {"collector_visit": 0.3, "court_letter": 1.5},
+        "friend_recommended_lawyer": {"found_competitor": 1.6},
+        "court_order_received": {"court_letter": 0.3, "creditor_called": 1.3},
+        "salary_garnishment": {"salary_delayed": 0.3, "creditor_called": 1.2},
+        "positive_precedent": {"positive_review_seen": 1.5, "friend_went_through": 1.4},
+    }
+    storylet_mod: dict[str, float] = {}
+    for s_code in active_storylets:
+        for evt_key, mult in storylet_event_affinity.get(s_code, {}).items():
+            storylet_mod[evt_key] = storylet_mod.get(evt_key, 1.0) * mult
+
+    # ── Consequence dedup: suppress events already in consequence log ──
+    consequence_events = {c.get("event_code", "") for c in consequence_log if c.get("is_active")}
+
+    # ── Event count by call progression (narrative arc) ──
+    call_event_weights = {
+        2: ([1, 2], [0.6, 0.4]),           # Setup: 1-2 events
+        3: ([2, 3], [0.5, 0.5]),            # Rising action: 2-3
+        4: ([2, 3], [0.4, 0.6]),            # Climax: 2-3 (more likely 3)
+        5: ([1, 2], [0.5, 0.5]),            # Resolution: 1-2
+    }
+    counts, weights = call_event_weights.get(call_number, ([1, 2, 3], [0.4, 0.4, 0.2]))
+    num_events = random.choices(counts, weights=weights, k=1)[0]
+
+    # ── Build candidate pool with combined modifiers ──
     candidates = []
     for event_key, event_data in _BETWEEN_CALL_EVENTS.items():
+        # Skip exact repeats (except nothing_happened)
         if event_key in existing_event_types and event_key != "nothing_happened":
-            continue  # Don't repeat events
+            continue
+        # Suppress if active consequence already covers this
+        if event_key in consequence_events:
+            continue
+
         base_prob = event_data["probability_by_call"].get(call_number, 0.1)
-        prob = base_prob * arch_mod.get(event_key, 1.0) * outcome_mod
+
+        # Layer all modifiers
+        prob = base_prob
+        prob *= arch_mod.get(event_key, 1.0)       # Archetype
+        prob *= outcome_mod                          # Outcome momentum
+        prob *= lc_mod.get(event_key, 1.0)          # Lifecycle state
+        prob *= storylet_mod.get(event_key, 1.0)    # Storylet coherence
+
+        # Relationship: positive events boosted by high rel, negative by low rel
+        _positive_events = {"positive_review_seen", "friend_went_through", "nothing_happened"}
+        if event_key in _positive_events:
+            prob *= rel_mod_positive
+        else:
+            prob *= rel_mod_negative
+
         candidates.append((event_key, event_data, min(1.0, prob)))
 
-    # Weighted selection without replacement
+    # ── Weighted selection without replacement ──
     for _ in range(num_events):
         if not candidates:
             break
-        keys, datas, probs = zip(*candidates)
+        _keys, _datas, probs = zip(*candidates)
         total = sum(probs)
         if total == 0:
             break
@@ -881,7 +1028,6 @@ def apply_between_calls_context(
         chosen_idx = random.choices(range(len(candidates)), weights=normalized, k=1)[0]
         chosen_key, chosen_data, _ = candidates[chosen_idx]
 
-        # Roll against probability
         if random.random() < probs[chosen_idx]:
             new_events.append({
                 "event": chosen_key,
@@ -916,39 +1062,99 @@ def generate_pre_call_brief(
     previous_emotion: str,
     between_events: list[dict],
     key_memories: list[dict] | None = None,
+    *,
+    relationship_score: float = 50.0,
+    lifecycle_state: str = "FIRST_CONTACT",
+    active_storylets: list[str] | None = None,
+    manager_weak_points: list[str] | None = None,
+    client_messages: list[str] | None = None,
 ) -> str:
     """Generate a pre-call brief for the manager before the next call.
 
-    This is shown to the manager in the UI before the call starts,
-    giving context about the client's history and what to expect.
+    Enriched with:
+    - Relationship trajectory and lifecycle state
+    - Active storylet context (what's happening in the narrative)
+    - Manager coaching (personalized weak points)
+    - Client message previews (what to expect)
     """
+    active_storylets = active_storylets or []
+    manager_weak_points = manager_weak_points or []
+    client_messages = client_messages or []
+
     parts = [f"## Бриф перед звонком #{call_number}"]
     parts.append(f"**Клиент:** {client_name} (архетип: {archetype_code})")
 
+    # ── Relationship & lifecycle status ──
+    _rel_label = "низкое" if relationship_score < 35 else "среднее" if relationship_score < 65 else "высокое"
+    _lifecycle_labels = {
+        "NEW_LEAD": "Новый лид",
+        "FIRST_CONTACT": "Первый контакт",
+        "INTERESTED": "Заинтересован",
+        "OBJECTING": "Возражает",
+        "THINKING": "Думает",
+        "CALLBACK_SCHEDULED": "Перезвон назначен",
+        "FOLLOW_UP_CALL": "Повторный звонок",
+        "MEETING_SET": "Встреча назначена",
+        "DEAL_CLOSED": "Сделка закрыта",
+        "REJECTED": "Отказ",
+        "GHOSTING": "Пропал",
+        "NO_ANSWER": "Не отвечает",
+        "REACTIVATION": "Реактивация",
+    }
+    parts.append(
+        f"**Доверие:** {relationship_score:.0f}/100 ({_rel_label}) | "
+        f"**Этап:** {_lifecycle_labels.get(lifecycle_state, lifecycle_state)}"
+    )
+
     if previous_outcome:
         outcome_labels = {
-            "deal": "✅ Согласился на встречу",
-            "callback": "📞 Попросил перезвонить",
-            "hangup": "❌ Бросил трубку",
-            "hostile": "⚠️ Был агрессивен",
-            "considering": "🤔 Думает",
-            "scheduled_meeting": "✅ Записан на консультацию",
+            "deal": "Согласился на встречу",
+            "callback": "Попросил перезвонить",
+            "hangup": "Бросил трубку",
+            "hostile": "Был агрессивен",
+            "considering": "Думает",
+            "scheduled_meeting": "Записан на консультацию",
         }
         parts.append(f"**Прошлый звонок:** {outcome_labels.get(previous_outcome, previous_outcome)}")
         parts.append(f"**Последняя эмоция:** {previous_emotion}")
 
+    # ── Active storylets (narrative context) ──
+    if active_storylets:
+        _storylet_descriptions = {
+            "wife_found_out": "Жена клиента узнала о долгах — семейное давление",
+            "collectors_arrived": "Коллекторы приходили домой — клиент напуган",
+            "friend_recommended_lawyer": "Друг порекомендовал юриста-конкурента",
+            "court_order_received": "Клиент получил судебный приказ",
+            "salary_garnishment": "Началось удержание из зарплаты",
+            "positive_precedent": "Клиент узнал о успешном банкротстве знакомого",
+        }
+        parts.append("\n**Активные сюжетные линии:**")
+        for s_code in active_storylets:
+            desc = _storylet_descriptions.get(s_code, s_code.replace("_", " ").capitalize())
+            parts.append(f"  • {desc}")
+
+    # ── Between-call events ──
     if between_events:
         parts.append("\n**Что произошло между звонками:**")
         for evt in between_events:
             parts.append(f"  • {evt.get('description', evt.get('event', '?'))}")
 
+    # ── Client message previews ──
+    if client_messages:
+        parts.append("\n**Сообщения от клиента:**")
+        for msg in client_messages[:3]:
+            parts.append(f'  > "{msg}"')
+
+    # ── Key memories ──
     if key_memories:
         parts.append("\n**Ключевые моменты из прошлых звонков:**")
-        for mem in key_memories[:5]:  # Top 5 by salience
+        for mem in key_memories[:5]:
             parts.append(f"  • {mem.get('content', '?')}")
 
-    # Tactical advice based on context
+    # ── Tactical recommendations (context-aware) ──
     parts.append("\n**Рекомендации:**")
+
+    # Outcome-based advice
     if previous_outcome == "hangup":
         parts.append("  • Начните мягко, извинитесь за предыдущий опыт")
         parts.append("  • Не давите, дайте клиенту высказаться")
@@ -958,16 +1164,55 @@ def generate_pre_call_brief(
     elif previous_outcome == "callback":
         parts.append("  • Напомните о предыдущей договорённости")
         parts.append("  • Подготовьте конкретное предложение")
+    elif previous_outcome in ("deal", "scheduled_meeting"):
+        parts.append("  • Подтвердите договорённости прошлого звонка")
+        parts.append("  • Подготовьте следующие шаги и документы")
+
+    # Relationship-based advice
+    if relationship_score < 30:
+        parts.append("  • Доверие критически низкое — избегайте давления, работайте на восстановление")
+    elif relationship_score > 75:
+        parts.append("  • Высокий уровень доверия — можно предлагать конкретные шаги")
+
+    # Lifecycle-specific advice
+    if lifecycle_state == "GHOSTING":
+        parts.append("  • Клиент пропал — покажите ценность, напомните о последствиях бездействия")
+    elif lifecycle_state == "OBJECTING":
+        parts.append("  • Клиент возражает — выслушайте, не спорьте, предложите факты")
+    elif lifecycle_state == "REACTIVATION":
+        parts.append("  • Повторная попытка — проявите уважение, не давите на прошлые отказы")
 
     # Event-specific advice
     for evt in between_events:
         impact = evt.get("impact", "")
-        if impact == "panic":
-            parts.append("  • ⚠️ Клиент в панике — сначала успокойте, потом предлагайте")
-        elif impact == "comparison_shopping":
-            parts.append("  • Клиент сравнивает — подчеркните ваши преимущества")
-        elif impact == "social_proof":
-            parts.append("  • Используйте социальное доказательство — клиент уже слышал о успехе")
+        event_code = evt.get("event", "")
+        if impact == "panic" or event_code == "collector_visit":
+            parts.append("  • Клиент в стрессе — сначала успокойте, потом предлагайте решение")
+        elif impact == "comparison_shopping" or event_code == "found_competitor":
+            parts.append("  • Клиент сравнивает — подчеркните ваши преимущества и опыт")
+        elif impact == "social_proof" or event_code in ("positive_review_seen", "friend_went_through"):
+            parts.append("  • Используйте социальное доказательство — клиент настроен позитивно")
+        elif event_code == "court_letter":
+            parts.append("  • Судебный документ создаёт срочность — предложите быстрое решение")
+        elif event_code == "family_discussion":
+            parts.append("  • Семья вовлечена — учитывайте мнение близких клиента")
+
+    # ── Personalized coaching (manager weak points) ──
+    if manager_weak_points:
+        parts.append("\n**Зоны для развития (по вашему профилю):**")
+        _coaching_tips = {
+            "empathy": "Проявляйте больше эмпатии — отзеркаливайте чувства клиента",
+            "closing": "Работайте над закрытием — предлагайте конкретный следующий шаг",
+            "discovery": "Не спешите — задайте больше вопросов, прежде чем предлагать",
+            "objection_handling": "Возражения — это возможность. Выслушайте до конца, потом отвечайте",
+            "legal_accuracy": "Проверяйте юридические факты — точность повышает доверие",
+            "rapport": "Стройте раппорт — используйте имя клиента, проявляйте интерес",
+            "active_listening": "Слушайте активнее — перефразируйте слова клиента",
+            "time_management": "Контролируйте время — не затягивайте разговор",
+        }
+        for wp in manager_weak_points[:3]:
+            tip = _coaching_tips.get(wp, f"Обратите внимание на навык: {wp}")
+            parts.append(f"  • {tip}")
 
     return "\n".join(parts)
 
@@ -984,8 +1229,15 @@ async def generate_session_report(
     emotion_trajectory: list[dict] | None = None,
     call_number: int = 1,
     is_story_final: bool = False,
+    stage_progress: dict | None = None,
+    manager_weak_points: list[str] | None = None,
+    manager_skill_history: dict | None = None,
 ) -> dict:
-    """Generate a structured post-call report via small LLM.
+    """Generate a structured post-call report with AI-Coach analysis.
+
+    Expanded v2: includes cited_moments (concrete quotes with corrections),
+    stage_analysis (per-stage quality assessment), and historical_patterns
+    (cross-session patterns based on manager's weak points).
 
     Args:
         messages: Full conversation history for this call
@@ -995,32 +1247,75 @@ async def generate_session_report(
         emotion_trajectory: Sequence of emotion state changes
         call_number: Call number within multi-call story
         is_story_final: Whether this is the last call in the story
+        stage_progress: Stage tracking data from _stage_progress
+        manager_weak_points: List of weak skill areas from manager_progress
+        manager_skill_history: Skill trend data {skill: [last_5_scores]}
 
     Returns:
         Report dict suitable for SessionReport.content JSONB
     """
     from app.services.llm import generate_response
 
-    # Build analysis prompt
-    conversation_text = "\n".join(
-        f"{'Менеджер' if m['role'] == 'user' else 'Клиент'}: {m['content']}"
-        for m in messages
-    )
+    # Build numbered conversation for precise quoting
+    conversation_lines = []
+    for i, m in enumerate(messages):
+        role = "Менеджер" if m["role"] == "user" else "Клиент"
+        conversation_lines.append(f"[{i}] {role}: {m['content']}")
+    conversation_text = "\n".join(conversation_lines)
+
+    # Build context sections
+    context_parts = [
+        f"Сценарий: {config.scenario_name} (сложность: {config.difficulty}/10)",
+        f"Архетип клиента: {config.archetype}",
+        f"Звонок #{call_number}",
+    ]
+
+    if stage_progress:
+        completed = stage_progress.get("stages_completed", [])
+        scores = stage_progress.get("stage_scores", {})
+        final = stage_progress.get("final_stage", "?")
+        context_parts.append(
+            f"Пройденные стадии: {completed} из {stage_progress.get('total_stages', 7)}. "
+            f"Финальная стадия: {final}. "
+            f"Качество по стадиям: {scores}"
+        )
+
+    if manager_weak_points:
+        context_parts.append(f"Слабые стороны менеджера (из истории): {', '.join(manager_weak_points)}")
+
+    if manager_skill_history:
+        trends = []
+        for skill, vals in manager_skill_history.items():
+            if len(vals) >= 2:
+                direction = "растёт" if vals[-1] > vals[0] else "падает" if vals[-1] < vals[0] else "стабильно"
+                trends.append(f"{skill}: {vals[0]:.0f}→{vals[-1]:.0f} ({direction})")
+        if trends:
+            context_parts.append(f"Тренды навыков (последние сессии): {'; '.join(trends)}")
+
+    context_text = "\n".join(context_parts)
 
     report_prompt = (
         "Ты — опытный тренер по продажам услуг банкротства физических лиц (127-ФЗ). "
-        "Проанализируй следующий разговор менеджера с клиентом и создай структурированный отчёт.\n\n"
-        f"Сценарий: {config.scenario_name} (сложность: {config.difficulty}/10)\n"
-        f"Архетип клиента: {config.archetype}\n"
-        f"Звонок #{call_number}\n\n"
-        f"Разговор:\n{conversation_text}\n\n"
+        "Проанализируй разговор менеджера с клиентом и создай ДЕТАЛЬНЫЙ отчёт с конкретными цитатами.\n\n"
+        f"{context_text}\n\n"
+        f"Разговор (номера реплик в квадратных скобках):\n{conversation_text}\n\n"
         "Создай отчёт в формате JSON со следующими полями:\n"
         '- "summary": краткое описание звонка (2-3 предложения)\n'
         '- "strengths": массив сильных сторон менеджера (2-4 пункта)\n'
         '- "weaknesses": массив слабых сторон (2-4 пункта)\n'
         '- "missed_opportunities": что менеджер упустил (1-3 пункта)\n'
-        '- "recommendations": рекомендации на следующий звонок (2-3 пункта)\n'
-        '- "key_moments": ключевые моменты [{"seq": N, "type": "тип", "detail": "описание"}]\n'
+        '- "recommendations": рекомендации (2-3 пункта)\n'
+        '- "key_moments": [{"seq": N, "type": "тип", "detail": "описание"}]\n'
+        '- "cited_moments": массив конкретных разборов реплик: [\n'
+        '    {"message_index": N, "manager_said": "цитата", "problem": "что не так",\n'
+        '     "better_response": "как лучше сказать", "category": "тип_ошибки", "stage": "стадия"}\n'
+        '  ] (3-5 самых важных моментов)\n'
+        '- "stage_analysis": анализ каждой стадии: [\n'
+        '    {"stage": "greeting", "passed": true/false, "quality": "good/weak/skipped",\n'
+        '     "note": "комментарий"}\n'
+        '  ] (для всех 7 стадий)\n'
+        '- "historical_patterns": массив наблюдений о паттернах менеджера (1-3 пункта, '
+        'основываясь на слабых сторонах и трендах если они указаны)\n'
         "Отвечай ТОЛЬКО JSON, без markdown и пояснений."
     )
 
@@ -1067,10 +1362,19 @@ async def generate_session_report(
     if emotion_trajectory:
         report_data["emotion_trajectory"] = emotion_trajectory
 
+    # Ensure new AI-Coach fields have defaults
+    report_data.setdefault("cited_moments", [])
+    report_data.setdefault("stage_analysis", [])
+    report_data.setdefault("historical_patterns", [])
+
     report_data["call_number"] = call_number
     report_data["scenario"] = config.scenario_code
     report_data["archetype"] = config.archetype
     report_data["is_story_final"] = is_story_final
-    report_data["generated_by"] = "llm_auto"
+    report_data["generated_by"] = "llm_auto_v2"
+
+    # Attach stage progress for frontend StageBreakdown
+    if stage_progress:
+        report_data["stage_progress"] = stage_progress
 
     return report_data

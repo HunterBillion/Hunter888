@@ -23,7 +23,7 @@ export function StoryProgress({ callNumber, totalCalls }: Props) {
       }}
     >
       <Phone size={13} style={{ color: "var(--accent)" }} />
-      <span className="font-mono text-[11px] tracking-wider" style={{ color: "var(--text-secondary)" }}>
+      <span className="font-mono text-xs tracking-wider" style={{ color: "var(--text-secondary)" }}>
         ЗВОНОК <span style={{ color: "var(--accent)", fontWeight: 700 }}>{callNumber}</span>
         <span style={{ color: "var(--text-muted)" }}> / {totalCalls}</span>
       </span>

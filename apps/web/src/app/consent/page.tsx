@@ -25,7 +25,7 @@ export default function ConsentPage() {
         consent_type: "personal_data_processing",
         version: "1.0",
       });
-      router.replace("/training");
+      router.replace("/home");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Не удалось сохранить согласие";
@@ -66,7 +66,7 @@ export default function ConsentPage() {
           <div className="mt-6 flex justify-center gap-3">
             <motion.button
               onClick={() => setDeclined(false)}
-              className="vh-btn-outline"
+              className="btn-neon"
               whileTap={{ scale: 0.97 }}
             >
               Вернуться
@@ -227,7 +227,7 @@ export default function ConsentPage() {
             <motion.button
               onClick={handleAccept}
               disabled={!accepted || loading}
-              className="vh-btn-primary flex flex-1 items-center justify-center gap-2"
+              className="btn-neon flex flex-1 items-center justify-center gap-2"
               whileTap={{ scale: 0.98 }}
             >
               {loading ? (
@@ -241,7 +241,7 @@ export default function ConsentPage() {
             </motion.button>
             <motion.button
               onClick={handleDecline}
-              className="vh-btn-outline flex-1"
+              className="btn-neon flex-1"
               whileTap={{ scale: 0.98 }}
             >
               Отклонить

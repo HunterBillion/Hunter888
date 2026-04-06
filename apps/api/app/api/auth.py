@@ -38,8 +38,26 @@ from app.schemas.auth import (
 router = APIRouter()
 
 
+def _make_csrf_token() -> str:
+    """Generate a CSRF token using a cryptographically random value.
+
+    Uses secrets.token_hex so each session gets a unique token.
+    The csrf_secret in settings is used as an extra entropy source via HMAC.
+    """
+    import secrets as _sec
+    import hmac as _hmac
+    import hashlib as _hs
+    nonce = _sec.token_hex(16)
+    sig = _hmac.new(
+        settings.csrf_secret.encode(),
+        nonce.encode(),
+        _hs.sha256,
+    ).hexdigest()
+    return f"{nonce}.{sig}"
+
+
 def _set_auth_cookies(response: JSONResponse, tokens: TokenResponse) -> JSONResponse:
-    """Set httpOnly cookies for access and refresh tokens."""
+    """Set httpOnly cookies for access and refresh tokens + CSRF token cookie."""
     is_prod = settings.app_env == "production"
     response.set_cookie(
         key="access_token",
@@ -69,13 +87,31 @@ def _set_auth_cookies(response: JSONResponse, tokens: TokenResponse) -> JSONResp
         max_age=settings.jwt_refresh_token_expire_days * 86400,
         path="/",
     )
+    # CSRF token cookie — NOT httpOnly (frontend JS must be able to read and send it).
+    # Validated by CSRFMiddleware on state-changing requests via X-CSRF-Token header.
+    response.set_cookie(
+        key="csrf_token",
+        value=_make_csrf_token(),
+        httponly=False,
+        secure=is_prod,
+        samesite="lax",
+        max_age=settings.jwt_refresh_token_expire_days * 86400,
+        path="/",
+    )
     return response
 
 
 def _clear_auth_cookies(response: JSONResponse) -> JSONResponse:
-    """Clear auth cookies on logout."""
-    for key in ("access_token", "refresh_token", "vh_authenticated"):
-        response.delete_cookie(key=key, path="/")
+    """Clear auth cookies on logout.
+
+    IMPORTANT: Each cookie must be deleted with the SAME path it was set with,
+    otherwise the browser won't recognize the deletion and the cookie persists.
+    """
+    response.delete_cookie(key="access_token", path="/")
+    # refresh_token is set with path="/api/auth/refresh" — must match for deletion
+    response.delete_cookie(key="refresh_token", path="/api/auth/refresh")
+    response.delete_cookie(key="vh_authenticated", path="/")
+    response.delete_cookie(key="csrf_token", path="/")
     return response
 
 
@@ -86,6 +122,10 @@ async def register(request: Request, body: RegisterRequest, db: AsyncSession = D
 
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
+        _logger.warning(
+            "auth.register.duplicate email=%s ip=%s",
+            body.email, request.client.host if request.client else "unknown",
+        )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=err.EMAIL_ALREADY_REGISTERED)
 
     user = User(
@@ -102,6 +142,10 @@ async def register(request: Request, body: RegisterRequest, db: AsyncSession = D
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=err.EMAIL_ALREADY_REGISTERED)
 
+    _logger.info(
+        "auth.register.success user_id=%s email=%s ip=%s",
+        user.id, body.email, request.client.host if request.client else "unknown",
+    )
     tokens = _create_tokens(str(user.id))
     response = JSONResponse(content=tokens.model_dump(), status_code=201)
     return _set_auth_cookies(response, tokens)
@@ -113,12 +157,26 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
 
-    if not user or not verify_password(body.password, user.hashed_password):
+    _ip = request.client.host if request.client else "unknown"
+
+    # Timing attack mitigation: always run verify_password even if user doesn't exist.
+    # bcrypt.checkpw takes ~100ms; skipping it on non-existent users leaks email existence.
+    _DUMMY_HASH = "$2b$12$LJ3m4ys3Lg2FEOn.0dRG9eKPlDFtMiAqfZIbXYMQKxNBb1DRPGLXK"
+    _pw_valid = verify_password(body.password, user.hashed_password if user else _DUMMY_HASH)
+    if not user or not _pw_valid:
+        _logger.warning(
+            "auth.login.failed email=%s ip=%s reason=invalid_credentials",
+            body.email, _ip,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=err.INVALID_CREDENTIALS
         )
 
     if not user.is_active:
+        _logger.warning(
+            "auth.login.failed email=%s ip=%s reason=account_disabled",
+            body.email, _ip,
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=err.ACCOUNT_DISABLED)
 
     # Clear any blacklist from previous logout so new login works
@@ -128,6 +186,20 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
     except aioredis.RedisError as exc:
         _logger.warning("Redis error clearing blacklist on login for user %s: %s", user.id, exc)
 
+    _logger.info(
+        "auth.login.success user_id=%s email=%s ip=%s",
+        user.id, body.email, _ip,
+    )
+
+    # Record fingerprint for multi-account detection
+    try:
+        from app.services.anti_cheat import record_fingerprint
+        _ua = request.headers.get("user-agent")
+        await record_fingerprint(user_id=user.id, ip_address=_ip, user_agent=_ua, event_type="login", db=db)
+        await db.commit()
+    except Exception:
+        _logger.debug("Failed to record login fingerprint for %s", user.id)
+
     tokens = _create_tokens(str(user.id))
     tokens.must_change_password = user.must_change_password
     response = JSONResponse(content=tokens.model_dump())
@@ -135,20 +207,55 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(body: RefreshRequest):
-    payload = decode_token(body.refresh_token)
+@limiter.limit("10/minute")
+async def refresh(request: Request, body: RefreshRequest | None = None):
+    # Accept refresh token from JSON body OR httpOnly cookie (page reload fallback).
+    token = (body.refresh_token if body and body.refresh_token else None) or request.cookies.get("refresh_token")
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=err.INVALID_REFRESH_TOKEN)
+    payload = decode_token(token)
     if payload is None or payload.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=err.INVALID_REFRESH_TOKEN)
 
-    user_id = payload["sub"]
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=err.INVALID_REFRESH_TOKEN)
+    old_jti = payload.get("jti")
 
-    # Check if user was logged out (token blacklisted)
-    from app.core.deps import _is_user_blacklisted
+    # Check if this specific refresh token was already revoked (rotation replay attack)
+    from app.core.deps import _is_user_blacklisted, _is_token_revoked
+    if old_jti and await _is_token_revoked(old_jti):
+        # A revoked refresh token is being reused → possible theft.
+        # Blacklist the user entirely to force re-login.
+        _logger.warning(
+            "auth.refresh.replay_detected user_id=%s jti=%s — blacklisting user",
+            user_id, old_jti,
+        )
+        try:
+            r = get_redis()
+            ttl = settings.jwt_refresh_token_expire_days * 86400
+            await r.setex(f"blacklist:user:{user_id}", ttl, "1")
+        except aioredis.RedisError:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=err.TOKEN_REVOKED_RELOGIN,
+        )
+
     if await _is_user_blacklisted(user_id):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=err.TOKEN_REVOKED_RELOGIN,
         )
+
+    # Rotate: revoke old refresh token, issue new pair
+    if old_jti:
+        try:
+            r = get_redis()
+            ttl = settings.jwt_refresh_token_expire_days * 86400
+            await r.setex(f"token:revoked:{old_jti}", ttl, "1")
+        except aioredis.RedisError as exc:
+            _logger.warning("Failed to revoke old refresh token jti=%s: %s", old_jti, exc)
 
     tokens = _create_tokens(user_id)
     response = JSONResponse(content=tokens.model_dump())
@@ -160,8 +267,9 @@ async def me(user: User = Depends(get_current_user)):
     return user
 
 
+@limiter.limit("10/minute")
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(user: User = Depends(get_current_user)):
+async def logout(request: Request, user: User = Depends(get_current_user)):
     """Invalidate the current user's refresh token by blacklisting in Redis."""
     try:
         r = get_redis()
@@ -170,6 +278,10 @@ async def logout(user: User = Depends(get_current_user)):
         await r.setex(f"blacklist:user:{user.id}", ttl, "1")
     except aioredis.RedisError as exc:
         _logger.error("Redis error during logout blacklist for user %s: %s", user.id, exc)
+    _logger.info(
+        "auth.logout user_id=%s ip=%s",
+        user.id, request.client.host if request.client else "unknown",
+    )
     response = JSONResponse(content=None, status_code=204)
     return _clear_auth_cookies(response)
 
@@ -263,13 +375,15 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest, db: Asy
     user = result.scalar_one_or_none()
 
     if user:
-        # Generate reset token
+        # Generate reset token, store HASH in Redis (token itself goes to email)
+        import hashlib
         reset_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(reset_token.encode()).hexdigest()
 
-        # Store in Redis: token → user_id, 1 hour TTL
+        # Store hash → user_id in Redis, 1 hour TTL
         try:
             r = get_redis()
-            await r.setex(f"reset_token:{reset_token}", 3600, str(user.id))
+            await r.setex(f"reset_token:{token_hash}", 3600, str(user.id))
         except aioredis.RedisError as exc:
             _logger.error("Redis error storing reset token: %s", exc)
             raise HTTPException(
@@ -288,12 +402,23 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest, db: Asy
 @limiter.limit("5/minute")
 async def reset_password(request: Request, body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
     """Reset password using token from email link."""
-    # Look up token in Redis
+    # Look up token hash in Redis (only hash is stored, not the token)
+    import hashlib
+    token_hash = hashlib.sha256(body.token.encode()).hexdigest()
     try:
         r = get_redis()
-        user_id_str = await r.get(f"reset_token:{body.token}")
-        if user_id_str:
-            await r.delete(f"reset_token:{body.token}")  # One-time use
+        # Atomic GET+DELETE via Lua to prevent TOCTOU race condition:
+        # two concurrent requests could both read the same token before either deletes it.
+        _lua_get_del = """
+        local val = redis.call("GET", KEYS[1])
+        if val then
+            redis.call("DEL", KEYS[1])
+            return val
+        else
+            return nil
+        end
+        """
+        user_id_str = await r.eval(_lua_get_del, 1, f"reset_token:{token_hash}")
     except aioredis.RedisError as exc:
         _logger.error("Redis error during password reset: %s", exc)
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=err.SERVICE_TEMPORARILY_UNAVAILABLE)
@@ -315,6 +440,7 @@ async def reset_password(request: Request, body: ResetPasswordRequest, db: Async
     db.add(user)
     await db.commit()
 
+    _logger.info("auth.password_reset.success user_id=%s", user.id)
     return {"message": "Пароль успешно изменён. Войдите с новым паролем."}
 
 
@@ -369,7 +495,8 @@ async def google_login():
         "access_type": "offline",
         "prompt": "consent",
     }
-    url = "https://accounts.google.com/o/oauth2/v2/auth?" + "&".join(f"{k}={v}" for k, v in params.items())
+    from urllib.parse import urlencode
+    url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
     return {"url": url, "state": state_key}
 
 
@@ -456,7 +583,8 @@ async def yandex_login():
         "response_type": "code",
         "state": state_key,
     }
-    url = "https://oauth.yandex.ru/authorize?" + "&".join(f"{k}={v}" for k, v in params.items())
+    from urllib.parse import urlencode
+    url = "https://oauth.yandex.ru/authorize?" + urlencode(params)
     return {"url": url, "state": state_key}
 
 
@@ -563,8 +691,10 @@ async def _oauth_find_or_create(
 
 # --- Disconnect OAuth provider ---
 
+@limiter.limit("5/minute")
 @router.post("/{provider}/disconnect")
 async def disconnect_oauth(
+    request: Request,
     provider: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

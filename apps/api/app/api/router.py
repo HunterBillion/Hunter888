@@ -55,3 +55,23 @@ api_router.include_router(pvp_router, prefix="/pvp", tags=["pvp"])
 from app.api.knowledge import router as knowledge_router
 
 api_router.include_router(knowledge_router, prefix="/knowledge", tags=["knowledge"])
+
+# Module 5 — Methodologist Tools
+from app.api.methodologist import router as methodologist_router
+
+api_router.include_router(methodologist_router, prefix="/methodologist", tags=["methodologist"])
+
+# Module 5 — CRM Integrations
+from app.api.integrations import router as integrations_router
+
+api_router.include_router(integrations_router, prefix="/integrations", tags=["integrations"])
+
+# Module 2 — Behavioral Intelligence
+from app.api.behavior import router as behavior_router
+
+api_router.include_router(behavior_router, tags=["behavior"])
+
+# Navigator — curated quote library (6-hour rotation)
+from app.api.navigator import router as navigator_router
+
+api_router.include_router(navigator_router, tags=["navigator"])

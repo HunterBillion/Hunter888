@@ -13,9 +13,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useWebPush } from "@/hooks/useWebPush";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { BackButton } from "@/components/ui/BackButton";
 import { AvatarUpload } from "@/components/settings/AvatarUpload";
 import { PIPELINE_STATUSES, CLIENT_STATUS_LABELS } from "@/types";
 import type { ClientStatus, User } from "@/types";
+import { logger } from "@/lib/logger";
 
 /** Invalidate cache + re-fetch user to reflect avatar/profile changes immediately */
 function invalidateUserCache() {
@@ -124,7 +126,7 @@ export default function SettingsPage() {
 
     api.get("/auth/oauth/status")
       .then((data: { google: boolean; yandex: boolean }) => setOauthStatus(data))
-      .catch((err) => { console.error("Failed to load OAuth status:", err); });
+      .catch((err) => { logger.error("Failed to load OAuth status:", err); });
   }, [user]);
 
   // Apply accent color + compact mode immediately (live preview via store)
@@ -178,7 +180,7 @@ export default function SettingsPage() {
   const Chip = ({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) => (
     <motion.button
       onClick={onClick}
-      className="rounded-lg px-3.5 py-2 font-mono text-[13px] transition-all"
+      className="rounded-lg px-3.5 py-2 font-mono text-xs transition-all"
       style={{
         background: active ? "var(--accent-muted)" : "var(--input-bg)",
         border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
@@ -194,6 +196,7 @@ export default function SettingsPage() {
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
         <div className="mx-auto max-w-2xl px-4 py-8">
+          <BackButton href="/home" label="На главную" />
           {/* Header: avatar + name + title */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             className="flex items-center gap-4 mb-8"
@@ -212,7 +215,7 @@ export default function SettingsPage() {
                   НАСТРОЙКИ
                 </h1>
               </div>
-              <p className="text-[13px] mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
+              <p className="text-xs mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
                 {user?.full_name} • {user?.role ? roleLabels[user.role] || user.role : ""}
               </p>
             </div>
@@ -228,13 +231,13 @@ export default function SettingsPage() {
                 <Palette size={18} style={{ color: "var(--accent)" }} />
                 <div>
                   <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Оформление</div>
-                  <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>Тема и акцентный цвет</div>
+                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>Тема и акцентный цвет</div>
                 </div>
               </div>
 
               {/* Theme row */}
               <div className="flex items-center justify-between mb-4">
-                <span className="text-[13px]" style={{ color: "var(--text-secondary)" }}>Тема</span>
+                <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Тема</span>
                 {mounted && (
                   <div className="flex gap-2">
                     {([
@@ -250,7 +253,7 @@ export default function SettingsPage() {
 
               {/* Accent color row */}
               <div className="flex items-center justify-between">
-                <span className="text-[13px]" style={{ color: "var(--text-secondary)" }}>Акцент</span>
+                <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Акцент</span>
                 <div className="flex gap-2">
                   {ACCENT_COLORS.map((c) => (
                     <motion.button
@@ -279,7 +282,7 @@ export default function SettingsPage() {
                 <Gamepad2 size={18} style={{ color: "var(--accent)" }} />
                 <div>
                   <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Тренировки</div>
-                  <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>Режим и сложность</div>
+                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>Режим и сложность</div>
                 </div>
               </div>
 
@@ -287,14 +290,14 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Volume2 size={15} style={{ color: "var(--text-muted)" }} />
-                  <span className="text-[13px]" style={{ color: "var(--text-secondary)" }}>Озвучка AI-клиента</span>
+                  <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Озвучка AI-клиента</span>
                 </div>
                 <Toggle on={ttsEnabled} onChange={() => setTtsEnabled(!ttsEnabled)} />
               </div>
 
               {/* Training mode */}
               <div className="mb-4">
-                <span className="text-[13px] block mb-2" style={{ color: "var(--text-secondary)" }}>Режим тренировки</span>
+                <span className="text-xs block mb-2" style={{ color: "var(--text-secondary)" }}>Режим тренировки</span>
                 <div className="flex flex-wrap gap-2">
                   {TRAINING_MODES.map((m) => (
                     <Chip key={m.key} active={trainingMode === m.key} label={m.label} onClick={() => setTrainingMode(m.key)} />
@@ -304,7 +307,7 @@ export default function SettingsPage() {
 
               {/* Experience level */}
               <div>
-                <span className="text-[13px] block mb-2" style={{ color: "var(--text-secondary)" }}>Уровень опыта</span>
+                <span className="text-xs block mb-2" style={{ color: "var(--text-secondary)" }}>Уровень опыта</span>
                 <div className="flex gap-2">
                   {EXPERIENCE_LEVELS.map((l) => (
                     <Chip key={l.key} active={experienceLevel === l.key} label={l.label} onClick={() => setExperienceLevel(l.key)} />
@@ -321,12 +324,12 @@ export default function SettingsPage() {
                 <LayoutGrid size={18} style={{ color: "var(--accent)" }} />
                 <div>
                   <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Интерфейс</div>
-                  <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>Плотность и отображение</div>
+                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>Плотность и отображение</div>
                 </div>
               </div>
 
               <div className="flex items-center justify-between">
-                <span className="text-[13px]" style={{ color: "var(--text-secondary)" }}>Компактный режим</span>
+                <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Компактный режим</span>
                 <Toggle on={compactMode} onChange={() => setCompactMode(!compactMode)} />
               </div>
             </motion.div>
@@ -340,7 +343,7 @@ export default function SettingsPage() {
                   <Kanban size={18} style={{ color: "var(--accent)" }} />
                   <div>
                     <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Воронка</div>
-                    <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>Видимые столбцы в канбане</div>
+                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>Видимые столбцы в канбане</div>
                   </div>
                 </div>
 
@@ -389,7 +392,7 @@ export default function SettingsPage() {
                   <Bell size={18} style={{ color: "var(--accent)" }} />
                   <div>
                     <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Уведомления</div>
-                    <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>Каналы и частота</div>
+                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>Каналы и частота</div>
                   </div>
                 </div>
                 <Toggle on={notifications} onChange={() => setNotifications(!notifications)} />
@@ -401,7 +404,7 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <MessageSquare size={14} style={{ color: "var(--text-muted)" }} />
-                      <span className="text-[13px]" style={{ color: "var(--text-secondary)" }}>В приложении</span>
+                      <span className="text-xs" style={{ color: "var(--text-secondary)" }}>В приложении</span>
                     </div>
                     <Toggle on={notifyPush} onChange={() => setNotifyPush(!notifyPush)} size="sm" />
                   </div>
@@ -410,7 +413,7 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Mail size={14} style={{ color: "var(--text-muted)" }} />
-                      <span className="text-[13px]" style={{ color: "var(--text-secondary)" }}>Email</span>
+                      <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Email</span>
                     </div>
                     <Toggle on={notifyEmail} onChange={() => setNotifyEmail(!notifyEmail)} size="sm" />
                   </div>
@@ -421,9 +424,9 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-2">
                         <Smartphone size={14} style={{ color: "var(--text-muted)" }} />
                         <div>
-                          <span className="text-[13px]" style={{ color: "var(--text-secondary)" }}>Web Push</span>
+                          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Web Push</span>
                           {webPush.isDenied && (
-                            <span className="block text-[10px]" style={{ color: "var(--neon-red)" }}>Заблокировано</span>
+                            <span className="block text-xs" style={{ color: "var(--neon-red)" }}>Заблокировано</span>
                           )}
                         </div>
                       </div>
@@ -431,7 +434,7 @@ export default function SettingsPage() {
                         {webPush.isSubscribed && (
                           <motion.button
                             onClick={webPush.sendTest}
-                            className="rounded px-2 py-1 text-[10px] font-mono"
+                            className="rounded px-2 py-1 text-xs font-mono"
                             style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--border-color)" }}
                             whileTap={{ scale: 0.95 }}
                             title="Тест"
@@ -448,14 +451,14 @@ export default function SettingsPage() {
                     </div>
                   )}
                   {webPush.error && (
-                    <p className="text-[10px] font-mono" style={{ color: "var(--neon-red)" }}>{webPush.error}</p>
+                    <p className="text-xs font-mono" style={{ color: "var(--neon-red)" }}>{webPush.error}</p>
                   )}
 
                   {/* Frequency */}
                   <div className="pt-2 border-t" style={{ borderColor: "var(--border-color)" }}>
                     <div className="flex items-center gap-2 mb-2">
                       <Clock size={14} style={{ color: "var(--text-muted)" }} />
-                      <span className="text-[13px]" style={{ color: "var(--text-secondary)" }}>Частота</span>
+                      <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Частота</span>
                     </div>
                     <div className="flex gap-2">
                       {([
@@ -479,7 +482,7 @@ export default function SettingsPage() {
                 <Link2 size={18} style={{ color: "var(--accent)" }} />
                 <div>
                   <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Привязанные аккаунты</div>
-                  <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>Вход через Google или Yandex</div>
+                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>Вход через Google или Yandex</div>
                 </div>
               </div>
               <div className="space-y-3">
@@ -489,7 +492,7 @@ export default function SettingsPage() {
                     <svg width="20" height="20" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
                     <div>
                       <div className="text-[14px] font-medium" style={{ color: "var(--text-primary)" }}>Google</div>
-                      <div className="text-[11px] font-mono" style={{ color: linkedGoogle ? "var(--neon-green)" : "var(--text-muted)" }}>
+                      <div className="text-xs font-mono" style={{ color: linkedGoogle ? "var(--neon-green)" : "var(--text-muted)" }}>
                         {linkedGoogle ? "Привязан" : "Не привязан"}
                       </div>
                     </div>
@@ -498,7 +501,7 @@ export default function SettingsPage() {
                     <motion.button
                       onClick={async () => {
                         setUnlinking("google");
-                        try { await api.post("/auth/google/disconnect", {}); setLinkedGoogle(false); } catch (err) { console.error("[Settings] Google disconnect failed:", err); }
+                        try { await api.post("/auth/google/disconnect", {}); setLinkedGoogle(false); } catch (err) { logger.error("[Settings] Google disconnect failed:", err); }
                         setUnlinking(null);
                       }}
                       disabled={unlinking === "google"}
@@ -511,7 +514,7 @@ export default function SettingsPage() {
                     </motion.button>
                   ) : oauthStatus.google ? (
                     <motion.button
-                      onClick={async () => { try { const d = await api.get("/auth/google/login"); if (d?.url) window.location.href = d.url; } catch (err) { console.error("[Settings] Google link failed:", err); } }}
+                      onClick={async () => { try { const d = await api.get("/auth/google/login"); if (d?.url) { const { validateOAuthUrl } = await import("@/lib/sanitize"); const safeUrl = validateOAuthUrl(d.url); if (safeUrl) window.location.href = safeUrl; } } catch (err) { logger.error("[Settings] Google link failed:", err); } }}
                       className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[12px]"
                       style={{ background: "var(--accent-muted)", border: "1px solid var(--accent)", color: "var(--accent)" }}
                       whileTap={{ scale: 0.95 }}
@@ -519,7 +522,7 @@ export default function SettingsPage() {
                       <Link2 size={12} /> Привязать
                     </motion.button>
                   ) : (
-                    <span className="font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>Не настроен</span>
+                    <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>Не настроен</span>
                   )}
                 </div>
 
@@ -529,7 +532,7 @@ export default function SettingsPage() {
                     <svg width="20" height="20" viewBox="0 0 24 24"><path d="M2 12C2 6.48 6.48 2 12 2s10 4.48 10 10-4.48 10-10 10S2 17.52 2 12z" fill="#FC3F1D"/><path d="M13.32 17.5h-1.88V7.38h-.97c-1.57 0-2.39.8-2.39 1.95 0 1.3.59 1.9 1.8 2.7l1 .65-2.9 4.82H6l2.62-4.33C7.37 12.26 6.56 11.22 6.56 9.5c0-2.07 1.45-3.5 4-3.5h2.76V17.5z" fill="white"/></svg>
                     <div>
                       <div className="text-[14px] font-medium" style={{ color: "var(--text-primary)" }}>Yandex</div>
-                      <div className="text-[11px] font-mono" style={{ color: linkedYandex ? "var(--neon-green)" : "var(--text-muted)" }}>
+                      <div className="text-xs font-mono" style={{ color: linkedYandex ? "var(--neon-green)" : "var(--text-muted)" }}>
                         {linkedYandex ? "Привязан" : "Не привязан"}
                       </div>
                     </div>
@@ -538,7 +541,7 @@ export default function SettingsPage() {
                     <motion.button
                       onClick={async () => {
                         setUnlinking("yandex");
-                        try { await api.post("/auth/yandex/disconnect", {}); setLinkedYandex(false); } catch (err) { console.error("[Settings] Yandex disconnect failed:", err); }
+                        try { await api.post("/auth/yandex/disconnect", {}); setLinkedYandex(false); } catch (err) { logger.error("[Settings] Yandex disconnect failed:", err); }
                         setUnlinking(null);
                       }}
                       disabled={unlinking === "yandex"}
@@ -551,7 +554,7 @@ export default function SettingsPage() {
                     </motion.button>
                   ) : oauthStatus.yandex ? (
                     <motion.button
-                      onClick={async () => { try { const d = await api.get("/auth/yandex/login"); if (d?.url) window.location.href = d.url; } catch (err) { console.error("[Settings] Yandex link failed:", err); } }}
+                      onClick={async () => { try { const d = await api.get("/auth/yandex/login"); if (d?.url) { const { validateOAuthUrl } = await import("@/lib/sanitize"); const safeUrl = validateOAuthUrl(d.url); if (safeUrl) window.location.href = safeUrl; } } catch (err) { logger.error("[Settings] Yandex link failed:", err); } }}
                       className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[12px]"
                       style={{ background: "var(--accent-muted)", border: "1px solid var(--accent)", color: "var(--accent)" }}
                       whileTap={{ scale: 0.95 }}
@@ -559,7 +562,7 @@ export default function SettingsPage() {
                       <Link2 size={12} /> Привязать
                     </motion.button>
                   ) : (
-                    <span className="font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>Не настроен</span>
+                    <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>Не настроен</span>
                   )}
                 </div>
               </div>
@@ -573,7 +576,7 @@ export default function SettingsPage() {
               <motion.button
                 onClick={handleSave}
                 disabled={saving}
-                className="vh-btn-primary flex items-center gap-2 text-[14px]"
+                className="btn-neon flex items-center gap-2 text-[14px]"
                 whileTap={{ scale: 0.97 }}
               >
                 {saving ? <Loader2 size={16} className="animate-spin" /> : saved ? <CheckCircle2 size={16} /> : <Save size={16} />}

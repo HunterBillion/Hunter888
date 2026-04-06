@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
@@ -33,6 +33,24 @@ interface CommandItem {
   keywords: string[];
   /** Only show for certain roles */
   roles?: string[];
+}
+
+const RECENT_KEY = "vh_cmd_recent";
+const MAX_RECENT = 5;
+
+function getRecentIds(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveRecent(id: string) {
+  try {
+    const ids = getRecentIds().filter((i) => i !== id);
+    ids.unshift(id);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(ids.slice(0, MAX_RECENT)));
+  } catch { /* localStorage unavailable */ }
 }
 
 const COMMANDS: CommandItem[] = [
@@ -101,22 +119,38 @@ export function CommandPalette() {
   const execute = useCallback(
     (cmd: CommandItem) => {
       setOpen(false);
+      saveRecent(cmd.id);
       if (cmd.href) router.push(cmd.href);
       else if (cmd.action) cmd.action();
     },
     [router],
   );
 
+  // Build display list: recent items first when query is empty
+  const recentIds = useMemo(() => (open ? getRecentIds() : []), [open]);
+  const recentItems = useMemo(() => {
+    if (query.trim()) return [];
+    return recentIds
+      .map((id) => filtered.find((c) => c.id === id))
+      .filter((c): c is CommandItem => c !== undefined);
+  }, [query, recentIds, filtered]);
+  const hasRecent = recentItems.length > 0;
+  // Remove recent items from main list to avoid duplication
+  const mainItems = hasRecent
+    ? filtered.filter((c) => !recentIds.includes(c.id))
+    : filtered;
+  const displayItems = hasRecent ? [...recentItems, ...mainItems] : filtered;
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));
+      setSelectedIndex((i) => Math.min(i + 1, displayItems.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setSelectedIndex((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter" && filtered[selectedIndex]) {
+    } else if (e.key === "Enter" && displayItems[selectedIndex]) {
       e.preventDefault();
-      execute(filtered[selectedIndex]);
+      execute(displayItems[selectedIndex]);
     }
   };
 
@@ -167,7 +201,7 @@ export function CommandPalette() {
                 autoComplete="off"
               />
               <kbd
-                className="hidden sm:inline-flex items-center justify-center px-1.5 h-5 rounded font-mono text-[9px]"
+                className="hidden sm:inline-flex items-center justify-center px-1.5 h-5 rounded font-mono text-xs"
                 style={{
                   background: "var(--bg-tertiary)",
                   border: "1px solid var(--border-color)",
@@ -180,54 +214,68 @@ export function CommandPalette() {
 
             {/* Results */}
             <div className="max-h-[40vh] overflow-y-auto py-2">
-              {filtered.length === 0 ? (
+              {displayItems.length === 0 ? (
                 <div className="px-4 py-8 text-center text-xs" style={{ color: "var(--text-muted)" }}>
                   Ничего не найдено
                 </div>
               ) : (
-                filtered.map((cmd, i) => {
-                  const Icon = cmd.icon;
-                  const isSelected = i === selectedIndex;
-                  return (
-                    <button
-                      key={cmd.id}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors"
-                      style={{
-                        background: isSelected ? "var(--accent-muted)" : "transparent",
-                      }}
-                      onClick={() => execute(cmd)}
-                      onMouseEnter={() => setSelectedIndex(i)}
-                    >
-                      <div
-                        className="flex h-8 w-8 items-center justify-center rounded-lg shrink-0"
-                        style={{
-                          background: isSelected ? "var(--accent)" : "var(--input-bg)",
-                        }}
-                      >
-                        <Icon size={14} style={{ color: isSelected ? "white" : "var(--text-muted)" }} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
-                          {cmd.label}
-                        </div>
-                        {cmd.description && (
-                          <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>
-                            {cmd.description}
+                <>
+                  {hasRecent && (
+                    <div className="px-4 pt-1 pb-1.5 font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                      Недавние
+                    </div>
+                  )}
+                  {displayItems.map((cmd, i) => {
+                    const Icon = cmd.icon;
+                    const isSelected = i === selectedIndex;
+                    const showSeparator = hasRecent && i === recentItems.length;
+                    return (
+                      <div key={cmd.id}>
+                        {showSeparator && (
+                          <div className="px-4 pt-2.5 pb-1.5 font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)", borderTop: "1px solid var(--border-color)" }}>
+                            Все
                           </div>
                         )}
+                        <button
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors"
+                          style={{
+                            background: isSelected ? "var(--accent-muted)" : "transparent",
+                          }}
+                          onClick={() => execute(cmd)}
+                          onMouseEnter={() => setSelectedIndex(i)}
+                        >
+                          <div
+                            className="flex h-8 w-8 items-center justify-center rounded-lg shrink-0"
+                            style={{
+                              background: isSelected ? "var(--accent)" : "var(--input-bg)",
+                            }}
+                          >
+                            <Icon size={14} style={{ color: isSelected ? "white" : "var(--text-muted)" }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                              {cmd.label}
+                            </div>
+                            {cmd.description && (
+                              <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
+                                {cmd.description}
+                              </div>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <ArrowRight size={12} style={{ color: "var(--accent)" }} />
+                          )}
+                        </button>
                       </div>
-                      {isSelected && (
-                        <ArrowRight size={12} style={{ color: "var(--accent)" }} />
-                      )}
-                    </button>
-                  );
-                })
+                    );
+                  })}
+                </>
               )}
             </div>
 
             {/* Footer hint */}
             <div
-              className="flex items-center justify-between px-4 py-2 text-[10px] font-mono"
+              className="flex items-center justify-between px-4 py-2 text-xs font-mono"
               style={{ borderTop: "1px solid var(--border-color)", color: "var(--text-muted)" }}
             >
               <span>↑↓ навигация · Enter выбрать · Esc закрыть</span>

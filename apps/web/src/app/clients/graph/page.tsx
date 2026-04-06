@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Users,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/BackButton";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -187,13 +188,7 @@ export default function ClientGraphPage() {
           >
             <div className="space-y-2">
               <div className="flex items-center gap-3">
-                <Link
-                  href="/clients"
-                  className="flex h-11 w-11 items-center justify-center rounded-2xl border transition-colors"
-                  style={{ borderColor: "var(--border-color)", color: "var(--text-muted)" }}
-                >
-                  <ArrowLeft size={18} />
-                </Link>
+                <BackButton href="/clients" label="К клиентам" />
                 <div
                   className="flex h-11 w-11 items-center justify-center rounded-2xl"
                   style={{ background: "var(--accent)", color: "#050505" }}
@@ -202,20 +197,13 @@ export default function ClientGraphPage() {
                 </div>
                 <div>
                   <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
-                    Client Flow Canvas
+                    Граф пути клиента
                   </h1>
                   <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                    Модульный lifecycle-граф в логике flow-canvas, а не жёсткой схемы.
+                    Lifecycle клиентов от контакта до завершения. Перетаскивайте узлы, связи обновляются автоматически.
                   </p>
                 </div>
               </div>
-              <p className="max-w-4xl text-sm" style={{ color: "var(--text-secondary)" }}>
-                Узлы можно двигать как модули. Связи прозрачные и плавные, а сам граф показывает путь клиента,
-                точки риска и возврата, а не оргструктуру пользователей.
-              </p>
-              <p className="text-xs font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
-                {scopeLabel}
-              </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -234,6 +222,25 @@ export default function ClientGraphPage() {
               </button>
             </div>
           </motion.div>
+
+          {totalClients === 0 && !loading && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="mt-6 glass-panel rounded-2xl p-8 text-center"
+            >
+              <Users size={48} style={{ color: "var(--text-muted)", margin: "0 auto 16px", opacity: 0.4 }} />
+              <h3 className="font-display text-lg font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
+                Нет клиентов
+              </h3>
+              <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
+                Граф заполнится когда появятся клиенты. Добавьте первого клиента или завершите тренировку и нажмите &quot;Добавить в CRM&quot;.
+              </p>
+              <Link href="/clients" className="btn-neon inline-flex items-center gap-2 text-sm">
+                Перейти к клиентам
+              </Link>
+            </motion.div>
+          )}
 
           <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {[
@@ -255,7 +262,7 @@ export default function ClientGraphPage() {
                   <div className="mt-2 text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
                     {card.value}
                   </div>
-                  <div className="text-[10px] font-mono tracking-wider" style={{ color: "var(--text-muted)" }}>
+                  <div className="text-xs font-mono tracking-wider" style={{ color: "var(--text-muted)" }}>
                     {card.label.toUpperCase()}
                   </div>
                 </motion.div>
@@ -272,13 +279,13 @@ export default function ClientGraphPage() {
               <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-sm font-mono tracking-[0.2em]" style={{ color: "var(--accent)" }}>
-                    CLIENT FLOW CANVAS
+                    КАРТА КЛИЕНТОВ
                   </h2>
                   <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                     Перетаскивай этапы как модули. Связи обновляются автоматически.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2 text-[10px] font-mono">
+                <div className="flex flex-wrap gap-2 text-xs font-mono">
                   <span
                     className="rounded-full px-2 py-1"
                     style={{ background: "rgba(59,130,246,0.12)", color: "#93C5FD", border: "1px solid rgba(59,130,246,0.25)" }}
@@ -296,7 +303,7 @@ export default function ClientGraphPage() {
                     style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
                   >
                     <Move size={10} className="mr-1 inline" />
-                    Drag
+                    Двигать
                   </span>
                 </div>
               </div>
@@ -414,8 +421,8 @@ export default function ClientGraphPage() {
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div>
-                                <div className="text-[10px] font-mono tracking-[0.18em]" style={{ color: isSelected ? color : "var(--text-muted)" }}>
-                                  {meta.kind === "primary" ? "MODULE" : "BRANCH"}
+                                <div className="text-xs font-mono tracking-[0.18em]" style={{ color: isSelected ? color : "var(--text-muted)" }}>
+                                  {meta.kind === "primary" ? "ЭТАП" : "ВЕТКА"}
                                 </div>
                                 <div className="mt-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
                                   {CLIENT_STATUS_LABELS[status]}
@@ -431,23 +438,23 @@ export default function ClientGraphPage() {
 
                             <div className="mt-3 flex items-center justify-between">
                               <span
-                                className="rounded-full px-2 py-1 text-[10px] font-mono"
+                                className="rounded-full px-2 py-1 text-xs font-mono"
                                 style={{
                                   background: "rgba(255,255,255,0.05)",
                                   color: "var(--text-muted)",
                                   border: "1px solid rgba(255,255,255,0.06)",
                                 }}
                               >
-                                density {density}%
+                                плотность {density}%
                               </span>
-                              <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                                {count > 0 ? `${Math.round((count / Math.max(totalClients, 1)) * 100)}% path` : "0% path"}
+                              <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                                {count > 0 ? `${Math.round((count / Math.max(totalClients, 1)) * 100)}% потока` : "0%"}
                               </span>
                             </div>
 
                             <div className="mt-3 flex items-center justify-between">
-                              <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                                move node
+                              <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                                перемещение
                               </span>
                               <Move size={12} style={{ color: isSelected ? color : "var(--text-muted)" }} />
                             </div>
@@ -467,7 +474,7 @@ export default function ClientGraphPage() {
             >
               <div className="glass-panel p-5">
                 <div className="text-xs font-mono tracking-[0.2em]" style={{ color: "var(--accent)" }}>
-                  ACTIVE NODE
+                  ВЫБРАННЫЙ ЭТАП
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
                   <div>
@@ -488,7 +495,7 @@ export default function ClientGraphPage() {
                     <div className="text-xl font-bold" style={{ color: CLIENT_STATUS_COLORS[selectedStage] }}>
                       {formatCount(selectedCount)}
                     </div>
-                    <div className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                    <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
                       {selectedShare}% от видимых
                     </div>
                   </div>
@@ -496,7 +503,7 @@ export default function ClientGraphPage() {
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <div className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
-                    <div className="text-[10px] font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                    <div className="text-xs font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
                       ТИП
                     </div>
                     <div className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
@@ -504,11 +511,11 @@ export default function ClientGraphPage() {
                     </div>
                   </div>
                   <div className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
-                    <div className="text-[10px] font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                    <div className="text-xs font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
                       РЕЖИМ
                     </div>
                     <div className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                      drag enabled
+                      перемещение
                     </div>
                   </div>
                 </div>
@@ -553,7 +560,7 @@ export default function ClientGraphPage() {
                 </div>
                 <div className="mt-4 space-y-4">
                   <div>
-                    <div className="mb-2 text-[10px] font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                    <div className="mb-2 text-xs font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
                       МОЖНО ПРИЙТИ ИЗ
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -582,7 +589,7 @@ export default function ClientGraphPage() {
                   </div>
 
                   <div>
-                    <div className="mb-2 text-[10px] font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                    <div className="mb-2 text-xs font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
                       МОЖНО УЙТИ В
                     </div>
                     <div className="flex flex-wrap gap-2">

@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>X Hunter — Интерактивный маскот</title>
+<style>
+  :root {
+    --neon-primary: #00D4FF;
+    --neon-gold: #FFB800;
+    --neon-purple: #8B00FF;
+    --neon-teal-rgb: 0,212,255;
+    --neon-gold-rgb: 255,184,0;
+    --neon-purple-rgb: 139,0,255;
+    --active-rgb: var(--neon-teal-rgb);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0a;
+    color: #ccc;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  .header { text-align: center; padding: 24px 20px 10px; }
+  .header h1 {
+    font-size: 1.3rem; letter-spacing: 4px;
+    background: linear-gradient(135deg, #00D4FF 0%, #8B00FF 50%, #FFB800 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .header p { color: #444; font-size: 0.75rem; margin-top: 4px; }
+
+  .main {
+    display: flex; justify-content: center; gap: 50px;
+    padding: 20px; flex-wrap: wrap;
+  }
+
+  /* ========== СЦЕНА ========== */
+  .scene {
+    width: 420px; height: 520px;
+    position: relative; display: flex;
+    align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  /* Фоновая аура под маскотом */
+  .scene::before {
+    content: ''; position: absolute;
+    width: 200px; height: 30px; bottom: 80px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(var(--active-rgb),0.15) 0%, transparent 70%);
+    animation: aura-pulse 3s ease-in-out infinite;
+  }
+  @keyframes aura-pulse { 0%,100%{transform:scaleX(1);opacity:0.6} 50%{transform:scaleX(1.3);opacity:1} }
+
+  .mascot-container {
+    position: relative; cursor: pointer;
+    user-select: none; -webkit-user-select: none;
+  }
+  .mascot-img {
+    width: 300px; height: 300px;
+    image-rendering: pixelated;
+    transition: filter 0.5s ease;
+  }
+
+  /* Speech bubble */
+  .speech-bubble {
+    position: absolute; bottom: 105%; left: 50%;
+    transform: translateX(-50%) scale(0);
+    background: #1a1a1a;
+    border: 1px solid var(--neon-primary);
+    border-radius: 12px; padding: 10px 14px;
+    color: #ddd; font-size: 0.75rem; line-height: 1.5;
+    white-space: nowrap; opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s;
+    box-shadow: 0 0 20px rgba(var(--neon-teal-rgb),0.2); pointer-events: none;
+  }
+  .speech-bubble.visible { transform: translateX(-50%) scale(1); opacity: 1; }
+  .speech-bubble::after {
+    content: ''; position: absolute; top: 100%; left: 50%;
+    transform: translateX(-50%); border: 6px solid transparent;
+    border-top-color: var(--neon-primary);
+  }
+  .speech-bubble .cursor {
+    display: inline-block; width: 2px; height: 12px;
+    background: var(--neon-primary); margin-left: 2px;
+    animation: blink-cursor 0.6s step-end infinite; vertical-align: middle;
+  }
+  @keyframes blink-cursor { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  /* ========== АНИМАЦИИ ========== */
+  @keyframes breathe { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+  @keyframes glow-pulse {
+    0%,100%{ filter: drop-shadow(0 0 4px rgba(var(--active-rgb),0.2)) drop-shadow(0 0 2px rgba(var(--neon-gold-rgb),0.1)); }
+    50%{ filter: drop-shadow(0 0 15px rgba(var(--active-rgb),0.6)) drop-shadow(0 0 30px rgba(var(--active-rgb),0.3)) drop-shadow(0 0 8px rgba(var(--neon-gold-rgb),0.2)); }
+  }
+  .mascot-container.idle .mascot-img {
+    animation: breathe 3s ease-in-out infinite, glow-pulse 2.5s ease-in-out infinite;
+  }
+  .mascot-container.clicked {
+    animation: click-jump 0.5s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes click-jump {
+    0%{transform:translateY(0) scale(1)} 30%{transform:translateY(-25px) scale(1.05)}
+    60%{transform:translateY(5px) scale(0.98)} 100%{transform:translateY(0) scale(1)}
+  }
+  .mascot-container.shake { animation: shake 0.4s ease-in-out; }
+  @keyframes shake {
+    0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px) rotate(-2deg)}
+    40%{transform:translateX(8px) rotate(2deg)} 60%{transform:translateX(-5px) rotate(-1deg)}
+    80%{transform:translateX(5px) rotate(1deg)}
+  }
+  .mascot-container.victory .mascot-img {
+    animation: victory-bounce 0.8s cubic-bezier(0.34,1.56,0.64,1);
+    filter: drop-shadow(0 0 25px rgba(var(--neon-teal-rgb),0.9))
+            drop-shadow(0 0 50px rgba(var(--neon-gold-rgb),0.6))
+            drop-shadow(0 0 70px rgba(var(--neon-purple-rgb),0.4));
+  }
+  @keyframes victory-bounce {
+    0%{transform:translateY(0) scale(1)} 20%{transform:translateY(10px) scale(1.02,0.95)}
+    50%{transform:translateY(-40px) scale(0.97,1.06)} 70%{transform:translateY(-45px) scale(1)}
+    85%{transform:translateY(0) scale(1.02,0.97)} 100%{transform:translateY(0) scale(1)}
+  }
+  .mascot-container.bored .mascot-img {
+    animation: bored-sway 4s ease-in-out infinite, glow-pulse 3s ease-in-out infinite;
+  }
+  @keyframes bored-sway {
+    0%,100%{transform:translateY(0) rotate(0)} 25%{transform:translateY(-3px) rotate(-2deg)}
+    50%{transform:translateY(0) rotate(0)} 75%{transform:translateY(-3px) rotate(2deg)}
+  }
+
+  /* Частицы */
+  .burst-particle {
+    position: absolute; width: 6px; height: 6px;
+    border-radius: 50%; pointer-events: none; z-index: 10;
+  }
+
+  /* ========== ПАНЕЛЬ ========== */
+  .controls { width: 380px; display: flex; flex-direction: column; gap: 14px; }
+  .control-group {
+    background: #111; border: 1px solid #1a1a1a;
+    border-radius: 12px; padding: 16px;
+  }
+  .control-group h3 {
+    color: #888; font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: 2px; margin-bottom: 10px;
+  }
+  .control-group .label { color: #555; font-size: 0.7rem; margin-bottom: 6px; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    background: #1a1a1a; border: 1px solid #2a2a2a; color: #aaa;
+    padding: 8px 14px; border-radius: 8px; font-size: 0.72rem;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+  }
+  .btn:hover { border-color: var(--neon-primary); color: #ddd; box-shadow: 0 0 10px rgba(var(--neon-teal-rgb),0.15); }
+  .btn.active { background: var(--neon-primary); color: #000; border-color: var(--neon-primary); font-weight: 600; }
+
+  .slider {
+    width: 100%; -webkit-appearance: none; height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right, #333, #00D4FF, #FFB800);
+    outline: none; margin: 8px 0;
+  }
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px;
+    border-radius: 50%; background: #fff; border: 2px solid var(--neon-primary); cursor: pointer;
+  }
+  .emotion-slider { background: linear-gradient(to right, #555, #3b82f6, #FFB800, #00D4FF, #22c55e); }
+  .row-labels { display: flex; justify-content: space-between; font-size: 0.6rem; color: #555; }
+  .streak-value { color: var(--neon-primary); font-size: 1.1rem; font-weight: 700; text-align: center; }
+  .idle-timer { color: #444; font-size: 0.7rem; text-align: center; font-variant-numeric: tabular-nums; }
+
+  .event-log {
+    background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 8px;
+    padding: 10px; max-height: 120px; overflow-y: auto;
+    font-family: 'Courier New', monospace; font-size: 0.6rem; color: #444; line-height: 1.8;
+  }
+  .event-log .ev { color: var(--neon-primary); }
+  .event-log .time { color: #333; }
+
+  /* Цветовые превью-кнопки */
+  .color-btn {
+    width: 32px; height: 32px; border-radius: 50%; border: 2px solid #333;
+    cursor: pointer; transition: all 0.25s; position: relative;
+  }
+  .color-btn:hover { transform: scale(1.15); }
+  .color-btn.active { border-color: #fff; box-shadow: 0 0 12px var(--glow); transform: scale(1.15); }
+  .color-btn.combo {
+    background: conic-gradient(var(--c1) 0% 50%, var(--c2) 50% 100%) !important;
+  }
+  .color-label { font-size: 0.55rem; color: #555; text-align: center; margin-top: 4px; }
+  .color-option { display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+  /* Палитра инфо */
+  .palette-info {
+    display: flex; gap: 12px; justify-content: center; margin-top: 10px;
+    padding: 8px 12px; background: #0d0d0d; border-radius: 8px;
+  }
+  .palette-swatch {
+    display: flex; align-items: center; gap: 6px; font-size: 0.6rem; color: #555;
+  }
+  .palette-swatch .dot { width: 10px; height: 10px; border-radius: 50%; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>X HUNTER</h1>
+  <p>Конструктор маскота — менеджер</p>
+</div>
+
+<div class="main">
+  <div class="scene" id="scene">
+    <div class="mascot-container idle" id="mascot">
+      <div class="speech-bubble" id="bubble">
+        <span id="bubble-text"></span><span class="cursor" id="bubble-cursor"></span>
+      </div>
+      <img class="mascot-img" id="mascotImg" src="mascot-manager.svg" alt="X Hunter mascot">
+    </div>
+  </div>
+
+  <div class="controls">
+
+    <div class="control-group">
+      <h3>Реакции</h3>
+      <div class="btn-row">
+        <button class="btn" onclick="triggerReaction('click')">Прыжок</button>
+        <button class="btn" onclick="triggerReaction('victory')">Победа</button>
+        <button class="btn" onclick="triggerReaction('shake')">Ошибка</button>
+        <button class="btn" onclick="triggerReaction('bored')">Скучает</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <h3>Emotion state клиента</h3>
+      <input type="range" class="slider emotion-slider" min="0" max="4" value="0" oninput="updateEmotion(this.value)">
+      <div class="row-labels"><span>cold</span><span>skeptical</span><span>warming</span><span>open</span><span>deal</span></div>
+      <p class="label" style="margin-top:8px; text-align:center;" id="emotionText">cold — слабое бирюзовое свечение</p>
+    </div>
+
+    <div class="control-group">
+      <h3>Стрик-эволюция</h3>
+      <div class="streak-value" id="streakValue">1 день</div>
+      <input type="range" class="slider" min="1" max="60" value="1" oninput="updateStreak(this.value)">
+      <div class="row-labels"><span>1</span><span>7</span><span>14</span><span>30</span><span>60</span></div>
+    </div>
+
+    <div class="control-group">
+      <h3>Подсказки</h3>
+      <div class="btn-row">
+        <button class="btn" onclick="showTip('random')">Случайная фраза</button>
+        <button class="btn" onclick="showTip('trap')">Trap caught!</button>
+        <button class="btn" onclick="showTip('silence')">Молчишь?</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <h3>Кастомизация</h3>
+      <p class="label">Размер:</p>
+      <input type="range" class="slider" min="120" max="450" value="300" oninput="updateSize(this.value)">
+      <div class="row-labels"><span>120px</span><span>300px</span><span>450px</span></div>
+
+      <p class="label" style="margin-top:12px">Скорость дыхания:</p>
+      <input type="range" class="slider" min="1" max="8" value="3" step="0.5" oninput="updateBreathSpeed(this.value)">
+      <div class="row-labels"><span>быстро</span><span>средне</span><span>медленно</span></div>
+
+      <p class="label" style="margin-top:14px">Цвет неона:</p>
+      <div class="btn-row" style="gap:14px; justify-content:center; margin-top:6px;" id="colorPicker">
+        <!-- Заполняется из JS -->
+      </div>
+
+      <div class="palette-info" id="paletteInfo">
+        <div class="palette-swatch"><div class="dot" style="background:#00D4FF"></div>бирюза</div>
+        <div class="palette-swatch"><div class="dot" style="background:#FFB800"></div>золото</div>
+        <div class="palette-swatch"><div class="dot" style="background:#8B00FF"></div>фиолет</div>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <h3>Idle-таймер</h3>
+      <p class="idle-timer" id="idleTimer">0 сек</p>
+    </div>
+
+    <div class="control-group">
+      <h3>Лог</h3>
+      <div class="event-log" id="log"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const scene = document.getElementById('scene');
+const mascot = document.getElementById('mascot');
+const mascotImg = document.getElementById('mascotImg');
+
+// === ПАЛИТРА ===
+const PALETTE = {
+  teal:       { hex: '#00D4FF', rgb: '0,212,255',   label: 'Бирюза' },
+  gold:       { hex: '#FFB800', rgb: '255,184,0',   label: 'Золото' },
+  purple:     { hex: '#8B00FF', rgb: '139,0,255',   label: 'Фиолет' },
+  tealGold:   { hex: '#00D4FF', rgb: '0,212,255',   hex2: '#FFB800', rgb2: '255,184,0', label: 'Бирюза+Золото', combo: true },
+  goldPurple: { hex: '#FFB800', rgb: '255,184,0',   hex2: '#8B00FF', rgb2: '139,0,255', label: 'Золото+Фиолет', combo: true },
+  tealPurple: { hex: '#00D4FF', rgb: '0,212,255',   hex2: '#8B00FF', rgb2: '139,0,255', label: 'Бирюза+Фиолет', combo: true },
+};
+
+let currentMode = 'teal';
+
+function buildColorPicker() {
+  const picker = document.getElementById('colorPicker');
+  const order = ['teal','gold','purple','tealGold','goldPurple','tealPurple'];
+  order.forEach(key => {
+    const p = PALETTE[key];
+    const wrap = document.createElement('div');
+    wrap.className = 'color-option';
+    const btn = document.createElement('div');
+    btn.className = 'color-btn' + (key === currentMode ? ' active' : '');
+    btn.dataset.mode = key;
+    if (p.combo) {
+      btn.classList.add('combo');
+      btn.style.setProperty('--c1', p.hex);
+      btn.style.setProperty('--c2', p.hex2);
+      btn.style.setProperty('--glow', p.hex);
+    } else {
+      btn.style.background = p.hex;
+      btn.style.setProperty('--glow', p.hex);
+    }
+    btn.onclick = () => setNeonMode(key);
+    const lbl = document.createElement('div');
+    lbl.className = 'color-label';
+    lbl.textContent = p.label;
+    wrap.appendChild(btn);
+    wrap.appendChild(lbl);
+    picker.appendChild(wrap);
+  });
+}
+
+function setNeonMode(mode) {
+  currentMode = mode;
+  const p = PALETTE[mode];
+  // Update active state
+  document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.color-btn[data-mode="${mode}"]`).classList.add('active');
+  // Apply glow
+  applyGlow(mode);
+  // Update CSS vars for UI
+  document.documentElement.style.setProperty('--active-rgb', p.rgb);
+  // Update bubble
+  const bubble = document.getElementById('bubble');
+  bubble.style.borderColor = p.hex;
+  bubble.style.boxShadow = `0 0 20px ${p.hex}33`;
+  document.getElementById('bubble-cursor').style.background = p.hex;
+  logEvent('неон → ' + p.label);
+}
+
+function applyGlow(mode) {
+  const p = PALETTE[mode];
+  if (p.combo) {
+    mascotImg.style.filter = `drop-shadow(0 0 12px rgba(${p.rgb},0.5)) drop-shadow(0 0 20px rgba(${p.rgb2},0.35))`;
+  } else {
+    mascotImg.style.filter = `drop-shadow(0 0 12px rgba(${p.rgb},0.5)) drop-shadow(0 0 25px rgba(${p.rgb},0.25))`;
+  }
+}
+
+function getGlowFilter(intensity, mode) {
+  const m = mode || currentMode;
+  const p = PALETTE[m];
+  const i = Math.min(1, Math.max(0, intensity));
+  if (p.combo) {
+    return `drop-shadow(0 0 ${4+i*25}px rgba(${p.rgb},${0.15+i*0.7})) drop-shadow(0 0 ${2+i*40}px rgba(${p.rgb2},${0.1+i*0.5}))`;
+  }
+  return `drop-shadow(0 0 ${4+i*25}px rgba(${p.rgb},${0.15+i*0.7})) drop-shadow(0 0 ${2+i*40}px rgba(${p.rgb},${0.05+i*0.3}))`;
+}
+
+// === КЛИК НА МАСКОТА ===
+mascot.addEventListener('click', () => {
+  triggerReaction('click');
+  showTip('random');
+});
+
+// === РЕАКЦИИ ===
+function triggerReaction(type) {
+  mascot.className = 'mascot-container';
+  void mascot.offsetWidth;
+  switch(type) {
+    case 'click':
+      mascot.classList.add('clicked');
+      logEvent('клик → прыжок');
+      setTimeout(() => { mascot.className = 'mascot-container idle'; }, 500);
+      break;
+    case 'victory':
+      mascot.classList.add('victory');
+      burstParticles(30);
+      logEvent('ПОБЕДА → взрыв частиц');
+      setTimeout(() => { mascot.className = 'mascot-container idle'; }, 1200);
+      break;
+    case 'shake':
+      mascot.classList.add('shake');
+      logEvent('ошибка → shake');
+      setTimeout(() => { mascot.className = 'mascot-container idle'; }, 400);
+      break;
+    case 'bored':
+      mascot.classList.add('bored');
+      logEvent('idle → скучает');
+      break;
+  }
+}
+
+// === SPEECH BUBBLE ===
+const bubble = document.getElementById('bubble');
+const bubbleText = document.getElementById('bubble-text');
+const bubbleCursor = document.getElementById('bubble-cursor');
+let typewriterTimeout = null;
+
+const phrases = [
+  'Следующий клиент в прицеле!', 'Ты на 15% лучше, чем вчера',
+  'До нового уровня — 2 тренировки', 'Не давай клиенту уйти!',
+  'Используй имя клиента чаще', 'Скрипт — твоё оружие',
+  'Ты уже в топ-20% команды', 'Каждый «нет» приближает к «да»',
+  'Помни: пауза — это сила', 'Сегодня ты закроешь рекорд!'
+];
+const tipsTrap = ['Отлично! Ловушка поймана! +3 XP', 'Ты распознал манипуляцию!', 'Грамотный ответ!'];
+const tipsSilence = ['Тишина... Скажи что-нибудь!', 'Клиент ждёт ответа...', 'Не теряй контакт!'];
+
+function showTip(type) {
+  let pool = type === 'trap' ? tipsTrap : type === 'silence' ? tipsSilence : phrases;
+  let text = pool[Math.floor(Math.random() * pool.length)];
+  clearTimeout(typewriterTimeout);
+  bubbleText.textContent = '';
+  bubble.classList.add('visible');
+  bubbleCursor.style.display = 'inline-block';
+  let i = 0;
+  function typeChar() {
+    if (i < text.length) { bubbleText.textContent += text[i]; i++; typewriterTimeout = setTimeout(typeChar, 35); }
+    else {
+      setTimeout(() => { bubbleCursor.style.display = 'none'; }, 500);
+      typewriterTimeout = setTimeout(() => { bubble.classList.remove('visible'); }, 3000);
+    }
+  }
+  typeChar();
+  logEvent('tip: "' + text.substring(0, 28) + '…"');
+}
+
+// === EMOTION STATE ===
+const emotionNames = ['cold','skeptical','warming','open','deal'];
+const emotionGlows = [
+  'drop-shadow(0 0 4px rgba(0,212,255,0.2))',
+  'drop-shadow(0 0 10px rgba(59,130,246,0.4)) drop-shadow(0 0 18px rgba(0,212,255,0.15))',
+  'drop-shadow(0 0 14px rgba(255,184,0,0.55)) drop-shadow(0 0 28px rgba(255,184,0,0.2))',
+  'drop-shadow(0 0 20px rgba(0,212,255,0.65)) drop-shadow(0 0 40px rgba(139,0,255,0.25))',
+  'drop-shadow(0 0 25px rgba(0,212,255,0.9)) drop-shadow(0 0 45px rgba(255,184,0,0.5)) drop-shadow(0 0 70px rgba(139,0,255,0.35))',
+];
+const emotionDescs = [
+  'cold — слабое бирюзовое свечение',
+  'skeptical — голубой контур',
+  'warming — золотой/янтарный',
+  'open — бирюза + фиолет',
+  'deal — полное сияние: бирюза + золото + фиолет!'
+];
+function updateEmotion(val) {
+  mascotImg.style.filter = emotionGlows[val];
+  mascotImg.style.animation = 'breathe 3s ease-in-out infinite';
+  document.getElementById('emotionText').textContent = emotionDescs[val];
+  logEvent('emotion → ' + emotionNames[val]);
+  if (val == 4) burstParticles(15);
+}
+
+// === СТРИК ===
+let ambientInterval = null;
+function updateStreak(val) {
+  const sv = document.getElementById('streakValue');
+  sv.textContent = val + (val == 1 ? ' день' : val < 5 ? ' дня' : ' дней');
+  let g;
+  /* Стрик: бирюза → золото → фиолет по мере роста */
+  if (val < 3) {
+    g = 'drop-shadow(0 0 3px rgba(0,212,255,0.2))';
+    sv.style.color = '#00D4FF';
+  } else if (val < 7) {
+    g = 'drop-shadow(0 0 8px rgba(0,212,255,0.45)) drop-shadow(0 0 15px rgba(0,212,255,0.15))';
+    sv.style.color = '#00D4FF';
+  } else if (val < 14) {
+    g = 'drop-shadow(0 0 14px rgba(0,212,255,0.5)) drop-shadow(0 0 25px rgba(255,184,0,0.3))';
+    sv.style.color = '#00E5CC';
+  } else if (val < 30) {
+    g = 'drop-shadow(0 0 20px rgba(0,212,255,0.6)) drop-shadow(0 0 35px rgba(255,184,0,0.4)) drop-shadow(0 0 50px rgba(139,0,255,0.15))';
+    sv.style.color = '#FFB800';
+  } else {
+    g = 'drop-shadow(0 0 25px rgba(0,212,255,0.85)) drop-shadow(0 0 50px rgba(255,184,0,0.55)) drop-shadow(0 0 80px rgba(139,0,255,0.3))';
+    sv.style.color = '#FFB800';
+    sv.style.textShadow = '0 0 15px rgba(255,184,0,0.6), 0 0 30px rgba(0,212,255,0.4)';
+  }
+  if (val < 30) sv.style.textShadow = 'none';
+  mascotImg.style.filter = g;
+  clearInterval(ambientInterval);
+  let pc = val < 7 ? 0 : val < 14 ? 3 : val < 30 ? 6 : 10;
+  if (pc > 0) ambientInterval = setInterval(() => { for(let i=0;i<pc;i++) createAmbientParticle(); }, 800);
+}
+function createAmbientParticle() {
+  const p = document.createElement('div');
+  p.className = 'burst-particle';
+  const rect = mascotImg.getBoundingClientRect();
+  const sr = scene.getBoundingClientRect();
+  p.style.left = (rect.left - sr.left + Math.random()*rect.width) + 'px';
+  p.style.top = (rect.top - sr.top + rect.height*0.2 + Math.random()*rect.height*0.6) + 'px';
+  p.style.width = (2+Math.random()*3)+'px'; p.style.height = p.style.width;
+  // Мультицвет: бирюза / золото / фиолет
+  const colors = ['0,212,255','255,184,0','139,0,255'];
+  const c = colors[Math.floor(Math.random()*colors.length)];
+  p.style.background = `rgba(${c},${0.6+Math.random()*0.4})`;
+  p.style.opacity = '0'; p.style.transition = `all ${1+Math.random()*2}s ease-out`;
+  scene.appendChild(p);
+  requestAnimationFrame(() => {
+    p.style.opacity = '0.7';
+    p.style.transform = `translateY(${-30-Math.random()*60}px) translateX(${-15+Math.random()*30}px)`;
+    setTimeout(() => { p.style.opacity = '0'; setTimeout(() => p.remove(), 500); }, 800+Math.random()*1000);
+  });
+}
+
+// === КАСТОМИЗАЦИЯ ===
+function updateSize(val) { mascotImg.style.width = val+'px'; mascotImg.style.height = val+'px'; logEvent('размер → '+val+'px'); }
+function updateBreathSpeed(val) { mascotImg.style.animationDuration = val+'s, 2.5s'; logEvent('дыхание → '+val+'с'); }
+
+// === IDLE ТАЙМЕР ===
+let idleSeconds = 0;
+function resetIdleTimer() {
+  idleSeconds = 0;
+  if (mascot.classList.contains('bored')) mascot.className = 'mascot-container idle';
+}
+setInterval(() => {
+  idleSeconds++;
+  let s = idleSeconds < 10 ? idleSeconds+' сек' : idleSeconds < 20 ? idleSeconds+' сек — оглядывается...' : idleSeconds+' сек — скучает';
+  document.getElementById('idleTimer').textContent = s;
+  if (idleSeconds === 20 && !mascot.classList.contains('bored') && !mascot.classList.contains('victory')) triggerReaction('bored');
+  if (idleSeconds === 15) showTip('silence');
+}, 1000);
+document.addEventListener('mousemove', resetIdleTimer);
+document.addEventListener('click', resetIdleTimer);
+document.addEventListener('keydown', resetIdleTimer);
+
+// === ЧАСТИЦЫ ===
+function burstParticles(count) {
+  const rect = mascotImg.getBoundingClientRect();
+  const sr = scene.getBoundingClientRect();
+  const cx = rect.left - sr.left + rect.width/2;
+  const cy = rect.top - sr.top + rect.height/2;
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('div');
+    p.className = 'burst-particle';
+    p.style.left = cx+'px'; p.style.top = cy+'px';
+    const sz = 3+Math.random()*6;
+    p.style.width = sz+'px'; p.style.height = sz+'px';
+    // Тройная палитра для взрыва: бирюза, золото, фиолет
+    const palettes = [
+      `rgba(0,${180+Math.random()*75},255,1)`,         // бирюза
+      `rgba(255,${150+Math.random()*50},${Math.random()*30},1)`, // золото/янтарь
+      `rgba(${100+Math.random()*40},0,255,1)`,          // фиолет
+    ];
+    p.style.background = palettes[Math.floor(Math.random()*palettes.length)];
+    p.style.borderRadius = Math.random()>0.5 ? '50%' : '2px';
+    p.style.opacity = '1';
+    p.style.transition = `all ${0.5+Math.random()*0.8}s cubic-bezier(0.25,0.46,0.45,0.94)`;
+    scene.appendChild(p);
+    const angle = (Math.PI*2/count)*i + Math.random()*0.5;
+    const dist = 60+Math.random()*100;
+    requestAnimationFrame(() => {
+      p.style.transform = `translate(${Math.cos(angle)*dist}px,${Math.sin(angle)*dist}px) rotate(${Math.random()*360}deg)`;
+      p.style.opacity = '0';
+      setTimeout(() => p.remove(), 1200);
+    });
+  }
+}
+
+// === ЛОГ ===
+const logEl = document.getElementById('log');
+function logEvent(text) {
+  const t = new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  logEl.innerHTML += `<span class="time">[${t}]</span> <span class="ev">${text}</span>\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// === INIT ===
+buildColorPicker();
+setNeonMode('teal');
+logEvent('маскот загружен → mascot-manager.svg');
+logEvent('палитра: бирюза + золото + фиолет');
+logEvent('idle таймер → запущен');
+</script>
+</body>
+</html>

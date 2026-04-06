@@ -56,8 +56,8 @@ export function ClientCard({ client, compact, userRole }: ClientCardProps) {
               {sanitizeText(client.full_name)}
             </span>
             <span
-              className="text-[10px] font-mono px-1.5 py-0.5 rounded-full"
-              style={{ background: `${statusColor}15`, color: statusColor, border: `1px solid ${statusColor}30` }}
+              className="text-xs font-mono px-1.5 py-0.5 rounded-full"
+              style={{ background: `color-mix(in srgb, ${statusColor} 9%, transparent)`, color: statusColor, border: `1px solid color-mix(in srgb, ${statusColor} 19%, transparent)` }}
             >
               {statusLabel}
             </span>

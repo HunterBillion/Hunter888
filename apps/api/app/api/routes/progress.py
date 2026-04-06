@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,9 +39,19 @@ from scripts.seed_levels import get_level_name, LEVEL_XP_THRESHOLDS
 
 from app.database import get_db
 from app.models.user import User
+from app.core.deps import get_current_user
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
+router = APIRouter(tags=["progress"])
 
 
-router = APIRouter(prefix="/api", tags=["progress"])
+def _check_ownership(user_id: uuid.UUID, user: User) -> None:
+    """Raise 403 if the authenticated user does not own the resource and is not privileged."""
+    if str(user_id) != str(user.id) and user.role.value not in ("admin", "rop", "methodologist"):
+        raise HTTPException(status_code=403, detail="Access denied: you can only access your own data")
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -169,8 +179,10 @@ class SessionCompleteResponse(BaseModel):
 async def get_progress(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> ProgressResponse:
     """Текущий прогресс менеджера: уровень, XP, навыки, разблокировки."""
+    _check_ownership(user_id, user)
     svc = ManagerProgressService(db)
     profile = await svc.get_or_create_profile(user_id)
 
@@ -214,8 +226,10 @@ async def get_progress(
 async def get_skills(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> SkillsResponse:
     """6 навыков менеджера для визуализации радара."""
+    _check_ownership(user_id, user)
     svc = ManagerProgressService(db)
     skills = await svc.calculate_skills(user_id)
     return SkillsResponse(**skills)
@@ -231,8 +245,10 @@ async def get_history(
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> list[SessionHistoryItem]:
     """История тренировочных сессий."""
+    _check_ownership(user_id, user)
     svc = ManagerProgressService(db)
     sessions = await svc.get_session_history(user_id, offset=offset, limit=limit)
     return [
@@ -264,8 +280,10 @@ async def get_history(
 async def get_achievements(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> list[AchievementItem]:
     """Все достижения менеджера."""
+    _check_ownership(user_id, user)
     result = await db.execute(
         select(Achievement)
         .where(Achievement.user_id == user_id)
@@ -294,8 +312,10 @@ async def get_achievements(
 async def get_recommendations(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> RecommendationResponse:
     """Рекомендации для следующей тренировочной сессии."""
+    _check_ownership(user_id, user)
     svc = ManagerProgressService(db)
     params = await svc.recommend_next_session(user_id)
     return RecommendationResponse(
@@ -317,8 +337,10 @@ async def get_recommendations(
 async def get_weak_points(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> list[WeakPointItem]:
     """Слабые места менеджера с приоритетами."""
+    _check_ownership(user_id, user)
     svc = ManagerProgressService(db)
     points = await svc.get_weak_points(user_id)
     return [WeakPointItem(**p) for p in points]
@@ -333,6 +355,7 @@ async def get_leaderboard(
     period: str = Query("weekly", pattern="^(daily|weekly|monthly|all_time)$"),
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> list[LeaderboardEntry]:
     """Лидерборд за указанный период."""
     now = datetime.now(timezone.utc)
@@ -428,8 +451,10 @@ async def get_leaderboard(
 async def get_weekly_report(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Еженедельный отчёт (текущая неделя)."""
+    _check_ownership(user_id, user)
     now = datetime.now(timezone.utc)
     week_start = now - timedelta(days=now.weekday())
     week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -502,12 +527,16 @@ async def get_weekly_report(
 # ──────────────────────────────────────────────────────────────────────
 
 @router.post("/progress/{user_id}/session-complete", response_model=SessionCompleteResponse)
+@limiter.limit("10/minute")
 async def session_complete(
+    request: Request,
     user_id: uuid.UUID,
     body: SessionCompleteRequest,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> SessionCompleteResponse:
     """Обработка завершённой тренировочной сессии: XP, навыки, уровень, достижения."""
+    _check_ownership(user_id, user)
     # Создать запись SessionHistory
     session_record = SessionHistory(
         user_id=user_id,
@@ -618,8 +647,10 @@ async def list_weekly_reports(
     user_id: uuid.UUID,
     limit: int = Query(12, ge=1, le=52),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> list[WeeklyReportResponse]:
     """Список сохранённых еженедельных отчётов (последние N недель)."""
+    _check_ownership(user_id, user)
     result = await db.execute(
         select(WeeklyReport)
         .where(WeeklyReport.user_id == user_id)
@@ -634,11 +665,15 @@ async def list_weekly_reports(
     "/reports/weekly/{user_id}/generate",
     response_model=WeeklyReportResponse,
 )
+@limiter.limit("10/minute")
 async def generate_report_endpoint(
+    request: Request,
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> WeeklyReportResponse:
     """Генерирует (или обновляет) отчёт за текущую неделю."""
+    _check_ownership(user_id, user)
     from app.services.weekly_report import generate_weekly_report
 
     report = await generate_weekly_report(db, user_id)

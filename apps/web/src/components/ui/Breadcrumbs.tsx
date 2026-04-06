@@ -64,7 +64,7 @@ export function Breadcrumbs({ className = "" }: BreadcrumbsProps) {
   return (
     <nav
       aria-label="Навигация"
-      className={`flex items-center gap-1 font-mono text-[11px] overflow-hidden ${className}`}
+      className={`flex items-center gap-1 font-mono text-xs overflow-hidden ${className}`}
     >
       <Link
         href="/home"
