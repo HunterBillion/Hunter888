@@ -9,7 +9,7 @@ from app.core import errors as err
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.character import Character
-from app.models.scenario import Scenario
+from app.models.scenario import Scenario, ScenarioTemplate
 from app.models.script import Script
 from app.models.user import User
 from app.schemas.training import ScenarioResponse
@@ -30,30 +30,53 @@ async def list_scenarios(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all active scenarios.
+    """List all active scenarios from scenario_templates (60 scenarios, 8 groups).
 
+    Falls back to legacy `scenarios` table rows as well so nothing is lost.
     Sorted by closeness to user's experience level sweet spot (if set),
     so recommended scenarios appear first. All scenarios are always returned.
     """
-    query = (
-        select(Scenario, Character.name.label("character_name"))
-        .outerjoin(Character, Scenario.character_id == Character.id)
-        .where(Scenario.is_active.is_(True))
-    )
-
-    # Sort by relevance to experience level (closer to sweet spot = first)
     prefs = user.preferences or {}
     exp_level = prefs.get("experience_level")
     sweet = _DIFFICULTY_SWEET_SPOT.get(exp_level, 5) if exp_level else 5  # type: ignore[arg-type]
 
-    result = await db.execute(query)
-    rows = result.all()
+    items: list[ScenarioResponse] = []
+    seen_ids: set[uuid.UUID] = set()
 
-    # Sort: closest to sweet spot first, then by difficulty ascending
-    sorted_rows = sorted(rows, key=lambda r: (abs(r.Scenario.difficulty - sweet), r.Scenario.difficulty))
+    # ── Primary source: scenario_templates (60 records, DOC_05 8 groups) ──
+    tpl_result = await db.execute(
+        select(ScenarioTemplate).where(ScenarioTemplate.is_active.is_(True))
+    )
+    templates = tpl_result.scalars().all()
 
-    return [
-        ScenarioResponse(
+    for tpl in templates:
+        items.append(ScenarioResponse(
+            id=tpl.id,
+            title=tpl.name,
+            description=tpl.description,
+            scenario_type=tpl.code,
+            difficulty=tpl.difficulty,
+            estimated_duration_minutes=tpl.typical_duration_minutes,
+            character_name=None,
+        ))
+        seen_ids.add(tpl.id)
+
+    # ── Fallback: legacy scenarios table (for any rows NOT linked to templates) ──
+    legacy_query = (
+        select(Scenario, Character.name.label("character_name"))
+        .outerjoin(Character, Scenario.character_id == Character.id)
+        .where(Scenario.is_active.is_(True))
+    )
+    legacy_result = await db.execute(legacy_query)
+    legacy_rows = legacy_result.all()
+
+    for row in legacy_rows:
+        # Skip if we already have a template with the same id or if linked
+        if row.Scenario.id in seen_ids:
+            continue
+        if row.Scenario.template_id and row.Scenario.template_id in seen_ids:
+            continue
+        items.append(ScenarioResponse(
             id=row.Scenario.id,
             title=row.Scenario.title,
             description=row.Scenario.description,
@@ -61,9 +84,12 @@ async def list_scenarios(
             difficulty=row.Scenario.difficulty,
             estimated_duration_minutes=row.Scenario.estimated_duration_minutes,
             character_name=row.character_name,
-        )
-        for row in sorted_rows
-    ]
+        ))
+
+    # Sort: closest to sweet spot first, then by difficulty ascending
+    items.sort(key=lambda s: (abs(s.difficulty - sweet), s.difficulty))
+
+    return items
 
 
 @router.get("/{scenario_id}")
@@ -72,13 +98,35 @@ async def get_scenario(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get scenario with character and script details."""
+    """Get scenario with character and script details.
+
+    Checks legacy scenarios table first, then scenario_templates as fallback.
+    """
     result = await db.execute(
         select(Scenario).where(Scenario.id == scenario_id, Scenario.is_active.is_(True))
     )
     scenario = result.scalar_one_or_none()
     if not scenario:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.SCENARIO_NOT_FOUND)
+        # Fallback: check scenario_templates
+        tpl_result = await db.execute(
+            select(ScenarioTemplate).where(
+                ScenarioTemplate.id == scenario_id, ScenarioTemplate.is_active.is_(True)
+            )
+        )
+        tpl = tpl_result.scalar_one_or_none()
+        if tpl is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.SCENARIO_NOT_FOUND)
+        # Return template data in scenario-compatible format
+        return {
+            "id": str(tpl.id),
+            "title": tpl.name,
+            "description": tpl.description,
+            "scenario_type": tpl.code,
+            "difficulty": tpl.difficulty,
+            "estimated_duration_minutes": tpl.typical_duration_minutes,
+            "character": None,
+            "script": None,
+        }
 
     # Get character
     char_result = await db.execute(select(Character).where(Character.id == scenario.character_id))

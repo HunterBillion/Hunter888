@@ -15,7 +15,7 @@ from app.database import get_db
 from app.core.deps import require_role
 from app.models.roleplay import ClientStory
 from app.models.training import AssignedTraining, Message, SessionStatus, TrainingSession
-from app.models.scenario import Scenario
+from app.models.scenario import Scenario, ScenarioTemplate, ScenarioType
 from app.models.user import User
 from pydantic import BaseModel, Field, field_validator
 from app.schemas.training import (
@@ -335,15 +335,58 @@ async def start_session(
         if not custom_params:
             custom_params = None
 
-    # Validate that scenario exists and is active
+    # Validate that scenario exists and is active.
+    # Check both legacy `scenarios` table and new `scenario_templates` table
+    # because list_scenarios now returns template IDs.
     scenario_check = await db.execute(
         select(Scenario).where(Scenario.id == scenario_id, Scenario.is_active.is_(True))
     )
     if scenario_check.scalar_one_or_none() is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=err.SCENARIO_NOT_FOUND,
+        # Not in legacy table — check scenario_templates and auto-create a
+        # Scenario row so existing session logic works unchanged.
+        tpl_check = await db.execute(
+            select(ScenarioTemplate).where(
+                ScenarioTemplate.id == scenario_id, ScenarioTemplate.is_active.is_(True)
+            )
         )
+        tpl = tpl_check.scalar_one_or_none()
+        if tpl is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=err.SCENARIO_NOT_FOUND,
+            )
+        # Map template code prefix to legacy ScenarioType for FK compat
+        code = tpl.code or ""
+        if code.startswith("cold"):
+            legacy_type = ScenarioType.cold_call
+        elif code.startswith("warm"):
+            legacy_type = ScenarioType.warm_call
+        elif code.startswith("in_"):
+            legacy_type = ScenarioType.consultation
+        else:
+            legacy_type = ScenarioType.objection_handling
+        # Find a default character for the FK (pick first active character)
+        from app.models.character import Character
+        char_result = await db.execute(select(Character.id).limit(1))
+        default_char_id = char_result.scalar_one_or_none()
+        if default_char_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No characters in database",
+            )
+        # Auto-create a Scenario row linked to this template
+        new_scenario = Scenario(
+            id=tpl.id,  # reuse template UUID so session references it
+            title=tpl.name,
+            description=tpl.description,
+            scenario_type=legacy_type,
+            character_id=default_char_id,
+            template_id=tpl.id,
+            difficulty=tpl.difficulty,
+            estimated_duration_minutes=tpl.typical_duration_minutes,
+        )
+        db.add(new_scenario)
+        await db.flush()
 
     # Check rate limit before creating session
     try:

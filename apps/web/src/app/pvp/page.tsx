@@ -240,10 +240,48 @@ function PvPLobbyContent() {
                   className="glass-panel rounded-2xl p-6 max-w-md w-full"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <h3 className="text-lg font-bold mb-3" style={{ color: "var(--text-primary)" }}>PvP Arena</h3>
-                  <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                    Соревнуйтесь с другими менеджерами в продажах. Классическая дуэль — 2 раунда со сменой ролей.
-                  </p>
+                  <h3 className="text-lg font-bold mb-4" style={{ color: "var(--text-primary)" }}>Arena — руководство</h3>
+                  <div className="space-y-3 text-sm leading-relaxed max-h-[65vh] overflow-y-auto pr-1" style={{ color: "var(--text-secondary)", scrollbarWidth: "thin" }}>
+                    <div>
+                      <p className="font-bold mb-1.5" style={{ color: "var(--text-primary)" }}>Режимы PvP:</p>
+                      <ul className="space-y-1.5">
+                        <li className="flex gap-2"><Swords size={14} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Классическая дуэль</strong> — 2 раунда, смена ролей (продавец/клиент)</span></li>
+                        <li className="flex gap-2"><Zap size={14} className="shrink-0 mt-0.5" style={{ color: "#FFD700" }} /><span><strong style={{ color: "var(--text-primary)" }}>Скоростной бой</strong> — 5 мини-раундов по 2 минуты</span></li>
+                        <li className="flex gap-2"><Target size={14} className="shrink-0 mt-0.5" style={{ color: "#EF4444" }} /><span><strong style={{ color: "var(--text-primary)" }}>Испытание</strong> — 3-5 дуэлей подряд, сложность растёт</span></li>
+                        <li className="flex gap-2"><Brain size={14} className="shrink-0 mt-0.5" style={{ color: "#8B5CF6" }} /><span><strong style={{ color: "var(--text-primary)" }}>Командный 2v2</strong> — вместе с коллегой</span></li>
+                      </ul>
+                    </div>
+
+                    <div className="pt-2" style={{ borderTop: "1px solid var(--border-color)" }}>
+                      <p className="font-bold mb-1.5" style={{ color: "var(--text-primary)" }}>Режимы PvE:</p>
+                      <ul className="space-y-1.5">
+                        <li><strong style={{ color: "var(--text-primary)" }}>Стандартный бот</strong> — тренировка с AI</li>
+                        <li><strong style={{ color: "var(--text-primary)" }}>Лестница ботов</strong> — 5 ботов, каждый сложнее</li>
+                        <li><strong style={{ color: "var(--text-primary)" }}>Штурм боссов</strong> — 3 уникальных босса</li>
+                        <li><strong style={{ color: "var(--text-primary)" }}>Зеркальный матч</strong> — играйте против &laquo;себя&raquo;</li>
+                      </ul>
+                    </div>
+
+                    <div className="pt-2" style={{ borderTop: "1px solid var(--border-color)" }}>
+                      <p className="font-bold mb-1.5" style={{ color: "var(--text-primary)" }}>Рейтинг и ранги:</p>
+                      <ul className="space-y-1">
+                        <li>8 тиров от Железа до Грандмастера</li>
+                        <li>Первые 10 дуэлей — калибровка вашего ранга</li>
+                        <li>Система Glicko-2 для точного матчмейкинга</li>
+                        <li>Сезонные награды за высокий ранг</li>
+                      </ul>
+                    </div>
+
+                    <div className="pt-2" style={{ borderTop: "1px solid var(--border-color)" }}>
+                      <p className="font-bold mb-1.5" style={{ color: "var(--text-primary)" }}>Как начать:</p>
+                      <ol className="list-decimal list-inside space-y-1">
+                        <li>Нажмите &laquo;Найти соперника&raquo;</li>
+                        <li>Дождитесь подбора (или примите PvE-бой)</li>
+                        <li>Проведите дуэль из 2 раундов</li>
+                        <li>Получите оценку от AI-судьи и изменение рейтинга</li>
+                      </ol>
+                    </div>
+                  </div>
                   <button
                     className="mt-4 w-full py-2 rounded-lg text-sm font-medium"
                     style={{ background: "var(--input-bg)", color: "var(--text-primary)", border: "1px solid var(--border-color)" }}
@@ -270,6 +308,29 @@ function PvPLobbyContent() {
                 {store.activeSeason.name}
               </span>
             </motion.div>
+          )}
+
+          {/* Rating loading state */}
+          {store.ratingLoading && (
+            <div className="mt-6 flex items-center justify-center py-8">
+              <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
+            </div>
+          )}
+
+          {/* Rating failed: no data and not loading */}
+          {!store.rating && !store.ratingLoading && (
+            <div className="mt-6 flex flex-col items-center py-8 text-center">
+              <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>
+                Не удалось загрузить рейтинг. Проверьте подключение к серверу.
+              </p>
+              <motion.button
+                onClick={() => store.fetchRating()}
+                className="btn-neon text-sm px-4 py-2"
+                whileTap={{ scale: 0.97 }}
+              >
+                Повторить
+              </motion.button>
+            </div>
           )}
 
           {/* Rating card or calibration prompt */}

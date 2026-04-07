@@ -21,6 +21,7 @@ import {
   Lock,
   Info,
 } from "lucide-react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import AuthLayout from "@/components/layout/AuthLayout";
 import CharacterBuilder from "@/components/training/CharacterBuilder";
@@ -161,15 +162,26 @@ function TrainingPageContent() {
                   Выберите формат и сложность тренировки
                 </p>
               </div>
-              <motion.button
-                onClick={() => setShowInfoModal(true)}
-                className="rounded-full p-2 transition-colors"
-                style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}
-                whileTap={{ scale: 0.95 }}
-                title="Справка"
-              >
-                <Info size={16} style={{ color: "var(--text-muted)" }} />
-              </motion.button>
+              <div className="flex items-center gap-2">
+                <Link href="/training/archetypes">
+                  <motion.button
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
+                    style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" }}
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    <BookOpen size={12} /> Каталог архетипов
+                  </motion.button>
+                </Link>
+                <motion.button
+                  onClick={() => setShowInfoModal(true)}
+                  className="rounded-full p-2 transition-colors"
+                  style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}
+                  whileTap={{ scale: 0.95 }}
+                  title="Справка"
+                >
+                  <Info size={16} style={{ color: "var(--text-muted)" }} />
+                </motion.button>
+              </div>
             </div>
           </motion.div>
 
@@ -191,12 +203,52 @@ function TrainingPageContent() {
                   className="glass-panel rounded-2xl p-6 max-w-md w-full"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <h3 className="text-lg font-bold mb-3" style={{ color: "var(--text-primary)" }}>Тренировки</h3>
-                  <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                    Выберите сценарий или создайте своего клиента в конструкторе. Рекомендуемые сценарии подобраны под ваш уровень.
-                  </p>
+                  <h3 className="text-lg font-bold mb-4" style={{ color: "var(--text-primary)" }}>Панель тренировки</h3>
+                  <div className="space-y-3 text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <Target size={16} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
+                        <div><strong style={{ color: "var(--text-primary)" }}>Рекомендуемые</strong> — AI подобрал сценарии под ваш уровень и слабые места</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <BookOpen size={16} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
+                        <div><strong style={{ color: "var(--text-primary)" }}>Сценарии</strong> — 60 готовых сценариев в 8 группах (от холодных звонков до кризисных)</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <ClipboardList size={16} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
+                        <div><strong style={{ color: "var(--text-primary)" }}>Назначенные</strong> — задания от руководителя с дедлайнами</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Puzzle size={16} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
+                        <div><strong style={{ color: "var(--text-primary)" }}>Конструктор</strong> — соберите клиента из 100 архетипов, 25 профессий и 20 источников</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Users size={16} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
+                        <div><strong style={{ color: "var(--text-primary)" }}>Мои клиенты</strong> — сохранённые конфигурации для повторного использования</div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2" style={{ borderTop: "1px solid var(--border-color)" }}>
+                      <p className="font-bold mb-1.5" style={{ color: "var(--text-primary)" }}>Как начать:</p>
+                      <ol className="list-decimal list-inside space-y-1">
+                        <li>Выберите сценарий или создайте клиента в конструкторе</li>
+                        <li>Нажмите &laquo;Начать&raquo; или &laquo;История Nx&raquo;</li>
+                        <li>Общайтесь с AI-клиентом голосом или текстом</li>
+                        <li>После завершения получите разбор и рекомендации</li>
+                      </ol>
+                    </div>
+
+                    <Link
+                      href="/training/archetypes"
+                      className="block text-center mt-2 py-2 rounded-lg text-sm font-medium"
+                      style={{ background: "var(--accent-muted)", color: "var(--accent)", border: "1px solid rgba(99,102,241,0.25)" }}
+                      onClick={() => setShowInfoModal(false)}
+                    >
+                      Каталог архетипов — 100 типов клиентов
+                    </Link>
+                  </div>
                   <button
-                    className="mt-4 w-full py-2 rounded-lg text-sm font-medium"
+                    className="mt-3 w-full py-2 rounded-lg text-sm font-medium"
                     style={{ background: "var(--input-bg)", color: "var(--text-primary)", border: "1px solid var(--border-color)" }}
                     onClick={() => setShowInfoModal(false)}
                   >

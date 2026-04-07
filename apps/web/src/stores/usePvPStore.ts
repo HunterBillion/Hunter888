@@ -134,8 +134,33 @@ export const usePvPStore = create<PvPState>((set, get) => ({
     try {
       const data = await api.get("/pvp/rating/me");
       set({ rating: data, ratingLoading: false });
-    } catch {
-      set({ ratingLoading: false });
+    } catch (err) {
+      logger.warn("[PvP] Failed to fetch rating, using default:", err);
+      // Provide a default rating object so the page can render instead of
+      // silently staying blank. The API's get_or_create_rating should
+      // normally create a record, but network/auth errors can prevent it.
+      set({
+        rating: {
+          user_id: "",
+          rating: 1500,
+          rd: 350,
+          volatility: 0.06,
+          rank_tier: "iron",
+          rank_display: "Железо I",
+          wins: 0,
+          losses: 0,
+          draws: 0,
+          total_duels: 0,
+          placement_done: false,
+          placement_count: 0,
+          peak_rating: 1500,
+          peak_tier: "iron",
+          current_streak: 0,
+          best_streak: 0,
+          last_played: null,
+        } as PvPRating,
+        ratingLoading: false,
+      });
     }
   },
 
