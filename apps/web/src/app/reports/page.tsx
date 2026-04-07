@@ -243,7 +243,9 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                     Исходы
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {Object.entries(report.outcomes).map(([key, count]) => (
+                    {Object.entries(report.outcomes)
+                      .filter(([, v]) => typeof v === "number")
+                      .map(([key, count]) => (
                       <span
                         key={key}
                         className="rounded-full px-3 py-1 text-xs font-medium"
@@ -253,7 +255,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                           border: `1px solid ${key === "deal" ? "#34D39944" : "var(--border-color)"}`,
                         }}
                       >
-                        {OUTCOME_LABELS[key] || key}: {count}
+                        {OUTCOME_LABELS[key] || key}: {count as number}
                       </span>
                     ))}
                   </div>
