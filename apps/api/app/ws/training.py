@@ -3261,6 +3261,21 @@ async def _handle_session_end(
     except Exception as e:
         logger.warning("Failed to generate recommendations: %s", e)
 
+    # ── Manager Wiki ingest (Karpathy pattern — async, non-blocking) ──
+    try:
+        _wiki_uid = state.get("user_id")
+        if _wiki_uid and session_id:
+            async def _wiki_ingest_task():
+                try:
+                    from app.services.wiki_ingest_service import ingest_session as wiki_ingest
+                    async with async_session() as wiki_db:
+                        await wiki_ingest(session_id, wiki_db)
+                except Exception as _we:
+                    logger.debug("Wiki ingest failed for session %s: %s", session_id, _we)
+            asyncio.create_task(_wiki_ingest_task())
+    except Exception:
+        logger.debug("Failed to schedule wiki ingest for session %s", session_id)
+
     await _send(ws, "session.ended", result_data)
 
 

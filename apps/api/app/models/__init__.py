@@ -139,6 +139,17 @@ from app.models.tournament import (
 from app.models.xp_log import XPLog
 from app.models.prompt_version import PromptVersion
 from app.models.cross_recommendation import CrossRecommendationCache
+from app.models.manager_wiki import (
+    ManagerWiki,
+    WikiPage,
+    WikiUpdateLog,
+    ManagerPattern,
+    ManagerTechnique,
+    WikiStatus,
+    WikiAction,
+    WikiPageType,
+    PatternCategory,
+)
 from app.services.web_push import PushSubscription
 
 __all__ = [
@@ -289,4 +300,14 @@ __all__ = [
     "ProgressTrend",
     "DailyAdvice",
     "TrapCascade",
+    # Manager Wiki (Karpathy pattern)
+    "ManagerWiki",
+    "WikiPage",
+    "WikiUpdateLog",
+    "ManagerPattern",
+    "ManagerTechnique",
+    "WikiStatus",
+    "WikiAction",
+    "WikiPageType",
+    "PatternCategory",
 ]

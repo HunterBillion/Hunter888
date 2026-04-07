@@ -197,11 +197,11 @@ export default function StageBreakdown({
                 }}
               >
                 {isHangupStage ? (
-                  <PhoneOff size={12} style={{ color: "#FF3333" }} />
+                  <PhoneOff size={12} style={{ color: "var(--neon-red)" }} />
                 ) : isCompleted ? (
                   <Check size={12} style={{ color: "var(--success, #00FF94)" }} strokeWidth={3} />
                 ) : isSkipped ? (
-                  <X size={12} style={{ color: "#F59E0B" }} strokeWidth={2} />
+                  <X size={12} style={{ color: "var(--warning)" }} strokeWidth={2} />
                 ) : (
                   <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{num}</span>
                 )}
@@ -213,18 +213,18 @@ export default function StageBreakdown({
                   <span
                     className="text-sm font-medium"
                     style={{
-                      color: isHangupStage ? "#FF3333" : isSkipped ? "#F59E0B" : "var(--text-primary)",
+                      color: isHangupStage ? "var(--neon-red)" : isSkipped ? "var(--warning)" : "var(--text-primary)",
                     }}
                   >
                     {meta.name}
                   </span>
                   {isSkipped && (
-                    <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(255,165,0,0.12)", color: "#F59E0B" }}>
+                    <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(255,165,0,0.12)", color: "var(--warning)" }}>
                       ПРОПУЩЕН
                     </span>
                   )}
                   {isHangupStage && (
-                    <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(255,51,51,0.12)", color: "#FF3333" }}>
+                    <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(255,51,51,0.12)", color: "var(--neon-red)" }}>
                       HANGUP
                     </span>
                   )}
@@ -258,7 +258,7 @@ export default function StageBreakdown({
         <span>Пройдено: <strong style={{ color: "var(--text-primary)" }}>{completed.size}/{totalStages}</strong></span>
         <span>Финальный этап: <strong style={{ color: "var(--text-primary)" }}>{STAGE_META[finalStage]?.name || `#${finalStage}`}</strong></span>
         {isHangup && (
-          <span style={{ color: "#FF3333" }}>
+          <span style={{ color: "var(--neon-red)" }}>
             <PhoneOff size={11} className="inline mr-1" />
             Клиент бросил трубку
           </span>
@@ -295,9 +295,9 @@ export default function StageBreakdown({
                 {rec.type === "success" ? (
                   <Check size={14} className="flex-shrink-0 mt-0.5" style={{ color: "var(--success)" }} />
                 ) : rec.type === "warning" ? (
-                  <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" style={{ color: "#FF3333" }} />
+                  <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" style={{ color: "var(--neon-red)" }} />
                 ) : (
-                  <Lightbulb size={14} className="flex-shrink-0 mt-0.5" style={{ color: "#FFD700" }} />
+                  <Lightbulb size={14} className="flex-shrink-0 mt-0.5" style={{ color: "var(--warning)" }} />
                 )}
                 <span style={{ color: "var(--text-secondary)" }}>{rec.text}</span>
               </div>

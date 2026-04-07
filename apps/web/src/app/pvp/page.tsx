@@ -419,9 +419,9 @@ function PvPLobbyContent() {
                         <p className="text-sm font-mono tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Режимы PvP</p>
                         <div className="grid grid-cols-2 gap-2">
                           {([
-                            { code: "classic", name: "Классическая дуэль", desc: "2 раунда, смена ролей", icon: "\u2694\uFE0F", level: 5 },
-                            { code: "rapid", name: "Скоростной бой", desc: "5 мини-раундов по 2 мин", icon: "\u26A1", level: 9 },
-                            { code: "gauntlet", name: "Испытание", desc: "3-5 дуэлей подряд", icon: "\uD83C\uDFF0", level: 10 },
+                            { code: "classic", name: "Классическая дуэль", desc: "2 раунда, смена ролей", icon: "\u2694\uFE0F", level: 1 },
+                            { code: "rapid", name: "Скоростной бой", desc: "5 мини-раундов по 2 мин", icon: "\u26A1", level: 5 },
+                            { code: "gauntlet", name: "Испытание", desc: "3-5 дуэлей подряд", icon: "\uD83C\uDFF0", level: 8 },
                             { code: "team2v2", name: "Командный 2v2", desc: "Команда из 2 продавцов", icon: "\uD83D\uDC65", level: 12 },
                           ] as const).map((mode) => {
                             const userLevel = store.rating ? Math.max(1, Math.floor(store.rating.total_duels / 2) + 1) : 1;
@@ -449,10 +449,10 @@ function PvPLobbyContent() {
                         <p className="text-sm font-mono tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Режимы PvE</p>
                         <div className="grid grid-cols-2 gap-2">
                           {([
-                            { code: "standard", name: "Стандартный бот", desc: "Обычная PvE дуэль", icon: "\uD83E\uDD16", level: 3 },
-                            { code: "ladder", name: "Лестница ботов", desc: "5 ботов, рост сложности", icon: "\uD83D\uDCF6", level: 9 },
-                            { code: "boss", name: "Штурм боссов", desc: "3 уникальных босса", icon: "\uD83D\uDC80", level: 10 },
-                            { code: "mirror", name: "Зеркальный матч", desc: "Играй против себя", icon: "\uD83E\uDE9E", level: 15 },
+                            { code: "standard", name: "Стандартный бот", desc: "Обычная PvE дуэль", icon: "\uD83E\uDD16", level: 1 },
+                            { code: "ladder", name: "Лестница ботов", desc: "5 ботов, рост сложности", icon: "\uD83D\uDCF6", level: 5 },
+                            { code: "boss", name: "Штурм боссов", desc: "3 уникальных босса", icon: "\uD83D\uDC80", level: 8 },
+                            { code: "mirror", name: "Зеркальный матч", desc: "Играй против себя", icon: "\uD83E\uDE9E", level: 12 },
                           ] as const).map((mode) => {
                             const userLevel = store.rating ? Math.max(1, Math.floor(store.rating.total_duels / 2) + 1) : 1;
                             const locked = userLevel < mode.level;

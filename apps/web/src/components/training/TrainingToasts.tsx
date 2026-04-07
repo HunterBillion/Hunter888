@@ -48,10 +48,10 @@ export function TrainingToasts({
           >
             <div className="flex items-center gap-3">
               <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(255,51,51,0.2)" }}>
-                <PhoneOff size={14} style={{ color: "#FF3333" }} />
+                <PhoneOff size={14} style={{ color: "var(--neon-red)" }} />
               </div>
               <div>
-                <div className="text-xs font-mono uppercase tracking-widest" style={{ color: "#FF6666" }}>
+                <div className="text-xs font-mono uppercase tracking-widest" style={{ color: "var(--neon-red)" }}>
                   КЛИЕНТ ТЕРЯЕТ ТЕРПЕНИЕ
                 </div>
                 <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>

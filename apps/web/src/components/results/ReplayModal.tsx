@@ -60,7 +60,7 @@ function scoreDeltaBadge(delta: number | null) {
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold"
       style={{
         background: isPositive ? "rgba(0,255,148,0.15)" : "rgba(255,51,51,0.15)",
-        color: isPositive ? "var(--neon-green, #00FF94)" : "#FF3333",
+        color: isPositive ? "var(--neon-green)" : "var(--neon-red)",
         border: `1px solid ${isPositive ? "rgba(0,255,148,0.3)" : "rgba(255,51,51,0.3)"}`,
       }}
     >
@@ -250,7 +250,7 @@ export default function ReplayModal({
               style={{
                 background: "rgba(255,51,51,0.1)",
                 border: "1px solid rgba(255,51,51,0.3)",
-                color: "#FF6666",
+                color: "var(--neon-red)",
               }}
             >
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
@@ -383,8 +383,8 @@ export default function ReplayModal({
               {result.ideal_emotion_prediction && (
                 <div>
                   <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="w-4 h-4" style={{ color: "#60A5FA" }} />
-                    <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "#60A5FA" }}>
+                    <TrendingUp className="w-4 h-4" style={{ color: "var(--info)" }} />
+                    <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--info)" }}>
                       Эмоция клиента
                     </p>
                   </div>
@@ -405,8 +405,8 @@ export default function ReplayModal({
               {result.trap_handling && result.trap_handling.length > 0 && (
                 <div>
                   <div className="flex items-center gap-2 mb-2">
-                    <Shield className="w-4 h-4" style={{ color: "#BF55EC" }} />
-                    <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "#BF55EC" }}>
+                    <Shield className="w-4 h-4" style={{ color: "var(--accent-hover)" }} />
+                    <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--accent-hover)" }}>
                       Ловушки
                     </p>
                   </div>
@@ -425,7 +425,7 @@ export default function ReplayModal({
                             {trap.trap}
                           </span>
                           <div className="flex items-center gap-2">
-                            <span style={{ color: "#FF6666" }}>{trap.original}</span>
+                            <span style={{ color: "var(--neon-red)" }}>{trap.original}</span>
                             <ArrowRight className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
                             <span style={{ color: "var(--neon-green, #00FF94)" }}>
                               <CheckCircle2 className="w-3 h-3 inline mr-0.5" />

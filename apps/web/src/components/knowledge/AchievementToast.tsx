@@ -14,10 +14,10 @@ interface AchievementNotification {
 }
 
 const RARITY_COLORS: Record<string, string> = {
-  common: "#8B95A5",
-  rare: "#5B9FE5",
-  epic: "#818CF8",
-  legendary: "#F59E0B",
+  common: "var(--rarity-common)",
+  rare: "var(--rarity-rare)",
+  epic: "var(--rarity-epic)",
+  legendary: "var(--rarity-legendary)",
 };
 
 const ICON_MAP: Record<string, React.ElementType> = {

@@ -164,7 +164,7 @@ export default function ScriptAdherence({
                         <Circle
                           size={20}
                           style={{
-                            color: isHighlighted ? "#FFD700" : isCurrent ? "var(--accent)" : "var(--border-color)",
+                            color: isHighlighted ? "var(--warning)" : isCurrent ? "var(--accent)" : "var(--border-color)",
                             filter: isHighlighted ? "drop-shadow(0 0 6px rgba(255,215,0,0.6))" : "none",
                           }}
                           strokeWidth={(isCurrent || isHighlighted) ? 2.5 : 1.5}

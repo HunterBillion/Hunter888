@@ -20,7 +20,7 @@ const MODE_CONFIG: Record<DifficultyMode, { emoji: string; label: string; color:
   normal: null,
   boss: { emoji: "\uD83D\uDC80", label: "Босс", color: "var(--neon-red, #FF2A6D)" },
   safe: { emoji: "\uD83D\uDEE1\uFE0F", label: "Безопасный", color: "var(--success, #00FF94)" },
-  coaching: { emoji: "\uD83D\uDCDA", label: "Обучение", color: "#3B82F6" },
+  coaching: { emoji: "\uD83D\uDCDA", label: "Обучение", color: "var(--info)" },
   challenge: { emoji: "\u26A1", label: "Челлендж", color: "var(--warning, #FFD700)" },
   onboarding: { emoji: "\uD83C\uDF31", label: "Старт", color: "var(--success, #00FF94)" },
 };

@@ -59,7 +59,7 @@ export function RoundIndicator({ roundNumber, myRole, timeRemaining }: Props) {
         style={{
           background: myRole === "seller" ? "rgba(99,102,241,0.1)" : "rgba(59,130,246,0.1)",
           border: `1px solid ${myRole === "seller" ? "rgba(99,102,241,0.3)" : "rgba(59,130,246,0.3)"}`,
-          color: myRole === "seller" ? "var(--accent)" : "#3B82F6",
+          color: myRole === "seller" ? "var(--accent)" : "var(--info)",
         }}
       >
         {myRole === "seller" ? "МЕНЕДЖЕР" : "КЛИЕНТ"}

@@ -31,12 +31,12 @@ const EVENT_ICONS: Record<GameEventType, typeof Phone> = {
 };
 
 const EVENT_COLORS: Record<GameEventType, string> = {
-  call: "#3B82F6",
-  message: "#10B981",
-  consequence: "#F59E0B",
-  storylet: "#6366F1",
-  status_change: "#6B7280",
-  callback: "#F97316",
+  call: "var(--event-call)",
+  message: "var(--event-message)",
+  consequence: "var(--event-consequence)",
+  storylet: "var(--event-storylet)",
+  status_change: "var(--event-status)",
+  callback: "var(--event-callback)",
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -101,7 +101,7 @@ export function GameTimeline({
       <AnimatePresence initial={false}>
         {events.map((event, i) => {
           const Icon = EVENT_ICONS[event.type] || BookOpen;
-          const color = EVENT_COLORS[event.type] || "#6B7280";
+          const color = EVENT_COLORS[event.type] || "var(--text-muted)";
           const isExpanded = expandedId === event.id;
 
           return (

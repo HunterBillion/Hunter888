@@ -22,9 +22,9 @@ export function DuplicateWarning({ message, duplicateIds, onDismiss }: Duplicate
       }}
     >
       <div className="flex items-start gap-3">
-        <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: "#FFD700" }} />
+        <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: "var(--warning)" }} />
         <div className="flex-1">
-          <div className="text-sm font-medium" style={{ color: "#FFD700" }}>
+          <div className="text-sm font-medium" style={{ color: "var(--warning)" }}>
             Возможный дубликат
           </div>
           <p className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
@@ -39,7 +39,7 @@ export function DuplicateWarning({ message, duplicateIds, onDismiss }: Duplicate
                   className="text-xs font-mono px-2 py-1 rounded-lg transition-colors"
                   style={{
                     background: "rgba(255,215,0,0.1)",
-                    color: "#FFD700",
+                    color: "var(--warning)",
                     border: "1px solid rgba(255,215,0,0.2)",
                   }}
                 >

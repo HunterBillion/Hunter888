@@ -85,3 +85,8 @@ api_router.include_router(progression_router_v2, prefix="/progression", tags=["p
 from app.api.prompts import router as prompts_router
 
 api_router.include_router(prompts_router, prefix="/prompts", tags=["prompts"])
+
+# Manager Wiki — Karpathy LLM Wiki pattern (persistent knowledge base per manager)
+from app.api.manager_wiki import router as wiki_router
+
+api_router.include_router(wiki_router, tags=["wiki"])

@@ -88,13 +88,13 @@ export function MicCheck({ onComplete, onSkip }: MicCheckProps) {
         className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl"
         style={{
           background: status === "success" ? "rgba(0,255,102,0.1)" : status === "denied" || status === "error" ? "rgba(255,51,51,0.1)" : "var(--accent-muted)",
-          border: `2px solid ${status === "success" ? "#00FF66" : status === "denied" || status === "error" ? "#FF3333" : "var(--accent)"}`,
+          border: `2px solid ${status === "success" ? "var(--neon-green)" : status === "denied" || status === "error" ? "var(--neon-red)" : "var(--accent)"}`,
         }}
       >
         {status === "success" ? (
-          <CheckCircle2 size={36} style={{ color: "#00FF66" }} />
+          <CheckCircle2 size={36} style={{ color: "var(--neon-green)" }} />
         ) : status === "denied" || status === "error" ? (
-          <MicOff size={36} style={{ color: "#FF3333" }} />
+          <MicOff size={36} style={{ color: "var(--neon-red)" }} />
         ) : (
           <Mic size={36} style={{ color: "var(--accent)" }} />
         )}
@@ -126,7 +126,7 @@ export function MicCheck({ onComplete, onSkip }: MicCheckProps) {
           <div className="h-3 rounded-full overflow-hidden mx-auto max-w-[200px]" style={{ background: "var(--input-bg)" }}>
             <motion.div
               className="h-full rounded-full"
-              style={{ background: level > 30 ? "#00FF66" : "var(--accent)", boxShadow: level > 30 ? "0 0 8px rgba(0,255,102,0.5)" : "none" }}
+              style={{ background: level > 30 ? "var(--neon-green)" : "var(--accent)", boxShadow: level > 30 ? "0 0 8px rgba(0,255,102,0.5)" : "none" }}
               animate={{ width: `${Math.max(5, level)}%` }}
               transition={{ duration: 0.1 }}
             />

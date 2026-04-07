@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // Security: disable source maps in production
   productionBrowserSourceMaps: false,
+  // Hide dev overlay indicators (build error button)
+  devIndicators: false,
 
   // Security headers (non-CSP).
   // Content-Security-Policy is set by middleware.ts with a per-request nonce.

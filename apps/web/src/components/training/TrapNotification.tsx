@@ -30,7 +30,7 @@ const STATUS_CONFIG = {
   fell: {
     icon: ShieldAlert,
     label: "ЛОВУШКА",
-    color: "#FF2A6D",
+    color: "var(--neon-red)",
     glow: "rgba(255,42,109,0.25)",
     border: "rgba(255,42,109,0.4)",
     bg: "rgba(255,42,109,0.08)",
@@ -39,7 +39,7 @@ const STATUS_CONFIG = {
   dodged: {
     icon: ShieldCheck,
     label: "ОБХОД",
-    color: "#00FF94",
+    color: "var(--neon-green)",
     glow: "rgba(0,255,148,0.25)",
     border: "rgba(0,255,148,0.4)",
     bg: "rgba(0,255,148,0.08)",
@@ -48,7 +48,7 @@ const STATUS_CONFIG = {
   partial: {
     icon: ShieldQuestion,
     label: "ЧАСТИЧНО",
-    color: "#FFD700",
+    color: "var(--warning)",
     glow: "rgba(255,215,0,0.25)",
     border: "rgba(255,215,0,0.4)",
     bg: "rgba(255,215,0,0.08)",
@@ -173,7 +173,7 @@ interface TrapSummaryBadgeProps {
 export function TrapSummaryBadge({ fell, dodged, netScore }: TrapSummaryBadgeProps) {
   if (fell === 0 && dodged === 0) return null;
 
-  const color = netScore >= 0 ? "#00FF94" : "#FF2A6D";
+  const color = netScore >= 0 ? "var(--neon-green)" : "var(--neon-red)";
   const deltaStr = netScore > 0 ? `+${netScore}` : `${netScore}`;
 
   return (
@@ -195,10 +195,10 @@ export function TrapSummaryBadge({ fell, dodged, netScore }: TrapSummaryBadgePro
         <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>pts</span>
       </div>
       <div className="mt-2 flex gap-3 text-xs font-mono">
-        <span style={{ color: "#FF2A6D" }}>
+        <span style={{ color: "var(--neon-red)" }}>
           <ShieldAlert size={10} className="inline mr-1" />{fell}
         </span>
-        <span style={{ color: "#00FF94" }}>
+        <span style={{ color: "var(--neon-green)" }}>
           <ShieldCheck size={10} className="inline mr-1" />{dodged}
         </span>
       </div>

@@ -18,7 +18,7 @@ interface Category {
 
 const CATEGORIES: Category[] = [
   { key: "training", label: "Тренировки", icon: Trophy, color: "var(--accent)", match: (s) => /session|complete|score|train|scenario/.test(s) },
-  { key: "pvp", label: "PvP Арена", icon: Swords, color: "#FFD700", match: (s) => /pvp|duel|arena|rating|rank/.test(s) },
+  { key: "pvp", label: "PvP Арена", icon: Swords, color: "var(--warning)", match: (s) => /pvp|duel|arena|rating|rank/.test(s) },
   { key: "knowledge", label: "Знания", icon: BookOpen, color: "var(--neon-green)", match: (s) => /knowledge|quiz|law|legal/.test(s) },
   { key: "special", label: "Особые", icon: Star, color: "var(--magenta)", match: () => true },
 ];

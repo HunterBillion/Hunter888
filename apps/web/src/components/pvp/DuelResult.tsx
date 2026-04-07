@@ -61,7 +61,7 @@ export function DuelResult({
   turningPoint,
 }: Props) {
   const [showDetails, setShowDetails] = useState(false);
-  const resultColor = isDraw ? "var(--warning)" : isWinner ? "var(--neon-green, #00FF66)" : "var(--neon-red, #FF3333)";
+  const resultColor = isDraw ? "var(--warning)" : isWinner ? "var(--neon-green)" : "var(--neon-red)";
   const resultText = isDraw ? "Ничья" : isWinner ? "Победа!" : "Поражение";
   const deltaSign = myRatingDelta >= 0 ? "+" : "";
 

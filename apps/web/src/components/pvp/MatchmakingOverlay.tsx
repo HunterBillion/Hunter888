@@ -139,7 +139,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
                   style={{
                     background: isLate
                       ? "linear-gradient(90deg, var(--accent), var(--warning))"
-                      : "linear-gradient(90deg, var(--accent), #7C3AED)",
+                      : "linear-gradient(90deg, var(--accent), var(--accent-hover))",
                   }}
                   animate={{ width: `${progress}%` }}
                   transition={{ duration: 0.5, ease: "easeOut" }}
@@ -214,7 +214,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
                 boxShadow: "0 0 30px rgba(0,255,102,0.15)",
               }}
             >
-              <Swords size={36} style={{ color: "#00FF66" }} />
+              <Swords size={36} style={{ color: "var(--neon-green)" }} />
             </motion.div>
 
             <motion.h2
@@ -222,7 +222,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
               className="font-display text-2xl font-black tracking-wider"
-              style={{ color: "#00FF66", textShadow: "0 0 20px rgba(0,255,102,0.25)" }}
+              style={{ color: "var(--neon-green)", textShadow: "0 0 20px rgba(0,255,102,0.25)" }}
             >
               {opponentRating ? "МАТЧ НАЙДЕН" : "АРЕНА ГОТОВА"}
             </motion.h2>
@@ -261,7 +261,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
                   style={{ background: "rgba(255,42,109,0.1)", border: "1px solid rgba(255,42,109,0.25)" }}
                 >
                   {opponentRating ? (
-                    <Shield size={24} style={{ color: "#FF6B8A" }} />
+                    <Shield size={24} style={{ color: "var(--neon-red)" }} />
                   ) : (
                     <span className="text-2xl">&#x1F916;</span>
                   )}

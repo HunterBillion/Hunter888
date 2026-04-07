@@ -62,6 +62,21 @@
   --success: #059669;
   --warning: #D97706;
   --danger: #DC2626;
+  --info: #3B82F6;
+
+  /* ── Rarity tokens ─────────────────────────────────── */
+  --rarity-common: #8B95A5;
+  --rarity-rare: #5B9FE5;
+  --rarity-epic: #818CF8;
+  --rarity-legendary: #F59E0B;
+
+  /* ── Event type tokens ─────────────────────────────── */
+  --event-call: #3B82F6;
+  --event-message: #10B981;
+  --event-consequence: #F59E0B;
+  --event-storylet: #6366F1;
+  --event-status: #6B7280;
+  --event-callback: #F97316;
 
   /* ── Rank & streak tokens ──────────────────────────── */
   --rank-gold: #FFD700;
@@ -119,6 +134,24 @@
   --scrollbar-thumb: #2a2a40;
   --selection-bg: rgba(79, 70, 229, 0.35);
   --input-bg: rgba(255, 255, 255, 0.06);
+  --success: #00FF94;
+  --warning: #FFD700;
+  --danger: #FF2A6D;
+  --info: #60A5FA;
+
+  /* ── Rarity tokens (dark — brighter) ───────────────── */
+  --rarity-common: #8B95A5;
+  --rarity-rare: #60A5FA;
+  --rarity-epic: #A78BFA;
+  --rarity-legendary: #FFD700;
+
+  /* ── Event type tokens (dark) ──────────────────────── */
+  --event-call: #60A5FA;
+  --event-message: #34D399;
+  --event-consequence: #FBBF24;
+  --event-storylet: #818CF8;
+  --event-status: #9CA3AF;
+  --event-callback: #FB923C;
 
   /* ── Rank & streak tokens (dark — brighter for contrast) ── */
   --rank-gold: #FFD700;

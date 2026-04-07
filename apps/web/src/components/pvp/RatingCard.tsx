@@ -150,7 +150,7 @@ export function RatingCard({ rating: r }: Props) {
       {/* Peak info */}
       <div className="flex items-center justify-between border-t px-6 py-4 font-mono text-xs" style={{ color: "var(--text-muted)", borderColor: "rgba(255,255,255,0.06)" }}>
         <span className="flex items-center gap-1">
-          <Flame size={13} style={{ color: "#FFD700" }} />
+          <Flame size={13} style={{ color: "var(--streak-color)" }} />
           Лучший streak: {r.best_streak}
         </span>
         <span className="flex items-center gap-1">

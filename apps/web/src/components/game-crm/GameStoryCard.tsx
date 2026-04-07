@@ -10,7 +10,7 @@ interface GameStoryCardProps {
 }
 
 export function GameStoryCard({ story }: GameStoryCardProps) {
-  const color = GAME_STATUS_COLORS[story.game_status] || "#9CA3AF";
+  const color = GAME_STATUS_COLORS[story.game_status] || "var(--text-muted)";
   const statusLabel = GAME_STATUS_LABELS[story.game_status] || story.game_status;
 
   const progressPct = story.total_calls_planned > 0
@@ -159,7 +159,7 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
           {story.is_completed && (
             <span
               className="flex items-center gap-1 text-xs font-mono"
-              style={{ color: "#00FF66" }}
+              style={{ color: "var(--neon-green)" }}
             >
               <CheckCircle size={10} />
               Завершена

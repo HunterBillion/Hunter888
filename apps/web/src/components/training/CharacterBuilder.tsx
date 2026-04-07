@@ -477,14 +477,14 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                   <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>Влияет на агрессивность, ловушки и адаптивную сложность</p>
                 </div>
                 <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: `${difficulty <= 3 ? "rgba(0,255,102,0.08)" : difficulty <= 6 ? "rgba(255,215,0,0.08)" : "rgba(255,51,51,0.08)"}` }}>
-                  <span className="font-display text-2xl font-black tabular-nums" style={{ color: difficulty <= 3 ? "#00FF66" : difficulty <= 6 ? "#FFD700" : "#FF3333" }}>{difficulty}</span>
+                  <span className="font-display text-2xl font-black tabular-nums" style={{ color: difficulty <= 3 ? "var(--neon-green)" : difficulty <= 6 ? "var(--warning)" : "var(--neon-red)" }}>{difficulty}</span>
                   <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>/10</span>
                 </div>
               </div>
               <div className="flex gap-1.5">
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((level) => {
                   const active = level === difficulty; const filled = level <= difficulty;
-                  const cc = level <= 3 ? "#00FF66" : level <= 6 ? "#FFD700" : level <= 8 ? "#FF3333" : "#FF0055";
+                  const cc = level <= 3 ? "var(--neon-green)" : level <= 6 ? "var(--warning)" : level <= 8 ? "var(--neon-red)" : "var(--neon-red)";
                   return (
                     <motion.button key={level} onClick={() => setDifficulty(level)}
                       className="relative flex-1 rounded-lg" style={{ height: active ? 36 : 28, background: filled ? `linear-gradient(180deg, ${cc}, ${cc}88)` : "var(--input-bg)", border: active ? `2px solid ${cc}` : "1px solid var(--border-color)", opacity: filled ? 1 : 0.35 }}
@@ -533,7 +533,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                 </div>
                 <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
                   <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Сложность</div>
-                  <div className="text-lg font-black font-mono" style={{ color: difficulty <= 3 ? "#00FF66" : difficulty <= 6 ? "var(--warning)" : "#FF3333" }}>{difficulty}/10</div>
+                  <div className="text-lg font-black font-mono" style={{ color: difficulty <= 3 ? "var(--neon-green)" : difficulty <= 6 ? "var(--warning)" : "var(--neon-red)" }}>{difficulty}/10</div>
                 </div>
               </div>
               {/* Extra params summary */}

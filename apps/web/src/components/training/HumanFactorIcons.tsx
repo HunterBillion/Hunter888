@@ -5,11 +5,11 @@ import { Brain, Heart, Flame, Shield, AlertTriangle, Frown, Clock, Zap } from "l
 import type { HumanFactor } from "@/types/story";
 
 const FACTOR_CONFIG: Record<string, { icon: typeof Brain; color: string; label: string }> = {
-  stress: { icon: Zap, color: "#FF3333", label: "Стресс" },
+  stress: { icon: Zap, color: "var(--neon-red)", label: "Стресс" },
   fatigue: { icon: Clock, color: "#F59E0B", label: "Усталость" },
   anger: { icon: Flame, color: "#FF6B35", label: "Гнев" },
   fear: { icon: AlertTriangle, color: "#A78BFA", label: "Страх" },
-  distrust: { icon: Shield, color: "#3B82F6", label: "Недоверие" },
+  distrust: { icon: Shield, color: "var(--info)", label: "Недоверие" },
   sadness: { icon: Frown, color: "#60A5FA", label: "Грусть" },
   empathy: { icon: Heart, color: "#EC4899", label: "Эмпатия" },
   default: { icon: Brain, color: "#6366F1", label: "Фактор" },

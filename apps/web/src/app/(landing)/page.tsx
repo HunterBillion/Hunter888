@@ -355,7 +355,7 @@ export default function Home() {
                   <p className="max-w-lg text-base sm:text-lg leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                     <strong style={{ color: "var(--text-primary)" }}>60 реальных ситуаций</strong> — от первого звонка до кризиса.{" "}
                     <strong style={{ color: "var(--text-primary)" }}>100 типов клиентов</strong> — скептики, манипуляторы, паникёры.{" "}
-                    После каждого звонка — <strong style={{ color: "var(--accent)" }}>детальный разбор</strong>: что сработало, а где вы потеряли клиента.
+                    После каждого звонка — <strong style={{ color: "var(--text-primary)" }}>детальный разбор</strong>: что сработало, а где вы потеряли клиента.
                   </p>
                 </div>
 
@@ -363,8 +363,8 @@ export default function Home() {
                   <div className="rounded-lg p-5 sm:p-6" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)" }}>
                     <h3 className="text-sm font-bold uppercase mb-5" style={{ color: "var(--text-muted)" }}>По типам клиентов</h3>
                     <div className="space-y-4">
-                      <ScoreBar label="Скептики" value={87} color="var(--accent)" />
-                      <ScoreBar label="Переговорщики" value={64} color="var(--accent)" />
+                      <ScoreBar label="Скептики" value={87} color="var(--neon-green)" />
+                      <ScoreBar label="Переговорщики" value={64} color="var(--text-muted)" />
                       <ScoreBar label="Агрессоры" value={42} color="var(--neon-red)" />
                     </div>
                   </div>
@@ -373,7 +373,7 @@ export default function Home() {
                     <h3 className="text-sm font-bold uppercase mb-5" style={{ color: "var(--text-muted)" }}>Оценка звонка</h3>
                     <div className="space-y-4">
                       <ScoreBar label="Следование скрипту" value={92} color="var(--neon-green)" />
-                      <ScoreBar label="Работа с возражениями" value={71} color="var(--accent)" />
+                      <ScoreBar label="Работа с возражениями" value={71} color="var(--text-muted)" />
                     </div>
                   </div>
 
@@ -382,7 +382,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="mt-5 flex items-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity" style={{ color: "var(--accent)" }}>
+                <div className="mt-5 flex items-center gap-2 opacity-40 group-hover:opacity-100 transition-opacity" style={{ color: "var(--text-secondary)" }}>
                   <span className="text-sm font-medium">Узнать больше о продукте</span>
                   <ChevronRight size={16} />
                 </div>
@@ -430,7 +430,7 @@ export default function Home() {
                     <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>По запросу</span>
                   </div>
                 </div>
-                <div className="mt-5 flex items-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity" style={{ color: "var(--accent)" }}>
+                <div className="mt-5 flex items-center gap-2 opacity-40 group-hover:opacity-100 transition-opacity" style={{ color: "var(--text-secondary)" }}>
                   <span className="text-sm font-medium">Сравнить тарифы</span>
                   <ChevronRight size={16} />
                 </div>
@@ -450,18 +450,18 @@ export default function Home() {
               <div className="aspect-square rounded-xl relative overflow-hidden" style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}>
                 <div className="relative z-10 h-full flex flex-col justify-between p-5 sm:p-7">
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-px" style={{ background: "var(--accent)" }} />
-                    <span className="text-xs font-display font-bold tracking-widest uppercase" style={{ color: "var(--accent)" }}>Основатель</span>
+                    <div className="w-6 h-px" style={{ background: "var(--text-muted)" }} />
+                    <span className="text-xs font-display font-bold tracking-widest uppercase" style={{ color: "var(--text-muted)" }}>Основатель</span>
                   </div>
                   <blockquote className="my-auto py-2">
-                    <p className="text-xs sm:text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                    <p className="text-xs sm:text-sm leading-relaxed italic" style={{ color: "var(--text-secondary)", fontFamily: "Georgia, 'Times New Roman', serif" }}>
                       &laquo;Я 8 лет руководил отделом продаж в банкротстве и видел, как менеджеры повторяют одни и те же ошибки.{" "}
-                      <strong style={{ color: "var(--text-primary)" }}>X Hunter — это тренажёр, который я хотел иметь тогда.</strong>&raquo;
+                      <strong className="not-italic" style={{ color: "var(--text-primary)", fontFamily: "var(--font-display, sans-serif)" }}>X Hunter — это тренажёр, который я хотел иметь тогда.</strong>&raquo;
                     </p>
                   </blockquote>
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "var(--accent-muted)", border: "1px solid var(--border-color)" }}>
-                      <span className="text-xs font-black" style={{ color: "var(--accent)" }}>XH</span>
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)" }}>
+                      <span className="text-xs font-black" style={{ color: "var(--text-muted)" }}>XH</span>
                     </div>
                     <div>
                       <div className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>CEO</div>

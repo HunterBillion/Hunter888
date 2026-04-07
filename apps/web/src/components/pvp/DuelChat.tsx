@@ -89,7 +89,7 @@ export function DuelChat({ messages, myRole, input, onInputChange, onSend, disab
         <div className="flex items-center gap-2">
           <div
             className="h-2 w-2 rounded-full"
-            style={{ background: myRole === "seller" ? "var(--accent)" : "#3B82F6" }}
+            style={{ background: myRole === "seller" ? "var(--accent)" : "var(--info)" }}
           />
           <span className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
             {myRole === "seller" ? "Вы: Менеджер" : "Вы: Клиент"}
@@ -101,7 +101,7 @@ export function DuelChat({ messages, myRole, input, onInputChange, onSend, disab
           </span>
           <div
             className="h-2 w-2 rounded-full"
-            style={{ background: myRole === "seller" ? "#3B82F6" : "var(--accent)" }}
+            style={{ background: myRole === "seller" ? "var(--info)" : "var(--accent)" }}
           />
         </div>
       </div>

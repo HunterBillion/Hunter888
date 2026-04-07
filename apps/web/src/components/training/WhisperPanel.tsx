@@ -34,7 +34,7 @@ const TYPE_ICON_COLORS: Record<string, string> = {
   emotion: "#EF4444",
   stage: "#22C55E",
   objection: "#6366F1",
-  transition: "#3B82F6",
+  transition: "var(--info)",
 };
 
 function formatTimeAgo(timestamp: number): string {

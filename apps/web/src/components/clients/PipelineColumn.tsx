@@ -205,9 +205,10 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
           </AnimatePresence>
 
           {!clients.length && !isOver && (
-            <div className="text-center py-8">
-              <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-                Пусто
+            <div className="text-center py-6 px-3">
+              <div className="text-base opacity-30 mb-1.5">📋</div>
+              <span className="text-xs font-mono" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
+                Нет клиентов
               </span>
             </div>
           )}

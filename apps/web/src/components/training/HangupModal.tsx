@@ -61,14 +61,14 @@ export function HangupModal({ open, data, onRedial, onResults }: HangupModalProp
                   border: "2px solid rgba(255,51,51,0.4)",
                 }}
               >
-                <PhoneOff size={28} style={{ color: "#FF3333" }} />
+                <PhoneOff size={28} style={{ color: "var(--neon-red)" }} />
               </motion.div>
             </div>
 
             {/* Title */}
             <h2
               className="relative text-center text-lg font-bold mb-3"
-              style={{ color: "#FF3333" }}
+              style={{ color: "var(--neon-red)" }}
             >
               КЛИЕНТ ПОВЕСИЛ ТРУБКУ
             </h2>

@@ -13,7 +13,7 @@ interface Props {
 }
 
 export function RankBadge({ tier, rating, size = "md", showDivision = true }: Props) {
-  const color = PVP_RANK_COLORS[tier] ?? "#9CA3AF";
+  const color = PVP_RANK_COLORS[tier] ?? "var(--text-muted)";
   const label = PVP_RANK_LABELS[tier] ?? tier;
   const division = showDivision && rating !== undefined ? getDivision(rating, tier) : "";
 
