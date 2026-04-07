@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   CheckCircle2,
@@ -97,6 +98,155 @@ const PARTNERS = [
   { name: "MongoDB", Logo: MongoDBLogo },
 ] as const;
 
+/* ── Comparison features ──────────────────────────────────────────── */
+const COMPARISON = [
+  { name: "Сценарии", scout: "20+", hunter: "Все 60", enterprise: "Кастомные" },
+  { name: "Типы клиентов", scout: "Базовые", hunter: "Все 100", enterprise: "Все 100 + свои" },
+  { name: "Параметров оценки", scout: "5", hunter: "10", enterprise: "10 + кастомные" },
+  { name: "Голосовой режим", scout: "—", hunter: "Да", enterprise: "Да" },
+  { name: "PvP-арена", scout: "—", hunter: "Да", enterprise: "Да" },
+  { name: "CRM-модуль", scout: "—", hunter: "—", enterprise: "Да" },
+  { name: "Дашборд руководителя", scout: "—", hunter: "—", enterprise: "Да" },
+  { name: "Методолог", scout: "—", hunter: "—", enterprise: "Выделенный" },
+] as const;
+
+/* ── Pricing Section with billing toggle ─────────────────────────── */
+function PricingSection({ openRegister }: { openRegister: () => void }) {
+  const [annual, setAnnual] = useState(false);
+
+  const prices = {
+    scout: annual ? "3 900 ₽" : "4 900 ₽",
+    hunter: annual ? "15 900 ₽" : "19 900 ₽",
+  };
+
+  return (
+    <section className="px-5 sm:px-8 pb-24 sm:pb-32 max-w-7xl mx-auto">
+      {/* Billing toggle */}
+      <div className="flex items-center justify-center gap-4 mb-10">
+        <span className="text-sm font-medium" style={{ color: annual ? "var(--text-muted)" : "var(--text-primary)" }}>Месяц</span>
+        <button
+          onClick={() => setAnnual(!annual)}
+          className="relative w-14 h-7 rounded-full transition-colors"
+          style={{ background: annual ? "var(--accent)" : "var(--border-color)" }}
+        >
+          <div
+            className="absolute top-1 w-5 h-5 rounded-full bg-white transition-all"
+            style={{ left: annual ? "calc(100% - 24px)" : "4px" }}
+          />
+        </button>
+        <span className="text-sm font-medium" style={{ color: annual ? "var(--text-primary)" : "var(--text-muted)" }}>
+          Год <span className="text-xs font-bold ml-1" style={{ color: "var(--neon-green)" }}>-20%</span>
+        </span>
+      </div>
+
+      {/* Tier cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+        {PRICING_TIERS.map((tier, i) => (
+          <motion.div
+            key={tier.id}
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.1, duration: 0.6 }}
+            className={`group relative rounded-xl p-8 transition-all overflow-hidden ${tier.featured ? "md:scale-105 z-10" : ""}`}
+            style={{
+              background: tier.featured ? "var(--bg-tertiary)" : "var(--bg-panel)",
+              border: tier.featured ? "1px solid var(--accent)" : "1px solid var(--border-color)",
+            }}
+          >
+            {tier.featured && (
+              <div className="absolute top-0 left-0 right-0 text-center py-1 text-xs font-bold uppercase tracking-wide" style={{ background: "var(--accent)", color: "white" }}>
+                Самый популярный
+              </div>
+            )}
+
+            <div className={`relative z-10 ${tier.featured ? "pt-4" : ""}`}>
+              <h3 className="text-base font-bold tracking-wide uppercase mb-2" style={{ color: tier.featured ? "var(--accent)" : "var(--text-muted)" }}>
+                {tier.label}
+              </h3>
+
+              {/* Price */}
+              {tier.id !== "api" ? (
+                <div className="mb-1">
+                  <span className="text-3xl sm:text-4xl font-black" style={{ color: "var(--text-primary)" }}>
+                    {tier.id === "scout" ? prices.scout : prices.hunter}
+                  </span>
+                  <span className="text-sm ml-1" style={{ color: "var(--text-muted)" }}>/мес</span>
+                </div>
+              ) : (
+                <div className="text-2xl font-black mb-1" style={{ color: "var(--text-primary)" }}>По запросу</div>
+              )}
+
+              <div className={`text-sm mb-6 ${tier.featured ? "italic" : ""}`} style={{ color: "var(--text-muted)" }}>
+                {tier.badge}
+              </div>
+
+              <ul className="space-y-3 mb-8">
+                {tier.features.map((f) => (
+                  <li key={f} className="flex items-start gap-3 text-sm sm:text-base" style={{ color: tier.featured ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                    {tier.featured
+                      ? <Zap size={16} className="mt-1 flex-shrink-0" style={{ color: "var(--accent)" }} />
+                      : <CheckCircle2 size={16} className="mt-1 flex-shrink-0" style={{ color: "var(--neon-green)" }} />
+                    }
+                    {f}
+                  </li>
+                ))}
+              </ul>
+
+              <motion.button
+                className="w-full py-3.5 rounded-lg font-bold text-sm transition-all"
+                style={tier.featured
+                  ? { background: "var(--accent)", color: "white" }
+                  : { background: "transparent", border: "1px solid var(--border-color)", color: "var(--text-primary)" }
+                }
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={openRegister}
+              >
+                {tier.cta}
+              </motion.button>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Comparison table */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        className="rounded-xl overflow-hidden"
+        style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}
+      >
+        <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--border-color)" }}>
+          <h3 className="font-display font-bold text-lg" style={{ color: "var(--text-primary)" }}>Сравнение планов</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
+                <th className="text-left px-6 py-3 font-medium" style={{ color: "var(--text-muted)" }}>Возможность</th>
+                <th className="text-center px-4 py-3 font-bold" style={{ color: "var(--text-secondary)" }}>Scout</th>
+                <th className="text-center px-4 py-3 font-bold" style={{ color: "var(--accent)" }}>Hunter</th>
+                <th className="text-center px-4 py-3 font-bold" style={{ color: "var(--text-secondary)" }}>Enterprise</th>
+              </tr>
+            </thead>
+            <tbody>
+              {COMPARISON.map((row, i) => (
+                <tr key={row.name} style={{ borderBottom: i < COMPARISON.length - 1 ? "1px solid var(--border-color)" : "none" }}>
+                  <td className="px-6 py-3 font-medium" style={{ color: "var(--text-primary)" }}>{row.name}</td>
+                  <td className="text-center px-4 py-3" style={{ color: String(row.scout) === "—" ? "var(--text-muted)" : "var(--text-secondary)" }}>{row.scout}</td>
+                  <td className="text-center px-4 py-3 font-medium" style={{ color: String(row.hunter) === "—" ? "var(--text-muted)" : "var(--accent)" }}>{row.hunter}</td>
+                  <td className="text-center px-4 py-3" style={{ color: String(row.enterprise) === "—" ? "var(--text-muted)" : "var(--text-secondary)" }}>{row.enterprise}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </motion.div>
+    </section>
+  );
+}
+
 /* ═══════════════════════════ PAGE ═════════════════════════════════ */
 export default function PricingPage() {
   const { openRegister } = useLandingAuth();
@@ -140,72 +290,7 @@ export default function PricingPage() {
         </section>
 
         {/* ── Pricing Grid ─────────────────────────────────────── */}
-        <section className="px-5 sm:px-8 pb-24 sm:pb-32 max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {PRICING_TIERS.map((tier, i) => (
-              <motion.div
-                key={tier.id}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1, duration: 0.6 }}
-                className={`group relative rounded-xl p-8 transition-all overflow-hidden ${
-                  tier.featured ? "md:scale-105 z-10" : ""
-                }`}
-                style={{
-                  background: tier.featured ? "var(--bg-tertiary)" : "var(--bg-panel)",
-                  border: tier.featured ? "1px solid var(--accent)" : "1px solid var(--border-color)",
-                }}
-              >
-                <div className="relative z-10">
-                  <h3
-                    className="text-base font-bold tracking-wide uppercase mb-4"
-                    style={{ color: tier.featured ? "var(--accent)" : "var(--text-muted)" }}
-                  >
-                    {tier.label}
-                  </h3>
-                  <div className="text-3xl sm:text-4xl font-black uppercase mb-2" style={{ color: "var(--text-primary)" }}>
-                    {tier.name}
-                  </div>
-                  <div
-                    className={`text-sm font-bold mb-6 tracking-wide ${tier.featured ? "italic" : ""}`}
-                    style={{ color: tier.featured ? "var(--text-secondary)" : "var(--accent)" }}
-                  >
-                    {tier.badge}
-                  </div>
-
-                  <ul className="space-y-4 mb-8">
-                    {tier.features.map((f) => (
-                      <li
-                        key={f}
-                        className="flex items-center gap-3 text-base"
-                        style={{ color: tier.featured ? "var(--text-primary)" : "var(--text-secondary)" }}
-                      >
-                        {tier.featured
-                          ? <Zap size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />
-                          : <CheckCircle2 size={16} style={{ color: "var(--neon-green)", flexShrink: 0 }} />
-                        }
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-
-                  <motion.button
-                    className="w-full py-4 rounded-lg font-bold uppercase tracking-wide text-sm transition-all"
-                    style={tier.featured
-                      ? { background: "var(--accent)", color: "white" }
-                      : { background: "transparent", border: "1px solid var(--border-color)", color: "var(--text-primary)" }
-                    }
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={openRegister}
-                  >
-                    {tier.cta}
-                  </motion.button>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </section>
+        <PricingSection openRegister={openRegister} />
 
         {/* ── Partners ─────────────────────────────────────────── */}
         <section className="py-20 sm:py-24" style={{ background: "var(--bg-secondary)", borderTop: "1px solid var(--border-color)", borderBottom: "1px solid var(--border-color)" }}>
@@ -219,11 +304,11 @@ export default function PricingPage() {
                   className="font-display font-black tracking-tight uppercase mb-6"
                   style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", color: "var(--text-primary)" }}
                 >
-                  Сеть Партнёров
+                  Инфраструктура
                 </motion.h2>
                 <p className="text-sm leading-relaxed mb-8" style={{ color: "var(--text-secondary)" }}>
-                  Мы сотрудничаем с лидерами индустрии кибербезопасности и системного анализа,
-                  чтобы предоставить вам самые точные данные в режиме реального времени.
+                  X Hunter работает на ведущих облачных платформах.
+                  Ваши данные защищены, сервис доступен 99.9% времени, серверы в нескольких регионах.
                 </p>
                 <div className="space-y-4">
                   <div className="p-4 rounded-lg flex gap-4" style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}>

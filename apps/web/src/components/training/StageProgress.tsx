@@ -39,7 +39,7 @@ export default function StageProgressBar({
       }}
     >
       <div
-        className="font-mono text-xs uppercase tracking-wider mb-3"
+        className="text-xs mb-3"
         style={{ color: "var(--text-muted)" }}
       >
         Этапы скрипта
@@ -121,7 +121,7 @@ export default function StageProgressBar({
 
               {/* Label */}
               <span
-                className="text-xs font-mono leading-tight text-center"
+                className="text-[10px] leading-tight text-center"
                 style={{
                   color: isCompleted
                     ? "var(--success, #00FF94)"
@@ -130,12 +130,12 @@ export default function StageProgressBar({
                       : "var(--text-muted)",
                 }}
               >
-                {label.short}
+                {label.full}
               </span>
 
               {/* Tooltip with context hint */}
               <div
-                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-lg text-xs font-mono opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 w-40 text-center"
+                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 w-40 text-center"
                 style={{
                   background: "var(--surface, #1a1a2e)",
                   border: "1px solid var(--border-color)",
@@ -183,7 +183,7 @@ export default function StageProgressBar({
           );
         })}
         <span
-          className="ml-2 text-xs font-mono"
+          className="ml-2 text-xs"
           style={{ color: "var(--text-muted)" }}
         >
           {stagesCompleted.length}/{totalStages}

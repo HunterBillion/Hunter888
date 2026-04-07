@@ -204,7 +204,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
                 className="fixed inset-0 z-[200] cursor-pointer"
-                style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(8px)" }}
+                style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)" }}
                 onClick={closePanel}
               />
 

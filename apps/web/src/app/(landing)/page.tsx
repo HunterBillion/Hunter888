@@ -40,7 +40,7 @@ const TERMINAL_SCENARIOS = [
     { text: "  Скрипт          ████████░░  82%", delay: 300 },
     { text: "  Возражения       ██████░░░░  61%", delay: 600 },
     { text: "  Коммуникация     ███████░░░  73%", delay: 900 },
-    { text: "  Soft skills      ████████░░  78%", delay: 1200 },
+    { text: "  Эмпатия          ████████░░  78%", delay: 1200 },
     { text: "  ⚠ Ловушка: ложная срочность", delay: 1600 },
     { text: "  Итог: 72/100 — Silver III", delay: 2000 },
   ],
@@ -49,7 +49,7 @@ const TERMINAL_SCENARIOS = [
     { text: "  Скрипт          █████████░  91%", delay: 300 },
     { text: "  Возражения       ████████░░  84%", delay: 600 },
     { text: "  Коммуникация     ██████████  96%", delay: 900 },
-    { text: "  Soft skills      █████████░  88%", delay: 1200 },
+    { text: "  Эмпатия          █████████░  88%", delay: 1200 },
     { text: "  ✓ Ловушки пройдены", delay: 1600 },
     { text: "  Итог: 89/100 — Gold I ↑", delay: 2000 },
   ],
@@ -247,7 +247,7 @@ export default function Home() {
       {/* ═══ HERO ═══════════════════════════════════════════════════ */}
       <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0"><WaveScene /></div>
-        <div className="absolute inset-0 z-[1] pointer-events-none" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.15) 50%, rgba(0,0,0,0.4) 100%)" }} />
+        <div className="absolute inset-0 z-[1] pointer-events-none" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.10) 40%, rgba(0,0,0,0.45) 80%, rgba(0,0,0,0.75) 100%)" }} />
         <div className="absolute inset-0 z-[2] pointer-events-none" style={{ background: "radial-gradient(ellipse at 50% 55%, rgba(99,102,241,0.22) 0%, transparent 55%)" }} />
 
         <div className="relative z-[4] text-center px-4 sm:px-6 w-full max-w-4xl mx-auto pt-16 sm:pt-20">
@@ -287,7 +287,18 @@ export default function Home() {
             ))}
           </motion.div>
 
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.78 }} className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5">
+          {/* CTA in Hero */}
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.72 }} className="mb-5">
+            <button
+              onClick={openRegister}
+              className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl text-base font-bold transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              style={{ background: "var(--accent)", color: "white" }}
+            >
+              Начать бесплатно <ArrowRight size={18} />
+            </button>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.85 }} className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5">
             {TRUST.map((t) => (
               <span key={t} className="flex items-center gap-2 text-sm sm:text-base" style={{ color: "var(--text-secondary)" }}>
                 <CheckCircle2 size={16} style={{ color: "var(--neon-green)", flexShrink: 0 }} />{t}
@@ -297,12 +308,16 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ═══ TRANSITION ═══════════════════════════════════════════ */}
-      <div aria-hidden style={{ height: "120px", marginTop: "-120px", position: "relative", zIndex: 5, background: "linear-gradient(180deg, transparent 0%, var(--bg-secondary) 100%)", pointerEvents: "none" }} />
-
       {/* ═══ BENTO GRID ═══════════════════════════════════════════ */}
-      <section className="relative overflow-hidden" style={{ background: "var(--bg-secondary)" }}>
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: `linear-gradient(to right, var(--text-muted) 1px, transparent 1px), linear-gradient(to bottom, var(--text-muted) 1px, transparent 1px)`, backgroundSize: "24px 24px" }} />
+      <section className="relative overflow-hidden" style={{ background: "var(--bg-primary)" }}>
+        {/* Grid pattern — fades in from top */}
+        <div className="absolute inset-0 pointer-events-none" style={{
+          backgroundImage: `linear-gradient(to right, var(--text-muted) 1px, transparent 1px), linear-gradient(to bottom, var(--text-muted) 1px, transparent 1px)`,
+          backgroundSize: "24px 24px",
+          opacity: 0.03,
+          maskImage: "linear-gradient(to bottom, transparent 0%, black 15%)",
+          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 15%)",
+        }} />
 
         <div className="relative z-10 max-w-[1440px] mx-auto px-5 sm:px-8 md:px-10 pt-14 sm:pt-20 pb-12">
 

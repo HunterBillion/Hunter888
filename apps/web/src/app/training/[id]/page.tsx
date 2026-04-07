@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
@@ -22,22 +22,18 @@ import ChatMessage from "@/components/training/ChatMessage";
 import { CrystalMic } from "@/components/training/CrystalMic";
 import TranscriptionIndicator from "@/components/training/TranscriptionIndicator";
 import VibeMeter from "@/components/training/VibeMeter";
-import ScriptAdherence, { type CheckpointInfo } from "@/components/training/ScriptAdherence";
-import TalkListenRatio from "@/components/training/TalkListenRatio";
-import DifficultyIndicator from "@/components/training/DifficultyIndicator";
+import { type CheckpointInfo } from "@/components/training/ScriptAdherence";
 import StageProgressBar from "@/components/training/StageProgress";
 import WhisperPanel from "@/components/training/WhisperPanel";
 import { HangupModal } from "@/components/training/HangupModal";
-import { TrapNotification, TrapSummaryBadge, type TrapEvent } from "@/components/training/TrapNotification";
+import { TrapNotification, type TrapEvent } from "@/components/training/TrapNotification";
 import { ClientCard, type ClientCardData } from "@/components/training/ClientCard";
 import { ClientCardMini } from "@/components/training/ClientCardMini";
 import { HumanFactorIcons } from "@/components/training/HumanFactorIcons";
 import { StoryProgress } from "@/components/training/StoryProgress";
 import { ConsequenceToast } from "@/components/training/ConsequenceToast";
 import { PreCallBriefOverlay } from "@/components/training/PreCallBriefOverlay";
-import RealtimeScores from "@/components/training/RealtimeScores";
 import TrapLog from "@/components/training/TrapLog";
-import LiveEmotionTimeline from "@/components/training/LiveEmotionTimeline";
 import { StoryCallReportOverlay } from "@/components/training/StoryCallReportOverlay";
 import { BetweenCallsOverlay } from "@/components/training/BetweenCallsOverlay";
 import { useSessionStore } from "@/stores/useSessionStore";
@@ -45,7 +41,6 @@ import { TrainingErrorBoundary } from "@/components/training/TrainingErrorBounda
 import { TrainingToasts } from "@/components/training/TrainingToasts";
 import { useHotkeys } from "@/hooks/useHotkeys";
 import { useSound } from "@/hooks/useSound";
-import { LogoSeparator } from "@/components/ui/LogoSeparator";
 import {
   type EmotionState,
   type ObjectionHint,
@@ -164,6 +159,15 @@ export default function TrainingSessionPage() {
     max_possible_realtime: number;
   } | null>(null);
   const [preferBrowserSpeech, setPreferBrowserSpeech] = useState(false);
+  const [sttWarningDismissed, setSttWarningDismissed] = useState(false);
+
+  // Auto-dismiss STT warning after 5 seconds
+  useEffect(() => {
+    if (!s.sttAvailable && s.sessionState === "ready" && !sttWarningDismissed) {
+      const t = setTimeout(() => setSttWarningDismissed(true), 5000);
+      return () => clearTimeout(t);
+    }
+  }, [s.sttAvailable, s.sessionState, sttWarningDismissed]);
 
   // ── Micro-animation states ──
   const [scorePulse, setScorePulse] = useState(false);
@@ -912,12 +916,10 @@ export default function TrainingSessionPage() {
                 : "0 0 10px #FF3333",
             }}
           />
-          <span className="font-mono text-xs tracking-widest" style={{ color: "var(--text-muted)" }}>
-            LAYER 4: <span style={{ color: "var(--text-primary)" }}>
-              {connectionState === "connected" ? "ONLINE"
-                : connectionState === "reconnecting" ? "RECONNECTING..."
-                : "OFFLINE"}
-            </span>
+          <span className="text-xs" style={{ color: "var(--text-primary)" }}>
+            {connectionState === "connected" ? "Подключено"
+              : connectionState === "reconnecting" ? "Переподключение..."
+              : "Нет связи"}
           </span>
         </div>
 
@@ -948,7 +950,7 @@ export default function TrainingSessionPage() {
           </motion.button>
 
           <button onClick={() => s.setShowAbortModal(true)} disabled={s.sessionState !== "ready"} className="btn-neon btn-neon--danger" aria-label="Прервать тренировку">
-            <span>ABORT FLIGHT</span>
+            <span>Завершить звонок</span>
           </button>
         </div>
       </header>
@@ -1030,12 +1032,11 @@ export default function TrainingSessionPage() {
         <aside className="training-session-panel hidden lg:flex flex-col">
           <div className="glass-panel rounded-xl flex min-h-0 flex-1 flex-col overflow-hidden" style={{ borderLeft: "2px solid rgba(99,102,241,0.18)" }}>
             <div className="px-3 py-2 border-b flex justify-between items-center shrink-0" style={{ borderColor: "var(--border-color)", background: "rgba(0,0,0,0.2)" }}>
-              <h2 className="font-display tracking-widest text-xs flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
-                <Radio size={12} style={{ color: "var(--accent)" }} /> TRANSCRIPT
+              <h2 className="font-display tracking-wide text-xs flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
+                <Radio size={12} style={{ color: "var(--accent)" }} /> Диалог
               </h2>
               <span className="flex gap-1 items-center">
                 <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ background: "var(--accent)" }} />
-                <span className="text-xs font-mono font-semibold" style={{ color: "var(--accent)" }}>REC</span>
               </span>
             </div>
 
@@ -1112,18 +1113,24 @@ export default function TrainingSessionPage() {
             </div>
           </div>
 
-          {/* STT warning */}
-          {!s.sttAvailable && s.sessionState === "ready" && (
+          {/* STT warning — dismissible */}
+          <AnimatePresence>
+          {!s.sttAvailable && s.sessionState === "ready" && !sttWarningDismissed && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
               className="absolute top-6 right-6 z-30 flex items-center gap-2 rounded-xl px-3 py-2 text-xs"
               style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)", color: "var(--warning)" }}
             >
               <AlertTriangle size={14} />
-              STT недоступно
+              Голосовой режим недоступен. Используйте текстовый чат.
+              <button onClick={() => setSttWarningDismissed(true)} className="ml-1 hover:opacity-70" aria-label="Закрыть">
+                <XCircle size={14} />
+              </button>
             </motion.div>
           )}
+          </AnimatePresence>
 
           {/* Avatar */}
           <div className="relative w-full max-w-[min(50vh,400px)] aspect-square flex items-center justify-center z-10">
@@ -1198,14 +1205,14 @@ export default function TrainingSessionPage() {
           <div className="glass-panel rounded-xl p-4" style={{ borderRight: "2px solid rgba(99,102,241,0.24)" }}>
             <div className="mb-3 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
-                <div className="font-mono text-xs uppercase tracking-[0.18em] shrink-0 font-semibold" style={{ color: "var(--accent)" }}>
+                <div className="text-xs shrink-0 font-semibold" style={{ color: "var(--accent)" }}>
                   Клиент
                 </div>
                 <div className="font-display text-base font-bold tracking-wide truncate" style={{ color: "var(--text-primary)" }}>
                   {s.characterName}
                 </div>
               </div>
-              <div className="rounded-lg px-2.5 py-1 text-xs font-mono uppercase tracking-wider shrink-0 font-semibold" style={{ background: "rgba(99,102,241,0.12)", color: "var(--accent)" }}>
+              <div className="rounded-lg px-2.5 py-1 text-xs shrink-0 font-semibold" style={{ background: "rgba(99,102,241,0.12)", color: "var(--accent)" }}>
                 {emotionLabel}
               </div>
             </div>
@@ -1213,7 +1220,7 @@ export default function TrainingSessionPage() {
             <VibeMeter emotion={s.emotion} />
 
             <div className="mt-3 rounded-lg p-3 relative overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
-              <div className="flex items-center justify-between text-xs font-mono uppercase tracking-wider font-semibold" style={{ color: "var(--text-secondary)" }}>
+              <div className="flex items-center justify-between text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
                 <span>Принятие сделки</span>
                 <motion.span
                   key={acceptanceScore}
@@ -1222,7 +1229,7 @@ export default function TrainingSessionPage() {
                   transition={{ duration: 0.4 }}
                   className="font-bold"
                 >
-                  {acceptanceScore}/100
+                  {s.messages.length === 0 ? "—" : `${acceptanceScore}/100`}
                 </motion.span>
               </div>
               <div className="mt-1.5 h-2 overflow-hidden rounded-full" style={{ background: "var(--input-bg)" }}>
@@ -1242,42 +1249,12 @@ export default function TrainingSessionPage() {
               </div>
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {[
-                { label: "Доверие", value: trustScore, max: 10, color: "#3B82F6" },
-                { label: "Сопротивл.", value: resistanceScore, max: 10, color: "#F59E0B" },
-                { label: "Давление", value: pressureScore, max: 100, color: "#EF4444" },
-                { label: "Скрипт", value: Math.round(s.scriptScore), max: 100, color: "#6366F1" },
-              ].map((item) => (
-                <motion.div
-                  key={item.label}
-                  className="rounded-lg px-3 py-2 relative overflow-hidden group/stat"
-                  style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
-                  whileHover={{ scale: 1.03, borderColor: `${item.color}33` }}
-                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                >
-                  {/* Micro progress bar at bottom */}
-                  <div className="absolute bottom-0 left-0 h-[2px] transition-all duration-700 ease-out" style={{ width: `${(item.value / item.max) * 100}%`, background: `linear-gradient(90deg, transparent, ${item.color})`, opacity: 0.5 }} />
-                  <div className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{item.label}</div>
-                  <motion.div
-                    className="text-lg font-bold leading-tight"
-                    style={{ color: item.color }}
-                    key={`${item.label}-${item.value}`}
-                    initial={{ scale: 1.15, opacity: 0.7 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    {item.value}<span className="ml-0.5 text-xs" style={{ color: "var(--text-muted)" }}>/{item.max}</span>
-                  </motion.div>
-                </motion.div>
-              ))}
-            </div>
 
             {(s.humanFactors.length > 0 || s.consequences.length > 0) && (
               <div className="mt-2 space-y-2">
                 {s.humanFactors.length > 0 && (
                   <div>
-                    <div className="mb-1.5 text-xs font-mono uppercase tracking-wider font-semibold" style={{ color: "var(--text-secondary)" }}>
+                    <div className="mb-1.5 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
                       Человеческие факторы
                     </div>
                     <HumanFactorIcons factors={s.humanFactors} />
@@ -1285,17 +1262,17 @@ export default function TrainingSessionPage() {
                 )}
                 {s.consequences.length > 0 && (
                   <div>
-                    <div className="mb-1.5 text-xs font-mono uppercase tracking-wider font-semibold" style={{ color: "var(--text-secondary)" }}>
+                    <div className="mb-1.5 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
                       Последствия
                     </div>
                     <div className="space-y-1">
                       {s.consequences.slice(-2).reverse().map((consequence, index) => (
                         <div key={`${consequence.call}-${consequence.type}-${index}`} className="rounded-lg px-3 py-2 text-xs" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.16)", color: "var(--text-secondary)" }}>
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-mono text-xs uppercase tracking-wider font-semibold" style={{ color: "#F87171" }}>
+                            <span className="text-xs font-semibold" style={{ color: "#F87171" }}>
                               {consequence.type.replace(/_/g, " ")}
                             </span>
-                            <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                               #{consequence.call}
                             </span>
                           </div>
@@ -1317,31 +1294,8 @@ export default function TrainingSessionPage() {
             totalStages={s.totalStages}
           />
 
-          <ScriptAdherence progress={s.scriptScore} checkpointsHit={s.checkpointsHit} checkpointsTotal={s.checkpointsTotal} checkpoints={s.checkpoints} highlightCheckpoint={s.checkpointHint?.checkpoint ?? null} newCheckpoint={s.newCheckpoint} isPreliminary={s.isPreliminaryScore} />
-
-          <TalkListenRatio talkPercent={talkPercent} />
-
-          <DifficultyIndicator
-            effectiveDifficulty={s.effectiveDifficulty}
-            modifier={s.difficultyModifier}
-            mode={s.difficultyMode}
-            trend={s.difficultyTrend}
-            goodStreak={s.goodStreak}
-            badStreak={s.badStreak}
-            hadComeback={s.hadComeback}
-          />
-
-          {/* Real-time scores panel */}
-          <RealtimeScores />
-
           {/* Trap history log */}
           <TrapLog />
-
-          {/* Live emotion sparkline */}
-          <LiveEmotionTimeline />
-
-          {/* TrapSummary: always visible (traps can appear any time) */}
-          <TrapSummaryBadge fell={s.trapsFell} dodged={s.trapsDodged} netScore={s.trapNetScore} />
 
           {/* Live Score */}
           <motion.div
@@ -1369,7 +1323,7 @@ export default function TrainingSessionPage() {
               )}
             </AnimatePresence>
             <div className="flex items-center justify-between mb-1">
-              <div className="font-mono text-xs uppercase tracking-wider font-semibold flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
+              <div className="text-xs font-semibold flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
                 Баллы
                 {checkpointFlash && (
                   <motion.span
@@ -1390,21 +1344,21 @@ export default function TrainingSessionPage() {
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ type: "spring", stiffness: 500, damping: 25 }}
               >
-                {Math.round(s.scriptScore)}<span className="text-xs font-normal ml-0.5" style={{ color: "var(--text-muted)" }}>/100</span>
+                {s.messages.length === 0 ? "—" : <>{Math.round(s.scriptScore)}<span className="text-xs font-normal ml-0.5" style={{ color: "var(--text-muted)" }}>/100</span></>}
               </motion.div>
             </div>
             {scoreHint && (
               <div className="mt-4 space-y-2">
                 <div className="flex items-center justify-between text-xs" style={{ color: "var(--text-secondary)" }}>
                   <span>Оценка</span>
-                  <span className="font-mono" style={{ color: "var(--accent)" }}>
+                  <span style={{ color: "var(--accent)" }}>
                     {scoreHint.realtime_estimate}/{scoreHint.max_possible_realtime}
                   </span>
                 </div>
                 {[
                   ["Возражения", scoreHint.objection_handling, "#F59E0B"],
                   ["Коммуникация", scoreHint.communication, "#3B82F6"],
-                  ["Human Factor", scoreHint.human_factor, "#EC4899"],
+                  ["Человеческий фактор", scoreHint.human_factor, "#EC4899"],
                 ].map(([label, value, color]) => (
                   <div key={label as string}>
                     <div className="mb-1 flex items-center justify-between text-xs" style={{ color: "var(--text-muted)" }}>
@@ -1413,7 +1367,6 @@ export default function TrainingSessionPage() {
                         key={`${label}-${Math.round(value as number)}`}
                         initial={{ scale: 1.15 }}
                         animate={{ scale: 1 }}
-                        className="font-mono"
                         style={{ color: color as string }}
                       >
                         {Math.round(value as number)}

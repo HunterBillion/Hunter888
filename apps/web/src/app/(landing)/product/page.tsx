@@ -35,11 +35,11 @@ const SCORING = [
 
 /* ── PvP Ranks ────────────────────────────────────────────────────── */
 const PVP_RANKS = [
-  { name: "Bronze", divisions: 3, color: "#CD7F32" },
-  { name: "Silver", divisions: 3, color: "#C0C0C0" },
-  { name: "Gold", divisions: 3, color: "#FFD700" },
-  { name: "Platinum", divisions: 3, color: "#E5E4E2" },
-  { name: "Diamond", divisions: 3, color: "#B9F2FF" },
+  { name: "Bronze", divisions: 3, color: "#CD7F32", pct: "47%" },
+  { name: "Silver", divisions: 3, color: "#C0C0C0", pct: "28%" },
+  { name: "Gold", divisions: 3, color: "#FFD700", pct: "15%" },
+  { name: "Platinum", divisions: 3, color: "#E5E4E2", pct: "8%" },
+  { name: "Diamond", divisions: 3, color: "#B9F2FF", pct: "2%" },
 ] as const;
 
 /* ═══════════════════════════ PAGE ═════════════════════════════════ */
@@ -208,11 +208,14 @@ export default function ProductPage() {
 
           {/* Rank visualization */}
           <div className="rounded-xl p-7 sm:p-8" style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}>
-            <h3 className="text-base font-bold mb-6" style={{ color: "var(--text-muted)" }}>
+            <h3 className="text-base font-bold mb-1" style={{ color: "var(--text-muted)" }}>
               24 ранга — от новичка до мастера
             </h3>
+            <p className="text-xs mb-5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
+              Целевое распределение
+            </p>
             <div className="space-y-4">
-              {PVP_RANKS.map(({ name, divisions, color }) => (
+              {PVP_RANKS.map(({ name, divisions, color, pct }) => (
                 <div key={name} className="flex items-center gap-4">
                   <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: color }} />
                   <span className="font-bold text-base w-24" style={{ color }}>{name}</span>
@@ -221,6 +224,7 @@ export default function ProductPage() {
                       <div key={i} className="h-2.5 flex-1 rounded-full" style={{ background: color, opacity: 0.15 + (i * 0.3) }} />
                     ))}
                   </div>
+                  <span className="text-xs font-medium w-10 text-right" style={{ color: "var(--text-muted)" }}>{pct}</span>
                 </div>
               ))}
             </div>
@@ -228,7 +232,15 @@ export default function ProductPage() {
         </motion.section>
 
         {/* ── Activity ticker — social proof ────────────────── */}
-        <div className="overflow-hidden py-6 relative" style={{ borderTop: "1px solid var(--border-color)", borderBottom: "1px solid var(--border-color)" }}>
+        <div
+          className="overflow-hidden py-6 relative"
+          style={{
+            borderTop: "1px solid var(--border-color)",
+            borderBottom: "1px solid var(--border-color)",
+            maskImage: "linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)",
+            WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)",
+          }}
+        >
           <motion.div
             className="flex gap-8 whitespace-nowrap"
             animate={{ x: [0, -1200] }}
@@ -267,7 +279,7 @@ export default function ProductPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {[
               { icon: Flame, title: "Стрики и дейлики", desc: "Ежедневные цели с наградами. Серии тренировок приносят бонусный XP." },
-              { icon: Star, title: "35+ достижений", desc: "Разблокируйте достижения за особые успехи — от редких до легендарных." },
+              { icon: Star, title: "35+ достижений", desc: "От «Первый звонок» до «Легендарный охотник». Редкие, эпические, легендарные." },
               { icon: TrendingUp, title: "20 уровней", desc: "Система прогресса от новичка до эксперта. Каждый уровень открывает новый контент." },
             ].map(({ icon: Icon, title, desc }, i) => (
               <motion.div
