@@ -1498,7 +1498,8 @@ async def seed_levels_and_achievements() -> None:
                 if lvl["level"] not in existing_levels:
                     session.add(LevelDefinition(**lvl))
                 else:
-                    # Upsert: обновляем существующие
+                    # Upsert: обновляем существующие (use json.dumps for asyncpg JSONB compat)
+                    import json as _json
                     await session.execute(
                         text("""
                             UPDATE level_definitions SET
@@ -1506,16 +1507,16 @@ async def seed_levels_and_achievements() -> None:
                                 description = :description,
                                 xp_required = :xp_required,
                                 max_difficulty = :max_difficulty,
-                                unlocked_archetypes = :unlocked_archetypes::jsonb,
-                                unlocked_scenarios = :unlocked_scenarios::jsonb,
-                                unlocked_mechanics = :unlocked_mechanics::jsonb
+                                unlocked_archetypes = cast(:unlocked_archetypes as jsonb),
+                                unlocked_scenarios = cast(:unlocked_scenarios as jsonb),
+                                unlocked_mechanics = cast(:unlocked_mechanics as jsonb)
                             WHERE level = :level
                         """),
                         {
                             **lvl,
-                            "unlocked_archetypes": str(lvl["unlocked_archetypes"]).replace("'", '"'),
-                            "unlocked_scenarios": str(lvl["unlocked_scenarios"]).replace("'", '"'),
-                            "unlocked_mechanics": str(lvl["unlocked_mechanics"]).replace("'", '"'),
+                            "unlocked_archetypes": _json.dumps(lvl["unlocked_archetypes"]),
+                            "unlocked_scenarios": _json.dumps(lvl["unlocked_scenarios"]),
+                            "unlocked_mechanics": _json.dumps(lvl["unlocked_mechanics"]),
                         },
                     )
 

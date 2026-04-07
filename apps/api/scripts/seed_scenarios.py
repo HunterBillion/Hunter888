@@ -1330,7 +1330,7 @@ async def seed_scenario_templates() -> None:
                             continue
                         param_name = f"p_{key}"
                         if key == "stages":
-                            set_clauses.append(f"{key} = :{param_name}::jsonb")
+                            set_clauses.append(f"{key} = cast(:{param_name} as jsonb)")
                             params[param_name] = json.dumps(value, ensure_ascii=False)
                         elif isinstance(value, bool):
                             set_clauses.append(f"{key} = :{param_name}")
