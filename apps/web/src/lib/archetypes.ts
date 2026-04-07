@@ -1096,6 +1096,14 @@ export function getTierColor(tier: ArchetypeTier): string {
   }
 }
 
+/** Get color based on difficulty level (FIX-3: colors reflect difficulty, not archetype group) */
+export function getDifficultyColor(difficulty: number): string {
+  if (difficulty <= 3) return "#10B981"; // green
+  if (difficulty <= 6) return "#F59E0B"; // amber
+  if (difficulty <= 8) return "#EF4444"; // red
+  return "#7C3AED"; // purple/extreme
+}
+
 /** Get tier label */
 export function getTierLabel(tier: ArchetypeTier): string {
   switch (tier) {

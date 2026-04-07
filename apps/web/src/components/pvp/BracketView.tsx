@@ -186,7 +186,7 @@ export function BracketView({ bracket }: Props) {
               {bracket.participants.find((p) => p.final_placement === 1)?.full_name}
             </div>
             <div className="badge-neon mt-2" style={{ display: "inline-block" }}>
-              ПОБЕДИТЕЛЬ ТУРНИРА
+              Победитель турнира
             </div>
           </div>
         </motion.div>

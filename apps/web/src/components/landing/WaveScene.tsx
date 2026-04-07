@@ -39,12 +39,12 @@ const vertexShader = /* glsl */ `
     vDepth = clamp((pos.z + zRange * 0.5) / zRange, 0.0, 1.0);
 
     vec3 wave = vec3(0.0);
-    wave += gerstner(pos.xz, 0.12, 28.0, vec2(1.0, 0.3),  0.6, t);
-    wave += gerstner(pos.xz, 0.08, 22.0, vec2(-0.5, 0.8), 0.5, t);
-    wave += gerstner(pos.xz, 0.06, 12.0, vec2(0.7, -0.4), 1.0, t);
-    wave += gerstner(pos.xz, 0.04, 8.0,  vec2(-0.3, 0.6), 1.3, t);
-    wave += gerstner(pos.xz, 0.025, 5.0, vec2(0.9, 0.1),  1.6, t);
-    wave += gerstner(pos.xz, 0.02, 3.5,  vec2(-0.6,-0.7), 2.0, t);
+    wave += gerstner(pos.xz, 0.14, 28.0, vec2(1.0, 0.3),  0.75, t);
+    wave += gerstner(pos.xz, 0.10, 22.0, vec2(-0.5, 0.8), 0.65, t);
+    wave += gerstner(pos.xz, 0.07, 12.0, vec2(0.7, -0.4), 1.25, t);
+    wave += gerstner(pos.xz, 0.05, 8.0,  vec2(-0.3, 0.6), 1.6, t);
+    wave += gerstner(pos.xz, 0.03, 5.0,  vec2(0.9, 0.1),  2.0, t);
+    wave += gerstner(pos.xz, 0.025, 3.5, vec2(-0.6,-0.7), 2.5, t);
 
     float depthScale = 0.3 + vDepth * 0.7;
     wave *= depthScale * uAmplitude;
@@ -92,8 +92,8 @@ const vertexShader = /* glsl */ `
 
     vHeight = pos.y - uLayerOffset;
     // Soft edge fade — points near boundaries fade out smoothly
-    float xEdge = 1.0 - smoothstep(0.7, 1.0, abs(position.x) / (uAmplitude > 0.5 ? 80.0 : 70.0));
-    float zEdge = 1.0 - smoothstep(0.7, 1.0, abs(position.z) / (uAmplitude > 0.5 ? 50.0 : 40.0));
+    float xEdge = 1.0 - smoothstep(0.85, 1.0, abs(position.x) / (uAmplitude > 0.5 ? 85.0 : 75.0));
+    float zEdge = 1.0 - smoothstep(0.82, 1.0, abs(position.z) / (uAmplitude > 0.5 ? 55.0 : 45.0));
     vEdgeFade = xEdge * zEdge;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
     float dist = length((modelViewMatrix * vec4(pos, 1.0)).xyz);
@@ -137,11 +137,11 @@ const fragmentShader = /* glsl */ `
       float rimD = abs(vMouseDist - mR * 0.72);
       if (rimD < mR * 0.28) {
         float rF = 1.0 - rimD / (mR * 0.28);
-        color = mix(color, uColorFoam, rF * rF * 0.7 * uMouseActive);
-        alpha = min(1.0, alpha + rF * 0.4 * uMouseActive);
+        color = mix(color, uColorFoam * 1.3, rF * rF * 0.85 * uMouseActive);
+        alpha = min(1.0, alpha + rF * 0.55 * uMouseActive);
       }
-      color *= 1.0 - s * 0.25 * uMouseActive;
-      alpha = min(1.0, alpha + s * 0.2 * uMouseActive);
+      color *= 1.0 - s * 0.15 * uMouseActive;
+      alpha = min(1.0, alpha + s * 0.3 * uMouseActive);
     }
 
     if (h > 0.55) alpha = min(1.0, alpha + (h - 0.55) * 0.5);
@@ -338,13 +338,13 @@ function getLayerConfigs(): { main: LayerCfg; sub: LayerCfg } {
       layerOffset: 0,
       amplitude: 1.0,
       timeOffset: 0,
-      alphaBase: 0.18,
-      alphaDepthMul: 0.55,
-      cols: Math.round(300 * q),
-      rows: Math.round(100 * q),
+      alphaBase: 0.24,
+      alphaDepthMul: 0.60,
+      cols: Math.round(400 * q),
+      rows: Math.round(130 * q),
       xSpan: 160,
       zSpan: 100,
-      colorsDark:  { deep: 0x0c0423, mid: 0x501c9b, crest: 0x8a2be2, foam: 0xd282ff },
+      colorsDark:  { deep: 0x1a0840, mid: 0x6b2dc4, crest: 0x9a3bef, foam: 0xd282ff },
       colorsLight: { deep: 0x7b68ae, mid: 0x8b6cc2, crest: 0x905ced, foam: 0xc4a8f0 },
     },
     sub: {
@@ -353,11 +353,11 @@ function getLayerConfigs(): { main: LayerCfg; sub: LayerCfg } {
       timeOffset: 5.0,
       alphaBase: 0.05,
       alphaDepthMul: 0.25,
-      cols: Math.round(140 * q),
-      rows: Math.round(50 * q),
+      cols: Math.round(200 * q),
+      rows: Math.round(65 * q),
       xSpan: 140,
       zSpan: 80,
-      colorsDark:  { deep: 0x080318, mid: 0x2e0f6b, crest: 0x6a1fb0, foam: 0x9b5cd6 },
+      colorsDark:  { deep: 0x10052a, mid: 0x3a1580, crest: 0x7a2bc8, foam: 0xab6ce0 },
       colorsLight: { deep: 0x9080b8, mid: 0xa090d0, crest: 0x7b5cb0, foam: 0xb8a0d8 },
     },
   };

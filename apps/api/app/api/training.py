@@ -335,6 +335,16 @@ async def start_session(
         if not custom_params:
             custom_params = None
 
+    # Validate that scenario exists and is active
+    scenario_check = await db.execute(
+        select(Scenario).where(Scenario.id == scenario_id, Scenario.is_active.is_(True))
+    )
+    if scenario_check.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=err.SCENARIO_NOT_FOUND,
+        )
+
     # Check rate limit before creating session
     try:
         await sm_check_rate_limit(user.id, db)

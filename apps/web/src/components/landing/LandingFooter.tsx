@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
 import {
   Brain,
   Swords,
@@ -38,16 +37,6 @@ export function LandingFooter() {
       className="relative z-10 border-t"
       style={{ borderColor: "var(--border-color)", background: "var(--bg-secondary)" }}
     >
-      {/* Telemetry line — visual separator */}
-      <div className="h-px w-full relative overflow-hidden">
-        <motion.div
-          className="absolute h-full w-24"
-          style={{ background: "linear-gradient(90deg, transparent, var(--accent), transparent)" }}
-          animate={{ x: ["-96px", "100vw"] }}
-          transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-        />
-      </div>
-
       <div className="max-w-7xl mx-auto px-5 sm:px-8 md:px-12 pt-14 pb-10">
         {/* Main grid — 5 columns on desktop */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-10 md:gap-8">
@@ -56,33 +45,17 @@ export function LandingFooter() {
           <div className="col-span-2 md:col-span-2">
             <Link href="/" className="inline-flex items-center gap-1 mb-4 group">
               <span className="font-display font-black text-2xl" style={{ color: "var(--accent)" }}>X</span>
-              <span className="font-display font-black text-sm tracking-[0.16em]" style={{ color: "var(--text-primary)" }}>·HUNTER</span>
+              <span className="font-display font-black text-sm tracking-[0.16em]" style={{ color: "var(--text-primary)" }}> HUNTER</span>
             </Link>
             <p className="text-sm leading-relaxed max-w-[280px] mb-5" style={{ color: "var(--text-secondary)" }}>
               AI-платформа обучения менеджеров через диалоговые симуляции с нейросетевыми клиентами.
               60 сценариев. 100 архетипов. 10 слоёв скоринга.
             </p>
 
-            {/* System status */}
-            <div
-              className="inline-flex items-center gap-3 rounded-lg px-4 py-2.5"
-              style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)" }}
-            >
-              <div className="flex items-center gap-1.5">
-                <motion.div
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: "var(--neon-green)" }}
-                  animate={{ opacity: [1, 0.4, 1] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                />
-                <span className="text-[10px] font-mono font-bold tracking-wider" style={{ color: "var(--neon-green)" }}>
-                  OPERATIONAL
-                </span>
-              </div>
-              <div className="w-px h-3" style={{ background: "var(--border-color)" }} />
-              <span className="text-[10px] font-mono tracking-wider" style={{ color: "var(--text-muted)" }}>
-                UPTIME 99.9%
-              </span>
+            {/* Status */}
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--neon-green)" }} />
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Все системы работают</span>
             </div>
           </div>
 
@@ -190,19 +163,9 @@ export function LandingFooter() {
           className="mt-12 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t"
           style={{ borderColor: "var(--border-color)" }}
         >
-          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-            © {new Date().getFullYear()} X·Hunter. Все права защищены.
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+            © {new Date().getFullYear()} X Hunter. Все права защищены.
           </p>
-
-          <div className="flex items-center gap-6">
-            <span className="text-[10px] font-mono tracking-wider" style={{ color: "var(--text-muted)" }}>
-              React 19 + Next.js 15 + FastAPI
-            </span>
-            <div className="w-px h-3" style={{ background: "var(--border-color)" }} />
-            <span className="text-[10px] font-mono tracking-wider" style={{ color: "var(--text-muted)" }}>
-              v1.0.0
-            </span>
-          </div>
         </div>
       </div>
     </footer>

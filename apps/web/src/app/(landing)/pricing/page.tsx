@@ -14,44 +14,44 @@ import { useLandingAuth } from "@/components/landing/LandingAuthContext";
 const PRICING_TIERS = [
   {
     id: "scout",
-    label: "ТАРИФ: SCOUT",
+    label: "Scout",
     name: "Разведчик",
-    badge: "14 ДНЕЙ БЕСПЛАТНО",
+    badge: "14 дней бесплатно",
     features: [
-      "Базовые сценарии (группы A-C)",
-      "Аналитика темпа и пауз",
-      "5-слойный скоринг",
-      "Квиз 127-ФЗ (базовый)",
+      "Базовые сценарии — холодные, тёплые, входящие",
+      "Анализ темпа речи и пауз после каждого звонка",
+      "Проверка по 5 ключевым параметрам",
+      "Тест знаний по 127-ФЗ",
     ],
-    cta: "Начать бесплатно",
+    cta: "Попробовать бесплатно",
     featured: false,
   },
   {
     id: "hunter",
-    label: "ТАРИФ: HUNTER",
+    label: "Hunter",
     name: "Полный цикл",
-    badge: "STRATEGIC_ADVANTAGE",
+    badge: "Самый популярный",
     features: [
-      "Все 60 сценариев + 100 архетипов",
-      "PvP-Арена и Лидерборд (Glicko-2)",
-      "10-слойный скоринг + детекция ловушек",
-      "Голосовой режим (Speech AI)",
+      "Все 60 сценариев — давление, кризис, торги",
+      "100 типов клиентов — от скептика до манипулятора",
+      "Полная проверка по 10 параметрам + ловушки",
+      "PvP-арена с рейтингом и голосовой режим",
     ],
-    cta: "Запустить охоту",
+    cta: "Начать тренировки",
     featured: true,
   },
   {
     id: "api",
-    label: "ТАРИФ: API PROTOCOL",
-    name: "Enterprise",
-    badge: "МАСШТАБИРОВАНИЕ",
+    label: "Enterprise",
+    name: "Для команд",
+    badge: "Индивидуально",
     features: [
-      "CRM-модуль (12 статусов, compliance)",
-      "Кастомные сценарии и архетипы",
-      "Дашборд РОП + назначение тренировок",
-      "Приоритетная поддержка + методолог",
+      "CRM-модуль — ведите клиентов прямо в платформе",
+      "Создавайте свои сценарии под ваш бизнес",
+      "Дашборд руководителя — видите прогресс команды",
+      "Выделенный методолог и приоритетная поддержка",
     ],
-    cta: "Связаться с отделом",
+    cta: "Связаться с нами",
     featured: false,
   },
 ] as const;
@@ -125,7 +125,7 @@ export default function PricingPage() {
             className="font-display font-black tracking-tighter uppercase mb-6"
             style={{ fontSize: "clamp(2.5rem, 7vw, 5.5rem)", color: "var(--text-primary)" }}
           >
-            Мощность <span className="italic" style={{ color: "var(--accent)" }}>без</span> Лимитов
+            Выберите <span className="italic" style={{ color: "var(--accent)" }}>свой</span> план
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 20 }}
@@ -134,17 +134,13 @@ export default function PricingPage() {
             className="max-w-2xl mx-auto text-base sm:text-lg md:text-xl"
             style={{ color: "var(--text-secondary)" }}
           >
-            Выберите уровень интеграции, необходимый для доминирования в вашей нише.
-            Прозрачные тарифы для разработчиков и предприятий.
+            Начните с бесплатных 14 дней. Никаких скрытых условий — отмена в любой момент.
+            Выберите план, который подходит вашей команде.
           </motion.p>
         </section>
 
         {/* ── Pricing Grid ─────────────────────────────────────── */}
         <section className="px-5 sm:px-8 pb-24 sm:pb-32 max-w-7xl mx-auto">
-          <div className="font-mono text-[10px] mb-4 tracking-wider opacity-70" style={{ color: "var(--accent)" }}>
-            STATUS: STRATEGIC_OFFER_ACTIVE // ACCESS_LEVEL: ENHANCED
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {PRICING_TIERS.map((tier, i) => (
               <motion.div
@@ -158,19 +154,11 @@ export default function PricingPage() {
                 style={{
                   background: tier.featured ? "var(--bg-tertiary)" : "var(--bg-panel)",
                   border: tier.featured ? "1px solid var(--accent)" : "1px solid var(--border-color)",
-                  boxShadow: tier.featured ? "0 0 40px -15px var(--accent-glow)" : "none",
                 }}
               >
-                {/* Background icon */}
-                {!tier.featured && (
-                  <div className="absolute top-0 right-0 p-4 opacity-[0.06] group-hover:opacity-[0.12] transition-opacity">
-                    {tier.id === "scout" ? <Globe size={80} /> : <Zap size={80} />}
-                  </div>
-                )}
-
                 <div className="relative z-10">
                   <h3
-                    className="text-sm font-bold tracking-[0.2em] uppercase mb-4"
+                    className="text-base font-bold tracking-wide uppercase mb-4"
                     style={{ color: tier.featured ? "var(--accent)" : "var(--text-muted)" }}
                   >
                     {tier.label}
@@ -179,7 +167,7 @@ export default function PricingPage() {
                     {tier.name}
                   </div>
                   <div
-                    className={`text-xs font-bold mb-6 tracking-widest ${tier.featured ? "italic" : ""}`}
+                    className={`text-sm font-bold mb-6 tracking-wide ${tier.featured ? "italic" : ""}`}
                     style={{ color: tier.featured ? "var(--text-secondary)" : "var(--accent)" }}
                   >
                     {tier.badge}
@@ -189,7 +177,7 @@ export default function PricingPage() {
                     {tier.features.map((f) => (
                       <li
                         key={f}
-                        className="flex items-center gap-3 text-sm"
+                        className="flex items-center gap-3 text-base"
                         style={{ color: tier.featured ? "var(--text-primary)" : "var(--text-secondary)" }}
                       >
                         {tier.featured
@@ -202,7 +190,7 @@ export default function PricingPage() {
                   </ul>
 
                   <motion.button
-                    className="w-full py-4 rounded-lg font-bold uppercase tracking-widest text-xs transition-all"
+                    className="w-full py-4 rounded-lg font-bold uppercase tracking-wide text-sm transition-all"
                     style={tier.featured
                       ? { background: "var(--accent)", color: "white" }
                       : { background: "transparent", border: "1px solid var(--border-color)", color: "var(--text-primary)" }

@@ -65,8 +65,8 @@ export function RatingCard({ rating: r }: Props) {
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="font-mono text-xs uppercase tracking-[0.24em]" style={{ color: "var(--text-muted)" }}>
-              Arena Rating
+            <div className="font-mono text-sm tracking-[0.24em]" style={{ color: "var(--text-muted)" }}>
+              Рейтинг арены
             </div>
             <div className="mt-2 flex items-end gap-3">
               <div className="font-display text-3xl sm:text-5xl font-black leading-none" style={{ color: "var(--text-primary)" }}>
@@ -98,19 +98,19 @@ export function RatingCard({ rating: r }: Props) {
 
       <div className="grid grid-cols-2 gap-4 p-6 md:grid-cols-4">
         <div className="text-center">
-          <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Побед</div>
+          <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Побед</div>
           <div className="font-display text-2xl font-bold" style={{ color: "var(--neon-green)" }}>{r.wins}</div>
         </div>
         <div className="text-center">
-          <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Поражений</div>
+          <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Поражений</div>
           <div className="font-display text-2xl font-bold" style={{ color: "var(--neon-red)" }}>{r.losses}</div>
         </div>
         <div className="text-center">
-          <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Win Rate</div>
+          <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Процент побед</div>
           <div className="font-display text-2xl font-bold" style={{ color: "var(--accent)" }}>{winRate}%</div>
         </div>
         <div className="text-center">
-          <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Streak</div>
+          <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Серия</div>
           <div className="font-display text-2xl font-bold flex items-center justify-center gap-1">
             {streakIcon}
             <span style={{ color: r.current_streak > 0 ? "var(--neon-green)" : r.current_streak < 0 ? "var(--neon-red)" : "var(--text-muted)" }}>

@@ -100,12 +100,14 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     const { scenarios, typeFilter, difficultyFilter } = get();
     return scenarios.filter((s) => {
       // Type filter — 8 scenario groups (DOC_05)
+      // Supports both new codes (cold_first_contact, follow_up_check_in, etc.)
+      // and legacy enum values (cold_call, warm_call, objection_handling, consultation)
       if (typeFilter !== "all") {
         const sType = s.scenario_type || "";
         if (typeFilter === "cold" && !sType.startsWith("cold")) return false;
-        if (typeFilter === "warm" && !sType.startsWith("warm")) return false;
+        if (typeFilter === "warm" && !(sType.startsWith("warm") || sType === "consultation")) return false;
         if (typeFilter === "in" && !sType.startsWith("in_")) return false;
-        if (typeFilter === "special" && !["special_", "upsell", "rescue", "vip_debtor"].some((p) => sType.startsWith(p))) return false;
+        if (typeFilter === "special" && !(["special_", "upsell", "rescue", "vip_debtor"].some((p) => sType.startsWith(p)) || sType === "objection_handling")) return false;
         if (typeFilter === "follow_up" && !sType.startsWith("follow_up")) return false;
         if (typeFilter === "crisis" && !sType.startsWith("crisis")) return false;
         if (typeFilter === "compliance" && !sType.startsWith("compliance")) return false;

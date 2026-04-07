@@ -10,7 +10,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 const NAV_LINKS = [
   { href: "/", label: "ГЛАВНАЯ" },
   { href: "/product", label: "О ПРОДУКТЕ" },
-  { href: "/pricing", label: "ТАРИФЫ И ПАРТНЁРЫ" },
+  { href: "/pricing", label: "ТАРИФЫ" },
 ] as const;
 
 interface LandingNavbarProps {
@@ -55,7 +55,7 @@ export function LandingNavbar({ onLogin, onRegister }: LandingNavbarProps) {
               <Link
                 key={href}
                 href={href}
-                className="font-display text-sm font-medium tracking-tight transition-colors duration-200"
+                className="font-display text-base font-bold tracking-tight transition-colors duration-200"
                 aria-current={isActive ? "page" : undefined}
                 style={{
                   color: isActive ? "var(--accent)" : "var(--text-muted)",

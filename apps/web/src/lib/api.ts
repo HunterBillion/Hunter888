@@ -139,6 +139,31 @@ async function request(path: string, options: RequestInit = {}): Promise<unknown
     }
   }
 
+  // On 403 CSRF error, refresh token (which also refreshes the CSRF cookie) and retry once
+  if (response.status === 403 && _CSRF_METHODS.has(method)) {
+    const body403 = await response.json().catch(() => ({}));
+    const detail = typeof body403.detail === "string" ? body403.detail : "";
+    if (detail.toLowerCase().includes("csrf")) {
+      const refreshed = await handleTokenRefresh();
+      if (refreshed) {
+        // Re-read the CSRF cookie after refresh
+        const newCsrf = getCsrfToken();
+        if (newCsrf) {
+          headers["X-CSRF-Token"] = newCsrf;
+        }
+        const newToken = getToken();
+        if (newToken) {
+          headers["Authorization"] = `Bearer ${newToken}`;
+        }
+        response = await fetch(`${apiPrefix()}${path}`, {
+          ...options,
+          headers,
+          credentials: "include",
+        });
+      }
+    }
+  }
+
   // Rate limit handling
   if (response.status === 429) {
     const retryAfter = response.headers.get("Retry-After");

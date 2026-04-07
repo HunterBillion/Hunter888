@@ -19,13 +19,14 @@ import {
   Sparkles,
   TrendingUp,
   Lock,
+  Info,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import AuthLayout from "@/components/layout/AuthLayout";
 import CharacterBuilder from "@/components/training/CharacterBuilder";
 import { ScenarioDossierCard } from "@/components/training/ScenarioDossierCard";
 import { useTrainingStore } from "@/stores/useTrainingStore";
-import { ARCHETYPES, ARCHETYPE_GROUPS, getTierColor } from "@/lib/archetypes";
+import { ARCHETYPES, ARCHETYPE_GROUPS, getTierColor, getDifficultyColor } from "@/lib/archetypes";
 import type { ArchetypeInfo } from "@/lib/archetypes";
 import type { Scenario } from "@/types";
 
@@ -74,6 +75,7 @@ function TrainingPageContent() {
   const [starting, setStarting] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [storyCalls, setStoryCalls] = useState<number>(3);
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   const fetchScenarios = useTrainingStore((s) => s.fetchScenarios);
   const fetchAssigned = useTrainingStore((s) => s.fetchAssigned);
@@ -150,18 +152,65 @@ function TrainingPageContent() {
         <div className="app-page">
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="font-display text-2xl font-bold tracking-wide" style={{ color: "var(--text-primary)" }}>
-              Тренировки
-            </h1>
-            <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
-              Выберите формат и сложность тренировки
-            </p>
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="font-display text-2xl font-bold tracking-wide" style={{ color: "var(--text-primary)" }}>
+                  Тренировки
+                </h1>
+                <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
+                  Выберите формат и сложность тренировки
+                </p>
+              </div>
+              <motion.button
+                onClick={() => setShowInfoModal(true)}
+                className="rounded-full p-2 transition-colors"
+                style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}
+                whileTap={{ scale: 0.95 }}
+                title="Справка"
+              >
+                <Info size={16} style={{ color: "var(--text-muted)" }} />
+              </motion.button>
+            </div>
           </motion.div>
+
+          {/* Info modal */}
+          <AnimatePresence>
+            {showInfoModal && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+                style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+                onClick={() => setShowInfoModal(false)}
+              >
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="glass-panel rounded-2xl p-6 max-w-md w-full"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h3 className="text-lg font-bold mb-3" style={{ color: "var(--text-primary)" }}>Тренировки</h3>
+                  <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                    Выберите сценарий или создайте своего клиента в конструкторе. Рекомендуемые сценарии подобраны под ваш уровень.
+                  </p>
+                  <button
+                    className="mt-4 w-full py-2 rounded-lg text-sm font-medium"
+                    style={{ background: "var(--input-bg)", color: "var(--text-primary)", border: "1px solid var(--border-color)" }}
+                    onClick={() => setShowInfoModal(false)}
+                  >
+                    Понятно
+                  </button>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <div className="mt-5 flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 rounded-2xl px-4 py-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-color)" }}>
             <div>
-              <div className="font-mono text-xs uppercase tracking-[0.22em]" style={{ color: "var(--accent)" }}>
-                STORY PRESET
+              <div className="font-mono text-sm tracking-[0.22em]" style={{ color: "var(--accent)" }}>
+                Story Preset
               </div>
               <div className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
                 Выбран режим AI-story на <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{storyCalls}</span> звонка(ов) для всех запусков из панели.
@@ -379,6 +428,7 @@ function RecommendedTab({
             {group.archetypes.map((arch) => {
               const groupInfo = ARCHETYPE_GROUPS[arch.group];
               const tierColor = getTierColor(arch.tier);
+              const diffColor = getDifficultyColor(arch.difficulty);
               // Find a matching scenario by difficulty
               const matchScenario = scenarios.length
                 ? [...scenarios].sort((a, b) => Math.abs(a.difficulty - arch.difficulty) - Math.abs(b.difficulty - arch.difficulty))[0]
@@ -388,32 +438,32 @@ function RecommendedTab({
                 <motion.div
                   key={arch.code}
                   className="glass-panel p-5 rounded-2xl relative overflow-hidden"
-                  whileHover={{ y: -4, boxShadow: `0 8px 24px ${groupInfo.color}15` }}
+                  whileHover={{ y: -4, boxShadow: `0 8px 24px ${diffColor}15` }}
                 >
                   {/* Top gradient accent */}
                   <div
                     className="absolute top-0 left-0 right-0 h-1"
-                    style={{ background: `linear-gradient(90deg, ${groupInfo.color}, ${tierColor})` }}
+                    style={{ background: `linear-gradient(90deg, ${diffColor}, ${tierColor})` }}
                   />
 
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <span className="text-xl">{arch.icon}</span>
                       <div>
-                        <div className="font-display text-sm font-bold" style={{ color: groupInfo.color }}>
+                        <div className="font-display text-sm font-bold" style={{ color: diffColor }}>
                           {arch.name}
                         </div>
-                        <div className="text-[10px] italic" style={{ color: "var(--text-muted)" }}>
+                        <div className="text-sm italic" style={{ color: "var(--text-muted)" }}>
                           &laquo;{arch.subtitle}&raquo;
                         </div>
                       </div>
                     </div>
                     <div className="flex gap-1.5">
-                      <span className="rounded px-1.5 py-0.5 text-[9px] font-mono font-bold" style={{ background: tierColor + "20", color: tierColor }}>
+                      <span className="rounded px-1.5 py-0.5 text-xs font-mono font-bold" style={{ background: tierColor + "20", color: tierColor }}>
                         T{arch.tier}
                       </span>
-                      <span className="rounded px-1.5 py-0.5 text-[9px] font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>
-                        Diff {arch.difficulty}
+                      <span className="rounded px-1.5 py-0.5 text-xs font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>
+                        Сл. {arch.difficulty}
                       </span>
                     </div>
                   </div>
@@ -427,7 +477,7 @@ function RecommendedTab({
                     {arch.counters.map((skill) => (
                       <span
                         key={skill}
-                        className="rounded-full px-2 py-0.5 text-[9px] font-mono"
+                        className="rounded-full px-2 py-0.5 text-xs font-mono"
                         style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--border-color)" }}
                       >
                         {skill.replace(/_/g, " ")}
@@ -437,10 +487,10 @@ function RecommendedTab({
 
                   {/* Weakness hint */}
                   <div className="rounded-lg p-2 mb-3" style={{ background: "rgba(255,215,0,0.05)", border: "1px solid rgba(255,215,0,0.1)" }}>
-                    <div className="text-[9px] uppercase font-mono mb-0.5" style={{ color: "rgba(255,215,0,0.6)" }}>
+                    <div className="text-sm font-mono mb-0.5" style={{ color: "rgba(255,215,0,0.6)" }}>
                       Слабое место
                     </div>
-                    <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                    <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                       {arch.weakness}
                     </p>
                   </div>
@@ -454,7 +504,7 @@ function RecommendedTab({
                           disabled={starting === matchScenario.id}
                           className="flex-1 btn-neon flex items-center justify-center gap-1.5 py-2 text-xs"
                           whileTap={{ scale: 0.97 }}
-                          style={{ background: `linear-gradient(135deg, ${groupInfo.color}20, ${tierColor}10)` }}
+                          style={{ background: `linear-gradient(135deg, ${diffColor}20, ${tierColor}10)` }}
                         >
                           {starting === matchScenario.id ? (
                             <Loader2 size={12} className="animate-spin" />
@@ -469,7 +519,7 @@ function RecommendedTab({
                           disabled={!!starting}
                           className="btn-neon flex items-center gap-1.5 px-3 py-2 text-xs"
                           whileTap={{ scale: 0.97 }}
-                          style={{ borderColor: groupInfo.color + "30", color: groupInfo.color }}
+                          style={{ borderColor: diffColor + "30", color: diffColor }}
                         >
                           AI x{storyCalls}
                         </motion.button>
@@ -553,11 +603,11 @@ function ScenariosTab({
       >
         <div className="grid gap-6 px-5 py-5 md:grid-cols-[1.1fr_0.9fr] md:px-6">
           <div>
-            <div className="font-mono text-xs uppercase tracking-[0.28em]" style={{ color: "var(--accent)" }}>
-              AI STORY MODE
+            <div className="font-mono text-sm tracking-[0.28em]" style={{ color: "var(--accent)" }}>
+              AI Story Mode
             </div>
             <h2 className="mt-3 font-display text-2xl font-bold tracking-[0.08em]" style={{ color: "var(--text-primary)" }}>
-              ИСТОРИЯ КЛИЕНТА НА НЕСКОЛЬКО ЗВОНКОВ
+              История клиента на несколько звонков
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
               Этот режим показывает развитие одного кейса в динамике: сохраняется контекст прошлых разговоров, меняются приоритеты клиента, а ваши решения влияют на следующий контакт.
@@ -595,7 +645,7 @@ function ScenariosTab({
       <div className="mt-6 flex flex-wrap items-center gap-5">
         <div className="flex items-center gap-2.5">
           <Filter size={14} style={{ color: "var(--text-muted)" }} />
-          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>Тип:</span>
+          <span className="text-sm font-semibold tracking-wider" style={{ color: "var(--text-secondary)" }}>Тип:</span>
           <div className="flex gap-1.5">
             {TYPE_FILTERS.map((f) => (
               <button
@@ -615,7 +665,7 @@ function ScenariosTab({
         </div>
 
         <div className="flex items-center gap-2.5">
-          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>Сложность:</span>
+          <span className="text-sm font-semibold tracking-wider" style={{ color: "var(--text-secondary)" }}>Сложность:</span>
           <div className="flex gap-1.5">
             {DIFF_FILTERS.map((f) => (
               <button
@@ -646,7 +696,7 @@ function ScenariosTab({
           </p>
         </motion.div>
       ) : (
-        <div className="mt-6 grid gap-5 sm:grid-cols-2">
+        <div className="mt-6 grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {filtered.map((scenario, i) => (
             <ScenarioDossierCard
               key={scenario.id}

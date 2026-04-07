@@ -75,6 +75,14 @@ async def lifespan(application: FastAPI):
             except Exception as e:
                 logger.warning("Lifespan: base seed failed (non-blocking): %s", e)
 
+            # Seed scenario templates (60 templates from DOC_05)
+            try:
+                from scripts.seed_scenarios import seed_scenario_templates
+                await seed_scenario_templates()
+                logger.info("Lifespan: scenario templates seed complete")
+            except Exception as e:
+                logger.warning("Lifespan: scenario templates seed failed (non-blocking): %s", e)
+
             # Seed expanded legal knowledge
             try:
                 from app.seeds.seed_legal_knowledge import seed_expanded_data
@@ -131,6 +139,31 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
         status_code=429,
         content={"detail": "Too many requests. Please try again later."},
+    )
+
+
+# Catch unhandled database IntegrityErrors (FK violations, unique constraints)
+# and return a proper 409 Conflict instead of 500 Internal Server Error.
+from sqlalchemy.exc import IntegrityError as _SQLAlchemyIntegrityError
+
+
+@app.exception_handler(_SQLAlchemyIntegrityError)
+async def integrity_error_handler(request: Request, exc: _SQLAlchemyIntegrityError):
+    logger.warning("Database IntegrityError on %s: %s", request.url.path, exc.orig)
+    return JSONResponse(
+        status_code=409,
+        content={"detail": "Конфликт данных. Возможно, запись уже существует или ссылка недействительна."},
+    )
+
+
+# Catch all unhandled exceptions and return a proper 500 error with Russian message
+# instead of FastAPI's default English "Internal Server Error"
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception on %s: %s", request.url.path, exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Внутренняя ошибка сервера. Попробуйте позже."},
     )
 
 

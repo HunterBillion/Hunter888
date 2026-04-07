@@ -1513,3 +1513,107 @@ async def generate_client(
     profile.backstory_text = await generate_llm_backstory(profile, llm_fn)
 
     return profile
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  Adapter functions (bridge GeneratedProfile → DB ClientProfile)
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def generate_client_profile(
+    *,
+    session_id: uuid.UUID,
+    scenario,
+    character,
+    difficulty: int = 5,
+    db,
+    custom_archetype: str | None = None,
+    custom_profession: str | None = None,
+    custom_lead_source: str | None = None,
+):
+    """Generate a full client profile and persist it to the database.
+
+    This is the adapter that the WebSocket training handler calls.
+    It calls generate_client() to get a GeneratedProfile dataclass,
+    then creates a ClientProfile ORM row in the DB.
+
+    Returns:
+        ClientProfile ORM instance (persisted, flushed but not committed).
+    """
+    from app.models.roleplay import ClientProfile
+
+    archetype_code = custom_archetype or (character.slug if character else "skeptic")
+    profession_category = custom_profession or "worker"
+    lead_source = custom_lead_source or "cold_base"
+
+    gen = await generate_client(
+        archetype_code=archetype_code,
+        difficulty=difficulty,
+        profession_category=profession_category,
+        lead_source=lead_source,
+    )
+
+    profile = ClientProfile(
+        session_id=session_id,
+        full_name=gen.full_name,
+        age=gen.age,
+        gender=gen.gender,
+        city=gen.city,
+        archetype_code=gen.archetype_code,
+        education_level=gen.education,
+        total_debt=gen.total_debt,
+        creditors=gen.creditors,
+        income=gen.income,
+        income_type=gen.income_type,
+        fears=gen.fears,
+        soft_spot=gen.soft_spot,
+        breaking_point=gen.breaking_point,
+        trust_level=gen.trust_level,
+        resistance_level=gen.resistance_level,
+        lead_source=gen.lead_source,
+    )
+    db.add(profile)
+    await db.flush()
+
+    return profile
+
+
+def get_crm_card(profile) -> dict:
+    """Build a CRM card dict from a ClientProfile or GeneratedProfile.
+
+    This is the information shown to the manager in the left panel
+    during training. Intentionally limited -- no hidden data.
+    """
+    creditors = getattr(profile, "creditors", []) or []
+    creditor_names = [c.get("name", "Кредитор") if isinstance(c, dict) else str(c) for c in creditors[:5]]
+
+    return {
+        "name": getattr(profile, "full_name", "Клиент"),
+        "age": getattr(profile, "age", 30),
+        "city": getattr(profile, "city", ""),
+        "total_debt": getattr(profile, "total_debt", 0),
+        "creditors_count": len(creditors),
+        "creditor_names": creditor_names,
+        "income": getattr(profile, "income", None),
+        "income_type": getattr(profile, "income_type", ""),
+        "lead_source": getattr(profile, "lead_source", "cold_base"),
+        "trust_level": getattr(profile, "trust_level", 5),
+    }
+
+
+def get_full_reveal_card(profile) -> dict:
+    """Build a full reveal card for post-session results.
+
+    Shows everything including hidden data that the manager
+    did not see during the call (fears, soft spots, breaking point).
+    """
+    base = get_crm_card(profile)
+    base.update({
+        "fears": getattr(profile, "fears", []) or [],
+        "soft_spot": getattr(profile, "soft_spot", ""),
+        "breaking_point": getattr(profile, "breaking_point", ""),
+        "resistance_level": getattr(profile, "resistance_level", 5),
+        "archetype_code": getattr(profile, "archetype_code", ""),
+        "gender": getattr(profile, "gender", ""),
+    })
+    return base
