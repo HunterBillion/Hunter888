@@ -53,6 +53,7 @@ import { AchievementToast } from "@/components/gamification/AchievementToast";
 import { BackButton } from "@/components/ui/BackButton";
 import { EMOTION_MAP, type EmotionState, type ChatMessage, type SessionResultResponse, type ActiveTournamentResponse, type TournamentSubmitResponse } from "@/types";
 import { logger } from "@/lib/logger";
+import { colorAlpha } from "@/lib/utils";
 
 function formatDuration(seconds: number | null): string {
   if (!seconds) return "--:--";
@@ -72,7 +73,7 @@ function emotionLabelRu(state: string): string {
 }
 
 function getScoreColor(score: number): string {
-  return score >= 70 ? "#00FF66" : score >= 40 ? "var(--warning)" : "#FF3333";
+  return score >= 70 ? "#00FF66" : score >= 40 ? "#FFD700" : "#FF3333";
 }
 
 export default function ResultsPage() {
@@ -708,7 +709,7 @@ export default function ResultsPage() {
             <div className="space-y-4">
               {scoreItems.map((item, i) => {
                 const pct = item.max > 0 ? (item.value / item.max) * 100 : 0;
-                const barColor = pct >= 70 ? "#00FF66" : pct >= 40 ? "var(--warning)" : "#FF3333";
+                const barColor = pct >= 70 ? "#00FF66" : pct >= 40 ? "#FFD700" : "#FF3333";
                 return (
                   <motion.div key={item.label} initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 + i * 0.1 }}>
                     <div className="flex items-center justify-between mb-1.5">
@@ -724,7 +725,7 @@ export default function ResultsPage() {
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min(pct, 100)}%` }}
                         transition={{ duration: 0.8, delay: 0.6 + i * 0.1 }}
-                        style={{ background: barColor, boxShadow: `0 0 8px ${barColor}40` }}
+                        style={{ background: barColor, boxShadow: `0 0 8px ${colorAlpha(barColor, 25)}` }}
                       />
                     </div>
                   </motion.div>

@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Trophy, Swords, BookOpen, Star, Lock } from "lucide-react";
 import type { Achievement } from "@/types";
+import { colorAlpha } from "@/lib/utils";
 
 interface AchievementWallProps {
   achievements: Achievement[];
@@ -71,7 +72,7 @@ export function AchievementWall({ achievements }: AchievementWallProps) {
               </span>
               <span
                 className="rounded-full px-2 py-0.5 text-xs font-mono font-bold"
-                style={{ background: `${cat.color}18`, color: cat.color }}
+                style={{ background: colorAlpha(cat.color, 9), color: cat.color }}
               >
                 {items.length}
               </span>
@@ -87,13 +88,13 @@ export function AchievementWall({ achievements }: AchievementWallProps) {
                   className="relative overflow-hidden rounded-xl p-4"
                   style={{
                     background: "var(--glass-bg)",
-                    border: `1px solid ${cat.color}20`,
+                    border: `1px solid ${colorAlpha(cat.color, 12)}`,
                     backdropFilter: "blur(16px)",
                   }}
-                  whileHover={{ borderColor: `${cat.color}40`, boxShadow: `0 4px 20px ${cat.color}15` }}
+                  whileHover={{ borderColor: colorAlpha(cat.color, 25), boxShadow: `0 4px 20px ${colorAlpha(cat.color, 8)}` }}
                 >
                   <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: cat.color }} />
-                  <div className="absolute -top-6 -right-6 w-16 h-16 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${cat.color}10 0%, transparent 70%)` }} />
+                  <div className="absolute -top-6 -right-6 w-16 h-16 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${colorAlpha(cat.color, 6)} 0%, transparent 70%)` }} />
                   <div className="font-display text-sm font-bold" style={{ color: "var(--text-primary)" }}>
                     {a.title}
                   </div>

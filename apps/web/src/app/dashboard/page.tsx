@@ -315,7 +315,7 @@ export default function DashboardPage() {
                                 color: scoreColor(data.stats.avg_score),
                                 lineHeight: 1.1,
                                 minHeight: "1.1em",
-                                textShadow: `0 0 40px ${scoreColor(data.stats.avg_score)}40`,
+                                textShadow: `0 0 40px color-mix(in srgb, ${scoreColor(data.stats.avg_score)} 25%, transparent)`,
                               }}
                             >
                               {data.stats.avg_score !== null ? (
@@ -345,11 +345,11 @@ export default function DashboardPage() {
                                 <div
                                   key={stat.label}
                                   className="rounded-xl px-4 py-4 relative overflow-hidden"
-                                  style={{ background: "var(--input-bg)", border: `1px solid ${stat.color}15` }}
+                                  style={{ background: "var(--input-bg)", border: `1px solid color-mix(in srgb, ${stat.color} 8%, transparent)` }}
                                 >
-                                  <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${stat.color}10 0%, transparent 70%)` }} />
+                                  <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, color-mix(in srgb, ${stat.color} 6%, transparent) 0%, transparent 70%)` }} />
                                   <div className="flex items-center gap-2 mb-2">
-                                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${stat.color}15` }}>
+                                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `color-mix(in srgb, ${stat.color} 8%, transparent)` }}>
                                       <SIcon size={16} style={{ color: stat.color }} />
                                     </div>
                                     <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
@@ -574,7 +574,7 @@ export default function DashboardPage() {
                                   transition={{ delay: i * 0.05 }}
                                   className="flex items-center gap-3 rounded-lg px-4 py-3"
                                   style={{
-                                    background: i < 3 ? `${podiumColors[i]}08` : "var(--input-bg)",
+                                    background: i < 3 ? `color-mix(in srgb, ${podiumColors[i]} 3%, transparent)` : "var(--input-bg)",
                                     borderLeft: i < 3 ? `3px solid ${podiumColors[i]}` : "3px solid transparent",
                                   }}
                                 >

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { GameTimelineEvent, GameEventType } from "@/types";
 import { GAME_EVENT_LABELS } from "@/types";
+import { colorAlpha } from "@/lib/utils";
 
 interface GameTimelineProps {
   events: GameTimelineEvent[];
@@ -126,8 +127,8 @@ export function GameTimeline({
                   <div
                     className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
                     style={{
-                      background: `${color}15`,
-                      border: `1.5px solid ${color}40`,
+                      background: colorAlpha(color, 8),
+                      border: `1.5px solid ${colorAlpha(color, 25)}`,
                     }}
                   >
                     <Icon size={13} style={{ color }} />
@@ -146,9 +147,9 @@ export function GameTimeline({
                     <span
                       className="text-xs font-mono px-1.5 py-0.5 rounded"
                       style={{
-                        background: `${color}10`,
+                        background: colorAlpha(color, 6),
                         color,
-                        border: `1px solid ${color}20`,
+                        border: `1px solid ${colorAlpha(color, 12)}`,
                       }}
                     >
                       {GAME_EVENT_LABELS[event.type]}

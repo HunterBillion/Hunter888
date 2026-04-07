@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, Brain, Heart, AlertTriangle, Target, Shield, ChevronDown } from "lucide-react";
 import type { ClientProfile } from "@/types";
+import { colorAlpha } from "@/lib/utils";
 
 interface ClientRevealProps {
   clientCard: ClientProfile;
@@ -79,7 +80,7 @@ export default function ClientReveal({ clientCard }: ClientRevealProps) {
                     style={{
                       background: "var(--input-bg)",
                       borderLeft: `3px solid ${item.color}`,
-                      boxShadow: `inset 0 0 30px ${item.color}08`,
+                      boxShadow: `inset 0 0 30px ${colorAlpha(item.color, 3)}`,
                     }}
                   >
                     <div className="flex items-center gap-2 mb-2">

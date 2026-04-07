@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Star, Flame, Shield, Crown, Award, Zap, BookOpen, Sword, GraduationCap } from "lucide-react";
+import { colorAlpha } from "@/lib/utils";
 
 interface AchievementNotification {
   slug: string;
@@ -71,17 +72,17 @@ export function AchievementToast({
           <div
             className="rounded-2xl p-4 shadow-2xl backdrop-blur-xl"
             style={{
-              background: `linear-gradient(135deg, ${color}15, ${color}08)`,
-              border: `1px solid ${color}40`,
-              boxShadow: `0 0 30px ${color}20, 0 8px 32px rgba(0,0,0,0.3)`,
+              background: `linear-gradient(135deg, ${colorAlpha(color, 8)}, ${colorAlpha(color, 3)})`,
+              border: `1px solid ${colorAlpha(color, 25)}`,
+              boxShadow: `0 0 30px ${colorAlpha(color, 12)}, 0 8px 32px rgba(0,0,0,0.3)`,
             }}
           >
             <div className="flex items-center gap-3">
               <div
                 className="flex h-12 w-12 items-center justify-center rounded-xl"
                 style={{
-                  background: `${color}20`,
-                  border: `1px solid ${color}40`,
+                  background: colorAlpha(color, 12),
+                  border: `1px solid ${colorAlpha(color, 25)}`,
                 }}
               >
                 <IconComponent size={24} style={{ color }} />

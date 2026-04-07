@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Zap, TrendingUp, Target, Clock, ArrowRight, Crosshair,
   Users, BarChart3, Loader2, X, Flame, RotateCcw,

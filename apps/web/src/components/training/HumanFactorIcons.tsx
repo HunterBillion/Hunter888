@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Brain, Heart, Flame, Shield, AlertTriangle, Frown, Clock, Zap } from "lucide-react";
 import type { HumanFactor } from "@/types/story";
+import { colorAlpha } from "@/lib/utils";
 
 const FACTOR_CONFIG: Record<string, { icon: typeof Brain; color: string; label: string }> = {
   stress: { icon: Zap, color: "var(--neon-red)", label: "Стресс" },
@@ -44,8 +45,8 @@ export function HumanFactorIcons({ factors }: Props) {
               <div
                 className="flex h-7 w-7 items-center justify-center rounded-lg"
                 style={{
-                  background: `${config.color}15`,
-                  border: `1px solid ${config.color}40`,
+                  background: colorAlpha(config.color, 8),
+                  border: `1px solid ${colorAlpha(config.color, 25)}`,
                   opacity,
                 }}
               >

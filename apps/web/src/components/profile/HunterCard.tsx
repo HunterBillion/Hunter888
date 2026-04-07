@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { Zap, Flame, Trophy, TrendingUp, Star } from "lucide-react";
 import { AnimatedCounter } from "@/components/ui/AnimatedCounter";
-import { scoreColor } from "@/lib/utils";
+import { scoreColor, colorAlpha } from "@/lib/utils";
 import { EASE_SNAP } from "@/lib/constants";
 
 interface HunterCardProps {
@@ -155,10 +155,10 @@ export function HunterCard({ user, stats, gamification, teamName }: HunterCardPr
             <div
               key={stat.label}
               className="rounded-xl px-5 py-4 text-center relative overflow-hidden"
-              style={{ background: "var(--input-bg)", border: `1px solid ${stat.color}15` }}
+              style={{ background: "var(--input-bg)", border: `1px solid ${colorAlpha(stat.color, 8)}` }}
             >
-              <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${stat.color}10 0%, transparent 70%)` }} />
-              <div className="w-9 h-9 rounded-lg mx-auto mb-2 flex items-center justify-center" style={{ background: `${stat.color}15` }}>
+              <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${colorAlpha(stat.color, 6)} 0%, transparent 70%)` }} />
+              <div className="w-9 h-9 rounded-lg mx-auto mb-2 flex items-center justify-center" style={{ background: colorAlpha(stat.color, 8) }}>
                 <SIcon size={18} style={{ color: stat.color }} />
               </div>
               <div className="font-display text-2xl font-bold" style={{ color: "var(--text-primary)" }}>

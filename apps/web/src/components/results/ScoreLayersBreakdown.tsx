@@ -16,6 +16,7 @@ import {
   BookOpen,
   Scale,
 } from "lucide-react";
+import { colorAlpha } from "@/lib/utils";
 
 interface LayerScore {
   key: string;
@@ -148,7 +149,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
                 style={{ cursor: hasExplanation ? "pointer" : "default" }}
               >
                 <div className="flex items-center gap-3 mb-1.5">
-                  <div className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0" style={{ background: `${barColor}15`, border: `1px solid ${barColor}30` }}>
+                  <div className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0" style={{ background: colorAlpha(barColor, 8), border: `1px solid ${colorAlpha(barColor, 18)}` }}>
                     <Icon size={14} style={{ color: barColor }} />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -189,7 +190,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
                     transition={{ duration: 0.6, delay: i * 0.05 }}
                     style={{
                       background: barColor,
-                      boxShadow: `0 0 6px ${barColor}40`,
+                      boxShadow: `0 0 6px ${colorAlpha(barColor, 25)}`,
                     }}
                   />
                 </div>

@@ -16,6 +16,7 @@ import { ClientCreateModal } from "@/components/clients/ClientCreateModal";
 import { logger } from "@/lib/logger";
 import { BulkReassignModal } from "@/components/clients/BulkReassignModal";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ClientListSkeleton } from "@/components/ui/Skeleton";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -444,9 +445,7 @@ export default function ClientsPage() {
           )}
 
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
-            </div>
+            <ClientListSkeleton />
           ) : clients.length === 0 ? (
             <EmptyState
               icon={Users}

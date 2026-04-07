@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Shield } from "lucide-react";
 import { type PvPRankTier, PVP_RANK_COLORS, PVP_RANK_LABELS } from "@/types";
 import { getDivision } from "./RatingCard";
+import { colorAlpha } from "@/lib/utils";
 
 interface Props {
   tier: PvPRankTier;
@@ -30,10 +31,10 @@ export function RankBadge({ tier, rating, size = "md", showDivision = true }: Pr
     <motion.div
       className={`inline-flex items-center ${s.gap} ${s.px} rounded-xl font-mono font-bold ${s.text} ${tier === "diamond" ? "rank-diamond" : ""}`}
       style={{
-        background: `${color}15`,
-        border: `1px solid ${color}40`,
+        background: colorAlpha(color, 8),
+        border: `1px solid ${colorAlpha(color, 25)}`,
         color,
-        boxShadow: glowTiers.includes(tier) ? `0 0 15px ${color}30` : tier === "platinum" ? `0 0 8px ${color}20` : "none",
+        boxShadow: glowTiers.includes(tier) ? `0 0 15px ${colorAlpha(color, 18)}` : tier === "platinum" ? `0 0 8px ${colorAlpha(color, 12)}` : "none",
       }}
       whileHover={{ scale: 1.05 }}
     >

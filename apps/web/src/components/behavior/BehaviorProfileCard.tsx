@@ -38,8 +38,8 @@ function TrendBadge({ direction }: { direction: string | null }) {
     improving: { icon: TrendingUp, color: "#22C55E", text: "Рост" },
     declining: { icon: TrendingDown, color: "#EF4444", text: "Спад" },
     stable: { icon: Minus, color: "#F59E0B", text: "Стабильно" },
-    stagnating: { icon: Minus, color: "var(--text-muted)", text: "Стагнация" },
-  }[direction] || { icon: Minus, color: "var(--text-muted)", text: direction };
+    stagnating: { icon: Minus, color: "#9CA3AF", text: "Стагнация" },
+  }[direction] || { icon: Minus, color: "#9CA3AF", text: direction };
 
   const Icon = config.icon;
   return (

@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Activity, Crosshair, Crown, TrendingUp, Award, Loader2 } from "lucide-react";
 import { relativeTime } from "@/lib/time-utils";
-import { scoreColor } from "@/lib/utils";
+import { scoreColor, colorAlpha } from "@/lib/utils";
 import type { ActivityFeedItem, ActivityEventType } from "@/types";
 
 const EVENT_CONFIG: Record<ActivityEventType, { icon: typeof Activity; color: string }> = {
@@ -110,7 +110,7 @@ export function ActivityFeed({ items, loading = false, className = "" }: Activit
                   {item.score != null && (
                     <span
                       className="font-mono text-base font-bold shrink-0 px-2 py-0.5 rounded-lg"
-                      style={{ color: scoreColor(item.score), background: `${scoreColor(item.score)}10` }}
+                      style={{ color: scoreColor(item.score), background: `color-mix(in srgb, ${scoreColor(item.score)} 6%, transparent)` }}
                     >
                       {Math.round(item.score)}
                     </span>
@@ -118,7 +118,7 @@ export function ActivityFeed({ items, loading = false, className = "" }: Activit
 
                   {/* Type icon + time */}
                   <div className="flex items-center gap-2 shrink-0">
-                    <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: `${config.color}15` }}>
+                    <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: colorAlpha(config.color, 8) }}>
                       <Icon size={12} style={{ color: config.color }} />
                     </div>
                     <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
