@@ -1,13 +1,18 @@
-"""Manager Wiki API — read wiki pages, patterns, techniques, and trigger manual ingest."""
+"""Manager Wiki API — ADMIN ONLY.
+
+All endpoints require admin role. Admins can view wiki data
+for ANY manager (by manager_id) or list all wikis.
+"""
 
 import logging
 import uuid
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_role
 from app.database import get_db
 from app.models.manager_wiki import (
     ManagerPattern,
@@ -22,32 +27,113 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/wiki", tags=["wiki"])
 
+# ═══════════════════════════════════════════════════════════════════════════
+# SECURITY: Every endpoint requires admin role.
+# No manager can access wiki data — only admin.
+# ═══════════════════════════════════════════════════════════════════════════
+
 
 # ---------------------------------------------------------------------------
-# GET /api/wiki/me — wiki overview for current user
+# GET /api/wiki/global/stats — aggregate stats across all wikis (admin only)
+# NOTE: Must be BEFORE /{manager_id} routes to avoid path conflict
 # ---------------------------------------------------------------------------
 
-
-@router.get("/me")
-async def get_my_wiki(
-    user: User = Depends(get_current_user),
+@router.get("/global/stats")
+async def global_wiki_stats(
+    admin: User = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get current user's wiki overview (metadata + stats)."""
+    """Aggregate wiki stats across all managers. Admin only."""
     result = await db.execute(
-        select(ManagerWiki).where(ManagerWiki.manager_id == user.id)
+        select(
+            func.count(ManagerWiki.id).label("total_wikis"),
+            func.sum(ManagerWiki.sessions_ingested).label("total_sessions"),
+            func.sum(ManagerWiki.patterns_discovered).label("total_patterns"),
+            func.sum(ManagerWiki.pages_count).label("total_pages"),
+            func.sum(ManagerWiki.total_tokens_used).label("total_tokens"),
+        )
+    )
+    row = result.one()
+
+    return {
+        "total_wikis": row.total_wikis or 0,
+        "total_sessions_ingested": row.total_sessions or 0,
+        "total_patterns_discovered": row.total_patterns or 0,
+        "total_pages": row.total_pages or 0,
+        "total_tokens_used": row.total_tokens or 0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/wiki/managers — list all managers who have wikis (admin only)
+# ---------------------------------------------------------------------------
+
+@router.get("/managers")
+async def list_all_wikis(
+    admin: User = Depends(require_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all manager wikis with basic stats. Admin only."""
+    result = await db.execute(
+        select(ManagerWiki, User)
+        .join(User, ManagerWiki.manager_id == User.id)
+        .order_by(ManagerWiki.last_ingest_at.desc().nullslast())
+    )
+    rows = result.all()
+
+    return {
+        "wikis": [
+            {
+                "wiki_id": str(wiki.id),
+                "manager_id": str(user.id),
+                "manager_name": user.full_name or user.email or "—",
+                "manager_role": user.role.value if user.role else "manager",
+                "status": wiki.status.value if wiki.status else "active",
+                "sessions_ingested": wiki.sessions_ingested,
+                "patterns_discovered": wiki.patterns_discovered,
+                "pages_count": wiki.pages_count,
+                "total_tokens_used": wiki.total_tokens_used,
+                "last_ingest_at": wiki.last_ingest_at.isoformat() if wiki.last_ingest_at else None,
+                "created_at": wiki.created_at.isoformat() if wiki.created_at else None,
+            }
+            for wiki, user in rows
+        ]
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/wiki/{manager_id} — wiki overview for specific manager (admin only)
+# ---------------------------------------------------------------------------
+
+@router.get("/{manager_id}")
+async def get_manager_wiki(
+    manager_id: uuid.UUID,
+    admin: User = Depends(require_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a specific manager's wiki overview. Admin only."""
+    result = await db.execute(
+        select(ManagerWiki).where(ManagerWiki.manager_id == manager_id)
     )
     wiki = result.scalar_one_or_none()
     if not wiki:
         return {
             "exists": False,
+            "manager_id": str(manager_id),
             "sessions_ingested": 0,
             "patterns_discovered": 0,
             "pages_count": 0,
         }
+
+    # Also fetch manager name
+    manager = await db.get(User, manager_id)
+    manager_name = manager.full_name if manager else "—"
+
     return {
         "exists": True,
         "id": str(wiki.id),
+        "manager_id": str(manager_id),
+        "manager_name": manager_name,
         "status": wiki.status.value if wiki.status else "active",
         "sessions_ingested": wiki.sessions_ingested,
         "patterns_discovered": wiki.patterns_discovered,
@@ -59,18 +145,18 @@ async def get_my_wiki(
 
 
 # ---------------------------------------------------------------------------
-# GET /api/wiki/me/pages — list all wiki pages
+# GET /api/wiki/{manager_id}/pages — all wiki pages for a manager (admin only)
 # ---------------------------------------------------------------------------
 
-
-@router.get("/me/pages")
-async def list_my_wiki_pages(
-    user: User = Depends(get_current_user),
+@router.get("/{manager_id}/pages")
+async def list_manager_wiki_pages(
+    manager_id: uuid.UUID,
+    admin: User = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all wiki pages for the current user."""
+    """List all wiki pages for a given manager. Admin only."""
     result = await db.execute(
-        select(ManagerWiki).where(ManagerWiki.manager_id == user.id)
+        select(ManagerWiki).where(ManagerWiki.manager_id == manager_id)
     )
     wiki = result.scalar_one_or_none()
     if not wiki:
@@ -100,23 +186,23 @@ async def list_my_wiki_pages(
 
 
 # ---------------------------------------------------------------------------
-# GET /api/wiki/me/pages/{page_path:path} — get specific page content
+# GET /api/wiki/{manager_id}/pages/{page_path:path} — specific page (admin only)
 # ---------------------------------------------------------------------------
 
-
-@router.get("/me/pages/{page_path:path}")
-async def get_wiki_page(
+@router.get("/{manager_id}/pages/{page_path:path}")
+async def get_manager_wiki_page(
+    manager_id: uuid.UUID,
     page_path: str,
-    user: User = Depends(get_current_user),
+    admin: User = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a specific wiki page by path."""
+    """Get a specific wiki page content. Admin only."""
     result = await db.execute(
-        select(ManagerWiki).where(ManagerWiki.manager_id == user.id)
+        select(ManagerWiki).where(ManagerWiki.manager_id == manager_id)
     )
     wiki = result.scalar_one_or_none()
     if not wiki:
-        raise HTTPException(status_code=404, detail="Wiki not found")
+        raise HTTPException(status_code=404, detail="Wiki not found for this manager")
 
     page_result = await db.execute(
         select(WikiPage).where(
@@ -142,19 +228,19 @@ async def get_wiki_page(
 
 
 # ---------------------------------------------------------------------------
-# GET /api/wiki/me/patterns — discovered patterns
+# GET /api/wiki/{manager_id}/patterns — patterns for a manager (admin only)
 # ---------------------------------------------------------------------------
 
-
-@router.get("/me/patterns")
-async def list_my_patterns(
-    user: User = Depends(get_current_user),
+@router.get("/{manager_id}/patterns")
+async def list_manager_patterns(
+    manager_id: uuid.UUID,
+    admin: User = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all discovered behavioral patterns for the current user."""
+    """List all discovered behavioral patterns for a manager. Admin only."""
     result = await db.execute(
         select(ManagerPattern)
-        .where(ManagerPattern.manager_id == user.id)
+        .where(ManagerPattern.manager_id == manager_id)
         .order_by(ManagerPattern.discovered_at.desc())
     )
     patterns = result.scalars().all()
@@ -180,19 +266,19 @@ async def list_my_patterns(
 
 
 # ---------------------------------------------------------------------------
-# GET /api/wiki/me/techniques — effective techniques
+# GET /api/wiki/{manager_id}/techniques — techniques for a manager (admin only)
 # ---------------------------------------------------------------------------
 
-
-@router.get("/me/techniques")
-async def list_my_techniques(
-    user: User = Depends(get_current_user),
+@router.get("/{manager_id}/techniques")
+async def list_manager_techniques(
+    manager_id: uuid.UUID,
+    admin: User = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all discovered techniques for the current user."""
+    """List all effective techniques for a manager. Admin only."""
     result = await db.execute(
         select(ManagerTechnique)
-        .where(ManagerTechnique.manager_id == user.id)
+        .where(ManagerTechnique.manager_id == manager_id)
         .order_by(ManagerTechnique.success_rate.desc())
     )
     techniques = result.scalars().all()
@@ -217,19 +303,19 @@ async def list_my_techniques(
 
 
 # ---------------------------------------------------------------------------
-# GET /api/wiki/me/log — update history
+# GET /api/wiki/{manager_id}/log — update history for a manager (admin only)
 # ---------------------------------------------------------------------------
 
-
-@router.get("/me/log")
-async def list_my_wiki_log(
-    user: User = Depends(get_current_user),
+@router.get("/{manager_id}/log")
+async def list_manager_wiki_log(
+    manager_id: uuid.UUID,
+    admin: User = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
-    limit: int = 20,
+    limit: int = 50,
 ):
-    """Get wiki update history for the current user."""
+    """Get wiki update history for a manager. Admin only."""
     result = await db.execute(
-        select(ManagerWiki).where(ManagerWiki.manager_id == user.id)
+        select(ManagerWiki).where(ManagerWiki.manager_id == manager_id)
     )
     wiki = result.scalar_one_or_none()
     if not wiki:
@@ -246,41 +332,41 @@ async def list_my_wiki_log(
     return {
         "log": [
             {
-                "id": str(l.id),
-                "action": l.action.value if l.action else "ingest_session",
-                "description": l.description,
-                "pages_modified": l.pages_modified,
-                "pages_created": l.pages_created,
-                "patterns_discovered": l.patterns_discovered or [],
-                "tokens_used": l.tokens_used,
-                "status": l.status,
-                "started_at": l.started_at.isoformat() if l.started_at else None,
-                "completed_at": l.completed_at.isoformat() if l.completed_at else None,
-                "error_msg": l.error_msg,
+                "id": str(entry.id),
+                "action": entry.action.value if entry.action else "ingest_session",
+                "description": entry.description,
+                "pages_modified": entry.pages_modified,
+                "pages_created": entry.pages_created,
+                "patterns_discovered": entry.patterns_discovered or [],
+                "tokens_used": entry.tokens_used,
+                "status": entry.status,
+                "started_at": entry.started_at.isoformat() if entry.started_at else None,
+                "completed_at": entry.completed_at.isoformat() if entry.completed_at else None,
+                "error_msg": entry.error_msg,
             }
-            for l in logs
+            for entry in logs
         ]
     }
 
 
 # ---------------------------------------------------------------------------
-# POST /api/wiki/me/ingest/{session_id} — manual ingest trigger
+# POST /api/wiki/{manager_id}/ingest/{session_id} — manual ingest (admin only)
 # ---------------------------------------------------------------------------
 
-
-@router.post("/me/ingest/{session_id}")
+@router.post("/{manager_id}/ingest/{session_id}")
 async def trigger_ingest(
+    manager_id: uuid.UUID,
     session_id: uuid.UUID,
-    user: User = Depends(get_current_user),
+    admin: User = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Manually trigger wiki ingest for a specific training session."""
+    """Manually trigger wiki ingest for a specific training session. Admin only."""
     from app.models.training import TrainingSession
 
-    # Verify session belongs to user
+    # Verify session belongs to the specified manager
     session = await db.get(TrainingSession, session_id)
-    if not session or session.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Session not found")
+    if not session or session.user_id != manager_id:
+        raise HTTPException(status_code=404, detail="Session not found for this manager")
 
     from app.services.wiki_ingest_service import ingest_session
 

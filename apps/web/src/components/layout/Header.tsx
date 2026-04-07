@@ -18,6 +18,7 @@ import {
   ChevronDown,
   Swords,
   FileBarChart,
+  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { sanitizeText } from "@/lib/sanitize";
@@ -42,6 +43,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/pvp", label: "Арена", icon: Swords },
   { href: "/reports", label: "Отчёты", icon: FileBarChart },
   { href: "/dashboard", label: "Панель РОП", icon: LayoutDashboard, roles: ["rop", "admin"] },
+  { href: "/admin/wiki", label: "Админ", icon: ShieldCheck, roles: ["admin"] },
 ];
 
 export default function Header() {

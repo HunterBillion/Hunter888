@@ -163,15 +163,6 @@ function TrainingPageContent() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Link href="/wiki">
-                  <motion.button
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
-                    style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", color: "#f59e0b" }}
-                    whileTap={{ scale: 0.97 }}
-                  >
-                    <BookOpen size={12} /> Моя база знаний
-                  </motion.button>
-                </Link>
                 <Link href="/training/archetypes">
                   <motion.button
                     className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
