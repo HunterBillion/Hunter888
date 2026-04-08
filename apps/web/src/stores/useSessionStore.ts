@@ -295,7 +295,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set({ _msgCounter: counter });
     return `msg-${counter}`;
   },
-  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg].slice(-500) })),
+  addMessage: (msg) => set((s) => {
+    // Deduplication: skip if last message has same content and role
+    const last = s.messages[s.messages.length - 1];
+    if (last && last.role === msg.role && last.content === msg.content) {
+      return s; // Skip duplicate
+    }
+    return { messages: [...s.messages, msg].slice(-500) };
+  }),
   sortMessagesBySequence: () =>
     set((s) => ({
       messages: [...s.messages].sort((a, b) => {

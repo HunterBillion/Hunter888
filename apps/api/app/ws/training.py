@@ -827,10 +827,14 @@ async def _generate_character_reply(
     archetype_code = state.get("archetype_code")
     client_profile_prompt = state.get("client_profile_prompt", "")
 
-    # Build extended system prompt if client profile is available
+    # Build extended system prompt
     extra_system = ""
+    # Inject character name to prevent mismatch with prompt file
+    char_name = state.get("character_name", "")
+    if char_name:
+        extra_system += f"\nТвоё имя: {char_name}. Представляйся именно так.\n"
     if client_profile_prompt:
-        extra_system = client_profile_prompt
+        extra_system += client_profile_prompt
 
     # Inject next objection from chain (dynamic per-turn)
     try:
@@ -1483,8 +1487,8 @@ async def _silence_watchdog(
             stop_event.set()
             break
 
-        elif elapsed >= SILENCE_WARNING_SEC and not warned:
-            # 30s — avatar says emotion-aware silence prompt
+        elif elapsed >= SILENCE_WARNING_SEC and not warned and not state.get("text_mode", False):
+            # 30s — avatar says emotion-aware silence prompt (voice mode only)
             _cur_emotion = await get_emotion(session_id) if session_id else "cold"
             _silence_count = state.get("_silence_count", 0)
             phrase = _pick_silence_phrase(str(_cur_emotion), _silence_count)
@@ -2219,6 +2223,9 @@ async def _handle_session_start(
             logger.info("TTS voice %s assigned to session %s (gender=%s, archetype=%s)", tts_voice_id, session.id, client_gender, session_archetype)
         except TTSError as e:
             logger.warning("TTS voice assignment failed: %s", e)
+
+    # Save character name in state for LLM prompt injection (prevents name mismatch)
+    state["character_name"] = character.name
 
     started_data = {
         "session_id": str(session.id),
@@ -4231,6 +4238,7 @@ async def training_websocket(websocket: WebSocket) -> None:
                 await _handle_audio_end(websocket, msg_data, state)
 
             elif msg_type == "text.message":
+                state["text_mode"] = True  # Disable silence watchdog for text input
                 await _handle_text_message(websocket, msg_data, state)
 
             elif msg_type == "session.end":
