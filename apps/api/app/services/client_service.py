@@ -843,6 +843,7 @@ async def get_client_stats(
         "conversion_rates": {"contacted_to_consent": conversion},
         "avg_cycle_days": None,
         "lost_reasons": {},
+        "avg_debt_amount": None,
     }
 
     if not anonymized:

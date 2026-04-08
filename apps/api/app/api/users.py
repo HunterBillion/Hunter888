@@ -173,7 +173,7 @@ async def get_my_profile(
     stats_result = await db.execute(
         select(
             func.count(TrainingSession.id),
-            func.avg(TrainingSession.total_score),
+            func.avg(TrainingSession.score_total),
         ).where(TrainingSession.user_id == user.id)
     )
     row = stats_result.one()

@@ -204,6 +204,9 @@ async function uploadFile(path: string, file: File): Promise<unknown> {
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  // Attach CSRF token for POST upload (matches CSRFMiddleware on backend)
+  const csrfToken = getCsrfToken();
+  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
 
   let response: Response;
   try {

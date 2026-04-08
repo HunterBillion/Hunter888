@@ -23,26 +23,15 @@ export function getToken(): string | null {
   return _accessToken;
 }
 
-const _SS_REFRESH_KEY = "vh_rt";
-
 export function getRefreshToken(): string | null {
-  if (_refreshToken) return _refreshToken;
-  // Fallback: sessionStorage survives page reloads within the same tab.
-  // Used when in-memory token is cleared by a full-page navigation.
-  try {
-    return sessionStorage.getItem(_SS_REFRESH_KEY);
-  } catch {
-    return null;
-  }
+  // In-memory only — no sessionStorage fallback to reduce XSS token theft surface.
+  // On page reload, the httpOnly refresh_token cookie handles re-auth automatically.
+  return _refreshToken;
 }
 
 export function setTokens(accessToken: string, refreshToken: string): void {
   _accessToken = accessToken;
   _refreshToken = refreshToken;
-  // Persist refresh token in sessionStorage so page reloads don't lose the session.
-  try {
-    sessionStorage.setItem(_SS_REFRESH_KEY, refreshToken);
-  } catch {}
   // Set marker cookie so Next.js middleware knows user is authenticated.
   // This is NOT the auth token — just a presence flag (not httpOnly so middleware can read it).
   if (typeof window !== "undefined") {
@@ -55,10 +44,6 @@ export function setTokens(accessToken: string, refreshToken: string): void {
 export function clearTokens(): void {
   _accessToken = null;
   _refreshToken = null;
-  // Clear sessionStorage fallback.
-  try {
-    sessionStorage.removeItem(_SS_REFRESH_KEY);
-  } catch {}
   // Clear the JS-readable marker cookie to prevent redirect loops.
   // The httpOnly access_token/refresh_token cookies are cleared by the
   // server /auth/logout endpoint via Set-Cookie headers.

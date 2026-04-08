@@ -20,7 +20,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, cast, Numeric
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.progress import (
@@ -375,13 +375,16 @@ async def get_leaderboard(
         select(
             SessionHistory.user_id,
             func.count().label("sessions_count"),
-            func.round(func.avg(SessionHistory.score_total), 1).label("avg_score"),
+            func.round(cast(func.avg(SessionHistory.score_total), Numeric), 1).label("avg_score"),
             func.max(SessionHistory.score_total).label("best_score"),
             func.sum(SessionHistory.xp_earned).label("total_xp"),
             func.round(
-                100.0
-                * func.count().filter(SessionHistory.outcome == "deal")
-                / func.nullif(func.count(), 0),
+                cast(
+                    100.0
+                    * func.count().filter(SessionHistory.outcome == "deal")
+                    / func.nullif(func.count(), 0),
+                    Numeric,
+                ),
                 1,
             ).label("win_rate"),
         )

@@ -175,11 +175,11 @@ async def list_scenarios(
         "items": [
             {
                 "id": str(s.id),
-                "title": s.title,
-                "description": getattr(s, "description", None),
-                "scenario_code": s.scenario_code.value if hasattr(s.scenario_code, 'value') else str(s.scenario_code),
-                "archetype": s.archetype_code.value if hasattr(s.archetype_code, 'value') else str(s.archetype_code),
-                "difficulty": s.difficulty,
+                "title": s.name,
+                "description": s.description,
+                "scenario_code": s.code,
+                "group": getattr(s, "group_name", "custom"),
+                "who_calls": getattr(s, "who_calls", "manager"),
                 "is_active": getattr(s, "is_active", True),
                 "created_at": s.created_at.isoformat() if s.created_at else None,
             }
@@ -357,10 +357,10 @@ async def list_chunks(
         "items": [
             {
                 "id": str(c.id),
-                "title": c.title,
-                "content": c.content[:200] + "..." if len(c.content) > 200 else c.content,
+                "title": getattr(c, "law_article", None) or str(c.id),
+                "content": (c.fact_text[:200] + "..." if len(c.fact_text) > 200 else c.fact_text) if c.fact_text else "",
                 "category": c.category.value if hasattr(c.category, 'value') else str(c.category),
-                "article_reference": c.article_reference,
+                "article_reference": getattr(c, "law_article", None),
                 "difficulty_level": getattr(c, "difficulty_level", 3),
                 "is_court_practice": getattr(c, "is_court_practice", False),
                 "court_case_reference": getattr(c, "court_case_reference", None),

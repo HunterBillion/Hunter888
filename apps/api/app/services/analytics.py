@@ -597,13 +597,18 @@ async def get_story_arc_summaries(
     """Analyze multi-call story arcs for a user."""
     from app.models.roleplay import ClientStory
 
-    stories_result = await db.execute(
-        select(ClientStory)
-        .where(ClientStory.user_id == user_id)
-        .order_by(ClientStory.started_at.desc())
-        .limit(limit)
-    )
-    stories = stories_result.scalars().all()
+    try:
+        stories_result = await db.execute(
+            select(ClientStory)
+            .where(ClientStory.user_id == user_id)
+            .order_by(ClientStory.started_at.desc())
+            .limit(limit)
+        )
+        stories = stories_result.scalars().all()
+    except Exception:
+        # Column may not exist yet if migration hasn't run
+        await db.rollback()
+        return []
 
     summaries: list[StoryArcSummary] = []
 
@@ -916,6 +921,13 @@ async def build_full_snapshot(
     """Build complete v5 analytics snapshot — all data in one call."""
     sessions = await get_user_sessions(user_id, db, limit=50)
 
+    # Pre-compute session stats while objects are still attached to db session
+    total = len(sessions)
+    avg_score = sum(s.score_total or 0 for s in sessions) / total if total else 0
+    days_active = len({s.started_at.date() for s in sessions if s.started_at})
+    story_count = len({s.client_story_id for s in sessions if s.client_story_id})
+    skill_radar = aggregate_radar(sessions[:20])
+
     weak_spots = await analyze_weak_spots(user_id, db)
     progress = await build_progress_chart(user_id, db)
     archetype_scores = await get_archetype_scores(user_id, db)
@@ -923,15 +935,7 @@ async def build_full_snapshot(
         user_id, db, weak_spots=weak_spots, archetype_scores=archetype_scores
     )
     insights = await generate_insights(user_id, db, sessions=sessions)
-    skill_radar = aggregate_radar(sessions[:20])
     story_arcs = await get_story_arc_summaries(user_id, db)
-
-    total = len(sessions)
-    avg_score = sum(s.score_total or 0 for s in sessions) / total if total else 0
-    days_active = len({s.started_at.date() for s in sessions if s.started_at})
-
-    # Story stats
-    story_count = len({s.client_story_id for s in sessions if s.client_story_id})
 
     return AnalyticsSnapshot(
         weak_spots=weak_spots,
