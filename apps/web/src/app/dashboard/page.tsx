@@ -196,7 +196,7 @@ export default function DashboardPage() {
   return (
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
-        <div className="mx-auto max-w-6xl px-4 py-8">
+        <div className="app-page">
           <BackButton href="/home" label="На главную" />
 
           {/* ─── Header ────────────────────────────────────────────────── */}
@@ -234,7 +234,7 @@ export default function DashboardPage() {
             <>
               {/* ─── Sticky Tab Bar ──────────────────────────────────────── */}
               <div
-                className="sticky top-[60px] z-30 mt-6"
+                className="sticky top-[60px] z-20 mt-6"
               >
                 <div
                   className="flex items-center gap-1.5 rounded-xl p-1.5 overflow-x-auto"

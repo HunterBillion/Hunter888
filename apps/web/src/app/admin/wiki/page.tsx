@@ -28,6 +28,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { isAdmin } from "@/lib/guards";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { BackButton } from "@/components/ui/BackButton";
+import Markdown from "react-markdown";
 
 /* ─── Types ─── */
 
@@ -131,14 +132,7 @@ const ACTION_LABELS: Record<string, string> = {
 
 /* ─── Helpers ─── */
 
-function renderMarkdown(content: string): string {
-  return content
-    .replace(/^### (.+)$/gm, '<h3 style="font-size:1.1rem;font-weight:600;margin:1rem 0 0.5rem;color:#e0e0e0">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 style="font-size:1.3rem;font-weight:700;margin:1.5rem 0 0.75rem;color:#fff">$1</h2>')
-    .replace(/^- (.+)$/gm, '<li style="margin:0.25rem 0;padding-left:0.5rem">$1</li>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong style="color:#fff">$1</strong>')
-    .replace(/\n/g, "<br/>");
-}
+/* renderMarkdown removed — replaced with react-markdown to prevent XSS */
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -830,9 +824,22 @@ function PagesTab({
             </div>
           )}
           <div
+            className="wiki-content"
             style={{ color: "#d1d5db", lineHeight: 1.7, fontSize: "0.9rem" }}
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(selectedPage.content) }}
-          />
+          >
+            <Markdown
+              skipHtml
+              allowedElements={["h1", "h2", "h3", "h4", "p", "ul", "ol", "li", "strong", "em", "a", "br", "code", "pre", "blockquote"]}
+              components={{
+                h2: ({ children }) => <h2 style={{ fontSize: "1.3rem", fontWeight: 700, margin: "1.5rem 0 0.75rem", color: "#fff" }}>{children}</h2>,
+                h3: ({ children }) => <h3 style={{ fontSize: "1.1rem", fontWeight: 600, margin: "1rem 0 0.5rem", color: "#e0e0e0" }}>{children}</h3>,
+                strong: ({ children }) => <strong style={{ color: "#fff" }}>{children}</strong>,
+                li: ({ children }) => <li style={{ margin: "0.25rem 0", paddingLeft: "0.5rem" }}>{children}</li>,
+              }}
+            >
+              {selectedPage.content}
+            </Markdown>
+          </div>
         </motion.div>
       )}
     </div>

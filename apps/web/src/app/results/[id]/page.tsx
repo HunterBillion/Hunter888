@@ -290,7 +290,7 @@ export default function ResultsPage() {
     <AuthLayout>
       <AchievementToast achievement={achievement} onClose={() => setAchievement(null)} />
 
-      <div className="max-w-7xl mx-auto w-full p-6 md:p-10 flex flex-col min-h-screen">
+      <div className="app-page flex flex-col min-h-screen">
         <BackButton href="/training" label="К тренировкам" />
 
         {/* Completeness warning for short conversations */}

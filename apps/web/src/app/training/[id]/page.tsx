@@ -132,12 +132,17 @@ export default function TrainingSessionPage() {
   // Initialize store on mount
   useEffect(() => {
     useSessionStore.getState().init(routeId);
-    return () => { useSessionStore.getState().reset(); };
+    return () => {
+      useSessionStore.getState().reset();
+      wsTimersRef.current.forEach(clearTimeout);
+      wsTimersRef.current = [];
+    };
   }, [routeId]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const sessionEndedRef = useRef<{ score: number | null; xp: number | null; levelUp: boolean }>({ score: null, xp: null, levelUp: false });
   const storyBootstrappedRef = useRef(false);
   const [storyTransitionText, setStoryTransitionText] = useState(
@@ -369,7 +374,7 @@ export default function TrainingSessionPage() {
 
         case "silence.warning":
           s.setSilenceWarning(true);
-          setTimeout(() => s.setSilenceWarning(false), 5000);
+          wsTimersRef.current.push(setTimeout(() => s.setSilenceWarning(false), 5000));
           break;
 
         case "silence.timeout":
@@ -384,7 +389,7 @@ export default function TrainingSessionPage() {
         case "client.hangup_warning":
           s.setHangupWarning((data.data.message as string) || "Клиент теряет терпение...");
           // Auto-dismiss after 5 seconds
-          setTimeout(() => s.setHangupWarning(null), 5000);
+          wsTimersRef.current.push(setTimeout(() => s.setHangupWarning(null), 5000));
           break;
 
         case "client.hangup":
@@ -425,7 +430,7 @@ export default function TrainingSessionPage() {
             message: data.data.message as string,
           };
           s.setObjectionHint(hint);
-          setTimeout(() => s.setObjectionHint(null), 4000);
+          wsTimersRef.current.push(setTimeout(() => s.setObjectionHint(null), 4000));
           break;
         }
 
@@ -435,7 +440,7 @@ export default function TrainingSessionPage() {
             status: data.data.status as CheckpointHint["status"],
           };
           s.setCheckpointHint(cpHint);
-          setTimeout(() => s.setCheckpointHint(null), 3000);
+          wsTimersRef.current.push(setTimeout(() => s.setCheckpointHint(null), 3000));
           break;
         }
 
@@ -530,11 +535,11 @@ export default function TrainingSessionPage() {
             const consequence = data.data.new_consequence as import("@/types/story").ConsequenceEvent;
             s.addConsequence(consequence);
             setActiveConsequence(consequence);
-            window.setTimeout(() => {
+            wsTimersRef.current.push(setTimeout(() => {
               setActiveConsequence((current) => (
                 current && current.call === consequence.call && current.type === consequence.type ? null : current
               ));
-            }, 4500);
+            }, 4500));
           }
           break;
 

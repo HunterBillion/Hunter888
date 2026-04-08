@@ -2,10 +2,12 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Database, Plus, Search, Edit, Trash2, Loader2, Save } from "lucide-react";
+import { Database, Plus, Search, Edit, Trash2, Loader2, Save, ShieldAlert } from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { useAuth } from "@/hooks/useAuth";
+import { hasRole } from "@/lib/guards";
 
 interface Chunk {
   id: string;
@@ -25,6 +27,9 @@ const CATEGORIES = [
 ];
 
 export default function ArenaContentPage() {
+  const { user, loading: authLoading } = useAuth();
+  const accessDenied = !authLoading && user != null && !hasRole(user, ["admin", "rop", "methodologist"]);
+
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -73,6 +78,20 @@ export default function ArenaContentPage() {
       fetchChunks();
     } catch (e) { alert("Error deleting chunk"); }
   };
+
+  if (accessDenied) {
+    return (
+      <AuthLayout>
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="text-center">
+            <ShieldAlert size={48} style={{ color: "var(--neon-red)", margin: "0 auto 16px" }} />
+            <h2 className="font-display text-xl font-bold" style={{ color: "var(--text-primary)" }}>Доступ запрещён</h2>
+            <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>Эта страница доступна только методологам, РОП и администраторам.</p>
+          </div>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout>

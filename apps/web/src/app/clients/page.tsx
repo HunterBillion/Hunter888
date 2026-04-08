@@ -166,7 +166,7 @@ export default function ClientsPage() {
   return (
     <AuthLayout>
       <div className="panel-grid-bg min-h-screen">
-        <div className="mx-auto max-w-6xl px-4 py-8">
+        <div className="app-page">
         {/* Header — compact */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">

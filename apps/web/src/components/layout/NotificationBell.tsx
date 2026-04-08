@@ -90,7 +90,7 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
   const toastPortal = typeof document !== "undefined"
     ? createPortal(
         <div
-          className="fixed z-[9000] flex flex-col gap-2.5 pointer-events-none"
+          className="fixed z-[210] flex flex-col gap-2.5 pointer-events-none"
           style={{
             top: "4.5rem",
             right: "1rem",

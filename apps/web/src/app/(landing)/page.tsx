@@ -99,25 +99,32 @@ function ScoringTerminal() {
   const [isTyping, setIsTyping] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const started = useRef(false);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const scenario = TERMINAL_SCENARIOS[scenarioIdx];
 
+  const clearTimers = useCallback(() => {
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+  }, []);
+
   const runScenario = useCallback((idx: number) => {
+    clearTimers();
     setScenarioIdx(idx);
     setVisibleLines(0);
     setIsTyping(true);
     const lines = TERMINAL_SCENARIOS[idx];
     lines.forEach((_, i) => {
-      setTimeout(() => setVisibleLines(i + 1), lines[i].delay);
+      timersRef.current.push(setTimeout(() => setVisibleLines(i + 1), lines[i].delay));
     });
     // After all lines shown, wait 4s then start next scenario
-    setTimeout(() => {
+    timersRef.current.push(setTimeout(() => {
       setIsTyping(false);
-      setTimeout(() => {
+      timersRef.current.push(setTimeout(() => {
         runScenario((idx + 1) % TERMINAL_SCENARIOS.length);
-      }, 4000);
-    }, lines[lines.length - 1].delay + 500);
-  }, []);
+      }, 4000));
+    }, lines[lines.length - 1].delay + 500));
+  }, [clearTimers]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -132,8 +139,11 @@ function ScoringTerminal() {
       { threshold: 0.3 },
     );
     observer.observe(el);
-    return () => observer.disconnect();
-  }, [runScenario]);
+    return () => {
+      observer.disconnect();
+      clearTimers();
+    };
+  }, [runScenario, clearTimers]);
 
   return (
     <div

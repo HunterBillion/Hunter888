@@ -1,9 +1,11 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { BookOpen, FileText, Settings, Database, ChevronRight } from "lucide-react";
+import { BookOpen, FileText, Settings, Database, ChevronRight, ShieldAlert } from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
 import Link from "next/link";
+import { useAuth } from "@/hooks/useAuth";
+import { hasRole } from "@/lib/guards";
 
 const TOOLS = [
   {
@@ -37,10 +39,27 @@ const TOOLS = [
 ];
 
 export default function MethodologistPage() {
+  const { user, loading: authLoading } = useAuth();
+  const accessDenied = !authLoading && user != null && !hasRole(user, ["admin", "rop", "methodologist"]);
+
+  if (accessDenied) {
+    return (
+      <AuthLayout>
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="text-center">
+            <ShieldAlert size={48} style={{ color: "var(--neon-red)", margin: "0 auto 16px" }} />
+            <h2 className="font-display text-xl font-bold" style={{ color: "var(--text-primary)" }}>Доступ запрещён</h2>
+            <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>Эта страница доступна только методологам, РОП и администраторам.</p>
+          </div>
+        </div>
+      </AuthLayout>
+    );
+  }
+
   return (
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
-        <div className="mx-auto max-w-3xl px-4 py-8">
+        <div className="app-page max-w-3xl">
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
             <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
               МЕТОДОЛОГ

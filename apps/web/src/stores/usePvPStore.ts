@@ -215,7 +215,7 @@ export const usePvPStore = create<PvPState>((set, get) => ({
   setMyRole: (myRole) => set({ myRole }),
   setRoundNumber: (roundNumber) => set({ roundNumber }),
   setTimeRemaining: (timeRemaining) => set({ timeRemaining }),
-  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
+  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg].slice(-500) })),
   replaceMessages: (messages) => set({ messages }),
   setJudgeScore: (judgeScore) => set({ judgeScore }),
   setDuelResult: (duelResult) => set({ duelResult }),

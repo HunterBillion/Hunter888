@@ -228,7 +228,7 @@ export default function AnalyticsPage() {
   return (
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
-        <div className="mx-auto max-w-6xl px-4 py-8">
+        <div className="app-page">
           <BackButton href="/home" label="На главную" />
 
           {/* ── Header ── */}

@@ -289,7 +289,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set({ _msgCounter: counter });
     return `msg-${counter}`;
   },
-  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
+  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg].slice(-500) })),
   sortMessagesBySequence: () =>
     set((s) => ({
       messages: [...s.messages].sort((a, b) => {

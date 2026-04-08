@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, Search, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { FileText, Search, Loader2, ChevronLeft, ChevronRight, ShieldAlert } from "lucide-react";
 import { BackButton } from "@/components/ui/BackButton";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { useAuth } from "@/hooks/useAuth";
+import { hasRole } from "@/lib/guards";
 
 interface SessionItem {
   id: string;
@@ -21,6 +23,9 @@ interface SessionItem {
 }
 
 export default function MethodologistSessionsPage() {
+  const { user, loading: authLoading } = useAuth();
+  const accessDenied = !authLoading && user != null && !hasRole(user, ["admin", "rop", "methodologist"]);
+
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -42,6 +47,20 @@ export default function MethodologistSessionsPage() {
   }, [page]);
 
   const totalPages = Math.ceil(total / pageSize);
+
+  if (accessDenied) {
+    return (
+      <AuthLayout>
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="text-center">
+            <ShieldAlert size={48} style={{ color: "var(--neon-red)", margin: "0 auto 16px" }} />
+            <h2 className="font-display text-xl font-bold" style={{ color: "var(--text-primary)" }}>Доступ запрещён</h2>
+            <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>Эта страница доступна только методологам, РОП и администраторам.</p>
+          </div>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout>

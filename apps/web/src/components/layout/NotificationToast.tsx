@@ -48,7 +48,7 @@ export function NotificationToastProvider() {
 
   return (
     <div
-      className="fixed top-[4.5rem] right-3 z-[200] flex flex-col gap-2 w-[340px] pointer-events-none"
+      className="fixed top-[4.5rem] right-3 z-[220] flex flex-col gap-2 w-[340px] pointer-events-none"
       role="status"
       aria-live="polite"
       aria-atomic="false"

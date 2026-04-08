@@ -195,7 +195,7 @@ export default function SettingsPage() {
   return (
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
-        <div className="mx-auto max-w-2xl px-4 py-8">
+        <div className="app-page max-w-2xl">
           <BackButton href="/home" label="На главную" />
           {/* Header: avatar + name + title */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}

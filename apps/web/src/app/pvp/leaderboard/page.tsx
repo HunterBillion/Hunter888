@@ -74,7 +74,7 @@ export default function PvPLeaderboardPage() {
   return (
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
-        <div className="mx-auto max-w-3xl px-4 py-8">
+        <div className="app-page max-w-3xl">
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
             <div className="flex items-center justify-between">

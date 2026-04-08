@@ -166,7 +166,7 @@ function PvPLobbyContent() {
   return (
     <AuthLayout>
       <div className="relative arena-grid-bg min-h-screen">
-        <div className="mx-auto max-w-6xl px-4 py-8">
+        <div className="app-page">
           {/* PvP-4 fix: connection status banner */}
           {connectionState !== "connected" && (
             <motion.div

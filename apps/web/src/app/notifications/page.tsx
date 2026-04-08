@@ -70,7 +70,7 @@ export default function NotificationsPage() {
   return (
     <AuthLayout>
       <div className="panel-grid-bg min-h-screen">
-        <div className="mx-auto max-w-2xl px-4 py-8">
+        <div className="app-page max-w-2xl">
         {/* Header — compact */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <div className="flex items-center justify-between">

@@ -63,7 +63,7 @@ export default function ArchetypesPage() {
   return (
     <AuthLayout>
       <div className="panel-grid-bg min-h-screen">
-        <div className="mx-auto max-w-6xl px-4 py-8">
+        <div className="app-page">
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
             <Link

@@ -131,7 +131,7 @@ export default function HistoryPage() {
   return (
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
-        <div className="mx-auto max-w-4xl px-4 py-8">
+        <div className="app-page max-w-4xl">
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>
               Все ваши прошлые сессии
