@@ -13,9 +13,18 @@ import { DuelResult } from "@/components/pvp/DuelResult";
 import { Confetti } from "@/components/ui/Confetti";
 import { useScreenShake } from "@/components/ui/ScreenShake";
 import { api } from "@/lib/api";
+import { ErrorBoundary } from "@/components/errors/ErrorBoundary";
 import type { PvPDuel } from "@/types";
 
-export default function DuelPage() {
+export default function DuelPageWrapper() {
+  return (
+    <ErrorBoundary>
+      <DuelPage />
+    </ErrorBoundary>
+  );
+}
+
+function DuelPage() {
   const params = useParams();
   const router = useRouter();
   const duelId = params.id as string;
@@ -135,11 +144,11 @@ export default function DuelPage() {
             player2_rating_delta: Number(d.player2_rating_delta || 0),
             summary: String(d.summary || ""),
             player1_breakdown: d.player1_breakdown && typeof d.player1_breakdown === "object"
-              ? (d.player1_breakdown as Record<string, unknown>) as never : null,
+              ? d.player1_breakdown as import("@/stores/usePvPStore").PlayerBreakdown : null,
             player2_breakdown: d.player2_breakdown && typeof d.player2_breakdown === "object"
-              ? (d.player2_breakdown as Record<string, unknown>) as never : null,
+              ? d.player2_breakdown as import("@/stores/usePvPStore").PlayerBreakdown : null,
             turning_point: d.turning_point && typeof d.turning_point === "object"
-              ? (d.turning_point as Record<string, unknown>) as never : null,
+              ? d.turning_point as { round?: number; description?: string } : null,
           });
           break;
         }
@@ -214,7 +223,9 @@ export default function DuelPage() {
   }, []);
 
   const handleSend = () => {
-    const text = input.trim();
+    // #6 fix: sanitize input — strip control chars, cap length
+    // eslint-disable-next-line no-control-regex
+    const text = input.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\u200B-\u200F\uFEFF]/g, "").slice(0, 2000);
     if (!text || !store.myRole || store.roundNumber === 0) return;
     sendMessage({ type: "duel.message", text });
     setInput("");

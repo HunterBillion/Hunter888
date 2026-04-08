@@ -24,12 +24,21 @@ import {
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useSound } from "@/hooks/useSound";
 import { useKnowledgeStore, type QuizMessage } from "@/stores/useKnowledgeStore";
+import { ErrorBoundary } from "@/components/errors/ErrorBoundary";
 import { logger } from "@/lib/logger";
 import type { WSMessage } from "@/types";
 
 /* ─── Quiz Session Page ──────────────────────────────────────────────────── */
 
-export default function KnowledgeSessionPage() {
+export default function KnowledgeSessionPageWrapper() {
+  return (
+    <ErrorBoundary>
+      <KnowledgeSessionPage />
+    </ErrorBoundary>
+  );
+}
+
+function KnowledgeSessionPage() {
   const params = useParams();
   const router = useRouter();
   const sessionId = params.sessionId as string;
@@ -43,12 +52,13 @@ export default function KnowledgeSessionPage() {
   const [showResults, setShowResults] = useState(false);
   const [hintLoading, setHintLoading] = useState(false);
 
-  // Initialize session if needed
+  // #7 fix: Reset store when navigating to a different session to prevent stale state leak
   useEffect(() => {
-    if (!store.sessionId || store.sessionId !== sessionId) {
-      store.setSessionId(sessionId);
-      store.setStatus("connecting");
+    if (store.sessionId && store.sessionId !== sessionId) {
+      store.reset();
     }
+    store.setSessionId(sessionId);
+    store.setStatus("connecting");
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps -- store setters are stable Zustand actions
 
   // WebSocket message handler
@@ -336,9 +346,17 @@ export default function KnowledgeSessionPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [store.messages.length, store.isTyping]);
 
+  // #6 fix: Sanitize user input — strip control chars, cap length
+  const MAX_ANSWER_LENGTH = 2000;
+  const sanitizeInput = (raw: string): string => {
+    // Remove zero-width and control characters (keep newlines/tabs)
+    // eslint-disable-next-line no-control-regex
+    return raw.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\u200B-\u200F\uFEFF]/g, "").slice(0, MAX_ANSWER_LENGTH);
+  };
+
   // Send answer
   const handleSend = useCallback(() => {
-    const text = store.input.trim();
+    const text = sanitizeInput(store.input.trim());
     if (!text || store.status !== "active") return;
 
     store.addMessage({ type: "answer", content: text });
@@ -603,6 +621,49 @@ export default function KnowledgeSessionPage() {
                 style={{ color: "var(--text-muted)" }}
               >
                 Пропущено: {store.skipped}
+              </div>
+            )}
+
+            {/* #5 fix: Category progress from server results */}
+            {Array.isArray(results.category_progress) && (results.category_progress as Array<{ category: string; correct: number; total: number }>).length > 0 && (
+              <div className="mt-6">
+                <h3 className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>
+                  По категориям
+                </h3>
+                <div className="space-y-2">
+                  {(results.category_progress as Array<{ category: string; correct: number; total: number }>).map((cat) => {
+                    const pct = cat.total > 0 ? Math.round((cat.correct / cat.total) * 100) : 0;
+                    return (
+                      <div key={cat.category}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{cat.category}</span>
+                          <span className="font-mono text-xs" style={{ color: pct >= 75 ? "#00FF66" : pct >= 50 ? "#F59E0B" : "#FF3333" }}>
+                            {cat.correct}/{cat.total} ({pct}%)
+                          </span>
+                        </div>
+                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${pct}%`,
+                              background: pct >= 75 ? "#00FF66" : pct >= 50 ? "#F59E0B" : "#FF3333",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Server summary */}
+            {typeof results.summary === "string" && results.summary && (
+              <div
+                className="mt-4 rounded-xl p-3 text-xs leading-relaxed"
+                style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)", color: "var(--text-secondary)" }}
+              >
+                {results.summary as string}
               </div>
             )}
 

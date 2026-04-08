@@ -19,7 +19,7 @@ interface JudgeScore {
   legal_accuracy: number;
 }
 
-interface PlayerBreakdown {
+export interface PlayerBreakdown {
   selling_score: number;
   acting_score: number;
   legal_score: number;

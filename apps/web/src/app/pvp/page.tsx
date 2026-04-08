@@ -132,8 +132,10 @@ function PvPLobbyContent() {
     autoPvERef.current = true;
     setPveAccepting(true);
 
-    api.post("/pvp/accept-pve", {})
+    const controller = new AbortController();
+    api.post("/pvp/accept-pve", {}, { signal: controller.signal })
       .then((data) => {
+        if (controller.signal.aborted) return;
         const duelId = (data as { duel_id?: string })?.duel_id;
         if (!duelId) {
           autoPvERef.current = false;
@@ -145,6 +147,7 @@ function PvPLobbyContent() {
         router.push(`/pvp/duel/${duelId}`);
       })
       .catch((err) => {
+        if (controller.signal.aborted) return;
         logger.error("Auto PvE match failed:", err);
         autoPvERef.current = false;
         useNotificationStore.getState().addToast({
@@ -154,8 +157,10 @@ function PvPLobbyContent() {
         });
       })
       .finally(() => {
-        setPveAccepting(false);
+        if (!controller.signal.aborted) setPveAccepting(false);
       });
+
+    return () => controller.abort();
   }, [store.queueStatus, store.estimatedWait, router, store]);
 
   const formatTime = (iso: string) => {

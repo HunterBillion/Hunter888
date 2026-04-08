@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { logger } from "@/lib/logger";
 import { getRefreshToken, getToken, setTokens } from "@/lib/auth";
+import { getApiBaseUrl } from "@/lib/public-origin";
 import { createWebSocket } from "@/lib/ws";
 import type { WSConnectionState, WSMessage } from "@/types";
 
@@ -125,9 +126,8 @@ export function useWebSocket({
         return;
       }
 
-      // Use the same REST endpoint as api.ts
-      const apiBase =
-        process.env.NEXT_PUBLIC_API_URL || window.location.origin;
+      // Use the same origin inference as api.ts (handles LAN / non-localhost)
+      const apiBase = getApiBaseUrl();
       const res = await fetch(`${apiBase}/api/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
