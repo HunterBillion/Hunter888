@@ -392,7 +392,11 @@ def _resolve_provider(
     - Default → local
     """
     if prefer in ("local", "cloud"):
-        # Explicit preference — but check cloud availability
+        # Explicit preference — but override "local" if prompt exceeds Gemma context window
+        if prefer == "local" and system_prompt_tokens > 6000:
+            if _gemini_has_quota() and settings.gemini_api_key:
+                logger.info("Overriding local→cloud: prompt %d tokens exceeds Gemma safe limit", system_prompt_tokens)
+                return "cloud"
         if prefer == "cloud" and not _gemini_has_quota() and not settings.gemini_api_key:
             logger.debug("Cloud requested but no Gemini quota, falling back to local")
             return "local"
