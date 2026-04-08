@@ -84,8 +84,8 @@ class ManagerWiki(Base):
         nullable=False,
         index=True,
     )
-    status: Mapped[WikiStatus] = mapped_column(
-        Enum(WikiStatus), default=WikiStatus.active
+    status: Mapped[str] = mapped_column(
+        String(20), default="active"
     )
     pages_count: Mapped[int] = mapped_column(Integer, default=0)
     sessions_ingested: Mapped[int] = mapped_column(Integer, default=0)
@@ -134,8 +134,8 @@ class WikiPage(Base):
     source_sessions: Mapped[dict] = mapped_column(
         JSONB, default=list
     )  # list of session_id strings
-    page_type: Mapped[WikiPageType] = mapped_column(
-        Enum(WikiPageType), nullable=False
+    page_type: Mapped[str] = mapped_column(
+        String(50), nullable=False
     )
     tags: Mapped[dict] = mapped_column(JSONB, default=list)  # list of strings
     created_at: Mapped[datetime] = mapped_column(
@@ -160,7 +160,7 @@ class WikiUpdateLog(Base):
         nullable=False,
         index=True,
     )
-    action: Mapped[WikiAction] = mapped_column(Enum(WikiAction), nullable=False)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     pages_modified: Mapped[int] = mapped_column(Integer, default=0)
     pages_created: Mapped[int] = mapped_column(Integer, default=0)
@@ -205,8 +205,8 @@ class ManagerPattern(Base):
     pattern_code: Mapped[str] = mapped_column(
         String(100), nullable=False
     )  # e.g. "rush_price", "avoid_skeptic"
-    category: Mapped[PatternCategory] = mapped_column(
-        Enum(PatternCategory), nullable=False
+    category: Mapped[str] = mapped_column(
+        String(50), nullable=False
     )
     description: Mapped[str] = mapped_column(Text, nullable=False)
     sessions_in_pattern: Mapped[int] = mapped_column(Integer, default=0)

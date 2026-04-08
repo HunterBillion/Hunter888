@@ -151,19 +151,50 @@ async def register(request: Request, body: RegisterRequest, db: AsyncSession = D
     return _set_auth_cookies(response, tokens)
 
 
+_LOGIN_FAIL_MAX = 5
+_LOGIN_FAIL_TTL = 15 * 60  # 15 minutes in seconds
+
+
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("5/minute")
 async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
+    _ip = request.client.host if request.client else "unknown"
+    _lockout_key = f"login_fail:{body.email}"
+
+    # Check if account is locked out due to too many failed attempts
+    try:
+        r = get_redis()
+        fail_count = await r.get(_lockout_key)
+        if fail_count is not None and int(fail_count) >= _LOGIN_FAIL_MAX:
+            _logger.warning(
+                "auth.login.locked email=%s ip=%s",
+                body.email, _ip,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Аккаунт временно заблокирован. Попробуйте через 15 минут",
+            )
+    except aioredis.RedisError as exc:
+        _logger.warning("Redis error checking login lockout for %s: %s", body.email, exc)
+
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
-
-    _ip = request.client.host if request.client else "unknown"
 
     # Timing attack mitigation: always run verify_password even if user doesn't exist.
     # bcrypt.checkpw takes ~100ms; skipping it on non-existent users leaks email existence.
     _DUMMY_HASH = "$2b$12$LJ3m4ys3Lg2FEOn.0dRG9eKPlDFtMiAqfZIbXYMQKxNBb1DRPGLXK"
     _pw_valid = verify_password(body.password, user.hashed_password if user else _DUMMY_HASH)
     if not user or not _pw_valid:
+        # Increment failed login counter in Redis
+        try:
+            r = get_redis()
+            pipe = r.pipeline()
+            pipe.incr(_lockout_key)
+            pipe.expire(_lockout_key, _LOGIN_FAIL_TTL)
+            await pipe.execute()
+        except aioredis.RedisError as exc:
+            _logger.warning("Redis error incrementing login failures for %s: %s", body.email, exc)
+
         _logger.warning(
             "auth.login.failed email=%s ip=%s reason=invalid_credentials",
             body.email, _ip,
@@ -178,6 +209,13 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
             body.email, _ip,
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=err.ACCOUNT_DISABLED)
+
+    # Clear failed login attempts on successful login
+    try:
+        r = get_redis()
+        await r.delete(_lockout_key)
+    except aioredis.RedisError as exc:
+        _logger.warning("Redis error clearing login failures for %s: %s", body.email, exc)
 
     # Clear any blacklist from previous logout so new login works
     try:

@@ -600,9 +600,11 @@ export default function TrainingSessionPage() {
           break;
         }
 
-        case "error":
-          logger.error("Training error:", data.data.message);
+        case "error": {
+          const errMsg = typeof data.data.message === "string" ? data.data.message : "Неизвестная ошибка";
+          logger.error("Training error:", errMsg);
           break;
+        }
       }
     },
   });

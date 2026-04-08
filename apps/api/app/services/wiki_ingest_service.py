@@ -331,7 +331,7 @@ async def ingest_session(session_id: uuid.UUID, db: AsyncSession) -> dict:
         else:
             pages_modified += 1
 
-    # Patterns
+    # Patterns — discover and notify ROP
     for p in analysis.get("patterns_found", []):
         if not isinstance(p, dict) or not p.get("code"):
             continue
@@ -340,10 +340,28 @@ async def ingest_session(session_id: uuid.UUID, db: AsyncSession) -> dict:
             cat = PatternCategory(cat_str)
         except ValueError:
             cat = PatternCategory.weakness
-        await _upsert_pattern(
+        pattern_obj = await _upsert_pattern(
             session.user_id, p["code"], cat, p.get("description", ""), db
         )
         patterns_found.append(p)
+
+        # Notify ROP about new/confirmed patterns (fire-and-forget)
+        try:
+            from app.services.wiki_notifications import notify_rop_about_pattern
+            from app.models.user import User as _User
+            mgr = await db.get(_User, session.user_id)
+            mgr_name = mgr.full_name if mgr else "Unknown"
+            await notify_rop_about_pattern(
+                manager_id=session.user_id,
+                manager_name=mgr_name,
+                pattern_code=p["code"],
+                category=cat_str,
+                description=p.get("description", ""),
+                sessions_count=pattern_obj.sessions_in_pattern,
+                db=db,
+            )
+        except Exception as notif_err:
+            logger.debug("Pattern notification failed (non-blocking): %s", notif_err)
 
     # Weakness matrix page
     weakness_update = analysis.get("weakness_update")

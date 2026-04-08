@@ -40,7 +40,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/history", label: "История", icon: History },
   { href: "/leaderboard", label: "Лидерборд", icon: Trophy },
   { href: "/pvp", label: "Арена", icon: Swords },
-  { href: "/reports", label: "Отчёты", icon: FileBarChart },
+  { href: "/reports", label: "Отчёты", icon: FileBarChart, roles: ["manager", "methodologist"] },
   { href: "/dashboard", label: "Панель РОП", icon: LayoutDashboard, roles: ["rop", "admin"] },
 ];
 

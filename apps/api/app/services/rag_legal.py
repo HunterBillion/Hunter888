@@ -134,42 +134,49 @@ class RetrievalConfig:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _embedding_client: httpx.AsyncClient | None = None
+_embedding_client_lock: asyncio.Lock = asyncio.Lock()
 _EMBEDDING_CACHE_MAX = 512
 _EMBEDDING_CACHE_TTL = 3600
 _embedding_cache: OrderedDict[str, tuple[list[float], float]] = OrderedDict()
+_embedding_cache_lock: asyncio.Lock = asyncio.Lock()
 
-def _get_embedding_client() -> httpx.AsyncClient:
+async def _get_embedding_client() -> httpx.AsyncClient:
     global _embedding_client
-    if _embedding_client is None:
-        _embedding_client = httpx.AsyncClient(timeout=10.0)
-    return _embedding_client
+    if _embedding_client is not None:
+        return _embedding_client
+    async with _embedding_client_lock:
+        if _embedding_client is None:
+            _embedding_client = httpx.AsyncClient(timeout=10.0)
+        return _embedding_client
 
-def _cache_get(text: str) -> list[float] | None:
-    entry = _embedding_cache.get(text)
-    if entry is None:
-        return None
-    vec, ts = entry
-    if time.monotonic() - ts > _EMBEDDING_CACHE_TTL:
-        _embedding_cache.pop(text, None)
-        return None
-    _embedding_cache.move_to_end(text)
-    return vec
+async def _cache_get(text: str) -> list[float] | None:
+    async with _embedding_cache_lock:
+        entry = _embedding_cache.get(text)
+        if entry is None:
+            return None
+        vec, ts = entry
+        if time.monotonic() - ts > _EMBEDDING_CACHE_TTL:
+            _embedding_cache.pop(text, None)
+            return None
+        _embedding_cache.move_to_end(text)
+        return vec
 
-def _cache_put(text: str, vec: list[float]) -> None:
-    _embedding_cache[text] = (vec, time.monotonic())
-    _embedding_cache.move_to_end(text)
-    while len(_embedding_cache) > _EMBEDDING_CACHE_MAX:
-        _embedding_cache.popitem(last=False)
+async def _cache_put(text: str, vec: list[float]) -> None:
+    async with _embedding_cache_lock:
+        _embedding_cache[text] = (vec, time.monotonic())
+        _embedding_cache.move_to_end(text)
+        while len(_embedding_cache) > _EMBEDDING_CACHE_MAX:
+            _embedding_cache.popitem(last=False)
 
 async def get_embedding(text: str) -> list[float] | None:
     """Get embedding vector from Gemini Embedding API with LRU cache."""
     if not settings.gemini_embedding_api_key:
         return None
-    cached = _cache_get(text)
+    cached = await _cache_get(text)
     if cached is not None:
         return cached
     try:
-        client = _get_embedding_client()
+        client = await _get_embedding_client()
         url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
                f"{settings.gemini_embedding_model}:embedContent")
         resp = await client.post(url,
@@ -180,7 +187,7 @@ async def get_embedding(text: str) -> list[float] | None:
         resp.raise_for_status()
         vec = resp.json().get("embedding", {}).get("values")
         if vec:
-            _cache_put(text, vec)
+            await _cache_put(text, vec)
         return vec
     except Exception as e:
         logger.warning("Embedding API failed: %s", e)
@@ -188,9 +195,10 @@ async def get_embedding(text: str) -> list[float] | None:
 
 async def close_embedding_client() -> None:
     global _embedding_client
-    if _embedding_client is not None:
-        await _embedding_client.aclose()
-        _embedding_client = None
+    async with _embedding_client_lock:
+        if _embedding_client is not None:
+            await _embedding_client.aclose()
+            _embedding_client = None
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Internal helpers

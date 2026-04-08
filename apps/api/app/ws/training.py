@@ -433,8 +433,8 @@ async def _release_session_lock(session_id: uuid.UUID, ws_id: str) -> None:
         end
         """
         await r.eval(lua_script, 1, key, ws_id)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to release WS lock for session %s: %s", session_id, e)
 
 
 # ─── Session Resume Handler ─────────────────────────────────────────────────
@@ -662,8 +662,8 @@ async def _handle_session_resume(
                     archetype=session_archetype,
                 )
                 state["tts_voice_id"] = tts_voice_id
-            except TTSError:
-                pass  # TTS is optional
+            except TTSError as e:
+                logger.debug("TTS voice pick failed for session %s: %s", session_id, e)
 
     logger.info("Session %s: full state restored (character=%s, traps=%d, difficulty=%s)",
                 session_id, state.get("character_prompt_path"), len(active_traps), state.get("base_difficulty"))
@@ -680,8 +680,8 @@ async def _handle_session_resume(
         _stage_state = await _st_resume.get_state()
         if _stage_state and _stage_state.current_stage:
             await _send(ws, "stage.update", _st_resume.build_ws_payload(_stage_state))
-    except Exception:
-        pass  # Stage tracking not active — skip
+    except Exception as e:
+        logger.debug("Stage tracking restore skipped for session %s: %s", session_id, e)
 
     # 6b. Restore adaptive difficulty state (optional)
     try:
@@ -693,8 +693,8 @@ async def _handle_session_resume(
         if _ad_state and _ad_state.current_turn > 0:
             base_diff = state.get("base_difficulty", 5)
             await _send(ws, "difficulty.update", _ada.build_ws_payload(_ad_state, base_diff))
-    except Exception:
-        pass  # Difficulty tracking not active — skip
+    except Exception as e:
+        logger.debug("Difficulty tracking restore skipped for session %s: %s", session_id, e)
 
     # 7. Replay missed messages
     messages = await get_message_history(session_id)
@@ -840,8 +840,8 @@ async def _generate_character_reply(
             extra_system += "\n\n" + chain_prompt
             # Advance chain after injecting (LLM will use current step)
             await advance_chain(session_id)
-    except Exception:
-        pass  # Chain is optional
+    except Exception as e:
+        logger.debug("Objection chain injection failed for session %s: %s", session_id, e)
 
     # Inject comprehensive stage-aware behavior rules into AI client prompt
     try:
@@ -864,8 +864,8 @@ async def _generate_character_reply(
             )
             # Clear skip reactions after injecting (one-shot)
             state.pop("_pending_skip_reactions", None)
-    except Exception:
-        pass  # Stage context is optional enhancement
+    except Exception as e:
+        logger.debug("Stage context injection failed for session %s: %s", session_id, e)
 
     # Inject fake transition prompt if present (from V3 engine)
     if state.get("fake_transition_prompt"):
@@ -1054,8 +1054,8 @@ async def _generate_character_reply(
             )
             if _hangup_llm and _hangup_llm.content and len(_hangup_llm.content) < 200:
                 hangup_phrase = _strip_stage_directions(_hangup_llm.content)
-        except Exception:
-            pass  # LLM hangup phrase is best-effort
+        except Exception as e:
+            logger.debug("LLM hangup phrase generation failed for session %s: %s", session_id, e)
 
         # Fallback to hardcoded if LLM failed
         if not hangup_phrase:
@@ -1143,8 +1143,8 @@ async def _generate_character_reply(
             state["fake_transition_prompt"] = fake_prompt
         else:
             state.pop("fake_transition_prompt", None)
-    except Exception:
-        pass  # Fake prompt is optional
+    except Exception as e:
+        logger.debug("Fake transition prompt failed for session %s: %s", session_id, e)
 
     # Track last character message for trap detection
     state["last_character_message"] = llm_result.content
@@ -1276,8 +1276,8 @@ async def _generate_character_reply(
         _st_assist = StageTracker(str(session_id), _r_asr)
         # Returns (state, changed, skipped) — we discard; assistant msgs only update quality scores
         _ = await _st_assist.process_message(clean_content, state.get("message_count", 0), "assistant")
-    except Exception:
-        pass  # Non-critical
+    except Exception as e:
+        logger.debug("Stage tracker update for assistant message failed, session %s: %s", session_id, e)
 
     # TTS: convert AI response to natural speech audio (ElevenLabs)
     # Respects user preference tts_enabled (default: True).
@@ -1388,8 +1388,8 @@ async def _generate_character_reply(
                         if enriched:
                             try:
                                 await _send(ws, "whisper.coaching", enriched)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug("Failed to send whisper coaching for session %s: %s", session_id, e)
                     _t = asyncio.create_task(_enrich_legal())
                     _bg_tasks.append(_t)
         except Exception:
@@ -1504,8 +1504,8 @@ async def _silence_watchdog(
                             "format": tts_result.get("format", "mp3"),
                             "text": phrase,
                         })
-                except TTSError:
-                    pass  # Silent fallback
+                except TTSError as e:
+                    logger.debug("TTS failed for hangup phrase, session %s: %s", session_id, e)
             # Save as assistant message
             async with async_session() as db:
                 await add_message(
@@ -1623,8 +1623,8 @@ async def _hint_scheduler(
                     # All checkpoints hit
                     checkpoint_status = "in_progress"
                     checkpoint_name = "Все чекпоинты пройдены"
-        except Exception:
-            pass  # Checkpoint hint is non-critical
+        except Exception as e:
+            logger.debug("Checkpoint hint lookup failed for session %s: %s", session_id, e)
 
         await _send(ws, "hint.checkpoint", {
             "checkpoint": checkpoint_name,
@@ -2354,8 +2354,8 @@ async def _handle_deepgram_streaming(
             try:
                 from app.services.stt_deepgram import transcribe_with_fallback
                 stt_result = await transcribe_with_fallback(audio_bytes)
-            except STTError:
-                pass
+            except STTError as e:
+                logger.debug("STT batch fallback also failed for session %s: %s", session_id, e)
 
         return stt_result
 
@@ -2507,8 +2507,8 @@ async def _handle_audio_chunk(
             "total_words": state["total_user_words"],
             "total_speech_ms": state["total_user_speech_ms"],
         })
-    except Exception:
-        pass  # Non-critical — don't break main flow
+    except Exception as e:
+        logger.debug("Speech analytics failed for session %s: %s", session_id, e)
 
     # Check traps and update script score before generating character reply
     await _check_traps_after_user_message(ws, session_id, stt_result.text, state)
@@ -2955,8 +2955,8 @@ async def _handle_session_end(
                     _mp_svc = ManagerProgressService(db)
                     _wp_data = await _mp_svc.get_weak_points(state.get("user_id"))
                     _coach_weak_points = [w.get("skill", "") for w in _wp_data] if _wp_data else None
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Failed to load manager weak points for session %s: %s", session_id, e)
 
                 # Enrich weak points with RAG feedback data (legal-specific)
                 try:
@@ -2969,8 +2969,8 @@ async def _handle_session_end(
                         ]
                         if _legal_weak:
                             _coach_weak_points = (_coach_weak_points or []) + _legal_weak
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Failed to load RAG feedback weak areas for session %s: %s", session_id, e)
 
                 _coach_report = await generate_session_report(
                     messages=_msg_list,
@@ -3104,8 +3104,8 @@ async def _handle_session_end(
                             "score": scores.total if scores else None,
                         },
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Failed to send assignment completion notification for session %s: %s", session_id, e)
     except Exception:
         logger.debug("Auto-complete assignment check failed for session %s", session_id)
 
@@ -3608,8 +3608,8 @@ async def _handle_story_next_call(
                 {"content": m.content, "type": m.memory_type, "salience": m.salience}
                 for m in memories
             ]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to load episodic memories for story %s: %s", story_id, e)
 
     # Extract client messages from game director events
     _client_msgs = []
@@ -3629,8 +3629,8 @@ async def _handle_story_next_call(
                 _wp_svc = ManagerProgressService(_wp_db)
                 _wp_data = await _wp_svc.get_weak_points(_uid)
                 _mgr_weak_points = [w.get("skill", "") for w in _wp_data] if _wp_data else None
-    except Exception:
-        pass  # Coaching data is optional
+    except Exception as e:
+        logger.debug("Failed to load coaching weak points for pre-call brief: %s", e)
 
     pre_call_brief = generate_pre_call_brief(
         call_number=current_call,
@@ -3988,8 +3988,8 @@ async def _handle_story_call_end(
                     _mp_svc = ManagerProgressService(_mp_db)
                     _wp_data = await _mp_svc.get_weak_points(_user_id)
                     _coach_weak_points = [w.get("skill", "") for w in _wp_data] if _wp_data else None
-        except Exception:
-            pass  # Manager progress data is optional for report
+        except Exception as e:
+            logger.debug("Failed to load manager progress weak points for report: %s", e)
 
         report_data = await generate_session_report(
             messages=msg_list,
@@ -4086,8 +4086,8 @@ async def _handle_story_call_end(
                 fr = final_report.scalar_one_or_none()
                 if fr and fr.score_total:
                     last_report_score = fr.score_total
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to load final report score for story %s: %s", story_id, e)
 
         await _send(ws, "story.completed", {
             "story_id": str(story_id),

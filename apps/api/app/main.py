@@ -21,6 +21,7 @@ from contextlib import asynccontextmanager
 from app.api.router import api_router
 from app.core.redis_pool import close_redis_pool
 from app.services.scheduler import reminder_scheduler
+from app.services.wiki_scheduler import wiki_scheduler
 from app.ws.game_crm import game_crm_websocket
 from app.ws.training import training_websocket
 from app.ws.notifications import notification_websocket
@@ -53,6 +54,7 @@ async def lifespan(application: FastAPI):
 
     # ── Startup ──
     reminder_scheduler.start()
+    wiki_scheduler.start()
 
     # Populate legal embeddings in background (non-blocking)
     _embedding_task = asyncio.create_task(safe_populate_embeddings())
@@ -111,6 +113,7 @@ async def lifespan(application: FastAPI):
     # ── Shutdown ──
     _embedding_task.cancel()
     reminder_scheduler.stop()
+    wiki_scheduler.stop()
     await close_embedding_client()
     # Close shared TTS httpx client
     try:

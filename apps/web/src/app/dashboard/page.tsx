@@ -18,6 +18,7 @@ import {
   ChevronUp,
   ChevronDown,
   BookOpen,
+  FileBarChart,
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -47,10 +48,11 @@ import { scoreColor } from "@/lib/utils";
 import { getApiBaseUrl } from "@/lib/public-origin";
 import { logger } from "@/lib/logger";
 import { WikiDashboard } from "@/components/dashboard/WikiDashboard";
+import { ReportsDashboard } from "@/components/dashboard/ReportsDashboard";
 
 /* ─── Constants ──────────────────────────────────────────────────────────── */
 
-type TabId = "overview" | "analytics" | "team" | "tournament" | "wiki";
+type TabId = "overview" | "analytics" | "team" | "tournament" | "wiki" | "reports";
 
 const TABS: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
@@ -58,6 +60,7 @@ const TABS: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "team", label: "Команда", icon: Users },
   { id: "tournament", label: "Турнир", icon: Trophy },
   { id: "wiki", label: "Wiki", icon: BookOpen },
+  { id: "reports", label: "Отчёты", icon: FileBarChart },
 ];
 
 const AVATAR_COLORS = [
@@ -647,6 +650,19 @@ export default function DashboardPage() {
                   {activeTab === "wiki" && (
                     <div>
                       <WikiDashboard />
+                    </div>
+                  )}
+
+                  {/* ═══════════ TAB: REPORTS ═══════════════════════════════ */}
+                  {activeTab === "reports" && (
+                    <div>
+                      <ReportsDashboard
+                        teamMode
+                        teamMembers={(data?.members ?? []).map((m) => ({
+                          id: m.id,
+                          name: m.full_name || m.email,
+                        }))}
+                      />
                     </div>
                   )}
 
