@@ -98,8 +98,8 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-const TalkingHeadAvatar = dynamic(
-  () => import("@/components/training/TalkingHeadAvatar").then((m) => m.TalkingHeadAvatar),
+const Avatar3D = dynamic(
+  () => import("@/components/training/Avatar3D").then((m) => m.Avatar3D),
   {
     ssr: false,
     loading: () => (
@@ -1204,16 +1204,16 @@ export default function TrainingSessionPage() {
           )}
           </AnimatePresence>
 
-          {/* 3D Avatar with lip sync */}
-          <div className="relative w-full max-w-[min(65vh,560px)] aspect-[3/4] flex items-center justify-center z-10">
-            <TalkingHeadAvatar
+          {/* Avatar */}
+          <div className="relative w-full max-w-[min(65vh,560px)] aspect-square flex items-center justify-center z-10">
+            <div className="absolute inset-0 rounded-full opacity-20 blur-[60px] transition-colors duration-1000"
+              style={{ background: EMOTION_MAP[s.emotion]?.color || "#6D28D9" }}
+            />
+            <Avatar3D
               emotion={s.emotion}
-              isSpeaking={tts.speaking}
-              audioElement={tts.audioRef?.current ?? null}
-              archetypeCode={s.archetypeCode || "skeptic"}
-              gender={(s.characterGender as "M" | "F" | "neutral") || "M"}
-              isListening={s.micActive}
-              className="w-full h-full"
+              isSpeaking={tts.speaking || s.micActive}
+              audioLevel={tts.speaking ? tts.audioLevel : microphone.audioLevel || speech.audioLevel}
+              className="absolute inset-0 z-20"
             />
           </div>
 
