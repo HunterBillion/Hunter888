@@ -128,7 +128,10 @@ export default function LeaderboardPage() {
       <div className="relative panel-grid-bg min-h-screen">
         <div className="app-page max-w-3xl">
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+            <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
+              РЕЙТИНГ
+            </h1>
+            <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
               Лучшие результаты за период
             </p>
           </motion.div>
@@ -268,7 +271,7 @@ export default function LeaderboardPage() {
                   <div className="mt-16 flex flex-col items-center py-8">
                     <Swords size={32} style={{ color: "var(--text-muted)" }} />
                     <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
-                      {tournamentLoading ? "Загрузка..." : "Нет активных турниров на этой неделе"}
+                      {tournamentLoading ? "Загрузка..." : "Охотничьих турниров нет на этой неделе"}
                     </p>
                   </div>
                 )}
@@ -535,8 +538,8 @@ function LeaderboardList({
       <EmptyState
         icon={Trophy}
         title={emptyText}
-        description="Пройдите тренировки, чтобы попасть в рейтинг"
-        hint="1 сессия — и вы в игре"
+        description="Пройдите охоту, чтобы попасть в рейтинг"
+        hint="1 сессия — и вы среди охотников"
       />
     );
   }

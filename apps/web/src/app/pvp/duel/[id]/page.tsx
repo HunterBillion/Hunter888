@@ -196,12 +196,14 @@ export default function DuelPage() {
   }, [connectionState, duelId, sendMessage, store.duelBrief, store.duelResult]);
 
   useEffect(() => {
-    api.get(`/pvp/duels/${duelId}`)
+    const controller = new AbortController();
+    api.get(`/pvp/duels/${duelId}`, { signal: controller.signal })
       .then((data) => setDuelMeta(data as PvPDuel))
-      .catch((err) => { logger.error("Failed to load duel meta:", err); });
+      .catch((err) => { if (!controller.signal.aborted) logger.error("Failed to load duel meta:", err); });
     if (!store.rating) {
       store.fetchRating();
     }
+    return () => controller.abort();
   }, [duelId]);
 
   // Cleanup

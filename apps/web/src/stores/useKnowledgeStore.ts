@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { getToken } from "@/lib/auth";
+import { api } from "@/lib/api";
 import type { ArenaPlayer, ArenaRoundResult, ArenaFinalResults, ArenaChallenge } from "@/types";
 
 export type QuizMode = "free_dialog" | "blitz" | "themed" | "pvp";
@@ -333,18 +333,8 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   fetchArenaStats: async () => {
     set({ arenaStatsLoading: true });
     try {
-      const token = getToken();
-      const resp = await fetch("/api/dashboard/knowledge-stats", {
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-      if (resp.ok) {
-        const data: ArenaStats = await resp.json();
-        set({ arenaStats: data, arenaStatsLoading: false });
-      } else {
-        set({ arenaStatsLoading: false });
-      }
+      const data = await api.get<ArenaStats>("/dashboard/knowledge-stats");
+      set({ arenaStats: data, arenaStatsLoading: false });
     } catch {
       set({ arenaStatsLoading: false });
     }
@@ -353,20 +343,12 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   fetchArenaLeaderboard: async (period = "all") => {
     set({ arenaLeaderboardLoading: true, arenaLeaderboardPeriod: period });
     try {
-      const token = getToken();
-      const resp = await fetch(`/api/knowledge/arena/leaderboard?period=${period}`, {
-        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      const data = await api.get<{ entries: ArenaLeaderboardEntry[]; user_rank: Record<string, unknown> | null }>(`/knowledge/arena/leaderboard?period=${period}`);
+      set({
+        arenaLeaderboard: data.entries || [],
+        arenaLeaderboardUserRank: data.user_rank || null,
+        arenaLeaderboardLoading: false,
       });
-      if (resp.ok) {
-        const data = await resp.json();
-        set({
-          arenaLeaderboard: data.entries || [],
-          arenaLeaderboardUserRank: data.user_rank || null,
-          arenaLeaderboardLoading: false,
-        });
-      } else {
-        set({ arenaLeaderboardLoading: false });
-      }
     } catch {
       set({ arenaLeaderboardLoading: false });
     }

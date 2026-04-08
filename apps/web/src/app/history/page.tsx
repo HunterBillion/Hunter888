@@ -133,7 +133,10 @@ export default function HistoryPage() {
       <div className="relative panel-grid-bg min-h-screen">
         <div className="app-page max-w-4xl">
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+            <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
+              ИСТОРИЯ
+            </h1>
+            <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
               Все ваши прошлые сессии
             </p>
           </motion.div>
@@ -147,16 +150,21 @@ export default function HistoryPage() {
               className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4"
             >
               {[
-                { label: "Всего", value: entries.length, icon: BarChart3 },
-                { label: "Историй", value: storyCount, icon: Layers3 },
-                { label: "Завершено", value: completed.length, icon: CheckCircle2 },
-                { label: "Ср. балл", value: avgScore !== null ? avgScore : "—", icon: ArrowRight },
+                { label: "Всего", value: entries.length, icon: BarChart3, color: "var(--accent)" },
+                { label: "Историй", value: storyCount, icon: Layers3, color: "#E028CC" },
+                { label: "Завершено", value: completed.length, icon: CheckCircle2, color: "#00FF66" },
+                { label: "Ср. балл", value: avgScore !== null ? avgScore : "—", icon: Sparkles, color: "#FFB400", hero: true },
               ].map((item) => {
                 const Icon = item.icon;
+                const isHero = "hero" in item && item.hero;
                 return (
-                  <div key={item.label} className="glass-panel p-4 text-center">
-                    <Icon size={14} className="mx-auto mb-1" style={{ color: "var(--accent)" }} />
-                    <div className="font-display text-xl font-bold" style={{ color: "var(--text-primary)" }}>{item.value}</div>
+                  <div
+                    key={item.label}
+                    className="glass-panel p-4 text-center"
+                    style={isHero ? { borderBottom: `2px solid ${item.color}` } : undefined}
+                  >
+                    <Icon size={isHero ? 18 : 14} className="mx-auto mb-1" style={{ color: item.color }} />
+                    <div className={`font-display font-bold ${isHero ? "text-2xl" : "text-xl"}`} style={{ color: isHero ? item.color : "var(--text-primary)" }}>{item.value}</div>
                     <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{item.label}</div>
                   </div>
                 );
@@ -193,9 +201,9 @@ export default function HistoryPage() {
           ) : entries.length === 0 ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-16 flex flex-col items-center">
               <Inbox size={40} style={{ color: "var(--text-muted)" }} />
-              <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>Вы ещё не проходили тренировок</p>
+              <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>Вы ещё не выходили на охоту</p>
               <motion.button onClick={() => router.push("/training")} className="btn-neon mt-4 flex items-center gap-2" whileTap={{ scale: 0.97 }}>
-                Начать первую тренировку <ArrowRight size={16} />
+                Начать первую охоту <ArrowRight size={16} />
               </motion.button>
             </motion.div>
           ) : (

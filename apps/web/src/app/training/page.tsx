@@ -799,7 +799,7 @@ function AssignedTab({
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-16 flex flex-col items-center">
         <ClipboardList size={40} style={{ color: "var(--text-muted)" }} />
         <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
-          Нет назначенных тренировок
+          Нет назначенных охот
         </p>
         <p className="mt-1 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
           РОП может назначить вам сценарий

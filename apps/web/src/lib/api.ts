@@ -256,7 +256,7 @@ async function uploadFile(path: string, file: File): Promise<unknown> {
  * Without explicit type, defaults to `any` for backward compatibility.
  */
 export const api = {
-  get: <T = any>(path: string): Promise<T> => request(path) as Promise<T>,
+  get: <T = any>(path: string, opts?: { signal?: AbortSignal }): Promise<T> => request(path, { signal: opts?.signal }) as Promise<T>,
   post: <T = any>(path: string, body: unknown, opts?: { signal?: AbortSignal }): Promise<T> =>
     request(path, { method: "POST", body: JSON.stringify(body), signal: opts?.signal }) as Promise<T>,
   put: <T = any>(path: string, body: unknown): Promise<T> =>

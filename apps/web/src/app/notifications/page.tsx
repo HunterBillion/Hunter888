@@ -73,7 +73,10 @@ export default function NotificationsPage() {
         <div className="app-page max-w-2xl">
         {/* Header — compact */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="flex items-center justify-between">
+          <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
+            УВЕДОМЛЕНИЯ
+          </h1>
+          <div className="flex items-center justify-between mt-1">
             <span className="text-sm" style={{ color: "var(--text-muted)" }}>
               {unreadCount > 0 ? `${unreadCount} непрочитанных` : "Все прочитано"}
             </span>

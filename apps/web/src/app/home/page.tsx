@@ -240,7 +240,7 @@ export default function HomePage() {
               >
                 {starting
                   ? <Loader2 size={20} className="animate-spin" />
-                  : <><Zap size={20} /><span>Быстрый старт</span><ArrowRight size={18} /></>
+                  : <><Zap size={20} /><span>Быстрая охота</span><ArrowRight size={18} /></>
                 }
               </motion.button>
             </div>

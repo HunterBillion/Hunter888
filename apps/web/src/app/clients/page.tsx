@@ -487,21 +487,40 @@ export default function ClientsPage() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-center gap-2 mt-6">
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-              <motion.button
-                key={p}
-                onClick={() => setPage(p)}
-                className="w-8 h-8 rounded-lg text-xs font-mono"
-                style={{
-                  background: p === page ? "var(--accent)" : "var(--input-bg)",
-                  color: p === page ? "white" : "var(--text-muted)",
-                  border: `1px solid ${p === page ? "var(--accent)" : "var(--border-color)"}`,
-                }}
-                whileTap={{ scale: 0.95 }}
-              >
-                {p}
-              </motion.button>
-            ))}
+            {(() => {
+              const pages: (number | "ellipsis-l" | "ellipsis-r")[] = [];
+              const delta = 2;
+              const left = Math.max(2, page - delta);
+              const right = Math.min(totalPages - 1, page + delta);
+
+              pages.push(1);
+              if (left > 2) pages.push("ellipsis-l");
+              for (let i = left; i <= right; i++) pages.push(i);
+              if (right < totalPages - 1) pages.push("ellipsis-r");
+              if (totalPages > 1) pages.push(totalPages);
+
+              return pages.map((p) =>
+                typeof p === "string" ? (
+                  <span key={p} className="w-8 h-8 flex items-center justify-center text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                    ...
+                  </span>
+                ) : (
+                  <motion.button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className="w-8 h-8 rounded-lg text-xs font-mono"
+                    style={{
+                      background: p === page ? "var(--accent)" : "var(--input-bg)",
+                      color: p === page ? "white" : "var(--text-muted)",
+                      border: `1px solid ${p === page ? "var(--accent)" : "var(--border-color)"}`,
+                    }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    {p}
+                  </motion.button>
+                ),
+              );
+            })()}
           </div>
         )}
         <ClientCreateModal
