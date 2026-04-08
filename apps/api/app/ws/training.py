@@ -50,7 +50,7 @@ from app.core import errors as err
 from app.core.security import create_access_token, create_refresh_token, decode_token
 from app.database import async_session
 from app.models.character import Character, EmotionState, LEGACY_MAP
-from app.models.scenario import Scenario
+from app.models.scenario import Scenario, ScenarioTemplate, ScenarioType
 from app.models.training import MessageRole, SessionStatus, TrainingSession
 from app.models.user import User
 
@@ -111,6 +111,60 @@ from app.services.tts import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _resolve_scenario(db, scenario_id: "uuid.UUID") -> Scenario | None:
+    """Look up a scenario by ID, checking both legacy `scenarios` table and
+    `scenario_templates`. If the ID matches a template but not a legacy row,
+    auto-create a Scenario row (same logic as REST POST /training/sessions)."""
+    result = await db.execute(
+        select(Scenario).where(Scenario.id == scenario_id, Scenario.is_active == True)  # noqa: E712
+    )
+    scenario = result.scalar_one_or_none()
+    if scenario is not None:
+        return scenario
+
+    # Fallback: check scenario_templates
+    tpl_result = await db.execute(
+        select(ScenarioTemplate).where(
+            ScenarioTemplate.id == scenario_id, ScenarioTemplate.is_active == True  # noqa: E712
+        )
+    )
+    tpl = tpl_result.scalar_one_or_none()
+    if tpl is None:
+        return None
+
+    # Map template code prefix to legacy ScenarioType
+    code = tpl.code or ""
+    if code.startswith("cold"):
+        legacy_type = ScenarioType.cold_call
+    elif code.startswith("warm"):
+        legacy_type = ScenarioType.warm_call
+    elif code.startswith("in_"):
+        legacy_type = ScenarioType.consultation
+    else:
+        legacy_type = ScenarioType.objection_handling
+
+    # Find a default character for FK
+    char_result = await db.execute(select(Character.id).limit(1))
+    default_char_id = char_result.scalar_one_or_none()
+    if default_char_id is None:
+        return None
+
+    new_scenario = Scenario(
+        id=tpl.id,
+        title=tpl.name,
+        description=tpl.description,
+        scenario_type=legacy_type,
+        character_id=default_char_id,
+        template_id=tpl.id,
+        difficulty=getattr(tpl, "difficulty", 5),
+        estimated_duration_minutes=tpl.typical_duration_minutes,
+    )
+    db.add(new_scenario)
+    await db.flush()
+    return new_scenario
+
 
 SILENCE_WARNING_SEC = 30  # Avatar says "Алло?"
 SILENCE_TIMEOUT_SEC = 60  # Modal "Continue?"
@@ -1964,10 +2018,7 @@ async def _handle_session_start(
             custom_difficulty = None
 
     async with async_session() as db:
-        result = await db.execute(
-            select(Scenario).where(Scenario.id == scenario_id, Scenario.is_active == True)  # noqa: E712
-        )
-        scenario = result.scalar_one_or_none()
+        scenario = await _resolve_scenario(db, scenario_id)
         if scenario is None:
             await _send_error(ws, "Scenario not found or inactive", "not_found")
             return
@@ -3314,17 +3365,12 @@ async def _handle_story_start(
         return
 
     async with async_session() as db:
-        # Load scenario + character
-        from app.models.scenario import Scenario
-        result = await db.execute(
-            select(Scenario).where(Scenario.id == scenario_id, Scenario.is_active == True)  # noqa: E712
-        )
-        scenario = result.scalar_one_or_none()
+        # Load scenario + character (checks both scenarios and scenario_templates)
+        scenario = await _resolve_scenario(db, scenario_id)
         if not scenario:
             await _send_error(ws, "Scenario not found", "not_found")
             return
 
-        from app.models.character import Character
         char_result = await db.execute(
             select(Character).where(Character.id == scenario.character_id)
         )
