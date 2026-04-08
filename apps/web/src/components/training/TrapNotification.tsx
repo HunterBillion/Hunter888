@@ -113,10 +113,10 @@ export function TrapNotification({ event, onDismiss }: TrapNotificationProps) {
                 </motion.div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs tracking-widest" style={{ color: config.color }}>
+                    <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: config.color }}>
                       {config.label}
                     </span>
-                    <span className="font-mono text-xs px-1.5 py-0.5 rounded"
+                    <span className="text-xs font-medium px-1.5 py-0.5 rounded"
                       style={{ background: "rgba(255,255,255,0.05)", color: "var(--text-muted)" }}>
                       {CATEGORY_LABELS[event.category] || event.category}
                     </span>
@@ -185,7 +185,7 @@ export function TrapSummaryBadge({ fell, dodged, netScore }: TrapSummaryBadgePro
         backdropFilter: "blur(20px)",
       }}
     >
-      <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
+      <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
         TRAP SCORE
       </div>
       <div className="flex items-baseline gap-2">

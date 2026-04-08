@@ -89,14 +89,14 @@ export function TeamHeatmap() {
       <table className="w-full text-xs">
         <thead>
           <tr>
-            <th className="text-left p-2 font-mono" style={{ color: "var(--text-muted)" }}>Менеджер</th>
+            <th className="text-left p-2 font-semibold" style={{ color: "var(--text-muted)" }}>Менеджер</th>
             {data.skill_names.map((s) => (
-              <th key={s} className="p-2 text-center font-mono" style={{ color: "var(--text-muted)" }}>
+              <th key={s} className="p-2 text-center font-semibold" style={{ color: "var(--text-muted)" }}>
                 {SKILL_LABELS[s] || s}
               </th>
             ))}
-            <th className="p-2 text-center font-mono" style={{ color: "var(--text-muted)" }}>Avg</th>
-            <th className="p-2 text-center font-mono" style={{ color: "var(--text-muted)" }}>Сес/нед</th>
+            <th className="p-2 text-center font-semibold" style={{ color: "var(--text-muted)" }}>Avg</th>
+            <th className="p-2 text-center font-semibold" style={{ color: "var(--text-muted)" }}>Сес/нед</th>
           </tr>
         </thead>
         <tbody>

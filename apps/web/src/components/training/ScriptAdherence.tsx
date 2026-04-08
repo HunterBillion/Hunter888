@@ -68,12 +68,12 @@ export default function ScriptAdherence({
       }}
     >
       <div className="flex items-center justify-between mb-2.5">
-        <div className="font-mono text-xs uppercase tracking-wider font-semibold" style={{ color: "var(--text-secondary)" }}>
+        <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-secondary)" }}>
           Следование скрипту
         </div>
         {isPreliminary && (
           <span
-            className="font-mono text-xs uppercase tracking-wider px-2 py-0.5 rounded-full"
+            className="text-xs font-medium uppercase tracking-wide px-2 py-0.5 rounded-full"
             style={{ color: "var(--text-muted)", background: "var(--input-bg)", opacity: 0.7 }}
           >
             предварительно
@@ -109,7 +109,7 @@ export default function ScriptAdherence({
             }}
           >
             <CheckCircle2 size={14} style={{ color: "var(--neon-green, #00FF94)" }} strokeWidth={2.5} />
-            <span className="font-mono text-xs font-semibold" style={{ color: "var(--neon-green, #00FF94)" }}>
+            <span className="text-xs font-semibold" style={{ color: "var(--neon-green, #00FF94)" }}>
               {flashCheckpoint}
             </span>
           </motion.div>
@@ -175,7 +175,7 @@ export default function ScriptAdherence({
 
                   {/* Tooltip */}
                   <div
-                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2.5 py-1.5 rounded-lg text-xs font-mono whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20"
+                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20"
                     style={{
                       background: "var(--bg-secondary)",
                       border: "1px solid var(--border-color)",

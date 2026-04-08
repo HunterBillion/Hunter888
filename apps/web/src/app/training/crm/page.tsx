@@ -99,7 +99,7 @@ export default function GameCRMPage() {
                       <Gamepad2 size={20} style={{ color: "var(--accent)" }} />
                     </div>
                     <div>
-                      <div className="font-mono text-xs uppercase tracking-[0.32em]" style={{ color: "var(--accent)" }}>
+                      <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
                         AI Client Matrix
                       </div>
                       <h1
@@ -126,7 +126,7 @@ export default function GameCRMPage() {
                       <div className="mt-2 text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>
                         {item.value}
                       </div>
-                      <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                      <div className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                         {item.label}
                       </div>
                     </div>
@@ -143,7 +143,7 @@ export default function GameCRMPage() {
                     <button
                       key={String(opt.value)}
                       onClick={() => setShowCompleted(opt.value as boolean | null)}
-                      className="rounded-xl px-3 py-2 text-xs font-mono uppercase tracking-wider transition-colors"
+                      className="rounded-xl px-3 py-2 text-xs font-medium uppercase tracking-wide transition-colors"
                       style={{
                         background: showCompleted === opt.value ? "var(--accent)" : "rgba(255,255,255,0.03)",
                         color: showCompleted === opt.value ? "#000" : "var(--text-muted)",
@@ -157,7 +157,7 @@ export default function GameCRMPage() {
 
                 <motion.button
                   onClick={handleRefresh}
-                  className="flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-mono uppercase tracking-wider"
+                  className="flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-medium uppercase tracking-wide"
                   style={{
                     background: "rgba(255,255,255,0.03)",
                     border: "1px solid rgba(255,255,255,0.06)",
@@ -205,13 +205,13 @@ export default function GameCRMPage() {
                   style={{ color: "var(--text-muted)", opacity: 0.4 }}
                 />
                 <p
-                  className="text-sm font-mono"
+                  className="text-sm"
                   style={{ color: "var(--text-muted)" }}
                 >
                   Нет игровых клиентов
                 </p>
                 <p
-                  className="text-xs font-mono mt-1"
+                  className="text-xs mt-1"
                   style={{ color: "var(--text-muted)", opacity: 0.7 }}
                 >
                   Начните тренировку чтобы создать историю
@@ -223,7 +223,7 @@ export default function GameCRMPage() {
                 {activeStories.length > 0 && (
                   <div>
                     <h2
-                      className="mb-3 text-xs font-mono font-semibold uppercase tracking-[0.24em]"
+                      className="mb-3 text-xs font-semibold uppercase tracking-wide"
                       style={{ color: "var(--text-muted)" }}
                     >
                       Активные истории ({activeStories.length})
@@ -247,7 +247,7 @@ export default function GameCRMPage() {
                 {completedStories.length > 0 && showCompleted !== false && (
                   <div>
                     <h2
-                      className="mb-3 text-xs font-mono font-semibold uppercase tracking-[0.24em]"
+                      className="mb-3 text-xs font-semibold uppercase tracking-wide"
                       style={{ color: "var(--text-muted)" }}
                     >
                       Завершённые ({completedStories.length})

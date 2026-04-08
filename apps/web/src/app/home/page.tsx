@@ -195,7 +195,7 @@ export default function HomePage() {
 
                 {/* Name + status */}
                 <div className="min-w-0">
-                  <div className="font-mono text-sm uppercase tracking-[0.2em] mb-1.5" style={{ color: "var(--accent)", opacity: 0.8 }}>
+                  <div className="font-semibold text-sm uppercase tracking-wide mb-1.5" style={{ color: "var(--accent)", opacity: 0.8 }}>
                     {getGreeting()}
                   </div>
                   <h1
@@ -288,7 +288,7 @@ export default function HomePage() {
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs uppercase tracking-widest" style={{ color: RANK.gold }}>ТУРНИР</span>
+                  <span className="font-semibold text-xs uppercase tracking-wide" style={{ color: RANK.gold }}>ТУРНИР</span>
                   <span className="flex h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: "var(--neon-green, #00FF66)" }} />
                 </div>
                 <div className="text-sm font-medium mt-0.5" style={{ color: "var(--text-primary)" }}>
@@ -440,7 +440,7 @@ export default function HomePage() {
                 </h2>
                 <motion.button
                   onClick={() => router.push("/training")}
-                  className="font-mono text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors"
+                  className="font-medium text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors"
                   style={{ color: "var(--accent)", background: "var(--accent-muted)" }}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -473,7 +473,7 @@ export default function HomePage() {
                       <div className="absolute top-0 left-4 right-4 h-[1px] rounded-full" style={{ background: `linear-gradient(90deg, transparent, var(--accent), transparent)`, opacity: 0.4 }} />
 
                       <div className="flex items-center justify-between mb-3">
-                        <span className="font-mono text-xs uppercase tracking-wider px-2.5 py-1 rounded-full font-medium" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
+                        <span className="font-medium text-xs uppercase tracking-wide px-2.5 py-1 rounded-full" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
                           {rec.archetype}
                         </span>
                         <div className="flex items-center gap-1.5">
@@ -495,7 +495,7 @@ export default function HomePage() {
                       {rec.tags.length > 0 && (
                         <div className="mt-3 flex flex-wrap gap-1.5">
                           {rec.tags.slice(0, 3).map((tag) => (
-                            <span key={tag} className="text-xs font-mono px-2 py-0.5 rounded-md" style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--glass-border)" }}>
+                            <span key={tag} className="text-xs font-medium px-2 py-0.5 rounded-md" style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--glass-border)" }}>
                               {tag}
                             </span>
                           ))}
@@ -623,7 +623,7 @@ function StatCard({ card, i }: StatCardProps) {
             ? <AnimatedCounter value={card.value} duration={900} />
             : "—"}
         </div>
-        <div className="mt-1.5 font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+        <div className="mt-1.5 font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
           {card.label}
         </div>
       </div>
@@ -656,7 +656,7 @@ function ShortcutHint() {
       className="mt-3 flex items-center justify-between rounded-lg px-4 py-2.5"
       style={{ background: "var(--accent-muted)", border: "1px solid var(--border-color)" }}
     >
-      <span className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--accent)" }}>
+      <span className="font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--accent)" }}>
         PRO TIP: <kbd className="px-1.5 py-0.5 rounded text-[10px]" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>⌘K</kbd> — поиск · <kbd className="px-1.5 py-0.5 rounded text-[10px]" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>?</kbd> — все шорткаты
       </span>
       <button

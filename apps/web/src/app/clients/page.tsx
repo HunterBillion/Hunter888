@@ -180,7 +180,7 @@ export default function ClientsPage() {
             <div className="flex items-center gap-2 flex-wrap">
               <Link href="/clients/graph">
                 <motion.button
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
                   style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" }}
                   whileTap={{ scale: 0.97 }}
                 >
@@ -190,7 +190,7 @@ export default function ClientsPage() {
               {isAdminOrRop && (
                 <Link href="/clients/duplicates">
                   <motion.button
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
                     style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" }}
                     whileTap={{ scale: 0.97 }}
                   >
@@ -200,7 +200,7 @@ export default function ClientsPage() {
               )}
               <Link href="/clients/pipeline">
                 <motion.button
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
                   style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" }}
                   whileTap={{ scale: 0.97 }}
                 >
@@ -396,7 +396,7 @@ export default function ClientsPage() {
             {isAdminOrRop && (
               <motion.button
                 onClick={() => setShowReassign(true)}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-mono"
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
                 style={{ background: "var(--accent)", color: "white" }}
                 whileTap={{ scale: 0.97 }}
               >
@@ -406,7 +406,7 @@ export default function ClientsPage() {
             <motion.button
               onClick={handleExport}
               disabled={exporting}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-mono"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
               style={{ background: "var(--input-bg)", color: "var(--text-secondary)", border: "1px solid var(--border-color)" }}
               whileTap={{ scale: 0.97 }}
             >
@@ -440,7 +440,7 @@ export default function ClientsPage() {
               >
                 {selected.size === clients.length && <Check size={10} className="text-white" />}
               </motion.button>
-              <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>Выбрать все</span>
+              <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Выбрать все</span>
             </div>
           )}
 

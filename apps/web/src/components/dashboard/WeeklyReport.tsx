@@ -105,7 +105,7 @@ export function WeeklyReport() {
             НЕДЕЛЬНЫЙ ОТЧЁТ
           </h3>
         </div>
-        <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+        <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
           {weekLabel}
         </span>
       </div>

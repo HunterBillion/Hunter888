@@ -49,7 +49,7 @@ export default function VibeMeter({ emotion, archetype, trigger }: VibeMeterProp
 
       <div className="flex gap-4 items-center">
         {/* Compact labels */}
-        <div className="flex flex-col justify-between text-xs font-mono leading-snug shrink-0" style={{ height: 130 }}>
+        <div className="flex flex-col justify-between text-xs font-medium leading-snug shrink-0" style={{ height: 130 }}>
           <span className="font-semibold" style={{ color: EMOTION_MAP.deal.color }}>{EMOTION_MAP.deal.labelRu}</span>
           <span style={{ color: EMOTION_MAP.negotiating.color }}>{EMOTION_MAP.negotiating.labelRu}</span>
           <span style={{ color: EMOTION_MAP.curious.color }}>{EMOTION_MAP.curious.labelRu}</span>
@@ -91,7 +91,7 @@ export default function VibeMeter({ emotion, archetype, trigger }: VibeMeterProp
         <div className="flex-1 flex flex-col items-center justify-center min-w-0">
           <AnimatePresence mode="wait">
             <motion.div
-              className="font-mono text-base font-bold tracking-widest text-center"
+              className="text-base font-bold tracking-wide text-center"
               style={{ color: config.color, textShadow: `0 0 12px ${config.glow}` }}
               key={emotion}
               initial={{ opacity: 0, scale: 1.2 }}
@@ -124,7 +124,7 @@ export default function VibeMeter({ emotion, archetype, trigger }: VibeMeterProp
       {/* Archetype hint */}
       {archetype && (
         <div
-          className="mt-3 text-center text-xs font-mono truncate"
+          className="mt-3 text-center text-xs truncate"
           style={{ color: "var(--text-secondary)" }}
           title={trigger || ARCHETYPE_HINTS[archetype] || archetype}
         >
@@ -139,7 +139,7 @@ export default function VibeMeter({ emotion, archetype, trigger }: VibeMeterProp
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4 }}
-            className="absolute bottom-2 left-2 right-2 rounded-lg p-2.5 text-xs font-mono z-10"
+            className="absolute bottom-2 left-2 right-2 rounded-lg p-2.5 text-xs z-10"
             style={{
               background: "var(--bg-secondary)",
               border: "1px solid var(--border-color)",

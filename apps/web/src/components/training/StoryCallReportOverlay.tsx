@@ -55,7 +55,7 @@ export function StoryCallReportOverlay({
           </div>
 
           <div className="rounded-xl px-4 py-2 text-right" style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.22)" }}>
-            <div className="font-mono text-xs tracking-widest" style={{ color: "var(--text-muted)" }}>
+            <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
               SCORE
             </div>
             <div className="font-display text-2xl font-bold" style={{ color: "var(--accent)" }}>
@@ -67,7 +67,7 @@ export function StoryCallReportOverlay({
         <div className="grid gap-5 p-6 lg:grid-cols-[1.15fr_0.85fr]">
           <div className="space-y-5">
             <div>
-              <div className="mb-2 flex items-center gap-2 font-mono text-xs tracking-widest uppercase" style={{ color: "var(--text-muted)" }}>
+              <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                 <Brain size={12} /> ключевые моменты
               </div>
               {keyMoments.length > 0 ? (
@@ -91,7 +91,7 @@ export function StoryCallReportOverlay({
 
             {consequences.length > 0 && (
               <div>
-                <div className="mb-2 flex items-center gap-2 font-mono text-xs tracking-widest uppercase" style={{ color: "var(--warning)" }}>
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--warning)" }}>
                   <BarChart3 size={12} /> последствия истории
                 </div>
                 <div className="space-y-2">
@@ -115,7 +115,7 @@ export function StoryCallReportOverlay({
 
           <div className="space-y-4">
             <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-color)" }}>
-              <div className="font-mono text-xs tracking-widest uppercase" style={{ color: "var(--text-muted)" }}>
+              <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                 память клиента
               </div>
               <div className="mt-2 font-display text-3xl font-bold" style={{ color: "var(--text-primary)" }}>
@@ -127,7 +127,7 @@ export function StoryCallReportOverlay({
             </div>
 
             <div className="rounded-2xl p-4" style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.18)" }}>
-              <div className="font-mono text-xs tracking-widest uppercase" style={{ color: "var(--accent)" }}>
+              <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
                 следующий шаг
               </div>
               <div className="mt-2 text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>

@@ -68,7 +68,7 @@ export default function ArchetypesPage() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
             <Link
               href="/training"
-              className="inline-flex items-center gap-1.5 text-sm font-mono mb-4"
+              className="inline-flex items-center gap-1.5 text-sm font-medium mb-4"
               style={{ color: "var(--text-muted)" }}
             >
               <ArrowLeft size={14} /> Тренировки
@@ -109,7 +109,7 @@ export default function ArchetypesPage() {
           <div className="mt-6 flex gap-1.5 flex-wrap">
             <button
               onClick={() => setSelectedGroup("all")}
-              className="rounded-lg px-3 py-1.5 text-xs font-mono transition-all"
+              className="rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
               style={{
                 background: selectedGroup === "all" ? "var(--accent)" : "var(--input-bg)",
                 color: selectedGroup === "all" ? "white" : "var(--text-muted)",
@@ -126,7 +126,7 @@ export default function ArchetypesPage() {
                 <button
                   key={gk}
                   onClick={() => setSelectedGroup(gk)}
-                  className="rounded-lg px-3 py-1.5 text-xs font-mono transition-all"
+                  className="rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
                   style={{
                     background: active ? `${g.color}20` : "var(--input-bg)",
                     color: active ? g.color : "var(--text-muted)",
@@ -250,7 +250,7 @@ export default function ArchetypesPage() {
                       {/* Lock info */}
                       {isLocked && (
                         <span
-                          className="ml-auto flex items-center gap-1 text-xs font-mono"
+                          className="ml-auto flex items-center gap-1 text-xs font-medium"
                           style={{ color: "var(--text-muted)" }}
                         >
                           <Lock size={10} /> Уровень {arch.unlock_level}

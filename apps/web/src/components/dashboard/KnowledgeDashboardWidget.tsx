@@ -178,7 +178,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
         <div className="flex items-center gap-2">
           <BookOpen size={16} style={{ color: "var(--accent)" }} />
           <h3
-            className="text-xs font-mono tracking-wider"
+            className="text-xs font-semibold uppercase tracking-wide"
             style={{ color: "var(--accent)" }}
           >
             ЗНАНИЯ ФЗ-127
@@ -186,7 +186,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
         </div>
         {data.total_quizzes > 0 && (
           <span
-            className="text-xs font-mono"
+            className="text-xs font-medium"
             style={{ color: "var(--text-muted)" }}
           >
             {data.total_quizzes} ответов
@@ -281,19 +281,19 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
                   <div className="text-xs font-mono font-bold" style={{ color: srs.overdue > 0 ? "var(--neon-red, #FF2A6D)" : "var(--neon-green, #00FF94)" }}>
                     {srs.overdue}
                   </div>
-                  <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>ПОВТОР</div>
+                  <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>ПОВТОР</div>
                 </div>
                 <div className="text-center">
                   <div className="text-xs font-mono font-bold" style={{ color: "var(--accent)" }}>
                     {srs.learning}
                   </div>
-                  <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>УЧЁБА</div>
+                  <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>УЧЁБА</div>
                 </div>
                 <div className="text-center">
                   <div className="text-xs font-mono font-bold" style={{ color: "var(--neon-green, #00FF94)" }}>
                     {srs.mastered}
                   </div>
-                  <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>УСВОЕНО</div>
+                  <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>УСВОЕНО</div>
                 </div>
               </div>
               {srs.overdue > 0 && (
@@ -373,7 +373,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
       <div className="flex gap-2">
         <Link href="/knowledge" className="flex-1">
           <button
-            className="w-full flex items-center justify-center gap-1.5 py-2 rounded text-xs font-mono transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 py-2 rounded text-xs font-medium transition-colors"
             style={{
               background: "var(--accent)",
               color: "var(--bg-primary)",
@@ -385,7 +385,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
         </Link>
         <Link href="/knowledge">
           <button
-            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded text-xs font-mono transition-colors"
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded text-xs font-medium transition-colors"
             style={{
               border: "1px solid var(--border)",
               color: "var(--text-secondary)",

@@ -6,7 +6,7 @@ function ScoreBar({ label, value, color }: { label: string; value: number; color
   const pct = Math.max(0, Math.min(100, value));
   return (
     <div className="flex items-center gap-2.5">
-      <span className="text-xs font-mono w-28 truncate" style={{ color: "var(--text-secondary)" }}>
+      <span className="text-xs font-medium w-28 truncate" style={{ color: "var(--text-secondary)" }}>
         {label}
       </span>
       <div className="flex-1 h-2 rounded-full" style={{ background: "var(--input-bg)" }}>
@@ -31,11 +31,11 @@ export default function RealtimeScores() {
   return (
     <div className="glass-panel rounded-xl p-4 space-y-2.5">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-mono tracking-wider font-semibold uppercase" style={{ color: "var(--text-secondary)" }}>
+        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-secondary)" }}>
           Скоринг
         </span>
         {isPrelim && (
-          <span className="text-xs font-mono px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(251,191,36,0.15)", color: "#FBB024" }}>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(251,191,36,0.15)", color: "#FBB024" }}>
             LIVE
           </span>
         )}

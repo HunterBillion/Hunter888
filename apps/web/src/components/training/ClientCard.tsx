@@ -117,7 +117,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
       >
         {/* Header */}
         <motion.div variants={item} className="mb-6">
-          <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: "var(--accent)" }}>
+          <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "var(--accent)" }}>
             CRM-КАРТОЧКА КЛИЕНТА
           </div>
           <h1 className="font-display text-2xl md:text-3xl font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
@@ -146,7 +146,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
                       <Icon size={12} style={{ color: "var(--accent)" }} />
                     </div>
                     <div>
-                      <div className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{row.label}</div>
+                      <div className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{row.label}</div>
                       <div className="text-sm" style={{ color: "var(--text-primary)" }}>{row.value}</div>
                     </div>
                   </div>
@@ -164,7 +164,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
 
             {/* Total debt */}
             <div className="rounded-xl p-4 mb-4" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>
-              <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>ОБЩИЙ ДОЛГ</div>
+              <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>ОБЩИЙ ДОЛГ</div>
               <div className="font-display text-3xl font-bold" style={{ color: "var(--neon-red, #FF3333)" }}>
                 <CountUp value={clientCard.total_debt} /> <span className="text-sm font-normal" style={{ color: "var(--text-muted)" }}>₽</span>
               </div>
@@ -173,7 +173,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
             {/* Creditors bar chart */}
             {clientCard.creditors.length > 0 && (
               <div className="mb-4">
-                <div className="text-xs font-mono uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>КРЕДИТОРЫ</div>
+                <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>КРЕДИТОРЫ</div>
                 <div className="space-y-2">
                   {clientCard.creditors.map((c, i) => (
                     <div key={i}>
@@ -201,7 +201,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
               <div className="rounded-lg p-3" style={{ background: "var(--input-bg)" }}>
                 <div className="flex items-center gap-1.5 mb-1">
                   <Wallet size={12} style={{ color: "var(--accent)" }} />
-                  <span className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Доход</span>
+                  <span className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Доход</span>
                 </div>
                 <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
                   {clientCard.income > 0 ? `${fmt.format(clientCard.income)} ₽` : "Нет"}
@@ -213,7 +213,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
               <div className="rounded-lg p-3" style={{ background: "var(--input-bg)" }}>
                 <div className="flex items-center gap-1.5 mb-1">
                   <Building2 size={12} style={{ color: "var(--accent)" }} />
-                  <span className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Имущество</span>
+                  <span className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Имущество</span>
                 </div>
                 {clientCard.property.length > 0 ? (
                   <div className="space-y-0.5">

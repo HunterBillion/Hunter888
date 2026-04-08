@@ -201,7 +201,7 @@ export default function DuplicatesPage() {
                       handleMerge(group.phone, target, sourceIds);
                     }}
                     disabled={!mergeTarget[group.phone] || merging === group.phone}
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-mono transition-colors"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
                     style={{
                       background: mergeTarget[group.phone] ? "var(--accent-muted)" : "var(--input-bg)",
                       color: mergeTarget[group.phone] ? "var(--accent)" : "var(--text-muted)",

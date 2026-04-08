@@ -18,7 +18,6 @@ import {
   ChevronDown,
   Swords,
   FileBarChart,
-  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { sanitizeText } from "@/lib/sanitize";
@@ -43,7 +42,6 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/pvp", label: "Арена", icon: Swords },
   { href: "/reports", label: "Отчёты", icon: FileBarChart },
   { href: "/dashboard", label: "Панель РОП", icon: LayoutDashboard, roles: ["rop", "admin"] },
-  { href: "/admin/wiki", label: "Админ", icon: ShieldCheck, roles: ["admin"] },
 ];
 
 export default function Header() {
@@ -160,7 +158,7 @@ export default function Header() {
                 <UserAvatar avatarUrl={user?.avatar_url} fullName={displayName} size={34} />
                 <div className="hidden min-w-0 text-left sm:block">
                   <div className="truncate text-sm font-medium" style={{ color: "var(--header-text)" }}>{displayName}</div>
-                  <div className="text-xs font-mono uppercase tracking-[0.16em]" style={{ color: "var(--header-text-muted)" }}>
+                  <div className="text-xs uppercase tracking-wide" style={{ color: "var(--header-text-muted)" }}>
                     {roleLabel}
                   </div>
                 </div>
@@ -335,7 +333,7 @@ export default function Header() {
               return (
                 <Link key={item.href} href={item.href} prefetch aria-current={active ? "page" : undefined}>
                   <div
-                    className="relative flex items-center gap-2 rounded-[16px] px-4 xl:px-5 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors duration-200"
+                    className="relative flex items-center gap-2 rounded-[16px] px-4 xl:px-5 py-2.5 text-sm font-medium whitespace-nowrap transition-colors duration-200"
                     style={{
                       color: active ? "var(--header-text-active)" : "var(--header-text-muted)",
                     }}
@@ -428,7 +426,7 @@ export default function Header() {
                           href={item.href}
                           onClick={() => setOpenPanel("none")}
                           aria-current={active ? "page" : undefined}
-                          className="flex items-center gap-2.5 rounded-[16px] px-3.5 py-3 text-[13px] font-medium transition-all duration-200"
+                          className="flex items-center gap-2.5 rounded-[16px] px-3.5 py-3 text-sm font-medium transition-all duration-200"
                           style={{
                             color: active ? "var(--header-text-active)" : "var(--header-text-muted)",
                             background: active ? "var(--accent-muted)" : "transparent",

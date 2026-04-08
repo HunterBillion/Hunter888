@@ -133,7 +133,7 @@ export default function HistoryPage() {
       <div className="relative panel-grid-bg min-h-screen">
         <div className="app-page max-w-4xl">
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
+            <h1 className="font-display text-2xl font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
               ИСТОРИЯ
             </h1>
             <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
@@ -165,7 +165,7 @@ export default function HistoryPage() {
                   >
                     <Icon size={isHero ? 18 : 14} className="mx-auto mb-1" style={{ color: item.color }} />
                     <div className={`font-display font-bold ${isHero ? "text-2xl" : "text-xl"}`} style={{ color: isHero ? item.color : "var(--text-primary)" }}>{item.value}</div>
-                    <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{item.label}</div>
+                    <div className="font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{item.label}</div>
                   </div>
                 );
               })}
@@ -211,7 +211,7 @@ export default function HistoryPage() {
               {groupedEntries.map((group) => (
                 <div key={group.label}>
                   <div className="flex items-center gap-3 mb-3">
-                    <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--accent)" }}>{group.label}</span>
+                    <span className="font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--accent)" }}>{group.label}</span>
                     <div className="flex-1 h-px" style={{ background: "var(--border-color)" }} />
                     <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{group.entries.length}</span>
                   </div>
@@ -242,7 +242,7 @@ export default function HistoryPage() {
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs uppercase tracking-wider px-2 py-0.5 rounded-full" style={{ background: `color-mix(in srgb, ${story ? "var(--accent)" : st.color} 8%, transparent)`, color: story ? "var(--accent)" : st.color }}>
+                              <span className="font-medium text-xs uppercase tracking-wide px-2 py-0.5 rounded-full" style={{ background: `color-mix(in srgb, ${story ? "var(--accent)" : st.color} 8%, transparent)`, color: story ? "var(--accent)" : st.color }}>
                                 {story ? "AI Story" : st.label}
                               </span>
                               <span className="text-xs" style={{ color: "var(--text-muted)" }}>{formatDate(session.started_at)}</span>
@@ -258,13 +258,13 @@ export default function HistoryPage() {
                             </div>
                             {story && (
                               <div className="mt-2 flex flex-wrap gap-2">
-                                <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                                   Статус: {story.game_status}
                                 </span>
-                                <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                                   Факторов: {story.active_factors.length}
                                 </span>
-                                <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                                   Последствий: {story.consequences.length}
                                 </span>
                               </div>
@@ -279,7 +279,7 @@ export default function HistoryPage() {
                                 <span className="text-xs font-normal ml-0.5" style={{ color: "var(--text-muted)" }}>/100</span>
                               </div>
                             ) : (
-                              <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>—</span>
+                              <span className="text-xs" style={{ color: "var(--text-muted)" }}>—</span>
                             )}
                           </div>
 

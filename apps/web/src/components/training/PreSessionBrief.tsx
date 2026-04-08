@@ -150,7 +150,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
           <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}>
             <div className="flex items-center gap-3 mb-2">
               <Phone size={18} style={{ color: "var(--accent)" }} />
-              <span className="font-mono text-xs tracking-[0.3em]" style={{ color: "var(--accent)" }}>
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
                 {scenarioTypeLabel(scenario.scenario_type)}
               </span>
               <span className="font-mono text-xs px-2 py-0.5 rounded-full" style={{ background: `color-mix(in srgb, ${diff.color} 8%, transparent)`, color: diff.color }}>
@@ -197,7 +197,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                 <div className="mb-4 p-3 rounded-lg" style={{ background: "var(--input-bg)" }}>
                   <div className="flex items-center gap-2 mb-2">
                     <Banknote size={14} style={{ color: "var(--neon-red)" }} />
-                    <span className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>ДОЛГИ</span>
+                    <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>ДОЛГИ</span>
                   </div>
                   <div className="font-display text-2xl font-bold" style={{ color: "var(--neon-red)" }}>
                     {formatDebt(client.total_debt)}
@@ -219,7 +219,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                   <div className="mb-4">
                     <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle size={14} style={{ color: "var(--neon-amber)" }} />
-                      <span className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>СТРАХИ</span>
+                      <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>СТРАХИ</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {client.fears.slice(0, 5).map((fear, i) => (
@@ -241,7 +241,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                 {/* Initial state */}
                 <div className="mt-4 flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full" style={{ background: emotionConfig.color, boxShadow: `0 0 6px ${emotionConfig.glow}` }} />
-                  <span className="font-mono text-xs tracking-wider" style={{ color: emotionConfig.color }}>
+                  <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: emotionConfig.color }}>
                     НАЧАЛЬНОЕ СОСТОЯНИЕ: {emotionConfig.label}
                   </span>
                 </div>

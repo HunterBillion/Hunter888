@@ -42,7 +42,7 @@ export function BetweenCallsOverlay({ callNumber, totalCalls, events, onContinue
               </div>
             </div>
           </div>
-          <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--accent)" }}>
+          <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
             AI STORY CONTINUITY
           </div>
         </div>
@@ -76,7 +76,7 @@ export function BetweenCallsOverlay({ callNumber, totalCalls, events, onContinue
                       )}
                     </div>
                     <div className="flex-1">
-                      <div className="font-mono text-xs uppercase tracking-widest" style={{ color: isHigh ? "var(--neon-red, #FF3333)" : "var(--accent)" }}>
+                      <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: isHigh ? "var(--neon-red, #FF3333)" : "var(--accent)" }}>
                         {event.title}
                       </div>
                       <div className="mt-1 text-sm" style={{ color: "var(--text-primary)" }}>

@@ -62,7 +62,7 @@ export function AlertPanel({ compact = false }: AlertPanelProps) {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Bell size={16} style={{ color: "var(--accent)" }} />
-          <span className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
             Алерты
           </span>
           {criticalCount > 0 && (
@@ -74,7 +74,7 @@ export function AlertPanel({ compact = false }: AlertPanelProps) {
             </span>
           )}
         </div>
-        <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+        <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
           {alerts.length} всего
         </span>
       </div>
@@ -123,7 +123,7 @@ export function AlertPanel({ compact = false }: AlertPanelProps) {
           {!compact && alerts.length > 3 && (
             <button
               onClick={() => setExpanded(!expanded)}
-              className="mt-2 w-full text-center text-xs font-mono uppercase tracking-wider py-1 rounded transition-colors"
+              className="mt-2 w-full text-center text-xs font-medium uppercase tracking-wide py-1 rounded transition-colors"
               style={{ color: "var(--accent)", background: "rgba(99,102,241,0.08)" }}
             >
               {expanded ? "Свернуть" : `Показать все (${alerts.length})`}

@@ -72,7 +72,7 @@ export default function WhisperPanel({ onToggle }: WhisperPanelProps) {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Lightbulb size={15} style={{ color: "var(--accent)" }} />
-          <span className="font-mono text-xs uppercase tracking-wider font-semibold" style={{ color: "var(--text-secondary)" }}>
+          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-secondary)" }}>
             Коучинг
           </span>
         </div>
@@ -86,7 +86,7 @@ export default function WhisperPanel({ onToggle }: WhisperPanelProps) {
           title={enabled ? "Отключить подсказки" : "Включить подсказки"}
         >
           {enabled ? <Eye size={13} /> : <EyeOff size={13} />}
-          <span className="font-mono text-xs uppercase font-medium">{enabled ? "ВКЛ" : "ВЫКЛ"}</span>
+          <span className="text-xs font-medium uppercase">{enabled ? "ВКЛ" : "ВЫКЛ"}</span>
         </button>
       </div>
 

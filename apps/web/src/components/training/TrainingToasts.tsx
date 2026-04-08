@@ -51,7 +51,7 @@ export function TrainingToasts({
                 <PhoneOff size={14} style={{ color: "var(--neon-red)" }} />
               </div>
               <div>
-                <div className="text-xs font-mono uppercase tracking-widest" style={{ color: "var(--neon-red)" }}>
+                <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--neon-red)" }}>
                   КЛИЕНТ ТЕРЯЕТ ТЕРПЕНИЕ
                 </div>
                 <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
@@ -92,7 +92,7 @@ export function TrainingToasts({
                 <Lightbulb size={16} style={{ color: "var(--accent)" }} />
               </div>
               <div>
-                <div className="font-mono text-xs tracking-widest uppercase font-semibold" style={{ color: "var(--accent)" }}>
+                <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
                   Подсказка
                 </div>
                 <div className="text-sm mt-1 leading-relaxed" style={{ color: "var(--text-primary)" }}>
@@ -154,7 +154,7 @@ export function TrainingToasts({
             }}
           >
             <AlertTriangle size={18} style={{ color: "var(--warning)" }} />
-            <span className="font-mono text-sm" style={{ color: "var(--warning)" }}>
+            <span className="text-sm font-medium" style={{ color: "var(--warning)" }}>
               Вы молчите — скоро сессия будет приостановлена
             </span>
           </motion.div>

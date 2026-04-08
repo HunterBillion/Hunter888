@@ -128,7 +128,7 @@ export default function LeaderboardPage() {
       <div className="relative panel-grid-bg min-h-screen">
         <div className="app-page max-w-3xl">
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
+            <h1 className="font-display text-2xl font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
               РЕЙТИНГ
             </h1>
             <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
@@ -145,7 +145,7 @@ export default function LeaderboardPage() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className="relative flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-mono text-xs tracking-wider transition-colors"
+                  className="relative flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-medium text-xs tracking-wide transition-colors"
                   style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
                 >
                   {active && (
@@ -181,7 +181,7 @@ export default function LeaderboardPage() {
                     <motion.button
                       key={p.key}
                       onClick={() => setPeriod(p.key)}
-                      className="rounded-lg px-3 sm:px-4 py-2.5 font-mono text-xs sm:text-xs tracking-wider transition-all whitespace-nowrap"
+                      className="rounded-lg px-3 sm:px-4 py-2.5 font-medium text-xs sm:text-xs tracking-wide transition-all whitespace-nowrap"
                       style={{
                         background: period === p.key ? "var(--accent-muted)" : "var(--input-bg)",
                         border: `1px solid ${period === p.key ? "var(--accent)" : "var(--border-color)"}`,
@@ -287,7 +287,7 @@ export default function LeaderboardPage() {
                 ) : compositeEntries.length > 0 ? (
                   <div className="mt-6 space-y-2">
                     {/* Formula legend */}
-                    <div className="glass-panel p-3 mb-4 flex flex-wrap gap-3 text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                    <div className="glass-panel p-3 mb-4 flex flex-wrap gap-3 text-xs font-medium" style={{ color: "var(--text-muted)" }}>
                       <span className="badge-neon text-xs">40% Тренировки</span>
                       <span className="badge-neon text-xs">30% PvP</span>
                       <span className="badge-neon text-xs">20% Знания</span>
@@ -334,7 +334,7 @@ export default function LeaderboardPage() {
                             <div className="font-mono text-lg font-bold" style={{ color: "var(--accent)" }}>
                               {Math.round(entry.composite_score)}
                             </div>
-                            <div className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>очков</div>
+                            <div className="text-xs" style={{ color: "var(--text-muted)" }}>очков</div>
                           </div>
                         </motion.div>
                       );
@@ -497,7 +497,7 @@ function CreateTournamentModal({ onClose, onCreated }: { onClose: () => void; on
           </div>
 
           {error && (
-            <p className="text-xs font-mono" style={{ color: "var(--neon-red, #FF3333)" }}>{error}</p>
+            <p className="text-xs" style={{ color: "var(--neon-red, #FF3333)" }}>{error}</p>
           )}
 
           <motion.button
@@ -575,7 +575,7 @@ function LeaderboardList({
             </div>
             <div className="flex-1 min-w-0">
               <div className="font-medium text-xs sm:text-sm truncate" style={{ color: "var(--text-primary)" }}>{entry.name}</div>
-              <div className="mt-0.5 font-mono text-xs sm:text-xs truncate" style={{ color: "var(--text-muted)" }}>{entry.subtitle}</div>
+              <div className="mt-0.5 text-xs sm:text-xs truncate" style={{ color: "var(--text-muted)" }}>{entry.subtitle}</div>
             </div>
             <div className="text-right shrink-0">
               <div className="flex items-center gap-1">
@@ -591,7 +591,7 @@ function LeaderboardList({
                   {entry.score}
                 </motion.span>
               </div>
-              <span className="font-mono text-xs sm:text-xs" style={{ color: "var(--text-muted)" }}>{entry.scoreLabel}</span>
+              <span className="text-xs sm:text-xs" style={{ color: "var(--text-muted)" }}>{entry.scoreLabel}</span>
             </div>
           </motion.div>
         );

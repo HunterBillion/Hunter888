@@ -293,7 +293,7 @@ export default function PipelinePage() {
                 {/* Show/hide lost */}
                 <motion.button
                   onClick={() => setShowLost((v) => !v)}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
                   style={{
                     background: showLost ? "rgba(255,51,51,0.1)" : "var(--input-bg)",
                     border: `1px solid ${showLost ? "rgba(255,51,51,0.3)" : "var(--border-color)"}`,
@@ -308,7 +308,7 @@ export default function PipelinePage() {
                 {/* Refresh */}
                 <motion.button
                   onClick={handleRefresh}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
                   style={{
                     background: "var(--input-bg)",
                     border: "1px solid var(--border-color)",
@@ -324,7 +324,7 @@ export default function PipelinePage() {
                 {!isReadOnly && (
                   <motion.button
                     onClick={() => setCreateOpen(true)}
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
                     style={{
                       background: "var(--accent)",
                       border: "1px solid var(--accent)",
@@ -338,7 +338,7 @@ export default function PipelinePage() {
                 )}
                 <motion.button
                   onClick={() => setShowCustomize((prev) => !prev)}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
                   style={{
                     background: showCustomize ? "var(--accent-muted)" : "var(--input-bg)",
                     border: `1px solid ${showCustomize ? "var(--accent)" : "var(--border-color)"}`,
@@ -354,7 +354,7 @@ export default function PipelinePage() {
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span
-                className="rounded-lg px-3 py-1 text-xs font-mono"
+                className="rounded-lg px-3 py-1 text-xs font-medium"
                 style={{
                   background: "var(--input-bg)",
                   border: "1px solid var(--border-color)",
@@ -366,7 +366,7 @@ export default function PipelinePage() {
               {!isReadOnly && (
                 <>
                   <span
-                    className="rounded-lg px-3 py-1 text-xs font-mono"
+                    className="rounded-lg px-3 py-1 text-xs font-medium"
                     style={{
                       background: "rgba(59,130,246,0.12)",
                       border: "1px solid rgba(59,130,246,0.25)",
@@ -376,7 +376,7 @@ export default function PipelinePage() {
                     Перетаскивание меняет статус
                   </span>
                   <span
-                    className="rounded-lg px-3 py-1 text-xs font-mono"
+                    className="rounded-lg px-3 py-1 text-xs font-medium"
                     style={{
                       background: "rgba(16,185,129,0.12)",
                       border: "1px solid rgba(16,185,129,0.25)",
@@ -433,7 +433,7 @@ export default function PipelinePage() {
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
                         <LayoutGrid size={14} style={{ color: "var(--accent)" }} />
-                        <span className="text-xs font-mono tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+                        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
                           НАСТРОЙКА КАНБАНА
                         </span>
                       </div>
@@ -443,7 +443,7 @@ export default function PipelinePage() {
                       </p>
                     </div>
                     <span
-                      className="rounded-lg px-3 py-1 text-xs font-mono"
+                      className="rounded-lg px-3 py-1 text-xs font-medium"
                       style={{
                         background: "var(--input-bg)",
                         border: "1px solid var(--border-color)",
@@ -456,7 +456,7 @@ export default function PipelinePage() {
 
                   <div className="mt-4 grid gap-4 xl:grid-cols-3">
                     <div>
-                      <div className="mb-2 text-xs font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                         РАСКЛАДКА
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -468,7 +468,7 @@ export default function PipelinePage() {
                               setLayoutMode(mode);
                               void persistPipelinePrefs({ pipeline_layout: mode });
                             }}
-                            className="rounded-lg px-3 py-2 text-xs font-mono"
+                            className="rounded-lg px-3 py-2 text-xs font-medium"
                             style={{
                               background: layoutMode === mode ? "var(--accent-muted)" : "var(--input-bg)",
                               border: `1px solid ${layoutMode === mode ? "var(--accent)" : "var(--border-color)"}`,
@@ -482,7 +482,7 @@ export default function PipelinePage() {
                     </div>
 
                     <div>
-                      <div className="mb-2 text-xs font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                         ПОЛЯ КАРТОЧКИ
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -500,7 +500,7 @@ export default function PipelinePage() {
                                 setCardFields(finalFields);
                                 void persistPipelinePrefs({ pipeline_card_fields: finalFields });
                               }}
-                              className="rounded-lg px-3 py-2 text-xs font-mono"
+                              className="rounded-lg px-3 py-2 text-xs font-medium"
                               style={{
                                 background: active ? "var(--accent-muted)" : "var(--input-bg)",
                                 border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
@@ -515,7 +515,7 @@ export default function PipelinePage() {
                     </div>
 
                     <div>
-                      <div className="mb-2 text-xs font-mono tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                         ВИДИМЫЕ ЭТАПЫ
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -533,7 +533,7 @@ export default function PipelinePage() {
                                 setPipelineColumns(next);
                                 void persistPipelinePrefs({ pipeline_columns: next });
                               }}
-                              className="rounded-lg px-3 py-2 text-xs font-mono"
+                              className="rounded-lg px-3 py-2 text-xs font-medium"
                               style={{
                                 background: active ? "var(--accent-muted)" : "var(--input-bg)",
                                 border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,

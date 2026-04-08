@@ -104,7 +104,7 @@ export function ScenarioDossierCard({ scenario, index, isStarting, onStart, onSt
             <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: groupColor, opacity: 0.5 }} />
             <div className="flex items-center gap-2 mb-1">
               <User size={12} style={{ color: groupColor, opacity: 0.7 }} />
-              <span className="font-mono text-sm tracking-[0.15em]" style={{ color: groupColor, opacity: 0.7 }}>Клиент</span>
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: groupColor, opacity: 0.7 }}>Клиент</span>
             </div>
             <p className="text-sm leading-relaxed line-clamp-2" style={{ color: "var(--text-secondary)" }}>{clientBrief}</p>
           </div>
@@ -123,20 +123,20 @@ export function ScenarioDossierCard({ scenario, index, isStarting, onStart, onSt
         {/* Row 5: Meta badges */}
         <div className="flex items-center gap-2 flex-wrap mb-5">
           <span
-            className="rounded-lg px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider"
+            className="rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide"
             style={{ background: typeConfig.bg, border: `1px solid ${typeConfig.border}`, color: typeConfig.color, boxShadow: `0 2px 8px ${typeConfig.color}15` }}
           >
             {typeConfig.label}
           </span>
           {group && (
             <span
-              className="rounded-lg px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider"
+              className="rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide"
               style={{ background: `${groupColor}12`, border: `1px solid ${groupColor}25`, color: groupColor }}
             >
               {group.label}
             </span>
           )}
-          <span className="flex items-center gap-1 text-xs font-mono ml-auto" style={{ color: "var(--text-muted)" }}>
+          <span className="flex items-center gap-1 text-xs ml-auto" style={{ color: "var(--text-muted)" }}>
             <Clock size={12} />
             ~{scenario.estimated_duration_minutes} мин
           </span>

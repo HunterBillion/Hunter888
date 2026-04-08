@@ -42,7 +42,7 @@ export function StreakCounter({ streak, className = "" }: StreakCounterProps) {
         {isActive ? streak : "0"}
       </span>
       <span
-        className="font-mono text-xs uppercase tracking-wider"
+        className="font-semibold text-xs uppercase tracking-wide"
         style={{ color: isActive ? STREAK.rgba(0.6) : "var(--text-muted)" }}
       >
         {isActive ? dayLabel : "старт"}

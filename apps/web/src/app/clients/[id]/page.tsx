@@ -134,7 +134,7 @@ export default function ClientDetailPage() {
                   {client.full_name}
                 </h1>
                 <span
-                  className="text-xs font-mono px-2 py-1 rounded-full"
+                  className="text-xs font-medium px-2 py-1 rounded-full"
                   style={{ background: `color-mix(in srgb, ${statusColor} 9%, transparent)`, color: statusColor, border: `1px solid color-mix(in srgb, ${statusColor} 19%, transparent)` }}
                 >
                   {CLIENT_STATUS_LABELS[client.status]}
@@ -192,7 +192,7 @@ export default function ClientDetailPage() {
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
               className="glass-panel p-4"
             >
-              <h3 className="text-xs font-mono tracking-wider mb-3" style={{ color: "var(--accent)" }}>ФИНАНСЫ</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--accent)" }}>ФИНАНСЫ</h3>
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-xs" style={{ color: "var(--text-muted)" }}>Общий долг</span>
@@ -208,7 +208,7 @@ export default function ClientDetailPage() {
                 )}
                 {client.creditors.length > 0 && (
                   <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--border-color)" }}>
-                    <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>КРЕДИТОРЫ</span>
+                    <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>КРЕДИТОРЫ</span>
                     {client.creditors.map((cr, i) => (
                       <div key={i} className="flex justify-between mt-1">
                         <span className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>{cr.name}</span>
@@ -227,7 +227,7 @@ export default function ClientDetailPage() {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Calendar size={14} style={{ color: "var(--accent)" }} />
-                  <span className="text-xs font-mono" style={{ color: "var(--accent)" }}>СЛЕДУЮЩИЙ КОНТАКТ</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>СЛЕДУЮЩИЙ КОНТАКТ</span>
                 </div>
                 {!isReadOnly && (
                   <motion.button
@@ -258,7 +258,7 @@ export default function ClientDetailPage() {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <ShieldCheck size={14} style={{ color: "var(--accent)" }} />
-                  <span className="text-xs font-mono tracking-wider" style={{ color: "var(--accent)" }}>СОГЛАСИЯ</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>СОГЛАСИЯ</span>
                 </div>
                 {!isReadOnly && (
                   <motion.button
@@ -310,12 +310,12 @@ export default function ClientDetailPage() {
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
                 className="glass-panel p-4"
               >
-                <span className="text-xs font-mono tracking-wider" style={{ color: "var(--accent)" }}>ТЕГИ</span>
+                <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>ТЕГИ</span>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {client.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="text-xs font-mono px-2 py-0.5 rounded-full"
+                      className="text-xs font-medium px-2 py-0.5 rounded-full"
                       style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--border-color)" }}
                     >
                       {tag}
@@ -334,7 +334,7 @@ export default function ClientDetailPage() {
             className="md:col-span-2 glass-panel p-5"
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xs font-mono tracking-wider" style={{ color: "var(--accent)" }}>
+              <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
                 ИСТОРИЯ ВЗАИМОДЕЙСТВИЙ
               </h3>
               {!isReadOnly && (

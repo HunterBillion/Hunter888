@@ -140,7 +140,7 @@ function TrainingPageContent() {
               className="fixed top-4 left-1/2 z-50 -translate-x-1/2"
             >
               <div
-                className="glass-panel flex items-center gap-3 px-5 py-3 text-sm font-mono"
+                className="glass-panel flex items-center gap-3 px-5 py-3 text-sm"
                 style={{ borderColor: "var(--neon-red, #FF3333)", color: "var(--neon-red, #FF3333)" }}
               >
                 <AlertTriangle size={16} />
@@ -165,7 +165,7 @@ function TrainingPageContent() {
               <div className="flex items-center gap-2">
                 <Link href="/training/archetypes">
                   <motion.button
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-mono"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
                     style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" }}
                     whileTap={{ scale: 0.97 }}
                   >
@@ -261,7 +261,7 @@ function TrainingPageContent() {
 
           <div className="mt-5 flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 rounded-2xl px-4 py-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-color)" }}>
             <div>
-              <div className="font-mono text-sm tracking-[0.22em]" style={{ color: "var(--accent)" }}>
+              <div className="text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
                 Пресет истории
               </div>
               <div className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
@@ -273,7 +273,7 @@ function TrainingPageContent() {
                 <button
                   key={calls}
                   onClick={() => setStoryCalls(calls)}
-                  className="rounded-xl px-4 py-2 font-mono text-xs uppercase tracking-[0.14em] transition-all"
+                  className="rounded-xl px-4 py-2 text-xs font-medium uppercase tracking-wide transition-all"
                   style={{
                     background: storyCalls === calls ? "rgba(99,102,241,0.14)" : "var(--input-bg)",
                     border: `1px solid ${storyCalls === calls ? "rgba(99,102,241,0.42)" : "var(--border-color)"}`,
@@ -295,7 +295,7 @@ function TrainingPageContent() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className="relative flex-1 flex items-center justify-center gap-1.5 sm:gap-2 rounded-lg px-2 sm:px-4 py-2.5 font-mono text-xs sm:text-sm tracking-wider transition-colors whitespace-nowrap min-w-0"
+                  className="relative flex-1 flex items-center justify-center gap-1.5 sm:gap-2 rounded-lg px-2 sm:px-4 py-2.5 text-xs sm:text-sm font-medium tracking-wide transition-colors whitespace-nowrap min-w-0"
                   style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
                 >
                   {active && (
@@ -471,7 +471,7 @@ function RecommendedTab({
                 {group.title}
               </h3>
             </div>
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            <span className="text-sm" style={{ color: "var(--text-muted)" }}>
               {group.subtitle}
             </span>
           </div>
@@ -511,16 +511,16 @@ function RecommendedTab({
                       </div>
                     </div>
                     <div className="flex gap-1.5">
-                      <span className="rounded px-1.5 py-0.5 text-xs font-mono font-bold" style={{ background: tierColor + "20", color: tierColor }}>
+                      <span className="rounded px-1.5 py-0.5 text-xs font-bold" style={{ background: tierColor + "20", color: tierColor }}>
                         T{arch.tier}
                       </span>
-                      <span className="rounded px-1.5 py-0.5 text-xs font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>
+                      <span className="rounded px-1.5 py-0.5 text-xs" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>
                         Сл. {arch.difficulty}
                       </span>
                     </div>
                   </div>
 
-                  <p className="text-xs leading-relaxed mb-3" style={{ color: "var(--text-secondary)" }}>
+                  <p className="text-sm leading-relaxed mb-3" style={{ color: "var(--text-secondary)" }}>
                     {arch.description}
                   </p>
 
@@ -529,7 +529,7 @@ function RecommendedTab({
                     {arch.counters.map((skill) => (
                       <span
                         key={skill}
-                        className="rounded-full px-2 py-0.5 text-xs font-mono"
+                        className="rounded-full px-2 py-0.5 text-xs"
                         style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--border-color)" }}
                       >
                         {skill.replace(/_/g, " ")}
@@ -539,7 +539,7 @@ function RecommendedTab({
 
                   {/* Weakness hint */}
                   <div className="rounded-lg p-2 mb-3" style={{ background: "rgba(255,215,0,0.05)", border: "1px solid rgba(255,215,0,0.1)" }}>
-                    <div className="text-sm font-mono mb-0.5" style={{ color: "rgba(255,215,0,0.6)" }}>
+                    <div className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: "rgba(255,215,0,0.6)" }}>
                       Слабое место
                     </div>
                     <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
@@ -655,7 +655,7 @@ function ScenariosTab({
       >
         <div className="grid gap-6 px-5 py-5 md:grid-cols-[1.1fr_0.9fr] md:px-6">
           <div>
-            <div className="font-mono text-sm tracking-[0.28em]" style={{ color: "var(--accent)" }}>
+            <div className="text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
               AI Story Mode
             </div>
             <h2 className="mt-3 font-display text-2xl font-bold tracking-[0.08em]" style={{ color: "var(--text-primary)" }}>
@@ -681,10 +681,10 @@ function ScenariosTab({
                   boxShadow: storyCalls === item.calls ? "0 0 0 1px rgba(99,102,241,0.12) inset" : "none",
                 }}
               >
-                <div className="font-mono text-xs uppercase tracking-widest" style={{ color: storyCalls === item.calls ? "var(--accent)" : "var(--text-primary)" }}>
+                <div className="text-sm font-semibold" style={{ color: storyCalls === item.calls ? "var(--accent)" : "var(--text-primary)" }}>
                   {item.label}
                 </div>
-                <div className="mt-1 text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                <div className="mt-1 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
                   {item.text}
                 </div>
               </button>
@@ -801,7 +801,7 @@ function AssignedTab({
         <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
           Нет назначенных охот
         </p>
-        <p className="mt-1 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+        <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
           РОП может назначить вам сценарий
         </p>
       </motion.div>
@@ -838,7 +838,7 @@ function AssignedTab({
                   <AlertTriangle size={16} style={{ color: "var(--neon-red, #FF3333)", flexShrink: 0 }} />
                 )}
               </div>
-              <div className="mt-1.5 flex items-center gap-3 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+              <div className="mt-1.5 flex items-center gap-3 text-xs" style={{ color: "var(--text-muted)" }}>
                 <span className="flex items-center gap-1">
                   <Clock size={11} />
                   {isOverdue ? (
@@ -976,7 +976,7 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
         <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
           Сохранённые персонажи появятся здесь
         </p>
-        <p className="mt-1 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+        <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
           Создайте первого в Конструкторе
         </p>
       </div>
@@ -999,10 +999,10 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
               {char.name}
             </h3>
             <div className="mt-2 flex items-center gap-2 flex-wrap">
-              <span className="rounded-full px-2 py-0.5 text-xs font-mono" style={{ background: "var(--accent-muted)", color: "var(--accent)", border: "1px solid var(--accent)" }}>
+              <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--accent-muted)", color: "var(--accent)", border: "1px solid var(--accent)" }}>
                 {char.archetype}
               </span>
-              <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                 {char.lead_source}
               </span>
             </div>

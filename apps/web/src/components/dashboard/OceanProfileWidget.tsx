@@ -48,7 +48,7 @@ function TraitBar({ traitKey, trait }: { traitKey: string; trait: OceanTrait }) 
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-mono" style={{ color: "var(--text-secondary)" }}>
+        <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
           {trait.label}
         </span>
         <span className="text-xs font-mono font-bold" style={{ color }}>
@@ -93,7 +93,7 @@ export function OceanProfileWidget() {
       <div className="glass-panel p-5">
         <div className="flex items-center gap-2 mb-3">
           <Brain size={16} style={{ color: "var(--accent)" }} />
-          <h3 className="text-xs font-mono tracking-wider" style={{ color: "var(--accent)" }}>
+          <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
             OCEAN ПРОФИЛЬ
           </h3>
         </div>
@@ -118,11 +118,11 @@ export function OceanProfileWidget() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Brain size={16} style={{ color: "var(--accent)" }} />
-          <h3 className="text-xs font-mono tracking-wider" style={{ color: "var(--accent)" }}>
+          <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
             OCEAN ПРОФИЛЬ
           </h3>
         </div>
-        <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+        <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
           {data.sessions_analyzed} сессий
         </span>
       </div>
@@ -145,7 +145,7 @@ export function OceanProfileWidget() {
           }}>
             {Math.round(data.performance.under_hostility)}
           </div>
-          <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>АГРЕССИЯ</div>
+          <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>АГРЕССИЯ</div>
         </div>
         <div
           className="flex-1 rounded-lg p-2 text-center"
@@ -156,7 +156,7 @@ export function OceanProfileWidget() {
           }}>
             {Math.round(data.performance.under_stress)}
           </div>
-          <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>СТРЕСС</div>
+          <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>СТРЕСС</div>
         </div>
         <div
           className="flex-1 rounded-lg p-2 text-center"
@@ -167,7 +167,7 @@ export function OceanProfileWidget() {
           }}>
             {Math.round(data.performance.with_empathy)}
           </div>
-          <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>ЭМПАТИЯ</div>
+          <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>ЭМПАТИЯ</div>
         </div>
       </div>
 
@@ -197,7 +197,7 @@ export function OceanProfileWidget() {
       {/* Action */}
       <Link href="/training">
         <button
-          className="w-full flex items-center justify-center gap-1.5 py-2 rounded text-xs font-mono transition-colors"
+          className="w-full flex items-center justify-center gap-1.5 py-2 rounded text-xs font-medium transition-colors"
           style={{ background: "var(--accent)", color: "var(--bg-primary)" }}
         >
           Тренировать слабые стороны

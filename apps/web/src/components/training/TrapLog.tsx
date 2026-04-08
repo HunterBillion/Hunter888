@@ -33,7 +33,7 @@ export default function TrapLog() {
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between text-left"
       >
-        <span className="text-xs font-mono tracking-wider font-semibold uppercase" style={{ color: "var(--text-secondary)" }}>
+        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-secondary)" }}>
           Ловушки ({trapHistory.length})
         </span>
         <div className="flex items-center gap-2.5">

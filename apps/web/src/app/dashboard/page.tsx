@@ -17,6 +17,7 @@ import {
   BarChart3,
   ChevronUp,
   ChevronDown,
+  BookOpen,
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -45,16 +46,18 @@ import { useNotificationStore } from "@/stores/useNotificationStore";
 import { scoreColor } from "@/lib/utils";
 import { getApiBaseUrl } from "@/lib/public-origin";
 import { logger } from "@/lib/logger";
+import { WikiDashboard } from "@/components/dashboard/WikiDashboard";
 
 /* ─── Constants ──────────────────────────────────────────────────────────── */
 
-type TabId = "overview" | "analytics" | "team" | "tournament";
+type TabId = "overview" | "analytics" | "team" | "tournament" | "wiki";
 
 const TABS: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
   { id: "analytics", label: "Аналитика", icon: BarChart3 },
   { id: "team", label: "Команда", icon: Users },
   { id: "tournament", label: "Турнир", icon: Trophy },
+  { id: "wiki", label: "Wiki", icon: BookOpen },
 ];
 
 const AVATAR_COLORS = [
@@ -178,7 +181,7 @@ export default function DashboardPage() {
   /* ─── Sortable column header ───────────────────────────────────────────── */
   const SortHeader = ({ label, sortField }: { label: string; sortField: SortKey }) => (
     <th
-      className="px-5 py-4 text-left font-mono text-xs uppercase tracking-widest cursor-pointer select-none group"
+      className="px-5 py-4 text-left font-semibold text-xs uppercase tracking-wide cursor-pointer select-none group"
       style={{ color: "var(--text-muted)" }}
       onClick={() => toggleSort(sortField)}
     >
@@ -210,14 +213,14 @@ export default function DashboardPage() {
               </div>
               <button
                 onClick={handleExportPdf}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-mono uppercase tracking-wider transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium uppercase tracking-wide transition-colors"
                 style={{ background: "var(--accent-muted)", color: "var(--accent)", border: "1px solid var(--accent)" }}
               >
                 <ArrowRight size={14} />
                 Скачать PDF
               </button>
             </div>
-            <p className="mt-2 font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>
+            <p className="mt-2 font-medium text-sm tracking-wide" style={{ color: "var(--text-muted)" }}>
               {data?.team.name ? `КОМАНДА: ${data.team.name.toUpperCase()}` : "АНАЛИТИКА КОМАНДЫ"}
             </p>
           </motion.div>
@@ -247,7 +250,7 @@ export default function DashboardPage() {
                       <button
                         key={tab.id}
                         onClick={() => switchTab(tab.id)}
-                        className="relative flex items-center gap-2.5 px-6 py-3.5 rounded-xl font-mono text-sm uppercase tracking-widest whitespace-nowrap transition-all duration-200"
+                        className="relative flex items-center gap-2.5 px-6 py-3.5 rounded-xl font-medium text-sm uppercase tracking-wide whitespace-nowrap transition-all duration-200"
                         style={{
                           color: isActive ? "var(--text-primary)" : "var(--text-muted)",
                           fontWeight: isActive ? 700 : 500,
@@ -305,7 +308,7 @@ export default function DashboardPage() {
                         <div className="flex flex-col sm:flex-row sm:items-center gap-6">
                           {/* Main score */}
                           <div className="flex-shrink-0">
-                            <div className="font-mono text-sm uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
+                            <div className="font-semibold text-sm uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
                               СРЕДНИЙ БАЛЛ КОМАНДЫ
                             </div>
                             <div
@@ -352,7 +355,7 @@ export default function DashboardPage() {
                                     <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `color-mix(in srgb, ${stat.color} 8%, transparent)` }}>
                                       <SIcon size={16} style={{ color: stat.color }} />
                                     </div>
-                                    <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                                    <span className="font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                                       {stat.label}
                                     </span>
                                   </div>
@@ -394,7 +397,7 @@ export default function DashboardPage() {
                             <thead>
                               <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
                                 <SortHeader label="Имя" sortField="full_name" />
-                                <th className="px-5 py-4 text-left font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                                <th className="px-5 py-4 text-left font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                                   Роль
                                 </th>
                                 <SortHeader label="Сессий" sortField="total_sessions" />
@@ -438,7 +441,7 @@ export default function DashboardPage() {
                                     </td>
                                     <td className="px-5 py-4">
                                       <span
-                                        className="rounded-full px-3 py-1 text-sm font-mono"
+                                        className="rounded-full px-3 py-1 text-sm font-medium"
                                         style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
                                       >
                                         {m.role}
@@ -598,7 +601,7 @@ export default function DashboardPage() {
 
                             {data.tournament.leaderboard.length === 0 && (
                               <div className="py-8 flex items-center justify-center">
-                                <p className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                                   Пока нет участников
                                 </p>
                               </div>
@@ -629,7 +632,7 @@ export default function DashboardPage() {
                                 <Users size={16} style={{ color: "var(--accent)" }} />
                                 ВОРОНКА КЛИЕНТОВ
                               </h2>
-                              <Link href="/clients/pipeline" className="font-mono text-xs flex items-center gap-1" style={{ color: "var(--accent)" }}>
+                              <Link href="/clients/pipeline" className="font-medium text-xs flex items-center gap-1" style={{ color: "var(--accent)" }}>
                                 Открыть <ArrowRight size={10} />
                               </Link>
                             </div>
@@ -637,6 +640,13 @@ export default function DashboardPage() {
                           </motion.div>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {/* ═══════════ TAB: WIKI ══════════════════════════════════ */}
+                  {activeTab === "wiki" && (
+                    <div>
+                      <WikiDashboard />
                     </div>
                   )}
 

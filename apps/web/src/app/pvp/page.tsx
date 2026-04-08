@@ -201,7 +201,7 @@ function PvPLobbyContent() {
                   <h1 className="font-display text-2xl sm:text-3xl font-black tracking-wide" style={{ color: "var(--text-primary)" }}>
                     PVP Арена
                   </h1>
-                  <p className="text-sm font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
                     Дуэли 1 на 1 · Glicko-2 рейтинг
                   </p>
                 </div>
@@ -309,7 +309,7 @@ function PvPLobbyContent() {
               style={{ background: "rgba(255,215,0,0.06)", border: "1px solid rgba(255,215,0,0.15)" }}
             >
               <Zap size={16} style={{ color: "#FFD700" }} />
-              <span className="font-mono text-xs" style={{ color: "var(--text-secondary)" }}>
+              <span className="font-medium text-xs" style={{ color: "var(--text-secondary)" }}>
                 {store.activeSeason.name}
               </span>
             </motion.div>
@@ -397,7 +397,7 @@ function PvPLobbyContent() {
                   <button
                     key={t}
                     onClick={() => setTab(t)}
-                    className="relative flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-mono text-sm tracking-wider"
+                    className="relative flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-medium text-sm tracking-wide"
                     style={{ color: tab === t ? "var(--text-primary)" : "var(--text-muted)" }}
                   >
                     {tab === t && (
@@ -421,7 +421,7 @@ function PvPLobbyContent() {
                     <div className="space-y-4">
                       {/* PvP Mode Selection */}
                       <div>
-                        <p className="text-sm font-mono tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Режимы PvP</p>
+                        <p className="text-sm font-semibold tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>Режимы PvP</p>
                         <div className="grid grid-cols-2 gap-2">
                           {([
                             { code: "classic", name: "Классическая дуэль", desc: "2 раунда, смена ролей", icon: "\u2694\uFE0F", level: 1 },
@@ -441,8 +441,8 @@ function PvPLobbyContent() {
                                 {locked && <Lock size={14} className="absolute top-2 right-2" style={{ color: "var(--text-muted)" }} />}
                                 <span className="text-lg">{mode.icon}</span>
                                 <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-primary)" }}>{mode.name}</p>
-                                <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
-                                {locked && <p className="text-xs font-mono mt-1" style={{ color: "var(--warning)" }}>Ур. {mode.level}</p>}
+                                <p className="text-xs" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
+                                {locked && <p className="text-xs font-medium mt-1" style={{ color: "var(--warning)" }}>Ур. {mode.level}</p>}
                               </motion.div>
                             );
                           })}
@@ -451,7 +451,7 @@ function PvPLobbyContent() {
 
                       {/* PvE Mode Selection */}
                       <div>
-                        <p className="text-sm font-mono tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Режимы PvE</p>
+                        <p className="text-sm font-semibold tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>Режимы PvE</p>
                         <div className="grid grid-cols-2 gap-2">
                           {([
                             { code: "standard", name: "Стандартный бот", desc: "Обычная PvE дуэль", icon: "\uD83E\uDD16", level: 1 },
@@ -471,8 +471,8 @@ function PvPLobbyContent() {
                                 {locked && <Lock size={14} className="absolute top-2 right-2" style={{ color: "var(--text-muted)" }} />}
                                 <span className="text-lg">{mode.icon}</span>
                                 <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-primary)" }}>{mode.name}</p>
-                                <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
-                                {locked && <p className="text-xs font-mono mt-1" style={{ color: "var(--warning)" }}>Ур. {mode.level}</p>}
+                                <p className="text-xs" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
+                                {locked && <p className="text-xs font-medium mt-1" style={{ color: "var(--warning)" }}>Ур. {mode.level}</p>}
                               </motion.div>
                             );
                           })}
@@ -484,7 +484,7 @@ function PvPLobbyContent() {
                         <Swords size={18} style={{ color: "var(--accent)" }} />
                         <div>
                           <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Голосовая дуэль</p>
-                          <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                             Два раунда · смена ролей · Glicko-2 рейтинг
                           </p>
                         </div>
@@ -498,7 +498,7 @@ function PvPLobbyContent() {
                           { step: "03", title: "Результат", desc: "ИИ-судья выносит вердикт, рейтинг обновляется" },
                         ].map((item) => (
                           <div key={item.step} className="glass-panel p-4 flex flex-col">
-                            <span className="font-mono text-xs tracking-wider" style={{ color: "var(--accent)" }}>{item.step}</span>
+                            <span className="font-mono text-xs tracking-wide" style={{ color: "var(--accent)" }}>{item.step}</span>
                             <p className="text-sm font-medium mt-1" style={{ color: "var(--text-primary)" }}>{item.title}</p>
                             <p className="text-xs mt-0.5 flex-1" style={{ color: "var(--text-muted)" }}>{item.desc}</p>
                           </div>
@@ -508,7 +508,7 @@ function PvPLobbyContent() {
                       {/* Recent duels preview */}
                       {store.myDuels.length > 0 && (
                         <div>
-                          <p className="text-sm font-mono tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Последние дуэли</p>
+                          <p className="text-sm font-semibold tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>Последние дуэли</p>
                           <div className="space-y-2">
                             {store.myDuels.slice(0, 3).map((duel) => {
                               const isP1 = store.rating?.user_id === duel.player1_id;
@@ -523,7 +523,7 @@ function PvPLobbyContent() {
                                   <span className="text-xs font-medium" style={{ color: isWinner ? "var(--neon-green)" : duel.is_draw ? "var(--warning)" : "var(--neon-red)" }}>
                                     {duel.is_draw ? "Ничья" : isWinner ? "Победа" : "Поражение"}
                                   </span>
-                                  <span className="text-xs font-mono ml-auto" style={{ color: "var(--text-muted)" }}>
+                                  <span className="text-xs font-medium ml-auto" style={{ color: "var(--text-muted)" }}>
                                     {DUEL_STATUS_LABELS[duel.status] || duel.status}
                                   </span>
                                   <ArrowRight size={12} style={{ color: "var(--text-muted)" }} />
@@ -534,7 +534,7 @@ function PvPLobbyContent() {
                           {store.myDuels.length > 3 && (
                             <button
                               onClick={() => setTab("history")}
-                              className="mt-2 text-xs font-mono"
+                              className="mt-2 text-xs font-medium"
                               style={{ color: "var(--accent)" }}
                             >
                               Вся история →
@@ -572,7 +572,7 @@ function PvPLobbyContent() {
                           >
                             <Icon size={20} style={{ color }} />
                             <p className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>{label}</p>
-                            <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{desc}</p>
+                            <p className="text-xs" style={{ color: "var(--text-muted)" }}>{desc}</p>
                           </motion.button>
                         ))}
                       </div>
@@ -580,7 +580,7 @@ function PvPLobbyContent() {
                       {/* Category selection for themed mode */}
                       {quizMode === "themed" && (
                         <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-                          <p className="text-xs font-mono mb-2" style={{ color: "var(--text-secondary)" }}>Выберите категорию:</p>
+                          <p className="text-xs font-medium mb-2" style={{ color: "var(--text-secondary)" }}>Выберите категорию:</p>
                           <div className="grid grid-cols-2 gap-2">
                             {[
                               { id: "eligibility", label: "Условия подачи" },
@@ -597,7 +597,7 @@ function PvPLobbyContent() {
                               <button
                                 key={cat.id}
                                 onClick={() => setQuizCategory(cat.id)}
-                                className="rounded-lg px-3 py-2 text-left text-xs font-mono transition-all"
+                                className="rounded-lg px-3 py-2 text-left text-xs font-medium transition-all"
                                 style={{
                                   background: quizCategory === cat.id ? "rgba(16,185,129,0.15)" : "var(--input-bg)",
                                   color: quizCategory === cat.id ? "#10B981" : "var(--text-secondary)",
@@ -617,7 +617,7 @@ function PvPLobbyContent() {
                           initial={{ opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0 }}
                         >
-                          <p className="text-xs font-mono tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
+                          <p className="text-xs font-semibold tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
                             Экзаменатор
                           </p>
                           <div className="grid grid-cols-2 gap-2">
@@ -700,7 +700,7 @@ function PvPLobbyContent() {
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-lg">{"\uD83C\uDFC6"}</span>
                           <span className="text-sm font-bold" style={{ color: "#FFD700" }}>Турнир недели</span>
-                          <span className="ml-auto text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                          <span className="ml-auto text-xs font-medium" style={{ color: "var(--text-muted)" }}>
                             Подробнее →
                           </span>
                         </div>
@@ -711,7 +711,7 @@ function PvPLobbyContent() {
 
                       {/* PvP Arena Knowledge Section */}
                       <div className="mt-6 pt-4" style={{ borderTop: "1px solid var(--glass-border)" }}>
-                        <p className="text-xs font-mono tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>
+                        <p className="text-xs font-semibold tracking-wide mb-3" style={{ color: "var(--text-muted)" }}>
                           PvP арена знаний
                         </p>
                         <div className="grid grid-cols-2 gap-3">
@@ -729,7 +729,7 @@ function PvPLobbyContent() {
                             <p className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                               Дуэль 1 на 1
                             </p>
-                            <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                               2 игрока · 10 раундов
                             </p>
                           </motion.button>
@@ -746,7 +746,7 @@ function PvPLobbyContent() {
                             <p className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                               Командный бой
                             </p>
-                            <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                               4 игрока · 10 раундов
                             </p>
                           </motion.button>
@@ -797,10 +797,10 @@ function PvPLobbyContent() {
                                   <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                                     {duel.is_draw ? "Ничья" : isWinner ? "Победа" : "Поражение"}
                                   </span>
-                                  <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>
+                                  <span className="font-medium text-xs px-1.5 py-0.5 rounded" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>
                                     {DUEL_STATUS_LABELS[duel.status] || duel.status}
                                   </span>
-                                  {duel.is_pve && <span className="font-mono text-xs" style={{ color: "var(--warning)" }}>PvE</span>}
+                                  {duel.is_pve && <span className="font-medium text-xs" style={{ color: "var(--warning)" }}>PvE</span>}
                                 </div>
                                 <div className="mt-1 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                                   {formatTime(duel.created_at)} · {Math.round(myScore)} vs {Math.round(oppScore)}
@@ -873,7 +873,7 @@ function PvPLobbyContent() {
               <div className="flex gap-3">
                 <motion.button
                   whileTap={{ scale: 0.98 }}
-                  className="flex-1 py-2.5 rounded-xl font-mono text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2"
+                  className="flex-1 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-2"
                   style={{ background: "var(--neon-green)", color: "#000" }}
                   disabled={pveAccepting}
                   onClick={async () => {
@@ -899,7 +899,7 @@ function PvPLobbyContent() {
                 </motion.button>
                 <motion.button
                   whileTap={{ scale: 0.98 }}
-                  className="flex-1 py-2.5 rounded-xl font-mono text-xs font-bold uppercase tracking-wider btn-neon"
+                  className="flex-1 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wide btn-neon"
                   onClick={() => {
                     sendMessage({ type: "queue.leave" });
                     store.resetQueue();

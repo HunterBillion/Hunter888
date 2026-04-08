@@ -39,7 +39,7 @@ export function PreCallBriefOverlay({ brief, onStart }: Props) {
               </div>
             </div>
           </div>
-          <div className="font-mono text-xs px-3 py-1 rounded-lg" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
+          <div className="text-xs font-medium px-3 py-1 rounded-lg" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
             {brief.scenario_title}
           </div>
         </div>
@@ -48,7 +48,7 @@ export function PreCallBriefOverlay({ brief, onStart }: Props) {
         <div className="p-6 space-y-5">
           {/* Context */}
           <div>
-            <div className="font-mono text-xs tracking-widest uppercase mb-2" style={{ color: "var(--text-muted)" }}>
+            <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
               КОНТЕКСТ ЗВОНКА
             </div>
             <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
@@ -59,7 +59,7 @@ export function PreCallBriefOverlay({ brief, onStart }: Props) {
           {/* Active Human Factors */}
           {brief.active_factors.length > 0 && (
             <div>
-              <div className="font-mono text-xs tracking-widest uppercase mb-2" style={{ color: "var(--text-muted)" }}>
+              <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
                 АКТИВНЫЕ ФАКТОРЫ КЛИЕНТА
               </div>
               <HumanFactorIcons factors={brief.active_factors} />
@@ -69,7 +69,7 @@ export function PreCallBriefOverlay({ brief, onStart }: Props) {
           {/* Previous Consequences */}
           {brief.previous_consequences.length > 0 && (
             <div>
-              <div className="font-mono text-xs tracking-widest uppercase mb-2 flex items-center gap-1.5" style={{ color: "var(--warning)" }}>
+              <div className="text-xs font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5" style={{ color: "var(--warning)" }}>
                 <AlertTriangle size={12} /> ПОСЛЕДСТВИЯ ПРОШЛЫХ ЗВОНКОВ
               </div>
               <div className="space-y-1.5">
@@ -94,7 +94,7 @@ export function PreCallBriefOverlay({ brief, onStart }: Props) {
           {/* Suggested Approach */}
           {brief.suggested_approach && (
             <div>
-              <div className="font-mono text-xs tracking-widest uppercase mb-2 flex items-center gap-1.5" style={{ color: "var(--accent)" }}>
+              <div className="text-xs font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5" style={{ color: "var(--accent)" }}>
                 <Brain size={12} /> РЕКОМЕНДУЕМЫЙ ПОДХОД
               </div>
               <p className="text-sm italic" style={{ color: "var(--text-secondary)" }}>

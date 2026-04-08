@@ -258,7 +258,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
     label: string; options: { code: string; label: string }[]; value: string; onChange: (v: string) => void;
   }) => (
     <div className="mb-4">
-      <div className="text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>{label}</div>
+      <div className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>{label}</div>
       <div className="flex flex-wrap gap-1.5">
         {options.map((o) => (
           <button key={o.code} onClick={() => onChange(o.code)}
@@ -301,7 +301,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                     : done ? <Check size={12} className="text-white" />
                     : <Icon size={12} style={{ color: active ? "var(--accent)" : "var(--text-muted)" }} />}
                 </div>
-                <span className="font-mono text-xs uppercase tracking-wider hidden lg:inline"
+                <span className="text-xs font-medium uppercase tracking-wide hidden lg:inline"
                   style={{ color: locked ? "var(--text-muted)" : active ? "var(--text-primary)" : "var(--text-muted)", opacity: locked ? 0.4 : 1 }}>
                   {s.label}
                 </span>
@@ -322,7 +322,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
           {step === 0 && (<>
             <div className="flex flex-wrap gap-1.5 mb-3">
               <button onClick={() => setGroupFilter(null)}
-                className="rounded-full px-2.5 py-1 font-mono text-sm uppercase tracking-wider"
+                className="rounded-full px-2.5 py-1 text-sm font-medium uppercase tracking-wide"
                 style={{ background: !groupFilter ? "var(--accent)" : "var(--input-bg)", color: !groupFilter ? "white" : "var(--text-muted)" }}>
                 Все ({ARCHETYPES.length})
               </button>
@@ -330,7 +330,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                 const count = ARCHETYPES.filter((a) => a.group === key).length;
                 return (
                   <button key={key} onClick={() => setGroupFilter(groupFilter === key ? null : key)}
-                    className="rounded-full px-2 py-1 font-mono text-sm uppercase tracking-wider"
+                    className="rounded-full px-2 py-1 text-sm font-medium uppercase tracking-wide"
                     style={{ background: groupFilter === key ? g.color + "20" : "var(--input-bg)", color: groupFilter === key ? g.color : "var(--text-muted)", border: groupFilter === key ? `1px solid ${g.color}40` : "1px solid transparent" }}>
                     {g.icon} {g.label} ({count})
                   </button>
@@ -342,7 +342,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                 const tc = getTierColor(t); const labels = ["T1", "T2", "T3", "T4"];
                 return (
                   <button key={t} onClick={() => setTierFilter(tierFilter === t ? null : t)}
-                    className="rounded-full px-2 py-1 font-mono text-sm uppercase"
+                    className="rounded-full px-2 py-1 text-sm font-medium uppercase"
                     style={{ background: tierFilter === t ? tc + "20" : "var(--input-bg)", color: tierFilter === t ? tc : "var(--text-muted)", border: tierFilter === t ? `1px solid ${tc}40` : "1px solid transparent" }}>
                     {labels[t - 1]}
                   </button>
@@ -384,7 +384,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
             <div className="space-y-5 max-h-[55vh] overflow-y-auto pr-1">
               {Object.entries(PROFESSION_GROUPS).map(([key, group]) => (
                 <div key={key}>
-                  <div className="text-sm uppercase tracking-wider mb-2 font-mono" style={{ color: "var(--text-muted)" }}>{group.label}</div>
+                  <div className="text-sm font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>{group.label}</div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                     {PROFESSIONS.filter((p) => p.group === key).map((p) => {
                       const sel = profession === p.code;
@@ -413,7 +413,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
             <div className="space-y-5 max-h-[55vh] overflow-y-auto pr-1">
               {Object.entries(LEAD_SOURCE_GROUPS).map(([key, group]) => (
                 <div key={key}>
-                  <div className="text-sm uppercase tracking-wider mb-2 font-mono" style={{ color: "var(--text-muted)" }}>{group.label}</div>
+                  <div className="text-sm font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>{group.label}</div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {LEAD_SOURCES.filter((s) => s.group === key).map((s) => {
                       const sel = leadSource === s.code;
@@ -517,35 +517,35 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
-                  <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Архетип</div>
+                  <div className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>Архетип</div>
                   <div className="text-sm font-bold" style={{ color: selectedArchetype ? ARCHETYPE_GROUPS[selectedArchetype.group]?.color : "var(--text-primary)" }}>
                     {selectedArchetype ? `${selectedArchetype.icon} ${selectedArchetype.name}` : "\u2014"}
                   </div>
                   {selectedArchetype && <div className="text-xs mt-0.5 italic" style={{ color: "var(--text-muted)" }}>T{selectedArchetype.tier} \u00B7 Lv{selectedArchetype.unlock_level}+</div>}
                 </div>
                 <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
-                  <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Профессия</div>
+                  <div className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>Профессия</div>
                   <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{selectedProfession ? `${selectedProfession.icon} ${selectedProfession.name}` : "\u2014"}</div>
                 </div>
                 <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
-                  <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Источник</div>
+                  <div className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>Источник</div>
                   <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{LEAD_SOURCES.find((l) => l.code === leadSource)?.name ?? "\u2014"}</div>
                 </div>
                 <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
-                  <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Сложность</div>
+                  <div className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>Сложность</div>
                   <div className="text-lg font-black font-mono" style={{ color: difficulty <= 3 ? "var(--neon-green)" : difficulty <= 6 ? "var(--warning)" : "var(--neon-red)" }}>{difficulty}/10</div>
                 </div>
               </div>
               {/* Extra params summary */}
               <div className="flex flex-wrap gap-1.5 mb-4">
-                {familyPreset !== "random" && <span className="rounded-full px-2 py-0.5 text-xs font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Семья: {FAMILY_PRESETS.find(f => f.code === familyPreset)?.label}</span>}
-                {creditorsPreset !== "random" && <span className="rounded-full px-2 py-0.5 text-xs font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Кредиторы: {creditorsPreset}</span>}
-                {debtStage !== "random" && <span className="rounded-full px-2 py-0.5 text-xs font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Стадия: {DEBT_STAGES.find(d => d.code === debtStage)?.label}</span>}
-                {debtRange !== "random" && <span className="rounded-full px-2 py-0.5 text-xs font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Долг: {DEBT_RANGES.find(d => d.code === debtRange)?.label}</span>}
-                {emotionPreset !== "neutral" && <span className="rounded-full px-2 py-0.5 text-xs font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Настроение: {EMOTION_PRESETS.find(e => e.code === emotionPreset)?.name}</span>}
-                {bgNoise !== "none" && <span className="rounded-full px-2 py-0.5 text-xs font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Шум: {NOISES.find(n => n.code === bgNoise)?.label}</span>}
-                {timeOfDay !== "afternoon" && <span className="rounded-full px-2 py-0.5 text-xs font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Время: {TIMES.find(t => t.code === timeOfDay)?.label}</span>}
-                {clientFatigue !== "normal" && <span className="rounded-full px-2 py-0.5 text-xs font-mono" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Усталость: {FATIGUES.find(f => f.code === clientFatigue)?.label}</span>}
+                {familyPreset !== "random" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Семья: {FAMILY_PRESETS.find(f => f.code === familyPreset)?.label}</span>}
+                {creditorsPreset !== "random" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Кредиторы: {creditorsPreset}</span>}
+                {debtStage !== "random" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Стадия: {DEBT_STAGES.find(d => d.code === debtStage)?.label}</span>}
+                {debtRange !== "random" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Долг: {DEBT_RANGES.find(d => d.code === debtRange)?.label}</span>}
+                {emotionPreset !== "neutral" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Настроение: {EMOTION_PRESETS.find(e => e.code === emotionPreset)?.name}</span>}
+                {bgNoise !== "none" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Шум: {NOISES.find(n => n.code === bgNoise)?.label}</span>}
+                {timeOfDay !== "afternoon" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Время: {TIMES.find(t => t.code === timeOfDay)?.label}</span>}
+                {clientFatigue !== "normal" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Усталость: {FATIGUES.find(f => f.code === clientFatigue)?.label}</span>}
               </div>
               <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
                 AI создаст реалистичный портрет клиента на основе всех выбранных параметров.
