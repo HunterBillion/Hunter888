@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Circle } from "lucide-react";
+import { Check } from "lucide-react";
 
 /** Labels for 7-step BFL sales script stages. */
 const STAGE_LABELS: Record<number, { short: string; full: string; hint: string }> = {
@@ -30,17 +30,10 @@ export default function StageProgressBar({
   const progressPct = (stagesCompleted.length / totalStages) * 100;
 
   return (
-    <div
-      className="rounded-xl p-4"
-      style={{
-        background: "var(--glass-bg)",
-        border: "1px solid var(--glass-border)",
-        backdropFilter: "blur(20px)",
-      }}
-    >
+    <div className="flex flex-col">
       <div
-        className="text-xs mb-3"
-        style={{ color: "var(--text-muted)" }}
+        className="text-sm font-semibold mb-3"
+        style={{ color: "var(--text-secondary)" }}
       >
         Этапы скрипта
       </div>
@@ -58,98 +51,108 @@ export default function StageProgressBar({
         />
       </div>
 
-      {/* Stage dots — desktop */}
-      <div className="hidden sm:flex items-center justify-between">
-        {stages.map((num) => {
+      {/* Stage circles — desktop */}
+      <div className="hidden sm:flex items-center">
+        {stages.map((num, idx) => {
           const isCompleted = completedSet.has(num);
           const isCurrent = num === currentStage && !isCompleted;
-          const label = STAGE_LABELS[num] || { short: `${num}`, full: `Этап ${num}` };
+          const label = STAGE_LABELS[num] || { short: `${num}`, full: `Этап ${num}`, hint: "" };
+
+          // Connector line before this circle (not before first)
+          const prevCompleted = idx > 0 && completedSet.has(stages[idx - 1]);
 
           return (
-            <div key={num} className="flex flex-col items-center gap-1 relative group">
-              <AnimatePresence mode="wait">
-                {isCompleted ? (
-                  <motion.div
-                    key="done"
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: "spring", stiffness: 500, damping: 20 }}
-                    className="flex items-center justify-center w-5 h-5 rounded-full"
-                    style={{
-                      background: "rgba(0,255,148,0.15)",
-                      border: "1.5px solid var(--success, #00FF94)",
-                    }}
-                  >
-                    <Check size={11} style={{ color: "var(--success, #00FF94)" }} strokeWidth={3} />
-                  </motion.div>
-                ) : isCurrent ? (
-                  <motion.div
-                    key="current"
-                    animate={{
-                      boxShadow: [
-                        "0 0 0px rgba(99,102,241,0.3)",
-                        "0 0 10px rgba(99,102,241,0.6)",
-                        "0 0 0px rgba(99,102,241,0.3)",
-                      ],
-                    }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                    className="flex items-center justify-center w-5 h-5 rounded-full"
-                    style={{
-                      background: "rgba(99,102,241,0.15)",
-                      border: "1.5px solid var(--accent)",
-                    }}
-                  >
-                    <Circle
-                      size={8}
-                      fill="var(--accent)"
-                      style={{ color: "var(--accent)" }}
-                    />
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="pending"
-                    className="flex items-center justify-center w-5 h-5 rounded-full"
-                    style={{
-                      background: "transparent",
-                      border: "1.5px solid var(--border-color)",
-                    }}
-                  >
-                    <Circle size={6} style={{ color: "var(--border-color)" }} strokeWidth={1.5} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
+            <div key={num} className="contents">
+              {/* Connector line */}
+              {idx > 0 && (
+                <div
+                  className="flex-1 h-px"
+                  style={{
+                    background: prevCompleted
+                      ? "var(--success, #00FF94)"
+                      : "var(--border-color)",
+                  }}
+                />
+              )}
 
-              {/* Label */}
-              <span
-                className="text-[10px] leading-tight text-center"
-                style={{
-                  color: isCompleted
-                    ? "var(--success, #00FF94)"
-                    : isCurrent
-                      ? "var(--accent)"
-                      : "var(--text-muted)",
-                }}
-              >
-                {label.full}
-              </span>
+              {/* Circle with tooltip */}
+              <div className="relative group flex-shrink-0">
+                <AnimatePresence mode="wait">
+                  {isCompleted ? (
+                    <motion.div
+                      key="done"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 20 }}
+                      className="flex items-center justify-center w-6 h-6 rounded-full"
+                      style={{
+                        background: "rgba(0,255,148,0.15)",
+                        border: "1.5px solid var(--success, #00FF94)",
+                      }}
+                    >
+                      <Check size={12} style={{ color: "#fff" }} strokeWidth={3} />
+                    </motion.div>
+                  ) : isCurrent ? (
+                    <motion.div
+                      key="current"
+                      animate={{
+                        boxShadow: [
+                          "0 0 0px rgba(99,102,241,0.3)",
+                          "0 0 10px rgba(99,102,241,0.6)",
+                          "0 0 0px rgba(99,102,241,0.3)",
+                        ],
+                      }}
+                      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                      className="flex items-center justify-center w-6 h-6 rounded-full"
+                      style={{
+                        background: "rgba(99,102,241,0.15)",
+                        border: "1.5px solid var(--accent)",
+                      }}
+                    >
+                      <span
+                        className="text-xs font-bold"
+                        style={{ color: "var(--accent)" }}
+                      >
+                        {num}
+                      </span>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="pending"
+                      className="flex items-center justify-center w-6 h-6 rounded-full"
+                      style={{
+                        background: "transparent",
+                        border: "1.5px solid var(--border-color)",
+                      }}
+                    >
+                      <span
+                        className="text-xs font-bold"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        {num}
+                      </span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-              {/* Tooltip with context hint */}
-              <div
-                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 w-40 text-center"
-                style={{
-                  background: "var(--surface, #1a1a2e)",
-                  border: "1px solid var(--border-color)",
-                  color: "var(--text-secondary)",
-                  boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
-                }}
-              >
-                <div className="font-semibold mb-0.5" style={{ color: "var(--text-primary)" }}>
-                  {label.full}
-                  {isCompleted && " \u2714"}
-                  {isCurrent && " \u25cf"}
-                </div>
-                <div className="leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                  {label.hint}
+                {/* Tooltip */}
+                <div
+                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 w-40 text-center"
+                  style={{
+                    background: "var(--surface, #1a1a2e)",
+                    border: "1px solid var(--border-color)",
+                    color: "var(--text-secondary)",
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+                  }}
+                >
+                  <div className="font-semibold mb-0.5" style={{ color: "var(--text-primary)" }}>
+                    {label.full}
+                    {isCompleted && " \u2714"}
+                    {isCurrent && " \u25cf"}
+                  </div>
+                  <div className="leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                    {label.hint}
+                  </div>
                 </div>
               </div>
             </div>

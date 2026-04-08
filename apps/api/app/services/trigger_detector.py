@@ -276,6 +276,8 @@ async def _detect_triggers_llm(
             system_prompt=system_prompt,
             messages=messages,
             max_tokens=500,
+            task_type="structured",
+            prefer_provider="local",
         )
 
         # Parse JSON from LLM response

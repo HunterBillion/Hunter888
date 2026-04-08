@@ -63,17 +63,12 @@ export default function DifficultyIndicator({
 
   return (
     <div
-      className="relative rounded-xl p-4"
-      style={{
-        background: "var(--glass-bg, rgba(255,255,255,0.03))",
-        border: "1px solid var(--glass-border, rgba(255,255,255,0.06))",
-        backdropFilter: "blur(20px)",
-      }}
+      className="relative flex flex-col"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       {/* Title */}
-      <div className="font-mono text-xs uppercase tracking-widest mb-3 font-semibold" style={{ color: "var(--text-secondary)" }}>
+      <div className="text-sm font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--text-secondary)" }}>
         Сложность
       </div>
 
@@ -94,7 +89,7 @@ export default function DifficultyIndicator({
             {"\u2B50"}
           </motion.span>
         ))}
-        <span className="ml-2 font-mono text-sm font-bold" style={{ color }}>
+        <span className="ml-2 text-sm font-bold tabular-nums" style={{ color }}>
           {effectiveDifficulty}
           {trendArrow && (
             <span className="ml-0.5 text-xs" style={{ color: trend === "rising" ? "var(--neon-red, #FF2A6D)" : "var(--success, #00FF94)" }}>

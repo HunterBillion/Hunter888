@@ -58,8 +58,8 @@ export default function LiveEmotionTimeline() {
   const lastColor = EMOTION_COLOR[lastPoint.state] || "#6366f1";
 
   return (
-    <div className="glass-panel rounded-xl p-3">
-      <span className="text-xs font-mono tracking-wider font-semibold uppercase" style={{ color: "var(--text-secondary)" }}>
+    <div className="flex flex-col">
+      <span className="text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--text-secondary)" }}>
         Динамика эмоций
       </span>
       <svg width={W} height={H} className="w-full mt-1" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">

@@ -28,7 +28,7 @@ export default function TrapLog() {
   if (trapHistory.length === 0) return null;
 
   return (
-    <div className="glass-panel rounded-xl p-4">
+    <div className="flex flex-col">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between text-left"

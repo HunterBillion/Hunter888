@@ -229,6 +229,8 @@ async def _analyze_llm(
             system_prompt="Ты анализатор качества ответов менеджеров. Отвечай только JSON.",
             messages=[{"role": "user", "content": prompt_text}],
             emotion_state="cold",
+            task_type="structured",
+            prefer_provider="local",
         )
 
         if not result or not result.content:

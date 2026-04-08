@@ -568,6 +568,8 @@ async def check_llm_perplexity(
             system_prompt="Ты детектор AI-текстов. Отвечай только числом 0.0-1.0.",
             messages=[{"role": "user", "content": prompt}],
             emotion_state="cold",
+            task_type="simple",
+            prefer_provider="local",
         )
         # Extract text content from LLMResponse object
         response_text = llm_result.content.strip()

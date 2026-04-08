@@ -108,13 +108,26 @@ async def lifespan(application: FastAPI):
     from app.services.event_bus import setup_default_handlers
     setup_default_handlers()
 
+    # Start LLM health monitor (checks Mac Mini every 30s, updates Redis, notifies users)
+    from app.services.llm_health import start_monitor as start_llm_monitor
+    start_llm_monitor()
+
     logger.info("Lifespan: startup complete")
     yield
     # ── Shutdown ──
     _embedding_task.cancel()
     reminder_scheduler.stop()
     wiki_scheduler.stop()
+    # Stop LLM health monitor
+    from app.services.llm_health import stop_monitor as stop_llm_monitor
+    stop_llm_monitor()
     await close_embedding_client()
+    # Close shared LLM + embedding httpx clients
+    try:
+        from app.services.llm import close_llm_clients
+        await close_llm_clients()
+    except Exception:
+        pass
     # Close shared TTS httpx client
     try:
         from app.services.tts import close_tts_client

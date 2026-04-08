@@ -62,17 +62,12 @@ export default function WhisperPanel({ onToggle }: WhisperPanelProps) {
 
   return (
     <div
-      className="rounded-xl p-4"
-      style={{
-        background: "var(--glass-bg)",
-        border: "1px solid var(--glass-border)",
-        backdropFilter: "blur(20px)",
-      }}
+      className="flex flex-col"
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Lightbulb size={15} style={{ color: "var(--accent)" }} />
-          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-secondary)" }}>
+          <span className="text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--text-secondary)" }}>
             Коучинг
           </span>
         </div>
@@ -129,7 +124,7 @@ export default function WhisperPanel({ onToggle }: WhisperPanelProps) {
                   <div className="text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>
                     {w.message}
                   </div>
-                  <div className="mt-1 text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                  <div className="mt-1 text-xs uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                     {formatTimeAgo(w.timestamp)}
                   </div>
                 </div>

@@ -21,19 +21,14 @@ export default function TalkListenRatio({ talkPercent }: TalkListenRatioProps) {
 
   return (
     <div
-      className="rounded-xl p-4 relative"
-      style={{
-        background: "var(--glass-bg)",
-        border: "1px solid var(--glass-border)",
-        backdropFilter: "blur(20px)",
-      }}
+      className="flex flex-col relative"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div className="font-mono text-xs uppercase tracking-wider mb-2.5 font-semibold" style={{ color: "var(--text-secondary)" }}>
+      <div className="text-sm font-semibold uppercase tracking-wide mb-2.5" style={{ color: "var(--text-secondary)" }}>
         Говорю / Слушаю
       </div>
-      <div className="flex items-center gap-3 font-mono text-base font-bold">
+      <div className="flex items-center gap-3 text-base font-bold tabular-nums">
         <Mic size={15} style={{ color: talkColor }} />
         <span style={{ color: talkColor }}>{talkPercent}%</span>
         <span style={{ color: "var(--text-muted)" }}>/</span>

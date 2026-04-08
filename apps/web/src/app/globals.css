@@ -410,9 +410,8 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    /* Thin scrollbar so it doesn't eat into panel width */
     scrollbar-width: thin;
-    scrollbar-color: rgba(99,102,241,0.25) transparent;
+    scrollbar-color: rgba(99,102,241,0.2) transparent;
   }
 
   .training-session-panel::-webkit-scrollbar {
@@ -422,26 +421,28 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
     background: transparent;
   }
   .training-session-panel::-webkit-scrollbar-thumb {
-    background: rgba(99,102,241,0.25);
+    background: rgba(99,102,241,0.2);
     border-radius: 4px;
   }
   .training-session-panel::-webkit-scrollbar-thumb:hover {
-    background: rgba(99,102,241,0.4);
+    background: rgba(99,102,241,0.35);
   }
 
   .training-session-center {
-    /* On mobile the center column can grow, on desktop it's constrained by the grid row */
     min-height: min(60vh, 600px);
   }
 
-  /* Desktop: 20% transcript / 40% center / 40% tools — keeps input visible */
+  /* Desktop: chat + avatar (largest) + metrics (scrollable) */
   @media (min-width: 1024px) {
     .training-session-grid {
-      grid-template-columns: 1fr 2fr 2fr;
+      grid-template-columns:
+        minmax(260px, 0.9fr)     /* chat */
+        minmax(320px, 1.4fr)     /* avatar — biggest panel */
+        minmax(260px, 0.8fr);    /* metrics — scrollable, compact OK */
       align-items: stretch;
+      gap: 0.75rem;
     }
 
-    /* Center column: avatar is fixed, no internal scroll needed */
     .training-session-center {
       overflow: hidden;
       min-height: 0;
@@ -450,15 +451,23 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
 
   @media (min-width: 1440px) {
     .training-session-grid {
-      grid-template-columns: minmax(260px, 1fr) minmax(440px, 2fr) minmax(380px, 2fr);
-      gap: 0.875rem;
+      grid-template-columns:
+        minmax(320px, 1fr)
+        minmax(400px, 1.4fr)
+        minmax(300px, 0.8fr);
+      gap: 1rem;
+      max-width: 1440px;
+      margin-inline: auto;
     }
   }
 
   @media (min-width: 1800px) {
     .training-session-grid {
-      grid-template-columns: minmax(300px, 1fr) minmax(520px, 2fr) minmax(420px, 2fr);
-      gap: 1rem;
+      grid-template-columns:
+        minmax(380px, 1.1fr)
+        minmax(480px, 1.4fr)
+        minmax(340px, 0.7fr);
+      gap: 1.25rem;
     }
   }
 

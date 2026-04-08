@@ -239,6 +239,8 @@ async def judge_round(
         llm_response = await generate_response(
             system_prompt=system,
             messages=messages,
+            task_type="judge",
+            prefer_provider="cloud",
         )
 
         # Parse JSON from response
@@ -654,6 +656,8 @@ async def run_calibration() -> dict:
                 system_prompt="Ты AI-судья PvP-арены. Отвечай строго JSON.",
                 temperature=0,
                 max_tokens=100,
+                task_type="structured",
+                prefer_provider="local",
             )
             # Parse JSON from response
             import re

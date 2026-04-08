@@ -152,6 +152,8 @@ async def generate_client_message_llm(ctx: NarratorContext) -> str | None:
             system_prompt=system_prompt,
             messages=[{"role": "user", "content": "Напиши сообщение менеджеру."}],
             emotion_state=ctx.last_emotion,
+            task_type="simple",
+            prefer_provider="local",
         )
         text = response.content.strip()
         # Clean up: remove quotes, limit length
@@ -196,6 +198,8 @@ async def generate_coaching_tips_llm(ctx: NarratorContext) -> list[str] | None:
         response = await generate_response(
             system_prompt=system_prompt,
             messages=[{"role": "user", "content": "Дай советы для следующего звонка."}],
+            task_type="coach",
+            prefer_provider="cloud",
         )
         text = response.content.strip()
         # Parse numbered list
@@ -250,6 +254,8 @@ async def generate_narrative_summary_llm(ctx: NarratorContext) -> str | None:
         response = await generate_response(
             system_prompt=system_prompt,
             messages=[{"role": "user", "content": "Что произошло между звонками?"}],
+            task_type="simple",
+            prefer_provider="local",
         )
         text = response.content.strip()
         if len(text) > 800:
@@ -284,6 +290,8 @@ async def generate_suggested_opener_llm(ctx: NarratorContext) -> str | None:
         response = await generate_response(
             system_prompt=system_prompt,
             messages=[{"role": "user", "content": "Как лучше начать звонок?"}],
+            task_type="simple",
+            prefer_provider="local",
         )
         text = response.content.strip().strip('"«»""\'')
         return text[:300] if text else None

@@ -188,6 +188,8 @@ async def _daily_synthesis_for_manager(
             messages=[{"role": "user", "content": prompt}],
             emotion_state="cold",
             user_id=f"wiki:daily:{wiki.manager_id}",
+            task_type="structured",
+            prefer_provider="local",
         )
         analysis = _parse_json_safe(resp.content)
         log.tokens_used = resp.latency_ms or 0
@@ -342,6 +344,8 @@ async def _weekly_synthesis_for_manager(
             messages=[{"role": "user", "content": prompt}],
             emotion_state="cold",
             user_id=f"wiki:weekly:{wiki.manager_id}",
+            task_type="structured",
+            prefer_provider="local",
         )
         analysis = _parse_json_safe(resp.content)
         log.tokens_used = resp.latency_ms or 0

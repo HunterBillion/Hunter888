@@ -469,6 +469,8 @@ async def _analyze_narrative_trap(
             system_prompt="Ты анализатор многозвонковой коммуникации. Отвечай только JSON.",
             messages=[{"role": "user", "content": prompt}],
             emotion_state="cold",
+            task_type="structured",
+            prefer_provider="local",
         )
 
         if not result or not result.content:

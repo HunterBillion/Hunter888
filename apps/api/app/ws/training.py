@@ -895,11 +895,14 @@ async def _generate_character_reply(
             logger.debug("Game Director context injection failed for story %s", _story_id, exc_info=True)
 
     try:
+        _call_num = state.get("call_number", 1)
         llm_result = await generate_response(
             system_prompt=extra_system,
             messages=messages,
             emotion_state=current_emotion,
             character_prompt_path=prompt_path,
+            task_type="roleplay",
+            prefer_provider="auto" if _call_num >= 3 else "local",
         )
     except LLMError as e:
         logger.error("LLM failed for session %s: %s", session_id, e)
@@ -1051,6 +1054,8 @@ async def _generate_character_reply(
                 system_prompt=_hangup_prompt,
                 messages=[],
                 emotion_state="hangup",
+                task_type="simple",
+                prefer_provider="local",
             )
             if _hangup_llm and _hangup_llm.content and len(_hangup_llm.content) < 200:
                 hangup_phrase = _strip_stage_directions(_hangup_llm.content)

@@ -58,7 +58,7 @@ export default function ChatMessage({ message, showEmotion = true }: ChatMessage
     >
       {/* Role + timestamp header */}
       <span
-        className="font-mono text-xs mb-1.5 tracking-wide select-none flex items-center gap-2"
+        className="text-xs font-semibold mb-1.5 tracking-wide uppercase select-none flex items-center gap-2"
         style={{
           color: isUser ? "var(--accent)" : (ec?.text || "var(--text-secondary)"),
         }}
@@ -108,7 +108,7 @@ export default function ChatMessage({ message, showEmotion = true }: ChatMessage
           initial={{ opacity: 0, scale: 0.85 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.1 }}
-          className="mt-0.5 rounded-full px-2 py-0.5 font-mono text-xs uppercase tracking-wider select-none"
+          className="mt-0.5 rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide select-none"
           style={{
             background: ec?.bg,
             color: ec?.text,

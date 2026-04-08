@@ -64,13 +64,69 @@ async def health_check_detail(_user=Depends(require_role("admin"))):
         checks["redis"] = f"error: {type(e).__name__}"
         overall = "degraded"
 
+    # Check Local LLM (Mac Mini / Gemma)
+    try:
+        from app.services.llm_health import get_llm_status
+        llm_status = await get_llm_status()
+        checks["local_llm"] = llm_status["status"]
+        checks["local_llm_model"] = llm_status.get("model", "unknown")
+        if llm_status["status"] != "ok":
+            overall = "degraded"
+    except Exception as e:
+        checks["local_llm"] = f"error: {type(e).__name__}"
+        overall = "degraded"
+
     return {
         "status": overall,
         "service": "ai-trainer-api",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "checks": checks,
         "timestamp": time.time(),
     }
+
+
+@router.get("/monitoring/llm-status")
+async def llm_status():
+    """Public LLM status endpoint — used by frontend for degradation banner.
+
+    Returns:
+        status: "ok" | "offline" | "disabled" | "fallback"
+        model: model name if online
+        fallback: True if using cloud fallback
+    """
+    try:
+        from app.core.redis_pool import get_redis
+        r = get_redis()
+        if r:
+            status = await r.get(REDIS_KEY_LLM_STATUS)
+            model = await r.get(REDIS_KEY_LLM_MODEL)
+            if status is not None:
+                is_online = status == "1" or status == b"1"
+                model_str = model.decode() if isinstance(model, bytes) else (model or "unknown")
+                return {
+                    "status": "ok" if is_online else "fallback",
+                    "model": model_str if is_online else None,
+                    "fallback": not is_online,
+                    "message": None if is_online else "AI-сервер недоступен. Работаем в облачном режиме.",
+                }
+    except Exception:
+        pass
+
+    # No Redis data — check directly
+    from app.services.llm_health import check_local_llm
+    result = await check_local_llm()
+    is_online = result["status"] == "ok"
+    return {
+        "status": result["status"],
+        "model": result.get("model"),
+        "fallback": not is_online,
+        "message": None if is_online else "AI-сервер недоступен. Работаем в облачном режиме.",
+    }
+
+
+# Redis key imports for llm-status endpoint
+REDIS_KEY_LLM_STATUS = "llm:local:available"
+REDIS_KEY_LLM_MODEL = "llm:local:model"
 
 
 @router.get("/monitoring/metrics")

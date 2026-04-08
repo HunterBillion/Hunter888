@@ -81,63 +81,14 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 async def _get_gemini_embeddings(texts: list[str]) -> list[list[float]] | None:
-    """Get embeddings via priority chain:
-    1. CLIProxyAPI (OpenAI-compatible /v1/embeddings) — works through proxy, no geo block
-    2. Gemini direct API — may be geo-blocked in some regions
-    Returns None on failure.
+    """Get embeddings via centralized LLM layer.
+
+    Delegates to llm.get_embeddings_batch() which handles:
+    1. Local LLM on Mac Mini (OpenAI-compatible /v1/embeddings)
+    2. Gemini Embedding API (cloud fallback)
     """
-    # ── 1. Try CLIProxyAPI (OpenAI-compatible) ──
-    if settings.local_llm_enabled and settings.local_llm_url:
-        try:
-            embed_url = f"{settings.local_llm_url.rstrip('/')}/embeddings"
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(
-                    embed_url,
-                    headers={"Authorization": f"Bearer {settings.local_llm_api_key}"},
-                    json={"model": "text-embedding-004", "input": texts},
-                )
-            if resp.status_code == 200:
-                data = resp.json()
-                embeddings_data = data.get("data", [])
-                if embeddings_data:
-                    # Sort by index to preserve order
-                    sorted_data = sorted(embeddings_data, key=lambda x: x.get("index", 0))
-                    return [e.get("embedding", []) for e in sorted_data]
-            else:
-                logger.debug("CLIProxyAPI embedding returned %d", resp.status_code)
-        except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.debug("CLIProxyAPI embedding unavailable: %s", e)
-
-    # ── 2. Try Gemini direct API ──
-    api_key = settings.gemini_embedding_api_key
-    if not api_key:
-        return None
-
-    model = settings.gemini_embedding_model
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents"
-
-    requests_body = [
-        {"model": f"models/{model}", "content": {"parts": [{"text": t}]}}
-        for t in texts
-    ]
-
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                url,
-                params={"key": api_key},
-                json={"requests": requests_body},
-            )
-        if resp.status_code == 200:
-            data = resp.json()
-            embeddings = data.get("embeddings", [])
-            return [e.get("values", []) for e in embeddings]
-        else:
-            logger.warning("Gemini embedding API error %d: %s", resp.status_code, resp.text[:200])
-            return None
-    except (httpx.ConnectError, httpx.TimeoutException) as e:
-        logger.warning("Gemini embedding API unreachable: %s", e)
-        return None
+    from app.services.llm import get_embeddings_batch
+    return await get_embeddings_batch(texts)
 
 
 async def _get_embedding(text: str) -> list[float] | None:
@@ -146,26 +97,11 @@ async def _get_embedding(text: str) -> list[float] | None:
     if cache_key in _embedding_cache:
         return _embedding_cache[cache_key]
 
-    result = await _get_gemini_embeddings([text])
-    if result and len(result) > 0 and len(result[0]) > 0:
-        _embedding_cache[cache_key] = result[0]
-        return result[0]
-
-    # Fallback: try local embeddings service
-    return await _get_local_embedding(text)
-
-
-async def _get_local_embedding(text: str) -> list[float] | None:
-    """Fallback: get embedding from local sentence-transformers service."""
-    url = f"{settings.embeddings_service_url.rstrip('/')}/embed"
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json={"text": text})
-        if resp.status_code == 200:
-            return resp.json().get("embedding", None)
-        return None
-    except (httpx.ConnectError, httpx.TimeoutException):
-        return None
+    from app.services.llm import get_embedding as llm_get_embedding
+    vec = await llm_get_embedding(text)
+    if vec:
+        _embedding_cache[cache_key] = vec
+    return vec
 
 
 async def _llm_similarity(text1: str, text2: str) -> float | None:

@@ -1573,6 +1573,8 @@ async def generate_recommendations(
                 "content": f"Диалог:\n{dialog_summary}\n{score_info}\n\nДай рекомендации менеджеру.",
             }],
             emotion_state="cold",
+            task_type="coach",
+            prefer_provider="cloud",
         )
         if result and result.content and len(result.content) > 20:
             return result.content  # LLM succeeded — use richer response

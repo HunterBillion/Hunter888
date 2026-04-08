@@ -800,6 +800,8 @@ async def generate_bot_reply(
                 messages=history[-8:],
                 emotion_state=emotion_map.get(emotion.mood, "cold"),
                 user_id=player_id,
+                task_type="roleplay",
+                prefer_provider="local",
             ),
             timeout=_BOT_LLM_TIMEOUT,
         )
@@ -866,6 +868,8 @@ async def generate_bot_opener(
                 messages=[{"role": "user", "content": "Начни диалог и представься."}],
                 emotion_state="cold",
                 user_id=player_id,
+                task_type="roleplay",
+                prefer_provider="local",
             ),
             timeout=_BOT_LLM_TIMEOUT,
         )

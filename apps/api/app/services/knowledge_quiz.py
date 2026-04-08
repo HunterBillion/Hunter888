@@ -276,6 +276,8 @@ async def generate_question(
             system_prompt=AI_EXAMINER_PROMPT,
             messages=messages,
             emotion_state="curious",
+            task_type="structured",
+            prefer_provider="local",
         )
         parsed = _parse_json_response(result.content)
         if parsed and parsed.get("type") == "question":
@@ -433,6 +435,8 @@ async def evaluate_answer(
             system_prompt=AI_EXAMINER_PROMPT,
             messages=messages,
             emotion_state="curious",
+            task_type="judge",
+            prefer_provider="cloud",
         )
         parsed = _parse_json_response(result.content)
         if parsed and parsed.get("type") == "feedback":
@@ -572,6 +576,8 @@ async def evaluate_pvp_round(
             system_prompt=PVP_JUDGE_PROMPT,
             messages=messages,
             emotion_state="cold",
+            task_type="judge",
+            prefer_provider="cloud",
         )
 
         parsed = _parse_json_response(result.content)
@@ -902,6 +908,8 @@ async def generate_follow_up(
             system_prompt=personality_prompt or AI_EXAMINER_PROMPT,
             messages=[{"role": "user", "content": prompt}],
             emotion_state="curious",
+            task_type="structured",
+            prefer_provider="local",
         )
         text = result.content.strip() if result else None
         if text and len(text) < 500:
@@ -1028,6 +1036,8 @@ async def evaluate_answer_v2(
             system_prompt=personality_prompt or AI_EXAMINER_PROMPT,
             messages=messages,
             emotion_state="curious",
+            task_type="judge",
+            prefer_provider="cloud",
         )
 
         parsed = _parse_json_response(result.content)

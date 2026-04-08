@@ -12,6 +12,8 @@ import {
   Volume2,
   VolumeX,
   Radio,
+  MessageSquare,
+  Mic,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useMicrophone } from "@/hooks/useMicrophone";
@@ -34,6 +36,9 @@ import { StoryProgress } from "@/components/training/StoryProgress";
 import { ConsequenceToast } from "@/components/training/ConsequenceToast";
 import { PreCallBriefOverlay } from "@/components/training/PreCallBriefOverlay";
 import TrapLog from "@/components/training/TrapLog";
+import TalkListenRatio from "@/components/training/TalkListenRatio";
+import LiveEmotionTimeline from "@/components/training/LiveEmotionTimeline";
+import DifficultyIndicator from "@/components/training/DifficultyIndicator";
 import { StoryCallReportOverlay } from "@/components/training/StoryCallReportOverlay";
 import { BetweenCallsOverlay } from "@/components/training/BetweenCallsOverlay";
 import { useSessionStore } from "@/stores/useSessionStore";
@@ -93,8 +98,8 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-const Avatar3D = dynamic(
-  () => import("@/components/training/Avatar3D").then((m) => m.Avatar3D),
+const TalkingHeadAvatar = dynamic(
+  () => import("@/components/training/TalkingHeadAvatar").then((m) => m.TalkingHeadAvatar),
   {
     ssr: false,
     loading: () => (
@@ -114,6 +119,10 @@ export default function TrainingSessionPage() {
   const storyScenarioId = isStoryMode ? routeId : null;
   const storyCalls = Math.min(5, Math.max(2, Number(searchParams.get("calls") || "3") || 3));
   const storyArchetype = searchParams.get("custom_archetype") || undefined;
+  // Set archetype in store for TalkingHead avatar model selection
+  useEffect(() => {
+    if (storyArchetype) s.setArchetypeCode(storyArchetype);
+  }, [storyArchetype]); // eslint-disable-line react-hooks/exhaustive-deps
   const storyProfession = searchParams.get("custom_profession") || undefined;
   const storyLeadSource = searchParams.get("custom_lead_source") || undefined;
   const storyDifficulty = searchParams.get("custom_difficulty") ? Number(searchParams.get("custom_difficulty")) : undefined;
@@ -238,6 +247,8 @@ export default function TrainingSessionPage() {
           if (data.data.character_name) s.setCharacterName(data.data.character_name as string);
           if (data.data.initial_emotion) s.setEmotion(data.data.initial_emotion as EmotionState);
           if (data.data.scenario_title) s.setScenarioTitle(data.data.scenario_title as string);
+          if (data.data.archetype_code) s.setArchetypeCode(data.data.archetype_code as string);
+          if (data.data.character_gender) s.setCharacterGender(data.data.character_gender as "M" | "F" | "neutral");
           if (data.data.client_card) {
             s.setClientCard(data.data.client_card as ClientCardData);
             s.setSessionState("briefing");
@@ -852,7 +863,7 @@ export default function TrainingSessionPage() {
     return (
       <div className="flex h-screen flex-col items-center justify-center" style={{ background: "var(--bg-primary)" }}>
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-transparent" style={{ borderTopColor: "var(--accent)" }} />
-        <span className="mt-4 font-mono text-xs tracking-widest" style={{ color: "var(--text-muted)" }}>
+        <span className="mt-4 text-sm tracking-wide" style={{ color: "var(--text-muted)" }}>
           {storyTransitionText}
         </span>
       </div>
@@ -908,59 +919,77 @@ export default function TrainingSessionPage() {
 
       {/* ── Top HUD Header ─────────────────────────────────── */}
       <header
-        className="h-12 shrink-0 glass-panel rounded-none flex justify-between items-center px-4 lg:px-6 z-20"
-        style={{ borderTop: "2px solid rgba(99,102,241,0.3)", borderRadius: 0 }}
+        className="shrink-0 flex justify-between items-center px-5 lg:px-8 z-20"
+        style={{ height: 60, background: "rgba(3,3,6,0.85)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
       >
-        <div className="flex items-center gap-4">
-          <div
-            className="w-2 h-2 rounded-full animate-pulse"
-            style={{
-              background: connectionState === "connected" ? "#00FF66"
-                : connectionState === "reconnecting" ? "#F59E0B"
-                : "var(--neon-red)",
-              boxShadow: connectionState === "connected" ? "0 0 10px #00FF66"
-                : connectionState === "reconnecting" ? "0 0 10px #F59E0B"
-                : "0 0 10px #FF3333",
-            }}
-          />
-          <span className="text-xs" style={{ color: "var(--text-primary)" }}>
-            {connectionState === "connected" ? "Подключено"
-              : connectionState === "reconnecting" ? "Переподключение..."
-              : "Нет связи"}
-          </span>
-        </div>
-
-        <div className="font-display font-black text-lg tracking-[0.12em] flex items-center gap-2">
-          <span style={{ color: "var(--accent)" }}>X</span><span style={{ color: "var(--text-primary)" }}>HUNTER</span>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="text-right hidden md:block">
-            <div className="font-mono text-xs tracking-widest" style={{ color: "var(--text-muted)" }}>ВРЕМЯ</div>
-            <div
-              className={`font-mono text-base font-bold ${s.elapsed >= 1500 ? "animate-pulse" : ""}`}
-              style={{ color: s.elapsed >= 1500 ? "var(--warning)" : "var(--accent)" }}
-            >
-              {formatTime(s.elapsed)}
+        {/* Left: scenario info */}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>
+              {s.scenarioTitle || "Тренировка"}
+            </div>
+            <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
+              {s.characterName || "Клиент"}
+              {s.storyMode && ` · Звонок ${s.callNumber}/${s.totalCalls}`}
             </div>
           </div>
+        </div>
 
+        {/* Center: timer — big and clear */}
+        <div className="flex items-center gap-2">
+          <div
+            className={`font-mono text-xl font-bold tabular-nums ${s.elapsed >= 1500 ? "animate-pulse" : ""}`}
+            style={{ color: s.elapsed >= 1500 ? "var(--warning)" : "var(--text-primary)" }}
+          >
+            {formatTime(s.elapsed)}
+          </div>
+        </div>
+
+        {/* Right: controls */}
+        <div className="flex items-center gap-3 flex-1 justify-end">
           <motion.button
             onClick={() => tts.setEnabled(!tts.enabled)}
-            className="flex items-center justify-center rounded-lg p-1.5"
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}
+            className="flex items-center justify-center rounded-xl p-2"
+            style={{ background: "rgba(255,255,255,0.04)" }}
             whileTap={{ scale: 0.95 }}
             aria-label={tts.enabled ? "Выключить голос AI" : "Включить голос AI"}
             title={`Голос AI: ${tts.mode === "elevenlabs" ? "ElevenLabs" : "Браузер"}`}
           >
-            {tts.enabled ? <Volume2 size={14} style={{ color: "var(--accent)" }} /> : <VolumeX size={14} style={{ color: "var(--text-muted)" }} />}
+            {tts.enabled ? <Volume2 size={18} style={{ color: "var(--accent)" }} /> : <VolumeX size={18} style={{ color: "var(--text-muted)" }} />}
           </motion.button>
 
-          <button onClick={() => s.setShowAbortModal(true)} disabled={s.sessionState !== "ready"} className="btn-neon btn-neon--danger" aria-label="Прервать тренировку">
-            <span>Завершить звонок</span>
+          <button
+            onClick={() => s.setShowAbortModal(true)}
+            disabled={s.sessionState !== "ready"}
+            className="rounded-xl px-4 py-2 text-sm font-semibold transition-all"
+            style={{ background: "rgba(239,68,68,0.12)", color: "#F87171", border: "1px solid rgba(239,68,68,0.25)" }}
+            aria-label="Прервать тренировку"
+          >
+            Завершить
           </button>
         </div>
       </header>
+
+      {/* Connection status toast — only when there's a problem */}
+      <AnimatePresence>
+        {connectionState !== "connected" && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-2 left-1/2 -translate-x-1/2 z-50 rounded-xl px-4 py-2 text-sm font-medium flex items-center gap-2"
+            style={{
+              background: connectionState === "reconnecting" ? "rgba(245,158,11,0.15)" : "rgba(239,68,68,0.15)",
+              border: `1px solid ${connectionState === "reconnecting" ? "rgba(245,158,11,0.3)" : "rgba(239,68,68,0.3)"}`,
+              color: connectionState === "reconnecting" ? "#F59E0B" : "#F87171",
+              backdropFilter: "blur(12px)",
+            }}
+          >
+            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: connectionState === "reconnecting" ? "#F59E0B" : "#F87171" }} />
+            {connectionState === "reconnecting" ? "Переподключение..." : "Нет связи"}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Client Card Mini ──────────────────────────────── */}
       {s.clientCard && s.sessionState === "ready" && (
@@ -1035,65 +1064,101 @@ export default function TrainingSessionPage() {
       {/* ── 3-Column Layout ─────────────────────────────────── */}
       <main className="flex-1 min-h-0 z-20 px-3 py-2 lg:px-4 lg:py-3" style={{ width: "min(100%, var(--app-shell-max))", marginInline: "auto" }}>
         <div className="training-session-grid">
-        {/* LEFT: Transcript — fills height, internal scroll */}
-        <aside className="training-session-panel hidden lg:flex flex-col">
-          <div className="glass-panel rounded-xl flex min-h-0 flex-1 flex-col overflow-hidden" style={{ borderLeft: "2px solid rgba(99,102,241,0.18)" }}>
-            <div className="px-3 py-2 border-b flex justify-between items-center shrink-0" style={{ borderColor: "var(--border-color)", background: "rgba(0,0,0,0.2)" }}>
-              <h2 className="font-display tracking-wide text-xs flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
-                <Radio size={12} style={{ color: "var(--accent)" }} /> Диалог
-              </h2>
-              <span className="flex gap-1 items-center">
-                <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ background: "var(--accent)" }} />
-              </span>
-            </div>
+        {/* LEFT: Chat Panel */}
+        <aside className="training-session-panel hidden lg:flex flex-col rounded-2xl overflow-hidden"
+          style={{
+            background: "linear-gradient(180deg, rgba(99,102,241,0.04) 0%, rgba(255,255,255,0.02) 100%)",
+          }}
+        >
+          {/* Accent strip */}
+          <div className="h-[3px] shrink-0" style={{ background: "linear-gradient(90deg, transparent, var(--accent), transparent)" }} />
 
-            <div className="flex-1 p-3 overflow-y-auto space-y-2 flex flex-col">
-              {/* Spacer pushes messages to bottom when few, collapses when many */}
-              <div className="flex-1 min-h-0" />
+          {/* Messages area */}
+          <div className="flex-1 px-5 py-4 overflow-y-auto space-y-3 flex flex-col min-h-0">
+            <div className="flex-1 min-h-0" />
 
-              {s.messages.length === 0 && s.sessionState === "ready" && (
-                <p className="py-8 text-center text-xs" style={{ color: "var(--text-muted)" }}>Начните диалог</p>
-              )}
+            {s.messages.length === 0 && s.sessionState === "ready" && (
+              <div className="py-20 flex flex-col items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
+                  style={{ background: "rgba(99,102,241,0.08)" }}
+                >
+                  <MessageSquare size={24} style={{ color: "var(--accent)", opacity: 0.5 }} />
+                </div>
+                <p className="text-lg text-center leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                  Начните диалог
+                </p>
+                <p className="text-sm text-center" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
+                  Говорите в микрофон или пишите здесь
+                </p>
+              </div>
+            )}
 
-              {s.messages.map((msg) => (
-                <ChatMessage key={msg.id} message={msg} />
-              ))}
+            {s.messages.map((msg) => (
+              <ChatMessage key={msg.id} message={msg} />
+            ))}
 
-              {s.isTyping && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 py-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                  <div className="flex gap-0.5">
-                    {[0, 1, 2].map((i) => (
-                      <motion.span key={i} className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} animate={{ y: [0, -4, 0] }} transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.15 }} />
-                    ))}
-                  </div>
-                  {s.characterName} печатает...
-                </motion.div>
-              )}
+            {s.isTyping && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 py-1.5 text-sm" style={{ color: "var(--text-muted)" }}>
+                <div className="flex gap-0.5">
+                  {[0, 1, 2].map((i) => (
+                    <motion.span key={i} className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} animate={{ y: [0, -4, 0] }} transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.15 }} />
+                  ))}
+                </div>
+                {s.characterName} печатает...
+              </motion.div>
+            )}
 
-              {s.transcription.status !== "idle" && <TranscriptionIndicator state={s.transcription} />}
-              <div ref={messagesEndRef} />
-            </div>
+            {s.transcription.status !== "idle" && <TranscriptionIndicator state={s.transcription} />}
+            <div ref={messagesEndRef} />
           </div>
+
+          {/* Text input — always visible at bottom */}
+          {s.sessionState === "ready" && (
+            <div className="shrink-0 px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.2)" }}>
+              <div className="flex items-end gap-2">
+                <textarea
+                  ref={textareaRef}
+                  value={s.input}
+                  onChange={(e) => s.setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Введите сообщение..."
+                  disabled={s.sessionState !== "ready"}
+                  rows={1}
+                  aria-label="Введите сообщение"
+                  className="vh-input max-h-28 min-h-[40px] flex-1 resize-none text-sm"
+                  onInput={(e) => {
+                    const t = e.target as HTMLTextAreaElement;
+                    t.style.height = "auto";
+                    t.style.height = Math.min(t.scrollHeight, 112) + "px";
+                  }}
+                />
+                <motion.button
+                  onClick={handleSend}
+                  disabled={!s.input.trim() || s.sessionState !== "ready" || connectionState !== "connected"}
+                  aria-label="Отправить"
+                  className="flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-xl text-white"
+                  style={{ background: "var(--accent)", opacity: !s.input.trim() || s.sessionState !== "ready" ? 0.4 : 1 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Send size={16} />
+                </motion.button>
+              </div>
+            </div>
+          )}
         </aside>
 
         {/* CENTER: Avatar + Mic */}
-        <section className="training-session-panel training-session-center glass-panel rounded-xl relative flex flex-col items-center justify-center overflow-hidden"
-          style={{ border: "1px solid rgba(99,102,241,0.2)", boxShadow: "inset 0 0 50px rgba(0,0,0,0.3)" }}
+        <section className="training-session-panel training-session-center rounded-2xl relative flex flex-col items-center justify-center overflow-hidden"
+          style={{ background: "radial-gradient(ellipse at center, rgba(99,102,241,0.06) 0%, transparent 70%)" }}
         >
-          {/* Spinning orbit circles */}
-          <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-10">
-            <div className="w-[min(350px,50vh)] h-[min(350px,50vh)] rounded-full border border-dashed animate-spin-slow" style={{ borderColor: "var(--accent)" }} />
-            <div className="absolute w-[min(270px,40vh)] h-[min(270px,40vh)] rounded-full border animate-spin-slow-reverse" style={{ borderColor: "rgba(99,102,241,0.5)" }} />
-          </div>
-
-          {/* Emotion indicator */}
-          <div className="absolute top-6 left-6 flex flex-col gap-1 z-30">
-            <span className="font-mono text-xs tracking-widest uppercase" style={{ color: "var(--text-muted)" }}>
-              Состояние клиента
-            </span>
+          {/* Client name + emotion — top center */}
+          <div className="absolute top-5 left-0 right-0 flex flex-col items-center gap-1.5 z-30">
+            <div className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
+              {s.characterName || "Клиент"}
+            </div>
             <div className="flex items-center gap-2">
               <motion.div
-                className="w-2.5 h-2.5 rounded-full"
+                className="w-2 h-2 rounded-full"
                 style={{ background: EMOTION_MAP[s.emotion]?.color || "#6D28D9" }}
                 animate={{
                   boxShadow: [
@@ -1107,14 +1172,14 @@ export default function TrainingSessionPage() {
               <AnimatePresence mode="wait">
                 <motion.span
                   key={s.emotion}
-                  className="font-display font-bold tracking-widest text-lg uppercase"
+                  className="text-sm font-semibold"
                   style={{ color: EMOTION_MAP[s.emotion]?.color || "#6D28D9" }}
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 8 }}
                   transition={{ duration: 0.3 }}
                 >
-                  {EMOTION_MAP[s.emotion]?.labelRu || EMOTION_MAP[s.emotion]?.label || "НЕИЗВЕСТНО"}
+                  {EMOTION_MAP[s.emotion]?.labelRu || EMOTION_MAP[s.emotion]?.label || "Неизвестно"}
                 </motion.span>
               </AnimatePresence>
             </div>
@@ -1139,61 +1204,91 @@ export default function TrainingSessionPage() {
           )}
           </AnimatePresence>
 
-          {/* Avatar */}
-          <div className="relative w-full max-w-[min(50vh,400px)] aspect-square flex items-center justify-center z-10">
-            <div className="absolute inset-0 rounded-full opacity-20 blur-[60px] transition-colors duration-1000"
-              style={{ background: EMOTION_MAP[s.emotion]?.color || "#6D28D9" }}
-            />
-            <Avatar3D
+          {/* 3D Avatar with lip sync */}
+          <div className="relative w-full max-w-[min(65vh,560px)] aspect-[3/4] flex items-center justify-center z-10">
+            <TalkingHeadAvatar
               emotion={s.emotion}
-              isSpeaking={tts.speaking || s.micActive}
-              audioLevel={tts.speaking ? tts.audioLevel : microphone.audioLevel || speech.audioLevel}
-              className="absolute inset-0 z-20"
+              isSpeaking={tts.speaking}
+              audioElement={tts.audioRef?.current ?? null}
+              archetypeCode={s.archetypeCode || "skeptic"}
+              gender={(s.characterGender as "M" | "F" | "neutral") || "M"}
+              isListening={s.micActive}
+              className="w-full h-full"
             />
           </div>
 
           {/* Mic / Text input */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 w-full max-w-lg px-4">
-            {s.textMode ? (
-              <div className="flex items-end gap-2">
-                <textarea
-                  ref={textareaRef}
-                  value={s.input}
-                  onChange={(e) => s.setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={s.sessionState === "ready" ? "Введите сообщение..." : "Ожидание подключения..."}
-                  disabled={s.sessionState !== "ready"}
-                  rows={1}
-                  aria-label="Введите сообщение"
-                  className="vh-input max-h-32 min-h-[42px] flex-1 resize-none"
-                  onInput={(e) => {
-                    const t = e.target as HTMLTextAreaElement;
-                    t.style.height = "auto";
-                    t.style.height = Math.min(t.scrollHeight, 128) + "px";
-                  }}
-                />
+            {/* Desktop: mic when voice mode, small toggle button when text mode */}
+            <div className="hidden lg:flex justify-center">
+              {s.textMode ? (
                 <motion.button
-                  onClick={handleSend}
-                  disabled={!s.input.trim() || s.sessionState !== "ready" || connectionState !== "connected"}
-                  aria-label="Отправить сообщение"
-                  className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl text-white"
-                  style={{ background: "var(--accent)", opacity: !s.input.trim() || s.sessionState !== "ready" ? 0.4 : 1 }}
-                  whileTap={{ scale: 0.95 }}
+                  onClick={() => s.setTextMode(false)}
+                  className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors"
+                  style={{ background: "rgba(255,255,255,0.05)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+                  whileHover={{ background: "rgba(255,255,255,0.08)" }}
+                  whileTap={{ scale: 0.97 }}
                 >
-                  <Send size={18} />
+                  <Mic size={16} />
+                  Голосовой режим
                 </motion.button>
-              </div>
-            ) : (
-              <CrystalMic
-                isRecording={microphone.recordingState === "recording" || speech.status === "listening"}
-                isProcessing={microphone.recordingState === "processing" || s.transcription.status === "transcribing"}
-                audioLevel={microphone.audioLevel || speech.audioLevel}
-                onPress={handleMicPress}
-                onRelease={handleMicRelease}
-                onTextMode={() => s.setTextMode(true)}
-                disabled={s.sessionState !== "ready" || (!s.sttAvailable && !speech.isSupported)}
-              />
-            )}
+              ) : (
+                <CrystalMic
+                  isRecording={microphone.recordingState === "recording" || speech.status === "listening"}
+                  isProcessing={microphone.recordingState === "processing" || s.transcription.status === "transcribing"}
+                  audioLevel={microphone.audioLevel || speech.audioLevel}
+                  onPress={handleMicPress}
+                  onRelease={handleMicRelease}
+                  onTextMode={() => {
+                    s.setTextMode(true);
+                    setTimeout(() => textareaRef.current?.focus(), 100);
+                  }}
+                  disabled={s.sessionState !== "ready" || (!s.sttAvailable && !speech.isSupported)}
+                />
+              )}
+            </div>
+            {/* Mobile: mic or textarea (left panel is hidden) */}
+            <div className="lg:hidden">
+              {s.textMode ? (
+                <div className="flex items-end gap-2">
+                  <textarea
+                    value={s.input}
+                    onChange={(e) => s.setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={s.sessionState === "ready" ? "Введите сообщение..." : "Ожидание подключения..."}
+                    disabled={s.sessionState !== "ready"}
+                    rows={1}
+                    aria-label="Введите сообщение"
+                    className="vh-input max-h-32 min-h-[42px] flex-1 resize-none"
+                    onInput={(e) => {
+                      const t = e.target as HTMLTextAreaElement;
+                      t.style.height = "auto";
+                      t.style.height = Math.min(t.scrollHeight, 128) + "px";
+                    }}
+                  />
+                  <motion.button
+                    onClick={handleSend}
+                    disabled={!s.input.trim() || s.sessionState !== "ready" || connectionState !== "connected"}
+                    aria-label="Отправить сообщение"
+                    className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl text-white"
+                    style={{ background: "var(--accent)", opacity: !s.input.trim() || s.sessionState !== "ready" ? 0.4 : 1 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Send size={18} />
+                  </motion.button>
+                </div>
+              ) : (
+                <CrystalMic
+                  isRecording={microphone.recordingState === "recording" || speech.status === "listening"}
+                  isProcessing={microphone.recordingState === "processing" || s.transcription.status === "transcribing"}
+                  audioLevel={microphone.audioLevel || speech.audioLevel}
+                  onPress={handleMicPress}
+                  onRelease={handleMicRelease}
+                  onTextMode={() => s.setTextMode(true)}
+                  disabled={s.sessionState !== "ready" || (!s.sttAvailable && !speech.isSupported)}
+                />
+              )}
+            </div>
           </div>
 
           {/* Mobile transcript */}
@@ -1207,116 +1302,112 @@ export default function TrainingSessionPage() {
           </div>
         </section>
 
-        {/* RIGHT: Stats Panel — compact scrollable sidebar */}
-        <aside className="training-session-panel flex flex-col gap-2.5">
-          <div className="glass-panel rounded-xl p-4" style={{ borderRight: "2px solid rgba(99,102,241,0.24)" }}>
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="text-xs shrink-0 font-semibold" style={{ color: "var(--accent)" }}>
-                  Клиент
-                </div>
-                <div className="font-display text-base font-bold tracking-wide truncate" style={{ color: "var(--text-primary)" }}>
-                  {s.characterName}
-                </div>
-              </div>
-              <div className="rounded-lg px-2.5 py-1 text-xs shrink-0 font-semibold" style={{ background: "rgba(99,102,241,0.12)", color: "var(--accent)" }}>
-                {emotionLabel}
-              </div>
-            </div>
+        {/* RIGHT: Stats Panel — hierarchy via background intensity */}
+        <aside className="training-session-panel flex flex-col gap-2.5 overflow-y-auto">
 
+          {/* ── PRIMARY: Mood + Acceptance ── */}
+          <div className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.04)" }}>
             <VibeMeter emotion={s.emotion} />
-
-            <div className="mt-3 rounded-lg p-3 relative overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
-              <div className="flex items-center justify-between text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
-                <span>Принятие сделки</span>
+            {/* Acceptance bar inline */}
+            <div className="mt-4 pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>Принятие сделки</span>
                 <motion.span
                   key={acceptanceScore}
-                  initial={{ scale: 1.2, color: acceptanceScore >= 60 ? "#00FF94" : "#F59E0B" }}
-                  animate={{ scale: 1, color: "var(--accent)" }}
-                  transition={{ duration: 0.4 }}
-                  className="font-bold"
+                  initial={{ scale: 1.2 }}
+                  animate={{ scale: 1 }}
+                  className="text-sm font-bold tabular-nums"
+                  style={{ color: acceptanceScore >= 60 ? "#00FF94" : "var(--accent)" }}
                 >
-                  {s.messages.length === 0 ? "—" : `${acceptanceScore}/100`}
+                  {s.messages.length === 0 ? "—" : `${acceptanceScore}%`}
                 </motion.span>
               </div>
-              <div className="mt-1.5 h-2 overflow-hidden rounded-full" style={{ background: "var(--input-bg)" }}>
+              <div className="h-2.5 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
                 <motion.div
                   className="h-full rounded-full"
                   animate={{ width: `${acceptanceScore}%` }}
                   transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
                   style={{
                     background: acceptanceScore >= 60 ? "linear-gradient(90deg, #22c55e, #00FF94)" : "linear-gradient(90deg, #F59E0B, #6366F1)",
-                    boxShadow: acceptanceScore >= 60 ? "0 0 12px rgba(0,255,148,0.4)" : "0 0 12px rgba(99,102,241,0.3)",
                   }}
                 />
               </div>
-              <div className="mt-1 flex items-center justify-between">
-                <div className="text-xs font-medium" style={{ color: acceptanceScore >= 60 ? "var(--neon-green, #00FF94)" : "var(--text-secondary)" }}>{acceptanceLabel}</div>
-                {acceptanceScore >= 80 && <span className="text-sm">🎯</span>}
+              <div className="mt-1.5 text-xs font-medium" style={{ color: acceptanceScore >= 60 ? "#00FF94" : "var(--text-muted)" }}>
+                {acceptanceLabel}
               </div>
             </div>
-
-
-            {(s.humanFactors.length > 0 || s.consequences.length > 0) && (
-              <div className="mt-2 space-y-2">
-                {s.humanFactors.length > 0 && (
-                  <div>
-                    <div className="mb-1.5 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
-                      Человеческие факторы
-                    </div>
-                    <HumanFactorIcons factors={s.humanFactors} />
-                  </div>
-                )}
-                {s.consequences.length > 0 && (
-                  <div>
-                    <div className="mb-1.5 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
-                      Последствия
-                    </div>
-                    <div className="space-y-1">
-                      {s.consequences.slice(-2).reverse().map((consequence, index) => (
-                        <div key={`${consequence.call}-${consequence.type}-${index}`} className="rounded-lg px-3 py-2 text-xs" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.16)", color: "var(--text-secondary)" }}>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs font-semibold" style={{ color: "#F87171" }}>
-                              {consequence.type.replace(/_/g, " ")}
-                            </span>
-                            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                              #{consequence.call}
-                            </span>
-                          </div>
-                          <div className="mt-0.5 line-clamp-2">{consequence.detail}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
-          <WhisperPanel onToggle={(enabled) => sendMessage({ type: "whisper.toggle", data: { enabled } })} />
+          {/* ── SECONDARY: Talk/Listen ratio ── */}
+          <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.025)" }}>
+            <TalkListenRatio talkPercent={s.talkTime + s.listenTime > 0 ? Math.round((s.talkTime / (s.talkTime + s.listenTime)) * 100) : 50} />
+          </div>
 
-          <StageProgressBar
-            currentStage={s.currentStage}
-            stagesCompleted={s.stagesCompleted}
-            totalStages={s.totalStages}
-          />
+          {/* ── Stage progress ── */}
+          <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)" }}>
+            <StageProgressBar
+              currentStage={s.currentStage}
+              stagesCompleted={s.stagesCompleted}
+              totalStages={s.totalStages}
+            />
+          </div>
 
-          {/* Trap history log */}
-          <TrapLog />
+          {/* ── Emotion timeline sparkline ── */}
+          {s.emotionHistory.length >= 2 && (
+            <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.015)" }}>
+              <LiveEmotionTimeline />
+            </div>
+          )}
 
-          {/* Live Score */}
-          <motion.div
-            className="rounded-xl p-3 relative overflow-hidden"
-            style={{
-              background: "var(--glass-bg)",
-              border: scorePulse ? "1px solid rgba(99,102,241,0.5)" : "1px solid var(--glass-border)",
-              backdropFilter: "blur(20px)",
-              transition: "border-color 0.3s ease",
-            }}
-            animate={scorePulse ? { boxShadow: ["0 0 0px rgba(99,102,241,0)", "0 0 20px rgba(99,102,241,0.3)", "0 0 0px rgba(99,102,241,0)"] } : {}}
-            transition={{ duration: 0.6 }}
-          >
-            {/* Checkpoint flash overlay */}
+          {/* ── Coaching whisper ── */}
+          <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.015)" }}>
+            <WhisperPanel onToggle={(enabled) => sendMessage({ type: "whisper.toggle", data: { enabled } })} />
+          </div>
+
+          {/* ── Difficulty indicator ── */}
+          <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.01)" }}>
+            <DifficultyIndicator
+              effectiveDifficulty={s.effectiveDifficulty}
+              modifier={0}
+              mode={s.difficultyMode}
+              trend={s.difficultyTrend}
+              goodStreak={s.goodStreak}
+              badStreak={s.badStreak}
+              hadComeback={false}
+            />
+          </div>
+
+          {/* ── Human factors + Consequences — only when present ── */}
+          {(s.humanFactors.length > 0 || s.consequences.length > 0) && (
+            <div className="rounded-xl p-3 space-y-2">
+              {s.humanFactors.length > 0 && (
+                <div>
+                  <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Факторы</div>
+                  <HumanFactorIcons factors={s.humanFactors} />
+                </div>
+              )}
+              {s.consequences.length > 0 && (
+                <div className="space-y-1.5">
+                  {s.consequences.slice(-2).reverse().map((consequence, index) => (
+                    <div key={`${consequence.call}-${consequence.type}-${index}`} className="rounded-lg px-3 py-2.5 text-sm" style={{ background: "rgba(239,68,68,0.06)", color: "var(--text-secondary)" }}>
+                      <span className="font-semibold" style={{ color: "#F87171" }}>{consequence.type.replace(/_/g, " ")}</span>
+                      <span className="ml-2 line-clamp-1">{consequence.detail}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Trap log (collapsible) ── */}
+          {s.trapHistory.length > 0 && (
+            <div className="rounded-xl p-3">
+              <TrapLog />
+            </div>
+          )}
+
+          {/* ── Score — compact with breakdown ── */}
+          <div className="rounded-xl p-4 relative overflow-hidden" style={{ background: "rgba(255,255,255,0.02)" }}>
             <AnimatePresence>
               {checkpointFlash && (
                 <motion.div
@@ -1329,69 +1420,44 @@ export default function TrainingSessionPage() {
                 />
               )}
             </AnimatePresence>
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-xs font-semibold flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
-                Баллы
-                {checkpointFlash && (
-                  <motion.span
-                    initial={{ opacity: 0, scale: 0.5 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="text-[10px]"
-                  >
-                    ✅
-                  </motion.span>
-                )}
-              </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>Баллы</span>
               <motion.div
-                className="text-xl font-bold glow-text-purple"
+                className="text-xl font-bold tabular-nums"
                 style={{ color: "var(--accent)" }}
                 key={Math.round(s.scriptScore)}
                 initial={{ scale: 1.2, opacity: 0.7 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ type: "spring", stiffness: 500, damping: 25 }}
               >
-                {s.messages.length === 0 ? "—" : <>{Math.round(s.scriptScore)}<span className="text-xs font-normal ml-0.5" style={{ color: "var(--text-muted)" }}>/100</span></>}
+                {s.messages.length === 0 ? "—" : <>{Math.round(s.scriptScore)}<span className="text-sm font-normal ml-0.5" style={{ color: "var(--text-muted)" }}>/100</span></>}
               </motion.div>
             </div>
             {scoreHint && (
-              <div className="mt-4 space-y-2">
-                <div className="flex items-center justify-between text-xs" style={{ color: "var(--text-secondary)" }}>
-                  <span>Оценка</span>
-                  <span style={{ color: "var(--accent)" }}>
-                    {scoreHint.realtime_estimate}/{scoreHint.max_possible_realtime}
-                  </span>
-                </div>
+              <div className="mt-3 space-y-2.5">
                 {[
                   ["Возражения", scoreHint.objection_handling, "#F59E0B"],
                   ["Коммуникация", scoreHint.communication, "#3B82F6"],
                   ["Человеческий фактор", scoreHint.human_factor, "#EC4899"],
                 ].map(([label, value, color]) => (
                   <div key={label as string}>
-                    <div className="mb-1 flex items-center justify-between text-xs" style={{ color: "var(--text-muted)" }}>
+                    <div className="mb-1 flex items-center justify-between text-sm" style={{ color: "var(--text-muted)" }}>
                       <span>{label as string}</span>
-                      <motion.span
-                        key={`${label}-${Math.round(value as number)}`}
-                        initial={{ scale: 1.15 }}
-                        animate={{ scale: 1 }}
-                        style={{ color: color as string }}
-                      >
-                        {Math.round(value as number)}
-                      </motion.span>
+                      <span className="font-semibold tabular-nums" style={{ color: color as string }}>{Math.round(value as number)}</span>
                     </div>
-                    <div className="h-1.5 w-full rounded-full" style={{ background: "var(--input-bg)" }}>
+                    <div className="h-1.5 w-full rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
                       <motion.div
                         className="h-full rounded-full"
                         animate={{ width: `${Math.min(100, ((value as number) / 18.75) * 100)}%` }}
                         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                        style={{ background: color as string, boxShadow: `0 0 6px ${(color as string)}44` }}
+                        style={{ background: color as string }}
                       />
                     </div>
                   </div>
                 ))}
               </div>
             )}
-          </motion.div>
+          </div>
         </aside>
         </div>
       </main>
@@ -1431,7 +1497,7 @@ export default function TrainingSessionPage() {
                   <div className="font-display text-5xl font-black" style={{ color: sessionEndedRef.current.score >= 70 ? "#00FF66" : sessionEndedRef.current.score >= 40 ? "#FFB400" : "#FF3333" }}>
                     {Math.round(sessionEndedRef.current.score)}
                   </div>
-                  <div className="font-mono text-sm mt-1" style={{ color: "var(--text-muted)" }}>баллов</div>
+                  <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>баллов</div>
                 </motion.div>
               )}
               {sessionEndedRef.current.xp !== null && (
@@ -1460,7 +1526,7 @@ export default function TrainingSessionPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 1.2 }}
-                className="mt-4 font-mono text-sm"
+                className="mt-4 text-sm"
                 style={{ color: "var(--text-muted)" }}
               >
                 Переход к результатам...

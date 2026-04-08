@@ -176,6 +176,14 @@ class NotificationConnectionManager:
 notification_manager = NotificationConnectionManager()
 
 
+async def broadcast_system_message(event: dict) -> None:
+    """Broadcast a system-level message to all connected users.
+
+    Used by llm_health.py for degradation/restoration alerts.
+    """
+    await notification_manager.broadcast(event)
+
+
 # ─── 3.4: Typed cross-module notification helpers ────────────────────────────
 
 

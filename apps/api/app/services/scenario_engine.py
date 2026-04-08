@@ -1325,6 +1325,8 @@ async def generate_session_report(
             messages=[{"role": "user", "content": "Проанализируй разговор и создай отчёт."}],
             emotion_state="cold",
             user_id="system:reporter",
+            task_type="report",
+            prefer_provider="cloud",
         )
 
         # Try to parse as JSON

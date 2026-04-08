@@ -746,6 +746,8 @@ class GameCRMService:
             messages=messages,
             emotion_state=self._resolve_story_emotion(story),
             user_id=str(story.user_id),
+            task_type="roleplay",
+            prefer_provider="local",
         )
         reply_text = response.content.strip()
         await self._update_story_legal_memory(

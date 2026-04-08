@@ -286,6 +286,8 @@ async def ingest_session(session_id: uuid.UUID, db: AsyncSession) -> dict:
             messages=[{"role": "user", "content": analysis_prompt}],
             emotion_state="cold",
             user_id=f"wiki:{session.user_id}",
+            task_type="structured",
+            prefer_provider="local",
         )
         analysis = _parse_json_safe(llm_response.content)
         log.tokens_used = llm_response.latency_ms or 0  # approximate tracking

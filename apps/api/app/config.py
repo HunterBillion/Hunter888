@@ -50,11 +50,17 @@ class Settings(BaseSettings):
     local_llm_model: str = "gemini-2.5-flash"
     local_llm_enabled: bool = False  # Disabled by default; enable for local dev
     local_llm_api_key: str = ""  # CLIProxyAPI API key — set in .env
+    local_embedding_model: str = ""  # Embedding model on local LLM (e.g. "text-embedding-nomic-embed-text-v1.5")
 
     # Concurrency control (prevents API rate limit hits)
-    # FIX: 5 was too low for 1000 users/day (~50-100 concurrent).
-    # Gemini free tier = 15 RPM; paid tier = 1000+ RPM. Adjust per plan.
     max_concurrent_llm_calls: int = 15
+
+    # Hybrid LLM Router
+    constitution_enabled: bool = True  # Inject constitution.md into every system prompt
+    constitution_path: str = "constitution.md"  # Path relative to prompts/ dir
+    llm_auto_cloud_threshold_tokens: int = 5000  # system_prompt > this → prefer cloud
+    llm_local_max_tokens_simple: int = 400  # max_tokens for simple/structured tasks on local
+    gemini_rpm_limit: int = 15  # Free tier limit, used by RPM counter to avoid 429
 
     # Embeddings
     embeddings_service_url: str = "http://localhost:8002"  # Legacy local service

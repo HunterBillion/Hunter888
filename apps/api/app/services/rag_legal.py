@@ -130,24 +130,14 @@ class RetrievalConfig:
     mode: str = "free_dialog"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Embedding (Gemini API)
+# Embedding — delegated to centralized llm.get_embedding() / llm.get_embeddings_batch()
+# Priority: Local LLM (Mac Mini) → Gemini cloud (handled inside llm.py)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_embedding_client: httpx.AsyncClient | None = None
-_embedding_client_lock: asyncio.Lock = asyncio.Lock()
 _EMBEDDING_CACHE_MAX = 512
 _EMBEDDING_CACHE_TTL = 3600
 _embedding_cache: OrderedDict[str, tuple[list[float], float]] = OrderedDict()
 _embedding_cache_lock: asyncio.Lock = asyncio.Lock()
-
-async def _get_embedding_client() -> httpx.AsyncClient:
-    global _embedding_client
-    if _embedding_client is not None:
-        return _embedding_client
-    async with _embedding_client_lock:
-        if _embedding_client is None:
-            _embedding_client = httpx.AsyncClient(timeout=10.0)
-        return _embedding_client
 
 async def _cache_get(text: str) -> list[float] | None:
     async with _embedding_cache_lock:
@@ -169,36 +159,28 @@ async def _cache_put(text: str, vec: list[float]) -> None:
             _embedding_cache.popitem(last=False)
 
 async def get_embedding(text: str) -> list[float] | None:
-    """Get embedding vector from Gemini Embedding API with LRU cache."""
-    if not settings.gemini_embedding_api_key:
-        return None
+    """Get embedding vector via centralized LLM layer with LRU cache.
+
+    Delegates to llm.get_embedding() which handles provider priority:
+    Local LLM (Mac Mini) → Gemini Embedding API.
+    """
     cached = await _cache_get(text)
     if cached is not None:
         return cached
     try:
-        client = await _get_embedding_client()
-        url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-               f"{settings.gemini_embedding_model}:embedContent")
-        resp = await client.post(url,
-            headers={"x-goog-api-key": settings.gemini_embedding_api_key},
-            json={"model": f"models/{settings.gemini_embedding_model}",
-                  "content": {"parts": [{"text": text}]},
-                  "outputDimensionality": 768})
-        resp.raise_for_status()
-        vec = resp.json().get("embedding", {}).get("values")
+        from app.services.llm import get_embedding as llm_get_embedding
+        vec = await llm_get_embedding(text)
         if vec:
             await _cache_put(text, vec)
         return vec
     except Exception as e:
-        logger.warning("Embedding API failed: %s", e)
+        logger.warning("Embedding failed: %s", e)
         return None
 
 async def close_embedding_client() -> None:
-    global _embedding_client
-    async with _embedding_client_lock:
-        if _embedding_client is not None:
-            await _embedding_client.aclose()
-            _embedding_client = None
+    """Delegate to llm.close_llm_clients() — kept for backward compatibility."""
+    # Actual cleanup now happens in llm.close_llm_clients()
+    pass
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Internal helpers

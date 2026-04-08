@@ -348,6 +348,195 @@ def load_prompt(prompt_path: str) -> str:
     return requested.read_text(encoding="utf-8")
 
 
+# ─── Constitution (base knowledge injected into every prompt) ────────────────
+
+_constitution_cache: str | None = None
+
+
+def _get_constitution() -> str:
+    """Load and cache the constitution prompt (base legal knowledge + rules)."""
+    global _constitution_cache
+    if _constitution_cache is None:
+        if settings.constitution_enabled:
+            _constitution_cache = load_prompt(settings.constitution_path)
+        else:
+            _constitution_cache = ""
+    return _constitution_cache
+
+
+# ─── Hybrid LLM Router ──────────────────────────────────────────────────────
+
+_gemini_call_times: list[float] = []
+
+
+def _gemini_has_quota() -> bool:
+    """Check if Gemini free tier has RPM budget remaining (sliding 60s window)."""
+    now = time.monotonic()
+    _gemini_call_times[:] = [t for t in _gemini_call_times if t > now - 60]
+    return len(_gemini_call_times) < settings.gemini_rpm_limit - 2  # 2 request safety margin
+
+
+def _resolve_provider(
+    prefer: str,
+    system_prompt_tokens: int,
+    task_type: str,
+) -> str:
+    """Resolve 'auto' into 'local' or 'cloud' based on task and prompt size.
+
+    Rules:
+    - Explicit 'local' or 'cloud' → return as-is
+    - task_type in (judge, coach, report) → cloud (needs quality)
+    - task_type in (simple, structured) → local (fast, cheap)
+    - system_prompt > threshold → cloud (needs context window)
+    - Gemini RPM exhausted → fallback to local
+    - Default → local
+    """
+    if prefer in ("local", "cloud"):
+        # Explicit preference — but check cloud availability
+        if prefer == "cloud" and not _gemini_has_quota() and not settings.gemini_api_key:
+            logger.debug("Cloud requested but no Gemini quota, falling back to local")
+            return "local"
+        return prefer
+
+    # Auto-routing logic
+    if task_type in ("judge", "coach", "report"):
+        if _gemini_has_quota() and settings.gemini_api_key:
+            return "cloud"
+        return "local"  # Graceful: local is better than nothing
+
+    if task_type in ("simple", "structured"):
+        return "local"
+
+    if system_prompt_tokens > settings.llm_auto_cloud_threshold_tokens:
+        if _gemini_has_quota() and settings.gemini_api_key:
+            return "cloud"
+        return "local"
+
+    return "local"
+
+
+def _default_max_tokens(provider: str, task_type: str) -> int:
+    """Pick max_tokens based on provider and task type."""
+    if task_type in ("simple", "structured"):
+        return settings.llm_local_max_tokens_simple  # 400
+    if provider == "cloud":
+        return 1200
+    return 800  # local default
+
+
+# ─── Centralized Embedding API ───────────────────────────────────────────────
+# Single entry point for all embedding requests (RAG, script checker, wiki).
+# Priority: Local LLM (Mac Mini) → Gemini Embedding API.
+
+_embedding_http_client: httpx.AsyncClient | None = None
+_embedding_lock = None  # Lazy asyncio.Lock
+
+
+def _get_embedding_http_client() -> httpx.AsyncClient:
+    """Lazy-init shared httpx client for embedding calls."""
+    global _embedding_http_client
+    if _embedding_http_client is None:
+        _embedding_http_client = httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0))
+    return _embedding_http_client
+
+
+def _get_embedding_lock():
+    """Lazy-init asyncio.Lock (must be created inside running event loop)."""
+    global _embedding_lock
+    if _embedding_lock is None:
+        import asyncio
+        _embedding_lock = asyncio.Lock()
+    return _embedding_lock
+
+
+async def get_embedding(text: str) -> list[float] | None:
+    """Get embedding vector for a single text.
+
+    Priority chain:
+    1. Local LLM on Mac Mini (OpenAI-compatible /v1/embeddings)
+    2. Gemini Embedding API (cloud fallback)
+
+    Returns None on complete failure.
+    """
+    result = await get_embeddings_batch([text])
+    if result and len(result) > 0 and len(result[0]) > 0:
+        return result[0]
+    return None
+
+
+async def get_embeddings_batch(texts: list[str]) -> list[list[float]] | None:
+    """Get embeddings for a batch of texts.
+
+    Priority chain:
+    1. Local LLM on Mac Mini (OpenAI-compatible /v1/embeddings)
+    2. Gemini Embedding API (cloud fallback)
+
+    Returns None on complete failure.
+    """
+    client = _get_embedding_http_client()
+
+    # ── 1. Try Local LLM (Mac Mini via LM Studio /v1/embeddings) ──
+    if settings.local_llm_enabled and settings.local_llm_url:
+        try:
+            embed_url = f"{settings.local_llm_url.rstrip('/')}/embeddings"
+            resp = await client.post(
+                embed_url,
+                headers={"Authorization": f"Bearer {settings.local_llm_api_key}"},
+                json={"model": settings.local_embedding_model or settings.local_llm_model, "input": texts},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                embeddings_data = data.get("data", [])
+                if embeddings_data:
+                    sorted_data = sorted(embeddings_data, key=lambda x: x.get("index", 0))
+                    return [e.get("embedding", []) for e in sorted_data]
+            else:
+                logger.debug("Local embedding returned %d", resp.status_code)
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            logger.debug("Local embedding unavailable: %s", e)
+
+    # ── 2. Try Gemini Embedding API (cloud fallback) ──
+    api_key = settings.gemini_embedding_api_key
+    if not api_key:
+        return None
+
+    model = settings.gemini_embedding_model
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents"
+
+    requests_body = [
+        {"model": f"models/{model}", "content": {"parts": [{"text": t}]}}
+        for t in texts
+    ]
+
+    try:
+        resp = await client.post(
+            url,
+            params={"key": api_key},
+            json={"requests": requests_body},
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            embeddings = data.get("embeddings", [])
+            return [e.get("values", []) for e in embeddings]
+        else:
+            logger.warning("Gemini embedding API error %d: %s", resp.status_code, resp.text[:200])
+            return None
+    except (httpx.ConnectError, httpx.TimeoutException) as e:
+        logger.warning("Gemini embedding API unreachable: %s", e)
+        return None
+
+
+async def close_llm_clients() -> None:
+    """Close all LLM and embedding HTTP clients on shutdown."""
+    global _gemini_http_client, _embedding_http_client
+    if _gemini_http_client is not None:
+        await _gemini_http_client.aclose()
+        _gemini_http_client = None
+    if _embedding_http_client is not None:
+        await _embedding_http_client.aclose()
+        _embedding_http_client = None
+
+
 def _build_system_prompt(
     character_prompt: str,
     guardrails: str,
@@ -1372,16 +1561,20 @@ async def generate_response(
     character_prompt_path: str | None = None,
     user_id: str | None = None,
     scenario_prompt: str = "",
+    prefer_provider: str = "auto",
+    task_type: str = "default",
+    max_tokens: int | None = None,
 ) -> LLMResponse:
-    """Generate character response with priority chain:
-    1. Gemini Direct API (free tier, primary for pilot)
-    2. Local LLM (LM Studio / Ollama / CLIProxyAPI)
-    3. Claude API
-    4. OpenAI API
-    5. Scripted fallback
+    """Generate character response with hybrid LLM routing.
 
-    All LLM calls go through a global semaphore to prevent API rate limit hits.
-    Output is always filtered for profanity, PII, role breaks.
+    Provider selection (via prefer_provider + task_type):
+    - "local" → Gemma on Mac Mini (fast for simple tasks)
+    - "cloud" → Gemini Cloud (big context, better for judges/coaches)
+    - "auto" → smart routing based on prompt size and task type
+
+    Fallback chain always continues on failure:
+    local-first: Gemma → Gemini → Claude → OpenAI → Scripted
+    cloud-first: Gemini → Gemma → Claude → OpenAI → Scripted
 
     Args:
         system_prompt: Base system prompt or extra context to append
@@ -1389,44 +1582,57 @@ async def generate_response(
         emotion_state: Current emotion state (one of 10 canonical states)
         character_prompt_path: Path to character prompt file relative to prompts/
         user_id: User ID for token usage logging
-        scenario_prompt: Scenario-specific prompt from scenario_engine.build_scenario_prompt()
-            Injected into system prompt with scenario, stage, and awareness sections.
+        scenario_prompt: Scenario-specific prompt from scenario_engine
+        prefer_provider: "auto" | "local" | "cloud" — routing hint
+        task_type: "simple" | "structured" | "roleplay" | "judge" | "coach" | "report" | "default"
+        max_tokens: Override max output tokens (default picked by task_type)
     """
+    # ── Build system prompt ──
     if character_prompt_path:
         character_prompt = load_prompt(character_prompt_path)
-        # Hook: try DB-backed prompt_registry first (DOC_16 integration)
         try:
             from app.services.prompt_registry import load_archetype_prompt_db
             from app.database import async_session as _llm_async_session
-            # Extract archetype code from path: "characters/skeptic_v2.md" → "skeptic"
             _arch_slug = character_prompt_path.replace("characters/", "").split("_")[0].split(".")[0]
             async with _llm_async_session() as _pr_db:
                 _db_prompt = await load_archetype_prompt_db(_arch_slug, db=_pr_db)
                 if _db_prompt:
                     character_prompt = _db_prompt
         except Exception:
-            pass  # Fallback: use file-loaded prompt
+            pass
         guardrails = load_prompt("guardrails.md")
         full_system = _build_system_prompt(
             character_prompt, guardrails, emotion_state,
             scenario_prompt=scenario_prompt,
         )
-        # Append extra context (e.g. client profile) if provided
         if system_prompt:
             full_system = full_system + "\n\n" + system_prompt
     else:
-        # No character prompt — still inject scenario if present
         if scenario_prompt:
             full_system = system_prompt + "\n\n---\n\n" + scenario_prompt if system_prompt else scenario_prompt
         else:
             full_system = system_prompt
 
+    # ── Inject constitution (base legal knowledge + rules) ──
+    constitution = _get_constitution()
+    if constitution:
+        full_system = constitution + "\n\n---\n\n" + full_system
+
+    # ── Resolve provider and max_tokens ──
+    prompt_tokens = len(full_system) // 2  # Russian: ~2 chars/token
+    resolved_provider = _resolve_provider(prefer_provider, prompt_tokens, task_type)
+    effective_max_tokens = max_tokens or _default_max_tokens(resolved_provider, task_type)
+
     trimmed = _trim_history(messages, settings.llm_max_history_messages)
     timeout = float(settings.llm_timeout_seconds)
     semaphore = _get_llm_semaphore()
 
+    logger.info(
+        "LLM route: prefer=%s → resolved=%s, task=%s, prompt_tokens≈%d, max_tokens=%d",
+        prefer_provider, resolved_provider, task_type, prompt_tokens, effective_max_tokens,
+    )
+
     def _apply_filter(resp: LLMResponse) -> LLMResponse:
-        """Apply output filter and log token usage."""
         filtered_content, violations = _filter_output(resp.content)
         if violations:
             resp.content = filtered_content
@@ -1435,34 +1641,55 @@ async def generate_response(
         return resp
 
     async with semaphore:
-        # ── 1. Try Gemini Direct API (primary for pilot) ──
-        if settings.gemini_api_key:
-            resp = await _call_with_backoff(
-                "gemini", _call_gemini, full_system, trimmed, timeout,
-                max_attempts=3, retry_on_timeout_only=False,
-            )
-            if resp is not None:
-                return _apply_filter(resp)
+        if resolved_provider == "cloud":
+            # ── Cloud-first: Gemini → Local → Claude → OpenAI ──
+            if settings.gemini_api_key:
+                _gemini_call_times.append(time.monotonic())
+                resp = await _call_with_backoff(
+                    "gemini", _call_gemini, full_system, trimmed, timeout,
+                    max_attempts=3, retry_on_timeout_only=False,
+                )
+                if resp is not None:
+                    return _apply_filter(resp)
 
-        # ── 2. Try Local LLM (LM Studio / Ollama) ──
-        if settings.local_llm_enabled:
-            resp = await _call_with_backoff(
-                "local", _call_local_llm, full_system, trimmed, timeout,
-                max_attempts=1,
-            )
-            if resp is not None:
-                return _apply_filter(resp)
+            if settings.local_llm_enabled:
+                resp = await _call_with_backoff(
+                    "local", _call_local_llm, full_system, trimmed, timeout,
+                    max_attempts=3, retry_on_timeout_only=False,
+                )
+                if resp is not None:
+                    resp.is_fallback = True
+                    return _apply_filter(resp)
+        else:
+            # ── Local-first: Gemma → Gemini → Claude → OpenAI ──
+            if settings.local_llm_enabled:
+                resp = await _call_with_backoff(
+                    "local", _call_local_llm, full_system, trimmed, timeout,
+                    max_attempts=3, retry_on_timeout_only=False,
+                )
+                if resp is not None:
+                    return _apply_filter(resp)
 
-        # ── 3. Try Claude ──
+            if settings.gemini_api_key:
+                _gemini_call_times.append(time.monotonic())
+                resp = await _call_with_backoff(
+                    "gemini", _call_gemini, full_system, trimmed, timeout,
+                    max_attempts=3, retry_on_timeout_only=False,
+                )
+                if resp is not None:
+                    resp.is_fallback = True
+                    return _apply_filter(resp)
+
+        # ── Shared fallbacks: Claude → OpenAI ──
         if settings.claude_api_key:
             resp = await _call_with_backoff(
                 "claude", _call_claude, full_system, trimmed, timeout,
                 max_attempts=3, retry_on_timeout_only=False,
             )
             if resp is not None:
+                resp.is_fallback = True
                 return _apply_filter(resp)
 
-        # ── 4. Fallback to OpenAI ──
         if settings.openai_api_key:
             resp = await _call_with_backoff(
                 "openai", _call_openai, full_system, trimmed, timeout * 2,
@@ -1472,7 +1699,7 @@ async def generate_response(
                 resp.is_fallback = True
                 return _apply_filter(resp)
 
-    # ── 5. Scripted fallback (no LLM needed, outside semaphore) ──
+    # ── Scripted fallback (no LLM needed, outside semaphore) ──
     logger.warning("All LLM providers unavailable, using scripted response")
     response = _scripted_response(emotion_state, trimmed)
     _log_token_usage(response, user_id)

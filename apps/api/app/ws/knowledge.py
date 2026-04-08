@@ -2253,8 +2253,10 @@ async def _handle_debate_round(
         try:
             ai_response = await generate_response(
                 system_prompt="Ты — справедливый судья юридических дебатов по 127-ФЗ.",
-                user_message=scoring_prompt,
+                messages=[{"role": "user", "content": scoring_prompt}],
                 max_tokens=800,
+                task_type="judge",
+                prefer_provider="cloud",
             )
             # Parse response — try JSON, fallback to raw
             import json as _json
@@ -2368,8 +2370,10 @@ async def _handle_mock_court_round(
         try:
             ai_response = await generate_response(
                 system_prompt="Ты — строгий арбитражный судья РФ, специалист по делам о банкротстве.",
-                user_message=scoring_prompt,
+                messages=[{"role": "user", "content": scoring_prompt}],
                 max_tokens=800,
+                task_type="judge",
+                prefer_provider="cloud",
             )
             import json as _json
             try:

@@ -1042,6 +1042,8 @@ async def ask_coach(
             messages=[{"role": "user", "content": body.question}],
             emotion_state="cold",
             user_id=f"coach:{user.id}",
+            task_type="coach",
+            prefer_provider="cloud",
         )
         answer = response.content
     except Exception as e:
@@ -1253,6 +1255,8 @@ async def generate_ideal_response(
             messages=[{"role": "user", "content": "Сгенерируй идеальный ответ."}],
             emotion_state=emotion_at_point,
             user_id=f"replay:{user.id}",
+            task_type="coach",
+            prefer_provider="cloud",
         )
         raw_answer = llm_result.content
     except Exception as e:

@@ -140,6 +140,9 @@ interface UseTTSReturn {
 
   /** Active human factors from last TTS message (for Avatar3D visual effects). */
   activeFactors: HumanFactor[];
+
+  /** Ref to current HTMLAudioElement for TalkingHead lip sync. */
+  audioRef: React.RefObject<HTMLAudioElement | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -677,8 +680,9 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     enabled,
     setEnabled: handleSetEnabled,
     mode,
-    // Avatar3D binding
+    // Avatar binding
     audioLevel,
+    audioRef,  // Exposed for TalkingHead lip sync
     currentEmotion,
     currentVoiceParams,
     currentSpeaker,

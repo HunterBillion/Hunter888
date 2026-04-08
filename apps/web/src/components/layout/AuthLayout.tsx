@@ -14,6 +14,7 @@ import { KeyboardShortcutsOverlay } from "@/components/ui/KeyboardShortcutsOverl
 import { CommandPalette } from "@/components/ui/CommandPalette";
 import { PageTransition } from "@/components/layout/PageTransition";
 import { ScreenShakeProvider } from "@/components/ui/ScreenShake";
+import { LLMDegradationBanner } from "@/components/ui/LLMDegradationBanner";
 
 /** Check if vh_authenticated marker cookie exists (survives page reload). */
 function hasAuthMarkerCookie(): boolean {
@@ -300,6 +301,7 @@ export default function AuthLayout({
           <div className="fixed inset-0 scanlines z-[2] opacity-[0.06] mix-blend-overlay pointer-events-none" />
 
           <Header />
+          <LLMDegradationBanner />
           <main className="flex-1" style={{ position: "relative", zIndex: 1, minHeight: "calc(100vh - 200px)", overflow: "clip" }}>
             <PageTransition>{children}</PageTransition>
           </main>

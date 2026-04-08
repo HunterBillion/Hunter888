@@ -41,6 +41,8 @@ interface SessionStore {
   connectionState: string;
   emotion: EmotionState;
   characterName: string;
+  archetypeCode: string;
+  characterGender: "M" | "F" | "neutral";
   scenarioTitle: string;
   isTyping: boolean;
   elapsed: number;
@@ -154,6 +156,8 @@ interface SessionStore {
   setConnectionState: (state: string) => void;
   setEmotion: (emotion: EmotionState) => void;
   setCharacterName: (name: string) => void;
+  setArchetypeCode: (code: string) => void;
+  setCharacterGender: (gender: "M" | "F" | "neutral") => void;
   setScenarioTitle: (title: string) => void;
   setIsTyping: (typing: boolean) => void;
   setElapsed: (elapsed: number) => void;
@@ -215,6 +219,8 @@ const INITIAL_STATE = {
   connectionState: "disconnected",
   emotion: "cold" as EmotionState,
   characterName: "Клиент",
+  archetypeCode: "skeptic",
+  characterGender: "M" as const,
   scenarioTitle: "",
   isTyping: false,
   elapsed: 0,
@@ -302,6 +308,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   setConnectionState: (connectionState) => set({ connectionState }),
   setEmotion: (emotion) => set({ emotion }),
   setCharacterName: (characterName) => set({ characterName }),
+  setArchetypeCode: (archetypeCode: string) => set({ archetypeCode }),
+  setCharacterGender: (characterGender: "M" | "F" | "neutral") => set({ characterGender }),
   setScenarioTitle: (scenarioTitle) => set({ scenarioTitle }),
   setIsTyping: (isTyping) => set({ isTyping }),
   setElapsed: (elapsed) => set({ elapsed }),
