@@ -314,14 +314,18 @@ export function TalkingHeadAvatar({
         style={{ background: emotionColor }}
       />
 
-      {/* TalkingHead container */}
+      {/* TalkingHead container — MUST have explicit pixel dimensions before init */}
       <div
         ref={containerRef}
-        className="relative w-full h-full z-10"
+        className="relative z-10"
         style={{
-          minHeight: "300px",
+          width: "100%",
+          height: "100%",
+          minWidth: "300px",
+          minHeight: "400px",
           borderRadius: "1rem",
           overflow: "hidden",
+          background: "transparent",
         }}
       />
 
@@ -335,10 +339,10 @@ export function TalkingHeadAvatar({
         </div>
       )}
 
-      {/* Error state — show fallback sphere */}
+      {/* Error state — show error for debugging + fallback */}
       {loadError && (
         <div className="absolute inset-0 flex items-center justify-center z-20">
-          <div className="text-center">
+          <div className="text-center max-w-xs">
             <div
               className="w-20 h-20 mx-auto rounded-full animate-pulse"
               style={{ background: emotionColor, opacity: 0.3 }}
@@ -346,6 +350,11 @@ export function TalkingHeadAvatar({
             <span className="text-xs text-white/30 mt-2 block">
               Аватар недоступен
             </span>
+            {process.env.NODE_ENV === "development" && (
+              <span className="text-[10px] text-red-400/50 mt-1 block break-all">
+                {loadError}
+              </span>
+            )}
           </div>
         </div>
       )}

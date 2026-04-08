@@ -48,7 +48,7 @@ function buildCsp(nonce: string): string {
     styleSrc,
     `img-src 'self' data: blob: ${apiOrigin}`,
     "font-src 'self' data: https://fonts.gstatic.com",
-    `connect-src 'self' ${apiUrl} ${wsUrl}`,
+    `connect-src 'self' ${apiUrl} ${wsUrl} https://met4citizen.github.io`,
     `media-src 'self' blob: ${apiOrigin}`,
     "worker-src 'self' blob:",
     "frame-ancestors 'none'",

@@ -12,26 +12,33 @@ export interface AvatarModel {
   body: "M" | "F";
 }
 
-// Ready Player Me half-body models with morph targets for lip sync
-// morphTargets=ARKit,Oculus+Visemes enables viseme-based lip sync
-// textureAtlas=1024 reduces draw calls for performance
+// GLB models hosted on TalkingHead GitHub Pages (RPM shut down Jan 2026).
+// All models have ARKit + Oculus Viseme blend shapes baked in (72 morph targets).
+// TODO: Replace with custom Avaturn/MPFB models matching our character profiles.
 export const AVATAR_MODELS: Record<string, AvatarModel> = {
   male_young: {
     id: "male_young",
-    url: "https://models.readyplayer.me/6460d95f9ae8a365c6e6e67e.glb?morphTargets=ARKit,Oculus+Visemes&textureAtlas=1024&quality=medium",
-    label: "Молодой мужчина",
+    url: "https://met4citizen.github.io/TalkingHead/avatars/avatarsdk.glb",
+    label: "Мужчина",
     body: "M",
   },
   male_senior: {
     id: "male_senior",
-    url: "https://models.readyplayer.me/64b9e945a2079e6e7c7f09cb.glb?morphTargets=ARKit,Oculus+Visemes&textureAtlas=1024&quality=medium",
+    url: "https://met4citizen.github.io/TalkingHead/avatars/avatarsdk.glb",
     label: "Мужчина постарше",
     body: "M",
+    // NOTE: Same model as male_young — need custom MPFB/Avaturn senior model
   },
   female: {
     id: "female",
-    url: "https://models.readyplayer.me/6460da069ae8a365c6e6e680.glb?morphTargets=ARKit,Oculus+Visemes&textureAtlas=1024&quality=medium",
+    url: "https://met4citizen.github.io/TalkingHead/avatars/brunette.glb",
     label: "Женщина",
+    body: "F",
+  },
+  female_realistic: {
+    id: "female_realistic",
+    url: "https://met4citizen.github.io/TalkingHead/avatars/avaturn.glb",
+    label: "Женщина (реалистичная)",
     body: "F",
   },
 };
