@@ -482,7 +482,7 @@ async def _handle_session_resume(
         return
 
     # 2. Check session is still active
-    if session.status not in (SessionStatus.active, SessionStatus.paused):
+    if session.status not in (SessionStatus.active,):
         await _send(ws, "error", {"code": "session_completed"})
         return
 

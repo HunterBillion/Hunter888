@@ -392,6 +392,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       connectionState: s.connectionState,
       emotion: "cold",
       characterName: s.characterName,
+      archetypeCode: s.archetypeCode,
+      characterGender: s.characterGender,
       scenarioTitle: s.scenarioTitle,
       isTyping: false,
       elapsed: 0,

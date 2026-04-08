@@ -119,10 +119,6 @@ export default function TrainingSessionPage() {
   const storyScenarioId = isStoryMode ? routeId : null;
   const storyCalls = Math.min(5, Math.max(2, Number(searchParams.get("calls") || "3") || 3));
   const storyArchetype = searchParams.get("custom_archetype") || undefined;
-  // Set archetype in store for TalkingHead avatar model selection
-  useEffect(() => {
-    if (storyArchetype) s.setArchetypeCode(storyArchetype);
-  }, [storyArchetype]); // eslint-disable-line react-hooks/exhaustive-deps
   const storyProfession = searchParams.get("custom_profession") || undefined;
   const storyLeadSource = searchParams.get("custom_lead_source") || undefined;
   const storyDifficulty = searchParams.get("custom_difficulty") ? Number(searchParams.get("custom_difficulty")) : undefined;

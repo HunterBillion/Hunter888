@@ -1613,10 +1613,12 @@ async def generate_response(
         else:
             full_system = system_prompt
 
-    # ── Inject constitution (base legal knowledge + rules) ──
-    constitution = _get_constitution()
-    if constitution:
-        full_system = constitution + "\n\n---\n\n" + full_system
+    # ── Inject constitution (only for tasks needing legal knowledge) ──
+    # Roleplay and simple tasks don't need 1400 extra tokens of legal articles
+    if task_type in ("judge", "coach", "report", "structured"):
+        constitution = _get_constitution()
+        if constitution:
+            full_system = constitution + "\n\n---\n\n" + full_system
 
     # ── Resolve provider and max_tokens ──
     prompt_tokens = len(full_system) // 2  # Russian: ~2 chars/token
