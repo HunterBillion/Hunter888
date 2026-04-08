@@ -1,17 +1,18 @@
 /**
  * Auth utilities — httpOnly cookies (primary) + in-memory cache (current tab).
  *
- * Tokens are stored exclusively in httpOnly cookies set by the backend.
- * This prevents XSS attacks from stealing tokens via JavaScript.
+ * Access tokens live ONLY in memory — never persisted to storage.
+ * Refresh tokens use sessionStorage as a reload-safe fallback because the
+ * httpOnly refresh_token cookie is scoped to Path=/api/auth/refresh on the
+ * backend origin and is NOT sent on cross-origin requests from the frontend
+ * (port 3000 → port 8000 in dev). sessionStorage is tab-scoped and cleared
+ * on tab close, limiting the XSS exposure window.
  *
- * The in-memory cache (_accessToken) holds the current token for the
- * Authorization header on API requests — it is populated on login/refresh
- * and cleared on logout. It does NOT persist across page reloads; on
- * reload the client calls /auth/refresh using the httpOnly refresh_token cookie.
- *
- * localStorage is NOT used — storing JWT tokens in localStorage violates OWASP
- * guidance and makes them accessible to any injected script.
+ * localStorage is NOT used — it persists across tabs/sessions and violates
+ * OWASP guidance for token storage.
  */
+
+const _SS_REFRESH_KEY = "vh_rt";
 
 // In-memory token cache — lives only for the current tab session.
 let _accessToken: string | null = null;
@@ -24,14 +25,25 @@ export function getToken(): string | null {
 }
 
 export function getRefreshToken(): string | null {
-  // In-memory only — no sessionStorage fallback to reduce XSS token theft surface.
-  // On page reload, the httpOnly refresh_token cookie handles re-auth automatically.
-  return _refreshToken;
+  if (_refreshToken) return _refreshToken;
+  // Fallback: sessionStorage survives page reloads within the same tab.
+  if (typeof sessionStorage !== "undefined") {
+    try {
+      return sessionStorage.getItem(_SS_REFRESH_KEY);
+    } catch { /* SSR or blocked */ }
+  }
+  return null;
 }
 
 export function setTokens(accessToken: string, refreshToken: string): void {
   _accessToken = accessToken;
   _refreshToken = refreshToken;
+  // Persist refresh token to sessionStorage for page-reload recovery.
+  if (typeof sessionStorage !== "undefined") {
+    try {
+      sessionStorage.setItem(_SS_REFRESH_KEY, refreshToken);
+    } catch { /* SSR or blocked */ }
+  }
   // Set marker cookie so Next.js middleware knows user is authenticated.
   // This is NOT the auth token — just a presence flag (not httpOnly so middleware can read it).
   if (typeof window !== "undefined") {
@@ -44,6 +56,9 @@ export function setTokens(accessToken: string, refreshToken: string): void {
 export function clearTokens(): void {
   _accessToken = null;
   _refreshToken = null;
+  if (typeof sessionStorage !== "undefined") {
+    try { sessionStorage.removeItem(_SS_REFRESH_KEY); } catch {}
+  }
   // Clear the JS-readable marker cookie to prevent redirect loops.
   // The httpOnly access_token/refresh_token cookies are cleared by the
   // server /auth/logout endpoint via Set-Cookie headers.
