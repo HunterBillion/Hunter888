@@ -3,11 +3,17 @@
 import { useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/useAuthStore";
-import { getToken } from "@/lib/auth";
+import { getToken, getRefreshToken } from "@/lib/auth";
 
 /**
  * Thin wrapper over useAuthStore for backward compatibility.
  * All state lives in Zustand; this hook adds router-based redirects.
+ *
+ * IMPORTANT: This hook runs inside AuthLayout children. After a hard
+ * navigation the in-memory access token is always null — AuthLayout
+ * restores it via refresh before rendering children. We must NOT
+ * redirect to /login based solely on getToken() === null; check for
+ * marker cookie / sessionStorage refresh token first.
  */
 export function useAuth() {
   const router = useRouter();
@@ -21,6 +27,18 @@ export function useAuth() {
 
     const token = getToken();
     if (!token) {
+      // After hard navigation, in-memory token is null but AuthLayout
+      // may have just refreshed it (or is about to). If evidence of an
+      // active session exists, don't redirect — AuthLayout handles auth.
+      const hasMarker =
+        typeof document !== "undefined" &&
+        document.cookie.includes("vh_authenticated=");
+      const hasRefresh = !!getRefreshToken();
+      if (hasMarker || hasRefresh) {
+        // Session exists — AuthLayout will set the token. Skip redirect.
+        // Still try to fetch user once token becomes available.
+        return;
+      }
       router.replace("/login");
       return;
     }
