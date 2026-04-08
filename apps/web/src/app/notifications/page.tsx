@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Check, CheckCheck, Loader2, Inbox } from "lucide-react";
+import { Check, CheckCheck, Inbox } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -116,8 +116,19 @@ export default function NotificationsPage() {
         {/* List */}
         <div className="mt-6 space-y-2">
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
+            <div className="space-y-2">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="glass-panel p-4 flex items-start gap-3 animate-pulse">
+                  <div className="w-2.5 h-2.5 rounded-full mt-1 bg-[var(--input-bg)]" />
+                  <div className="flex-1 space-y-2">
+                    <div className="flex justify-between">
+                      <div className="h-3.5 w-32 rounded bg-[var(--input-bg)]" />
+                      <div className="h-3 w-16 rounded bg-[var(--input-bg)]" />
+                    </div>
+                    <div className="h-3 w-48 rounded bg-[var(--input-bg)]" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : items.length === 0 ? (
             <EmptyState

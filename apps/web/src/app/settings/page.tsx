@@ -228,7 +228,7 @@ export default function SettingsPage() {
               className="glass-panel p-5"
             >
               <div className="flex items-center gap-3 mb-4">
-                <Palette size={18} style={{ color: "var(--accent)" }} />
+                <Palette size={18} style={{ color: "var(--text-secondary)" }} />
                 <div>
                   <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Оформление</div>
                   <div className="text-xs" style={{ color: "var(--text-muted)" }}>Тема и акцентный цвет</div>
@@ -279,7 +279,7 @@ export default function SettingsPage() {
               className="glass-panel p-5"
             >
               <div className="flex items-center gap-3 mb-4">
-                <Gamepad2 size={18} style={{ color: "var(--accent)" }} />
+                <Gamepad2 size={18} style={{ color: "var(--text-secondary)" }} />
                 <div>
                   <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Тренировки</div>
                   <div className="text-xs" style={{ color: "var(--text-muted)" }}>Режим и сложность</div>
@@ -321,7 +321,7 @@ export default function SettingsPage() {
               className="glass-panel p-5"
             >
               <div className="flex items-center gap-3 mb-4">
-                <LayoutGrid size={18} style={{ color: "var(--accent)" }} />
+                <LayoutGrid size={18} style={{ color: "var(--text-secondary)" }} />
                 <div>
                   <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Интерфейс</div>
                   <div className="text-xs" style={{ color: "var(--text-muted)" }}>Плотность и отображение</div>
@@ -340,7 +340,7 @@ export default function SettingsPage() {
                 className="glass-panel p-5"
               >
                 <div className="flex items-center gap-3 mb-4">
-                  <Kanban size={18} style={{ color: "var(--accent)" }} />
+                  <Kanban size={18} style={{ color: "var(--text-secondary)" }} />
                   <div>
                     <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Воронка</div>
                     <div className="text-xs" style={{ color: "var(--text-muted)" }}>Видимые столбцы в канбане</div>
@@ -389,7 +389,7 @@ export default function SettingsPage() {
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <Bell size={18} style={{ color: "var(--accent)" }} />
+                  <Bell size={18} style={{ color: "var(--text-secondary)" }} />
                   <div>
                     <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Уведомления</div>
                     <div className="text-xs" style={{ color: "var(--text-muted)" }}>Каналы и частота</div>
@@ -479,7 +479,7 @@ export default function SettingsPage() {
               className="glass-panel p-5"
             >
               <div className="flex items-center gap-3 mb-4">
-                <Link2 size={18} style={{ color: "var(--accent)" }} />
+                <Link2 size={18} style={{ color: "var(--text-secondary)" }} />
                 <div>
                   <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Привязанные аккаунты</div>
                   <div className="text-xs" style={{ color: "var(--text-muted)" }}>Вход через Google или Yandex</div>

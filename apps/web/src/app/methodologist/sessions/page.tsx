@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, Search, Loader2, ChevronLeft, ChevronRight, ShieldAlert } from "lucide-react";
+import { FileText, Search, ChevronLeft, ChevronRight, ShieldAlert } from "lucide-react";
 import { BackButton } from "@/components/ui/BackButton";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
@@ -82,8 +82,16 @@ export default function MethodologistSessionsPage() {
           </motion.div>
 
           {loading ? (
-            <div className="mt-8 flex justify-center py-16">
-              <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
+            <div className="mt-6 space-y-2">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="flex gap-4 p-3 animate-pulse">
+                  <div className="h-3 w-24 rounded bg-[var(--input-bg)]" />
+                  <div className="h-3 w-32 rounded bg-[var(--input-bg)]" />
+                  <div className="h-3 w-12 rounded bg-[var(--input-bg)]" />
+                  <div className="h-3 w-12 rounded bg-[var(--input-bg)]" />
+                  <div className="h-3 w-20 rounded bg-[var(--input-bg)]" />
+                </div>
+              ))}
             </div>
           ) : (
             <div className="mt-6">

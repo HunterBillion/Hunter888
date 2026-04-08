@@ -33,7 +33,7 @@ export function colorAlpha(color: string, percent: number): string {
 
 /** Format duration in seconds to "M:SS" string */
 export function formatDuration(seconds: number | null): string {
-  if (!seconds) return "—";
+  if (seconds === null || seconds === undefined) return "—";
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;

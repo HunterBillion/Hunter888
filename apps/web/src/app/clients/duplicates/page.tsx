@@ -100,8 +100,19 @@ export default function DuplicatesPage() {
         {/* Content */}
         <div className="mt-6 space-y-4">
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="glass-panel p-5 animate-pulse">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-4 w-24 rounded bg-[var(--input-bg)]" />
+                    <div className="h-3 w-16 rounded bg-[var(--input-bg)]" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-10 rounded-lg bg-[var(--input-bg)]" />
+                    <div className="h-10 rounded-lg bg-[var(--input-bg)]" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : groups.length === 0 ? (
             <div className="text-center py-16">

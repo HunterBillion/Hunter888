@@ -56,7 +56,7 @@ import { logger } from "@/lib/logger";
 import { colorAlpha } from "@/lib/utils";
 
 function formatDuration(seconds: number | null): string {
-  if (!seconds) return "--:--";
+  if (seconds === null || seconds === undefined) return "--:--";
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return m > 0 ? `${m} мин ${s} сек` : `${s} сек`;

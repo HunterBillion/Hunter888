@@ -302,7 +302,7 @@ export default function GameClientPanelPage() {
 
               <div className="mt-5">
                 <div className="mb-2 flex items-center justify-between text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-                  <span>Story Progress</span>
+                  <span>Прогресс истории</span>
                   <span>{progressPct}%</span>
                 </div>
                 <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
@@ -330,7 +330,7 @@ export default function GameClientPanelPage() {
                   <div className="text-xs" style={{ color: "var(--text-secondary)" }}>изменений поведения клиента</div>
                 </div>
                 <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Pacing</div>
+                  <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Темп</div>
                   <div className="mt-2 text-xl font-semibold capitalize" style={{ color: "var(--text-primary)" }}>{story.pacing}</div>
                   <div className="text-xs" style={{ color: "var(--text-secondary)" }}>режим развития истории</div>
                 </div>
@@ -375,7 +375,7 @@ export default function GameClientPanelPage() {
                     <span style={{ color: "var(--text-primary)" }}>{story.next_twist || "—"}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>Completed calls</span>
+                    <span>Завершённых звонков</span>
                     <span style={{ color: "var(--text-primary)" }}>{story.calls_completed}</span>
                   </div>
                 </div>
@@ -541,7 +541,7 @@ export default function GameClientPanelPage() {
                         <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--accent)" }}>
                           {String(factor.factor || factor.name || "factor")}
                         </div>
-                        <div className="mt-1">Intensity: {Math.round(Number(factor.intensity || 0) * 100)}%</div>
+                        <div className="mt-1">Интенсивность: {Math.round(Number(factor.intensity || 0) * 100)}%</div>
                       </div>
                     ))}
                   </div>

@@ -262,7 +262,7 @@ function TrainingPageContent() {
           <div className="mt-5 flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 rounded-2xl px-4 py-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-color)" }}>
             <div>
               <div className="font-mono text-sm tracking-[0.22em]" style={{ color: "var(--accent)" }}>
-                Story Preset
+                Пресет истории
               </div>
               <div className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
                 Выбран режим AI-story на <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{storyCalls}</span> звонка(ов) для всех запусков из панели.

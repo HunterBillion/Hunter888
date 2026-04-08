@@ -33,7 +33,7 @@ function statusConfig(status: string) {
 }
 
 function formatDuration(seconds: number | null) {
-  if (!seconds) return "—";
+  if (seconds === null || seconds === undefined) return "—";
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
@@ -232,7 +232,7 @@ export default function HistoryPage() {
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: i * 0.04 }}
                           className={`glass-panel p-5 flex items-center gap-4 transition-all ${canOpenEntry ? "cursor-pointer" : ""}`}
-                          style={{ borderLeft: `3px solid ${st.color}` }}
+                          style={{ boxShadow: `inset 3px 0 0 ${st.color}` }}
                           whileHover={canOpenEntry ? { y: -2, boxShadow: "0 4px 20px rgba(139, 92, 246, 0.1)" } : undefined}
                           onClick={() => canOpenEntry && router.push(targetHref)}
                         >

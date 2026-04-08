@@ -175,7 +175,7 @@ export default function GameCRMPage() {
 
         {/* Content */}
         <div className="flex-1 px-4 pb-8 overflow-y-auto">
-          <div className="mx-auto max-w-[1200px] space-y-6">
+          <div className="mx-auto max-w-[1200px] space-y-8">
             {/* Portfolio Stats */}
             <GamePortfolioStats
               stats={stats}

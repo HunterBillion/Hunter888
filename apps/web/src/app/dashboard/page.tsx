@@ -478,7 +478,7 @@ export default function DashboardPage() {
 
                   {/* ═══════════ TAB: ANALYTICS ══════════════════════════════ */}
                   {activeTab === "analytics" && (
-                    <div className="space-y-6">
+                    <div className="space-y-8">
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <TeamTrendChart />
                         <ActivityChart />
@@ -517,7 +517,7 @@ export default function DashboardPage() {
 
                   {/* ═══════════ TAB: TEAM ════════════════════════════════════ */}
                   {activeTab === "team" && (
-                    <div className="space-y-6">
+                    <div className="space-y-5">
                       <AlertPanel />
 
                       <motion.div
