@@ -832,7 +832,7 @@ async def _generate_character_reply(
     # Inject character name to prevent mismatch with prompt file
     char_name = state.get("character_name", "")
     if char_name:
-        extra_system += f"\nТвоё имя: {char_name}. Представляйся именно так.\n"
+        extra_system = f"ВАЖНО: В этой сессии тебя зовут {char_name}. Если в инструкции ниже указано другое имя — игнорируй его, используй ТОЛЬКО {char_name}.\n\n" + extra_system
     if client_profile_prompt:
         extra_system += client_profile_prompt
 

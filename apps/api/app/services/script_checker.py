@@ -226,8 +226,8 @@ async def _get_similarity(text1: str, text2: str) -> float | None:
             return _cosine_similarity(results[0], results[1])
 
     # 3. Fallback: local embeddings service
-    emb1 = await _get_local_embedding(text1)
-    emb2 = await _get_local_embedding(text2)
+    emb1 = await _get_embedding(text1)
+    emb2 = await _get_embedding(text2)
     if emb1 and emb2:
         return _cosine_similarity(emb1, emb2)
 

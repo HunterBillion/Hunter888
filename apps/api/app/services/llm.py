@@ -1280,10 +1280,24 @@ class FactorInteractionMatrix:
 
 
 def _trim_history(messages: list[dict], max_messages: int) -> list[dict]:
-    """Keep only the last N messages to fit context window."""
-    if len(messages) <= max_messages:
-        return messages
-    return messages[-max_messages:]
+    """Keep only the last N messages to fit context window.
+
+    Also ensures roles alternate (user/assistant/user/...) — required by
+    LM Studio / Gemma which rejects consecutive same-role messages.
+    """
+    trimmed = messages[-max_messages:] if len(messages) > max_messages else list(messages)
+
+    # Merge consecutive same-role messages (LM Studio requirement)
+    if not trimmed:
+        return trimmed
+    merged: list[dict] = [trimmed[0]]
+    for msg in trimmed[1:]:
+        if msg["role"] == merged[-1]["role"]:
+            # Same role — merge content
+            merged[-1] = {**merged[-1], "content": merged[-1]["content"] + "\n" + msg["content"]}
+        else:
+            merged.append(msg)
+    return merged
 
 
 async def _call_gemini(
@@ -1706,7 +1720,7 @@ async def generate_response(
                 return _apply_filter(resp)
 
     # ── Scripted fallback (no LLM needed, outside semaphore) ──
-    logger.warning("All LLM providers unavailable, using scripted response")
+    logger.warning("SCRIPTED FALLBACK: All providers failed for emotion=%s", emotion_state)
     response = _scripted_response(emotion_state, trimmed)
     _log_token_usage(response, user_id)
     return response

@@ -259,6 +259,9 @@ export default function TrainingSessionPage() {
 
         case "character.response": {
           s.setIsTyping(false);
+          // Deduplicate by sequence_number (may overlap with message.replay)
+          const seq = data.data.sequence_number as number | undefined;
+          if (seq != null && s.messages.some(m => m.sequenceNumber === seq)) break;
           const content = stripStageDirections(data.data.content as string);
           s.addMessage({
             id: s.nextMsgId(),
@@ -624,6 +627,12 @@ export default function TrainingSessionPage() {
       sendMessage({ type: "text.message", data: { content: text } });
       s.setTalkTime(s.talkTime + 1);
       s.setTranscription({ status: "done", partial: "", final: text });
+      // Detect goodbye phrases and show hangup confirmation
+      const goodbyePhrases = ["досвидания", "до свидания", "прощай", "пока", "всего доброго", "до встречи"];
+      const lowerText = text.toLowerCase().trim();
+      if (goodbyePhrases.some(p => lowerText.includes(p))) {
+        s.setShowHangupModal(true);
+      }
     },
     onInterim: (text) => {
       s.setTranscription({ status: "transcribing", partial: text, final: "" });
@@ -674,9 +683,11 @@ export default function TrainingSessionPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [sessionState]);
 
-  // Auto-scroll
+  // Auto-scroll (setTimeout to run after React batched state updates)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 50);
   }, [s.messages, s.transcription, s.isTyping]);
 
   // P3-30: Global keyboard shortcuts via useHotkeys
@@ -719,6 +730,12 @@ export default function TrainingSessionPage() {
     sendMessage({ type: "text.message", data: { content: text } });
     s.setInput("");
     s.setTalkTime(s.talkTime + 1);
+    // Detect goodbye phrases and show hangup confirmation
+    const goodbyePhrases = ["досвидания", "до свидания", "прощай", "пока", "всего доброго", "до встречи"];
+    const lowerText = text.toLowerCase().trim();
+    if (goodbyePhrases.some(p => lowerText.includes(p))) {
+      s.setShowHangupModal(true);
+    }
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 
