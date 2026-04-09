@@ -32,71 +32,71 @@ export interface ArchetypeGroupInfo {
 export const ARCHETYPE_GROUPS: Record<ArchetypeGroup, ArchetypeGroupInfo> = {
   resistance: {
     label: "Сопротивление",
-    color: "var(--danger)",
-    icon: "\u{1F6E1}\uFE0F",
+    color: "var(--accent)",
+    icon: "СП",
     description: "Активно противостоят менеджеру. Сражаются, не убегают.",
     key_skills: ["stress_resistance", "objection_handling"],
   },
   emotional: {
     label: "Эмоциональные",
     color: "var(--accent)",
-    icon: "\u{1F49C}",
+    icon: "ЭМ",
     description: "Захлёстнуты эмоциями. Не сопротивляются — тонут.",
     key_skills: ["empathy", "rapport_building"],
   },
   control: {
     label: "Контроль",
-    color: "var(--warning)",
-    icon: "\u{1F451}",
+    color: "var(--accent)",
+    icon: "КТ",
     description: "Хотят контролировать разговор и менеджера.",
     key_skills: ["knowledge", "objection_handling", "legal_knowledge"],
   },
   avoidance: {
     label: "Избегание",
     color: "var(--accent)",
-    icon: "\u{1F32B}\uFE0F",
+    icon: "ИЗ",
     description: "Не хотят решать проблему. Молчат, переносят, \"думают\".",
     key_skills: ["rapport_building", "closing", "time_management"],
   },
   special: {
     label: "Особые",
-    color: "#EC4899",
-    icon: "\u2B50",
+    color: "var(--accent)",
+    icon: "ОС",
     description: "Ситуационные архетипы с уникальной механикой.",
     key_skills: ["adaptation", "rapport_building"],
   },
   cognitive: {
     label: "Когнитивные",
-    color: "#06B6D4",
-    icon: "\u{1F9E0}",
+    color: "var(--accent)",
+    icon: "КГ",
     description: "Особенности восприятия и мышления. По-другому обрабатывают информацию.",
     key_skills: ["adaptation", "knowledge", "empathy"],
   },
   social: {
     label: "Социальные",
-    color: "var(--success)",
-    icon: "\u{1F465}",
+    color: "var(--accent)",
+    icon: "СЦ",
     description: "Поведение определяется социальным контекстом — семья, окружение.",
     key_skills: ["empathy", "rapport_building", "adaptation"],
   },
   temporal: {
     label: "Ситуативные",
-    color: "#F97316",
-    icon: "\u23F3",
+    color: "var(--accent)",
+    icon: "СТ",
     description: "Поведение определяется текущей ситуацией, а не характером.",
     key_skills: ["empathy", "time_management", "closing"],
   },
   professional: {
     label: "Профессиональные",
-    color: "#64748B",
-    icon: "\u{1F4BC}",
+    color: "var(--accent)",
+    icon: "ПР",
     description: "Поведение определяется профессией и профессиональной деформацией.",
     key_skills: ["adaptation", "knowledge", "legal_knowledge"],
   },
   compound: {
     label: "Гибриды",
-    color: "#A855F7",
-    icon: "\u{1F52E}",
+    color: "var(--accent)",
+    icon: "ГБ",
     description: "Комбинации базовых архетипов. Самые сложные и непредсказуемые.",
     key_skills: ["empathy", "stress_resistance", "adaptation"],
   },
@@ -1112,4 +1112,32 @@ export function getTierLabel(tier: ArchetypeTier): string {
     case 3: return "Tier 3 — Сложный";
     case 4: return "Tier 4 — Экстремальный";
   }
+}
+
+/** Russian labels for English skill codes */
+export const SKILL_LABELS: Record<string, string> = {
+  objection_handling: "Возражения",
+  stress_resistance: "Стрессоустойчивость",
+  adaptation: "Адаптация",
+  knowledge: "Экспертиза",
+  rapport: "Контакт",
+  script_adherence: "Скрипт",
+  active_listening: "Слушание",
+  empathy: "Эмпатия",
+  negotiation: "Переговоры",
+  closing: "Закрытие",
+  patience: "Терпение",
+  creativity: "Креативность",
+  authority: "Авторитет",
+  time_management: "Темп",
+  professionalism: "Профессионализм",
+  analytical: "Аналитика",
+  emotional_intelligence: "EQ",
+  persuasion: "Убеждение",
+  conflict_resolution: "Конфликты",
+  product_knowledge: "Продукт",
+};
+
+export function getSkillLabel(code: string): string {
+  return SKILL_LABELS[code] || code.replace(/_/g, " ");
 }

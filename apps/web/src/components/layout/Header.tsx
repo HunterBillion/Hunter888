@@ -96,7 +96,7 @@ export default function Header() {
   const notificationOpen = openPanel === "notifications";
   const mobileOpen = openPanel === "mobile";
 
-  // Single scroll listener: shrink header + close open panels
+  // Single scroll listener: shrink header (hysteresis to prevent jitter)
   const scrolledRef = useRef(false);
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -105,13 +105,15 @@ export default function Header() {
       if (!ticking) {
         ticking = true;
         requestAnimationFrame(() => {
-          const isScrolled = window.scrollY > 40;
-          if (scrolledRef.current !== isScrolled) {
-            scrolledRef.current = isScrolled;
-            setScrolled(isScrolled);
+          const y = window.scrollY;
+          // Hysteresis: activate at 60px, deactivate at 20px
+          if (!scrolledRef.current && y > 60) {
+            scrolledRef.current = true;
+            setScrolled(true);
+          } else if (scrolledRef.current && y < 20) {
+            scrolledRef.current = false;
+            setScrolled(false);
           }
-          // Close any open panel on scroll
-          setOpenPanel("none");
           ticking = false;
         });
       }
@@ -124,10 +126,9 @@ export default function Header() {
     <header
       className="sticky top-0 z-30"
       style={{
-        paddingTop: scrolled ? "0.375rem" : "0.75rem",
-        paddingBottom: scrolled ? "0.375rem" : "0.75rem",
-        transition: "padding 0.35s cubic-bezier(0.4,0,0.2,1)",
-        willChange: "padding",
+        padding: "0.75rem 0",
+        transform: scrolled ? "translateY(-4px)" : "translateY(0)",
+        transition: "transform 0.25s ease",
       }}
     >
       <div
@@ -139,10 +140,8 @@ export default function Header() {
           boxShadow: scrolled ? "var(--header-shadow)" : "none",
           backdropFilter: "blur(28px) saturate(1.4)",
           WebkitBackdropFilter: "blur(28px) saturate(1.4)",
-          paddingTop: scrolled ? "0.625rem" : "0.875rem",
-          paddingBottom: scrolled ? "0.625rem" : "0.875rem",
-          transition: "padding 0.35s cubic-bezier(0.4,0,0.2,1), box-shadow 0.35s ease",
-          willChange: "padding",
+          padding: scrolled ? "0.5rem" : "0.75rem",
+          transition: "padding 0.25s ease, box-shadow 0.25s ease",
         }}
       >
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 lg:grid-cols-[minmax(260px,1fr)_auto_minmax(260px,1fr)]">

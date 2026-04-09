@@ -18,6 +18,7 @@ import type {
 } from "@/types";
 import { ARCHETYPES, ARCHETYPE_GROUPS, getTierColor } from "@/lib/archetypes";
 import type { ArchetypeInfo } from "@/lib/archetypes";
+import { ArchetypeCard } from "@/components/training/ArchetypeCard";
 import { PROFESSIONS, PROFESSION_GROUPS } from "@/lib/professions";
 import type { ProfessionInfo } from "@/lib/professions";
 import { LEAD_SOURCES, LEAD_SOURCE_GROUPS } from "@/lib/leadSources";
@@ -350,30 +351,15 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
               })}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[55vh] overflow-y-auto pr-1">
-              {filteredArchetypes.map((a) => {
-                const sel = archetype === a.code;
-                const gi = ARCHETYPE_GROUPS[a.group]; const tc = getTierColor(a.tier);
-                return (
-                  <motion.button key={a.code} onClick={() => setArchetype(a.code)}
-                    className="glass-panel p-3.5 text-left transition-all relative overflow-hidden rounded-xl"
-                    style={{ borderColor: sel ? gi.color + "60" : undefined, boxShadow: sel ? `0 0 20px ${gi.color}20` : undefined }}
-                    whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
-                    <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: sel ? `linear-gradient(90deg, ${gi.color}, ${tc})` : "transparent" }} />
-                    <div className="absolute top-2 right-2 flex gap-1">
-                      {sel && <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ background: gi.color }}><Check size={8} className="text-white" /></div>}
-                      <span className="rounded px-1 py-0.5 text-[8px] font-mono font-bold" style={{ background: tc + "20", color: tc }}>T{a.tier}</span>
-                    </div>
-                    <div className="flex items-center gap-1 mb-0.5"><span className="text-sm">{a.icon}</span><span className="font-display text-xs font-bold truncate" style={{ color: sel ? gi.color : "var(--text-primary)" }}>{a.name}</span></div>
-                    <p className="text-sm italic mb-1" style={{ color: "var(--text-muted)" }}>&laquo;{a.subtitle}&raquo;</p>
-                    <p className="text-sm leading-relaxed line-clamp-2" style={{ color: "var(--text-secondary)" }}>{a.description}</p>
-                    <div className="mt-2 flex items-center gap-1">
-                      <span className="rounded-full px-1 py-0.5 text-[8px]" style={{ background: gi.color + "15", color: gi.color }}>{gi.icon}</span>
-                      <div className="flex gap-0.5">{Array.from({ length: 10 }, (_, j) => (<div key={j} className="w-0.5 h-0.5 rounded-full" style={{ background: j < a.difficulty ? tc : "var(--border-color)", opacity: j < a.difficulty ? 0.8 : 0.3 }} />))}</div>
-                      <span className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Lv{a.unlock_level}</span>
-                    </div>
-                  </motion.button>
-                );
-              })}
+              {filteredArchetypes.map((a) => (
+                <ArchetypeCard
+                  key={a.code}
+                  arch={a}
+                  size="compact"
+                  selected={archetype === a.code}
+                  onSelect={() => setArchetype(a.code)}
+                />
+              ))}
             </div>
           </>)}
 

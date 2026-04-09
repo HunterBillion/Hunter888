@@ -12,6 +12,7 @@ import {
   getDifficultyColor,
 } from "@/lib/archetypes";
 import type { ArchetypeInfo, ArchetypeGroupInfo } from "@/lib/archetypes";
+import { ArchetypeCard } from "@/components/training/ArchetypeCard";
 import type { ArchetypeGroup } from "@/types";
 import { useGamificationStore } from "@/stores/useGamificationStore";
 
@@ -141,126 +142,9 @@ export default function ArchetypesPage() {
 
           {/* Grid */}
           <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((arch, i) => {
-              const isLocked = arch.unlock_level > level;
-              const group = ARCHETYPE_GROUPS[arch.group];
-              const tierColor = getTierColor(arch.tier);
-              const diffColor = getDifficultyColor(arch.difficulty);
-
-              return (
-                <motion.div
-                  key={arch.code}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: Math.min(i * 0.02, 0.4) }}
-                  className="relative overflow-hidden rounded-2xl"
-                  style={{
-                    background: "var(--glass-bg)",
-                    border: `1px solid ${isLocked ? "var(--border-color)" : `${group.color}25`}`,
-                    opacity: isLocked ? 0.55 : 1,
-                    filter: isLocked ? "grayscale(0.6)" : "none",
-                  }}
-                >
-                  {/* Top accent */}
-                  <div
-                    className="h-1"
-                    style={{
-                      background: isLocked
-                        ? "var(--border-color)"
-                        : `linear-gradient(90deg, ${group.color}, ${tierColor})`,
-                    }}
-                  />
-
-                  <div className="p-4">
-                    {/* Row 1: icon + name */}
-                    <div className="flex items-start gap-3 mb-2">
-                      <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-lg"
-                        style={{
-                          background: isLocked
-                            ? "var(--input-bg)"
-                            : `linear-gradient(135deg, ${group.color}, ${group.color}BB)`,
-                          color: isLocked ? "var(--text-muted)" : "white",
-                        }}
-                      >
-                        {isLocked ? <Lock size={16} /> : arch.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div
-                          className="font-display text-base font-bold leading-tight"
-                          style={{ color: isLocked ? "var(--text-muted)" : "var(--text-primary)" }}
-                        >
-                          {arch.name}
-                        </div>
-                        <div
-                          className="text-xs mt-0.5"
-                          style={{ color: "var(--text-muted)" }}
-                        >
-                          {arch.subtitle}
-                        </div>
-                      </div>
-
-                      {/* Tier badge */}
-                      <span
-                        className="text-xs font-mono px-2 py-0.5 rounded-md shrink-0"
-                        style={{
-                          background: `${tierColor}15`,
-                          color: tierColor,
-                          border: `1px solid ${tierColor}30`,
-                        }}
-                      >
-                        {TIER_LABELS[arch.tier]}
-                      </span>
-                    </div>
-
-                    {/* Description */}
-                    <p
-                      className="text-sm leading-relaxed line-clamp-2 mb-3"
-                      style={{ color: "var(--text-secondary)" }}
-                    >
-                      {arch.description}
-                    </p>
-
-                    {/* Badges row */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {/* Group */}
-                      <span
-                        className="text-xs font-mono px-2 py-0.5 rounded-md"
-                        style={{
-                          background: `${group.color}12`,
-                          color: group.color,
-                          border: `1px solid ${group.color}25`,
-                        }}
-                      >
-                        {group.label}
-                      </span>
-
-                      {/* Difficulty */}
-                      <span
-                        className="text-xs font-mono px-2 py-0.5 rounded-md"
-                        style={{
-                          background: `${diffColor}12`,
-                          color: diffColor,
-                          border: `1px solid ${diffColor}25`,
-                        }}
-                      >
-                        {arch.difficulty}/10
-                      </span>
-
-                      {/* Lock info */}
-                      {isLocked && (
-                        <span
-                          className="ml-auto flex items-center gap-1 text-xs font-medium"
-                          style={{ color: "var(--text-muted)" }}
-                        >
-                          <Lock size={10} /> Уровень {arch.unlock_level}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
+            {filtered.map((arch) => (
+              <ArchetypeCard key={arch.code} arch={arch} size="medium" />
+            ))}
           </div>
 
           {filtered.length === 0 && (

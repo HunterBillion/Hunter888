@@ -28,6 +28,7 @@ import CharacterBuilder from "@/components/training/CharacterBuilder";
 import { ScenarioDossierCard } from "@/components/training/ScenarioDossierCard";
 import { useTrainingStore } from "@/stores/useTrainingStore";
 import { ARCHETYPES, ARCHETYPE_GROUPS, getTierColor, getDifficultyColor } from "@/lib/archetypes";
+import { ArchetypeCard } from "@/components/training/ArchetypeCard";
 import type { ArchetypeInfo } from "@/lib/archetypes";
 import type { Scenario } from "@/types";
 
@@ -478,108 +479,22 @@ function RecommendedTab({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
             {group.archetypes.map((arch) => {
-              const groupInfo = ARCHETYPE_GROUPS[arch.group];
-              const tierColor = getTierColor(arch.tier);
-              const diffColor = getDifficultyColor(arch.difficulty);
               // Find a matching scenario by difficulty
               const matchScenario = scenarios.length
                 ? [...scenarios].sort((a, b) => Math.abs(a.difficulty - arch.difficulty) - Math.abs(b.difficulty - arch.difficulty))[0]
                 : null;
 
               return (
-                <motion.div
+                <ArchetypeCard
                   key={arch.code}
-                  className="glass-panel flex flex-col h-full overflow-hidden"
-                  style={{ borderColor: `color-mix(in srgb, ${diffColor} 20%, transparent)` }}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  whileHover={{ y: -3 }}
-                >
-                  {/* Top accent — thin clean bar */}
-                  <div className="h-[3px] shrink-0" style={{ background: diffColor }} />
-
-                  <div className="p-5 flex flex-col flex-1 gap-3">
-                    {/* Row 1: Icon + Name */}
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold text-white"
-                        style={{ background: diffColor }}
-                      >
-                        {arch.name[0]}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-base truncate" style={{ color: "var(--text-primary)" }}>
-                          {arch.name}
-                        </div>
-                        <div className="text-sm truncate" style={{ color: "var(--text-muted)" }}>
-                          {arch.subtitle}
-                        </div>
-                      </div>
-                      <div className="flex gap-1.5 shrink-0">
-                        <span className="rounded-md px-2 py-0.5 text-xs font-semibold" style={{ background: `color-mix(in srgb, ${tierColor} 15%, transparent)`, color: tierColor }}>
-                          T{arch.tier}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Row 2: Description — fixed 2 lines */}
-                    <p className="text-sm leading-relaxed line-clamp-2 min-h-[2.5rem]" style={{ color: "var(--text-secondary)" }}>
-                      {arch.description}
-                    </p>
-
-                    {/* Row 3: Weakness — compact */}
-                    <div className="rounded-lg px-3 py-2 text-sm line-clamp-2" style={{ background: "var(--input-bg)", color: "var(--text-secondary)" }}>
-                      <span className="font-medium" style={{ color: "var(--text-muted)" }}>Слабое место: </span>
-                      {arch.weakness}
-                    </div>
-
-                    {/* Spacer */}
-                    <div className="flex-1" />
-
-                    {/* Row 4: Badges */}
-                    <div className="flex flex-wrap gap-1.5">
-                      {arch.counters.slice(0, 3).map((skill) => (
-                        <span
-                          key={skill}
-                          className="rounded-md px-2 py-0.5 text-xs"
-                          style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}
-                        >
-                          {skill.replace(/_/g, " ")}
-                        </span>
-                      ))}
-                    </div>
-
-                    {/* Row 5: Buttons — ALWAYS at bottom */}
-                    <div className="grid grid-cols-[1.2fr_0.8fr] gap-2 pt-1">
-                      {matchScenario ? (
-                        <>
-                          <motion.button
-                            onClick={() => onStart(matchScenario.id)}
-                            disabled={starting === matchScenario.id}
-                            className="flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold text-white"
-                            style={{ background: diffColor, opacity: starting === matchScenario.id ? 0.6 : 1 }}
-                            whileTap={{ scale: 0.97 }}
-                          >
-                            {starting === matchScenario.id ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={14} /> Начать</>}
-                          </motion.button>
-                          <motion.button
-                            onClick={() => onStartStory(matchScenario.id, storyCalls)}
-                            disabled={!!starting}
-                            className="flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-medium"
-                            style={{ border: `1px solid color-mix(in srgb, ${diffColor} 30%, transparent)`, color: diffColor }}
-                            whileTap={{ scale: 0.97 }}
-                          >
-                            AI x{storyCalls}
-                          </motion.button>
-                        </>
-                      ) : (
-                        <div className="col-span-2 flex items-center justify-center gap-1.5 text-sm py-2.5" style={{ color: "var(--text-muted)" }}>
-                          <Lock size={14} /> Загрузите сценарии
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
+                  arch={arch}
+                  size="full"
+                  scenario={matchScenario}
+                  isStarting={starting === matchScenario?.id}
+                  onStart={onStart}
+                  onStartStory={onStartStory}
+                  storyCalls={storyCalls}
+                />
               );
             })}
           </div>
