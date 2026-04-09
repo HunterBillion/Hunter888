@@ -96,7 +96,10 @@ function formatDebtShort(v: number): string {
 }
 
 export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading }: ClientCardProps) {
-  const maxCreditor = Math.max(...clientCard.creditors.map((c) => c.amount), 1);
+  const creditors = clientCard?.creditors ?? [];
+  const property = clientCard?.property ?? [];
+  const callHistory = clientCard?.call_history ?? [];
+  const maxCreditor = creditors.length > 0 ? Math.max(...creditors.map((c) => c.amount), 1) : 1;
 
   const container = {
     hidden: { opacity: 0 },
@@ -175,7 +178,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
               <div className="mb-4">
                 <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>КРЕДИТОРЫ</div>
                 <div className="space-y-2">
-                  {clientCard.creditors.map((c, i) => (
+                  {creditors.map((c, i) => (
                     <div key={i}>
                       <div className="flex justify-between text-xs mb-0.5">
                         <span style={{ color: "var(--text-secondary)" }}>{c.name}</span>
@@ -217,7 +220,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
                 </div>
                 {clientCard.property.length > 0 ? (
                   <div className="space-y-0.5">
-                    {clientCard.property.map((p, i) => (
+                    {property.map((p, i) => (
                       <div key={i} className="text-xs" style={{ color: "var(--text-primary)" }}>
                         {p.type} <span className="text-xs" style={{ color: "var(--text-muted)" }}>({propertyStatusLabels[p.status] || p.status})</span>
                       </div>
@@ -241,7 +244,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
                 {/* Timeline line */}
                 <div className="absolute left-0 top-1 bottom-1 w-px" style={{ background: "var(--border-color)" }} />
                 <div className="space-y-3">
-                  {clientCard.call_history.map((call, i) => (
+                  {callHistory.map((call, i) => (
                     <div key={i} className="relative">
                       <div className="absolute -left-4 top-1.5 w-2 h-2 rounded-full" style={{ background: "var(--accent)", boxShadow: "0 0 6px var(--accent-glow)" }} />
                       <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{call.date}</div>
