@@ -71,6 +71,13 @@ export default async function RootLayout({
         {/* CSP nonce — available to client scripts via document.querySelector */}
         <meta property="csp-nonce" content={nonce} />
         {/* Fonts loaded via next/font/google (Geist Sans + Geist Mono) */}
+        {/* Noto Color Emoji for consistent emoji rendering */}
+        <link
+          href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"
+          rel="stylesheet"
+          nonce={nonce}
+          suppressHydrationWarning
+        />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased`}>
         <Providers>
