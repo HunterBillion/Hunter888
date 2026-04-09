@@ -201,7 +201,7 @@ export default function HistoryPage() {
           ) : entries.length === 0 ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-16 flex flex-col items-center">
               <Inbox size={40} style={{ color: "var(--text-muted)" }} />
-              <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>Вы ещё не выходили на охоту</p>
+              <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>Твоя история начнётся с первой тренировки.</p>
               <motion.button onClick={() => router.push("/training")} className="btn-neon mt-4 flex items-center gap-2" whileTap={{ scale: 0.97 }}>
                 Начать первую охоту <ArrowRight size={16} />
               </motion.button>

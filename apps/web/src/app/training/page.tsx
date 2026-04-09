@@ -743,8 +743,8 @@ function ScenariosTab({
           <Inbox size={40} style={{ color: "var(--text-muted)" }} />
           <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
             {typeFilter !== "all" || difficultyFilter !== "all"
-              ? "Нет сценариев с такими фильтрами"
-              : "Сценарии пока не добавлены"}
+              ? "Ничего не найдено. Попробуйте другие фильтры."
+              : "Сценарии загружаются. Попробуйте обновить страницу."}
           </p>
         </motion.div>
       ) : (

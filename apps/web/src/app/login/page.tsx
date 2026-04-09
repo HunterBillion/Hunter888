@@ -200,33 +200,13 @@ export default function LoginPage() {
             transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
             className="relative mx-auto mb-5 h-20 w-20 flex items-center justify-center"
           >
-            {/* Outer breathing ring */}
-            <motion.div
+            {/* Static accent border */}
+            <div
               className="absolute inset-0 rounded-2xl"
               style={{
                 border: "1.5px solid var(--accent)",
-                opacity: 0.3,
+                opacity: 0.25,
               }}
-              animate={{
-                rotate: [0, 90],
-                borderRadius: ["28%", "50%", "28%"],
-                scale: [1, 1.06, 1],
-              }}
-              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-            />
-            {/* Inner morphing shape */}
-            <motion.div
-              className="absolute rounded-2xl"
-              style={{
-                inset: 8,
-                border: "1px solid var(--accent)",
-                opacity: 0.2,
-              }}
-              animate={{
-                rotate: [0, -90],
-                borderRadius: ["50%", "28%", "50%"],
-              }}
-              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
             />
             {/* Core — stylized "X" */}
             <motion.svg
@@ -235,14 +215,7 @@ export default function LoginPage() {
               viewBox="0 0 28 28"
               fill="none"
               className="relative z-10"
-              animate={{
-                filter: [
-                  "drop-shadow(0 0 8px var(--accent-glow))",
-                  "drop-shadow(0 0 20px var(--accent-glow))",
-                  "drop-shadow(0 0 8px var(--accent-glow))",
-                ],
-              }}
-              transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+              style={{ filter: "drop-shadow(0 0 6px var(--accent-glow))" }}
             >
               <motion.path
                 d="M6 6L22 22M22 6L6 22"
@@ -254,16 +227,6 @@ export default function LoginPage() {
                 transition={{ duration: 1.2, delay: 0.3, ease: EASE_SNAP }}
               />
             </motion.svg>
-            {/* Ambient glow behind */}
-            <motion.div
-              className="absolute rounded-full"
-              style={{
-                inset: -4,
-                background: "radial-gradient(circle, var(--accent-glow) 0%, transparent 70%)",
-              }}
-              animate={{ opacity: [0.3, 0.6, 0.3] }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-            />
           </motion.div>
 
           {/* Logo text */}

@@ -164,7 +164,7 @@ export default function PvPLeaderboardPage() {
           ) : store.leaderboard.length === 0 ? (
             <EmptyState
               icon={Trophy}
-              title="Пока нет данных"
+              title="Рейтинг ждёт первого бойца"
               description="Проведите первый PvP-бой, чтобы попасть в рейтинг"
               actionLabel="Начать бой"
               onAction={() => window.location.href = "/pvp"}
@@ -276,7 +276,7 @@ function ArenaLeaderboardSection() {
       ) : kStore.arenaLeaderboard.length === 0 ? (
         <EmptyState
           icon={Trophy}
-          title="Пока нет данных"
+          title="Арена ждёт участников"
           description="Пройдите первый тест в Арене знаний"
           actionLabel="К Арене"
           onAction={() => window.location.href = "/knowledge"}

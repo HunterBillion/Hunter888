@@ -2,6 +2,18 @@ import { create } from "zustand";
 import { api } from "@/lib/api";
 import type { Achievement } from "@/types";
 
+/** Dispatched on window when gamification milestones are reached */
+export type GamificationEvent =
+  | { type: "xp-gain"; amount: number }
+  | { type: "level-up"; newLevel: number }
+  | { type: "streak-milestone"; days: number };
+
+function emitGamificationEvent(event: GamificationEvent) {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("gamification", { detail: event }));
+  }
+}
+
 interface GamificationState {
   level: number;
   currentXP: number;
@@ -43,16 +55,34 @@ export const useGamificationStore = create<GamificationState>((set, get) => ({
         return;
       }
       const data = raw as Record<string, unknown>;
+      const prev = get();
+      const newLevel = typeof data.level === "number" ? data.level : 1;
+      const newTotalXP = typeof data.total_xp === "number" ? data.total_xp : 0;
+      const newStreak = typeof data.streak_days === "number" ? data.streak_days : 0;
+
       set({
-        level: typeof data.level === "number" ? data.level : 1,
+        level: newLevel,
         currentXP: typeof data.xp_current_level === "number" ? data.xp_current_level : 0,
         nextLevelXP: typeof data.xp_next_level === "number" ? data.xp_next_level : 100,
-        totalXP: typeof data.total_xp === "number" ? data.total_xp : 0,
-        streak: typeof data.streak_days === "number" ? data.streak_days : 0,
+        totalXP: newTotalXP,
+        streak: newStreak,
         achievements: Array.isArray(data.achievements) ? (data.achievements as Achievement[]) : [],
         loading: false,
         _fetchTs: Date.now(),
       });
+
+      // Emit celebration events
+      if (prev._fetchTs > 0) {
+        if (newLevel > prev.level) {
+          emitGamificationEvent({ type: "level-up", newLevel });
+        }
+        if (newTotalXP > prev.totalXP) {
+          emitGamificationEvent({ type: "xp-gain", amount: newTotalXP - prev.totalXP });
+        }
+        if (newStreak > prev.streak && [7, 14, 30, 60, 100].includes(newStreak)) {
+          emitGamificationEvent({ type: "streak-milestone", days: newStreak });
+        }
+      }
     } catch (e) {
       set({ loading: false, error: (e as Error).message });
     }

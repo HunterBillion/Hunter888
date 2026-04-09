@@ -15,6 +15,7 @@ import { CommandPalette } from "@/components/ui/CommandPalette";
 import { PageTransition } from "@/components/layout/PageTransition";
 import { ScreenShakeProvider } from "@/components/ui/ScreenShake";
 import { LLMDegradationBanner } from "@/components/ui/LLMDegradationBanner";
+import { CelebrationListener } from "@/components/gamification/CelebrationListener";
 
 /** Check if vh_authenticated marker cookie exists (survives page reload). */
 function hasAuthMarkerCookie(): boolean {
@@ -300,6 +301,7 @@ export default function AuthLayout({
 
           <Header />
           <LLMDegradationBanner />
+          <CelebrationListener />
           <main className="flex-1" style={{ position: "relative", zIndex: 1, minHeight: "calc(100vh - 200px)", overflow: "clip" }}>
             <PageTransition>{children}</PageTransition>
           </main>

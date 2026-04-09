@@ -24,8 +24,8 @@ interface EmptyStateProps {
  * Usage:
  *   <EmptyState
  *     icon={Users}
- *     title="Пока нет клиентов"
- *     description="Добавьте первого клиента для начала работы"
+ *     title="Клиенты появятся здесь"
+ *     description="Добавьте первого клиента — и CRM начнёт работать на вас"
  *     hint="1 сессия — и вы в рейтинге"
  *     actionLabel="Добавить клиента"
  *     onAction={() => setShowModal(true)}

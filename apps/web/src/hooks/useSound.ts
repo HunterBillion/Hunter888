@@ -6,7 +6,11 @@ type SoundName =
   | "success" | "epic" | "legendary" | "fail" | "levelup"
   // Arena sounds
   | "correct" | "incorrect" | "tick" | "challenge"
-  | "match_start" | "victory" | "defeat" | "streak" | "rank_up";
+  | "match_start" | "victory" | "defeat" | "streak" | "rank_up"
+  // Gamification sounds
+  | "click" | "xp" | "levelUp" | "notification";
+
+export type { SoundName };
 
 const SOUND_PATHS: Record<SoundName, string> = {
   success: "/sounds/success.mp3",
@@ -24,6 +28,11 @@ const SOUND_PATHS: Record<SoundName, string> = {
   defeat: "/sounds/defeat.mp3",
   streak: "/sounds/streak.mp3",
   rank_up: "/sounds/rank_up.mp3",
+  // Gamification
+  click: "/sounds/click.mp3",
+  xp: "/sounds/xp.mp3",
+  levelUp: "/sounds/levelup.mp3",
+  notification: "/sounds/notification.mp3",
 };
 
 // ─── Multi-layer procedural sound synthesis ──────────────────────────────────
@@ -242,6 +251,49 @@ const SOUND_DESIGNS: Partial<Record<SoundName, SoundDesign>> = {
     ],
   },
 
+  // ── CLICK: short 800Hz blip, 50ms ──
+  click: {
+    totalDur: 0.05,
+    layers: [
+      { freq: 800, type: "sine", gain: 0.3, dur: 0.04, attack: 0.002 },
+      { freq: 1600, type: "sine", gain: 0.1, dur: 0.02, attack: 0.001 },
+    ],
+  },
+
+  // ── XP: quick ascending arpeggio C5-E5-G5, 150ms total ──
+  xp: {
+    totalDur: 0.18,
+    layers: [
+      { freq: 523, type: "sine", gain: 0.25, dur: 0.06, attack: 0.003 },
+      { freq: 659, type: "sine", gain: 0.25, dur: 0.06, delay: 0.05, attack: 0.003 },
+      { freq: 784, type: "sine", gain: 0.3, dur: 0.08, delay: 0.1, attack: 0.003 },
+    ],
+  },
+
+  // ── LEVELUP (camelCase alias): major chord C4-E4-G4 held 500ms with fade ──
+  levelUp: {
+    totalDur: 0.6,
+    layers: [
+      { freq: 262, type: "sine", gain: 0.3, dur: 0.5, attack: 0.01, decayStart: 0.4 },
+      { freq: 330, type: "sine", gain: 0.25, dur: 0.5, attack: 0.01, decayStart: 0.4 },
+      { freq: 392, type: "sine", gain: 0.25, dur: 0.5, attack: 0.01, decayStart: 0.4 },
+      // Octave shimmer
+      { freq: 523, type: "sine", gain: 0.1, dur: 0.4, delay: 0.05, decayStart: 0.3 },
+    ],
+  },
+
+  // ── NOTIFICATION: soft bell tone C6 (1047Hz), 300ms with harmonics ──
+  notification: {
+    totalDur: 0.4,
+    layers: [
+      { freq: 1047, type: "sine", gain: 0.3, dur: 0.3, attack: 0.005, decayStart: 0.15 },
+      // Bell harmonics for reverb-like shimmer
+      { freq: 2094, type: "sine", gain: 0.1, dur: 0.25, delay: 0.01, decayStart: 0.1 },
+      { freq: 3141, type: "sine", gain: 0.05, dur: 0.2, delay: 0.02, decayStart: 0.08 },
+      { freq: 523, type: "sine", gain: 0.08, dur: 0.35, delay: 0.005, decayStart: 0.2 },
+    ],
+  },
+
   // ── LEVELUP: ascending power chord ──
   levelup: {
     totalDur: 0.8,
@@ -372,9 +424,10 @@ export function useSound() {
   }, []);
 
   const playSound = useCallback(async (name: SoundName, volume = 0.5) => {
-    // Check mute
+    // Check mute (support both legacy and new keys)
     try {
       if (localStorage.getItem("vh-sounds-muted") === "1") return;
+      if (localStorage.getItem("vh_sound") === "off") return;
     } catch { /* localStorage may throw in private browsing */ }
 
     const path = SOUND_PATHS[name];

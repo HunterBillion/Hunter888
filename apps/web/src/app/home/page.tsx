@@ -165,16 +165,6 @@ export default function HomePage() {
                   <svg width="88" height="88" viewBox="0 0 88 88" className="rotate-[-90deg]">
                     {/* Background track */}
                     <circle cx="44" cy="44" r="38" fill="none" stroke="rgba(99,102,241,0.12)" strokeWidth="5" />
-                    {/* Glow track (soft underlayer) */}
-                    <circle
-                      cx="44" cy="44" r="38" fill="none"
-                      stroke="var(--accent-glow)"
-                      strokeWidth="8"
-                      strokeLinecap="round"
-                      strokeDasharray={`${2 * Math.PI * 38}`}
-                      strokeDashoffset={`${2 * Math.PI * 38 * (1 - xpPct / 100)}`}
-                      style={{ filter: "blur(4px)", opacity: 0.5, transition: "stroke-dashoffset 1s ease" }}
-                    />
                     {/* Main progress arc */}
                     <circle
                       cx="44" cy="44" r="38" fill="none"
@@ -183,7 +173,7 @@ export default function HomePage() {
                       strokeLinecap="round"
                       strokeDasharray={`${2 * Math.PI * 38}`}
                       strokeDashoffset={`${2 * Math.PI * 38 * (1 - xpPct / 100)}`}
-                      style={{ filter: "drop-shadow(0 0 8px var(--accent-glow))", transition: "stroke-dashoffset 1s ease" }}
+                      style={{ filter: "drop-shadow(0 0 4px var(--accent-glow))", transition: "stroke-dashoffset 1s ease" }}
                     />
                   </svg>
                   <div className="absolute inset-0 flex items-center justify-center">
