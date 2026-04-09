@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Award } from "lucide-react";
-import { Twemoji } from "@/components/ui/Twemoji";
+import { AppIcon } from "@/components/ui/AppIcon";
 import { useSound } from "@/hooks/useSound";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { Confetti } from "@/components/ui/Confetti";
@@ -50,8 +50,8 @@ export function AchievementToast({ achievement, onClose }: AchievementToastProps
           transition={{ type: "spring", stiffness: 400, damping: 25 }}
           className="fixed top-6 left-1/2 z-[200] glass-panel overflow-hidden flex items-center gap-4"
           style={{
-            borderColor: "rgba(99,102,241,0.35)",
-            boxShadow: "0 0 40px rgba(99,102,241,0.25), 0 0 80px rgba(99,102,241,0.08)",
+            borderColor: "rgba(124,106,232,0.35)",
+            boxShadow: "0 0 40px rgba(124,106,232,0.25), 0 0 80px rgba(124,106,232,0.08)",
             minWidth: "340px",
             padding: "0",
           }}
@@ -74,13 +74,13 @@ export function AchievementToast({ achievement, onClose }: AchievementToastProps
           <motion.div
             className="flex h-full items-center justify-center px-5 py-5 self-stretch"
             style={{
-              background: "linear-gradient(135deg, var(--accent), rgba(99,102,241,0.7))",
+              background: "linear-gradient(135deg, var(--accent), rgba(124,106,232,0.7))",
             }}
             animate={reducedMotion ? {} : { rotate: [0, -10, 10, -5, 5, 0] }}
             transition={reducedMotion ? {} : { duration: 0.6, delay: 0.3 }}
           >
             {achievement.icon ? (
-              <Twemoji emoji={achievement.icon} size={28} />
+              <AppIcon emoji={achievement.icon} size={28} />
             ) : (
               <Award size={26} className="text-white" />
             )}

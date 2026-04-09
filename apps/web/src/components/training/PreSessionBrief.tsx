@@ -221,7 +221,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {client.fears.slice(0, 5).map((fear, i) => (
-                        <span key={i} className="rounded-full px-2.5 py-0.5 text-xs" style={{ background: "rgba(255,215,0,0.08)", color: "var(--warning)", border: "1px solid rgba(255,215,0,0.15)" }}>
+                        <span key={i} className="rounded-full px-2.5 py-0.5 text-xs" style={{ background: "rgba(212,168,75,0.08)", color: "var(--warning)", border: "1px solid rgba(212,168,75,0.15)" }}>
                           {fear}
                         </span>
                       ))}

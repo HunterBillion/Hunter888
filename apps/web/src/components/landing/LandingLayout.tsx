@@ -265,7 +265,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                               initial={{ scale: 0 }} animate={{ scale: 1 }}
                               transition={{ type: "spring", stiffness: 300, delay: 0.1 }}
                               className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5"
-                              style={{ background: "rgba(0,255,148,0.1)", border: "1px solid rgba(0,255,148,0.25)" }}
+                              style={{ background: "rgba(61,220,132,0.1)", border: "1px solid rgba(61,220,132,0.25)" }}
                             >
                               <Mail size={22} style={{ color: "var(--success)" }} />
                             </motion.div>
@@ -296,7 +296,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                     ) : (
                       <motion.div key="main" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25 }}>
                         {error && (
-                          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 rounded-xl p-3 text-sm mb-5" style={{ background: "rgba(255,51,51,0.08)", border: "1px solid rgba(255,51,51,0.2)", color: "var(--danger)" }}>
+                          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 rounded-xl p-3 text-sm mb-5" style={{ background: "rgba(229,72,77,0.08)", border: "1px solid rgba(229,72,77,0.2)", color: "var(--danger)" }}>
                             <AlertCircle size={16} />{error}
                           </motion.div>
                         )}

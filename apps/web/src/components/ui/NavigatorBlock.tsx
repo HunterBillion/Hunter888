@@ -152,8 +152,8 @@ export function NavigatorBlock() {
       <div
         className="rounded-2xl p-5 sm:p-6 flex items-start gap-4"
         style={{
-          background: "linear-gradient(135deg, rgba(99,102,241,0.07), rgba(99,102,241,0.02))",
-          border: "1px solid rgba(99,102,241,0.18)",
+          background: "linear-gradient(135deg, rgba(124,106,232,0.07), rgba(124,106,232,0.02))",
+          border: "1px solid rgba(124,106,232,0.18)",
         }}
       >
         <div className="w-12 sm:w-14 h-12 sm:h-14 rounded-full skeleton-neon shrink-0" />

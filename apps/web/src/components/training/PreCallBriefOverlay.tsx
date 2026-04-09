@@ -78,8 +78,8 @@ export function PreCallBriefOverlay({ brief, onStart }: Props) {
                     key={i}
                     className="text-xs px-3 py-2 rounded-lg flex items-center gap-2"
                     style={{
-                      background: c.severity >= 0.7 ? "rgba(255,51,51,0.08)" : "rgba(245,158,11,0.08)",
-                      border: `1px solid ${c.severity >= 0.7 ? "rgba(255,51,51,0.2)" : "rgba(245,158,11,0.2)"}`,
+                      background: c.severity >= 0.7 ? "rgba(229,72,77,0.08)" : "rgba(245,158,11,0.08)",
+                      border: `1px solid ${c.severity >= 0.7 ? "rgba(229,72,77,0.2)" : "rgba(245,158,11,0.2)"}`,
                       color: "var(--text-secondary)",
                     }}
                   >

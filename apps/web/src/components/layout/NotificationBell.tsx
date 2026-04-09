@@ -79,9 +79,9 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
     success: { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.25)", color: "var(--success)" },
     consent: { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.25)", color: "var(--success)" },
     warning: { bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)", color: "var(--warning)" },
-    reminder: { bg: "rgba(99,102,241,0.1)", border: "rgba(99,102,241,0.25)", color: "var(--accent)" },
-    achievement: { bg: "rgba(255,215,0,0.1)", border: "rgba(255,215,0,0.25)", color: "#FFD700" },
-    pvp_invitation: { bg: "rgba(255,215,0,0.12)", border: "rgba(255,215,0,0.3)", color: "#FFD700" },
+    reminder: { bg: "rgba(124,106,232,0.1)", border: "rgba(124,106,232,0.25)", color: "var(--accent)" },
+    achievement: { bg: "rgba(212,168,75,0.1)", border: "rgba(212,168,75,0.25)", color: "#FFD700" },
+    pvp_invitation: { bg: "rgba(212,168,75,0.12)", border: "rgba(212,168,75,0.3)", color: "#FFD700" },
   };
 
   const router = useRouter();
@@ -228,7 +228,7 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
                 </div>
                 {unread > 0 && (
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded-full"
-                    style={{ background: "rgba(255,51,51,0.1)", color: "var(--danger)" }}
+                    style={{ background: "rgba(229,72,77,0.1)", color: "var(--danger)" }}
                   >
                     {unread} новых
                   </span>
@@ -290,6 +290,7 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
               {/* Footer */}
               <Link
                 href="/notifications"
+                prefetch={true}
                 onClick={() => setOpen(false)}
                 className="flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-t"
                 style={{ borderColor: "var(--border-color)", color: "var(--accent)" }}

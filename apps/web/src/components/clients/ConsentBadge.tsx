@@ -23,8 +23,8 @@ export function ConsentBadge({ consent }: ConsentBadgeProps) {
     <div
       className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-mono"
       style={{
-        background: active ? "rgba(0,255,102,0.08)" : "rgba(255,51,51,0.08)",
-        border: `1px solid ${active ? "rgba(0,255,102,0.2)" : "rgba(255,51,51,0.2)"}`,
+        background: active ? "rgba(61,220,132,0.08)" : "rgba(229,72,77,0.08)",
+        border: `1px solid ${active ? "rgba(61,220,132,0.2)" : "rgba(229,72,77,0.2)"}`,
         color: active ? "var(--success)" : "var(--danger)",
       }}
     >

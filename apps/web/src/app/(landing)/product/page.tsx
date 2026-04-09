@@ -183,7 +183,7 @@ export default function ProductPage() {
                 >
                   <div
                     className="w-12 h-12 rounded-lg flex items-center justify-center mb-5"
-                    style={{ background: isNeg ? "rgba(255,42,109,0.10)" : "rgba(0,255,148,0.08)" }}
+                    style={{ background: isNeg ? "rgba(229,72,77,0.10)" : "rgba(61,220,132,0.08)" }}
                   >
                     <Icon size={24} style={{ color: isNeg ? "var(--danger)" : "var(--success)" }} />
                   </div>

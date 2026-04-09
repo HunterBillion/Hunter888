@@ -69,9 +69,9 @@ const SKILL_COLORS: Record<string, string> = {
 const MASTERY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   untrained: { label: "Не тренирован", color: "var(--text-muted)", bg: "var(--input-bg)" },
   beginner: { label: "Новичок", color: "var(--info)", bg: "rgba(59,130,246,0.12)" },
-  intermediate: { label: "Средний", color: "#FFD700", bg: "rgba(255,215,0,0.12)" },
+  intermediate: { label: "Средний", color: "#FFD700", bg: "rgba(212,168,75,0.12)" },
   advanced: { label: "Продвинутый", color: "#BF55EC", bg: "rgba(191,85,236,0.12)" },
-  mastered: { label: "Мастер", color: "#00FF94", bg: "rgba(0,255,148,0.12)" },
+  mastered: { label: "Мастер", color: "#00FF94", bg: "rgba(61,220,132,0.12)" },
 };
 
 const SUB_SKILL_LABELS: Record<string, string> = {
@@ -529,7 +529,7 @@ export default function AnalyticsPage() {
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-display text-sm font-bold"
                       style={{
-                        background: rec.priority <= 2 ? "rgba(255,42,109,0.12)" : "var(--accent-muted)",
+                        background: rec.priority <= 2 ? "rgba(229,72,77,0.12)" : "var(--accent-muted)",
                         color: rec.priority <= 2 ? "var(--danger)" : "var(--accent)",
                       }}
                     >

@@ -61,7 +61,7 @@ export function RatingCard({ rating: r }: Props) {
     >
       <div
         className="p-6"
-        style={{ background: "linear-gradient(135deg, rgba(255,215,0,0.14), rgba(59,130,246,0.08) 45%, rgba(0,0,0,0) 100%)" }}
+        style={{ background: "linear-gradient(135deg, rgba(212,168,75,0.14), rgba(59,130,246,0.08) 45%, rgba(0,0,0,0) 100%)" }}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -134,7 +134,7 @@ export function RatingCard({ rating: r }: Props) {
           <div className="h-2 w-full rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
             <motion.div
               className="h-full rounded-full"
-              style={{ background: "linear-gradient(90deg, var(--accent), var(--magenta))", boxShadow: "0 0 8px rgba(99,102,241,0.4)" }}
+              style={{ background: "linear-gradient(90deg, var(--accent), var(--magenta))", boxShadow: "0 0 8px rgba(124,106,232,0.4)" }}
               initial={{ width: 0 }}
               animate={{ width: `${Math.round(nextTier.progress * 100)}%` }}
               transition={{ duration: 1, ease: "easeOut" }}

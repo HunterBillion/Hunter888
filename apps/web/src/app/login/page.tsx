@@ -116,7 +116,7 @@ export default function LoginPage() {
             <div className="text-center py-6">
               <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 280 }}
                 className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5"
-                style={{ background: "rgba(0,255,148,0.1)", border: "1px solid rgba(0,255,148,0.25)" }}
+                style={{ background: "rgba(61,220,132,0.1)", border: "1px solid rgba(61,220,132,0.25)" }}
               >
                 <Mail size={24} style={{ color: "var(--success)" }} />
               </motion.div>
@@ -245,7 +245,7 @@ export default function LoginPage() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
             className="mt-2 font-display text-base font-bold tracking-[0.12em] italic"
-            style={{ color: "var(--accent)", textShadow: "0 0 20px rgba(99,102,241,0.4)" }}
+            style={{ color: "var(--accent)", textShadow: "0 0 20px rgba(124,106,232,0.4)" }}
           >
             Выбор игры, важнее самой игры
           </motion.p>

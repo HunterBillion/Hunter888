@@ -138,7 +138,7 @@ export function CrystalMic({
             width: "clamp(64px, 10vw, 80px)",
             height: "clamp(76px, 12vw, 96px)",
             background: isRecording
-              ? "linear-gradient(135deg, rgba(224,40,204,0.8) 0%, rgba(99,102,241,0.9) 100%)"
+              ? "linear-gradient(135deg, rgba(224,40,204,0.8) 0%, rgba(124,106,232,0.9) 100%)"
               : isProcessing
                 ? "var(--bg-tertiary)"
                 : "rgba(255,255,255,0.08)",
@@ -157,7 +157,7 @@ export function CrystalMic({
             className="crystal-inner absolute inset-[2px] z-0 transition-colors"
             style={{
               background: isRecording
-                ? "linear-gradient(135deg, rgba(224,40,204,0.6) 0%, rgba(99,102,241,0.7) 100%)"
+                ? "linear-gradient(135deg, rgba(224,40,204,0.6) 0%, rgba(124,106,232,0.7) 100%)"
                 : "linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-primary) 100%)",
             }}
           />

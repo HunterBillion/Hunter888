@@ -99,14 +99,14 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
               {/* Inner ring */}
               <motion.div
                 className="absolute inset-3 rounded-full border"
-                style={{ borderColor: isLate ? "rgba(255,215,0,0.2)" : "rgba(99,102,241,0.2)" }}
+                style={{ borderColor: isLate ? "rgba(212,168,75,0.2)" : "rgba(124,106,232,0.2)" }}
                 animate={reducedMotion ? {} : { rotate: -360 }}
                 transition={reducedMotion ? {} : { duration: 5, repeat: Infinity, ease: "linear" }}
               />
               {/* Pulse ring expanding */}
               <motion.div
                 className="absolute inset-0 rounded-full"
-                style={{ border: `1px solid ${isLate ? "rgba(255,215,0,0.3)" : "rgba(99,102,241,0.3)"}` }}
+                style={{ border: `1px solid ${isLate ? "rgba(212,168,75,0.3)" : "rgba(124,106,232,0.3)"}` }}
                 animate={reducedMotion ? {} : { scale: [1, 1.3], opacity: [0.6, 0] }}
                 transition={reducedMotion ? {} : { duration: 2, repeat: Infinity, ease: "easeOut" }}
               />
@@ -199,7 +199,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
               initial={{ opacity: 0.5 }}
               animate={{ opacity: 0 }}
               transition={{ duration: 0.4 }}
-              style={{ background: "rgba(99,102,241,0.15)" }}
+              style={{ background: "rgba(124,106,232,0.15)" }}
             />
 
             {/* VS badge */}
@@ -209,9 +209,9 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
               transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
               className="mx-auto w-20 h-20 rounded-2xl flex items-center justify-center mb-5"
               style={{
-                background: "linear-gradient(135deg, rgba(0,255,102,0.12), rgba(99,102,241,0.12))",
-                border: "2px solid rgba(0,255,102,0.35)",
-                boxShadow: "0 0 30px rgba(0,255,102,0.15)",
+                background: "linear-gradient(135deg, rgba(61,220,132,0.12), rgba(124,106,232,0.12))",
+                border: "2px solid rgba(61,220,132,0.35)",
+                boxShadow: "0 0 30px rgba(61,220,132,0.15)",
               }}
             >
               <Swords size={36} style={{ color: "var(--success)" }} />
@@ -222,7 +222,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
               className="font-display text-2xl font-black tracking-wider"
-              style={{ color: "var(--success)", textShadow: "0 0 20px rgba(0,255,102,0.25)" }}
+              style={{ color: "var(--success)", textShadow: "0 0 20px rgba(61,220,132,0.25)" }}
               aria-live="assertive"
             >
               {opponentRating ? `Охотник ${Math.round(opponentRating)} бросает вызов` : "АРЕНА ГОТОВА"}
@@ -238,7 +238,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
               {/* You */}
               <div className="text-center">
                 <div className="w-14 h-14 rounded-xl mx-auto flex items-center justify-center"
-                  style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)" }}
+                  style={{ background: "rgba(124,106,232,0.15)", border: "1px solid rgba(124,106,232,0.3)" }}
                 >
                   <Shield size={24} style={{ color: "var(--accent)" }} />
                 </div>
@@ -259,7 +259,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
               {/* Opponent */}
               <div className="text-center">
                 <div className="w-14 h-14 rounded-xl mx-auto flex items-center justify-center"
-                  style={{ background: "rgba(255,42,109,0.1)", border: "1px solid rgba(255,42,109,0.25)" }}
+                  style={{ background: "rgba(229,72,77,0.1)", border: "1px solid rgba(229,72,77,0.25)" }}
                 >
                   {opponentRating ? (
                     <Shield size={24} style={{ color: "var(--danger)" }} />

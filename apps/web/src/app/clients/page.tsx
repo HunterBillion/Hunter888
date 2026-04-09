@@ -178,9 +178,9 @@ export default function ClientsPage() {
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <Link href="/clients/graph">
+              <Link href="/clients/graph" prefetch={true}>
                 <motion.button
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
                   style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" }}
                   whileTap={{ scale: 0.97 }}
                 >
@@ -188,9 +188,9 @@ export default function ClientsPage() {
                 </motion.button>
               </Link>
               {isAdminOrRop && (
-                <Link href="/clients/duplicates">
+                <Link href="/clients/duplicates" prefetch={true}>
                   <motion.button
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
                     style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" }}
                     whileTap={{ scale: 0.97 }}
                   >
@@ -198,9 +198,9 @@ export default function ClientsPage() {
                   </motion.button>
                 </Link>
               )}
-              <Link href="/clients/pipeline">
+              <Link href="/clients/pipeline" prefetch={true}>
                 <motion.button
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
                   style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" }}
                   whileTap={{ scale: 0.97 }}
                 >
@@ -210,7 +210,7 @@ export default function ClientsPage() {
               {!isReadOnly && (
                 <motion.button
                   onClick={() => setCreateOpen(true)}
-                  className="btn-neon flex items-center gap-1.5 text-xs"
+                  className="btn-neon flex items-center gap-1.5 text-sm"
                   whileTap={{ scale: 0.97 }}
                 >
                   <Plus size={14} /> Добавить
@@ -396,7 +396,7 @@ export default function ClientsPage() {
             {isAdminOrRop && (
               <motion.button
                 onClick={() => setShowReassign(true)}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium"
                 style={{ background: "var(--accent)", color: "white" }}
                 whileTap={{ scale: 0.97 }}
               >
@@ -406,7 +406,7 @@ export default function ClientsPage() {
             <motion.button
               onClick={handleExport}
               disabled={exporting}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium"
               style={{ background: "var(--input-bg)", color: "var(--text-secondary)", border: "1px solid var(--border-color)" }}
               whileTap={{ scale: 0.97 }}
             >

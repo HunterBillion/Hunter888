@@ -264,7 +264,7 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
         {hasFakes && (
           <span
             className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-mono uppercase tracking-wider"
-            style={{ background: "rgba(255,42,109,0.1)", color: "#FF2A6D", border: "1px solid rgba(255,42,109,0.2)" }}
+            style={{ background: "rgba(229,72,77,0.1)", color: "#FF2A6D", border: "1px solid rgba(229,72,77,0.2)" }}
           >
             <span style={{ width: 7, height: 7, transform: "rotate(45deg)", background: "#FF2A6D", display: "inline-block" }} />
             Фейк
@@ -330,7 +330,7 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
                   onReplayMessage && tp.message_index != null ? "cursor-pointer hover:ring-1 hover:ring-[var(--accent)]" : ""
                 }`}
                 style={{
-                  background: isForward ? "rgba(0,255,148,0.06)" : "rgba(255,42,109,0.06)",
+                  background: isForward ? "rgba(61,220,132,0.06)" : "rgba(229,72,77,0.06)",
                   borderLeft: `2px solid ${isForward ? "var(--success)" : "var(--danger)"}`,
                 }}
                 onClick={() => {

@@ -87,7 +87,7 @@ export function MicCheck({ onComplete, onSkip }: MicCheckProps) {
       <div
         className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl"
         style={{
-          background: status === "success" ? "rgba(0,255,102,0.1)" : status === "denied" || status === "error" ? "rgba(255,51,51,0.1)" : "var(--accent-muted)",
+          background: status === "success" ? "rgba(61,220,132,0.1)" : status === "denied" || status === "error" ? "rgba(229,72,77,0.1)" : "var(--accent-muted)",
           border: `2px solid ${status === "success" ? "var(--success)" : status === "denied" || status === "error" ? "var(--danger)" : "var(--accent)"}`,
         }}
       >
@@ -126,7 +126,7 @@ export function MicCheck({ onComplete, onSkip }: MicCheckProps) {
           <div className="h-3 rounded-full overflow-hidden mx-auto max-w-[200px]" style={{ background: "var(--input-bg)" }}>
             <motion.div
               className="h-full rounded-full"
-              style={{ background: level > 30 ? "var(--success)" : "var(--accent)", boxShadow: level > 30 ? "0 0 8px rgba(0,255,102,0.5)" : "none" }}
+              style={{ background: level > 30 ? "var(--success)" : "var(--accent)", boxShadow: level > 30 ? "0 0 8px rgba(61,220,132,0.5)" : "none" }}
               animate={{ width: `${Math.max(5, level)}%` }}
               transition={{ duration: 0.1 }}
             />

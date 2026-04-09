@@ -108,8 +108,8 @@ export function ManagerListView({
           onClick={onToggleCompareMode}
           style={{
             padding: "0.5rem 0.75rem",
-            background: compareMode ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.04)",
-            border: `1px solid ${compareMode ? "rgba(99,102,241,0.3)" : "rgba(255,255,255,0.08)"}`,
+            background: compareMode ? "rgba(124,106,232,0.15)" : "rgba(255,255,255,0.04)",
+            border: `1px solid ${compareMode ? "rgba(124,106,232,0.3)" : "rgba(255,255,255,0.08)"}`,
             borderRadius: 8,
             color: compareMode ? "var(--accent)" : "var(--text-muted)",
             cursor: "pointer",
@@ -147,8 +147,8 @@ export function ManagerListView({
           gap: "0.75rem",
           padding: "0.75rem 1rem",
           marginBottom: "1rem",
-          background: "rgba(99,102,241,0.08)",
-          border: "1px solid rgba(99,102,241,0.2)",
+          background: "rgba(124,106,232,0.08)",
+          border: "1px solid rgba(124,106,232,0.2)",
           borderRadius: 10,
           flexWrap: "wrap",
         }}>
@@ -162,8 +162,8 @@ export function ManagerListView({
             disabled={compareSelected.length < 2 || compareLoading}
             style={{
               padding: "0.4rem 1rem",
-              background: compareSelected.length >= 2 ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(99,102,241,0.3)",
+              background: compareSelected.length >= 2 ? "rgba(124,106,232,0.2)" : "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(124,106,232,0.3)",
               borderRadius: 8,
               color: compareSelected.length >= 2 ? "#a5b4fc" : "var(--text-muted)",
               cursor: compareSelected.length >= 2 ? "pointer" : "not-allowed",
@@ -380,10 +380,10 @@ export function ManagerListView({
                 gap: "1rem",
                 padding: "0.85rem 1.25rem",
                 background: compareMode && compareSelected.includes(w.manager_id)
-                  ? "rgba(99,102,241,0.08)"
+                  ? "rgba(124,106,232,0.08)"
                   : "rgba(255,255,255,0.03)",
                 border: compareMode && compareSelected.includes(w.manager_id)
-                  ? "1px solid rgba(99,102,241,0.3)"
+                  ? "1px solid rgba(124,106,232,0.3)"
                   : "1px solid rgba(255,255,255,0.06)",
                 borderRadius: 10,
                 cursor: "pointer",
@@ -401,7 +401,7 @@ export function ManagerListView({
                     ? "2px solid #6366f1"
                     : "2px solid rgba(255,255,255,0.15)",
                   background: compareSelected.includes(w.manager_id)
-                    ? "rgba(99,102,241,0.3)"
+                    ? "rgba(124,106,232,0.3)"
                     : "transparent",
                   display: "flex",
                   alignItems: "center",

@@ -238,6 +238,7 @@ export default function Header() {
           <div className="flex items-center justify-center lg:justify-self-center">
             <Link
               href="/home"
+              prefetch={true}
               className="group flex items-center gap-0 rounded-[20px] px-3 py-1.5 transition-opacity duration-200 hover:opacity-85"
               aria-label="X·HUNTER — Главная"
             >
@@ -432,6 +433,7 @@ export default function Header() {
                       >
                         <Link
                           href={item.href}
+                          prefetch={true}
                           onClick={() => setOpenPanel("none")}
                           aria-current={active ? "page" : undefined}
                           className="flex items-center gap-2.5 rounded-[16px] px-3.5 py-3 text-sm font-medium transition-all duration-200"
@@ -469,6 +471,7 @@ export default function Header() {
                             >
                               <Link
                                 href={item.href}
+                                prefetch={true}
                                 onClick={() => setOpenPanel("none")}
                                 aria-current={active ? "page" : undefined}
                                 className="flex items-center gap-2.5 rounded-[16px] px-3.5 py-3 text-sm font-medium transition-all duration-200"

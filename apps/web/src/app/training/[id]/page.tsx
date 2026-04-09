@@ -1095,7 +1095,7 @@ export default function TrainingSessionPage() {
         {/* LEFT: Chat Panel */}
         <aside className="training-session-panel hidden lg:flex flex-col rounded-2xl overflow-hidden"
           style={{
-            background: "linear-gradient(180deg, rgba(99,102,241,0.04) 0%, rgba(255,255,255,0.02) 100%)",
+            background: "linear-gradient(180deg, rgba(124,106,232,0.04) 0%, rgba(255,255,255,0.02) 100%)",
           }}
         >
           {/* Accent strip */}
@@ -1108,7 +1108,7 @@ export default function TrainingSessionPage() {
             {s.messages.length === 0 && s.sessionState === "ready" && (
               <div className="py-20 flex flex-col items-center gap-4">
                 <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
-                  style={{ background: "rgba(99,102,241,0.08)" }}
+                  style={{ background: "rgba(124,106,232,0.08)" }}
                 >
                   <MessageSquare size={24} style={{ color: "var(--accent)", opacity: 0.5 }} />
                 </div>
@@ -1177,7 +1177,7 @@ export default function TrainingSessionPage() {
 
         {/* CENTER: Avatar + Mic */}
         <section className="training-session-panel training-session-center rounded-2xl relative flex flex-col items-center justify-center overflow-hidden"
-          style={{ background: "radial-gradient(ellipse at center, rgba(99,102,241,0.06) 0%, transparent 70%)" }}
+          style={{ background: "radial-gradient(ellipse at center, rgba(124,106,232,0.06) 0%, transparent 70%)" }}
         >
           {/* Client name + emotion — top center */}
           <div className="absolute top-5 left-0 right-0 flex flex-col items-center gap-1.5 z-30">
@@ -1444,7 +1444,7 @@ export default function TrainingSessionPage() {
                   animate={{ opacity: 0 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.8 }}
-                  style={{ background: "radial-gradient(circle at center, rgba(0,255,148,0.15) 0%, transparent 70%)" }}
+                  style={{ background: "radial-gradient(circle at center, rgba(61,220,132,0.15) 0%, transparent 70%)" }}
                 />
               )}
             </AnimatePresence>
@@ -1466,7 +1466,7 @@ export default function TrainingSessionPage() {
                 {[
                   ["Возражения", scoreHint.objection_handling, "var(--warning)"],
                   ["Коммуникация", scoreHint.communication, "var(--info)"],
-                  ["Человеческий фактор", scoreHint.human_factor, "#EC4899"],
+                  ["Человеческий фактор", scoreHint.human_factor, "var(--magenta)"],
                 ].map(([label, value, color]) => (
                   <div key={label as string}>
                     <div className="mb-1 flex items-center justify-between text-sm" style={{ color: "var(--text-muted)" }}>
@@ -1509,8 +1509,8 @@ export default function TrainingSessionPage() {
         {s.sessionState === "completed" && (
           <motion.div key="modal-completed" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[150] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(8px)" }}>
             <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 300, damping: 20 }} className="glass-panel px-8 sm:px-12 py-8 text-center max-w-md rounded-3xl">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "rgba(0,255,102,0.1)", boxShadow: "0 0 40px rgba(0,255,102,0.15)" }}>
-                <CheckCircle2 size={32} style={{ color: "#00FF66" }} />
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "rgba(61,220,132,0.1)", boxShadow: "0 0 40px rgba(61,220,132,0.15)" }}>
+                <CheckCircle2 size={32} style={{ color: "var(--success)" }} />
               </div>
               <h2 className="mt-4 font-display text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
                 ТРЕНИРОВКА ЗАВЕРШЕНА
@@ -1522,7 +1522,7 @@ export default function TrainingSessionPage() {
                   transition={{ delay: 0.3 }}
                   className="mt-4"
                 >
-                  <div className="font-display text-5xl font-black" style={{ color: sessionEndedRef.current.score >= 70 ? "#00FF66" : sessionEndedRef.current.score >= 40 ? "#FFB400" : "#FF3333" }}>
+                  <div className="font-display text-5xl font-black" style={{ color: sessionEndedRef.current.score >= 70 ? "var(--success)" : sessionEndedRef.current.score >= 40 ? "var(--warning)" : "var(--danger)" }}>
                     {Math.round(sessionEndedRef.current.score)}
                   </div>
                   <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>баллов</div>
@@ -1536,7 +1536,7 @@ export default function TrainingSessionPage() {
                   className="mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2"
                   style={{ background: "rgba(255,180,0,0.1)", border: "1px solid rgba(255,180,0,0.2)" }}
                 >
-                  <span className="font-display font-bold text-lg" style={{ color: "#FFB400" }}>+{sessionEndedRef.current.xp} XP</span>
+                  <span className="font-display font-bold text-lg" style={{ color: "var(--warning)" }}>+{sessionEndedRef.current.xp} XP</span>
                 </motion.div>
               )}
               {sessionEndedRef.current.levelUp && (
@@ -1545,9 +1545,9 @@ export default function TrainingSessionPage() {
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.9, type: "spring" }}
                   className="mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2"
-                  style={{ background: "rgba(0,255,102,0.1)", border: "1px solid rgba(0,255,102,0.3)" }}
+                  style={{ background: "rgba(61,220,132,0.1)", border: "1px solid rgba(61,220,132,0.3)" }}
                 >
-                  <span className="font-display font-bold text-lg" style={{ color: "#00FF66" }}>УРОВЕНЬ ПОВЫШЕН!</span>
+                  <span className="font-display font-bold text-lg" style={{ color: "var(--success)" }}>УРОВЕНЬ ПОВЫШЕН!</span>
                 </motion.div>
               )}
               <motion.p
@@ -1568,8 +1568,8 @@ export default function TrainingSessionPage() {
         {s.showAbortModal && (
           <motion.div key="modal-abort" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[150] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}>
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="glass-panel w-full max-w-md px-6 sm:px-8 py-7 text-center rounded-2xl">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(255,51,51,0.1)", border: "1px solid rgba(255,51,51,0.2)" }}>
-                <XCircle size={26} style={{ color: "#FF3333" }} />
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(229,72,77,0.1)", border: "1px solid rgba(229,72,77,0.2)" }}>
+                <XCircle size={26} style={{ color: "var(--danger)" }} />
               </div>
               <h2 className="mt-4 font-display text-xl font-bold" style={{ color: "var(--text-primary)" }}>
                 Прервать тренировку?

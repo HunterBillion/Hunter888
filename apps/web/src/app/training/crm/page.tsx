@@ -79,7 +79,7 @@ export default function GameCRMPage() {
 
   return (
     <AuthLayout>
-      <div className="min-h-[calc(100vh-64px)] bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.14),transparent_32%),linear-gradient(180deg,#040405_0%,#0a0a0d_45%,#09090b_100%)]">
+      <div className="min-h-[calc(100vh-64px)] bg-[radial-gradient(circle_at_top,rgba(124,106,232,0.14),transparent_32%),linear-gradient(180deg,#040405_0%,#0a0a0d_45%,#09090b_100%)]">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -95,7 +95,7 @@ export default function GameCRMPage() {
                 <div className="max-w-2xl">
                   <div className="flex items-center gap-3">
                     <BackButton href="/training" label="К тренировке" />
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl" style={{ background: "rgba(99,102,241,0.16)", border: "1px solid rgba(99,102,241,0.26)" }}>
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl" style={{ background: "rgba(124,106,232,0.16)", border: "1px solid rgba(124,106,232,0.26)" }}>
                       <Gamepad2 size={20} style={{ color: "var(--accent)" }} />
                     </div>
                     <div>

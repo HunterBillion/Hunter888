@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { CheckCircle, XCircle, Clock, Pencil, Medal, Bot, User } from "lucide-react";
 import { useKnowledgeStore } from "@/stores/useKnowledgeStore";
 import type { ArenaRoundResult, ArenaFinalResults } from "@/types";
 
@@ -148,7 +149,7 @@ export default function PvPArenaMatch({ userId, sendMessage }: PvPArenaMatchProp
                 }}
               >
                 <div className="flex items-center gap-2">
-                  <span>{player.is_bot ? "🤖" : isMe ? "👤" : "👤"}</span>
+                  <span>{player.is_bot ? <Bot size={16} /> : <User size={16} />}</span>
                   <span className="font-medium" style={{ color: isMe ? "var(--accent)" : "var(--text-primary)" }}>
                     {isMe ? "Вы" : player.name}
                   </span>
@@ -164,19 +165,19 @@ export default function PvPArenaMatch({ userId, sendMessage }: PvPArenaMatchProp
                       const pr = rr.players.find((p) => p.user_id === player.user_id);
                       return (
                         <span key={`${rr.round_number ?? rrIdx}-${player.user_id}`} className={`w-4 h-4 rounded-full text-xs flex items-center justify-center ${pr?.is_correct ? "bg-green-600" : "bg-red-600"}`}>
-                          {pr?.is_correct ? "✓" : "✗"}
+                          {pr?.is_correct ? <CheckCircle size={10} /> : <XCircle size={10} />}
                         </span>
                       );
                     })}
                   </div>
                   {/* Answer status for current round */}
                   {pvpCurrentQuestion && (
-                    <span className="text-xs">
+                    <span className="text-xs inline-flex items-center">
                       {isMe && pvpMyAnswerSubmitted
-                        ? "✅"
+                        ? <CheckCircle size={14} />
                         : hasAnswered
-                          ? "⌛"
-                          : "✏️"}
+                          ? <Clock size={14} />
+                          : <Pencil size={14} />}
                     </span>
                   )}
                 </div>
@@ -231,7 +232,7 @@ export default function PvPArenaMatch({ userId, sendMessage }: PvPArenaMatchProp
             {lastResult.players.map((p) => (
               <div key={p.user_id} className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
-                  <span>{p.is_correct ? "✅" : "❌"}</span>
+                  <span>{p.is_correct ? <CheckCircle size={14} /> : <XCircle size={14} />}</span>
                   <span className={p.user_id === userId ? "font-medium" : ""} style={{ color: p.user_id === userId ? "var(--accent)" : "var(--text-primary)" }}>
                     {p.user_id === userId ? "Вы" : p.name}
                   </span>
@@ -276,8 +277,6 @@ function ArenaResultsView({
       <div className="w-full max-w-md space-y-3">
         {results.rankings.map((player) => {
           const isMe = player.user_id === userId;
-          const medals = ["🥇", "🥈", "🥉", "4️⃣"];
-
           return (
             <div
               key={player.user_id}
@@ -285,11 +284,11 @@ function ArenaResultsView({
               style={isMe ? { background: "var(--accent-muted)", border: "1px solid var(--accent)" } : undefined}
             >
               <div className="flex items-center gap-3">
-                <span className="text-2xl">{medals[player.rank - 1] || `#${player.rank}`}</span>
+                <span className="text-2xl">{player.rank <= 3 ? <Medal size={24} /> : `#${player.rank}`}</span>
                 <div>
                   <p className="font-medium" style={{ color: isMe ? "var(--accent)" : "var(--text-primary)" }}>
                     {isMe ? "Вы" : player.name}
-                    {player.is_bot && " 🤖"}
+                    {player.is_bot && <> <Bot size={14} className="inline" /></>}
                   </p>
                   <p className="text-sm text-[var(--text-muted)]">
                     {player.score} очков | {player.correct} верных

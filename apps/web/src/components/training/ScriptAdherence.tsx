@@ -86,7 +86,7 @@ export default function ScriptAdherence({
         <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
           <motion.div
             className="h-full rounded-full"
-            style={{ background: "var(--accent)", boxShadow: "0 0 5px rgba(99,102,241,0.5)" }}
+            style={{ background: "var(--accent)", boxShadow: "0 0 5px rgba(124,106,232,0.5)" }}
             animate={{ width: `${pct}%` }}
             transition={{ duration: 0.8 }}
           />
@@ -165,7 +165,7 @@ export default function ScriptAdherence({
                           size={20}
                           style={{
                             color: isHighlighted ? "var(--warning)" : isCurrent ? "var(--accent)" : "var(--border-color)",
-                            filter: isHighlighted ? "drop-shadow(0 0 6px rgba(255,215,0,0.6))" : "none",
+                            filter: isHighlighted ? "drop-shadow(0 0 6px rgba(212,168,75,0.6))" : "none",
                           }}
                           strokeWidth={(isCurrent || isHighlighted) ? 2.5 : 1.5}
                         />

@@ -22,7 +22,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import { Twemoji } from "@/components/ui/Twemoji";
+import { AppIcon } from "@/components/ui/AppIcon";
 import { useSound } from "@/hooks/useSound";
 import { useKnowledgeStore, type QuizMessage } from "@/stores/useKnowledgeStore";
 import { ErrorBoundary } from "@/components/errors/ErrorBoundary";
@@ -438,10 +438,10 @@ function KnowledgeSessionPage() {
                 style={{
                   background:
                     accuracy >= 75
-                      ? "rgba(0,255,102,0.1)"
+                      ? "rgba(61,220,132,0.1)"
                       : accuracy >= 50
                         ? "rgba(245,158,11,0.1)"
-                        : "rgba(255,51,51,0.1)",
+                        : "rgba(229,72,77,0.1)",
                   border: `2px solid ${accuracy >= 75 ? "#00FF6640" : accuracy >= 50 ? "#F59E0B40" : "#FF333340"}`,
                 }}
               >
@@ -450,10 +450,10 @@ function KnowledgeSessionPage() {
                   style={{
                     color:
                       accuracy >= 75
-                        ? "#00FF66"
+                        ? "var(--success)"
                         : accuracy >= 50
                           ? "var(--warning)"
-                          : "#FF3333",
+                          : "var(--danger)",
                   }}
                 />
               </motion.div>
@@ -480,13 +480,13 @@ function KnowledgeSessionPage() {
               <div
                 className="rounded-xl p-4 text-center"
                 style={{
-                  background: "rgba(0,255,102,0.06)",
-                  border: "1px solid rgba(0,255,102,0.15)",
+                  background: "rgba(61,220,132,0.06)",
+                  border: "1px solid rgba(61,220,132,0.15)",
                 }}
               >
                 <div
                   className="font-display text-3xl font-bold"
-                  style={{ color: "#00FF66" }}
+                  style={{ color: "var(--success)" }}
                 >
                   {store.correct}
                 </div>
@@ -500,13 +500,13 @@ function KnowledgeSessionPage() {
               <div
                 className="rounded-xl p-4 text-center"
                 style={{
-                  background: "rgba(255,51,51,0.06)",
-                  border: "1px solid rgba(255,51,51,0.15)",
+                  background: "rgba(229,72,77,0.06)",
+                  border: "1px solid rgba(229,72,77,0.15)",
                 }}
               >
                 <div
                   className="font-display text-3xl font-bold"
-                  style={{ color: "#FF3333" }}
+                  style={{ color: "var(--danger)" }}
                 >
                   {store.incorrect}
                 </div>
@@ -520,8 +520,8 @@ function KnowledgeSessionPage() {
               <div
                 className="rounded-xl p-4 text-center"
                 style={{
-                  background: "rgba(99,102,241,0.06)",
-                  border: "1px solid rgba(99,102,241,0.15)",
+                  background: "rgba(124,106,232,0.06)",
+                  border: "1px solid rgba(124,106,232,0.15)",
                 }}
               >
                 <div
@@ -586,7 +586,7 @@ function KnowledgeSessionPage() {
                   >
                     {"\uD83D\uDD25"}
                   </motion.span>
-                  <span className="font-mono text-sm font-bold" style={{ color: "#F97316" }}>
+                  <span className="font-mono text-sm font-bold" style={{ color: "var(--warning)" }}>
                     {store.streak}
                   </span>
                   {store.streak >= 5 && (
@@ -638,7 +638,7 @@ function KnowledgeSessionPage() {
                       <div key={cat.category}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{cat.category}</span>
-                          <span className="font-mono text-xs" style={{ color: pct >= 75 ? "#00FF66" : pct >= 50 ? "var(--warning)" : "#FF3333" }}>
+                          <span className="font-mono text-xs" style={{ color: pct >= 75 ? "var(--success)" : pct >= 50 ? "var(--warning)" : "var(--danger)" }}>
                             {cat.correct}/{cat.total} ({pct}%)
                           </span>
                         </div>
@@ -647,7 +647,7 @@ function KnowledgeSessionPage() {
                             className="h-full rounded-full transition-all"
                             style={{
                               width: `${pct}%`,
-                              background: pct >= 75 ? "#00FF66" : pct >= 50 ? "var(--warning)" : "#FF3333",
+                              background: pct >= 75 ? "var(--success)" : pct >= 50 ? "var(--warning)" : "var(--danger)",
                             }}
                           />
                         </div>
@@ -662,7 +662,7 @@ function KnowledgeSessionPage() {
             {typeof results.summary === "string" && results.summary && (
               <div
                 className="mt-4 rounded-xl p-3 text-xs leading-relaxed"
-                style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)", color: "var(--text-secondary)" }}
+                style={{ background: "rgba(124,106,232,0.06)", border: "1px solid rgba(124,106,232,0.15)", color: "var(--text-secondary)" }}
               >
                 {results.summary as string}
               </div>
@@ -790,17 +790,17 @@ function KnowledgeSessionPage() {
           {/* Right: Score + Timer */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <CheckCircle2 size={12} style={{ color: "#00FF66" }} />
+              <CheckCircle2 size={12} style={{ color: "var(--success)" }} />
               <span
                 className="font-mono text-xs"
-                style={{ color: "#00FF66" }}
+                style={{ color: "var(--success)" }}
               >
                 {store.correct}
               </span>
-              <XCircle size={12} style={{ color: "#FF3333" }} />
+              <XCircle size={12} style={{ color: "var(--danger)" }} />
               <span
                 className="font-mono text-xs"
-                style={{ color: "#FF3333" }}
+                style={{ color: "var(--danger)" }}
               >
                 {store.incorrect}
               </span>
@@ -812,11 +812,11 @@ function KnowledgeSessionPage() {
                 style={{
                   borderColor:
                     store.timeLeft <= 30
-                      ? "rgba(255,51,51,0.4)"
+                      ? "rgba(229,72,77,0.4)"
                       : "rgba(245,158,11,0.3)",
                   background:
                     store.timeLeft <= 30
-                      ? "rgba(255,51,51,0.08)"
+                      ? "rgba(229,72,77,0.08)"
                       : "rgba(245,158,11,0.08)",
                 }}
               >
@@ -824,14 +824,14 @@ function KnowledgeSessionPage() {
                   size={12}
                   style={{
                     color:
-                      store.timeLeft <= 30 ? "#FF3333" : "var(--warning)",
+                      store.timeLeft <= 30 ? "var(--danger)" : "var(--warning)",
                   }}
                 />
                 <span
                   className="font-mono text-sm font-bold"
                   style={{
                     color:
-                      store.timeLeft <= 30 ? "#FF3333" : "var(--warning)",
+                      store.timeLeft <= 30 ? "var(--danger)" : "var(--warning)",
                   }}
                 >
                   {formatTime(store.timeLeft)}
@@ -885,8 +885,8 @@ function KnowledgeSessionPage() {
                 <div
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
                   style={{
-                    background: "rgba(99,102,241,0.12)",
-                    border: "1px solid rgba(99,102,241,0.25)",
+                    background: "rgba(124,106,232,0.12)",
+                    border: "1px solid rgba(124,106,232,0.25)",
                   }}
                 >
                   <Brain size={14} style={{ color: "var(--accent)" }} />
@@ -927,8 +927,8 @@ function KnowledgeSessionPage() {
         <div
           className="shrink-0 border-t px-4 py-3"
           style={{
-            borderColor: "rgba(99,102,241,0.15)",
-            background: "rgba(99,102,241,0.04)",
+            borderColor: "rgba(124,106,232,0.15)",
+            background: "rgba(124,106,232,0.04)",
           }}
         >
           <div className="mx-auto flex max-w-3xl items-center justify-between">
@@ -938,7 +938,7 @@ function KnowledgeSessionPage() {
             <div className="flex gap-2">
               <button
                 className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
-                style={{ background: "rgba(99,102,241,0.15)", color: "var(--accent)" }}
+                style={{ background: "rgba(124,106,232,0.15)", color: "var(--accent)" }}
                 onClick={() => {
                   store.setPendingFollowUp(null);
                   // Let user type answer normally - next text.message will be treated as follow-up answer
@@ -1129,11 +1129,11 @@ function MessageBubble({ message }: { message: QuizMessage }) {
   // Feedback messages
   if (isFeedback) {
     const correct = message.isCorrect;
-    const color = correct ? "#00FF66" : "#FF3333";
-    const bgColor = correct ? "rgba(0,255,102,0.06)" : "rgba(255,51,51,0.06)";
+    const color = correct ? "var(--success)" : "var(--danger)";
+    const bgColor = correct ? "rgba(61,220,132,0.06)" : "rgba(229,72,77,0.06)";
     const borderColor = correct
-      ? "rgba(0,255,102,0.18)"
-      : "rgba(255,51,51,0.18)";
+      ? "rgba(61,220,132,0.18)"
+      : "rgba(229,72,77,0.18)";
 
     return (
       <motion.div
@@ -1145,8 +1145,8 @@ function MessageBubble({ message }: { message: QuizMessage }) {
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
           style={{
             background: correct
-              ? "rgba(0,255,102,0.12)"
-              : "rgba(255,51,51,0.12)",
+              ? "rgba(61,220,132,0.12)"
+              : "rgba(229,72,77,0.12)",
             border: `1px solid ${borderColor}`,
           }}
         >
@@ -1208,18 +1208,18 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         <div
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg"
           style={{
-            background: "rgba(99,102,241,0.12)",
-            border: "1px solid rgba(99,102,241,0.25)",
+            background: "rgba(124,106,232,0.12)",
+            border: "1px solid rgba(124,106,232,0.25)",
           }}
         >
-          {avatarEmoji ? <Twemoji emoji={avatarEmoji} size={20} /> : <Twemoji emoji={"\uD83D\uDCA1"} size={20} />}
+          {avatarEmoji ? <AppIcon emoji={avatarEmoji} size={20} /> : <AppIcon emoji={"\uD83D\uDCA1"} size={20} />}
         </div>
         <div
           className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
           style={{
-            background: "rgba(99,102,241,0.06)",
-            border: "1px solid rgba(99,102,241,0.15)",
-            borderLeft: "3px solid rgba(99,102,241,0.4)",
+            background: "rgba(124,106,232,0.06)",
+            border: "1px solid rgba(124,106,232,0.15)",
+            borderLeft: "3px solid rgba(124,106,232,0.4)",
           }}
         >
           <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: "var(--accent)" }}>
@@ -1244,11 +1244,11 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         <div
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg"
           style={{
-            background: "rgba(99,102,241,0.12)",
-            border: "1px solid rgba(99,102,241,0.25)",
+            background: "rgba(124,106,232,0.12)",
+            border: "1px solid rgba(124,106,232,0.25)",
           }}
         >
-          {avatarEmoji ? <Twemoji emoji={avatarEmoji} size={20} /> : <BookOpen size={14} style={{ color: "var(--accent)" }} />}
+          {avatarEmoji ? <AppIcon emoji={avatarEmoji} size={20} /> : <BookOpen size={14} style={{ color: "var(--accent)" }} />}
         </div>
         <div
           className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
@@ -1286,8 +1286,8 @@ function MessageBubble({ message }: { message: QuizMessage }) {
       <div
         className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-3"
         style={{
-          background: "rgba(99,102,241,0.15)",
-          border: "1px solid rgba(99,102,241,0.25)",
+          background: "rgba(124,106,232,0.15)",
+          border: "1px solid rgba(124,106,232,0.25)",
         }}
       >
         <p

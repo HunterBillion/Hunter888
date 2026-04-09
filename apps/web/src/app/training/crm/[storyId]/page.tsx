@@ -226,7 +226,7 @@ export default function GameClientPanelPage() {
 
   return (
     <AuthLayout>
-      <div className="flex flex-col min-h-[calc(100vh-64px)] bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.15),transparent_32%),linear-gradient(180deg,#040405_0%,#09090c_55%,#0b0b0f_100%)]">
+      <div className="flex flex-col min-h-[calc(100vh-64px)] bg-[radial-gradient(circle_at_top,rgba(124,106,232,0.15),transparent_32%),linear-gradient(180deg,#040405_0%,#09090c_55%,#0b0b0f_100%)]">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -519,7 +519,7 @@ export default function GameClientPanelPage() {
                           color: "var(--text-muted)",
                         }}
                       >
-                        <span style={{ color: "var(--warning)" }}>⚡</span>{" "}
+                        <Zap size={14} style={{ color: "var(--warning)" }} />{" "}
                         {String(csq.type || csq.detail || "Последствие")}
                       </div>
                     ))}

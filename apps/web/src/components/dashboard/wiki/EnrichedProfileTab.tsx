@@ -2,9 +2,11 @@
 
 import {
   Activity,
+  AlertTriangle,
   BookOpen,
   Brain,
   Calendar,
+  CheckCircle,
   Clock,
   Lightbulb,
   Target,
@@ -82,7 +84,7 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
         label: "Балл",
         data: trend.map((t) => t.score),
         borderColor: "var(--accent)",
-        backgroundColor: "rgba(99,102,241,0.1)",
+        backgroundColor: "rgba(124,106,232,0.1)",
         fill: true,
         tension: 0.3,
         pointRadius: 4,
@@ -199,9 +201,9 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
             <Brain size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
             Паттерны ({profile.patterns_summary.total})
             <span style={{ marginLeft: 8 }}>
-              <span style={{ color: "var(--danger)" }}>⚠ {profile.patterns_summary.weaknesses}</span>
+              <span style={{ color: "var(--danger)" }}><AlertTriangle size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: 2 }} /> {profile.patterns_summary.weaknesses}</span>
               {" / "}
-              <span style={{ color: "var(--success)" }}>✓ {profile.patterns_summary.strengths}</span>
+              <span style={{ color: "var(--success)" }}><CheckCircle size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: 2 }} /> {profile.patterns_summary.strengths}</span>
             </span>
           </div>
           {profile.patterns_summary.top_weaknesses.length > 0 && (

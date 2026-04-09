@@ -40,14 +40,14 @@ export function TrainingToasts({
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
             className="fixed top-20 left-1/2 -translate-x-1/2 z-[140] max-w-sm rounded-xl px-5 py-3"
             style={{
-              background: "rgba(255,51,51,0.12)",
-              border: "1px solid rgba(255,51,51,0.35)",
+              background: "rgba(229,72,77,0.12)",
+              border: "1px solid rgba(229,72,77,0.35)",
               backdropFilter: "blur(16px)",
-              boxShadow: "0 0 20px rgba(255,51,51,0.15)",
+              boxShadow: "0 0 20px rgba(229,72,77,0.15)",
             }}
           >
             <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(255,51,51,0.2)" }}>
+              <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(229,72,77,0.2)" }}>
                 <PhoneOff size={14} style={{ color: "var(--danger)" }} />
               </div>
               <div>
@@ -62,7 +62,7 @@ export function TrainingToasts({
             {/* Auto-dismiss progress bar */}
             <motion.div
               className="mt-2 h-0.5 rounded-full"
-              style={{ background: "rgba(255,51,51,0.4)" }}
+              style={{ background: "rgba(229,72,77,0.4)" }}
               initial={{ width: "100%" }}
               animate={{ width: "0%" }}
               transition={{ duration: 5, ease: "linear" }}
@@ -83,12 +83,12 @@ export function TrainingToasts({
             <div
               className="rounded-2xl p-4 backdrop-blur-xl flex items-start gap-3"
               style={{
-                background: "rgba(99,102,241,0.12)",
-                border: "1px solid rgba(99,102,241,0.35)",
-                boxShadow: "0 8px 32px rgba(99,102,241,0.2)",
+                background: "rgba(124,106,232,0.12)",
+                border: "1px solid rgba(124,106,232,0.35)",
+                boxShadow: "0 8px 32px rgba(124,106,232,0.2)",
               }}
             >
-              <div className="flex items-center justify-center w-8 h-8 rounded-lg shrink-0" style={{ background: "rgba(99,102,241,0.2)" }}>
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg shrink-0" style={{ background: "rgba(124,106,232,0.2)" }}>
                 <Lightbulb size={16} style={{ color: "var(--accent)" }} />
               </div>
               <div>
@@ -103,7 +103,7 @@ export function TrainingToasts({
             {/* Auto-dismiss progress bar */}
             <motion.div
               className="mt-1 mx-4 h-0.5 rounded-full"
-              style={{ background: "rgba(99,102,241,0.4)" }}
+              style={{ background: "rgba(124,106,232,0.4)" }}
               initial={{ width: "100%" }}
               animate={{ width: "0%" }}
               transition={{ duration: 4, ease: "linear" }}
@@ -124,9 +124,9 @@ export function TrainingToasts({
             <div
               className="rounded-xl px-5 py-3 backdrop-blur-xl flex items-center gap-3"
               style={{
-                background: "rgba(0,255,148,0.08)",
-                border: "1px solid rgba(0,255,148,0.25)",
-                boxShadow: "0 4px 20px rgba(0,255,148,0.12)",
+                background: "rgba(61,220,132,0.08)",
+                border: "1px solid rgba(61,220,132,0.25)",
+                boxShadow: "0 4px 20px rgba(61,220,132,0.12)",
               }}
             >
               <CheckCircle2 size={16} style={{ color: "var(--success)" }} />

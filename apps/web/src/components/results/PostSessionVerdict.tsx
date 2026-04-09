@@ -10,11 +10,11 @@ interface PostSessionVerdictProps {
 }
 
 function getVerdict(score: number): { word: string; wordRu: string; color: string; glow: string } {
-  if (score >= 90) return { word: "DOMINANT", wordRu: "ДОМИНИРУЮЩИЙ", color: "#00FF94", glow: "rgba(0,255,148,0.5)" };
+  if (score >= 90) return { word: "DOMINANT", wordRu: "ДОМИНИРУЮЩИЙ", color: "#00FF94", glow: "rgba(61,220,132,0.5)" };
   if (score >= 75) return { word: "CONFIDENT", wordRu: "УВЕРЕННЫЙ", color: "#BF55EC", glow: "rgba(191,85,236,0.5)" };
-  if (score >= 60) return { word: "STEADY", wordRu: "СТАБИЛЬНЫЙ", color: "#FFD700", glow: "rgba(255,215,0,0.5)" };
+  if (score >= 60) return { word: "STEADY", wordRu: "СТАБИЛЬНЫЙ", color: "#FFD700", glow: "rgba(212,168,75,0.5)" };
   if (score >= 40) return { word: "HESITANT", wordRu: "НЕУВЕРЕННЫЙ", color: "var(--info)", glow: "rgba(59,130,246,0.5)" };
-  return { word: "LOST CONTROL", wordRu: "ПОТЕРЯЛ КОНТРОЛЬ", color: "#FF2A6D", glow: "rgba(255,42,109,0.5)" };
+  return { word: "LOST CONTROL", wordRu: "ПОТЕРЯЛ КОНТРОЛЬ", color: "#FF2A6D", glow: "rgba(229,72,77,0.5)" };
 }
 
 export function PostSessionVerdict({ score, onContinue, xpGained = 0 }: PostSessionVerdictProps) {

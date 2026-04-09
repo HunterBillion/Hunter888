@@ -231,13 +231,13 @@ export default function SettingsPage() {
                 <Palette size={18} style={{ color: "var(--text-secondary)" }} />
                 <div>
                   <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Оформление</div>
-                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>Тема и акцентный цвет</div>
+                  <div className="text-sm" style={{ color: "var(--text-muted)" }}>Тема и акцентный цвет</div>
                 </div>
               </div>
 
               {/* Theme row */}
               <div className="flex items-center justify-between mb-4">
-                <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Тема</span>
+                <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Тема</span>
                 {mounted && (
                   <div className="flex gap-2">
                     {([
@@ -253,7 +253,7 @@ export default function SettingsPage() {
 
               {/* Accent color row */}
               <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Акцент</span>
+                <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Акцент</span>
                 <div className="flex gap-2">
                   {ACCENT_COLORS.map((c) => (
                     <motion.button
@@ -282,7 +282,7 @@ export default function SettingsPage() {
                 <Gamepad2 size={18} style={{ color: "var(--text-secondary)" }} />
                 <div>
                   <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Тренировки</div>
-                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>Режим и сложность</div>
+                  <div className="text-sm" style={{ color: "var(--text-muted)" }}>Режим и сложность</div>
                 </div>
               </div>
 
@@ -290,14 +290,14 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Volume2 size={15} style={{ color: "var(--text-muted)" }} />
-                  <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Озвучка AI-клиента</span>
+                  <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Озвучка AI-клиента</span>
                 </div>
                 <Toggle on={ttsEnabled} onChange={() => setTtsEnabled(!ttsEnabled)} />
               </div>
 
               {/* Training mode */}
               <div className="mb-4">
-                <span className="text-xs block mb-2" style={{ color: "var(--text-secondary)" }}>Режим тренировки</span>
+                <span className="text-sm block mb-2" style={{ color: "var(--text-secondary)" }}>Режим тренировки</span>
                 <div className="flex flex-wrap gap-2">
                   {TRAINING_MODES.map((m) => (
                     <Chip key={m.key} active={trainingMode === m.key} label={m.label} onClick={() => setTrainingMode(m.key)} />
@@ -307,7 +307,7 @@ export default function SettingsPage() {
 
               {/* Experience level */}
               <div>
-                <span className="text-xs block mb-2" style={{ color: "var(--text-secondary)" }}>Уровень опыта</span>
+                <span className="text-sm block mb-2" style={{ color: "var(--text-secondary)" }}>Уровень опыта</span>
                 <div className="flex gap-2">
                   {EXPERIENCE_LEVELS.map((l) => (
                     <Chip key={l.key} active={experienceLevel === l.key} label={l.label} onClick={() => setExperienceLevel(l.key)} />
@@ -324,12 +324,12 @@ export default function SettingsPage() {
                 <LayoutGrid size={18} style={{ color: "var(--text-secondary)" }} />
                 <div>
                   <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Интерфейс</div>
-                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>Плотность и отображение</div>
+                  <div className="text-sm" style={{ color: "var(--text-muted)" }}>Плотность и отображение</div>
                 </div>
               </div>
 
               <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Компактный режим</span>
+                <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Компактный режим</span>
                 <Toggle on={compactMode} onChange={() => setCompactMode(!compactMode)} />
               </div>
             </motion.div>
@@ -343,7 +343,7 @@ export default function SettingsPage() {
                   <Kanban size={18} style={{ color: "var(--text-secondary)" }} />
                   <div>
                     <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Воронка</div>
-                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>Видимые столбцы в канбане</div>
+                    <div className="text-sm" style={{ color: "var(--text-muted)" }}>Видимые столбцы в канбане</div>
                   </div>
                 </div>
 
@@ -392,7 +392,7 @@ export default function SettingsPage() {
                   <Bell size={18} style={{ color: "var(--text-secondary)" }} />
                   <div>
                     <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Уведомления</div>
-                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>Каналы и частота</div>
+                    <div className="text-sm" style={{ color: "var(--text-muted)" }}>Каналы и частота</div>
                   </div>
                 </div>
                 <Toggle on={notifications} onChange={() => setNotifications(!notifications)} />
@@ -404,7 +404,7 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <MessageSquare size={14} style={{ color: "var(--text-muted)" }} />
-                      <span className="text-xs" style={{ color: "var(--text-secondary)" }}>В приложении</span>
+                      <span className="text-sm" style={{ color: "var(--text-secondary)" }}>В приложении</span>
                     </div>
                     <Toggle on={notifyPush} onChange={() => setNotifyPush(!notifyPush)} size="sm" />
                   </div>
@@ -413,7 +413,7 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Mail size={14} style={{ color: "var(--text-muted)" }} />
-                      <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Email</span>
+                      <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Email</span>
                     </div>
                     <Toggle on={notifyEmail} onChange={() => setNotifyEmail(!notifyEmail)} size="sm" />
                   </div>
@@ -424,7 +424,7 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-2">
                         <Smartphone size={14} style={{ color: "var(--text-muted)" }} />
                         <div>
-                          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Web Push</span>
+                          <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Web Push</span>
                           {webPush.isDenied && (
                             <span className="block text-xs" style={{ color: "var(--danger)" }}>Заблокировано</span>
                           )}
@@ -458,7 +458,7 @@ export default function SettingsPage() {
                   <div className="pt-2 border-t" style={{ borderColor: "var(--border-color)" }}>
                     <div className="flex items-center gap-2 mb-2">
                       <Clock size={14} style={{ color: "var(--text-muted)" }} />
-                      <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Частота</span>
+                      <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Частота</span>
                     </div>
                     <div className="flex gap-2">
                       {([
@@ -482,7 +482,7 @@ export default function SettingsPage() {
                 <Link2 size={18} style={{ color: "var(--text-secondary)" }} />
                 <div>
                   <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Привязанные аккаунты</div>
-                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>Вход через Google или Yandex</div>
+                  <div className="text-sm" style={{ color: "var(--text-muted)" }}>Вход через Google или Yandex</div>
                 </div>
               </div>
               <div className="space-y-3">

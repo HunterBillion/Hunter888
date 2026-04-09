@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useSessionStore } from "@/stores/useSessionStore";
-import { Twemoji } from "@/components/ui/Twemoji";
+import { AppIcon } from "@/components/ui/AppIcon";
 import type { DifficultyMode, DifficultyTrend } from "@/stores/useSessionStore";
 
 interface DifficultyIndicatorProps {
@@ -87,7 +87,7 @@ export default function DifficultyIndicator({
             className="text-base leading-none"
             style={{ color: filled ? color : "var(--text-muted, #444)" }}
           >
-            <Twemoji emoji={"\u2B50"} size={16} />
+            <AppIcon emoji={"\u2B50"} size={16} />
           </motion.span>
         ))}
         <span className="ml-2 text-sm font-bold tabular-nums" style={{ color }}>
@@ -111,7 +111,7 @@ export default function DifficultyIndicator({
                 opacity: 1,
                 scale: 1,
                 ...(mode === "boss" && !reducedMotion
-                  ? { boxShadow: ["0 0 4px rgba(255,42,109,0.4)", "0 0 12px rgba(255,42,109,0.8)", "0 0 4px rgba(255,42,109,0.4)"] }
+                  ? { boxShadow: ["0 0 4px rgba(229,72,77,0.4)", "0 0 12px rgba(229,72,77,0.8)", "0 0 4px rgba(229,72,77,0.4)"] }
                   : {}),
               }}
               exit={{ opacity: 0, scale: 0.8 }}
@@ -127,19 +127,19 @@ export default function DifficultyIndicator({
                 border: `1px solid color-mix(in srgb, ${modeConfig.color} 27%, transparent)`,
               }}
             >
-              <Twemoji emoji={modeConfig.emoji} size={14} /> {modeConfig.label}
+              <AppIcon emoji={modeConfig.emoji} size={14} /> {modeConfig.label}
             </motion.span>
           )}
         </AnimatePresence>
 
         {goodStreak >= 3 && (
           <span className="text-sm" title={`Серия: ${goodStreak}`}>
-            <Twemoji emoji={"\uD83D\uDD25"} size={14} />{goodStreak}
+            <AppIcon emoji={"\uD83D\uDD25"} size={14} />{goodStreak}
           </span>
         )}
         {badStreak >= 3 && (
           <span className="text-sm" title={`Ошибки: ${badStreak}`}>
-            <Twemoji emoji={"\u2744\uFE0F"} size={14} />{badStreak}
+            <AppIcon emoji={"\u2744\uFE0F"} size={14} />{badStreak}
           </span>
         )}
         {hadComeback && (

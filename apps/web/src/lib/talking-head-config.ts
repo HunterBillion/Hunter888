@@ -212,7 +212,7 @@ export const EMOTION_COLORS: Record<string, string> = {
   guarded: "var(--accent)",
   curious: "var(--warning)",
   considering: "var(--success)",
-  negotiating: "#06B6D4",
+  negotiating: "var(--info)",
   deal: "var(--success)",
   testing: "var(--danger)",
   callback: "var(--accent)",

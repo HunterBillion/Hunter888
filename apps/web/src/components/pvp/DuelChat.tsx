@@ -83,7 +83,7 @@ export function DuelChat({ messages, myRole, input, onInputChange, onSend, disab
         className="flex items-center justify-between border-b px-5 py-3"
         style={{
           borderColor: "rgba(255,255,255,0.06)",
-          background: "linear-gradient(90deg, rgba(99,102,241,0.12), rgba(0,255,148,0.08))",
+          background: "linear-gradient(90deg, rgba(124,106,232,0.12), rgba(61,220,132,0.08))",
         }}
       >
         <div className="flex items-center gap-2">
@@ -120,7 +120,7 @@ export function DuelChat({ messages, myRole, input, onInputChange, onSend, disab
                   <div className="flex justify-center my-3">
                     <div
                       className="rounded-full px-4 py-1.5 text-xs font-mono uppercase tracking-widest"
-                      style={{ background: "rgba(99,102,241,0.1)", color: "var(--accent)", border: "1px solid rgba(99,102,241,0.2)" }}
+                      style={{ background: "rgba(124,106,232,0.1)", color: "var(--accent)", border: "1px solid rgba(124,106,232,0.2)" }}
                     >
                       Раунд {msg.round}
                     </div>
@@ -138,16 +138,16 @@ export function DuelChat({ messages, myRole, input, onInputChange, onSend, disab
                     style={{
                       borderRadius: isMine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
                       background: isMine
-                        ? "linear-gradient(135deg, rgba(99,102,241,0.3), rgba(55,48,163,0.18))"
+                        ? "linear-gradient(135deg, rgba(124,106,232,0.3), rgba(55,48,163,0.18))"
                         : "linear-gradient(135deg, rgba(42,52,74,0.6), rgba(18,26,41,0.4))",
                       borderLeft: isMine ? "none" : "3px solid rgba(125,211,252,0.4)",
-                      borderRight: isMine ? "3px solid rgba(139,92,246,0.5)" : "none",
+                      borderRight: isMine ? "3px solid rgba(124,106,232,0.5)" : "none",
                       backdropFilter: "blur(8px)",
                     }}
                   >
                     <div className="flex items-center justify-between gap-3 mb-1.5">
                       <span className="text-xs font-mono uppercase tracking-wider" style={{
-                        color: isMine ? "rgba(139,92,246,0.8)" : "rgba(125,211,252,0.7)",
+                        color: isMine ? "rgba(124,106,232,0.8)" : "rgba(125,211,252,0.7)",
                       }}>
                         {msg.sender_role === "seller" ? "Менеджер" : "Клиент"}
                       </span>

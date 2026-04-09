@@ -22,9 +22,9 @@ import type { HistoryEntry } from "@/types";
 function statusConfig(status: string) {
   switch (status) {
     case "completed":
-      return { label: "Завершено", icon: CheckCircle2, color: "#00FF66" };
+      return { label: "Завершено", icon: CheckCircle2, color: "var(--success)" };
     case "abandoned":
-      return { label: "Прервано", icon: XCircle, color: "#FF3333" };
+      return { label: "Прервано", icon: XCircle, color: "var(--danger)" };
     case "error":
       return { label: "Ошибка", icon: AlertTriangle, color: "var(--warning)" };
     default:
@@ -50,7 +50,7 @@ function MiniScoreBars({ session }: { session: HistoryEntry["latest_session"] })
     { label: "Скр", value: session.score_script_adherence, max: 30, color: "var(--accent)" },
     { label: "Возр", value: session.score_objection_handling, max: 25, color: "var(--magenta)" },
     { label: "Ком", value: session.score_communication, max: 20, color: "var(--info)" },
-    { label: "Рез", value: session.score_result, max: 10, color: "#00FF66" },
+    { label: "Рез", value: session.score_result, max: 10, color: "var(--success)" },
   ];
 
   return (
@@ -152,8 +152,8 @@ export default function HistoryPage() {
               {[
                 { label: "Всего", value: entries.length, icon: BarChart3, color: "var(--accent)" },
                 { label: "Историй", value: storyCount, icon: Layers3, color: "var(--magenta)" },
-                { label: "Завершено", value: completed.length, icon: CheckCircle2, color: "#00FF66" },
-                { label: "Ср. балл", value: avgScore !== null ? avgScore : "—", icon: Sparkles, color: "#FFB400", hero: true },
+                { label: "Завершено", value: completed.length, icon: CheckCircle2, color: "var(--success)" },
+                { label: "Ср. балл", value: avgScore !== null ? avgScore : "—", icon: Sparkles, color: "var(--warning)", hero: true },
               ].map((item) => {
                 const Icon = item.icon;
                 const isHero = "hero" in item && item.hero;

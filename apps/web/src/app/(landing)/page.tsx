@@ -258,7 +258,7 @@ export default function Home() {
       <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0"><WaveScene /></div>
         <div className="absolute inset-0 z-[1] pointer-events-none" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.10) 40%, rgba(0,0,0,0.45) 80%, rgba(0,0,0,0.75) 100%)" }} />
-        <div className="absolute inset-0 z-[2] pointer-events-none" style={{ background: "radial-gradient(ellipse at 50% 55%, rgba(99,102,241,0.22) 0%, transparent 55%)" }} />
+        <div className="absolute inset-0 z-[2] pointer-events-none" style={{ background: "radial-gradient(ellipse at 50% 55%, rgba(124,106,232,0.22) 0%, transparent 55%)" }} />
 
         <div className="relative z-[4] text-center px-4 sm:px-6 w-full max-w-4xl mx-auto pt-16 sm:pt-20">
           <motion.div initial={{ opacity: 0, scale: 0.88 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2, duration: 0.85, ease: EASE_SNAP }}>

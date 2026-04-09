@@ -75,7 +75,7 @@ function ResetPasswordForm() {
         className="fixed inset-0 z-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse at 50% 55%, rgba(99,102,241,0.18) 0%, transparent 60%)",
+            "radial-gradient(ellipse at 50% 55%, rgba(124,106,232,0.18) 0%, transparent 60%)",
         }}
       />
 
@@ -112,8 +112,8 @@ function ResetPasswordForm() {
                 transition={{ type: "spring", stiffness: 280, delay: 0.1 }}
                 className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-5"
                 style={{
-                  background: "rgba(0,255,148,0.1)",
-                  border: "1px solid rgba(0,255,148,0.25)",
+                  background: "rgba(61,220,132,0.1)",
+                  border: "1px solid rgba(61,220,132,0.25)",
                 }}
               >
                 <CheckCircle2 size={28} style={{ color: "var(--success)" }} />

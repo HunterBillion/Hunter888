@@ -65,7 +65,7 @@ export default function CheckpointProgress({ checkpoints }: CheckpointProgressPr
                       strokeWidth={2.5}
                       style={{
                         color: "var(--success)",
-                        filter: "drop-shadow(0 0 4px rgba(0,255,148,0.4))",
+                        filter: "drop-shadow(0 0 4px rgba(61,220,132,0.4))",
                       }}
                     />
                   </motion.div>

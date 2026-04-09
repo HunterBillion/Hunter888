@@ -13,7 +13,7 @@ import {
 } from "@/lib/archetypes";
 import type { ArchetypeInfo, ArchetypeGroupInfo } from "@/lib/archetypes";
 import { ArchetypeCard } from "@/components/training/ArchetypeCard";
-import { Twemoji } from "@/components/ui/Twemoji";
+import { AppIcon } from "@/components/ui/AppIcon";
 import type { ArchetypeGroup } from "@/types";
 import { useGamificationStore } from "@/stores/useGamificationStore";
 
@@ -135,7 +135,7 @@ export default function ArchetypesPage() {
                     border: `1px solid ${active ? `${g.color}50` : "var(--border-color)"}`,
                   }}
                 >
-                  <Twemoji emoji={g.icon} size={14} /> {g.label} ({count})
+                  <AppIcon emoji={g.icon} size={14} /> {g.label} ({count})
                 </button>
               );
             })}

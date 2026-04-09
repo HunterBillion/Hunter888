@@ -318,7 +318,7 @@ function ArenaLobbyPage() {
                   />
                   <motion.div
                     className="absolute inset-3 rounded-full border"
-                    style={{ borderColor: "rgba(99,102,241,0.25)" }}
+                    style={{ borderColor: "rgba(124,106,232,0.25)" }}
                     animate={reducedMotion ? {} : { rotate: -360, opacity: [0.3, 0.6, 0.3] }}
                     transition={
                       reducedMotion
@@ -409,9 +409,9 @@ function ArenaLobbyPage() {
                   animate={{ scale: 1 }}
                   transition={{ type: "spring", stiffness: 180, damping: 14 }}
                   className="mx-auto flex h-16 w-16 items-center justify-center rounded-full mb-4"
-                  style={{ background: "rgba(0,255,102,0.1)", border: "2px solid rgba(0,255,102,0.3)" }}
+                  style={{ background: "rgba(61,220,132,0.1)", border: "2px solid rgba(61,220,132,0.3)" }}
                 >
-                  <Zap size={28} style={{ color: "#00FF66" }} />
+                  <Zap size={28} style={{ color: "var(--success)" }} />
                 </motion.div>
 
                 <h3
@@ -428,8 +428,8 @@ function ArenaLobbyPage() {
                       key={p.user_id}
                       className="flex items-center gap-3 px-4 py-2 rounded-lg text-left"
                       style={{
-                        background: p.user_id === userId ? "rgba(99,102,241,0.1)" : "rgba(255,255,255,0.03)",
-                        border: `1px solid ${p.user_id === userId ? "rgba(99,102,241,0.2)" : "var(--glass-border)"}`,
+                        background: p.user_id === userId ? "rgba(124,106,232,0.1)" : "rgba(255,255,255,0.03)",
+                        border: `1px solid ${p.user_id === userId ? "rgba(124,106,232,0.2)" : "var(--glass-border)"}`,
                       }}
                     >
                       <div

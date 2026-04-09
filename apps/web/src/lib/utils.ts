@@ -32,7 +32,7 @@ export function scoreTier(score: number | null): { label: string; icon: "good" |
 /**
  * Create a semi-transparent version of a CSS color (works with both hex and var()).
  * Uses color-mix() which is supported in all modern browsers.
- * @param color - CSS color value (hex like "#FF3333" or var() like "var(--accent)")
+ * @param color - CSS color value (hex like "var(--danger)" or var() like "var(--accent)")
  * @param percent - opacity percentage (0-100), e.g. 10 = 10% opaque
  */
 export function colorAlpha(color: string, percent: number): string {

@@ -16,11 +16,11 @@ interface Particle {
 const COLORS = [
   "var(--accent)", // violet
   "#FFD700", // gold
-  "#00FF66", // green
+  "var(--success)", // green
   "#FF6B6B", // red
   "var(--info)", // blue
   "var(--warning)", // amber
-  "#EC4899", // pink
+  "var(--magenta)", // pink
 ];
 
 /**
@@ -65,7 +65,7 @@ export function Confetti({ trigger }: { trigger: number }) {
         initial={{ opacity: 0 }}
         animate={{ opacity: [0, 0.3, 0] }}
         transition={{ duration: 0.6 }}
-        style={{ background: "radial-gradient(circle, rgba(255,215,0,0.2), transparent 60%)" }}
+        style={{ background: "radial-gradient(circle, rgba(212,168,75,0.2), transparent 60%)" }}
       />
     );
   }

@@ -6,11 +6,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   User, Settings, Target, Mic, MessageCircle,
   ArrowRight, ArrowLeft, Check, Crosshair,
-  Sun, Moon, Volume2, Bell,
+  Sun, Moon, Volume2, Bell, CheckCircle, Lightbulb,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
-import { Twemoji } from "@/components/ui/Twemoji";
+import { AppIcon } from "@/components/ui/AppIcon";
 import { logger } from "@/lib/logger";
 
 // ── Steps config ───────────────────────────────────────────
@@ -217,7 +217,7 @@ function MicTest({ onResult }: { onResult: (ok: boolean) => void }) {
       {status === "success" && (
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           className="rounded-xl p-6 flex flex-col items-center gap-3"
-          style={{ background: "rgba(0,255,148,0.05)", border: "1px solid rgba(0,255,148,0.2)" }}
+          style={{ background: "rgba(61,220,132,0.05)", border: "1px solid rgba(61,220,132,0.2)" }}
         >
           <Check size={32} style={{ color: "var(--success)" }} />
           <span className="font-medium" style={{ color: "var(--success)" }}>Микрофон работает!</span>
@@ -227,7 +227,7 @@ function MicTest({ onResult }: { onResult: (ok: boolean) => void }) {
       {status === "error" && (
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           className="rounded-xl p-6 flex flex-col items-center gap-3"
-          style={{ background: "rgba(255,42,109,0.05)", border: "1px solid rgba(255,42,109,0.2)" }}
+          style={{ background: "rgba(229,72,77,0.05)", border: "1px solid rgba(229,72,77,0.2)" }}
         >
           <Mic size={32} style={{ color: "var(--danger)" }} />
           <span className="font-medium" style={{ color: "var(--danger)" }}>Микрофон недоступен</span>
@@ -321,13 +321,13 @@ function TrialDialog() {
 
       {!responded && (
         <p className="text-xs text-center" style={{ color: "var(--text-muted)" }}>
-          💡 {DEMO_HINTS[0]}
+          <Lightbulb size={14} className="inline" /> {DEMO_HINTS[0]}
         </p>
       )}
 
       {responded && (
         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-center" style={{ color: "var(--success)" }}>
-          ✅ Отлично! Вы готовы к настоящим тренировкам
+          <CheckCircle size={16} className="inline" /> Отлично! Вы готовы к настоящим тренировкам
         </motion.p>
       )}
     </div>
@@ -476,7 +476,7 @@ export default function OnboardingPage() {
                           }}
                           whileTap={{ scale: 0.97 }}
                         >
-                          <Twemoji emoji={r.icon} size={28} />
+                          <AppIcon emoji={r.icon} size={28} />
                           <div>
                             <div className="font-display font-bold text-sm" style={{ color: role === r.value ? "var(--accent)" : "var(--text-primary)" }}>{r.label}</div>
                             <div className="text-xs" style={{ color: "var(--text-muted)" }}>{r.desc}</div>
@@ -513,7 +513,7 @@ export default function OnboardingPage() {
                           }}
                           whileTap={{ scale: 0.97 }}
                         >
-                          <Twemoji emoji={s.icon} size={20} />
+                          <AppIcon emoji={s.icon} size={20} />
                           <div>
                             <div className="font-medium text-xs" style={{ color: specialization === s.value ? "var(--accent)" : "var(--text-primary)" }}>{s.label}</div>
                             <div className="text-xs" style={{ color: "var(--text-muted)" }}>{s.desc}</div>
@@ -534,7 +534,7 @@ export default function OnboardingPage() {
                           }}
                           whileTap={{ scale: 0.97 }}
                         >
-                          <Twemoji emoji={e.icon} size={24} />
+                          <AppIcon emoji={e.icon} size={24} />
                           <div>
                             <div className="font-medium text-sm" style={{ color: experience === e.value ? "var(--accent)" : "var(--text-primary)" }}>{e.label}</div>
                             <div className="text-xs" style={{ color: "var(--text-muted)" }}>{e.desc}</div>
@@ -627,7 +627,7 @@ export default function OnboardingPage() {
                       }}
                       whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
                     >
-                      <Twemoji emoji={m.icon} size={28} />
+                      <AppIcon emoji={m.icon} size={28} />
                       <div>
                         <div className="font-medium text-sm" style={{ color: trainingMode === m.value ? "var(--accent)" : "var(--text-primary)" }}>{m.label}</div>
                         <div className="text-xs" style={{ color: "var(--text-muted)" }}>{m.desc}</div>

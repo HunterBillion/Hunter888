@@ -8,7 +8,7 @@ import { BackButton } from "@/components/ui/BackButton";
 import { useTournamentStore } from "@/stores/useTournamentStore";
 import { BracketView } from "@/components/pvp/BracketView";
 import { useSound } from "@/hooks/useSound";
-import { Twemoji } from "@/components/ui/Twemoji";
+import { AppIcon } from "@/components/ui/AppIcon";
 
 const PODIUM_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32"]; // Gold, Silver, Bronze
 const PODIUM_EMOJI = ["\uD83E\uDD47", "\uD83E\uDD48", "\uD83E\uDD49"];
@@ -179,7 +179,7 @@ export default function TournamentPage() {
                     { place: 3, xp: tournament.bonus_xp_third, emoji: PODIUM_EMOJI[2], color: PODIUM_COLORS[2] },
                   ].map(({ place, xp, emoji, color }) => (
                     <div key={place} className="text-center">
-                      <div className={`text-xl ${place === 1 ? "neon-pulse" : ""}`}><Twemoji emoji={emoji} size={24} /></div>
+                      <div className={`text-xl ${place === 1 ? "neon-pulse" : ""}`}><AppIcon emoji={emoji} size={24} /></div>
                       <div className="stat-chip mt-1">
                         <span className="stat-chip__value" style={{ color }}>+{xp}</span>
                         <span className="stat-chip__label">XP</span>
@@ -281,7 +281,7 @@ export default function TournamentPage() {
                         }}
                       >
                         <span className="w-8 text-center font-mono text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-                          {entry.is_podium ? <Twemoji emoji={PODIUM_EMOJI[entry.rank - 1]} size={16} /> : `#${entry.rank}`}
+                          {entry.is_podium ? <AppIcon emoji={PODIUM_EMOJI[entry.rank - 1]} size={16} /> : `#${entry.rank}`}
                         </span>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
@@ -326,7 +326,7 @@ function PodiumSlot({
       <div className="text-xs font-medium mb-1 truncate w-full text-center" style={{ color: "var(--text-secondary)" }}>
         {entry.full_name.split(" ")[0]}
       </div>
-      <div className={`text-xl mb-1 ${place === 1 ? "neon-pulse" : ""}`}><Twemoji emoji={PODIUM_EMOJI[place - 1]} size={24} /></div>
+      <div className={`text-xl mb-1 ${place === 1 ? "neon-pulse" : ""}`}><AppIcon emoji={PODIUM_EMOJI[place - 1]} size={24} /></div>
       <div
         className={`${height} w-full rounded-t-xl flex items-center justify-center`}
         style={{

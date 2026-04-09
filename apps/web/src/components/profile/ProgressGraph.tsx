@@ -39,12 +39,12 @@ export function ProgressGraph({ data }: ProgressGraphProps) {
           type: "line" as const,
           label: "Средний балл",
           data: data.map((p) => p.avg_total),
-          borderColor: "rgba(99,102,241,0.9)",
-          backgroundColor: "rgba(99,102,241,0.1)",
+          borderColor: "rgba(124,106,232,0.9)",
+          backgroundColor: "rgba(124,106,232,0.1)",
           fill: true,
           tension: 0.4,
           pointRadius: 4,
-          pointBackgroundColor: "rgba(99,102,241,1)",
+          pointBackgroundColor: "rgba(124,106,232,1)",
           pointBorderColor: "transparent",
           yAxisID: "y",
           order: 1,
@@ -53,7 +53,7 @@ export function ProgressGraph({ data }: ProgressGraphProps) {
           type: "bar" as const,
           label: "Сессий",
           data: data.map((p) => p.sessions_count),
-          backgroundColor: "rgba(99,102,241,0.15)",
+          backgroundColor: "rgba(124,106,232,0.15)",
           borderRadius: 4,
           yAxisID: "y1",
           order: 2,
@@ -102,7 +102,7 @@ export function ProgressGraph({ data }: ProgressGraphProps) {
             plugins: {
               tooltip: {
                 backgroundColor: "rgba(10,10,22,0.9)",
-                borderColor: "rgba(99,102,241,0.3)",
+                borderColor: "rgba(124,106,232,0.3)",
                 borderWidth: 1,
                 titleFont: { family: "JetBrains Mono", size: 11 },
                 bodyFont: { family: "Plus Jakarta Sans", size: 12 },
@@ -112,14 +112,14 @@ export function ProgressGraph({ data }: ProgressGraphProps) {
             scales: {
               x: {
                 ticks: { color: "rgba(148,148,173,0.6)", font: { family: "JetBrains Mono", size: 10 } },
-                grid: { color: "rgba(99,102,241,0.06)" },
+                grid: { color: "rgba(124,106,232,0.06)" },
               },
               y: {
                 position: "left",
                 min: 0,
                 max: 100,
                 ticks: { color: "rgba(148,148,173,0.6)", font: { family: "JetBrains Mono", size: 10 } },
-                grid: { color: "rgba(99,102,241,0.06)" },
+                grid: { color: "rgba(124,106,232,0.06)" },
               },
               y1: {
                 position: "right",

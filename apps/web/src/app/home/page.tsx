@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import {
   Zap, TrendingUp, Target, Clock, ArrowRight, Crosshair,
   Users, BarChart3, Loader2, X, Flame, RotateCcw,
-  Swords, Crown, Medal, ClipboardList,
+  Swords, Crown, Medal, ClipboardList, Check,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -150,7 +150,7 @@ export default function HomePage() {
             {/* Accent corner glow */}
             <div
               className="absolute -top-16 -left-16 w-48 sm:w-64 h-48 sm:h-64 rounded-full pointer-events-none"
-              style={{ background: "radial-gradient(circle, rgba(99,102,241,0.14) 0%, transparent 70%)" }}
+              style={{ background: "radial-gradient(circle, rgba(124,106,232,0.14) 0%, transparent 70%)" }}
             />
 
             <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
@@ -160,7 +160,7 @@ export default function HomePage() {
                 <div className="relative shrink-0" style={{ width: 88, height: 88 }}>
                   <svg width="88" height="88" viewBox="0 0 88 88" className="rotate-[-90deg]">
                     {/* Background track */}
-                    <circle cx="44" cy="44" r="38" fill="none" stroke="rgba(99,102,241,0.12)" strokeWidth="5" />
+                    <circle cx="44" cy="44" r="38" fill="none" stroke="rgba(124,106,232,0.12)" strokeWidth="5" />
                     {/* Main progress arc */}
                     <circle
                       cx="44" cy="44" r="38" fill="none"
@@ -204,7 +204,7 @@ export default function HomePage() {
                     )}
                     <span
                       className="inline-flex items-center gap-1 font-mono text-xs px-2.5 py-1 rounded-full uppercase tracking-wider"
-                      style={{ background: "var(--accent-muted)", border: "1px solid rgba(99,102,241,0.25)", color: "var(--accent)" }}
+                      style={{ background: "var(--accent-muted)", border: "1px solid rgba(124,106,232,0.25)", color: "var(--accent)" }}
                     >
                       <Zap size={10} /> {xpCurrent} / {xpNext} XP
                     </span>
@@ -218,7 +218,7 @@ export default function HomePage() {
                 disabled={starting}
                 className="btn-neon flex items-center justify-center gap-3 font-display font-bold shrink-0"
                 style={{ fontSize: "clamp(0.95rem, 2vw, 1.1rem)", padding: "clamp(0.85rem, 2vw, 1.1rem) clamp(1.5rem, 4vw, 2.5rem)" }}
-                whileHover={{ scale: 1.04, boxShadow: "0 12px 40px rgba(79,70,229,0.55)" }}
+                whileHover={{ scale: 1.04, boxShadow: "0 12px 40px rgba(49,21,115,0.55)" }}
                 whileTap={{ scale: 0.97 }}
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -238,7 +238,7 @@ export default function HomePage() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
             >
-              <div className="xp-bar h-1.5 rounded-full" style={{ background: "rgba(99,102,241,0.1)" }}>
+              <div className="xp-bar h-1.5 rounded-full" style={{ background: "rgba(124,106,232,0.1)" }}>
                 <motion.div
                   className="xp-bar-fill h-full rounded-full"
                   initial={{ width: 0 }}
@@ -362,12 +362,12 @@ export default function HomePage() {
                 <div className="glass-panel rounded-2xl p-5 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Zap size={16} style={{ color: "#FFB400" }} />
+                      <Zap size={16} style={{ color: "var(--warning)" }} />
                       <span className="font-display font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
                         Вызов дня
                       </span>
                     </div>
-                    <span className="font-mono text-sm" style={{ color: "#FFB400" }}>+{dailyChallenge.rewardXp} XP</span>
+                    <span className="font-mono text-sm" style={{ color: "var(--warning)" }}>+{dailyChallenge.rewardXp} XP</span>
                   </div>
                   <div>
                     <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>{dailyChallenge.title}</p>
@@ -393,8 +393,8 @@ export default function HomePage() {
                     {dailyGoals.slice(0, 3).map((goal: { id: string; title: string; xp: number; progress: number; target: number }) => (
                       <div key={goal.id}>
                         <div className="flex justify-between text-sm mb-1">
-                          <span style={{ color: goal.progress >= goal.target ? "#00FF66" : "var(--text-secondary)" }}>
-                            {goal.progress >= goal.target ? "✓ " : ""}{goal.title}
+                          <span style={{ color: goal.progress >= goal.target ? "var(--success)" : "var(--text-secondary)" }}>
+                            {goal.progress >= goal.target ? <><Check size={14} className="inline" />{" "}</> : ""}{goal.title}
                           </span>
                           <span className="font-mono" style={{ color: "var(--text-muted)" }}>
                             {goal.progress}/{goal.target}
@@ -405,7 +405,7 @@ export default function HomePage() {
                             className="h-full rounded-full transition-all duration-500"
                             style={{
                               width: `${Math.min(100, (goal.progress / goal.target) * 100)}%`,
-                              background: goal.progress >= goal.target ? "#00FF66" : "var(--accent)",
+                              background: goal.progress >= goal.target ? "var(--success)" : "var(--accent)",
                             }}
                           />
                         </div>
@@ -531,7 +531,7 @@ export default function HomePage() {
             <div className="mt-2 space-y-4 stagger-cascade">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="glass-panel p-4 sm:p-5 space-y-3" style={{ borderLeft: "3px solid rgba(99,102,241,0.2)" }}>
+                  <div key={i} className="glass-panel p-4 sm:p-5 space-y-3" style={{ borderLeft: "3px solid rgba(124,106,232,0.2)" }}>
                     <div className="h-9 w-9 rounded-xl skeleton-neon" />
                     <div className="h-8 w-16 rounded-lg skeleton-neon" />
                     <div className="h-2.5 w-12 rounded skeleton-neon" />
@@ -683,7 +683,7 @@ function AssignedBadge() {
     >
       <div
         className="flex h-10 w-10 items-center justify-center rounded-xl"
-        style={{ background: overdueCount > 0 ? "rgba(255,51,51,0.1)" : "var(--accent-muted)" }}
+        style={{ background: overdueCount > 0 ? "rgba(229,72,77,0.1)" : "var(--accent-muted)" }}
       >
         <ClipboardList size={18} style={{ color: overdueCount > 0 ? "var(--danger)" : "var(--accent)" }} />
       </div>

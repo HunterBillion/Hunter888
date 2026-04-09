@@ -177,19 +177,19 @@ interface EmotionConfig {
 export const EMOTION_MAP: Record<string, EmotionConfig> = {
   // ── 10 backend states (ordered by emotional progression) ──
   cold:         { label: "COLD",        labelRu: "Холодный",      color: "#8A2BE2", glow: "rgba(138,43,226,0.4)",  value: 5  },
-  hostile:      { label: "HOSTILE",     labelRu: "Враждебный",    color: "#FF3333", glow: "rgba(255,51,51,0.4)",   value: 0  },
+  hostile:      { label: "HOSTILE",     labelRu: "Враждебный",    color: "var(--danger)", glow: "rgba(229,72,77,0.4)",   value: 0  },
   hangup:       { label: "HANGUP",      labelRu: "Бросил трубку", color: "#666666", glow: "rgba(102,102,102,0.4)", value: 0  },
   guarded:      { label: "GUARDED",     labelRu: "Настороже",     color: "var(--info)", glow: "rgba(59,130,246,0.4)",  value: 20 },
   testing:      { label: "TESTING",     labelRu: "Проверяет",     color: "var(--warning)", glow: "rgba(245,158,11,0.4)",  value: 25 },
-  curious:      { label: "CURIOUS",     labelRu: "Любопытен",     color: "#FFD700", glow: "rgba(255,215,0,0.4)",   value: 40 },
+  curious:      { label: "CURIOUS",     labelRu: "Любопытен",     color: "#FFD700", glow: "rgba(212,168,75,0.4)",   value: 40 },
   callback:     { label: "CALLBACK",    labelRu: "Перезвонит",    color: "var(--info)", glow: "rgba(96,165,250,0.4)",  value: 45 },
   considering:  { label: "CONSIDERING", labelRu: "Обдумывает",    color: "#BF55EC", glow: "rgba(191,85,236,0.4)",  value: 60 },
   negotiating:  { label: "NEGOTIATING", labelRu: "Торгуется",     color: "var(--accent-hover)", glow: "rgba(167,139,250,0.4)", value: 75 },
-  deal:         { label: "DEAL SYNC",   labelRu: "Сделка",        color: "#00FF94", glow: "rgba(0,255,148,0.4)",   value: 95 },
+  deal:         { label: "DEAL SYNC",   labelRu: "Сделка",        color: "#00FF94", glow: "rgba(61,220,132,0.4)",   value: 95 },
 
   // ── Legacy aliases (backend LEGACY_MAP sends these) ──
   skeptical:    { label: "SKEPTICAL",   labelRu: "Скептичный",    color: "var(--info)", glow: "rgba(59,130,246,0.4)",  value: 20 },
-  warming:      { label: "WARMING",     labelRu: "Теплеет",       color: "#FFD700", glow: "rgba(255,215,0,0.4)",   value: 40 },
+  warming:      { label: "WARMING",     labelRu: "Теплеет",       color: "#FFD700", glow: "rgba(212,168,75,0.4)",   value: 40 },
   open:         { label: "OPEN",        labelRu: "Открытый",      color: "#BF55EC", glow: "rgba(191,85,236,0.4)",  value: 60 },
 };
 
@@ -951,11 +951,11 @@ export const CLIENT_STATUS_COLORS: Record<ClientStatus, string> = {
   consultation: "var(--accent)",
   thinking: "var(--accent-hover)",
   consent_given: "var(--success)",
-  contract_signed: "#F97316",
+  contract_signed: "var(--warning)",
   in_process: "var(--accent)",
   paused: "var(--text-muted)",
-  completed: "#00FF66",
-  lost: "#FF3333",
+  completed: "var(--success)",
+  lost: "var(--danger)",
   consent_revoked: "var(--danger)",
 };
 
@@ -1332,10 +1332,10 @@ export const GAME_STATUS_COLORS: Record<GameClientStatus, string> = {
   thinking: "var(--accent-hover)",
   consent_given: "var(--success)",
   documents: "var(--warning)",
-  contract_signed: "#F97316",
+  contract_signed: "var(--warning)",
   in_process: "var(--accent)",
-  completed: "#00FF66",
-  lost: "#FF3333",
+  completed: "var(--success)",
+  lost: "var(--danger)",
 };
 
 export const GAME_EVENT_ICONS: Record<GameEventType, string> = {
@@ -1447,7 +1447,7 @@ export const PVP_RANK_COLORS: Record<PvPRankTier, string> = {
   silver: "var(--text-muted)",
   gold: "var(--warning)",
   platinum: "#22D3EE",
-  diamond: "#06B6D4",
+  diamond: "var(--info)",
   master: "var(--danger)",
   grandmaster: "#FF6B35",
 };

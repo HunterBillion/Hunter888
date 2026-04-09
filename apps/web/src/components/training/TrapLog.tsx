@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSessionStore } from "@/stores/useSessionStore";
-import { Twemoji } from "@/components/ui/Twemoji";
+import { AppIcon } from "@/components/ui/AppIcon";
 
 const STATUS_CONFIG = {
   fell: { icon: "\u274C", color: "var(--danger)", label: "Fell" },
@@ -57,7 +57,7 @@ export default function TrapLog() {
             return (
               <div key={i} className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2 min-w-0">
-                  <Twemoji emoji={cfg.icon} size={14} />
+                  <AppIcon emoji={cfg.icon} size={14} />
                   <span className="truncate" style={{ color: "var(--text-primary)" }}>
                     {CATEGORY_LABELS[trap.category] || trap.category}: {trap.trap_name}
                   </span>

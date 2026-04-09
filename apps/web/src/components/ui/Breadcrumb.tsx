@@ -15,7 +15,7 @@ export function Breadcrumb({ items }: { items: BreadcrumbItem[] }) {
         <span key={i} className="flex items-center gap-1.5">
           {i > 0 && <ChevronRight size={14} className="opacity-40" />}
           {item.href ? (
-            <Link href={item.href} className="hover:underline transition-colors" style={{ color: i === items.length - 1 ? "var(--text-primary)" : "var(--text-muted)" }}>
+            <Link href={item.href} prefetch={true} className="hover:underline transition-colors" style={{ color: i === items.length - 1 ? "var(--text-primary)" : "var(--text-muted)" }}>
               {item.label}
             </Link>
           ) : (

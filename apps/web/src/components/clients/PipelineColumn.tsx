@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, forwardRef } from "react";
+import { ClipboardList } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { CRMClient, ClientStatus, UserRole } from "@/types";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
@@ -206,7 +207,7 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
 
           {!clients.length && !isOver && (
             <div className="text-center py-6 px-3">
-              <div className="text-base opacity-30 mb-1.5">📋</div>
+              <div className="text-base opacity-30 mb-1.5"><ClipboardList size={18} /></div>
               <span className="text-xs font-mono" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
                 Нет клиентов
               </span>

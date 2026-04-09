@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, Component, type ReactNode, type ErrorInfo 
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { logger } from "@/lib/logger";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, AlertTriangle } from "lucide-react";
 import { getToken, getRefreshToken, setTokens } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { getApiBaseUrl } from "@/lib/public-origin";
@@ -51,8 +51,8 @@ class AuthErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState
       return (
         <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg-primary)" }}>
           <div className="glass-panel max-w-md px-8 py-6 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full mb-4" style={{ background: "rgba(255,51,51,0.1)" }}>
-              <span className="text-2xl">⚠️</span>
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full mb-4" style={{ background: "rgba(229,72,77,0.1)" }}>
+              <AlertTriangle size={24} />
             </div>
             <h2 className="font-display text-lg font-bold mb-2" style={{ color: "var(--text-primary)" }}>
               Что-то пошло не так
@@ -192,8 +192,8 @@ export default function AuthLayout({
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg-primary)" }}>
         <div className="glass-panel max-w-md px-8 py-6 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full mb-4" style={{ background: "rgba(255,51,51,0.1)" }}>
-            <span className="text-2xl">⚠️</span>
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full mb-4" style={{ background: "rgba(229,72,77,0.1)" }}>
+            <AlertTriangle size={24} />
           </div>
           <h2 className="font-display text-lg font-bold mb-2" style={{ color: "var(--text-primary)" }}>
             Ошибка подключения

@@ -46,7 +46,7 @@ export class TrainingErrorBoundary extends Component<Props, State> {
                 style={{
                   fontSize: "140px",
                   color: "transparent",
-                  WebkitTextStroke: "1.5px rgba(255,42,109,0.06)",
+                  WebkitTextStroke: "1.5px rgba(229,72,77,0.06)",
                 }}
               >
                 СБОЙ
@@ -58,9 +58,9 @@ export class TrainingErrorBoundary extends Component<Props, State> {
               <div
                 className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full"
                 style={{
-                  background: "rgba(255,42,109,0.06)",
-                  border: "2px solid rgba(255,42,109,0.15)",
-                  boxShadow: "0 0 30px rgba(255,42,109,0.08)",
+                  background: "rgba(229,72,77,0.06)",
+                  border: "2px solid rgba(229,72,77,0.15)",
+                  boxShadow: "0 0 30px rgba(229,72,77,0.08)",
                 }}
               >
                 <div
@@ -76,7 +76,7 @@ export class TrainingErrorBoundary extends Component<Props, State> {
 
               <div
                 className="font-mono text-[10px] tracking-[0.25em] uppercase mb-3"
-                style={{ color: "rgba(255,42,109,0.5)" }}
+                style={{ color: "rgba(229,72,77,0.5)" }}
               >
                 {"// ОШИБКА_ТРЕНИРОВКИ"}
               </div>
@@ -116,7 +116,7 @@ export class TrainingErrorBoundary extends Component<Props, State> {
                     color: "var(--text-muted)",
                   }}
                 >
-                  <span style={{ color: "rgba(255,42,109,0.5)" }}>{">"} </span>
+                  <span style={{ color: "rgba(229,72,77,0.5)" }}>{">"} </span>
                   {this.state.error.message}
                 </div>
               )}

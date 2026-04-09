@@ -55,8 +55,8 @@ export function PasswordChecklist({ value, className = "" }: Props) {
             <span
               className="flex-shrink-0 w-3.5 h-3.5 rounded-full flex items-center justify-center"
               style={{
-                background: ok ? "rgba(0,255,148,0.15)" : "var(--bg-tertiary)",
-                border: `1px solid ${ok ? "rgba(0,255,148,0.35)" : "var(--border-color)"}`,
+                background: ok ? "rgba(61,220,132,0.15)" : "var(--bg-tertiary)",
+                border: `1px solid ${ok ? "rgba(61,220,132,0.35)" : "var(--border-color)"}`,
                 transition: "background 0.2s, border-color 0.2s",
               }}
             >

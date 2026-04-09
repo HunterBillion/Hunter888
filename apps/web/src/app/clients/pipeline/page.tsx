@@ -293,10 +293,10 @@ export default function PipelinePage() {
                 {/* Show/hide lost */}
                 <motion.button
                   onClick={() => setShowLost((v) => !v)}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
                   style={{
-                    background: showLost ? "rgba(255,51,51,0.1)" : "var(--input-bg)",
-                    border: `1px solid ${showLost ? "rgba(255,51,51,0.3)" : "var(--border-color)"}`,
+                    background: showLost ? "rgba(229,72,77,0.1)" : "var(--input-bg)",
+                    border: `1px solid ${showLost ? "rgba(229,72,77,0.3)" : "var(--border-color)"}`,
                     color: showLost ? "var(--danger)" : "var(--text-muted)",
                   }}
                   whileTap={{ scale: 0.97 }}
@@ -324,7 +324,7 @@ export default function PipelinePage() {
                 {!isReadOnly && (
                   <motion.button
                     onClick={() => setCreateOpen(true)}
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
                     style={{
                       background: "var(--accent)",
                       border: "1px solid var(--accent)",
@@ -338,7 +338,7 @@ export default function PipelinePage() {
                 )}
                 <motion.button
                   onClick={() => setShowCustomize((prev) => !prev)}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
                   style={{
                     background: showCustomize ? "var(--accent-muted)" : "var(--input-bg)",
                     border: `1px solid ${showCustomize ? "var(--accent)" : "var(--border-color)"}`,
@@ -437,7 +437,7 @@ export default function PipelinePage() {
                           НАСТРОЙКА КАНБАНА
                         </span>
                       </div>
-                      <p className="max-w-2xl text-xs" style={{ color: "var(--text-muted)" }}>
+                      <p className="max-w-2xl text-sm" style={{ color: "var(--text-muted)" }}>
                         Каждый пользователь собирает свою доску сам: режим раскладки, видимые этапы и состав карточки.
                         Настройка сохраняется в профиле и влияет только на ваш аккаунт.
                       </p>

@@ -13,6 +13,7 @@ import {
   Brain,
   Clock,
   CheckCircle2,
+  Flame,
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -106,7 +107,7 @@ function ProgressBar({ value, max = 100 }: { value: number; max?: number }) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
   const color =
     pct >= 80
-      ? "#00FF66"
+      ? "var(--success)"
       : pct >= 60
         ? "var(--warning)"
         : pct >= 40
@@ -207,7 +208,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
                 style={{
                   color:
                     data.overall_accuracy >= 80
-                      ? "#00FF66"
+                      ? "var(--success)"
                       : data.overall_accuracy >= 60
                         ? "var(--warning)"
                         : "var(--danger)",
@@ -263,7 +264,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
               </span>
               {pvp.current_streak > 0 && (
                 <span className="text-xs" style={{ color: "#FF6B00" }}>
-                  🔥 {pvp.current_streak}
+                  <Flame size={14} className="inline" /> {pvp.current_streak}
                 </span>
               )}
             </div>

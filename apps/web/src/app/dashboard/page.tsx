@@ -74,8 +74,8 @@ const TABS: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
 ];
 
 const AVATAR_COLORS = [
-  "var(--accent)", "var(--accent)", "#EC4899", "#F43F5E", "#F97316",
-  "#EAB308", "var(--success)", "#14B8A6", "#06B6D4", "var(--info)",
+  "var(--accent)", "var(--accent)", "var(--magenta)", "#F43F5E", "var(--warning)",
+  "#EAB308", "var(--success)", "#14B8A6", "var(--info)", "var(--info)",
 ];
 
 const podiumColors = ["var(--warning)", "var(--text-secondary)", "var(--warning)"];
@@ -269,7 +269,7 @@ export default function DashboardPage() {
                             layoutId="dashboard-tab-indicator"
                             className="absolute inset-0 rounded-xl"
                             style={{
-                              background: "linear-gradient(135deg, var(--accent-muted), rgba(99,102,241,0.05))",
+                              background: "linear-gradient(135deg, var(--accent-muted), rgba(124,106,232,0.05))",
                               border: "1px solid var(--accent)",
                               boxShadow: "0 0 16px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.06)",
                             }}
@@ -303,14 +303,14 @@ export default function DashboardPage() {
                         animate={{ opacity: 1 }}
                         className="relative overflow-hidden rounded-2xl p-8"
                         style={{
-                          background: "linear-gradient(135deg, var(--glass-bg), rgba(99,102,241,0.04))",
-                          border: "1px solid rgba(99,102,241,0.2)",
+                          background: "linear-gradient(135deg, var(--glass-bg), rgba(124,106,232,0.04))",
+                          border: "1px solid rgba(124,106,232,0.2)",
                           backdropFilter: "blur(24px) saturate(1.5)",
                           boxShadow: "0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)",
                         }}
                       >
                         {/* Corner glow */}
-                        <div className="absolute -top-16 -left-16 w-48 h-48 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)" }} />
+                        <div className="absolute -top-16 -left-16 w-48 h-48 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(124,106,232,0.15) 0%, transparent 70%)" }} />
                         <div className="flex flex-col sm:flex-row sm:items-center gap-6">
                           {/* Main score */}
                           <div className="flex-shrink-0">

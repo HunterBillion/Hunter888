@@ -105,7 +105,7 @@ export default function BehaviorProfileCard({ userId }: { userId?: string }) {
           label="Эмпатия"
           value={profile.composite_scores.empathy}
           icon={Heart}
-          color="#EC4899"
+          color="var(--magenta)"
         />
       </div>
 

@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import { Check } from "lucide-react";
 import { getApiBaseUrl } from "@/lib/public-origin";
-import { Twemoji } from "@/components/ui/Twemoji";
+import { AppIcon } from "@/components/ui/AppIcon";
 
 /**
  * Consent Verification Page — PUBLIC (без авторизации).
@@ -147,7 +148,7 @@ export default function ConsentVerifyPage() {
               marginBottom: "12px",
             }}
           >
-            <Twemoji emoji="🛡️" size={24} />
+            <AppIcon emoji="🛡️" size={24} />
           </div>
           <h1
             style={{
@@ -209,8 +210,8 @@ export default function ConsentVerifyPage() {
             {/* Тип согласия */}
             <div
               style={{
-                background: "rgba(99,102,241,0.08)",
-                border: "1px solid rgba(99,102,241,0.15)",
+                background: "rgba(124,106,232,0.08)",
+                border: "1px solid rgba(124,106,232,0.15)",
                 borderRadius: "12px",
                 padding: "16px",
                 marginBottom: "20px",
@@ -271,7 +272,7 @@ export default function ConsentVerifyPage() {
                 transition: "all 0.2s",
               }}
             >
-              {submitting ? "Подтверждение..." : "✓ Подтверждаю согласие"}
+              {submitting ? "Подтверждение..." : <><Check size={16} className="inline" /> Подтверждаю согласие</>}
             </button>
 
             <p
@@ -302,11 +303,10 @@ export default function ConsentVerifyPage() {
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: "28px",
                 marginBottom: "16px",
               }}
             >
-              ✓
+              <Check size={28} />
             </div>
             <h2 style={{ color: "var(--success)", fontSize: "18px", fontWeight: 600, margin: "0 0 8px 0" }}>
               Согласие подтверждено

@@ -69,10 +69,10 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                 style={{
                   cursor: hasDetails ? "pointer" : "default",
                   background: trap.caught
-                    ? "rgba(0,255,148,0.06)"
+                    ? "rgba(61,220,132,0.06)"
                     : isPartial
                       ? "rgba(245,158,11,0.06)"
-                      : "rgba(255,42,109,0.06)",
+                      : "rgba(229,72,77,0.06)",
                   borderLeft: `3px solid ${
                     trap.caught
                       ? "var(--success)"
@@ -166,7 +166,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                         <div
                           className="rounded px-2.5 py-2 space-y-0.5"
                           style={{
-                            background: "rgba(0,255,148,0.06)",
+                            background: "rgba(61,220,132,0.06)",
                             borderLeft: "2px solid var(--success)",
                           }}
                         >
@@ -196,7 +196,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                             <span
                               key={`w${ki}`}
                               className="badge-neon text-xs"
-                              style={{ background: "rgba(255,42,109,0.1)", color: "var(--danger)", borderColor: "rgba(255,42,109,0.25)" }}
+                              style={{ background: "rgba(229,72,77,0.1)", color: "var(--danger)", borderColor: "rgba(229,72,77,0.25)" }}
                             >
                               {kw}
                             </span>
@@ -205,7 +205,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                             <span
                               key={`c${ki}`}
                               className="badge-neon text-xs"
-                              style={{ background: "rgba(0,255,148,0.1)", color: "var(--success)", borderColor: "rgba(0,255,148,0.25)" }}
+                              style={{ background: "rgba(61,220,132,0.1)", color: "var(--success)", borderColor: "rgba(61,220,132,0.25)" }}
                             >
                               {kw}
                             </span>

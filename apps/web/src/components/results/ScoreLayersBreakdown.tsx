@@ -110,7 +110,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
           <span className="text-sm font-medium" style={{ color: totalGrade.color }}>
             {totalGrade.label}
           </span>
-          <div className="flex items-center gap-1 rounded-xl px-3 py-1.5" style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)" }}>
+          <div className="flex items-center gap-1 rounded-xl px-3 py-1.5" style={{ background: "rgba(124,106,232,0.1)", border: "1px solid rgba(124,106,232,0.2)" }}>
             <span className="text-lg font-bold font-mono" style={{ color: "var(--accent)" }}>{Math.round(totalScore)}</span>
             <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>/100</span>
           </div>
@@ -140,7 +140,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.04 }}
               className="rounded-xl overflow-hidden"
-              style={{ background: isExpanded ? "rgba(99,102,241,0.04)" : "transparent" }}
+              style={{ background: isExpanded ? "rgba(124,106,232,0.04)" : "transparent" }}
             >
               <button
                 type="button"
@@ -226,7 +226,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
                               key={hi}
                               className="flex items-start gap-2.5 rounded-lg px-3 py-2"
                               style={{
-                                background: h.delta < 0 ? "rgba(255,42,109,0.06)" : h.delta > 0 ? "rgba(0,255,148,0.06)" : "rgba(255,255,255,0.02)",
+                                background: h.delta < 0 ? "rgba(229,72,77,0.06)" : h.delta > 0 ? "rgba(61,220,132,0.06)" : "rgba(255,255,255,0.02)",
                                 borderLeft: h.delta !== 0
                                   ? `3px solid ${h.delta < 0 ? "var(--danger)" : "var(--success)"}`
                                   : "3px solid var(--border-color)",

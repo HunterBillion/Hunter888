@@ -92,7 +92,7 @@ export default function DuplicatesPage() {
               </span>
             )}
           </div>
-          <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+          <p className="text-sm mt-2" style={{ color: "var(--text-muted)" }}>
             Клиенты с одинаковым номером телефона
           </p>
         </motion.div>
@@ -164,16 +164,16 @@ export default function DuplicatesPage() {
                         </motion.button>
 
                         <div className="flex-1 min-w-0">
-                          <Link href={`/clients/${client.id}`} className="text-sm font-medium hover:underline" style={{ color: "var(--text-primary)" }}>
+                          <Link href={`/clients/${client.id}`} prefetch={true} className="text-sm font-medium hover:underline" style={{ color: "var(--text-primary)" }}>
                             {client.full_name}
                           </Link>
                           <div className="flex items-center gap-3 mt-0.5">
                             {client.email && (
-                              <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{client.email}</span>
+                              <span className="text-sm font-mono" style={{ color: "var(--text-muted)" }}>{client.email}</span>
                             )}
-                            <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{client.status}</span>
+                            <span className="text-sm font-mono" style={{ color: "var(--text-muted)" }}>{client.status}</span>
                             {client.manager_name && (
-                              <span className="text-xs" style={{ color: "var(--text-muted)" }}>{client.manager_name}</span>
+                              <span className="text-sm" style={{ color: "var(--text-muted)" }}>{client.manager_name}</span>
                             )}
                           </div>
                         </div>
@@ -188,7 +188,7 @@ export default function DuplicatesPage() {
 
                 {/* Merge action */}
                 <div className="px-5 py-3 border-t flex items-center justify-between" style={{ borderColor: "var(--border-color)" }}>
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  <span className="text-sm" style={{ color: "var(--text-muted)" }}>
                     {mergeTarget[group.phone]
                       ? "Остальные записи будут объединены в выбранную"
                       : "Выберите основную запись"}

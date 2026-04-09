@@ -309,9 +309,9 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                         padding: "3px 10px",
                         fontSize: "0.75rem",
                         fontWeight: 500,
-                        background: "rgba(255,215,0,0.1)",
+                        background: "rgba(212,168,75,0.1)",
                         color: "#FFD700",
-                        border: "1px solid rgba(255,215,0,0.25)",
+                        border: "1px solid rgba(212,168,75,0.25)",
                       }}>
                         {a.name} (+{a.xp} XP)
                       </span>
@@ -479,8 +479,8 @@ export function ReportsDashboard({
           gap: "0.75rem",
           padding: "0.75rem 1rem",
           marginBottom: "1rem",
-          background: "rgba(99,102,241,0.06)",
-          border: "1px solid rgba(99,102,241,0.15)",
+          background: "rgba(124,106,232,0.06)",
+          border: "1px solid rgba(124,106,232,0.15)",
           borderRadius: 10,
           flexWrap: "wrap",
         }}>
@@ -494,8 +494,8 @@ export function ReportsDashboard({
                 style={{
                   padding: "0.3rem 0.75rem",
                   borderRadius: 8,
-                  border: activeUserId === m.id ? "1px solid rgba(99,102,241,0.4)" : "1px solid rgba(255,255,255,0.08)",
-                  background: activeUserId === m.id ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.03)",
+                  border: activeUserId === m.id ? "1px solid rgba(124,106,232,0.4)" : "1px solid rgba(255,255,255,0.08)",
+                  background: activeUserId === m.id ? "rgba(124,106,232,0.15)" : "rgba(255,255,255,0.03)",
                   color: activeUserId === m.id ? "#a5b4fc" : "var(--text-muted)",
                   cursor: "pointer",
                   fontSize: "0.8rem",

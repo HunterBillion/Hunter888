@@ -246,7 +246,7 @@ export default function ClientGraphPage() {
             {[
               { label: "Карточек в модуле", value: formatCount(totalClients), icon: Users, color: "var(--accent)" },
               { label: "В активном пути", value: formatCount(summary.activePath), icon: ArrowRight, color: "var(--info)" },
-              { label: "Зона возврата", value: formatCount(summary.recoveryPool), icon: GitBranch, color: "#F97316" },
+              { label: "Зона возврата", value: formatCount(summary.recoveryPool), icon: GitBranch, color: "var(--warning)" },
               { label: "Видимых менеджеров", value: formatCount(summary.managers), icon: Network, color: "var(--success)" },
             ].map((card, index) => {
               const Icon = card.icon;

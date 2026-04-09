@@ -129,8 +129,8 @@ export function PagesTab({
                     alignItems: "center",
                     gap: "0.3rem",
                     padding: "0.3rem 0.6rem",
-                    background: "rgba(99,102,241,0.1)",
-                    border: "1px solid rgba(99,102,241,0.25)",
+                    background: "rgba(124,106,232,0.1)",
+                    border: "1px solid rgba(124,106,232,0.25)",
                     borderRadius: 6,
                     color: "#818cf8",
                     cursor: "pointer",
@@ -196,7 +196,7 @@ export function PagesTab({
                   style={{
                     padding: "2px 8px",
                     borderRadius: 6,
-                    background: "rgba(99,102,241,0.1)",
+                    background: "rgba(124,106,232,0.1)",
                     color: "#818cf8",
                     fontSize: "0.7rem",
                   }}
@@ -216,7 +216,7 @@ export function PagesTab({
                 minHeight: 300,
                 padding: "1rem",
                 background: "rgba(0,0,0,0.3)",
-                border: "1px solid rgba(99,102,241,0.3)",
+                border: "1px solid rgba(124,106,232,0.3)",
                 borderRadius: 8,
                 color: "#e0e0e0",
                 fontSize: "0.9rem",

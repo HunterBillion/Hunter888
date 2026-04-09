@@ -17,8 +17,8 @@ export function DuplicateWarning({ message, duplicateIds, onDismiss }: Duplicate
       animate={{ opacity: 1, y: 0 }}
       className="rounded-xl p-4 mb-4"
       style={{
-        background: "rgba(255,215,0,0.08)",
-        border: "1px solid rgba(255,215,0,0.25)",
+        background: "rgba(212,168,75,0.08)",
+        border: "1px solid rgba(212,168,75,0.25)",
       }}
     >
       <div className="flex items-start gap-3">
@@ -38,9 +38,9 @@ export function DuplicateWarning({ message, duplicateIds, onDismiss }: Duplicate
                   href={`/clients/${id}`}
                   className="text-xs font-mono px-2 py-1 rounded-lg transition-colors"
                   style={{
-                    background: "rgba(255,215,0,0.1)",
+                    background: "rgba(212,168,75,0.1)",
                     color: "var(--warning)",
-                    border: "1px solid rgba(255,215,0,0.2)",
+                    border: "1px solid rgba(212,168,75,0.2)",
                   }}
                 >
                   Карточка #{id.slice(0, 8)}

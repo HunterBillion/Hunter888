@@ -18,7 +18,7 @@ interface Alert {
 
 const SEVERITY_COLORS: Record<string, { bg: string; border: string; icon: string }> = {
   critical: { bg: "rgba(239, 68, 68, 0.1)", border: "rgba(239, 68, 68, 0.3)", icon: "var(--danger)" },
-  warning: { bg: "rgba(249, 115, 22, 0.1)", border: "rgba(249, 115, 22, 0.3)", icon: "#F97316" },
+  warning: { bg: "rgba(249, 115, 22, 0.1)", border: "rgba(249, 115, 22, 0.3)", icon: "var(--warning)" },
   success: { bg: "rgba(34, 197, 94, 0.1)", border: "rgba(34, 197, 94, 0.3)", icon: "var(--success)" },
   info: { bg: "rgba(59, 130, 246, 0.1)", border: "rgba(59, 130, 246, 0.3)", icon: "var(--info)" },
 };
@@ -124,7 +124,7 @@ export function AlertPanel({ compact = false }: AlertPanelProps) {
             <button
               onClick={() => setExpanded(!expanded)}
               className="mt-2 w-full text-center text-xs font-medium uppercase tracking-wide py-1 rounded transition-colors"
-              style={{ color: "var(--accent)", background: "rgba(99,102,241,0.08)" }}
+              style={{ color: "var(--accent)", background: "rgba(124,106,232,0.08)" }}
             >
               {expanded ? "Свернуть" : `Показать все (${alerts.length})`}
             </button>

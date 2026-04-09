@@ -47,15 +47,15 @@ export function HunterCard({ user, stats, gamification, teamName }: HunterCardPr
       animate={{ opacity: 1, y: 0 }}
       className="relative overflow-hidden rounded-2xl p-8"
       style={{
-        background: "linear-gradient(135deg, var(--glass-bg), rgba(99,102,241,0.04))",
-        border: "1px solid rgba(99,102,241,0.2)",
+        background: "linear-gradient(135deg, var(--glass-bg), rgba(124,106,232,0.04))",
+        border: "1px solid rgba(124,106,232,0.2)",
         backdropFilter: "blur(24px) saturate(1.5)",
         boxShadow: "0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)",
       }}
     >
       {/* Corner glows */}
-      <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)" }} />
-      <div className="absolute -bottom-16 -left-16 w-48 h-48 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)" }} />
+      <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(124,106,232,0.15) 0%, transparent 70%)" }} />
+      <div className="absolute -bottom-16 -left-16 w-48 h-48 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(124,106,232,0.08) 0%, transparent 70%)" }} />
 
       <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-6">
         {/* Left: Avatar + Info */}
@@ -64,7 +64,7 @@ export function HunterCard({ user, stats, gamification, teamName }: HunterCardPr
           <div
             className="w-[80px] h-[80px] rounded-2xl flex items-center justify-center text-2xl font-bold text-white shrink-0"
             style={{
-              background: "linear-gradient(135deg, var(--accent), rgba(99,102,241,0.8))",
+              background: "linear-gradient(135deg, var(--accent), rgba(124,106,232,0.8))",
               boxShadow: "0 8px 32px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.2)",
             }}
           >
@@ -102,7 +102,7 @@ export function HunterCard({ user, stats, gamification, teamName }: HunterCardPr
         {/* Right: Level Ring */}
         <div className="relative shrink-0 self-center w-16 h-16 sm:w-[88px] sm:h-[88px]">
           <svg viewBox="0 0 88 88" className="w-full h-full rotate-[-90deg]">
-            <circle cx="44" cy="44" r="38" fill="none" stroke="rgba(99,102,241,0.12)" strokeWidth="5" />
+            <circle cx="44" cy="44" r="38" fill="none" stroke="rgba(124,106,232,0.12)" strokeWidth="5" />
             <circle
               cx="44" cy="44" r="38" fill="none"
               stroke="var(--accent)"

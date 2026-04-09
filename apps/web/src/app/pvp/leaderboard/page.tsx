@@ -107,7 +107,7 @@ export default function PvPLeaderboardPage() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               className="mt-4 rounded-xl p-4"
-              style={{ background: "linear-gradient(135deg, rgba(255,215,0,0.08), rgba(255,165,0,0.04))", border: "1px solid rgba(255,215,0,0.2)" }}
+              style={{ background: "linear-gradient(135deg, rgba(212,168,75,0.08), rgba(255,165,0,0.04))", border: "1px solid rgba(212,168,75,0.2)" }}
             >
               <div className="flex items-center gap-2 mb-2">
                 <Shield size={16} style={{ color: "var(--warning)" }} />
@@ -291,8 +291,8 @@ function ArenaLeaderboardSection() {
               transition={{ delay: i * 0.03 }}
               className="flex items-center gap-4 rounded-xl p-4"
               style={{
-                background: entry.rank <= 3 ? "rgba(255,215,0,0.04)" : "var(--glass-bg)",
-                border: `1px solid ${entry.rank <= 3 ? "rgba(255,215,0,0.15)" : "var(--glass-border)"}`,
+                background: entry.rank <= 3 ? "rgba(212,168,75,0.04)" : "var(--glass-bg)",
+                border: `1px solid ${entry.rank <= 3 ? "rgba(212,168,75,0.15)" : "var(--glass-border)"}`,
                 backdropFilter: "blur(20px)",
               }}
             >

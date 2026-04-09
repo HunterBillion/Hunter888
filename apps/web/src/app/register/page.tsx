@@ -104,7 +104,7 @@ export default function RegisterPage() {
             animate={{ scale: 1 }}
             transition={{ type: "spring", stiffness: 300, delay: 0.1 }}
             className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
-            style={{ background: "var(--accent)", boxShadow: "0 0 30px rgba(99,102,241,0.3)" }}
+            style={{ background: "var(--accent)", boxShadow: "0 0 30px rgba(124,106,232,0.3)" }}
           >
             <UserPlus size={26} className="text-white" />
           </motion.div>

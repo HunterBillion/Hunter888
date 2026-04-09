@@ -14,8 +14,8 @@ const EVENT_CONFIG: Record<ActivityEventType, { icon: typeof Activity; color: st
 };
 
 const AVATAR_COLORS = [
-  "var(--accent)", "var(--accent)", "#EC4899", "#F43F5E", "#F97316",
-  "#EAB308", "var(--success)", "#14B8A6", "#06B6D4", "var(--info)",
+  "var(--accent)", "var(--accent)", "var(--magenta)", "#F43F5E", "var(--warning)",
+  "#EAB308", "var(--success)", "#14B8A6", "var(--info)", "var(--info)",
 ];
 
 function getColor(id: string): string {
@@ -86,7 +86,7 @@ export function ActivityFeed({ items, loading = false, className = "" }: Activit
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.04 }}
-                  className="flex items-center gap-4 px-5 py-4 transition-colors duration-200 hover:bg-[rgba(99,102,241,0.04)]"
+                  className="flex items-center gap-4 px-5 py-4 transition-colors duration-200 hover:bg-[rgba(124,106,232,0.04)]"
                   style={{ borderColor: "var(--border-color)" }}
                 >
                   {/* Avatar */}

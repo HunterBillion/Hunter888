@@ -81,7 +81,7 @@ function emotionLabelRu(state: string): string {
 }
 
 function getScoreColor(score: number): string {
-  return score >= 70 ? "#00FF66" : score >= 40 ? "#FFD700" : "#FF3333";
+  return score >= 70 ? "var(--success)" : score >= 40 ? "#FFD700" : "var(--danger)";
 }
 
 export default function ResultsPage() {
@@ -313,7 +313,7 @@ export default function ResultsPage() {
             style={{
               borderColor: "rgba(255,180,0,0.3)",
               background: "rgba(255,180,0,0.06)",
-              color: "#FFB400",
+              color: "var(--warning)",
             }}
           >
             <AlertTriangle size={16} />
@@ -365,8 +365,8 @@ export default function ResultsPage() {
               <Link href={`/training/crm/${story.id}`}>
                 <motion.span
                   className="flex items-center gap-2 rounded-lg px-4 py-3 font-mono text-xs tracking-widest transition-colors backdrop-blur"
-                  style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.25)", color: "var(--accent)" }}
-                  whileHover={{ background: "rgba(99,102,241,0.2)" }}
+                  style={{ background: "rgba(124,106,232,0.12)", border: "1px solid rgba(124,106,232,0.25)", color: "var(--accent)" }}
+                  whileHover={{ background: "rgba(124,106,232,0.2)" }}
                   whileTap={{ scale: 0.97 }}
                 >
                   <Layers3 size={14} /> ИСТОРИЯ CRM
@@ -396,15 +396,15 @@ export default function ResultsPage() {
           >
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
-                <Zap size={20} style={{ color: "#FFB400" }} />
-                <span className="font-display font-bold text-xl" style={{ color: "#FFB400" }}>
+                <Zap size={20} style={{ color: "var(--warning)" }} />
+                <span className="font-display font-bold text-xl" style={{ color: "var(--warning)" }}>
                   +{result.xp_breakdown.grand_total ?? result.xp_breakdown.session_total ?? 0} XP
                 </span>
               </div>
               {result.level_up && (
-                <div className="flex items-center gap-2 rounded-xl px-3 py-1.5" style={{ background: "rgba(0,255,102,0.1)", border: "1px solid rgba(0,255,102,0.3)" }}>
-                  <Trophy size={16} style={{ color: "#00FF66" }} />
-                  <span className="font-display font-bold text-sm" style={{ color: "#00FF66" }}>
+                <div className="flex items-center gap-2 rounded-xl px-3 py-1.5" style={{ background: "rgba(61,220,132,0.1)", border: "1px solid rgba(61,220,132,0.3)" }}>
+                  <Trophy size={16} style={{ color: "var(--success)" }} />
+                  <span className="font-display font-bold text-sm" style={{ color: "var(--success)" }}>
                     Уровень {result.new_level}!
                   </span>
                 </div>
@@ -440,7 +440,7 @@ export default function ResultsPage() {
 
               <div className="mt-4 flex flex-wrap justify-center gap-6 z-10 font-mono text-sm">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 border" style={{ background: "rgba(99,102,241,0.5)", borderColor: "var(--accent)" }} />
+                  <div className="w-3 h-3 border" style={{ background: "rgba(124,106,232,0.5)", borderColor: "var(--accent)" }} />
                   <span style={{ color: "var(--text-secondary)" }}>Ваш профиль</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -491,24 +491,24 @@ export default function ResultsPage() {
                 className="grid grid-cols-1 sm:grid-cols-2 gap-4"
               >
                 {criticalDrop && (
-                  <div className="glass-panel p-5 rounded-xl" style={{ borderLeft: "4px solid #FF3333", background: "linear-gradient(to right, rgba(255,51,51,0.05), transparent)" }}>
+                  <div className="glass-panel p-5 rounded-xl" style={{ borderLeft: "4px solid #FF3333", background: "linear-gradient(to right, rgba(229,72,77,0.05), transparent)" }}>
                     <div className="flex items-center gap-2 mb-2">
-                      <AlertTriangle size={14} style={{ color: "#FF3333" }} />
+                      <AlertTriangle size={14} style={{ color: "var(--danger)" }} />
                       <div className="font-mono text-sm uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Критич. падение</div>
                     </div>
                     <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                      Эмоция клиента упала: <span style={{ color: "#FF3333" }}>{emotionLabelRu(criticalDrop.from)}</span> → <span style={{ color: "#FF3333" }}>{emotionLabelRu(criticalDrop.to)}</span>
+                      Эмоция клиента упала: <span style={{ color: "var(--danger)" }}>{emotionLabelRu(criticalDrop.from)}</span> → <span style={{ color: "var(--danger)" }}>{emotionLabelRu(criticalDrop.to)}</span>
                     </p>
                   </div>
                 )}
                 {keyRecovery && (
-                  <div className="glass-panel p-5 rounded-xl" style={{ borderLeft: "4px solid #00FF66", background: "linear-gradient(to right, rgba(0,255,102,0.05), transparent)" }}>
+                  <div className="glass-panel p-5 rounded-xl" style={{ borderLeft: "4px solid #00FF66", background: "linear-gradient(to right, rgba(61,220,132,0.05), transparent)" }}>
                     <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle size={14} style={{ color: "#00FF66" }} />
+                      <CheckCircle size={14} style={{ color: "var(--success)" }} />
                       <div className="font-mono text-sm uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Восстановление</div>
                     </div>
                     <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                      Восстановление: <span style={{ color: "#00FF66" }}>{emotionLabelRu(keyRecovery.from)}</span> → <span style={{ color: "#00FF66" }}>{emotionLabelRu(keyRecovery.to)}</span>
+                      Восстановление: <span style={{ color: "var(--success)" }}>{emotionLabelRu(keyRecovery.from)}</span> → <span style={{ color: "var(--success)" }}>{emotionLabelRu(keyRecovery.to)}</span>
                     </p>
                   </div>
                 )}
@@ -629,7 +629,7 @@ export default function ResultsPage() {
           >
             <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, transparent, var(--danger), transparent)" }} />
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(255,42,109,0.1)", border: "1px solid rgba(255,42,109,0.2)" }}>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(229,72,77,0.1)", border: "1px solid rgba(229,72,77,0.2)" }}>
                 <BookOpen size={18} style={{ color: "var(--danger)" }} />
               </div>
               <div className="flex-1">
@@ -681,8 +681,8 @@ export default function ResultsPage() {
                   key={i}
                   className="flex items-center gap-3 rounded-lg p-2.5"
                   style={{
-                    background: p.fulfilled ? "rgba(0,255,148,0.06)" : "rgba(255,42,109,0.06)",
-                    border: `1px solid ${p.fulfilled ? "rgba(0,255,148,0.15)" : "rgba(255,42,109,0.15)"}`,
+                    background: p.fulfilled ? "rgba(61,220,132,0.06)" : "rgba(229,72,77,0.06)",
+                    border: `1px solid ${p.fulfilled ? "rgba(61,220,132,0.15)" : "rgba(229,72,77,0.15)"}`,
                   }}
                 >
                   {p.fulfilled ? (
@@ -722,7 +722,7 @@ export default function ResultsPage() {
             <div className="space-y-4">
               {scoreItems.map((item, i) => {
                 const pct = item.max > 0 ? (item.value / item.max) * 100 : 0;
-                const barColor = pct >= 70 ? "#00FF66" : pct >= 40 ? "#FFD700" : "#FF3333";
+                const barColor = pct >= 70 ? "var(--success)" : pct >= 40 ? "#FFD700" : "var(--danger)";
                 return (
                   <motion.div key={item.label} initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 + i * 0.1 }}>
                     <div className="flex items-center justify-between mb-1.5">
@@ -797,13 +797,13 @@ export default function ResultsPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.55 }}
             className="glass-panel mt-8 p-6 rounded-2xl relative overflow-hidden"
-            style={{ borderColor: "rgba(255,215,0,0.3)" }}
+            style={{ borderColor: "rgba(212,168,75,0.3)" }}
           >
             <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, transparent, #FFD700, transparent)" }} />
             <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full opacity-10 blur-[60px] pointer-events-none" style={{ background: "#FFD700" }} />
 
             <div className="flex items-start gap-4 relative z-10">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(255,215,0,0.1)", border: "1px solid rgba(255,215,0,0.2)" }}>
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(212,168,75,0.1)", border: "1px solid rgba(212,168,75,0.2)" }}>
                 <Trophy size={22} style={{ color: "#FFD700" }} />
               </div>
 
@@ -839,7 +839,7 @@ export default function ResultsPage() {
                       <span key={e.user_id} className="font-mono text-xs flex items-center gap-1 px-2 py-1 rounded-full"
                         style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}
                       >
-                        {e.rank === 1 ? "🥇" : e.rank === 2 ? "🥈" : "🥉"} {e.full_name.split(" ")[0]} · {Math.round(e.best_score)}
+                        <Medal size={12} /> {e.full_name.split(" ")[0]} · {Math.round(e.best_score)}
                       </span>
                     ))}
                     {tournament.leaderboard.length > 3 && (
@@ -856,7 +856,7 @@ export default function ResultsPage() {
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="mt-4 flex items-center gap-2 rounded-xl p-3 text-sm"
-                    style={{ background: "rgba(0,255,102,0.08)", border: "1px solid rgba(0,255,102,0.2)", color: "var(--success)" }}
+                    style={{ background: "rgba(61,220,132,0.08)", border: "1px solid rgba(61,220,132,0.2)", color: "var(--success)" }}
                   >
                     <CheckCircle size={16} />
                     Результат отправлен! Попытка {tournamentResult.attempt} · {Math.round(tournamentResult.score)} баллов
@@ -1023,12 +1023,12 @@ export default function ResultsPage() {
             </h3>
             <div className="flex flex-wrap gap-3">
               {totalScore < 70 && (
-                <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(255,180,0,0.08)", color: "#FFB400", border: "1px solid rgba(255,180,0,0.2)" }}>
+                <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(255,180,0,0.08)", color: "var(--warning)", border: "1px solid rgba(255,180,0,0.2)" }}>
                   Рекомендуем повторить сценарий — сфокусируйтесь на слабых местах
                 </div>
               )}
               {totalScore >= 85 && (
-                <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(0,255,102,0.08)", color: "#00FF66", border: "1px solid rgba(0,255,102,0.2)" }}>
+                <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(61,220,132,0.08)", color: "var(--success)", border: "1px solid rgba(61,220,132,0.2)" }}>
                   Отличный результат! Попробуйте более сложный сценарий
                 </div>
               )}
@@ -1048,7 +1048,7 @@ export default function ResultsPage() {
                   }
                 }}
                 className="btn-neon flex items-center gap-2 text-sm"
-                style={addedToCRM ? { background: "rgba(0,255,102,0.15)", borderColor: "rgba(0,255,102,0.3)" } : {}}
+                style={addedToCRM ? { background: "rgba(61,220,132,0.15)", borderColor: "rgba(61,220,132,0.3)" } : {}}
                 whileTap={{ scale: 0.97 }}
               >
                 <Users size={14} />

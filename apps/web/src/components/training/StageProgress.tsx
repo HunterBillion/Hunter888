@@ -44,7 +44,7 @@ export default function StageProgressBar({
           className="h-full rounded-full"
           style={{
             background: "linear-gradient(90deg, var(--success), var(--accent))",
-            boxShadow: "0 0 6px rgba(0,255,148,0.3)",
+            boxShadow: "0 0 6px rgba(61,220,132,0.3)",
           }}
           animate={{ width: `${progressPct}%` }}
           transition={{ duration: 0.6, ease: "easeOut" }}
@@ -86,7 +86,7 @@ export default function StageProgressBar({
                       transition={{ type: "spring", stiffness: 500, damping: 20 }}
                       className="flex items-center justify-center w-6 h-6 rounded-full"
                       style={{
-                        background: "rgba(0,255,148,0.15)",
+                        background: "rgba(61,220,132,0.15)",
                         border: "1.5px solid var(--success, #00FF94)",
                       }}
                     >
@@ -97,15 +97,15 @@ export default function StageProgressBar({
                       key="current"
                       animate={{
                         boxShadow: [
-                          "0 0 0px rgba(99,102,241,0.3)",
-                          "0 0 10px rgba(99,102,241,0.6)",
-                          "0 0 0px rgba(99,102,241,0.3)",
+                          "0 0 0px rgba(124,106,232,0.3)",
+                          "0 0 10px rgba(124,106,232,0.6)",
+                          "0 0 0px rgba(124,106,232,0.3)",
                         ],
                       }}
                       transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                       className="flex items-center justify-center w-6 h-6 rounded-full"
                       style={{
-                        background: "rgba(99,102,241,0.15)",
+                        background: "rgba(124,106,232,0.15)",
                         border: "1.5px solid var(--accent)",
                       }}
                     >

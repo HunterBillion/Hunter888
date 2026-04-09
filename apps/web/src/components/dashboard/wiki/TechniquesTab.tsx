@@ -28,7 +28,7 @@ export function TechniquesTab({ techniques }: { techniques: TechniqueItem[] }) {
                   fontSize: "0.7rem",
                   padding: "2px 8px",
                   borderRadius: 10,
-                  background: "rgba(99,102,241,0.1)",
+                  background: "rgba(124,106,232,0.1)",
                   color: "#818cf8",
                 }}
               >

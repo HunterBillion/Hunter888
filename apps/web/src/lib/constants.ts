@@ -92,7 +92,7 @@ export const STORAGE = {
 /* ── Rank colours ─────────────────────────────────────────────────── */
 
 export const RANK_COLORS = {
-  gold: { primary: '#FFD700', bg: 'rgba(255,215,0,0.1)', border: 'rgba(255,215,0,0.3)' },
+  gold: { primary: '#FFD700', bg: 'rgba(212,168,75,0.1)', border: 'rgba(212,168,75,0.3)' },
   silver: { primary: '#C0C0C0', bg: 'rgba(192,192,192,0.1)', border: 'rgba(192,192,192,0.3)' },
   bronze: { primary: '#CD7F32', bg: 'rgba(205,127,50,0.1)', border: 'rgba(205,127,50,0.3)' },
 } as const;

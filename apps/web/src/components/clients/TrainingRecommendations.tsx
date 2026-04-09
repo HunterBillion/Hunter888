@@ -73,7 +73,7 @@ export function TrainingRecommendations({ managerId }: TrainingRecommendationsPr
               } catch { /* ignore */ }
             }}
           >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: "rgba(255,51,51,0.08)" }}>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: "rgba(229,72,77,0.08)" }}>
               <TrendingDown size={14} style={{ color: "var(--danger)" }} />
             </div>
             <div className="flex-1 min-w-0">

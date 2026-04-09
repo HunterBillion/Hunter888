@@ -22,7 +22,7 @@ import {
   Info,
 } from "lucide-react";
 import Link from "next/link";
-import { Twemoji } from "@/components/ui/Twemoji";
+import { AppIcon } from "@/components/ui/AppIcon";
 import { api } from "@/lib/api";
 import AuthLayout from "@/components/layout/AuthLayout";
 import CharacterBuilder from "@/components/training/CharacterBuilder";
@@ -63,10 +63,10 @@ const DIFF_FILTERS = [
 ] as const;
 
 function getDifficultyConfig(d: number) {
-  if (d <= 3) return { label: "Легко", emoji: "🟢", color: "var(--success)", bg: "rgba(0,255,148,0.08)", border: "rgba(0,255,148,0.2)", desc: "Клиент лояльный, мало возражений" };
+  if (d <= 3) return { label: "Легко", emoji: "🟢", color: "var(--success)", bg: "rgba(61,220,132,0.08)", border: "rgba(61,220,132,0.2)", desc: "Клиент лояльный, мало возражений" };
   if (d <= 6) return { label: "Средне", emoji: "🟡", color: "var(--warning)", bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.2)", desc: "Стандартные возражения и ловушки" };
-  if (d <= 8) return { label: "Сложно", emoji: "🔴", color: "var(--danger)", bg: "rgba(255,51,51,0.08)", border: "rgba(255,51,51,0.2)", desc: "Агрессивный клиент, каскад ловушек" };
-  return { label: "Босс", emoji: "💀", color: "#FF0055", bg: "rgba(255,0,85,0.1)", border: "rgba(255,0,85,0.3)", desc: "Максимальная сложность, все ловушки" };
+  if (d <= 8) return { label: "Сложно", emoji: "🔴", color: "var(--danger)", bg: "rgba(229,72,77,0.08)", border: "rgba(229,72,77,0.2)", desc: "Агрессивный клиент, каскад ловушек" };
+  return { label: "Босс", emoji: "💀", color: "var(--danger)", bg: "rgba(255,0,85,0.1)", border: "rgba(255,0,85,0.3)", desc: "Максимальная сложность, все ловушки" };
 }
 
 function TrainingPageContent() {
@@ -243,7 +243,7 @@ function TrainingPageContent() {
                     <Link
                       href="/training/archetypes"
                       className="block text-center mt-2 py-2 rounded-lg text-sm font-medium"
-                      style={{ background: "var(--accent-muted)", color: "var(--accent)", border: "1px solid rgba(99,102,241,0.25)" }}
+                      style={{ background: "var(--accent-muted)", color: "var(--accent)", border: "1px solid rgba(124,106,232,0.25)" }}
                       onClick={() => setShowInfoModal(false)}
                     >
                       Каталог архетипов — 100 типов клиентов
@@ -277,8 +277,8 @@ function TrainingPageContent() {
                   onClick={() => setStoryCalls(calls)}
                   className="rounded-xl px-4 py-2 text-sm font-medium uppercase tracking-wide transition-all"
                   style={{
-                    background: storyCalls === calls ? "rgba(99,102,241,0.14)" : "var(--input-bg)",
-                    border: `1px solid ${storyCalls === calls ? "rgba(99,102,241,0.42)" : "var(--border-color)"}`,
+                    background: storyCalls === calls ? "rgba(124,106,232,0.14)" : "var(--input-bg)",
+                    border: `1px solid ${storyCalls === calls ? "rgba(124,106,232,0.42)" : "var(--border-color)"}`,
                     color: storyCalls === calls ? "var(--accent)" : "var(--text-muted)",
                   }}
                 >
@@ -470,7 +470,7 @@ function RecommendedTab({
             <div className="flex items-center gap-2">
               {gi === 0 && <Sparkles size={18} style={{ color: group.color }} />}
               {gi === recommendations.length - 1 && <TrendingUp size={18} style={{ color: group.color }} />}
-              {group.icon && <Twemoji emoji={group.icon} size={18} />}
+              {group.icon && <AppIcon emoji={group.icon} size={18} />}
               <h3 className="font-display text-base font-bold tracking-wide" style={{ color: "var(--text-primary)" }}>
                 {group.title}
               </h3>
@@ -564,7 +564,7 @@ function ScenariosTab({
         className="mt-6 overflow-hidden rounded-2xl"
         style={{
           background: "linear-gradient(135deg, rgba(5,5,6,0.95), rgba(18,18,22,0.94))",
-          border: "1px solid rgba(99,102,241,0.18)",
+          border: "1px solid rgba(124,106,232,0.18)",
           boxShadow: "0 18px 45px rgba(0,0,0,0.28)",
         }}
       >
@@ -591,9 +591,9 @@ function ScenariosTab({
                 onClick={() => onStoryCallsChange(item.calls)}
                 className="rounded-xl px-4 py-3 text-left transition-all"
                 style={{
-                  background: storyCalls === item.calls ? "rgba(99,102,241,0.14)" : "rgba(255,255,255,0.03)",
-                  border: storyCalls === item.calls ? "1px solid rgba(99,102,241,0.42)" : "1px solid rgba(255,255,255,0.08)",
-                  boxShadow: storyCalls === item.calls ? "0 0 0 1px rgba(99,102,241,0.12) inset" : "none",
+                  background: storyCalls === item.calls ? "rgba(124,106,232,0.14)" : "rgba(255,255,255,0.03)",
+                  border: storyCalls === item.calls ? "1px solid rgba(124,106,232,0.42)" : "1px solid rgba(255,255,255,0.08)",
+                  boxShadow: storyCalls === item.calls ? "0 0 0 1px rgba(124,106,232,0.12) inset" : "none",
                 }}
               >
                 <div className="text-sm font-semibold" style={{ color: storyCalls === item.calls ? "var(--accent)" : "var(--text-primary)" }}>
@@ -789,7 +789,7 @@ function AssignedTab({
               <motion.button
                 onClick={() => onStartStory(item.scenario_id, storyCalls)}
                 className="btn-neon flex items-center gap-2"
-                style={{ borderColor: "rgba(99,102,241,0.24)", color: "var(--accent)" }}
+                style={{ borderColor: "rgba(124,106,232,0.24)", color: "var(--accent)" }}
                 whileTap={{ scale: 0.97 }}
               >
                 AI x{storyCalls}
@@ -934,7 +934,7 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
                 onClick={() => handleStart(char, true)}
                 disabled={starting === (char.id || char.archetype)}
                 className="btn-neon flex items-center justify-center gap-2 px-3 text-xs"
-                style={{ borderColor: "rgba(99,102,241,0.24)", color: "var(--accent)" }}
+                style={{ borderColor: "rgba(124,106,232,0.24)", color: "var(--accent)" }}
                 whileTap={{ scale: 0.97 }}
               >
                 AI x{storyCalls}
@@ -947,7 +947,7 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
                 }}
                 disabled={deleting === char.id}
                 className="btn-neon px-3 text-xs"
-                style={{ color: "var(--danger)", borderColor: "rgba(255,51,51,0.3)" }}
+                style={{ color: "var(--danger)", borderColor: "rgba(229,72,77,0.3)" }}
                 whileTap={{ scale: 0.97 }}
               >
                 {deleting === char.id ? <Loader2 size={12} className="animate-spin" /> : "×"}

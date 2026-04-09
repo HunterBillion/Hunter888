@@ -484,15 +484,15 @@ function CreateTournamentModal({ onClose, onCreated }: { onClose: () => void; on
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="vh-label">🥇 XP</label>
+              <label className="vh-label"><Medal size={14} className="inline" /> 1st XP</label>
               <input type="number" value={bonusFirst} onChange={(e) => setBonusFirst(Number(e.target.value))} className="vh-input w-full" />
             </div>
             <div>
-              <label className="vh-label">🥈 XP</label>
+              <label className="vh-label"><Medal size={14} className="inline" /> 2nd XP</label>
               <input type="number" value={bonusSecond} onChange={(e) => setBonusSecond(Number(e.target.value))} className="vh-input w-full" />
             </div>
             <div>
-              <label className="vh-label">🥉 XP</label>
+              <label className="vh-label"><Medal size={14} className="inline" /> 3rd XP</label>
               <input type="number" value={bonusThird} onChange={(e) => setBonusThird(Number(e.target.value))} className="vh-input w-full" />
             </div>
           </div>
@@ -562,7 +562,7 @@ function LeaderboardList({
               border: `1px solid ${style.border}`,
               boxShadow: style.glow,
             }}
-            whileHover={{ y: -2, boxShadow: `0 4px 20px ${entry.rank <= 3 ? style.border : "rgba(99,102,241,0.1)"}` }}
+            whileHover={{ y: -2, boxShadow: `0 4px 20px ${entry.rank <= 3 ? style.border : "rgba(124,106,232,0.1)"}` }}
           >
             {/* Rank accent bar — slides in on hover */}
             <div

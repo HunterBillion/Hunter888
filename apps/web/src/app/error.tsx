@@ -35,7 +35,7 @@ export default function Error({
           style={{
             fontSize: "clamp(180px, 30vw, 400px)",
             color: "transparent",
-            WebkitTextStroke: "2px rgba(255,42,109,0.5)",
+            WebkitTextStroke: "2px rgba(229,72,77,0.5)",
             opacity: 0.1,
             filter: "blur(1px)",
           }}
@@ -48,14 +48,14 @@ export default function Error({
       <div
         className="pointer-events-none absolute inset-0"
         style={{
-          background: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,42,109,0.01) 2px, rgba(255,42,109,0.01) 4px)",
+          background: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(229,72,77,0.01) 2px, rgba(229,72,77,0.01) 4px)",
         }}
       />
 
       {/* Animated glitch line */}
       <motion.div
         className="pointer-events-none absolute left-0 right-0 h-[1px]"
-        style={{ background: "rgba(255,42,109,0.3)" }}
+        style={{ background: "rgba(229,72,77,0.3)" }}
         initial={{ top: "20%" }}
         animate={{ top: ["20%", "80%", "45%", "65%", "30%"] }}
         transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
@@ -67,9 +67,9 @@ export default function Error({
         <motion.div
           className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full"
           style={{
-            background: "rgba(255,42,109,0.08)",
-            border: "2px solid rgba(255,42,109,0.2)",
-            boxShadow: "0 0 40px rgba(255,42,109,0.1)",
+            background: "rgba(229,72,77,0.08)",
+            border: "2px solid rgba(229,72,77,0.2)",
+            boxShadow: "0 0 40px rgba(229,72,77,0.1)",
           }}
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
@@ -88,7 +88,7 @@ export default function Error({
         {/* Terminal label */}
         <motion.div
           className="font-mono text-xs tracking-[0.3em] uppercase mb-3"
-          style={{ color: "rgba(255,42,109,0.6)" }}
+          style={{ color: "rgba(229,72,77,0.6)" }}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
@@ -130,7 +130,7 @@ export default function Error({
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.5 }}
         >
-          <span style={{ color: "rgba(255,42,109,0.6)" }}>{">"} </span>
+          <span style={{ color: "rgba(229,72,77,0.6)" }}>{">"} </span>
           {sanitizeText(error.message || "Unknown error")}
           {error.digest && (
             <span style={{ opacity: 0.4 }}>{` [${sanitizeText(error.digest)}]`}</span>

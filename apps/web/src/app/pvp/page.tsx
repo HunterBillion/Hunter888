@@ -12,7 +12,7 @@ import { useNotificationStore } from "@/stores/useNotificationStore";
 import { RatingCard } from "@/components/pvp/RatingCard";
 import { MatchmakingOverlay } from "@/components/pvp/MatchmakingOverlay";
 import { FriendsPanel } from "@/components/pvp/FriendsPanel";
-import { Twemoji } from "@/components/ui/Twemoji";
+import { AppIcon } from "@/components/ui/AppIcon";
 import { logger } from "@/lib/logger";
 
 const DUEL_STATUS_LABELS: Record<string, string> = {
@@ -180,9 +180,9 @@ function PvPLobbyContent() {
               animate={{ opacity: 1, y: 0 }}
               className="mb-4 flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm"
               style={{
-                borderColor: connectionState === "error" ? "rgba(255,42,109,0.3)" : "rgba(255,180,0,0.3)",
-                background: connectionState === "error" ? "rgba(255,42,109,0.08)" : "rgba(255,180,0,0.08)",
-                color: connectionState === "error" ? "#FF889B" : "#FFB400",
+                borderColor: connectionState === "error" ? "rgba(229,72,77,0.3)" : "rgba(255,180,0,0.3)",
+                background: connectionState === "error" ? "rgba(229,72,77,0.08)" : "rgba(255,180,0,0.08)",
+                color: connectionState === "error" ? "#FF889B" : "var(--warning)",
               }}
             >
               <Loader2 size={16} className="animate-spin" />
@@ -308,7 +308,7 @@ function PvPLobbyContent() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
               className="mt-4 rounded-xl p-3 flex items-center gap-3"
-              style={{ background: "rgba(255,215,0,0.06)", border: "1px solid rgba(255,215,0,0.15)" }}
+              style={{ background: "rgba(212,168,75,0.06)", border: "1px solid rgba(212,168,75,0.15)" }}
             >
               <Zap size={16} style={{ color: "var(--rank-gold)" }} />
               <span className="font-medium text-xs" style={{ color: "var(--text-secondary)" }}>
@@ -441,7 +441,7 @@ function PvPLobbyContent() {
                                 style={{ opacity: locked ? 0.5 : 1, cursor: locked ? "not-allowed" : "default" }}
                               >
                                 {locked && <Lock size={14} className="absolute top-2 right-2" style={{ color: "var(--text-muted)" }} />}
-                                <Twemoji emoji={mode.icon} size={20} />
+                                <AppIcon emoji={mode.icon} size={20} />
                                 <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-primary)" }}>{mode.name}</p>
                                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
                                 {locked && <p className="text-xs font-medium mt-1" style={{ color: "var(--warning)" }}>Ур. {mode.level}</p>}
@@ -471,7 +471,7 @@ function PvPLobbyContent() {
                                 style={{ opacity: locked ? 0.5 : 1, cursor: locked ? "not-allowed" : "default" }}
                               >
                                 {locked && <Lock size={14} className="absolute top-2 right-2" style={{ color: "var(--text-muted)" }} />}
-                                <Twemoji emoji={mode.icon} size={20} />
+                                <AppIcon emoji={mode.icon} size={20} />
                                 <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-primary)" }}>{mode.name}</p>
                                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
                                 {locked && <p className="text-xs font-medium mt-1" style={{ color: "var(--warning)" }}>Ур. {mode.level}</p>}
@@ -632,12 +632,12 @@ function PvPLobbyContent() {
                                 onClick={() => setAiPersonality(aiPersonality === id ? null : id)}
                                 className="rounded-lg p-3 text-left text-xs transition-all"
                                 style={{
-                                  background: aiPersonality === id ? "rgba(99,102,241,0.15)" : "var(--input-bg)",
+                                  background: aiPersonality === id ? "rgba(124,106,232,0.15)" : "var(--input-bg)",
                                   color: aiPersonality === id ? "var(--accent)" : "var(--text-secondary)",
-                                  border: aiPersonality === id ? "1px solid rgba(99,102,241,0.3)" : "1px solid transparent",
+                                  border: aiPersonality === id ? "1px solid rgba(124,106,232,0.3)" : "1px solid transparent",
                                 }}
                               >
-                                <Twemoji emoji={emoji} size={20} className="mr-1" />
+                                <AppIcon emoji={emoji} size={20} className="mr-1" />
                                 <span className="font-medium">{name}</span>
                                 <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>{desc}</p>
                               </button>
@@ -694,8 +694,8 @@ function PvPLobbyContent() {
                         animate={{ opacity: 1 }}
                         className="mt-4 rounded-xl p-4 cursor-pointer"
                         style={{
-                          background: "linear-gradient(135deg, rgba(255,215,0,0.06), rgba(255,165,0,0.03))",
-                          border: "1px solid rgba(255,215,0,0.15)",
+                          background: "linear-gradient(135deg, rgba(212,168,75,0.06), rgba(255,165,0,0.03))",
+                          border: "1px solid rgba(212,168,75,0.15)",
                         }}
                         onClick={() => router.push("/pvp/tournament")}
                       >
@@ -861,7 +861,7 @@ function PvPLobbyContent() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               className="glass-panel rounded-2xl p-6 max-w-sm w-full"
-              style={{ border: "1px solid rgba(255,215,0,0.2)" }}
+              style={{ border: "1px solid rgba(212,168,75,0.2)" }}
             >
               <div className="flex items-center gap-2 mb-4">
                 <Zap size={20} style={{ color: "var(--warning)" }} />

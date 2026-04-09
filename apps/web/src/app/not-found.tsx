@@ -36,7 +36,7 @@ export default function NotFound() {
       <div
         className="pointer-events-none absolute inset-0"
         style={{
-          background: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(99,102,241,0.015) 2px, rgba(99,102,241,0.015) 4px)",
+          background: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(124,106,232,0.015) 2px, rgba(124,106,232,0.015) 4px)",
         }}
       />
 
@@ -49,7 +49,7 @@ export default function NotFound() {
             fontSize: "clamp(80px, 15vw, 160px)",
             lineHeight: 0.9,
             color: "var(--accent)",
-            textShadow: "0 0 60px var(--accent-glow), 0 0 120px rgba(99,102,241,0.15)",
+            textShadow: "0 0 60px var(--accent-glow), 0 0 120px rgba(124,106,232,0.15)",
           }}
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}

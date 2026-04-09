@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { motion } from "framer-motion";
-import { Trophy, Swords, Clock, Check, Minus, Shield } from "lucide-react";
+import { Trophy, Swords, Clock, Check, Minus, Shield, Medal } from "lucide-react";
 import type { BracketData, BracketMatchData } from "@/stores/useTournamentStore";
 
 function getRoundLabel(roundNum: number, totalRounds: number): string {
@@ -85,7 +85,7 @@ function PlayerRow({
     <div
       className="flex items-center gap-2 px-3 py-2"
       style={{
-        background: isWinner ? "rgba(0,255,148,0.07)" : "transparent",
+        background: isWinner ? "rgba(61,220,132,0.07)" : "transparent",
       }}
     >
       {isWinner && <Trophy size={13} style={{ color: "var(--success)" }} className="shrink-0" />}
@@ -207,13 +207,13 @@ export function BracketView({ bracket }: Props) {
                 className="flex items-center gap-2 rounded-lg px-2.5 py-2"
                 style={{
                   background: isPodium
-                    ? "rgba(255,215,0,0.05)"
+                    ? "rgba(212,168,75,0.05)"
                     : "var(--glass-bg)",
                   border: `1px solid ${
                     p.eliminated_at_round
-                      ? "rgba(255,42,109,0.12)"
+                      ? "rgba(229,72,77,0.12)"
                       : isPodium
-                        ? "rgba(255,215,0,0.15)"
+                        ? "rgba(212,168,75,0.15)"
                         : "var(--glass-border)"
                   }`,
                 }}
@@ -235,7 +235,7 @@ export function BracketView({ bracket }: Props) {
                 </span>
                 {isPodium && (
                   <span className="text-xs">
-                    {p.final_placement === 1 ? "🥇" : p.final_placement === 2 ? "🥈" : "🥉"}
+                    <Medal size={14} />
                   </span>
                 )}
                 {p.eliminated_at_round && !isPodium && (

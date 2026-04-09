@@ -143,9 +143,9 @@ export function DuelResult({
           transition={{ delay: 0.8 }}
           className={`mt-4 inline-flex items-center gap-2 font-mono text-lg font-bold px-4 py-2 rounded-xl stat-chip ${ratingChangeApplied && myRatingDelta >= 0 ? "neon-pulse" : ""}`}
           style={{
-            background: ratingChangeApplied ? (myRatingDelta >= 0 ? "rgba(0,255,148,0.1)" : "rgba(255,42,109,0.1)") : "rgba(255,215,0,0.1)",
+            background: ratingChangeApplied ? (myRatingDelta >= 0 ? "rgba(61,220,132,0.1)" : "rgba(229,72,77,0.1)") : "rgba(212,168,75,0.1)",
             color: ratingChangeApplied ? (myRatingDelta >= 0 ? "var(--success)" : "var(--danger)") : "var(--warning)",
-            border: `1px solid ${ratingChangeApplied ? (myRatingDelta >= 0 ? "rgba(0,255,148,0.2)" : "rgba(255,42,109,0.2)") : "rgba(255,215,0,0.2)"}`,
+            border: `1px solid ${ratingChangeApplied ? (myRatingDelta >= 0 ? "rgba(61,220,132,0.2)" : "rgba(229,72,77,0.2)") : "rgba(212,168,75,0.2)"}`,
           }}
         >
           {ratingChangeApplied ? (
@@ -261,7 +261,7 @@ export function DuelResult({
                     {myBreakdown.best_reply && (
                       <div
                         className="rounded-lg px-3 py-2"
-                        style={{ background: "rgba(0,255,148,0.06)", borderLeft: "2px solid var(--success)" }}
+                        style={{ background: "rgba(61,220,132,0.06)", borderLeft: "2px solid var(--success)" }}
                       >
                         <div className="text-xs font-mono tracking-wider mb-1" style={{ color: "var(--success)" }}>
                           ЛУЧШАЯ РЕПЛИКА

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Swords } from "lucide-react";
 import { useSound } from "@/hooks/useSound";
 import type { ArenaChallenge } from "@/types";
 
@@ -66,7 +67,7 @@ export default function PvPChallengeToast({
 
       <div className="p-4">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-xl">⚔️</span>
+          <Swords size={20} />
           <h3 className="font-bold" style={{ color: "var(--text-primary)" }}>Вызов на дуэль!</h3>
         </div>
 

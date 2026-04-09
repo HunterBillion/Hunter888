@@ -66,7 +66,7 @@ const STAGE_LABELS: Record<string, string> = {
 const QUALITY_CONFIG = {
   good: { color: "var(--success, #00FF94)", icon: CheckCircle2, label: "Хорошо" },
   weak: { color: "var(--warning, #F59E0B)", icon: AlertTriangle, label: "Слабо" },
-  skipped: { color: "#FF3333", icon: XCircle, label: "Пропущен" },
+  skipped: { color: "var(--danger)", icon: XCircle, label: "Пропущен" },
 };
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -199,12 +199,12 @@ export default function AICoachSection({ sessionId, coachData, difficulty }: AIC
                       style={{ border: "1px solid rgba(255,255,255,0.06)" }}
                     >
                       {/* What manager said */}
-                      <div className="px-4 py-2.5" style={{ background: "rgba(255,51,51,0.05)" }}>
+                      <div className="px-4 py-2.5" style={{ background: "rgba(229,72,77,0.05)" }}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-mono uppercase" style={{ color: "#FF6666" }}>
                             Реплика #{cm.message_index} ({STAGE_LABELS[cm.stage] || cm.stage})
                           </span>
-                          <span className="text-xs font-mono px-1.5 rounded" style={{ background: "rgba(255,51,51,0.1)", color: "#FF6666" }}>
+                          <span className="text-xs font-mono px-1.5 rounded" style={{ background: "rgba(229,72,77,0.1)", color: "#FF6666" }}>
                             {cm.category.replace(/_/g, " ")}
                           </span>
                         </div>
@@ -216,7 +216,7 @@ export default function AICoachSection({ sessionId, coachData, difficulty }: AIC
                         </p>
                       </div>
                       {/* Better response */}
-                      <div className="px-4 py-2.5" style={{ background: "rgba(0,255,148,0.04)" }}>
+                      <div className="px-4 py-2.5" style={{ background: "rgba(61,220,132,0.04)" }}>
                         <span className="text-xs font-mono uppercase" style={{ color: "var(--success, #00FF94)" }}>
                           Лучше сказать:
                         </span>
@@ -264,8 +264,8 @@ export default function AICoachSection({ sessionId, coachData, difficulty }: AIC
                         key={i}
                         className={`rounded-lg px-3 py-2 text-xs ${msg.role === "user" ? "ml-8" : "mr-8"}`}
                         style={{
-                          background: msg.role === "user" ? "rgba(99,102,241,0.08)" : "rgba(255,255,255,0.03)",
-                          border: `1px solid ${msg.role === "user" ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.06)"}`,
+                          background: msg.role === "user" ? "rgba(124,106,232,0.08)" : "rgba(255,255,255,0.03)",
+                          border: `1px solid ${msg.role === "user" ? "rgba(124,106,232,0.2)" : "rgba(255,255,255,0.06)"}`,
                           color: "var(--text-secondary)",
                         }}
                       >
