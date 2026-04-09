@@ -476,7 +476,7 @@ function RecommendedTab({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
             {group.archetypes.map((arch) => {
               const groupInfo = ARCHETYPE_GROUPS[arch.group];
               const tierColor = getTierColor(arch.tier);
@@ -489,98 +489,95 @@ function RecommendedTab({
               return (
                 <motion.div
                   key={arch.code}
-                  className="glass-panel p-5 rounded-2xl relative overflow-hidden"
-                  whileHover={{ y: -4, boxShadow: `0 8px 24px ${diffColor}15` }}
+                  className="glass-panel flex flex-col h-full overflow-hidden"
+                  style={{ borderColor: `color-mix(in srgb, ${diffColor} 20%, transparent)` }}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  whileHover={{ y: -3 }}
                 >
-                  {/* Top gradient accent */}
-                  <div
-                    className="absolute top-0 left-0 right-0 h-1"
-                    style={{ background: `linear-gradient(90deg, ${diffColor}, ${tierColor})` }}
-                  />
+                  {/* Top accent — thin clean bar */}
+                  <div className="h-[3px] shrink-0" style={{ background: diffColor }} />
 
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">{arch.icon}</span>
-                      <div>
-                        <div className="font-display text-sm font-bold" style={{ color: diffColor }}>
+                  <div className="p-5 flex flex-col flex-1 gap-3">
+                    {/* Row 1: Icon + Name */}
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-lg"
+                        style={{ background: `color-mix(in srgb, ${diffColor} 15%, transparent)` }}
+                      >
+                        {arch.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-base truncate" style={{ color: "var(--text-primary)" }}>
                           {arch.name}
                         </div>
-                        <div className="text-sm italic" style={{ color: "var(--text-muted)" }}>
-                          &laquo;{arch.subtitle}&raquo;
+                        <div className="text-sm truncate" style={{ color: "var(--text-muted)" }}>
+                          {arch.subtitle}
                         </div>
                       </div>
-                    </div>
-                    <div className="flex gap-1.5">
-                      <span className="rounded px-1.5 py-0.5 text-xs font-bold" style={{ background: tierColor + "20", color: tierColor }}>
-                        T{arch.tier}
-                      </span>
-                      <span className="rounded px-1.5 py-0.5 text-xs" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>
-                        Сл. {arch.difficulty}
-                      </span>
-                    </div>
-                  </div>
-
-                  <p className="text-sm leading-relaxed mb-3" style={{ color: "var(--text-secondary)" }}>
-                    {arch.description}
-                  </p>
-
-                  {/* Skill counters */}
-                  <div className="flex flex-wrap gap-1 mb-3">
-                    {arch.counters.map((skill) => (
-                      <span
-                        key={skill}
-                        className="rounded-full px-2 py-0.5 text-xs"
-                        style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--border-color)" }}
-                      >
-                        {skill.replace(/_/g, " ")}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* Weakness hint */}
-                  <div className="rounded-lg p-2 mb-3" style={{ background: "color-mix(in srgb, var(--rank-gold) 5%, transparent)", border: "1px solid color-mix(in srgb, var(--rank-gold) 10%, transparent)" }}>
-                    <div className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: "color-mix(in srgb, var(--rank-gold) 60%, transparent)" }}>
-                      Слабое место
-                    </div>
-                    <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                      {arch.weakness}
-                    </p>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    {matchScenario ? (
-                      <>
-                        <motion.button
-                          onClick={() => onStart(matchScenario.id)}
-                          disabled={starting === matchScenario.id}
-                          className="flex-1 btn-neon flex items-center justify-center gap-1.5 py-2 text-xs"
-                          whileTap={{ scale: 0.97 }}
-                          style={{ background: `linear-gradient(135deg, ${diffColor}20, ${tierColor}10)` }}
-                        >
-                          {starting === matchScenario.id ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <>
-                              <Sparkles size={12} /> Начать
-                            </>
-                          )}
-                        </motion.button>
-                        <motion.button
-                          onClick={() => onStartStory(matchScenario.id, storyCalls)}
-                          disabled={!!starting}
-                          className="btn-neon flex items-center gap-1.5 px-3 py-2 text-xs"
-                          whileTap={{ scale: 0.97 }}
-                          style={{ borderColor: diffColor + "30", color: diffColor }}
-                        >
-                          AI x{storyCalls}
-                        </motion.button>
-                      </>
-                    ) : (
-                      <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
-                        <Lock size={12} /> Загрузите сценарии
+                      <div className="flex gap-1.5 shrink-0">
+                        <span className="rounded-md px-2 py-0.5 text-xs font-semibold" style={{ background: `color-mix(in srgb, ${tierColor} 15%, transparent)`, color: tierColor }}>
+                          T{arch.tier}
+                        </span>
                       </div>
-                    )}
+                    </div>
+
+                    {/* Row 2: Description — fixed 2 lines */}
+                    <p className="text-sm leading-relaxed line-clamp-2 min-h-[2.5rem]" style={{ color: "var(--text-secondary)" }}>
+                      {arch.description}
+                    </p>
+
+                    {/* Row 3: Weakness — compact */}
+                    <div className="rounded-lg px-3 py-2 text-sm line-clamp-2" style={{ background: "var(--input-bg)", color: "var(--text-secondary)" }}>
+                      <span className="font-medium" style={{ color: "var(--text-muted)" }}>Слабое место: </span>
+                      {arch.weakness}
+                    </div>
+
+                    {/* Spacer */}
+                    <div className="flex-1" />
+
+                    {/* Row 4: Badges */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {arch.counters.slice(0, 3).map((skill) => (
+                        <span
+                          key={skill}
+                          className="rounded-md px-2 py-0.5 text-xs"
+                          style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}
+                        >
+                          {skill.replace(/_/g, " ")}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Row 5: Buttons — ALWAYS at bottom */}
+                    <div className="grid grid-cols-[1.2fr_0.8fr] gap-2 pt-1">
+                      {matchScenario ? (
+                        <>
+                          <motion.button
+                            onClick={() => onStart(matchScenario.id)}
+                            disabled={starting === matchScenario.id}
+                            className="flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold text-white"
+                            style={{ background: diffColor, opacity: starting === matchScenario.id ? 0.6 : 1 }}
+                            whileTap={{ scale: 0.97 }}
+                          >
+                            {starting === matchScenario.id ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={14} /> Начать</>}
+                          </motion.button>
+                          <motion.button
+                            onClick={() => onStartStory(matchScenario.id, storyCalls)}
+                            disabled={!!starting}
+                            className="flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-medium"
+                            style={{ border: `1px solid color-mix(in srgb, ${diffColor} 30%, transparent)`, color: diffColor }}
+                            whileTap={{ scale: 0.97 }}
+                          >
+                            AI x{storyCalls}
+                          </motion.button>
+                        </>
+                      ) : (
+                        <div className="col-span-2 flex items-center justify-center gap-1.5 text-sm py-2.5" style={{ color: "var(--text-muted)" }}>
+                          <Lock size={14} /> Загрузите сценарии
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </motion.div>
               );
