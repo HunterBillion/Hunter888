@@ -1021,6 +1021,10 @@ async def _generate_character_reply(
         # Get the manager's message that triggered this response
         manager_message = messages[-1]["content"] if messages else ""
 
+        # Skip LLM-based trigger detection when using local provider (single-concurrent)
+        # to avoid 60+s latency per message (character response + trigger + trap = 3 serial LLM calls)
+        _skip_llm_detection = settings.local_llm_enabled and not llm_result.is_fallback
+
         trigger_result = await detect_triggers(
             manager_message=manager_message,
             client_message=llm_result.content,
@@ -1028,6 +1032,7 @@ async def _generate_character_reply(
             emotion_state=current_emotion,
             response_time_ms=llm_result.latency_ms,
             client_name=state.get("client_name"),
+            skip_llm=_skip_llm_detection,
         )
 
         # ── Merge trap-originated emotion triggers (fell/dodged) ──

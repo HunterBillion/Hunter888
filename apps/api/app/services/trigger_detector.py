@@ -148,6 +148,7 @@ async def detect_triggers(
     emotion_state: str,
     response_time_ms: int | None = None,
     client_name: str | None = None,
+    skip_llm: bool = False,
 ) -> TriggerResult:
     """
     Detect emotional triggers in a manager's reply using LLM-based analysis
@@ -169,14 +170,16 @@ async def detect_triggers(
         f"emotion_state={emotion_state}"
     )
 
-    # Try LLM-based detection first
-    llm_result = await _detect_triggers_llm(
-        manager_message=manager_message,
-        client_message=client_message,
-        archetype_code=archetype_code,
-        emotion_state=emotion_state,
-        client_name=client_name,
-    )
+    # Try LLM-based detection first (skip if local provider to avoid serial LLM bottleneck)
+    llm_result = None
+    if not skip_llm:
+        llm_result = await _detect_triggers_llm(
+            manager_message=manager_message,
+            client_message=client_message,
+            archetype_code=archetype_code,
+            emotion_state=emotion_state,
+            client_name=client_name,
+        )
 
     if llm_result is not None:
         triggers = llm_result["triggers"]
