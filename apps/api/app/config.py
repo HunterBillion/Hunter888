@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     llm_primary_model: str = "gemini-2.5-flash"
     llm_fallback_model: str = "gpt-4o-mini"
-    llm_timeout_seconds: int = 15
+    llm_timeout_seconds: int = 60  # Gemma 4 on Ollama: first request ~30s (model swap), then ~10-15s
     llm_max_history_messages: int = 20
 
     # Gemini Direct API (primary for pilot — free 1500 req/day)
