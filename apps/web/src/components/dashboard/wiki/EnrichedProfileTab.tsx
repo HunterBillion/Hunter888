@@ -111,7 +111,7 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
   return (
     <div>
       {/* KPI Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0.75rem", marginBottom: "1rem" }}>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         {[
           { label: "Всего сессий", value: t.total_sessions, color: "var(--warning)", icon: Target },
           { label: "Средний балл", value: t.avg_score.toFixed(1), color: "var(--success)", icon: TrendingUp },
@@ -158,7 +158,7 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
       </div>
 
       {/* Charts row */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1rem" }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         {/* Score trend */}
         <div style={glassCard}>
           <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.5rem" }}>

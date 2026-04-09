@@ -337,7 +337,7 @@ export default function HomePage() {
 
           {/* Stats Grid */}
           {!loading && (
-            <div className="mt-2 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
               {[
                 { label: "Сессий", value: stats?.completed_sessions ?? 0, icon: Target, color: "var(--accent)", suffix: "", sparkData: [1, 2, 1, 3, 2, 4, stats?.completed_sessions ?? 0] },
                 { label: "Ср. балл", value: stats?.avg_score != null ? Math.round(stats.avg_score) : 0, icon: TrendingUp, color: scoreColor(stats?.avg_score ?? null), suffix: "", sparkData: [60, 65, 55, 70, 68, 75, Math.round(stats?.avg_score ?? 0)] },

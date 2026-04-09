@@ -246,7 +246,7 @@ export default function DashboardPage() {
                 className="sticky top-[60px] z-20 mt-6"
               >
                 <div
-                  className="flex items-center gap-1.5 rounded-xl p-1.5 overflow-x-auto"
+                  className="flex items-center justify-center gap-1 rounded-xl p-1.5 overflow-x-auto"
                   style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(20px)" }}
                 >
                   {TABS.map((tab) => {
@@ -256,7 +256,7 @@ export default function DashboardPage() {
                       <button
                         key={tab.id}
                         onClick={() => switchTab(tab.id)}
-                        className="relative flex items-center gap-2.5 px-6 py-3.5 rounded-xl font-medium text-sm uppercase tracking-wide whitespace-nowrap transition-all duration-200"
+                        className="relative flex items-center gap-2.5 flex-1 px-3 sm:px-5 py-3 rounded-xl font-medium text-sm uppercase tracking-wide whitespace-nowrap transition-all duration-200"
                         style={{
                           color: isActive ? "var(--text-primary)" : "var(--text-muted)",
                           fontWeight: isActive ? 700 : 500,
@@ -342,7 +342,7 @@ export default function DashboardPage() {
                           </div>
 
                           {/* Secondary stats */}
-                          <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                             {[
                               { label: "Менеджеров", value: data.team.total_members, icon: Users, color: "var(--accent)" },
                               { label: "Всего сессий", value: data.stats.total_sessions, icon: Target, color: "var(--success)" },
@@ -399,7 +399,7 @@ export default function DashboardPage() {
                         </div>
 
                         <div className="overflow-x-auto">
-                          <table className="w-full text-base min-w-[700px]">
+                          <table className="w-full text-base min-w-[600px]">
                             <thead>
                               <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
                                 <SortHeader label="Имя" sortField="full_name" />
@@ -574,7 +574,7 @@ export default function DashboardPage() {
                               </p>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
                               {data.tournament.leaderboard.map((entry, i) => (
                                 <motion.div
                                   key={entry.user_id}
