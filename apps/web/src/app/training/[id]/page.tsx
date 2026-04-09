@@ -68,6 +68,7 @@ function wsPayload<T>(data: Record<string, unknown>): T {
  * - (keyword stage directions) in parentheses
  */
 function stripStageDirections(text: string): string {
+  if (!text) return "";
   return text
     .replace(/\*[^*]+\*/g, '')
     .replace(/(?:^|\n)\*[^*\n]+(?:\n|$)/gm, '')
@@ -260,9 +261,10 @@ export default function TrainingSessionPage() {
         case "character.response": {
           s.setIsTyping(false);
           // Deduplicate by sequence_number (may overlap with message.replay)
-          const seq = data.data.sequence_number as number | undefined;
+          const seq = data.data?.sequence_number as number | undefined;
           if (seq != null && s.messages.some(m => m.sequenceNumber === seq)) break;
-          const content = stripStageDirections(data.data.content as string);
+          const rawContent = (data.data?.content as string) || "";
+          const content = stripStageDirections(rawContent);
           s.addMessage({
             id: s.nextMsgId(),
             role: "assistant",
