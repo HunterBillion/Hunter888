@@ -90,7 +90,7 @@ function formatWeek(iso: string): string {
 function trendIcon(trend: string | null) {
   if (trend === "growing") return <TrendingUp size={14} style={{ color: "var(--success)" }} />;
   if (trend === "declining") return <TrendingDown size={14} style={{ color: "var(--danger)" }} />;
-  return <Minus size={14} style={{ color: "#94A3B8" }} />;
+  return <Minus size={14} style={{ color: "var(--text-muted)" }} />;
 }
 
 /* ─── Skill Bar ─── */
@@ -103,7 +103,7 @@ function SkillBar({ name, value, change }: { name: string; value: number; change
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.75rem" }}>
         <span style={{ color: "var(--text-muted)" }}>{label}</span>
         <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
-          <span style={{ fontWeight: 600, color: "#e0e0e0" }}>{value}</span>
+          <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>{value}</span>
           {change !== 0 && (
             <span style={{ display: "flex", alignItems: "center", gap: "2px", fontSize: "0.7rem", color: change > 0 ? "var(--success)" : "var(--danger)" }}>
               {change > 0 ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
@@ -189,7 +189,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
           </div>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "#fff" }}>
+              <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--text-primary)" }}>
                 {formatWeek(report.week_start)} — {formatWeek(report.week_end)}
               </span>
               {trendIcon(report.score_trend)}
@@ -248,7 +248,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {/* Stats grid */}
               <div style={{ display: "grid", gap: "0.5rem", marginBottom: "1rem", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))" }}>
                 <StatCard icon={Target} label="Ср. балл" value={report.average_score != null ? Number(report.average_score).toFixed(0) : "—"} color={scoreColor(report.average_score)} />
-                <StatCard icon={Star} label="Лучший" value={report.best_score != null ? String(report.best_score) : "—"} color="#FFD700" />
+                <StatCard icon={Star} label="Лучший" value={report.best_score != null ? String(report.best_score) : "—"} color="var(--rank-gold)" />
                 <StatCard icon={Trophy} label="Win rate" value={report.win_rate != null ? `${Number(report.win_rate).toFixed(0)}%` : "—"} color="var(--success)" />
                 <StatCard icon={Zap} label="XP" value={`+${report.xp_earned}`} color="var(--warning)" />
                 <StatCard icon={Clock} label="Время" value={`${report.total_time_minutes} мин`} color="var(--info)" />
@@ -263,7 +263,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {/* Outcomes */}
               {Object.keys(report.outcomes).length > 0 && (
                 <div style={{ marginBottom: "1rem" }}>
-                  <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "#e0e0e0", marginBottom: "0.5rem" }}>Исходы</div>
+                  <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Исходы</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
                     {Object.entries(report.outcomes)
                       .filter(([, v]) => typeof v === "number")
@@ -287,7 +287,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {/* Skills */}
               {Object.keys(report.skills_snapshot).length > 0 && (
                 <div style={{ marginBottom: "1rem" }}>
-                  <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "#e0e0e0", marginBottom: "0.5rem" }}>Навыки</div>
+                  <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Навыки</div>
                   <div style={{ display: "grid", gap: "0 1.5rem", gridTemplateColumns: "1fr 1fr" }}>
                     {Object.entries(report.skills_snapshot).map(([skill, value]) => (
                       <SkillBar key={skill} name={skill} value={value as number} change={(report.skills_change[skill] as number) || 0} />
@@ -299,7 +299,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {/* Achievements */}
               {report.new_achievements.length > 0 && (
                 <div style={{ marginBottom: "1rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", fontWeight: 600, color: "#e0e0e0", marginBottom: "0.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
                     <Award size={13} /> Достижения недели
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
@@ -310,7 +310,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                         fontSize: "0.75rem",
                         fontWeight: 500,
                         background: "rgba(212,168,75,0.1)",
-                        color: "#FFD700",
+                        color: "var(--rank-gold)",
                         border: "1px solid rgba(212,168,75,0.25)",
                       }}>
                         {a.name} (+{a.xp} XP)
@@ -323,7 +323,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {/* Weak points */}
               {report.weak_points.length > 0 && (
                 <div style={{ marginBottom: "1rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", fontWeight: 600, color: "#e0e0e0", marginBottom: "0.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
                     <AlertTriangle size={13} /> Слабые места
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
@@ -346,7 +346,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {/* Recommendations */}
               {report.recommendations.length > 0 && (
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", fontWeight: 600, color: "#e0e0e0", marginBottom: "0.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
                     <Lightbulb size={13} /> Рекомендации
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
@@ -439,7 +439,7 @@ export function ReportsDashboard({
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
         <FileBarChart size={24} style={{ color: "var(--warning)" }} />
         <div style={{ flex: 1 }}>
-          <h2 style={{ fontSize: "1.3rem", fontWeight: 700, color: "#fff", margin: 0 }}>
+          <h2 style={{ fontSize: "1.3rem", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
             {teamMode ? "Отчёты команды" : "Еженедельные отчёты"}
           </h2>
           <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", margin: 0 }}>
@@ -485,7 +485,7 @@ export function ReportsDashboard({
           flexWrap: "wrap",
         }}>
           <Users size={16} style={{ color: "var(--accent)" }} />
-          <span style={{ color: "#a5b4fc", fontSize: "0.85rem" }}>Менеджер:</span>
+          <span style={{ color: "var(--accent-hover)", fontSize: "0.85rem" }}>Менеджер:</span>
           <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
             {teamMembers.map((m) => (
               <button
@@ -496,7 +496,7 @@ export function ReportsDashboard({
                   borderRadius: 8,
                   border: activeUserId === m.id ? "1px solid rgba(124,106,232,0.4)" : "1px solid rgba(255,255,255,0.08)",
                   background: activeUserId === m.id ? "rgba(124,106,232,0.15)" : "rgba(255,255,255,0.03)",
-                  color: activeUserId === m.id ? "#a5b4fc" : "var(--text-muted)",
+                  color: activeUserId === m.id ? "var(--accent-hover)" : "var(--text-muted)",
                   cursor: "pointer",
                   fontSize: "0.8rem",
                   fontWeight: activeUserId === m.id ? 600 : 400,

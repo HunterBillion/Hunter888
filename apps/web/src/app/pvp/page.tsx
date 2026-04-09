@@ -182,7 +182,7 @@ function PvPLobbyContent() {
               style={{
                 borderColor: connectionState === "error" ? "rgba(229,72,77,0.3)" : "rgba(255,180,0,0.3)",
                 background: connectionState === "error" ? "rgba(229,72,77,0.08)" : "rgba(255,180,0,0.08)",
-                color: connectionState === "error" ? "#FF889B" : "var(--warning)",
+                color: connectionState === "error" ? "var(--danger)" : "var(--warning)",
               }}
             >
               <Loader2 size={16} className="animate-spin" />
@@ -345,7 +345,7 @@ function PvPLobbyContent() {
             <div className="mt-6">
               {store.rating.total_duels === 0 ? (
                 <div className="flex flex-col items-center py-12 text-center">
-                  <div className="text-6xl mb-4">{"\u2694\uFE0F"}</div>
+                  <Swords size={48} style={{ color: "var(--accent)" }} className="mb-4" />
                   <h2 className="text-2xl font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
                     Добро пожаловать в Arena!
                   </h2>
@@ -649,7 +649,7 @@ function PvPLobbyContent() {
                       {/* Blitz mode: show auto-assigned personality */}
                       {quizMode === "blitz" && (
                         <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                          <span className="text-lg mr-1">&#x26A1;</span> Ваш ведущий — <strong>Блиц-Мастер</strong>
+                          <Zap size={18} className="mr-1 inline" style={{ color: "var(--warning)" }} /> Ваш ведущий — <strong>Блиц-Мастер</strong>
                         </p>
                       )}
 
@@ -700,7 +700,7 @@ function PvPLobbyContent() {
                         onClick={() => router.push("/pvp/tournament")}
                       >
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-lg">{"\uD83C\uDFC6"}</span>
+                          <Trophy size={20} style={{ color: "var(--rank-gold)" }} />
                           <span className="text-sm font-bold" style={{ color: "var(--rank-gold)" }}>Турнир недели</span>
                           <span className="ml-auto text-xs font-medium" style={{ color: "var(--text-muted)" }}>
                             Подробнее →

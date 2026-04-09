@@ -31,7 +31,7 @@ export function LogTab({ logEntries }: { logEntries: WikiLogEntry[] }) {
             }}>
               {entry.status === "completed" ? "Готово" : entry.status === "failed" ? "Ошибка" : "В процессе"}
             </span>
-            <span style={{ fontWeight: 500, color: "#e0e0e0", fontSize: "0.9rem" }}>
+            <span style={{ fontWeight: 500, color: "var(--text-secondary)", fontSize: "0.9rem" }}>
               {ACTION_LABELS[entry.action] || entry.action}
             </span>
             <span style={{ marginLeft: "auto", fontSize: "0.75rem", color: "var(--text-muted)" }}>

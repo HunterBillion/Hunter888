@@ -79,7 +79,7 @@ const RANK_COLORS: Record<string, string> = {
   unranked: "var(--text-muted)",
   bronze: "#CD7F32",
   silver: "#C0C0C0",
-  gold: "#FFD700",
+  gold: "var(--rank-gold)",
   platinum: "#00CED1",
   diamond: "#B9F2FF",
 };

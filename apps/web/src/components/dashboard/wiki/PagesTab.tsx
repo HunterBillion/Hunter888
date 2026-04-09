@@ -79,7 +79,7 @@ export function PagesTab({
               border: `1px solid ${selectedPage?.page_path === p.page_path ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.06)"}`,
               borderRadius: 8,
               cursor: "pointer",
-              color: "#e0e0e0",
+              color: "var(--text-secondary)",
               textAlign: "left",
               width: "100%",
             }}
@@ -132,7 +132,7 @@ export function PagesTab({
                     background: "rgba(124,106,232,0.1)",
                     border: "1px solid rgba(124,106,232,0.25)",
                     borderRadius: 6,
-                    color: "#818cf8",
+                    color: "var(--accent)",
                     cursor: "pointer",
                     fontSize: "0.8rem",
                   }}
@@ -197,7 +197,7 @@ export function PagesTab({
                     padding: "2px 8px",
                     borderRadius: 6,
                     background: "rgba(124,106,232,0.1)",
-                    color: "#818cf8",
+                    color: "var(--accent)",
                     fontSize: "0.7rem",
                   }}
                 >
@@ -218,7 +218,7 @@ export function PagesTab({
                 background: "rgba(0,0,0,0.3)",
                 border: "1px solid rgba(124,106,232,0.3)",
                 borderRadius: 8,
-                color: "#e0e0e0",
+                color: "var(--text-secondary)",
                 fontSize: "0.9rem",
                 fontFamily: "monospace",
                 lineHeight: 1.6,
@@ -235,9 +235,9 @@ export function PagesTab({
                 skipHtml
                 allowedElements={["h1", "h2", "h3", "h4", "p", "ul", "ol", "li", "strong", "em", "a", "br", "code", "pre", "blockquote"]}
                 components={{
-                  h2: ({ children }) => <h2 style={{ fontSize: "1.3rem", fontWeight: 700, margin: "1.5rem 0 0.75rem", color: "#fff" }}>{children}</h2>,
-                  h3: ({ children }) => <h3 style={{ fontSize: "1.1rem", fontWeight: 600, margin: "1rem 0 0.5rem", color: "#e0e0e0" }}>{children}</h3>,
-                  strong: ({ children }) => <strong style={{ color: "#fff" }}>{children}</strong>,
+                  h2: ({ children }) => <h2 style={{ fontSize: "1.3rem", fontWeight: 700, margin: "1.5rem 0 0.75rem", color: "var(--text-primary)" }}>{children}</h2>,
+                  h3: ({ children }) => <h3 style={{ fontSize: "1.1rem", fontWeight: 600, margin: "1rem 0 0.5rem", color: "var(--text-secondary)" }}>{children}</h3>,
+                  strong: ({ children }) => <strong style={{ color: "var(--text-primary)" }}>{children}</strong>,
                   li: ({ children }) => <li style={{ margin: "0.25rem 0", paddingLeft: "0.5rem" }}>{children}</li>,
                 }}
               >

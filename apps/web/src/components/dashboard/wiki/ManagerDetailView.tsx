@@ -139,7 +139,7 @@ export function ManagerDetailView({
         </button>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <h1 style={{ fontSize: "1.4rem", fontWeight: 700, color: "#fff", margin: 0 }}>
+            <h1 style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
               {manager.manager_name}
             </h1>
             {manager.status && manager.status !== "active" && (

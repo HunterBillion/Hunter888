@@ -127,7 +127,7 @@ export function Benchmark() {
                 />
                 {/* Labels */}
                 <div className="absolute inset-0 flex items-center px-2 justify-between">
-                  <span className="text-xs font-mono font-bold" style={{ color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
+                  <span className="text-xs font-mono font-bold" style={{ color: "var(--text-primary)", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
                     {Math.round(skill.team_avg)}
                   </span>
                   <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>

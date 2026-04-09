@@ -116,7 +116,7 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
           { label: "Всего сессий", value: t.total_sessions, color: "var(--warning)", icon: Target },
           { label: "Средний балл", value: t.avg_score.toFixed(1), color: "var(--success)", icon: TrendingUp },
           { label: "Лучший балл", value: t.best_score.toFixed(1), color: "var(--accent)", icon: Zap },
-          { label: "Часов практики", value: t.total_hours.toFixed(1), color: "#ec4899", icon: Clock },
+          { label: "Часов практики", value: t.total_hours.toFixed(1), color: "var(--magenta)", icon: Clock },
         ].map((kpi) => (
           <div key={kpi.label} style={glassCard}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.3rem" }}>

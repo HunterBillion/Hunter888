@@ -24,7 +24,7 @@ export function PatternsTab({ patterns }: { patterns: PatternItem[] }) {
           >
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
               <config.icon size={16} style={{ color: config.color }} />
-              <span style={{ fontWeight: 600, color: "#e0e0e0" }}>{p.pattern_code}</span>
+              <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>{p.pattern_code}</span>
               <span
                 style={{
                   fontSize: "0.7rem",

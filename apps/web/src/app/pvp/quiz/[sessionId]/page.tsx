@@ -20,6 +20,9 @@ import {
   Loader2,
   AlertTriangle,
   Sparkles,
+  Flame,
+  Star,
+  Zap,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { AppIcon } from "@/components/ui/AppIcon";
@@ -584,7 +587,7 @@ function KnowledgeSessionPage() {
                     animate={store.streak >= 5 ? { scale: [1, 1.3, 1] } : {}}
                     transition={{ repeat: Infinity, duration: 1.5 }}
                   >
-                    {"\uD83D\uDD25"}
+                    <Flame size={16} style={{ color: "var(--warning)" }} />
                   </motion.span>
                   <span className="font-mono text-sm font-bold" style={{ color: "var(--warning)" }}>
                     {store.streak}
@@ -610,7 +613,7 @@ function KnowledgeSessionPage() {
                 </span>
                 {Array.from({ length: 5 }).map((_, i) => (
                   <span key={i} style={{ color: i < store.currentDifficulty ? "var(--warning)" : "var(--text-muted)", fontSize: "12px" }}>
-                    {"\u2B50"}
+                    <Star size={12} style={{ color: "var(--rank-gold)" }} />
                   </span>
                 ))}
               </div>
@@ -1189,7 +1192,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
               className="mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-mono font-bold"
               style={{ background: "rgba(34,197,94,0.15)", color: "var(--success)", border: "1px solid rgba(34,197,94,0.25)" }}
             >
-              {"\u26A1"} +{message.speedBonus} SPEED BONUS
+              <Zap size={14} className="inline" style={{ color: "var(--warning)" }} /> +{message.speedBonus} SPEED BONUS
             </div>
           )}
         </div>

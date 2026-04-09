@@ -6,7 +6,7 @@ import { Bar, Radar } from "react-chartjs-2";
 import type { CompareManager } from "./types";
 import { CATEGORY_CONFIG } from "./types";
 
-const COMPARE_COLORS = ["var(--warning)", "var(--accent)", "var(--success)", "var(--danger)", "#ec4899"];
+const COMPARE_COLORS = ["var(--warning)", "var(--accent)", "var(--success)", "var(--danger)", "var(--magenta)"];
 
 export function CompareResultsPanel({ data, onClose }: { data: CompareManager[]; onClose: () => void }) {
   const LAYER_LABELS: Record<string, string> = {
@@ -107,7 +107,7 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
         <Users size={22} style={{ color: "var(--accent)" }} />
-        <h2 style={{ fontSize: "1.3rem", fontWeight: 700, color: "#fff", margin: 0 }}>
+        <h2 style={{ fontSize: "1.3rem", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
           Сравнение менеджеров
         </h2>
         <div style={{ flex: 1 }} />
@@ -133,11 +133,11 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
             ...glassCard,
             borderTop: `3px solid ${COMPARE_COLORS[i]}`,
           }}>
-            <div style={{ fontWeight: 700, color: "#fff", fontSize: "1rem", marginBottom: "0.5rem" }}>{m.name}</div>
+            <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "1rem", marginBottom: "0.5rem" }}>{m.name}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.3rem", fontSize: "0.8rem" }}>
               <div><span style={{ color: "var(--text-muted)" }}>Сессий: </span><span style={{ color: "var(--warning)", fontWeight: 600 }}>{m.sessions_total}</span></div>
               <div><span style={{ color: "var(--text-muted)" }}>Ср. балл: </span><span style={{ color: "var(--success)", fontWeight: 600 }}>{m.avg_score}</span></div>
-              <div><span style={{ color: "var(--text-muted)" }}>Лучший: </span><span style={{ color: "#a5b4fc", fontWeight: 600 }}>{m.best_score}</span></div>
+              <div><span style={{ color: "var(--text-muted)" }}>Лучший: </span><span style={{ color: "var(--accent-hover)", fontWeight: 600 }}>{m.best_score}</span></div>
               <div><span style={{ color: "var(--text-muted)" }}>Худший: </span><span style={{ color: "var(--danger)", fontWeight: 600 }}>{m.worst_score}</span></div>
               <div><span style={{ color: "var(--text-muted)" }}>Паттернов: </span><span style={{ color: "var(--warning)", fontWeight: 600 }}>{m.patterns_total}</span></div>
               <div><span style={{ color: "var(--text-muted)" }}>Техник: </span><span style={{ color: "var(--success)", fontWeight: 600 }}>{m.techniques_total}</span></div>
@@ -207,7 +207,7 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
                     {CATEGORY_CONFIG[cat]?.label || cat}
                   </td>
                   {data.map((m, i) => (
-                    <td key={m.manager_id + i} style={{ textAlign: "center", padding: "4px 8px", color: "#e0e0e0" }}>
+                    <td key={m.manager_id + i} style={{ textAlign: "center", padding: "4px 8px", color: "var(--text-secondary)" }}>
                       {m.patterns_by_category[cat] || 0}
                     </td>
                   ))}

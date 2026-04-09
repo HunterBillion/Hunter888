@@ -99,7 +99,7 @@ export function TeamTrendChart() {
               className="px-2 py-0.5 rounded text-xs font-mono uppercase transition-colors"
               style={{
                 background: period === p ? "var(--accent)" : "rgba(255,255,255,0.05)",
-                color: period === p ? "#fff" : "var(--text-muted)",
+                color: period === p ? "var(--text-primary)" : "var(--text-muted)",
               }}
             >
               {p === "week" ? "4 нед" : p === "month" ? "12 нед" : "Всё"}

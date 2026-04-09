@@ -96,8 +96,8 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
       {
         label: "Сессии",
         data: dailySessions.map((d) => d.sessions),
-        backgroundColor: "rgba(99, 102, 241, 0.5)",
-        borderColor: "rgba(99, 102, 241, 0.8)",
+        backgroundColor: "rgba(124, 106, 232, 0.5)",
+        borderColor: "rgba(124, 106, 232, 0.8)",
         borderWidth: 1,
         borderRadius: 4,
       },
@@ -148,16 +148,16 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
       {
         label: "Инжесты",
         data: wikiActivity.map((d) => d.ingests),
-        backgroundColor: "rgba(34, 197, 94, 0.5)",
-        borderColor: "rgba(34, 197, 94, 0.8)",
+        backgroundColor: "rgba(61, 220, 132, 0.5)",
+        borderColor: "rgba(61, 220, 132, 0.8)",
         borderWidth: 1,
         borderRadius: 4,
       },
       {
         label: "Страниц создано",
         data: wikiActivity.map((d) => d.pages_created),
-        backgroundColor: "rgba(245, 158, 11, 0.5)",
-        borderColor: "rgba(245, 158, 11, 0.8)",
+        backgroundColor: "rgba(232, 166, 48, 0.5)",
+        borderColor: "rgba(232, 166, 48, 0.8)",
         borderWidth: 1,
         borderRadius: 4,
       },
@@ -201,7 +201,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
         border: "1px solid rgba(255,255,255,0.06)",
         borderRadius: 12,
       }}>
-        <h4 style={{ margin: "0 0 0.75rem", color: "#e0e0e0", fontSize: "0.9rem", fontWeight: 600 }}>
+        <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "0.9rem", fontWeight: 600 }}>
           <Activity size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--accent)" }} />
           Сессии по дням
         </h4>
@@ -221,7 +221,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
         border: "1px solid rgba(255,255,255,0.06)",
         borderRadius: 12,
       }}>
-        <h4 style={{ margin: "0 0 0.75rem", color: "#e0e0e0", fontSize: "0.9rem", fontWeight: 600 }}>
+        <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "0.9rem", fontWeight: 600 }}>
           <TrendingUp size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--warning)" }} />
           Тренд среднего балла
         </h4>
@@ -241,7 +241,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
         border: "1px solid rgba(255,255,255,0.06)",
         borderRadius: 12,
       }}>
-        <h4 style={{ margin: "0 0 0.75rem", color: "#e0e0e0", fontSize: "0.9rem", fontWeight: 600 }}>
+        <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "0.9rem", fontWeight: 600 }}>
           <PieChart size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--danger)" }} />
           Распределение паттернов
         </h4>
@@ -261,7 +261,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
         border: "1px solid rgba(255,255,255,0.06)",
         borderRadius: 12,
       }}>
-        <h4 style={{ margin: "0 0 0.75rem", color: "#e0e0e0", fontSize: "0.9rem", fontWeight: 600 }}>
+        <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "0.9rem", fontWeight: 600 }}>
           <BookOpen size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--success)" }} />
           Активность Wiki
         </h4>
@@ -283,7 +283,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
           border: "1px solid rgba(255,255,255,0.06)",
           borderRadius: 12,
         }}>
-          <h4 style={{ margin: "0 0 0.75rem", color: "#e0e0e0", fontSize: "0.9rem", fontWeight: 600 }}>
+          <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "0.9rem", fontWeight: 600 }}>
             <Users size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--accent)" }} />
             Топ менеджеров по паттернам
           </h4>
@@ -300,7 +300,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
               <tbody>
                 {data.top_managers.map((m, i) => (
                   <tr key={m.manager_id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                    <td style={{ padding: "0.5rem", color: "#e0e0e0" }}>
+                    <td style={{ padding: "0.5rem", color: "var(--text-secondary)" }}>
                       <span style={{ color: "var(--text-muted)", marginRight: 8 }}>#{i + 1}</span>
                       {m.name}
                     </td>

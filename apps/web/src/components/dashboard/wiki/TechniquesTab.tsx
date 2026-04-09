@@ -21,7 +21,7 @@ export function TechniquesTab({ techniques }: { techniques: TechniqueItem[] }) {
         >
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
             <Zap size={16} style={{ color: "var(--warning)" }} />
-            <span style={{ fontWeight: 600, color: "#e0e0e0" }}>{t.technique_name}</span>
+            <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>{t.technique_name}</span>
             {t.applicable_to_archetype && (
               <span
                 style={{
@@ -29,7 +29,7 @@ export function TechniquesTab({ techniques }: { techniques: TechniqueItem[] }) {
                   padding: "2px 8px",
                   borderRadius: 10,
                   background: "rgba(124,106,232,0.1)",
-                  color: "#818cf8",
+                  color: "var(--accent)",
                 }}
               >
                 {t.applicable_to_archetype}

@@ -83,7 +83,7 @@ export function ManagerListView({
       <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
         <ShieldCheck size={28} style={{ color: "var(--warning)" }} />
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: "1.6rem", fontWeight: 700, color: "#fff", margin: 0 }}>
+          <h1 style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
             Wiki менеджеров
           </h1>
           <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "0.85rem" }}>
@@ -153,7 +153,7 @@ export function ManagerListView({
           flexWrap: "wrap",
         }}>
           <Users size={18} style={{ color: "var(--accent)" }} />
-          <span style={{ color: "#a5b4fc", fontSize: "0.85rem" }}>
+          <span style={{ color: "var(--accent-hover)", fontSize: "0.85rem" }}>
             Выберите 2–5 менеджеров для сравнения ({compareSelected.length} выбрано)
           </span>
           <div style={{ flex: 1 }} />
@@ -165,7 +165,7 @@ export function ManagerListView({
               background: compareSelected.length >= 2 ? "rgba(124,106,232,0.2)" : "rgba(255,255,255,0.04)",
               border: "1px solid rgba(124,106,232,0.3)",
               borderRadius: 8,
-              color: compareSelected.length >= 2 ? "#a5b4fc" : "var(--text-muted)",
+              color: compareSelected.length >= 2 ? "var(--accent-hover)" : "var(--text-muted)",
               cursor: compareSelected.length >= 2 ? "pointer" : "not-allowed",
               fontSize: "0.85rem",
               fontWeight: 600,
@@ -201,11 +201,11 @@ export function ManagerListView({
             </h3>
             <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", lineHeight: 1.7 }}>
               <p style={{ margin: "0 0 0.5rem" }}>
-                <strong style={{ color: "#fff" }}>Wiki</strong> — это персональная база знаний каждого менеджера,
+                <strong style={{ color: "var(--text-primary)" }}>Wiki</strong> — это персональная база знаний каждого менеджера,
                 которая автоматически строится из тренировочных сессий.
               </p>
               <p style={{ margin: "0 0 0.5rem" }}>
-                <strong style={{ color: "#fff" }}>Автоматика:</strong> Каждые 12 часов система автоматически анализирует новые сессии.
+                <strong style={{ color: "var(--text-primary)" }}>Автоматика:</strong> Каждые 12 часов система автоматически анализирует новые сессии.
                 Ежедневно в 03:00 UTC формируется дневной синтез, еженедельно по понедельникам — недельный.
               </p>
               <ul style={{ margin: "0 0 0.5rem", paddingLeft: "1.5rem" }}>
@@ -215,7 +215,7 @@ export function ManagerListView({
                 <li><strong style={{ color: "var(--accent)" }}>Синтез</strong> — дневные и недельные AI-резюме</li>
               </ul>
               <p style={{ margin: "0 0 0.5rem" }}>
-                <strong style={{ color: "#fff" }}>Действия:</strong> Вы можете редактировать страницы, экспортировать данные в PDF/CSV,
+                <strong style={{ color: "var(--text-primary)" }}>Действия:</strong> Вы можете редактировать страницы, экспортировать данные в PDF/CSV,
                 запускать синтез вручную и инжестить пропущенные сессии.
               </p>
               <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--text-muted)" }}>
@@ -254,7 +254,7 @@ export function ManagerListView({
               }}
             >
               <s.icon size={18} style={{ color: s.color, marginBottom: "0.25rem" }} />
-              <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "#fff" }}>{s.value}</div>
+              <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "var(--text-primary)" }}>{s.value}</div>
               <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{s.label}</div>
             </div>
           ))}
@@ -349,7 +349,7 @@ export function ManagerListView({
             background: "rgba(255,255,255,0.03)",
             border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: 8,
-            color: "#e0e0e0",
+            color: "var(--text-secondary)",
             fontSize: "0.9rem",
             outline: "none",
           }}
@@ -387,7 +387,7 @@ export function ManagerListView({
                   : "1px solid rgba(255,255,255,0.06)",
                 borderRadius: 10,
                 cursor: "pointer",
-                color: "#e0e0e0",
+                color: "var(--text-secondary)",
                 textAlign: "left",
                 width: "100%",
               }}
