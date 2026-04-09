@@ -1,26 +1,52 @@
 "use client";
 
 /**
- * Renders emoji with consistent cross-platform styling.
- * Uses "Noto Color Emoji" web font for high-quality rendering,
- * with system emoji as fallback.
+ * Renders emoji as high-quality Twemoji SVG images from CDN.
+ * Replaces ugly system emoji with consistent Twitter-style artwork.
+ * CDN: cdn.jsdelivr.net (whitelisted in CSP img-src)
  */
-export function Twemoji({ emoji, size = 20, className = "" }: { emoji: string; size?: number; className?: string }) {
+
+function emojiToCodepoint(emoji: string): string {
+  const codepoints: string[] = [];
+  for (const char of emoji) {
+    const cp = char.codePointAt(0);
+    if (cp !== undefined && cp !== 0xfe0f) { // skip variation selector
+      codepoints.push(cp.toString(16));
+    }
+  }
+  return codepoints.join("-");
+}
+
+export function Twemoji({
+  emoji,
+  size = 20,
+  className = "",
+}: {
+  emoji: string;
+  size?: number;
+  className?: string;
+}) {
+  const codepoint = emojiToCodepoint(emoji);
+
   return (
-    <span
-      className={`inline-flex items-center justify-center shrink-0 ${className}`}
-      style={{
-        width: size,
-        height: size,
-        fontSize: size * 0.85,
-        lineHeight: 1,
-        fontFamily: "'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif",
-        textAlign: "center",
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/${codepoint}.svg`}
+      alt={emoji}
+      width={size}
+      height={size}
+      className={`inline-block shrink-0 ${className}`}
+      style={{ verticalAlign: "middle" }}
+      draggable={false}
+      loading="lazy"
+      onError={(e) => {
+        // Fallback: show raw emoji if SVG not found
+        const span = document.createElement("span");
+        span.textContent = emoji;
+        span.style.fontSize = `${size}px`;
+        span.style.lineHeight = "1";
+        (e.target as HTMLElement).replaceWith(span);
       }}
-      role="img"
-      aria-label={emoji}
-    >
-      {emoji}
-    </span>
+    />
   );
 }

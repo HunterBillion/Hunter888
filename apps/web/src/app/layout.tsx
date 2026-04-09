@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ViewTransitions } from "next-view-transitions";
 import { Providers } from "@/components/providers/Providers";
 import "./globals.css";
 
@@ -71,18 +72,24 @@ export default async function RootLayout({
         {/* CSP nonce — available to client scripts via document.querySelector */}
         <meta property="csp-nonce" content={nonce} />
         {/* Fonts loaded via next/font/google (Geist Sans + Geist Mono) */}
-        {/* Noto Color Emoji for consistent emoji rendering */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"
-          rel="stylesheet"
-          nonce={nonce}
-          suppressHydrationWarning
-        />
+        {/* View Transition CSS for smooth page navigation */}
+        <style nonce={nonce} suppressHydrationWarning>{`
+          ::view-transition-old(root) {
+            animation: fade-out 0.15s ease-in;
+          }
+          ::view-transition-new(root) {
+            animation: fade-in 0.15s ease-out;
+          }
+          @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+          @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+        `}</style>
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased`}>
-        <Providers>
-          {children}
-        </Providers>
+        <ViewTransitions>
+          <Providers>
+            {children}
+          </Providers>
+        </ViewTransitions>
       </body>
     </html>
   );
