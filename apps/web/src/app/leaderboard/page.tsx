@@ -285,7 +285,7 @@ export default function LeaderboardPage() {
                     <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
                   </div>
                 ) : compositeEntries.length > 0 ? (
-                  <div className="mt-6 space-y-2">
+                  <div className="mt-6 space-y-2" role="list" aria-label="Комплексный рейтинг">
                     {/* Formula legend */}
                     <div className="glass-panel p-3 mb-4 flex flex-wrap gap-3 text-xs font-medium" style={{ color: "var(--text-muted)" }}>
                       <span className="badge-neon text-xs">40% Тренировки</span>
@@ -300,6 +300,7 @@ export default function LeaderboardPage() {
                       return (
                         <motion.div
                           key={entry.user_id}
+                          role="listitem"
                           initial={{ opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0 }}
                           className={`cyber-card flex items-center gap-3 px-4 py-3 ${isMe ? "neon-pulse" : ""}`}
@@ -545,12 +546,13 @@ function LeaderboardList({
   }
 
   return (
-    <div className="mt-6 space-y-3">
+    <div className="mt-6 space-y-3" role="list" aria-label="Рейтинг участников">
       {items.map((entry, i) => {
         const style = getRankStyle(entry.rank);
         return (
           <motion.div
             key={entry.userId}
+            role="listitem"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}

@@ -2,6 +2,14 @@
  * Shared utility functions for the frontend.
  */
 
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+/** Merge Tailwind classes with clsx */
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
 /** Returns a CSS color string based on score value. Theme-aware via CSS variables. */
 export function scoreColor(score: number | null): string {
   if (score === null || score === undefined) return "var(--text-muted)";

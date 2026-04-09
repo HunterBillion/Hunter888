@@ -8,6 +8,7 @@ import {
   Calendar, ShieldCheck, Loader2, Plus, Bell, Send,
 } from "lucide-react";
 import { BackButton } from "@/components/ui/BackButton";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -121,6 +122,7 @@ export default function ClientDetailPage() {
     <AuthLayout>
       <div className="panel-grid-bg min-h-screen">
         <div className="app-page max-w-4xl">
+        <Breadcrumb items={[{ label: "Клиенты", href: "/clients" }, { label: client.full_name }]} />
         {/* Back + status */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
           <div className="mb-4">

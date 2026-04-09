@@ -121,7 +121,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
             </h2>
 
             {/* Timer + progress */}
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 space-y-3" aria-live="polite" aria-atomic="true">
               <div className="flex items-end justify-center gap-2 font-mono">
                 <span
                   className="text-4xl font-bold tabular-nums transition-colors duration-300"
@@ -223,6 +223,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
               transition={{ delay: 0.3 }}
               className="font-display text-2xl font-black tracking-wider"
               style={{ color: "var(--success)", textShadow: "0 0 20px rgba(0,255,102,0.25)" }}
+              aria-live="assertive"
             >
               {opponentRating ? `Охотник ${Math.round(opponentRating)} бросает вызов` : "АРЕНА ГОТОВА"}
             </motion.h2>

@@ -213,6 +213,7 @@ function PvPLobbyContent() {
                   style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}
                   whileTap={{ scale: 0.95 }}
                   title="Справка"
+                  aria-label="Справка"
                 >
                   <Info size={16} style={{ color: "var(--text-muted)" }} />
                 </motion.button>

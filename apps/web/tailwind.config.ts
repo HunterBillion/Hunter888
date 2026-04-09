@@ -81,6 +81,8 @@ const config: Config = {
         "spin-slow": "spin 60s linear infinite",
         "spin-slow-reverse": "spin 40s linear infinite reverse",
         shimmer: "shimmer 2s linear infinite",
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
       },
       keyframes: {
         "fade-in": {
@@ -107,6 +109,14 @@ const config: Config = {
           "0%": { backgroundPosition: "-200% 0" },
           "100%": { backgroundPosition: "200% 0" },
         },
+        "accordion-down": {
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
       },
       backdropBlur: {
         xs: "2px",
@@ -121,7 +131,7 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [require("tailwindcss-animate")],
 };
 
 export default config;

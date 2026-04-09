@@ -58,6 +58,7 @@ import ScoreLayersBreakdown from "@/components/results/ScoreLayersBreakdown";
 import ReplayModal from "@/components/results/ReplayModal";
 import { AchievementToast } from "@/components/gamification/AchievementToast";
 import { BackButton } from "@/components/ui/BackButton";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { EMOTION_MAP, type EmotionState, type ChatMessage, type SessionResultResponse, type ActiveTournamentResponse, type TournamentSubmitResponse } from "@/types";
 import { logger } from "@/lib/logger";
 import { colorAlpha } from "@/lib/utils";
@@ -302,6 +303,7 @@ export default function ResultsPage() {
       <AchievementToast achievement={achievement} onClose={() => setAchievement(null)} />
 
       <div className="app-page flex flex-col min-h-screen">
+        <Breadcrumb items={[{ label: "История", href: "/history" }, { label: "Результат" }]} />
         <BackButton href="/training" label="К тренировкам" />
 
         {/* Completeness warning for short conversations */}
