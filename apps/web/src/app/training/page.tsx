@@ -538,8 +538,8 @@ function RecommendedTab({
                   </div>
 
                   {/* Weakness hint */}
-                  <div className="rounded-lg p-2 mb-3" style={{ background: "rgba(255,215,0,0.05)", border: "1px solid rgba(255,215,0,0.1)" }}>
-                    <div className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: "rgba(255,215,0,0.6)" }}>
+                  <div className="rounded-lg p-2 mb-3" style={{ background: "color-mix(in srgb, var(--rank-gold) 5%, transparent)", border: "1px solid color-mix(in srgb, var(--rank-gold) 10%, transparent)" }}>
+                    <div className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: "color-mix(in srgb, var(--rank-gold) 60%, transparent)" }}>
                       Слабое место
                     </div>
                     <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>

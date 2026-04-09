@@ -147,7 +147,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
                     </div>
                     <div>
                       <div className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{row.label}</div>
-                      <div className="text-sm" style={{ color: "var(--text-primary)" }}>{row.value}</div>
+                      <div className="text-sm break-words" style={{ color: "var(--text-primary)" }}>{row.value}</div>
                     </div>
                   </div>
                 );
@@ -262,7 +262,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
               ЗАМЕТКИ CRM
             </h2>
             {clientCard.crm_notes ? (
-              <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "var(--text-secondary)" }}>
+              <p className="text-sm leading-relaxed whitespace-pre-line break-words" style={{ color: "var(--text-secondary)" }}>
                 {clientCard.crm_notes}
               </p>
             ) : (

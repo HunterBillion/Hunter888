@@ -251,7 +251,7 @@ function PvPLobbyContent() {
                       <p className="font-bold mb-1.5" style={{ color: "var(--text-primary)" }}>Режимы PvP:</p>
                       <ul className="space-y-1.5">
                         <li className="flex gap-2"><Swords size={14} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Классическая дуэль</strong> — 2 раунда, смена ролей (продавец/клиент)</span></li>
-                        <li className="flex gap-2"><Zap size={14} className="shrink-0 mt-0.5" style={{ color: "#FFD700" }} /><span><strong style={{ color: "var(--text-primary)" }}>Скоростной бой</strong> — 5 мини-раундов по 2 минуты</span></li>
+                        <li className="flex gap-2"><Zap size={14} className="shrink-0 mt-0.5" style={{ color: "var(--rank-gold)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Скоростной бой</strong> — 5 мини-раундов по 2 минуты</span></li>
                         <li className="flex gap-2"><Target size={14} className="shrink-0 mt-0.5" style={{ color: "var(--danger)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Испытание</strong> — 3-5 дуэлей подряд, сложность растёт</span></li>
                         <li className="flex gap-2"><Brain size={14} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Командный 2v2</strong> — вместе с коллегой</span></li>
                       </ul>
@@ -308,7 +308,7 @@ function PvPLobbyContent() {
               className="mt-4 rounded-xl p-3 flex items-center gap-3"
               style={{ background: "rgba(255,215,0,0.06)", border: "1px solid rgba(255,215,0,0.15)" }}
             >
-              <Zap size={16} style={{ color: "#FFD700" }} />
+              <Zap size={16} style={{ color: "var(--rank-gold)" }} />
               <span className="font-medium text-xs" style={{ color: "var(--text-secondary)" }}>
                 {store.activeSeason.name}
               </span>
@@ -699,7 +699,7 @@ function PvPLobbyContent() {
                       >
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-lg">{"\uD83C\uDFC6"}</span>
-                          <span className="text-sm font-bold" style={{ color: "#FFD700" }}>Турнир недели</span>
+                          <span className="text-sm font-bold" style={{ color: "var(--rank-gold)" }}>Турнир недели</span>
                           <span className="ml-auto text-xs font-medium" style={{ color: "var(--text-muted)" }}>
                             Подробнее →
                           </span>
@@ -874,7 +874,7 @@ function PvPLobbyContent() {
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   className="flex-1 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-2"
-                  style={{ background: "var(--success)", color: "#000" }}
+                  style={{ background: "var(--success)", color: "var(--bg-primary)" }}
                   disabled={pveAccepting}
                   onClick={async () => {
                     if (pveAccepting) return;

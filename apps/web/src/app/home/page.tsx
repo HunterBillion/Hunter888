@@ -657,7 +657,7 @@ function ShortcutHint() {
       style={{ background: "var(--accent-muted)", border: "1px solid var(--border-color)" }}
     >
       <span className="font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--accent)" }}>
-        PRO TIP: <kbd className="px-1.5 py-0.5 rounded text-[10px]" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>⌘K</kbd> — поиск · <kbd className="px-1.5 py-0.5 rounded text-[10px]" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>?</kbd> — все шорткаты
+        PRO TIP: <kbd className="px-1.5 py-0.5 rounded text-xs" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>⌘K</kbd> — поиск · <kbd className="px-1.5 py-0.5 rounded text-xs" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>?</kbd> — все шорткаты
       </span>
       <button
         onClick={() => { setVisible(false); try { localStorage.setItem(STORAGE.shortcutHintVisits, "3"); } catch {} }}

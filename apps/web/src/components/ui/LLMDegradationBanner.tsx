@@ -18,7 +18,12 @@ interface LLMStatus {
  */
 export function LLMDegradationBanner() {
   const [status, setStatus] = useState<LLMStatus | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof sessionStorage !== "undefined") {
+      try { return sessionStorage.getItem("llm_banner_dismissed") === "1"; } catch {}
+    }
+    return false;
+  });
   const [restored, setRestored] = useState(false);
 
   useEffect(() => {
@@ -38,6 +43,7 @@ export function LLMDegradationBanner() {
           // Auto-dismiss when restored
           if (!data.fallback) {
             setDismissed(false);
+            try { sessionStorage.removeItem("llm_banner_dismissed"); } catch {}
           }
         }
       } catch {
@@ -102,7 +108,10 @@ export function LLMDegradationBanner() {
           </span>
         </div>
         <button
-          onClick={() => setDismissed(true)}
+          onClick={() => {
+            setDismissed(true);
+            try { sessionStorage.setItem("llm_banner_dismissed", "1"); } catch {}
+          }}
           className="ml-4 rounded p-1 text-yellow-400/60 hover:text-yellow-400 transition-colors"
           aria-label="Закрыть"
         >

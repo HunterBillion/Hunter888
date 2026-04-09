@@ -229,9 +229,9 @@ export default function LeaderboardPage() {
                   <>
                     {/* Tournament info banner */}
                     <div className="mt-6 rounded-xl p-4 flex items-center gap-4"
-                      style={{ background: "rgba(255,215,0,0.06)", border: "1px solid rgba(255,215,0,0.15)" }}
+                      style={{ background: "color-mix(in srgb, var(--rank-gold) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--rank-gold) 15%, transparent)" }}
                     >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(255,215,0,0.1)" }}>
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "color-mix(in srgb, var(--rank-gold) 10%, transparent)" }}>
                         <Swords size={18} style={{ color: RANK.gold }} />
                       </div>
                       <div className="flex-1">
