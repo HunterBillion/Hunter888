@@ -256,9 +256,9 @@ function ArenaLobbyPage() {
               }}
             >
               {maxPlayers === 4 ? (
-                <Users size={28} style={{ color: "#F59E0B" }} />
+                <Users size={28} style={{ color: "var(--warning)" }} />
               ) : (
-                <Swords size={28} style={{ color: "#EF4444" }} />
+                <Swords size={28} style={{ color: "var(--danger)" }} />
               )}
             </div>
             <h2
@@ -306,7 +306,7 @@ function ArenaLobbyPage() {
                   <motion.div
                     className="absolute inset-0 rounded-full border-2 border-dashed"
                     style={{
-                      borderColor: maxPlayers === 4 ? "#F59E0B" : "#EF4444",
+                      borderColor: maxPlayers === 4 ? "var(--warning)" : "var(--danger)",
                       opacity: 0.6,
                     }}
                     animate={reducedMotion ? {} : { rotate: 360, scale: [1, 1.04, 1] }}
@@ -371,7 +371,7 @@ function ArenaLobbyPage() {
                     <motion.div
                       className="h-full rounded-full"
                       style={{
-                        background: `linear-gradient(90deg, ${maxPlayers === 4 ? "#F59E0B" : "#EF4444"}, var(--accent))`,
+                        background: `linear-gradient(90deg, ${maxPlayers === 4 ? "var(--warning)" : "var(--danger)"}, var(--accent))`,
                         width: `${progress}%`,
                       }}
                       transition={{ duration: 0.5 }}
@@ -469,7 +469,7 @@ function ArenaLobbyPage() {
                   className="mx-auto flex h-16 w-16 items-center justify-center rounded-full mb-4"
                   style={{ background: "rgba(245,158,11,0.1)", border: "2px solid rgba(245,158,11,0.2)" }}
                 >
-                  <Users size={28} style={{ color: "#F59E0B" }} />
+                  <Users size={28} style={{ color: "var(--warning)" }} />
                 </div>
 
                 <h3 className="font-display text-lg font-bold" style={{ color: "var(--text-primary)" }}>
@@ -525,7 +525,7 @@ function ArenaLobbyPage() {
                   className="mx-auto flex h-16 w-16 items-center justify-center rounded-full mb-4"
                   style={{ background: "rgba(239,68,68,0.1)", border: "2px solid rgba(239,68,68,0.2)" }}
                 >
-                  <X size={28} style={{ color: "#EF4444" }} />
+                  <X size={28} style={{ color: "var(--danger)" }} />
                 </div>
 
                 <h3 className="text-lg font-bold" style={{ color: "var(--danger)" }}>

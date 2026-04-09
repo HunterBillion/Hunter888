@@ -451,7 +451,7 @@ function KnowledgeSessionPage() {
                       accuracy >= 75
                         ? "#00FF66"
                         : accuracy >= 50
-                          ? "#F59E0B"
+                          ? "var(--warning)"
                           : "#FF3333",
                   }}
                 />
@@ -525,7 +525,7 @@ function KnowledgeSessionPage() {
               >
                 <div
                   className="font-display text-3xl font-bold"
-                  style={{ color: "#6366F1" }}
+                  style={{ color: "var(--accent)" }}
                 >
                   {accuracy}%
                 </div>
@@ -545,7 +545,7 @@ function KnowledgeSessionPage() {
               >
                 <div
                   className="font-display text-3xl font-bold"
-                  style={{ color: "#F59E0B" }}
+                  style={{ color: "var(--warning)" }}
                 >
                   {store.score}
                 </div>
@@ -608,7 +608,7 @@ function KnowledgeSessionPage() {
                   СЛОЖНОСТЬ{" "}
                 </span>
                 {Array.from({ length: 5 }).map((_, i) => (
-                  <span key={i} style={{ color: i < store.currentDifficulty ? "#F59E0B" : "var(--text-muted)", fontSize: "12px" }}>
+                  <span key={i} style={{ color: i < store.currentDifficulty ? "var(--warning)" : "var(--text-muted)", fontSize: "12px" }}>
                     {"\u2B50"}
                   </span>
                 ))}
@@ -637,7 +637,7 @@ function KnowledgeSessionPage() {
                       <div key={cat.category}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{cat.category}</span>
-                          <span className="font-mono text-xs" style={{ color: pct >= 75 ? "#00FF66" : pct >= 50 ? "#F59E0B" : "#FF3333" }}>
+                          <span className="font-mono text-xs" style={{ color: pct >= 75 ? "#00FF66" : pct >= 50 ? "var(--warning)" : "#FF3333" }}>
                             {cat.correct}/{cat.total} ({pct}%)
                           </span>
                         </div>
@@ -646,7 +646,7 @@ function KnowledgeSessionPage() {
                             className="h-full rounded-full transition-all"
                             style={{
                               width: `${pct}%`,
-                              background: pct >= 75 ? "#00FF66" : pct >= 50 ? "#F59E0B" : "#FF3333",
+                              background: pct >= 75 ? "#00FF66" : pct >= 50 ? "var(--warning)" : "#FF3333",
                             }}
                           />
                         </div>
@@ -823,14 +823,14 @@ function KnowledgeSessionPage() {
                   size={12}
                   style={{
                     color:
-                      store.timeLeft <= 30 ? "#FF3333" : "#F59E0B",
+                      store.timeLeft <= 30 ? "#FF3333" : "var(--warning)",
                   }}
                 />
                 <span
                   className="font-mono text-sm font-bold"
                   style={{
                     color:
-                      store.timeLeft <= 30 ? "#FF3333" : "#F59E0B",
+                      store.timeLeft <= 30 ? "#FF3333" : "var(--warning)",
                   }}
                 >
                   {formatTime(store.timeLeft)}
@@ -888,7 +888,7 @@ function KnowledgeSessionPage() {
                     border: "1px solid rgba(99,102,241,0.25)",
                   }}
                 >
-                  <Brain size={14} style={{ color: "#6366F1" }} />
+                  <Brain size={14} style={{ color: "var(--accent)" }} />
                 </div>
                 <div
                   className="rounded-2xl rounded-tl-sm px-4 py-3"
@@ -937,7 +937,7 @@ function KnowledgeSessionPage() {
             <div className="flex gap-2">
               <button
                 className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
-                style={{ background: "rgba(99,102,241,0.15)", color: "#6366F1" }}
+                style={{ background: "rgba(99,102,241,0.15)", color: "var(--accent)" }}
                 onClick={() => {
                   store.setPendingFollowUp(null);
                   // Let user type answer normally - next text.message will be treated as follow-up answer
@@ -978,7 +978,7 @@ function KnowledgeSessionPage() {
             style={{
               borderColor: "rgba(245,158,11,0.25)",
               background: "rgba(245,158,11,0.06)",
-              color: "#F59E0B",
+              color: "var(--warning)",
             }}
             whileHover={{ background: "rgba(245,158,11,0.12)" }}
             whileTap={{ scale: 0.95 }}
@@ -1102,7 +1102,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
             border: "1px solid rgba(245,158,11,0.25)",
           }}
         >
-          <Lightbulb size={14} style={{ color: "#F59E0B" }} />
+          <Lightbulb size={14} style={{ color: "var(--warning)" }} />
         </div>
         <div
           className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
@@ -1113,7 +1113,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         >
           <div
             className="font-mono text-xs uppercase tracking-widest mb-1"
-            style={{ color: "#F59E0B" }}
+            style={{ color: "var(--warning)" }}
           >
             Подсказка
           </div>
@@ -1186,7 +1186,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
           {message.speedBonus && message.speedBonus > 0 && (
             <div
               className="mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-mono font-bold"
-              style={{ background: "rgba(34,197,94,0.15)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.25)" }}
+              style={{ background: "rgba(34,197,94,0.15)", color: "var(--success)", border: "1px solid rgba(34,197,94,0.25)" }}
             >
               {"\u26A1"} +{message.speedBonus} SPEED BONUS
             </div>
@@ -1221,7 +1221,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
             borderLeft: "3px solid rgba(99,102,241,0.4)",
           }}
         >
-          <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: "#6366F1" }}>
+          <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: "var(--accent)" }}>
             Уточняющий вопрос (опционально)
           </div>
           <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
@@ -1247,7 +1247,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
             border: "1px solid rgba(99,102,241,0.25)",
           }}
         >
-          {avatarEmoji || <BookOpen size={14} style={{ color: "#6366F1" }} />}
+          {avatarEmoji || <BookOpen size={14} style={{ color: "var(--accent)" }} />}
         </div>
         <div
           className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"

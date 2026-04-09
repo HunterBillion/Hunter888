@@ -20,21 +20,21 @@ const TOOLS = [
     description: "Создание и редактирование сценариев тренировок",
     icon: BookOpen,
     href: "/methodologist/scenarios",
-    color: "#818CF8",
+    color: "var(--accent-hover)",
   },
   {
     title: "Контент Арены",
     description: "CRUD для базы знаний ФЗ-127 (чанки, вопросы)",
     icon: Database,
     href: "/methodologist/arena-content",
-    color: "#F59E0B",
+    color: "var(--warning)",
   },
   {
     title: "Настройки скоринга",
     description: "Веса L1-L10 и пороговые значения",
     icon: Settings,
     href: "/methodologist/scoring",
-    color: "#22C55E",
+    color: "var(--success)",
   },
 ];
 

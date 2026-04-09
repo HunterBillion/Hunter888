@@ -972,7 +972,7 @@ export default function TrainingSessionPage() {
             onClick={() => s.setShowAbortModal(true)}
             disabled={s.sessionState !== "ready"}
             className="rounded-xl px-4 py-2 text-sm font-semibold transition-all"
-            style={{ background: "rgba(239,68,68,0.12)", color: "#F87171", border: "1px solid rgba(239,68,68,0.25)" }}
+            style={{ background: "rgba(239,68,68,0.12)", color: "var(--danger)", border: "1px solid rgba(239,68,68,0.25)" }}
             aria-label="Прервать тренировку"
           >
             Завершить
@@ -991,11 +991,11 @@ export default function TrainingSessionPage() {
             style={{
               background: connectionState === "reconnecting" ? "rgba(245,158,11,0.15)" : "rgba(239,68,68,0.15)",
               border: `1px solid ${connectionState === "reconnecting" ? "rgba(245,158,11,0.3)" : "rgba(239,68,68,0.3)"}`,
-              color: connectionState === "reconnecting" ? "#F59E0B" : "#F87171",
+              color: connectionState === "reconnecting" ? "var(--warning)" : "var(--danger)",
               backdropFilter: "blur(12px)",
             }}
           >
-            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: connectionState === "reconnecting" ? "#F59E0B" : "#F87171" }} />
+            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: connectionState === "reconnecting" ? "var(--warning)" : "var(--danger)" }} />
             {connectionState === "reconnecting" ? "Переподключение..." : "Нет связи"}
           </motion.div>
         )}
@@ -1400,7 +1400,7 @@ export default function TrainingSessionPage() {
                 <div className="space-y-1.5">
                   {s.consequences.slice(-2).reverse().map((consequence, index) => (
                     <div key={`${consequence.call}-${consequence.type}-${index}`} className="rounded-lg px-3 py-2.5 text-sm" style={{ background: "rgba(239,68,68,0.06)", color: "var(--text-secondary)" }}>
-                      <span className="font-semibold" style={{ color: "#F87171" }}>{consequence.type.replace(/_/g, " ")}</span>
+                      <span className="font-semibold" style={{ color: "var(--danger)" }}>{consequence.type.replace(/_/g, " ")}</span>
                       <span className="ml-2 line-clamp-1">{consequence.detail}</span>
                     </div>
                   ))}
@@ -1446,8 +1446,8 @@ export default function TrainingSessionPage() {
             {scoreHint && (
               <div className="mt-3 space-y-2.5">
                 {[
-                  ["Возражения", scoreHint.objection_handling, "#F59E0B"],
-                  ["Коммуникация", scoreHint.communication, "#3B82F6"],
+                  ["Возражения", scoreHint.objection_handling, "var(--warning)"],
+                  ["Коммуникация", scoreHint.communication, "var(--info)"],
                   ["Человеческий фактор", scoreHint.human_factor, "#EC4899"],
                 ].map(([label, value, color]) => (
                   <div key={label as string}>

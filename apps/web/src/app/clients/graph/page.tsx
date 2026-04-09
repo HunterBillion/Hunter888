@@ -191,7 +191,7 @@ export default function ClientGraphPage() {
                 <BackButton href="/clients" label="К клиентам" />
                 <div
                   className="flex h-11 w-11 items-center justify-center rounded-2xl"
-                  style={{ background: "var(--accent)", color: "#050505" }}
+                  style={{ background: "var(--accent)", color: "var(--bg-primary)" }}
                 >
                   <Network size={20} />
                 </div>
@@ -245,9 +245,9 @@ export default function ClientGraphPage() {
           <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {[
               { label: "Карточек в модуле", value: formatCount(totalClients), icon: Users, color: "var(--accent)" },
-              { label: "В активном пути", value: formatCount(summary.activePath), icon: ArrowRight, color: "#3B82F6" },
+              { label: "В активном пути", value: formatCount(summary.activePath), icon: ArrowRight, color: "var(--info)" },
               { label: "Зона возврата", value: formatCount(summary.recoveryPool), icon: GitBranch, color: "#F97316" },
-              { label: "Видимых менеджеров", value: formatCount(summary.managers), icon: Network, color: "#10B981" },
+              { label: "Видимых менеджеров", value: formatCount(summary.managers), icon: Network, color: "var(--success)" },
             ].map((card, index) => {
               const Icon = card.icon;
               return (

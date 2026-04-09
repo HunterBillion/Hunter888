@@ -49,12 +49,12 @@ export function TeamTrendChart() {
       {
         label: "Средний балл",
         data: data.map((d) => d.avg_score),
-        borderColor: "#6366F1",
+        borderColor: "var(--accent)",
         backgroundColor: "rgba(139, 92, 246, 0.1)",
         fill: true,
         tension: 0.4,
         pointRadius: 3,
-        pointBackgroundColor: "#6366F1",
+        pointBackgroundColor: "var(--accent)",
       },
     ],
   };

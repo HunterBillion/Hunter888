@@ -171,7 +171,7 @@ export default function ConsentVerifyPage() {
                 width: "40px",
                 height: "40px",
                 border: "3px solid rgba(255,255,255,0.1)",
-                borderTopColor: "#3b82f6",
+                borderTopColor: "var(--info)",
                 borderRadius: "50%",
                 animation: "spin 1s linear infinite",
                 margin: "0 auto 16px",
@@ -307,7 +307,7 @@ export default function ConsentVerifyPage() {
             >
               ✓
             </div>
-            <h2 style={{ color: "#22c55e", fontSize: "18px", fontWeight: 600, margin: "0 0 8px 0" }}>
+            <h2 style={{ color: "var(--success)", fontSize: "18px", fontWeight: 600, margin: "0 0 8px 0" }}>
               Согласие подтверждено
             </h2>
             <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "14px", lineHeight: 1.5, margin: 0 }}>
@@ -336,7 +336,7 @@ export default function ConsentVerifyPage() {
             >
               ⏰
             </div>
-            <h2 style={{ color: "#f59e0b", fontSize: "18px", fontWeight: 600, margin: "0 0 8px 0" }}>
+            <h2 style={{ color: "var(--warning)", fontSize: "18px", fontWeight: 600, margin: "0 0 8px 0" }}>
               Ссылка недействительна
             </h2>
             <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "14px", lineHeight: 1.5, margin: 0 }}>
@@ -365,7 +365,7 @@ export default function ConsentVerifyPage() {
             >
               ✕
             </div>
-            <h2 style={{ color: "#ef4444", fontSize: "18px", fontWeight: 600, margin: "0 0 8px 0" }}>
+            <h2 style={{ color: "var(--danger)", fontSize: "18px", fontWeight: 600, margin: "0 0 8px 0" }}>
               Ошибка
             </h2>
             <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "14px", lineHeight: 1.5, margin: 0 }}>

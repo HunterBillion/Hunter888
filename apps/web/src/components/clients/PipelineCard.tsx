@@ -274,7 +274,7 @@ export function PipelineCard({
                 className="rounded-lg px-2.5 py-1 text-xs font-mono"
                 style={{
                   background: draft.trim() ? "var(--accent)" : "var(--input-bg)",
-                  color: draft.trim() ? "#050505" : "var(--text-muted)",
+                  color: draft.trim() ? "var(--bg-primary)" : "var(--text-muted)",
                   opacity: saving ? 0.7 : 1,
                 }}
               >

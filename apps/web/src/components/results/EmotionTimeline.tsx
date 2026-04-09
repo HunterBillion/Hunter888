@@ -119,8 +119,8 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
   const dataValues = timeline.map((e) => EMOTION_MAP[e.state as EmotionState]?.value ?? 30);
   const pointColors = timeline.map((e) => {
     if (e.is_fake) return "#FF2A6D"; // neon red for fake
-    if (e.rollback) return "#f59e0b"; // amber for rollback
-    return EMOTION_MAP[e.state as EmotionState]?.color ?? "#6366F1";
+    if (e.rollback) return "var(--warning)"; // amber for rollback
+    return EMOTION_MAP[e.state as EmotionState]?.color ?? "var(--accent)";
   });
 
   // Point styling: larger for fakes/rollbacks, dashed border for fakes
@@ -128,7 +128,7 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
   const pointBorderWidths = timeline.map((e) => (e.is_fake ? 3 : 2));
   const pointBorderColors = timeline.map((e) => {
     if (e.is_fake) return "#FF2A6D";
-    if (e.rollback) return "#f59e0b";
+    if (e.rollback) return "var(--warning)";
     return isDark ? "#fff" : "#1a1a1a";
   });
   const pointStyles = timeline.map((e) => {
@@ -143,7 +143,7 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
       {
         label: "Vibe",
         data: dataValues,
-        borderColor: "#E028CC",
+        borderColor: "var(--magenta)",
         backgroundColor: (ctx: { chart: { ctx: CanvasRenderingContext2D } }) => {
           const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 300);
           g.addColorStop(0, "rgba(224, 40, 204, 0.4)");
@@ -188,7 +188,7 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
         backgroundColor: tooltipBg,
         titleColor: tooltipText,
         bodyColor: tooltipText,
-        borderColor: "#E028CC",
+        borderColor: "var(--magenta)",
         borderWidth: 1,
         callbacks: {
           title: (items: { dataIndex: number }[]) => {
@@ -273,7 +273,7 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
         {hasRollbacks && (
           <span
             className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-mono uppercase tracking-wider"
-            style={{ background: "rgba(245,158,11,0.1)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.2)" }}
+            style={{ background: "rgba(245,158,11,0.1)", color: "var(--warning)", border: "1px solid rgba(245,158,11,0.2)" }}
           >
             <span style={{ width: 0, height: 0, display: "inline-block", borderLeft: "4px solid transparent", borderRight: "4px solid transparent", borderBottom: "7px solid #f59e0b" }} />
             Откат
@@ -301,7 +301,7 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
           {journeySummary.rollback_count != null && journeySummary.rollback_count > 0 && (
             <span className="stat-chip">
               <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>Откатов</span>
-              <span className="text-xs font-mono font-bold" style={{ color: "#f59e0b" }}>{journeySummary.rollback_count}</span>
+              <span className="text-xs font-mono font-bold" style={{ color: "var(--warning)" }}>{journeySummary.rollback_count}</span>
             </span>
           )}
           {journeySummary.fake_count != null && journeySummary.fake_count > 0 && (

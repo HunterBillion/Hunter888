@@ -17,10 +17,10 @@ interface Alert {
 }
 
 const SEVERITY_COLORS: Record<string, { bg: string; border: string; icon: string }> = {
-  critical: { bg: "rgba(239, 68, 68, 0.1)", border: "rgba(239, 68, 68, 0.3)", icon: "#EF4444" },
+  critical: { bg: "rgba(239, 68, 68, 0.1)", border: "rgba(239, 68, 68, 0.3)", icon: "var(--danger)" },
   warning: { bg: "rgba(249, 115, 22, 0.1)", border: "rgba(249, 115, 22, 0.3)", icon: "#F97316" },
-  success: { bg: "rgba(34, 197, 94, 0.1)", border: "rgba(34, 197, 94, 0.3)", icon: "#22C55E" },
-  info: { bg: "rgba(59, 130, 246, 0.1)", border: "rgba(59, 130, 246, 0.3)", icon: "#3B82F6" },
+  success: { bg: "rgba(34, 197, 94, 0.1)", border: "rgba(34, 197, 94, 0.3)", icon: "var(--success)" },
+  info: { bg: "rgba(59, 130, 246, 0.1)", border: "rgba(59, 130, 246, 0.3)", icon: "var(--info)" },
 };
 
 const TYPE_ICONS: Record<string, typeof Bell> = {
@@ -68,7 +68,7 @@ export function AlertPanel({ compact = false }: AlertPanelProps) {
           {criticalCount > 0 && (
             <span
               className="px-1.5 py-0.5 rounded-full text-xs font-mono font-bold"
-              style={{ background: "rgba(239, 68, 68, 0.2)", color: "#EF4444" }}
+              style={{ background: "rgba(239, 68, 68, 0.2)", color: "var(--danger)" }}
             >
               {criticalCount}
             </span>

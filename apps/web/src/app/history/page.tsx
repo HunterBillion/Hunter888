@@ -48,8 +48,8 @@ function formatDate(iso: string) {
 function MiniScoreBars({ session }: { session: HistoryEntry["latest_session"] }) {
   const bars = [
     { label: "Скр", value: session.score_script_adherence, max: 30, color: "var(--accent)" },
-    { label: "Возр", value: session.score_objection_handling, max: 25, color: "#E028CC" },
-    { label: "Ком", value: session.score_communication, max: 20, color: "#3B82F6" },
+    { label: "Возр", value: session.score_objection_handling, max: 25, color: "var(--magenta)" },
+    { label: "Ком", value: session.score_communication, max: 20, color: "var(--info)" },
     { label: "Рез", value: session.score_result, max: 10, color: "#00FF66" },
   ];
 
@@ -151,7 +151,7 @@ export default function HistoryPage() {
             >
               {[
                 { label: "Всего", value: entries.length, icon: BarChart3, color: "var(--accent)" },
-                { label: "Историй", value: storyCount, icon: Layers3, color: "#E028CC" },
+                { label: "Историй", value: storyCount, icon: Layers3, color: "var(--magenta)" },
                 { label: "Завершено", value: completed.length, icon: CheckCircle2, color: "#00FF66" },
                 { label: "Ср. балл", value: avgScore !== null ? avgScore : "—", icon: Sparkles, color: "#FFB400", hero: true },
               ].map((item) => {

@@ -1097,7 +1097,7 @@ async def ingest_all_sessions(
 @router.get("/{manager_id}/export")
 async def export_wiki(
     manager_id: uuid.UUID,
-    format: str = Query("pdf", regex="^(pdf|csv)$"),
+    format: str = Query("pdf", pattern="^(pdf|csv)$"),
     admin: User = Depends(require_role("admin", "rop")),
     db: AsyncSession = Depends(get_db),
 ):

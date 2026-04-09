@@ -211,7 +211,7 @@ export default function ArenaContentPage() {
                         </span>
                         {chunk.is_court_practice && (
                           <span className="rounded px-1 py-0.5 text-xs"
-                            style={{ background: "rgba(129,140,248,0.1)", color: "#818CF8" }}>
+                            style={{ background: "rgba(129,140,248,0.1)", color: "var(--accent-hover)" }}>
                             Суд.практика
                           </span>
                         )}
@@ -223,7 +223,7 @@ export default function ArenaContentPage() {
                     <div className="flex gap-1 ml-2 flex-shrink-0">
                       <button onClick={() => handleDelete(chunk.id)}
                         className="p-1.5 rounded-lg hover:bg-red-500/10" title="Удалить">
-                        <Trash2 size={14} style={{ color: "#ef4444" }} />
+                        <Trash2 size={14} style={{ color: "var(--danger)" }} />
                       </button>
                     </div>
                   </div>

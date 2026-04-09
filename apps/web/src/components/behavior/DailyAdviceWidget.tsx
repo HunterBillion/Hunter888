@@ -7,10 +7,10 @@ import { Lightbulb, ArrowRight, Target, Brain, BookOpen, Flame, AlertTriangle } 
 const CATEGORY_CONFIG: Record<string, { icon: typeof Lightbulb; color: string; label: string }> = {
   weak_skill: { icon: Target, color: "var(--danger)", label: "Слабый навык" },
   arena_knowledge: { icon: BookOpen, color: "var(--accent, #6366F1)", label: "Знания ФЗ-127" },
-  confidence_low: { icon: Brain, color: "#F59E0B", label: "Уверенность" },
-  stress_high: { icon: AlertTriangle, color: "#EF4444", label: "Стресс" },
+  confidence_low: { icon: Brain, color: "var(--warning)", label: "Уверенность" },
+  stress_high: { icon: AlertTriangle, color: "var(--danger)", label: "Стресс" },
   streak_motivation: { icon: Flame, color: "#F97316", label: "Мотивация" },
-  decline_alert: { icon: AlertTriangle, color: "#EF4444", label: "Внимание" },
+  decline_alert: { icon: AlertTriangle, color: "var(--danger)", label: "Внимание" },
   general: { icon: Lightbulb, color: "var(--accent, #6366F1)", label: "Совет дня" },
 };
 

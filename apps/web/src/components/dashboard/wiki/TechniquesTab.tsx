@@ -5,7 +5,7 @@ import type { TechniqueItem } from "./types";
 
 export function TechniquesTab({ techniques }: { techniques: TechniqueItem[] }) {
   if (techniques.length === 0) {
-    return <p style={{ color: "#6b7280" }}>Техники ещё не обнаружены.</p>;
+    return <p style={{ color: "var(--text-muted)" }}>Техники ещё не обнаружены.</p>;
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -20,7 +20,7 @@ export function TechniquesTab({ techniques }: { techniques: TechniqueItem[] }) {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-            <Zap size={16} style={{ color: "#f59e0b" }} />
+            <Zap size={16} style={{ color: "var(--warning)" }} />
             <span style={{ fontWeight: 600, color: "#e0e0e0" }}>{t.technique_name}</span>
             {t.applicable_to_archetype && (
               <span
@@ -39,7 +39,7 @@ export function TechniquesTab({ techniques }: { techniques: TechniqueItem[] }) {
               style={{
                 marginLeft: "auto",
                 fontSize: "0.8rem",
-                color: t.success_rate >= 0.7 ? "#22c55e" : t.success_rate >= 0.4 ? "#f59e0b" : "#ef4444",
+                color: t.success_rate >= 0.7 ? "var(--success)" : t.success_rate >= 0.4 ? "var(--warning)" : "var(--danger)",
                 fontWeight: 600,
               }}
             >
@@ -47,16 +47,16 @@ export function TechniquesTab({ techniques }: { techniques: TechniqueItem[] }) {
             </span>
           </div>
           {t.description && (
-            <p style={{ color: "#9ca3af", margin: "0.25rem 0", fontSize: "0.9rem" }}>
+            <p style={{ color: "var(--text-muted)", margin: "0.25rem 0", fontSize: "0.9rem" }}>
               {t.description}
             </p>
           )}
           {t.how_to_apply && (
-            <p style={{ color: "#d1d5db", margin: "0.5rem 0 0.25rem", fontSize: "0.85rem", fontStyle: "italic" }}>
+            <p style={{ color: "var(--text-muted)", margin: "0.5rem 0 0.25rem", fontSize: "0.85rem", fontStyle: "italic" }}>
               Как применять: {t.how_to_apply}
             </p>
           )}
-          <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
             Использовано {t.attempt_count} раз | Успешно {t.success_count}
           </div>
         </div>

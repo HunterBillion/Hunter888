@@ -38,12 +38,20 @@ class NotificationConnectionManager:
         self.active_connections: dict[str, list[WebSocket]] = {}
         # user_id → preferences dict (cached on connect)
         self.user_prefs: dict[str, dict] = {}
+        # user_id → role string (cached on connect for role-based filtering)
+        self.user_roles: dict[str, str] = {}
         # (user_id, ws) → set of subscribed channels (e.g. "game_crm", "clients")
         self.subscriptions: dict[int, set[str]] = {}  # ws id() → channels
         # Lock to protect concurrent access to active_connections
         self._lock = asyncio.Lock()
 
-    async def connect(self, websocket: WebSocket, user_id: str, preferences: dict | None = None) -> None:
+    async def connect(
+        self,
+        websocket: WebSocket,
+        user_id: str,
+        preferences: dict | None = None,
+        role: str | None = None,
+    ) -> None:
         """Добавить соединение пользователя."""
         async with self._lock:
             if user_id not in self.active_connections:
@@ -51,7 +59,9 @@ class NotificationConnectionManager:
             self.active_connections[user_id].append(websocket)
             if preferences is not None:
                 self.user_prefs[user_id] = preferences
-            logger.info("WS Notification connected: user=%s (total=%d)", user_id, len(self.active_connections[user_id]))
+            if role is not None:
+                self.user_roles[user_id] = role
+            logger.info("WS Notification connected: user=%s role=%s (total=%d)", user_id, role, len(self.active_connections[user_id]))
 
     def subscribe(self, websocket: WebSocket, channel: str) -> None:
         """Подписать соединение на канал (e.g. 'game_crm')."""
@@ -76,6 +86,9 @@ class NotificationConnectionManager:
                 ]
                 if not self.active_connections[user_id]:
                     del self.active_connections[user_id]
+                    # Clean up role/prefs cache when last connection closes
+                    self.user_roles.pop(user_id, None)
+                    self.user_prefs.pop(user_id, None)
             # Clean up subscriptions
             self.subscriptions.pop(id(websocket), None)
         logger.info("WS Notification disconnected: user=%s", user_id)
@@ -102,8 +115,6 @@ class NotificationConnectionManager:
             prefs = self.user_prefs.get(user_id, {})
             if prefs.get("notifications") is False:
                 return  # User disabled all notifications
-            if prefs.get("notify_push") is False:
-                return  # User disabled in-app notifications
 
         async with self._lock:
             connections = list(self.active_connections.get(user_id, []))
@@ -129,12 +140,19 @@ class NotificationConnectionManager:
         """
         Отправить событие всем пользователям определённой роли.
         Для РОП — фильтруем по team_id (если задан).
-        В MVP: рассылка всем подключённым (фильтрация по роли — на стороне клиента).
+        Filters by cached user_roles; admins always receive role-targeted events.
         """
         async with self._lock:
             snapshot = {uid: list(conns) for uid, conns in self.active_connections.items()}
+            roles_snapshot = dict(self.user_roles)
         dead_pairs: list[tuple[str, WebSocket]] = []
         for user_id, connections in snapshot.items():
+            user_role = roles_snapshot.get(user_id)
+            # Only send to users with matching role or admins
+            if user_role != role and user_role != "admin":
+                continue
+            # If team_id filtering requested, skip users not in that team
+            # (team_id filtering requires additional data — handled by caller via send_to_user)
             for ws in connections:
                 try:
                     await ws.send_json(event)
@@ -344,9 +362,10 @@ async def notification_websocket(websocket: WebSocket) -> None:
             await websocket.close(code=4003)
             return
 
-        # ── Получаем unread count + user preferences ──
+        # ── Получаем unread count + user preferences + role ──
         unread_count = 0
         user_prefs: dict = {}
+        user_role: str = "manager"
         try:
             from sqlalchemy import func, select
             from app.models.client import ClientNotification, NotificationChannel
@@ -363,16 +382,19 @@ async def notification_websocket(websocket: WebSocket) -> None:
                 )
                 unread_count = result.scalar() or 0
 
-                # Load preferences for notification filtering
+                # Load preferences and role for notification filtering
                 user_result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
                 u = user_result.scalar_one_or_none()
-                if u and u.preferences:
-                    user_prefs = u.preferences
+                if u:
+                    if u.preferences:
+                        user_prefs = u.preferences
+                    user_role = u.role.value if u.role else "manager"
         except Exception as e:
             logger.warning("Failed to get unread count/prefs: %s", e)
+            user_role = "manager"
 
         # ── Успешная аутентификация ──
-        await notification_manager.connect(websocket, user_id, preferences=user_prefs)
+        await notification_manager.connect(websocket, user_id, preferences=user_prefs, role=user_role)
         await websocket.send_json({
             "type": "auth.success",
             "user_id": user_id,

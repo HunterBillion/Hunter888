@@ -68,7 +68,7 @@ const SKILL_COLORS: Record<string, string> = {
 
 const MASTERY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   untrained: { label: "Не тренирован", color: "var(--text-muted)", bg: "var(--input-bg)" },
-  beginner: { label: "Новичок", color: "#3B82F6", bg: "rgba(59,130,246,0.12)" },
+  beginner: { label: "Новичок", color: "var(--info)", bg: "rgba(59,130,246,0.12)" },
   intermediate: { label: "Средний", color: "#FFD700", bg: "rgba(255,215,0,0.12)" },
   advanced: { label: "Продвинутый", color: "#BF55EC", bg: "rgba(191,85,236,0.12)" },
   mastered: { label: "Мастер", color: "#00FF94", bg: "rgba(0,255,148,0.12)" },

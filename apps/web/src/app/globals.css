@@ -881,15 +881,17 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* Single global grid — simplified from 5 to 2 layers + ambient */
+/* Square grid lines (like landing page) instead of dots */
 .app-grid-layer {
   position: fixed; inset: 0; pointer-events: none; z-index: 0;
   background-image:
     radial-gradient(ellipse 60% 50% at 50% 20%, var(--grid-glow) 0%, transparent 70%),
-    radial-gradient(circle, var(--grid-dot-color) 1px, transparent 1px);
-  background-size: 100% 100%, 24px 24px;
-  background-position: center top, 0 0;
-  mask-image: radial-gradient(ellipse 90% 85% at 50% 42%, black 0%, rgba(0,0,0,0.6) 50%, transparent 100%);
-  -webkit-mask-image: radial-gradient(ellipse 90% 85% at 50% 42%, black 0%, rgba(0,0,0,0.6) 50%, transparent 100%);
+    linear-gradient(var(--grid-dot-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-dot-color) 1px, transparent 1px);
+  background-size: 100% 100%, 32px 32px, 32px 32px;
+  background-position: center top, 0 0, 0 0;
+  mask-image: radial-gradient(ellipse 90% 85% at 50% 42%, black 0%, rgba(0,0,0,0.5) 55%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 85% at 50% 42%, black 0%, rgba(0,0,0,0.5) 55%, transparent 100%);
 }
 
 .panel-grid-bg { position: relative; }

@@ -36,7 +36,7 @@ const CHART_COMMON_OPTIONS = {
     tooltip: {
       backgroundColor: "rgba(17,24,39,0.95)",
       titleColor: "#f3f4f6",
-      bodyColor: "#d1d5db",
+      bodyColor: "var(--text-muted)",
       borderColor: "rgba(255,255,255,0.1)",
       borderWidth: 1,
       cornerRadius: 8,
@@ -46,22 +46,22 @@ const CHART_COMMON_OPTIONS = {
   scales: {
     x: {
       grid: { color: "rgba(255,255,255,0.04)" },
-      ticks: { color: "#6b7280", font: { size: 10 } },
+      ticks: { color: "var(--text-muted)", font: { size: 10 } },
     },
     y: {
       grid: { color: "rgba(255,255,255,0.04)" },
-      ticks: { color: "#6b7280", font: { size: 10 } },
+      ticks: { color: "var(--text-muted)", font: { size: 10 } },
       beginAtZero: true,
     },
   },
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
-  weakness: "#ef4444",
-  strength: "#22c55e",
-  quirk: "#f59e0b",
-  misconception: "#8b5cf6",
-  unknown: "#6b7280",
+  weakness: "var(--danger)",
+  strength: "var(--success)",
+  quirk: "var(--warning)",
+  misconception: "var(--accent)",
+  unknown: "var(--text-muted)",
 };
 
 const CATEGORY_LABELS_RU: Record<string, string> = {
@@ -75,8 +75,8 @@ const CATEGORY_LABELS_RU: Record<string, string> = {
 export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
   if (!data) {
     return (
-      <div style={{ textAlign: "center", padding: "2rem", color: "#6b7280" }}>
-        <Loader2 size={24} style={{ animation: "spin 1s linear infinite", color: "#f59e0b", margin: "0 auto" }} />
+      <div style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
+        <Loader2 size={24} style={{ animation: "spin 1s linear infinite", color: "var(--warning)", margin: "0 auto" }} />
         <p style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>Загрузка графиков...</p>
       </div>
     );
@@ -114,13 +114,13 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
       {
         label: "Средний балл",
         data: dailySessions.map((d) => d.avg_score),
-        borderColor: "#f59e0b",
+        borderColor: "var(--warning)",
         backgroundColor: "rgba(245, 158, 11, 0.1)",
         borderWidth: 2,
         fill: true,
         tension: 0.4,
         pointRadius: 3,
-        pointBackgroundColor: "#f59e0b",
+        pointBackgroundColor: "var(--warning)",
       },
     ],
   };
@@ -131,7 +131,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
     datasets: [
       {
         data: patternDist.map((p) => p.count),
-        backgroundColor: patternDist.map((p) => CATEGORY_COLORS[p.category] || "#6b7280"),
+        backgroundColor: patternDist.map((p) => CATEGORY_COLORS[p.category] || "var(--text-muted)"),
         borderColor: "rgba(0,0,0,0.3)",
         borderWidth: 2,
       },
@@ -176,7 +176,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
     ...CHART_COMMON_OPTIONS,
     plugins: {
       ...CHART_COMMON_OPTIONS.plugins,
-      legend: { display: true, position: "top" as const, labels: { color: "#9ca3af", boxWidth: 12, font: { size: 11 } } },
+      legend: { display: true, position: "top" as const, labels: { color: "var(--text-muted)", boxWidth: 12, font: { size: 11 } } },
     },
   };
 
@@ -186,7 +186,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
     plugins: {
       legend: {
         position: "right" as const,
-        labels: { color: "#d1d5db", boxWidth: 12, font: { size: 11 }, padding: 8 },
+        labels: { color: "var(--text-muted)", boxWidth: 12, font: { size: 11 }, padding: 8 },
       },
       tooltip: CHART_COMMON_OPTIONS.plugins.tooltip,
     },
@@ -202,14 +202,14 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
         borderRadius: 12,
       }}>
         <h4 style={{ margin: "0 0 0.75rem", color: "#e0e0e0", fontSize: "0.9rem", fontWeight: 600 }}>
-          <Activity size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "#6366f1" }} />
+          <Activity size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--accent)" }} />
           Сессии по дням
         </h4>
         <div style={{ height: 200 }}>
           {dailySessions.length > 0 ? (
             <Bar data={sessionsBarData} options={CHART_COMMON_OPTIONS as any} />
           ) : (
-            <p style={{ color: "#6b7280", fontSize: "0.8rem", textAlign: "center", paddingTop: "4rem" }}>Нет данных</p>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", textAlign: "center", paddingTop: "4rem" }}>Нет данных</p>
           )}
         </div>
       </div>
@@ -222,14 +222,14 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
         borderRadius: 12,
       }}>
         <h4 style={{ margin: "0 0 0.75rem", color: "#e0e0e0", fontSize: "0.9rem", fontWeight: 600 }}>
-          <TrendingUp size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "#f59e0b" }} />
+          <TrendingUp size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--warning)" }} />
           Тренд среднего балла
         </h4>
         <div style={{ height: 200 }}>
           {dailySessions.length > 0 ? (
             <Line data={scoreTrendData} options={lineOptions as any} />
           ) : (
-            <p style={{ color: "#6b7280", fontSize: "0.8rem", textAlign: "center", paddingTop: "4rem" }}>Нет данных</p>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", textAlign: "center", paddingTop: "4rem" }}>Нет данных</p>
           )}
         </div>
       </div>
@@ -242,14 +242,14 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
         borderRadius: 12,
       }}>
         <h4 style={{ margin: "0 0 0.75rem", color: "#e0e0e0", fontSize: "0.9rem", fontWeight: 600 }}>
-          <PieChart size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "#ef4444" }} />
+          <PieChart size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--danger)" }} />
           Распределение паттернов
         </h4>
         <div style={{ height: 200 }}>
           {patternDist.length > 0 ? (
             <Doughnut data={patternDoughnutData} options={doughnutOptions as any} />
           ) : (
-            <p style={{ color: "#6b7280", fontSize: "0.8rem", textAlign: "center", paddingTop: "4rem" }}>Паттерны не обнаружены</p>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", textAlign: "center", paddingTop: "4rem" }}>Паттерны не обнаружены</p>
           )}
         </div>
       </div>
@@ -262,14 +262,14 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
         borderRadius: 12,
       }}>
         <h4 style={{ margin: "0 0 0.75rem", color: "#e0e0e0", fontSize: "0.9rem", fontWeight: 600 }}>
-          <BookOpen size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "#22c55e" }} />
+          <BookOpen size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--success)" }} />
           Активность Wiki
         </h4>
         <div style={{ height: 200 }}>
           {wikiActivity.length > 0 ? (
             <Bar data={wikiActivityData} options={barOptions as any} />
           ) : (
-            <p style={{ color: "#6b7280", fontSize: "0.8rem", textAlign: "center", paddingTop: "4rem" }}>Нет данных</p>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", textAlign: "center", paddingTop: "4rem" }}>Нет данных</p>
           )}
         </div>
       </div>
@@ -284,29 +284,29 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
           borderRadius: 12,
         }}>
           <h4 style={{ margin: "0 0 0.75rem", color: "#e0e0e0", fontSize: "0.9rem", fontWeight: 600 }}>
-            <Users size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "#6366f1" }} />
+            <Users size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--accent)" }} />
             Топ менеджеров по паттернам
           </h4>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                  <th style={{ textAlign: "left", padding: "0.5rem", color: "#9ca3af", fontWeight: 500 }}>Менеджер</th>
-                  <th style={{ textAlign: "center", padding: "0.5rem", color: "#9ca3af", fontWeight: 500 }}>Сессии</th>
-                  <th style={{ textAlign: "center", padding: "0.5rem", color: "#9ca3af", fontWeight: 500 }}>Паттерны</th>
-                  <th style={{ textAlign: "center", padding: "0.5rem", color: "#9ca3af", fontWeight: 500 }}>Страницы</th>
+                  <th style={{ textAlign: "left", padding: "0.5rem", color: "var(--text-muted)", fontWeight: 500 }}>Менеджер</th>
+                  <th style={{ textAlign: "center", padding: "0.5rem", color: "var(--text-muted)", fontWeight: 500 }}>Сессии</th>
+                  <th style={{ textAlign: "center", padding: "0.5rem", color: "var(--text-muted)", fontWeight: 500 }}>Паттерны</th>
+                  <th style={{ textAlign: "center", padding: "0.5rem", color: "var(--text-muted)", fontWeight: 500 }}>Страницы</th>
                 </tr>
               </thead>
               <tbody>
                 {data.top_managers.map((m, i) => (
                   <tr key={m.manager_id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                     <td style={{ padding: "0.5rem", color: "#e0e0e0" }}>
-                      <span style={{ color: "#6b7280", marginRight: 8 }}>#{i + 1}</span>
+                      <span style={{ color: "var(--text-muted)", marginRight: 8 }}>#{i + 1}</span>
                       {m.name}
                     </td>
-                    <td style={{ textAlign: "center", padding: "0.5rem", color: "#f59e0b" }}>{m.sessions}</td>
-                    <td style={{ textAlign: "center", padding: "0.5rem", color: "#ef4444" }}>{m.patterns}</td>
-                    <td style={{ textAlign: "center", padding: "0.5rem", color: "#22c55e" }}>{m.pages}</td>
+                    <td style={{ textAlign: "center", padding: "0.5rem", color: "var(--warning)" }}>{m.sessions}</td>
+                    <td style={{ textAlign: "center", padding: "0.5rem", color: "var(--danger)" }}>{m.patterns}</td>
+                    <td style={{ textAlign: "center", padding: "0.5rem", color: "var(--success)" }}>{m.pages}</td>
                   </tr>
                 ))}
               </tbody>

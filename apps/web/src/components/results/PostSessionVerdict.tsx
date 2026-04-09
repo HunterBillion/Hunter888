@@ -13,7 +13,7 @@ function getVerdict(score: number): { word: string; wordRu: string; color: strin
   if (score >= 90) return { word: "DOMINANT", wordRu: "ДОМИНИРУЮЩИЙ", color: "#00FF94", glow: "rgba(0,255,148,0.5)" };
   if (score >= 75) return { word: "CONFIDENT", wordRu: "УВЕРЕННЫЙ", color: "#BF55EC", glow: "rgba(191,85,236,0.5)" };
   if (score >= 60) return { word: "STEADY", wordRu: "СТАБИЛЬНЫЙ", color: "#FFD700", glow: "rgba(255,215,0,0.5)" };
-  if (score >= 40) return { word: "HESITANT", wordRu: "НЕУВЕРЕННЫЙ", color: "#3B82F6", glow: "rgba(59,130,246,0.5)" };
+  if (score >= 40) return { word: "HESITANT", wordRu: "НЕУВЕРЕННЫЙ", color: "var(--info)", glow: "rgba(59,130,246,0.5)" };
   return { word: "LOST CONTROL", wordRu: "ПОТЕРЯЛ КОНТРОЛЬ", color: "#FF2A6D", glow: "rgba(255,42,109,0.5)" };
 }
 

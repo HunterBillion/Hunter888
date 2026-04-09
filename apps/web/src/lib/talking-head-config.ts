@@ -208,14 +208,14 @@ export const TALKING_HEAD_OPTIONS = {
 // ─── Emotion Color Map (for background glow, kept from existing system) ────
 
 export const EMOTION_COLORS: Record<string, string> = {
-  cold: "#6B7280",
-  guarded: "#8B5CF6",
-  curious: "#F59E0B",
-  considering: "#10B981",
+  cold: "var(--text-muted)",
+  guarded: "var(--accent)",
+  curious: "var(--warning)",
+  considering: "var(--success)",
   negotiating: "#06B6D4",
-  deal: "#22C55E",
-  testing: "#EF4444",
-  callback: "#8B5CF6",
-  hostile: "#EF4444",
-  hangup: "#6B7280",
+  deal: "var(--success)",
+  testing: "var(--danger)",
+  callback: "var(--accent)",
+  hostile: "var(--danger)",
+  hangup: "var(--text-muted)",
 };

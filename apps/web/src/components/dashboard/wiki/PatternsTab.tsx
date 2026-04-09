@@ -5,7 +5,7 @@ import { CATEGORY_CONFIG } from "./types";
 
 export function PatternsTab({ patterns }: { patterns: PatternItem[] }) {
   if (patterns.length === 0) {
-    return <p style={{ color: "#6b7280" }}>Паттерны ещё не обнаружены.</p>;
+    return <p style={{ color: "var(--text-muted)" }}>Паттерны ещё не обнаружены.</p>;
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -43,7 +43,7 @@ export function PatternsTab({ patterns }: { patterns: PatternItem[] }) {
                     padding: "2px 8px",
                     borderRadius: 10,
                     background: "rgba(34,197,94,0.15)",
-                    color: "#22c55e",
+                    color: "var(--success)",
                   }}
                 >
                   Подтверждён
@@ -54,7 +54,7 @@ export function PatternsTab({ patterns }: { patterns: PatternItem[] }) {
                   style={{
                     marginLeft: "auto",
                     fontSize: "0.75rem",
-                    color: p.impact_on_score_delta < 0 ? "#ef4444" : "#22c55e",
+                    color: p.impact_on_score_delta < 0 ? "var(--danger)" : "var(--success)",
                     fontWeight: 600,
                   }}
                 >
@@ -62,10 +62,10 @@ export function PatternsTab({ patterns }: { patterns: PatternItem[] }) {
                 </span>
               )}
             </div>
-            <p style={{ color: "#9ca3af", margin: "0.25rem 0", fontSize: "0.9rem" }}>
+            <p style={{ color: "var(--text-muted)", margin: "0.25rem 0", fontSize: "0.9rem" }}>
               {p.description}
             </p>
-            <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
               Замечен в {p.sessions_in_pattern} сессиях
               {p.mitigation_technique && ` | Рекомендация: ${p.mitigation_technique}`}
             </div>

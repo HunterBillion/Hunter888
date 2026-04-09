@@ -7,13 +7,13 @@ import { colorAlpha } from "@/lib/utils";
 
 const FACTOR_CONFIG: Record<string, { icon: typeof Brain; color: string; label: string }> = {
   stress: { icon: Zap, color: "var(--danger)", label: "Стресс" },
-  fatigue: { icon: Clock, color: "#F59E0B", label: "Усталость" },
+  fatigue: { icon: Clock, color: "var(--warning)", label: "Усталость" },
   anger: { icon: Flame, color: "#FF6B35", label: "Гнев" },
-  fear: { icon: AlertTriangle, color: "#A78BFA", label: "Страх" },
+  fear: { icon: AlertTriangle, color: "var(--accent-hover)", label: "Страх" },
   distrust: { icon: Shield, color: "var(--info)", label: "Недоверие" },
   sadness: { icon: Frown, color: "#60A5FA", label: "Грусть" },
   empathy: { icon: Heart, color: "#EC4899", label: "Эмпатия" },
-  default: { icon: Brain, color: "#6366F1", label: "Фактор" },
+  default: { icon: Brain, color: "var(--accent)", label: "Фактор" },
 };
 
 interface Props {

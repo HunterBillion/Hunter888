@@ -252,8 +252,8 @@ function PvPLobbyContent() {
                       <ul className="space-y-1.5">
                         <li className="flex gap-2"><Swords size={14} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Классическая дуэль</strong> — 2 раунда, смена ролей (продавец/клиент)</span></li>
                         <li className="flex gap-2"><Zap size={14} className="shrink-0 mt-0.5" style={{ color: "#FFD700" }} /><span><strong style={{ color: "var(--text-primary)" }}>Скоростной бой</strong> — 5 мини-раундов по 2 минуты</span></li>
-                        <li className="flex gap-2"><Target size={14} className="shrink-0 mt-0.5" style={{ color: "#EF4444" }} /><span><strong style={{ color: "var(--text-primary)" }}>Испытание</strong> — 3-5 дуэлей подряд, сложность растёт</span></li>
-                        <li className="flex gap-2"><Brain size={14} className="shrink-0 mt-0.5" style={{ color: "#8B5CF6" }} /><span><strong style={{ color: "var(--text-primary)" }}>Командный 2v2</strong> — вместе с коллегой</span></li>
+                        <li className="flex gap-2"><Target size={14} className="shrink-0 mt-0.5" style={{ color: "var(--danger)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Испытание</strong> — 3-5 дуэлей подряд, сложность растёт</span></li>
+                        <li className="flex gap-2"><Brain size={14} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Командный 2v2</strong> — вместе с коллегой</span></li>
                       </ul>
                     </div>
 
@@ -555,9 +555,9 @@ function PvPLobbyContent() {
                       {/* Mode selection */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {([
-                          { mode: "free_dialog" as const, icon: BookOpen, label: "Свободный диалог", desc: "Без ограничений", color: "#6366F1" },
-                          { mode: "blitz" as const, icon: Clock, label: "Блиц", desc: "20 × 60 сек", color: "#F59E0B" },
-                          { mode: "themed" as const, icon: Target, label: "По теме", desc: "10 категорий", color: "#10B981" },
+                          { mode: "free_dialog" as const, icon: BookOpen, label: "Свободный диалог", desc: "Без ограничений", color: "var(--accent)" },
+                          { mode: "blitz" as const, icon: Clock, label: "Блиц", desc: "20 × 60 сек", color: "var(--warning)" },
+                          { mode: "themed" as const, icon: Target, label: "По теме", desc: "10 категорий", color: "var(--success)" },
                         ]).map(({ mode, icon: Icon, label, desc, color }) => (
                           <motion.button
                             key={mode}
@@ -600,7 +600,7 @@ function PvPLobbyContent() {
                                 className="rounded-lg px-3 py-2 text-left text-xs font-medium transition-all"
                                 style={{
                                   background: quizCategory === cat.id ? "rgba(16,185,129,0.15)" : "var(--input-bg)",
-                                  color: quizCategory === cat.id ? "#10B981" : "var(--text-secondary)",
+                                  color: quizCategory === cat.id ? "var(--success)" : "var(--text-secondary)",
                                   border: quizCategory === cat.id ? "1px solid rgba(16,185,129,0.3)" : "1px solid transparent",
                                 }}
                               >
@@ -631,7 +631,7 @@ function PvPLobbyContent() {
                                 className="rounded-lg p-3 text-left text-xs transition-all"
                                 style={{
                                   background: aiPersonality === id ? "rgba(99,102,241,0.15)" : "var(--input-bg)",
-                                  color: aiPersonality === id ? "#6366F1" : "var(--text-secondary)",
+                                  color: aiPersonality === id ? "var(--accent)" : "var(--text-secondary)",
                                   border: aiPersonality === id ? "1px solid rgba(99,102,241,0.3)" : "1px solid transparent",
                                 }}
                               >

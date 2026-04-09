@@ -99,7 +99,7 @@ export function Benchmark() {
                 <span className="text-xs" style={{ color: "var(--text-primary)" }}>
                   {SKILL_LABELS[skill.skill] || skill.skill}
                 </span>
-                <span className="font-mono text-xs" style={{ color: isAbove ? "#22c55e" : "#ef4444" }}>
+                <span className="font-mono text-xs" style={{ color: isAbove ? "var(--success)" : "var(--danger)" }}>
                   {isAbove ? "+" : ""}{Math.round(skill.team_avg - skill.platform_avg)}
                   <span style={{ color: "var(--text-muted)" }}> · p{skill.percentile}</span>
                 </span>

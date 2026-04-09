@@ -14,12 +14,12 @@ interface Particle {
 }
 
 const COLORS = [
-  "#6366F1", // violet
+  "var(--accent)", // violet
   "#FFD700", // gold
   "#00FF66", // green
   "#FF6B6B", // red
-  "#3B82F6", // blue
-  "#F59E0B", // amber
+  "var(--info)", // blue
+  "var(--warning)", // amber
   "#EC4899", // pink
 ];
 

@@ -39,7 +39,29 @@ interface NotificationState {
 
 let _toastCounter = 0;
 
-export const useNotificationStore = create<NotificationState>((set) => ({
+/**
+ * Cross-tab notification sync via BroadcastChannel.
+ * When a notification is marked read in one tab, all other tabs update too.
+ */
+const _channel = typeof BroadcastChannel !== "undefined"
+  ? new BroadcastChannel("vh-notifications")
+  : null;
+
+export const useNotificationStore = create<NotificationState>((set) => {
+  // Listen for cross-tab messages
+  _channel?.addEventListener("message", (e) => {
+    if (e.data?.type === "mark-read") {
+      set((s) => ({
+        items: s.items.map((i) => (i.id === e.data.id ? { ...i, read: true } : i)),
+        unread: Math.max(0, s.unread - 1),
+      }));
+    }
+    if (e.data?.type === "dismiss-toast") {
+      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== e.data.id) }));
+    }
+  });
+
+  return {
   items: [],
   unread: 0,
   wsConnected: false,
@@ -54,11 +76,14 @@ export const useNotificationStore = create<NotificationState>((set) => ({
           ? s.unread
           : s.unread + (item.read ? 0 : 1),
     })),
-  markRead: (id) =>
+  markRead: (id) => {
     set((s) => ({
       items: s.items.map((i) => (i.id === id ? { ...i, read: true } : i)),
       unread: Math.max(0, s.unread - 1),
-    })),
+    }));
+    // Broadcast to other tabs
+    _channel?.postMessage({ type: "mark-read", id });
+  },
   setUnread: (n) => set({ unread: n }),
   setWsConnected: (connected) => set({ wsConnected: connected }),
   addToast: (toast) => {
@@ -75,7 +100,10 @@ export const useNotificationStore = create<NotificationState>((set) => ({
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
     }, 5000);
   },
-  removeToast: (id) =>
-    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  removeToast: (id) => {
+    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+    _channel?.postMessage({ type: "dismiss-toast", id });
+  },
   clear: () => set({ items: [], unread: 0, wsConnected: false, toasts: [] }),
-}));
+};
+});

@@ -441,7 +441,7 @@ function RecommendedTab({
       groups.push({
         title: "Вызов",
         subtitle: "Для опытных менеджеров",
-        color: "#EF4444",
+        color: "var(--danger)",
         archetypes: challenges,
       });
     }

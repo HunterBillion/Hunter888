@@ -59,7 +59,7 @@ export function PagesTab({
   }, [currentPagePath]);
 
   if (pages.length === 0) {
-    return <p style={{ color: "#6b7280" }}>Страницы ещё не созданы. Менеджер должен пройти тренировку.</p>;
+    return <p style={{ color: "var(--text-muted)" }}>Страницы ещё не созданы. Менеджер должен пройти тренировку.</p>;
   }
   return (
     <div>
@@ -85,23 +85,23 @@ export function PagesTab({
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-              <FileText size={16} style={{ color: "#f59e0b" }} />
+              <FileText size={16} style={{ color: "var(--warning)" }} />
               <div>
                 <div style={{ fontWeight: 500 }}>{p.page_path}</div>
-                <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
                   {p.page_type} | v{p.version}
                   {p.updated_at && ` | ${formatDate(p.updated_at)}`}
                 </div>
               </div>
             </div>
-            <ChevronRight size={16} style={{ color: "#6b7280" }} />
+            <ChevronRight size={16} style={{ color: "var(--text-muted)" }} />
           </button>
         ))}
       </div>
 
       {pageLoading && (
         <div style={{ textAlign: "center", padding: "2rem" }}>
-          <Loader2 size={24} style={{ animation: "spin 1s linear infinite", color: "#f59e0b" }} />
+          <Loader2 size={24} style={{ animation: "spin 1s linear infinite", color: "var(--warning)" }} />
         </div>
       )}
 
@@ -118,9 +118,9 @@ export function PagesTab({
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-            <h3 style={{ color: "#f59e0b", margin: 0 }}>{selectedPage.page_path}</h3>
+            <h3 style={{ color: "var(--warning)", margin: 0 }}>{selectedPage.page_path}</h3>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>v{selectedPage.version}</span>
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>v{selectedPage.version}</span>
               {!editing ? (
                 <button
                   onClick={startEdit}
@@ -153,7 +153,7 @@ export function PagesTab({
                       background: "rgba(34,197,94,0.1)",
                       border: "1px solid rgba(34,197,94,0.25)",
                       borderRadius: 6,
-                      color: "#22c55e",
+                      color: "var(--success)",
                       cursor: actionLoading === "save-page" ? "not-allowed" : "pointer",
                       fontSize: "0.8rem",
                     }}
@@ -175,7 +175,7 @@ export function PagesTab({
                       background: "rgba(239,68,68,0.1)",
                       border: "1px solid rgba(239,68,68,0.25)",
                       borderRadius: 6,
-                      color: "#ef4444",
+                      color: "var(--danger)",
                       cursor: "pointer",
                       fontSize: "0.8rem",
                     }}
@@ -229,7 +229,7 @@ export function PagesTab({
           ) : (
             <div
               className="wiki-content"
-              style={{ color: "#d1d5db", lineHeight: 1.7, fontSize: "0.9rem" }}
+              style={{ color: "var(--text-muted)", lineHeight: 1.7, fontSize: "0.9rem" }}
             >
               <Markdown
                 skipHtml

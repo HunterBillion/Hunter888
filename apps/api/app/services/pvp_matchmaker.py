@@ -53,7 +53,7 @@ RECONNECT_KEY = "pvp:reconnect:{user_id}"
 INVITATION_KEY = "pvp:invitation:{challenger_id}"
 INVITATION_MATCHED_KEY = "pvp:invitation:matched:{challenger_id}"
 
-MATCH_TIMEOUT_SECONDS = 90          # After this, offer PvE
+MATCH_TIMEOUT_SECONDS = 60          # After this, offer PvE (aligned with frontend ~58s)
 RANGE_EXPANSION_RATE = 5.0          # Points per second
 BASE_MATCH_RANGE = 200.0
 DUEL_STATE_TTL = 3600               # 1 hour TTL for duel state in Redis

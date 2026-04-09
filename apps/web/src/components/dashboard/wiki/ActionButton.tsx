@@ -7,7 +7,7 @@ export function ActionButton({
   label,
   onClick,
   loading,
-  color = "#f59e0b",
+  color = "var(--warning)",
   disabled = false,
 }: {
   icon: typeof Play;
@@ -29,7 +29,7 @@ export function ActionButton({
         background: `${color}15`,
         border: `1px solid ${color}33`,
         borderRadius: 8,
-        color: loading || disabled ? "#6b7280" : color,
+        color: loading || disabled ? "var(--text-muted)" : color,
         cursor: loading || disabled ? "not-allowed" : "pointer",
         fontSize: "0.8rem",
         fontWeight: 500,

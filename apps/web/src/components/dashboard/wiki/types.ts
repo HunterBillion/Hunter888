@@ -159,10 +159,10 @@ export type DetailTab = "pages" | "patterns" | "techniques" | "log" | "charts" |
 /* ─── Category config ─── */
 
 export const CATEGORY_CONFIG: Record<string, { label: string; color: string; icon: typeof AlertTriangle }> = {
-  weakness: { label: "Слабость", color: "#ef4444", icon: AlertTriangle },
-  strength: { label: "Сила", color: "#22c55e", icon: TrendingUp },
-  quirk: { label: "Особенность", color: "#f59e0b", icon: Zap },
-  misconception: { label: "Заблуждение", color: "#8b5cf6", icon: AlertTriangle },
+  weakness: { label: "Слабость", color: "var(--danger)", icon: AlertTriangle },
+  strength: { label: "Сила", color: "var(--success)", icon: TrendingUp },
+  quirk: { label: "Особенность", color: "var(--warning)", icon: Zap },
+  misconception: { label: "Заблуждение", color: "var(--accent)", icon: AlertTriangle },
 };
 
 export const ACTION_LABELS: Record<string, string> = {

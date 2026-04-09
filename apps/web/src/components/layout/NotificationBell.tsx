@@ -74,12 +74,12 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
   };
 
   const toastColors: Record<string, { bg: string; border: string; color: string }> = {
-    info: { bg: "rgba(59,130,246,0.1)", border: "rgba(59,130,246,0.25)", color: "#3B82F6" },
-    system: { bg: "rgba(59,130,246,0.1)", border: "rgba(59,130,246,0.25)", color: "#3B82F6" },
-    success: { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.25)", color: "#22C55E" },
-    consent: { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.25)", color: "#22C55E" },
-    warning: { bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)", color: "#F59E0B" },
-    reminder: { bg: "rgba(99,102,241,0.1)", border: "rgba(99,102,241,0.25)", color: "#6366F1" },
+    info: { bg: "rgba(59,130,246,0.1)", border: "rgba(59,130,246,0.25)", color: "var(--info)" },
+    system: { bg: "rgba(59,130,246,0.1)", border: "rgba(59,130,246,0.25)", color: "var(--info)" },
+    success: { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.25)", color: "var(--success)" },
+    consent: { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.25)", color: "var(--success)" },
+    warning: { bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)", color: "var(--warning)" },
+    reminder: { bg: "rgba(99,102,241,0.1)", border: "rgba(99,102,241,0.25)", color: "var(--accent)" },
     achievement: { bg: "rgba(255,215,0,0.1)", border: "rgba(255,215,0,0.25)", color: "#FFD700" },
     pvp_invitation: { bg: "rgba(255,215,0,0.12)", border: "rgba(255,215,0,0.3)", color: "#FFD700" },
   };
@@ -138,7 +138,7 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
                       <button
                         type="button"
                         className="px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-opacity hover:opacity-90"
-                        style={{ background: "rgba(34,197,94,0.3)", color: "#22C55E" }}
+                        style={{ background: "rgba(34,197,94,0.3)", color: "var(--success)" }}
                         onClick={() => {
                           removeToast(toast.id);
                           router.push(`/pvp?accept=${toast.challenger_id}`);

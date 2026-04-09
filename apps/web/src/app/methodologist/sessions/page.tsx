@@ -120,7 +120,7 @@ export default function MethodologistSessionsPage() {
                         {s.scenario_title || s.archetype || "—"}
                       </td>
                       <td className="p-2 text-center font-mono font-bold" style={{
-                        color: (s.score_total ?? 0) >= 70 ? "#22c55e" : (s.score_total ?? 0) >= 50 ? "#f59e0b" : "#ef4444"
+                        color: (s.score_total ?? 0) >= 70 ? "var(--success)" : (s.score_total ?? 0) >= 50 ? "var(--warning)" : "var(--danger)"
                       }}>
                         {s.score_total ? Math.round(s.score_total) : "—"}
                       </td>

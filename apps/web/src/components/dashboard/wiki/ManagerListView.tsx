@@ -81,12 +81,12 @@ export function ManagerListView({
     <>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
-        <ShieldCheck size={28} style={{ color: "#f59e0b" }} />
+        <ShieldCheck size={28} style={{ color: "var(--warning)" }} />
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: "1.6rem", fontWeight: 700, color: "#fff", margin: 0 }}>
             Wiki менеджеров
           </h1>
-          <p style={{ color: "#9ca3af", margin: 0, fontSize: "0.85rem" }}>
+          <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "0.85rem" }}>
             Панель администратора — персональные базы знаний всех менеджеров
           </p>
         </div>
@@ -97,7 +97,7 @@ export function ManagerListView({
             background: showHelp ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.04)",
             border: `1px solid ${showHelp ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.08)"}`,
             borderRadius: 8,
-            color: showHelp ? "#f59e0b" : "#9ca3af",
+            color: showHelp ? "var(--warning)" : "var(--text-muted)",
             cursor: "pointer",
           }}
           title="Справка"
@@ -111,7 +111,7 @@ export function ManagerListView({
             background: compareMode ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.04)",
             border: `1px solid ${compareMode ? "rgba(99,102,241,0.3)" : "rgba(255,255,255,0.08)"}`,
             borderRadius: 8,
-            color: compareMode ? "#6366f1" : "#9ca3af",
+            color: compareMode ? "var(--accent)" : "var(--text-muted)",
             cursor: "pointer",
             fontSize: "0.8rem",
             display: "flex",
@@ -130,7 +130,7 @@ export function ManagerListView({
             background: "rgba(255,255,255,0.04)",
             border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: 8,
-            color: "#9ca3af",
+            color: "var(--text-muted)",
             cursor: "pointer",
           }}
           title="Обновить"
@@ -152,7 +152,7 @@ export function ManagerListView({
           borderRadius: 10,
           flexWrap: "wrap",
         }}>
-          <Users size={18} style={{ color: "#6366f1" }} />
+          <Users size={18} style={{ color: "var(--accent)" }} />
           <span style={{ color: "#a5b4fc", fontSize: "0.85rem" }}>
             Выберите 2–5 менеджеров для сравнения ({compareSelected.length} выбрано)
           </span>
@@ -165,7 +165,7 @@ export function ManagerListView({
               background: compareSelected.length >= 2 ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.04)",
               border: "1px solid rgba(99,102,241,0.3)",
               borderRadius: 8,
-              color: compareSelected.length >= 2 ? "#a5b4fc" : "#6b7280",
+              color: compareSelected.length >= 2 ? "#a5b4fc" : "var(--text-muted)",
               cursor: compareSelected.length >= 2 ? "pointer" : "not-allowed",
               fontSize: "0.85rem",
               fontWeight: 600,
@@ -196,10 +196,10 @@ export function ManagerListView({
               overflow: "hidden",
             }}
           >
-            <h3 style={{ color: "#f59e0b", fontSize: "1rem", fontWeight: 600, margin: "0 0 0.75rem" }}>
+            <h3 style={{ color: "var(--warning)", fontSize: "1rem", fontWeight: 600, margin: "0 0 0.75rem" }}>
               Как работает Wiki менеджеров
             </h3>
-            <div style={{ color: "#d1d5db", fontSize: "0.85rem", lineHeight: 1.7 }}>
+            <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", lineHeight: 1.7 }}>
               <p style={{ margin: "0 0 0.5rem" }}>
                 <strong style={{ color: "#fff" }}>Wiki</strong> — это персональная база знаний каждого менеджера,
                 которая автоматически строится из тренировочных сессий.
@@ -209,16 +209,16 @@ export function ManagerListView({
                 Ежедневно в 03:00 UTC формируется дневной синтез, еженедельно по понедельникам — недельный.
               </p>
               <ul style={{ margin: "0 0 0.5rem", paddingLeft: "1.5rem" }}>
-                <li><strong style={{ color: "#ef4444" }}>Слабости</strong> — паттерны ошибок</li>
-                <li><strong style={{ color: "#22c55e" }}>Техники</strong> — успешные приёмы с % успеха</li>
-                <li><strong style={{ color: "#f59e0b" }}>Страницы</strong> — обзоры, инсайты, рекомендации</li>
-                <li><strong style={{ color: "#8b5cf6" }}>Синтез</strong> — дневные и недельные AI-резюме</li>
+                <li><strong style={{ color: "var(--danger)" }}>Слабости</strong> — паттерны ошибок</li>
+                <li><strong style={{ color: "var(--success)" }}>Техники</strong> — успешные приёмы с % успеха</li>
+                <li><strong style={{ color: "var(--warning)" }}>Страницы</strong> — обзоры, инсайты, рекомендации</li>
+                <li><strong style={{ color: "var(--accent)" }}>Синтез</strong> — дневные и недельные AI-резюме</li>
               </ul>
               <p style={{ margin: "0 0 0.5rem" }}>
                 <strong style={{ color: "#fff" }}>Действия:</strong> Вы можете редактировать страницы, экспортировать данные в PDF/CSV,
                 запускать синтез вручную и инжестить пропущенные сессии.
               </p>
-              <p style={{ margin: 0, fontSize: "0.8rem", color: "#9ca3af" }}>
+              <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--text-muted)" }}>
                 Эта панель доступна только администраторам.
               </p>
             </div>
@@ -237,11 +237,11 @@ export function ManagerListView({
           }}
         >
           {[
-            { label: "Wiki создано", value: globalStats.total_wikis, icon: Users, color: "#6366f1" },
-            { label: "Сессий", value: globalStats.total_sessions_ingested, icon: Activity, color: "#f59e0b" },
-            { label: "Паттернов", value: globalStats.total_patterns_discovered, icon: Brain, color: "#ef4444" },
-            { label: "Страниц", value: globalStats.total_pages, icon: FileText, color: "#22c55e" },
-            { label: "Токенов LLM", value: globalStats.total_tokens_used.toLocaleString("ru-RU"), icon: Zap, color: "#8b5cf6" },
+            { label: "Wiki создано", value: globalStats.total_wikis, icon: Users, color: "var(--accent)" },
+            { label: "Сессий", value: globalStats.total_sessions_ingested, icon: Activity, color: "var(--warning)" },
+            { label: "Паттернов", value: globalStats.total_patterns_discovered, icon: Brain, color: "var(--danger)" },
+            { label: "Страниц", value: globalStats.total_pages, icon: FileText, color: "var(--success)" },
+            { label: "Токенов LLM", value: globalStats.total_tokens_used.toLocaleString("ru-RU"), icon: Zap, color: "var(--accent)" },
           ].map((s) => (
             <div
               key={s.label}
@@ -255,7 +255,7 @@ export function ManagerListView({
             >
               <s.icon size={18} style={{ color: s.color, marginBottom: "0.25rem" }} />
               <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "#fff" }}>{s.value}</div>
-              <div style={{ fontSize: "0.75rem", color: "#9ca3af" }}>{s.label}</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -282,13 +282,13 @@ export function ManagerListView({
               border: `1px solid ${schedulerStatus.running ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`,
               borderRadius: 8,
               fontSize: "0.8rem",
-              color: schedulerStatus.running ? "#22c55e" : "#ef4444",
+              color: schedulerStatus.running ? "var(--success)" : "var(--danger)",
             }}
           >
             <Settings size={14} />
             Планировщик: {schedulerStatus.running ? "работает" : "остановлен"}
             {schedulerStatus.last_ingest_run && (
-              <span style={{ color: "#6b7280", marginLeft: 4 }}>
+              <span style={{ color: "var(--text-muted)", marginLeft: 4 }}>
                 | Последний инжест: {timeAgo(schedulerStatus.last_ingest_run)}
               </span>
             )}
@@ -300,21 +300,21 @@ export function ManagerListView({
           label="Дневной синтез"
           onClick={onDailySynthesis}
           loading={actionLoading === "daily"}
-          color="#6366f1"
+          color="var(--accent)"
         />
         <ActionButton
           icon={Calendar}
           label="Недельный синтез"
           onClick={onWeeklySynthesis}
           loading={actionLoading === "weekly"}
-          color="#8b5cf6"
+          color="var(--accent)"
         />
         <ActionButton
           icon={BarChart3}
           label={showCharts ? "Скрыть графики" : "Графики"}
           onClick={() => setShowCharts(!showCharts)}
           loading={false}
-          color={showCharts ? "#f59e0b" : "#6b7280"}
+          color={showCharts ? "var(--warning)" : "var(--text-muted)"}
         />
       </div>
 
@@ -336,7 +336,7 @@ export function ManagerListView({
       <div style={{ position: "relative", marginBottom: "1rem" }}>
         <Search
           size={16}
-          style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#6b7280" }}
+          style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}
         />
         <input
           type="text"
@@ -358,7 +358,7 @@ export function ManagerListView({
 
       {/* Manager list */}
       {wikis.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "3rem", color: "#6b7280" }}>
+        <div style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
           <Brain size={40} style={{ margin: "0 auto 1rem", opacity: 0.4 }} />
           <p>Wiki ещё не созданы.</p>
           <p style={{ fontSize: "0.85rem" }}>
@@ -407,7 +407,7 @@ export function ManagerListView({
                   alignItems: "center",
                   justifyContent: "center",
                 }}>
-                  {compareSelected.includes(w.manager_id) && <CheckCircle size={14} style={{ color: "#6366f1" }} />}
+                  {compareSelected.includes(w.manager_id) && <CheckCircle size={14} style={{ color: "var(--accent)" }} />}
                 </div>
               )}
               <div>
@@ -419,29 +419,29 @@ export function ManagerListView({
                       padding: "1px 6px",
                       borderRadius: 6,
                       background: w.status === "paused" ? "rgba(245,158,11,0.12)" : "rgba(107,114,128,0.15)",
-                      color: w.status === "paused" ? "#f59e0b" : "#6b7280",
+                      color: w.status === "paused" ? "var(--warning)" : "var(--text-muted)",
                       fontWeight: 600,
                     }}>
                       {w.status === "paused" ? "⏸ Пауза" : "📦 Архив"}
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
                   {w.manager_role === "admin" ? "Админ" : w.manager_role === "rop" ? "РОП" : "Менеджер"}
                 </div>
               </div>
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#f59e0b" }}>{w.sessions_ingested}</div>
-                <div style={{ fontSize: "0.7rem", color: "#6b7280" }}>сессий</div>
+                <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--warning)" }}>{w.sessions_ingested}</div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>сессий</div>
               </div>
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#ef4444" }}>{w.patterns_discovered}</div>
-                <div style={{ fontSize: "0.7rem", color: "#6b7280" }}>паттернов</div>
+                <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--danger)" }}>{w.patterns_discovered}</div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>паттернов</div>
               </div>
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: "0.75rem", color: "#9ca3af" }}>{timeAgo(w.last_ingest_at)}</div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{timeAgo(w.last_ingest_at)}</div>
               </div>
-              <ChevronRight size={16} style={{ color: "#6b7280" }} />
+              <ChevronRight size={16} style={{ color: "var(--text-muted)" }} />
             </motion.button>
           ))}
         </div>

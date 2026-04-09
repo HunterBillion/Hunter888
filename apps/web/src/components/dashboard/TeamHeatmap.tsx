@@ -45,8 +45,8 @@ function getScoreColor(score: number): string {
 }
 
 function TrendIcon({ trend }: { trend: string }) {
-  if (trend === "improving") return <TrendingUp size={10} style={{ color: "#22c55e" }} />;
-  if (trend === "declining") return <TrendingDown size={10} style={{ color: "#ef4444" }} />;
+  if (trend === "improving") return <TrendingUp size={10} style={{ color: "var(--success)" }} />;
+  if (trend === "declining") return <TrendingDown size={10} style={{ color: "var(--danger)" }} />;
   return <Minus size={10} style={{ color: "var(--text-muted)" }} />;
 }
 
@@ -127,7 +127,7 @@ export function TeamHeatmap() {
               <td className="p-2 text-center font-mono font-bold" style={{ color: "var(--text-primary)" }}>
                 {Math.round(row.avg_score)}
               </td>
-              <td className="p-2 text-center font-mono" style={{ color: row.sessions_this_week === 0 ? "#ef4444" : "var(--text-muted)" }}>
+              <td className="p-2 text-center font-mono" style={{ color: row.sessions_this_week === 0 ? "var(--danger)" : "var(--text-muted)" }}>
                 {row.sessions_this_week}
               </td>
             </motion.tr>

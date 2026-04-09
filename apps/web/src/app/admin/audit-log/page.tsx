@@ -58,15 +58,15 @@ interface AuditLogResponse {
 
 const ACTION_META: Record<string, { label: string; icon: typeof Eye; color: string }> = {
   view_client:       { label: "Просмотр",           icon: Eye,       color: "#60A5FA" },
-  create_client:     { label: "Создание клиента",   icon: UserPlus,  color: "#34D399" },
-  update_client:     { label: "Обновление",         icon: Pencil,    color: "#FBBF24" },
-  delete_client:     { label: "Удаление",           icon: Trash2,    color: "#F87171" },
-  grant_consent:     { label: "Согласие выдано",     icon: FileCheck, color: "#34D399" },
-  revoke_consent:    { label: "Согласие отозвано",   icon: FileX,     color: "#F87171" },
-  export_data:       { label: "Экспорт данных",     icon: Download,  color: "#A78BFA" },
+  create_client:     { label: "Создание клиента",   icon: UserPlus,  color: "var(--success)" },
+  update_client:     { label: "Обновление",         icon: Pencil,    color: "var(--warning)" },
+  delete_client:     { label: "Удаление",           icon: Trash2,    color: "var(--danger)" },
+  grant_consent:     { label: "Согласие выдано",     icon: FileCheck, color: "var(--success)" },
+  revoke_consent:    { label: "Согласие отозвано",   icon: FileX,     color: "var(--danger)" },
+  export_data:       { label: "Экспорт данных",     icon: Download,  color: "var(--accent-hover)" },
   send_notification: { label: "Уведомление",        icon: Bell,      color: "#60A5FA" },
-  change_status:     { label: "Смена статуса",      icon: Activity,  color: "#FBBF24" },
-  merge_clients:     { label: "Объединение",        icon: GitMerge,  color: "#A78BFA" },
+  change_status:     { label: "Смена статуса",      icon: Activity,  color: "var(--warning)" },
+  merge_clients:     { label: "Объединение",        icon: GitMerge,  color: "var(--accent-hover)" },
   bulk_reassign:     { label: "Перераспределение",  icon: Shuffle,   color: "#F472B6" },
 };
 
@@ -135,12 +135,12 @@ function DiffViewer({ oldValues, newValues }: { oldValues: Record<string, unknow
             {changed ? (
               <>
                 {oldVal !== undefined && (
-                  <span style={{ color: "#F87171", textDecoration: "line-through" }}>
+                  <span style={{ color: "var(--danger)", textDecoration: "line-through" }}>
                     {String(oldVal ?? "null")}
                   </span>
                 )}
                 {newVal !== undefined && (
-                  <span style={{ color: "#34D399" }}>
+                  <span style={{ color: "var(--success)" }}>
                     {String(newVal ?? "null")}
                   </span>
                 )}
@@ -263,7 +263,7 @@ export default function AuditLogPage() {
               {hasActiveFilters && (
                 <span
                   className="flex h-4 w-4 items-center justify-center rounded-full text-xs font-bold"
-                  style={{ background: "#F87171", color: "#fff" }}
+                  style={{ background: "var(--danger)", color: "#fff" }}
                 >
                   !
                 </span>
@@ -295,7 +295,7 @@ export default function AuditLogPage() {
                   <button
                     onClick={clearFilters}
                     className="flex items-center gap-1 text-xs"
-                    style={{ color: "#F87171", background: "none", border: "none", cursor: "pointer" }}
+                    style={{ color: "var(--danger)", background: "none", border: "none", cursor: "pointer" }}
                   >
                     <X size={12} /> Сбросить
                   </button>
@@ -409,7 +409,7 @@ export default function AuditLogPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="glass-panel rounded-xl"
-            style={{ padding: 24, textAlign: "center", color: "#F87171", marginBottom: 16 }}
+            style={{ padding: 24, textAlign: "center", color: "var(--danger)", marginBottom: 16 }}
           >
             {error}
           </motion.div>

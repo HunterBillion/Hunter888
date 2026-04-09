@@ -23,11 +23,11 @@ export default function AdminWikiPage() {
     return (
       <AuthLayout>
         <div style={{ maxWidth: 600, margin: "4rem auto", textAlign: "center", padding: "2rem" }}>
-          <ShieldCheck size={48} style={{ color: "#ef4444", margin: "0 auto 1rem" }} />
+          <ShieldCheck size={48} style={{ color: "var(--danger)", margin: "0 auto 1rem" }} />
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff" }}>
             Доступ запрещён
           </h1>
-          <p style={{ color: "#9ca3af", marginTop: "0.5rem" }}>
+          <p style={{ color: "var(--text-muted)", marginTop: "0.5rem" }}>
             Wiki менеджеров доступна только администраторам.
           </p>
           <button
@@ -54,8 +54,8 @@ export default function AdminWikiPage() {
     return (
       <AuthLayout>
         <div style={{ textAlign: "center", padding: "6rem 2rem" }}>
-          <Loader2 size={36} style={{ animation: "spin 1s linear infinite", color: "#f59e0b" }} />
-          <p style={{ color: "#9ca3af", marginTop: "1rem" }}>Загрузка...</p>
+          <Loader2 size={36} style={{ animation: "spin 1s linear infinite", color: "var(--warning)" }} />
+          <p style={{ color: "var(--text-muted)", marginTop: "1rem" }}>Загрузка...</p>
         </div>
       </AuthLayout>
     );

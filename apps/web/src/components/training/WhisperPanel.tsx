@@ -31,9 +31,9 @@ const TYPE_BORDER_COLORS: Record<string, string> = {
 
 const TYPE_ICON_COLORS: Record<string, string> = {
   legal: "#EAB308",
-  emotion: "#EF4444",
-  stage: "#22C55E",
-  objection: "#6366F1",
+  emotion: "var(--danger)",
+  stage: "var(--success)",
+  objection: "var(--accent)",
   transition: "var(--info)",
 };
 
@@ -76,7 +76,7 @@ export default function WhisperPanel({ onToggle }: WhisperPanelProps) {
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors"
           style={{
             background: enabled ? "rgba(34, 197, 94, 0.12)" : "rgba(255, 255, 255, 0.05)",
-            color: enabled ? "#22C55E" : "var(--text-muted)",
+            color: enabled ? "var(--success)" : "var(--text-muted)",
           }}
           title={enabled ? "Отключить подсказки" : "Включить подсказки"}
         >

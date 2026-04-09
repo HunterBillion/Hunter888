@@ -77,7 +77,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                     trap.caught
                       ? "var(--success)"
                       : isPartial
-                        ? "#f59e0b"
+                        ? "var(--warning)"
                         : "var(--danger)"
                   }`,
                 }}
@@ -87,7 +87,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                     {trap.caught ? (
                       <CheckCircle2 size={14} className="shrink-0" style={{ color: "var(--success)" }} />
                     ) : (
-                      <XCircle size={14} className="shrink-0" style={{ color: isPartial ? "#f59e0b" : "var(--danger)" }} />
+                      <XCircle size={14} className="shrink-0" style={{ color: isPartial ? "var(--warning)" : "var(--danger)" }} />
                     )}
                     <span className="text-sm truncate" style={{ color: "var(--text-secondary)" }}>
                       {trap.name}
@@ -114,7 +114,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                       color: trap.caught
                         ? "var(--success)"
                         : isPartial
-                          ? "#f59e0b"
+                          ? "var(--warning)"
                           : "var(--danger)",
                     }}
                   >

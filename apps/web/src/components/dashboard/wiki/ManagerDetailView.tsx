@@ -109,8 +109,8 @@ export function ManagerDetailView({
   if (loading) {
     return (
       <div style={{ textAlign: "center", padding: "4rem" }}>
-        <Loader2 size={32} style={{ animation: "spin 1s linear infinite", color: "#f59e0b" }} />
-        <p style={{ color: "#9ca3af", marginTop: "1rem" }}>Загрузка wiki...</p>
+        <Loader2 size={32} style={{ animation: "spin 1s linear infinite", color: "var(--warning)" }} />
+        <p style={{ color: "var(--text-muted)", marginTop: "1rem" }}>Загрузка wiki...</p>
       </div>
     );
   }
@@ -129,7 +129,7 @@ export function ManagerDetailView({
             background: "rgba(255,255,255,0.04)",
             border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: 8,
-            color: "#9ca3af",
+            color: "var(--text-muted)",
             cursor: "pointer",
             fontSize: "0.85rem",
           }}
@@ -148,14 +148,14 @@ export function ManagerDetailView({
                 padding: "2px 8px",
                 borderRadius: 8,
                 background: manager.status === "paused" ? "rgba(245,158,11,0.12)" : "rgba(107,114,128,0.15)",
-                color: manager.status === "paused" ? "#f59e0b" : "#6b7280",
+                color: manager.status === "paused" ? "var(--warning)" : "var(--text-muted)",
                 fontWeight: 600,
               }}>
                 {manager.status === "paused" ? "⏸ На паузе" : "📦 Архив"}
               </span>
             )}
           </div>
-          <p style={{ color: "#9ca3af", margin: 0, fontSize: "0.8rem" }}>
+          <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "0.8rem" }}>
             Wiki | {manager.sessions_ingested} сессий | {manager.patterns_discovered} паттернов | {manager.pages_count} страниц
             {manager.last_ingest_at && ` | Обновлено: ${timeAgo(manager.last_ingest_at)}`}
           </p>
@@ -171,20 +171,20 @@ export function ManagerDetailView({
           flexWrap: "wrap",
         }}
       >
-        <ActionButton icon={Play} label="Инжест всех сессий" onClick={onIngestAll} loading={actionLoading === "ingest-all"} color="#22c55e" />
-        <ActionButton icon={Calendar} label="Дневной синтез" onClick={onDailySynthesis} loading={actionLoading === "daily"} color="#6366f1" />
-        <ActionButton icon={Calendar} label="Недельный синтез" onClick={onWeeklySynthesis} loading={actionLoading === "weekly"} color="#8b5cf6" />
-        <ActionButton icon={Download} label="PDF" onClick={() => onExport("pdf")} loading={actionLoading === "export-pdf"} color="#f59e0b" />
-        <ActionButton icon={Download} label="CSV" onClick={() => onExport("csv")} loading={actionLoading === "export-csv"} color="#f59e0b" />
+        <ActionButton icon={Play} label="Инжест всех сессий" onClick={onIngestAll} loading={actionLoading === "ingest-all"} color="var(--success)" />
+        <ActionButton icon={Calendar} label="Дневной синтез" onClick={onDailySynthesis} loading={actionLoading === "daily"} color="var(--accent)" />
+        <ActionButton icon={Calendar} label="Недельный синтез" onClick={onWeeklySynthesis} loading={actionLoading === "weekly"} color="var(--accent)" />
+        <ActionButton icon={Download} label="PDF" onClick={() => onExport("pdf")} loading={actionLoading === "export-pdf"} color="var(--warning)" />
+        <ActionButton icon={Download} label="CSV" onClick={() => onExport("csv")} loading={actionLoading === "export-csv"} color="var(--warning)" />
         <div style={{ flex: 1 }} />
         {/* Status management */}
         {manager.status === "active" ? (
-          <ActionButton icon={PauseCircle} label="Пауза" onClick={() => onChangeStatus("paused")} loading={actionLoading === "status-paused"} color="#f59e0b" />
+          <ActionButton icon={PauseCircle} label="Пауза" onClick={() => onChangeStatus("paused")} loading={actionLoading === "status-paused"} color="var(--warning)" />
         ) : manager.status === "paused" ? (
-          <ActionButton icon={PlayCircle} label="Возобновить" onClick={() => onChangeStatus("active")} loading={actionLoading === "status-active"} color="#22c55e" />
+          <ActionButton icon={PlayCircle} label="Возобновить" onClick={() => onChangeStatus("active")} loading={actionLoading === "status-active"} color="var(--success)" />
         ) : null}
-        <ActionButton icon={Archive} label="Архив" onClick={() => onChangeStatus("archived")} loading={actionLoading === "status-archived"} color="#6b7280" disabled={manager.status === "archived"} />
-        <ActionButton icon={RotateCcw} label="Пересоздать" onClick={onReanalyze} loading={actionLoading === "reanalyze"} color="#ef4444" />
+        <ActionButton icon={Archive} label="Архив" onClick={() => onChangeStatus("archived")} loading={actionLoading === "status-archived"} color="var(--text-muted)" disabled={manager.status === "archived"} />
+        <ActionButton icon={RotateCcw} label="Пересоздать" onClick={onReanalyze} loading={actionLoading === "reanalyze"} color="var(--danger)" />
       </div>
 
       {/* Tabs */}
@@ -210,7 +210,7 @@ export function ManagerDetailView({
               borderRadius: 8,
               border: "none",
               background: tab === t.id ? "rgba(245,158,11,0.15)" : "transparent",
-              color: tab === t.id ? "#f59e0b" : "#9ca3af",
+              color: tab === t.id ? "var(--warning)" : "var(--text-muted)",
               cursor: "pointer",
               fontSize: "0.9rem",
               fontWeight: tab === t.id ? 600 : 400,
@@ -226,7 +226,7 @@ export function ManagerDetailView({
                 padding: "1px 6px",
                 borderRadius: 8,
                 background: "rgba(239,68,68,0.15)",
-                color: "#ef4444",
+                color: "var(--danger)",
               }}>
                 {patterns.length}
               </span>

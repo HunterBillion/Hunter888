@@ -157,7 +157,7 @@ export function DuelChat({ messages, myRole, input, onInputChange, onSend, disab
                         </span>
                       )}
                     </div>
-                    <p className="text-sm leading-relaxed" style={{ color: "#F5F7FB" }}>
+                    <p className="text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>
                       {msg.text}
                     </p>
                   </div>

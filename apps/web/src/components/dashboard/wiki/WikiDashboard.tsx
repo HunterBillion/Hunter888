@@ -285,8 +285,8 @@ export function WikiDashboard() {
   if (loading) {
     return (
       <div style={{ textAlign: "center", padding: "4rem 2rem" }}>
-        <Loader2 size={36} style={{ animation: "spin 1s linear infinite", color: "#f59e0b" }} />
-        <p style={{ color: "#9ca3af", marginTop: "1rem" }}>Загрузка Wiki...</p>
+        <Loader2 size={36} style={{ animation: "spin 1s linear infinite", color: "var(--warning)" }} />
+        <p style={{ color: "var(--text-muted)", marginTop: "1rem" }}>Загрузка Wiki...</p>
       </div>
     );
   }
@@ -309,7 +309,7 @@ export function WikiDashboard() {
                 borderRadius: 10,
                 background: actionMessage.type === "success" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
                 border: `1px solid ${actionMessage.type === "success" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
-                color: actionMessage.type === "success" ? "#22c55e" : "#ef4444",
+                color: actionMessage.type === "success" ? "var(--success)" : "var(--danger)",
                 fontSize: "0.85rem",
                 fontWeight: 500,
                 display: "flex",

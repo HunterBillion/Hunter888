@@ -22,18 +22,18 @@ const EMOTION_VALUE: Record<string, number> = {
 
 const EMOTION_COLOR: Record<string, string> = {
   cold: "#93C5FD",
-  hostile: "#EF4444",
-  hangup: "#EF4444",
+  hostile: "var(--danger)",
+  hangup: "var(--danger)",
   guarded: "#F97316",
-  skeptical: "#F59E0B",
+  skeptical: "var(--warning)",
   testing: "#EAB308",
   curious: "#A3E635",
   considering: "#84CC16",
-  warming: "#22C55E",
+  warming: "var(--success)",
   negotiating: "#14B8A6",
   open: "#06B6D4",
-  callback: "#6366F1",
-  deal: "#10B981",
+  callback: "var(--accent)",
+  deal: "var(--success)",
 };
 
 export default function LiveEmotionTimeline() {
@@ -55,7 +55,7 @@ export default function LiveEmotionTimeline() {
 
   const polyline = points.map((p) => `${p.x},${p.y}`).join(" ");
   const lastPoint = points[points.length - 1];
-  const lastColor = EMOTION_COLOR[lastPoint.state] || "#6366f1";
+  const lastColor = EMOTION_COLOR[lastPoint.state] || "var(--accent)";
 
   return (
     <div className="flex flex-col">
@@ -84,7 +84,7 @@ export default function LiveEmotionTimeline() {
             cx={p.x}
             cy={p.y}
             r={i === points.length - 1 ? 3.5 : 2}
-            fill={EMOTION_COLOR[p.state] || "#6366f1"}
+            fill={EMOTION_COLOR[p.state] || "var(--accent)"}
             opacity={i === points.length - 1 ? 1 : 0.6}
           />
         ))}

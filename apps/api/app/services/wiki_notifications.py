@@ -96,7 +96,7 @@ async def send_wiki_notification(
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-    await notification_manager.send_to_user(str(user_id), event)
+    await notification_manager.send_to_user(str(user_id), event, force=True)
 
 
 async def notify_rop_about_pattern(

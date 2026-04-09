@@ -328,7 +328,7 @@ export default function PipelinePage() {
                     style={{
                       background: "var(--accent)",
                       border: "1px solid var(--accent)",
-                      color: "#050505",
+                      color: "var(--bg-primary)",
                     }}
                     whileTap={{ scale: 0.97 }}
                   >

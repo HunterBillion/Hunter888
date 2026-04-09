@@ -402,7 +402,7 @@ function FloatingParticles({ isDark }: { isDark: boolean }) {
       </bufferGeometry>
       <pointsMaterial
         size={0.15}
-        color={isDark ? "#6366F1" : "#4F46E5"}
+        color={isDark ? "var(--accent)" : "var(--accent)"}
         transparent
         opacity={0.5}
         sizeAttenuation

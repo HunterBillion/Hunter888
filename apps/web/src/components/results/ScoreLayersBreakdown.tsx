@@ -68,9 +68,9 @@ function getBarColor(pct: number, isModifier: boolean): string {
 
 function getGradeLabel(pct: number): { label: string; color: string } {
   if (pct >= 90) return { label: "Отлично", color: "var(--success)" };
-  if (pct >= 70) return { label: "Хорошо", color: "#22c55e" };
+  if (pct >= 70) return { label: "Хорошо", color: "var(--success)" };
   if (pct >= 50) return { label: "Средне", color: "var(--warning, #FFD700)" };
-  if (pct >= 25) return { label: "Слабо", color: "#F59E0B" };
+  if (pct >= 25) return { label: "Слабо", color: "var(--warning)" };
   return { label: "Критично", color: "var(--danger)" };
 }
 

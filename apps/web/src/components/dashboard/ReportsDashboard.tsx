@@ -88,8 +88,8 @@ function formatWeek(iso: string): string {
 }
 
 function trendIcon(trend: string | null) {
-  if (trend === "growing") return <TrendingUp size={14} style={{ color: "#34D399" }} />;
-  if (trend === "declining") return <TrendingDown size={14} style={{ color: "#F87171" }} />;
+  if (trend === "growing") return <TrendingUp size={14} style={{ color: "var(--success)" }} />;
+  if (trend === "declining") return <TrendingDown size={14} style={{ color: "var(--danger)" }} />;
   return <Minus size={14} style={{ color: "#94A3B8" }} />;
 }
 
@@ -97,15 +97,15 @@ function trendIcon(trend: string | null) {
 
 function SkillBar({ name, value, change }: { name: string; value: number; change: number }) {
   const label = SKILL_LABELS[name] || name;
-  const barColor = value >= 70 ? "#34D399" : value >= 40 ? "#FBBF24" : "#F87171";
+  const barColor = value >= 70 ? "var(--success)" : value >= 40 ? "var(--warning)" : "var(--danger)";
   return (
     <div style={{ marginBottom: "0.6rem" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.75rem" }}>
-        <span style={{ color: "#9ca3af" }}>{label}</span>
+        <span style={{ color: "var(--text-muted)" }}>{label}</span>
         <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
           <span style={{ fontWeight: 600, color: "#e0e0e0" }}>{value}</span>
           {change !== 0 && (
-            <span style={{ display: "flex", alignItems: "center", gap: "2px", fontSize: "0.7rem", color: change > 0 ? "#34D399" : "#F87171" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "2px", fontSize: "0.7rem", color: change > 0 ? "var(--success)" : "var(--danger)" }}>
               {change > 0 ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
               {Math.abs(change)}
             </span>
@@ -136,7 +136,7 @@ function StatCard({ icon: Icon, label, value, color }: { icon: typeof Target; la
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.2rem" }}>
         <Icon size={12} style={{ color }} />
-        <span style={{ fontSize: "0.7rem", color: "#6b7280" }}>{label}</span>
+        <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{label}</span>
       </div>
       <span style={{ fontSize: "1.1rem", fontWeight: 700, fontFamily: "monospace", color }}>
         {value}
@@ -183,7 +183,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
             justifyContent: "center",
             borderRadius: 8,
             background: report.sessions_completed > 0 ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.04)",
-            color: report.sessions_completed > 0 ? "#f59e0b" : "#6b7280",
+            color: report.sessions_completed > 0 ? "var(--warning)" : "var(--text-muted)",
           }}>
             <FileBarChart size={18} />
           </div>
@@ -194,7 +194,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               </span>
               {trendIcon(report.score_trend)}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "#6b7280" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "var(--text-muted)" }}>
               <span>{report.sessions_completed} сессий</span>
               <span>·</span>
               <span>{report.total_time_minutes} мин</span>
@@ -212,7 +212,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                   <span style={{ display: "flex", alignItems: "center", gap: "2px" }}>
                     #{report.weekly_rank}
                     {report.rank_change !== null && report.rank_change !== 0 && (
-                      <span style={{ fontSize: "0.7rem", color: report.rank_change > 0 ? "#34D399" : "#F87171" }}>
+                      <span style={{ fontSize: "0.7rem", color: report.rank_change > 0 ? "var(--success)" : "var(--danger)" }}>
                         {report.rank_change > 0 ? `+${report.rank_change}` : report.rank_change}
                       </span>
                     )}
@@ -222,7 +222,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
             </div>
           </div>
         </div>
-        <motion.div animate={{ rotate: expanded ? 180 : 0 }} style={{ color: "#6b7280" }}>
+        <motion.div animate={{ rotate: expanded ? 180 : 0 }} style={{ color: "var(--text-muted)" }}>
           <ChevronDown size={18} />
         </motion.div>
       </div>
@@ -240,7 +240,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
             <div style={{ padding: "0 20px 20px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
               {/* Report text */}
               {report.report_text && (
-                <p style={{ fontSize: "0.85rem", margin: "1rem 0", lineHeight: 1.6, color: "#9ca3af" }}>
+                <p style={{ fontSize: "0.85rem", margin: "1rem 0", lineHeight: 1.6, color: "var(--text-muted)" }}>
                   {report.report_text}
                 </p>
               )}
@@ -249,14 +249,14 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               <div style={{ display: "grid", gap: "0.5rem", marginBottom: "1rem", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))" }}>
                 <StatCard icon={Target} label="Ср. балл" value={report.average_score != null ? Number(report.average_score).toFixed(0) : "—"} color={scoreColor(report.average_score)} />
                 <StatCard icon={Star} label="Лучший" value={report.best_score != null ? String(report.best_score) : "—"} color="#FFD700" />
-                <StatCard icon={Trophy} label="Win rate" value={report.win_rate != null ? `${Number(report.win_rate).toFixed(0)}%` : "—"} color="#34D399" />
-                <StatCard icon={Zap} label="XP" value={`+${report.xp_earned}`} color="#f59e0b" />
+                <StatCard icon={Trophy} label="Win rate" value={report.win_rate != null ? `${Number(report.win_rate).toFixed(0)}%` : "—"} color="var(--success)" />
+                <StatCard icon={Zap} label="XP" value={`+${report.xp_earned}`} color="var(--warning)" />
                 <StatCard icon={Clock} label="Время" value={`${report.total_time_minutes} мин`} color="#60A5FA" />
                 <StatCard
                   icon={TrendingUp}
                   label="Уровень"
                   value={report.level_at_start === report.level_at_end ? `${report.level_at_end}` : `${report.level_at_start} → ${report.level_at_end}`}
-                  color="#A78BFA"
+                  color="var(--accent-hover)"
                 />
               </div>
 
@@ -274,7 +274,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                           fontSize: "0.75rem",
                           fontWeight: 500,
                           background: key === "deal" ? "rgba(52,211,153,0.1)" : "rgba(255,255,255,0.04)",
-                          color: key === "deal" ? "#34D399" : "#9ca3af",
+                          color: key === "deal" ? "var(--success)" : "var(--text-muted)",
                           border: `1px solid ${key === "deal" ? "rgba(52,211,153,0.25)" : "rgba(255,255,255,0.08)"}`,
                         }}>
                           {OUTCOME_LABELS[key] || key}: {count as number}
@@ -333,7 +333,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                         padding: "3px 10px",
                         fontSize: "0.75rem",
                         background: wp.priority === "critical" ? "rgba(248,113,113,0.1)" : "rgba(251,191,36,0.1)",
-                        color: wp.priority === "critical" ? "#F87171" : "#FBBF24",
+                        color: wp.priority === "critical" ? "var(--danger)" : "var(--warning)",
                         border: `1px solid ${wp.priority === "critical" ? "rgba(248,113,113,0.25)" : "rgba(251,191,36,0.25)"}`,
                       }}>
                         {SKILL_LABELS[wp.skill] || wp.skill}: {wp.value}
@@ -356,7 +356,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                         padding: "0.4rem 0.75rem",
                         fontSize: "0.75rem",
                         background: "rgba(255,255,255,0.03)",
-                        color: "#9ca3af",
+                        color: "var(--text-muted)",
                         lineHeight: 1.5,
                       }}>
                         {rec}
@@ -437,12 +437,12 @@ export function ReportsDashboard({
     <div style={{ maxWidth: 900, margin: "0 auto" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
-        <FileBarChart size={24} style={{ color: "#f59e0b" }} />
+        <FileBarChart size={24} style={{ color: "var(--warning)" }} />
         <div style={{ flex: 1 }}>
           <h2 style={{ fontSize: "1.3rem", fontWeight: 700, color: "#fff", margin: 0 }}>
             {teamMode ? "Отчёты команды" : "Еженедельные отчёты"}
           </h2>
-          <p style={{ color: "#6b7280", fontSize: "0.8rem", margin: 0 }}>
+          <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", margin: 0 }}>
             {teamMode ? "Прогресс, навыки, рекомендации по каждому менеджеру" : "Прогресс, навыки, рекомендации"}
           </p>
         </div>
@@ -459,7 +459,7 @@ export function ReportsDashboard({
             borderRadius: 8,
             border: "none",
             background: "rgba(245,158,11,0.15)",
-            color: "#f59e0b",
+            color: "var(--warning)",
             cursor: generating ? "wait" : "pointer",
             opacity: generating ? 0.7 : 1,
             fontSize: "0.85rem",
@@ -484,7 +484,7 @@ export function ReportsDashboard({
           borderRadius: 10,
           flexWrap: "wrap",
         }}>
-          <Users size={16} style={{ color: "#6366f1" }} />
+          <Users size={16} style={{ color: "var(--accent)" }} />
           <span style={{ color: "#a5b4fc", fontSize: "0.85rem" }}>Менеджер:</span>
           <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
             {teamMembers.map((m) => (
@@ -496,7 +496,7 @@ export function ReportsDashboard({
                   borderRadius: 8,
                   border: activeUserId === m.id ? "1px solid rgba(99,102,241,0.4)" : "1px solid rgba(255,255,255,0.08)",
                   background: activeUserId === m.id ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.03)",
-                  color: activeUserId === m.id ? "#a5b4fc" : "#9ca3af",
+                  color: activeUserId === m.id ? "#a5b4fc" : "var(--text-muted)",
                   cursor: "pointer",
                   fontSize: "0.8rem",
                   fontWeight: activeUserId === m.id ? 600 : 400,
@@ -512,8 +512,8 @@ export function ReportsDashboard({
 
       {/* Current user label in team mode */}
       {teamMode && (
-        <div style={{ fontSize: "0.85rem", color: "#9ca3af", marginBottom: "0.75rem" }}>
-          Отчёты: <span style={{ color: "#f59e0b", fontWeight: 600 }}>{activeName}</span>
+        <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+          Отчёты: <span style={{ color: "var(--warning)", fontWeight: 600 }}>{activeName}</span>
         </div>
       )}
 
@@ -525,7 +525,7 @@ export function ReportsDashboard({
           marginBottom: "1rem",
           background: "rgba(239,68,68,0.1)",
           border: "1px solid rgba(239,68,68,0.2)",
-          color: "#F87171",
+          color: "var(--danger)",
           textAlign: "center",
           fontSize: "0.85rem",
         }}>
@@ -536,8 +536,8 @@ export function ReportsDashboard({
       {/* Loading */}
       {loading && (
         <div style={{ textAlign: "center", padding: "3rem" }}>
-          <Loader2 size={32} style={{ animation: "spin 1s linear infinite", color: "#f59e0b" }} />
-          <p style={{ color: "#6b7280", marginTop: "0.75rem" }}>Загрузка отчётов...</p>
+          <Loader2 size={32} style={{ animation: "spin 1s linear infinite", color: "var(--warning)" }} />
+          <p style={{ color: "var(--text-muted)", marginTop: "0.75rem" }}>Загрузка отчётов...</p>
         </div>
       )}
 
@@ -554,8 +554,8 @@ export function ReportsDashboard({
             borderRadius: 12,
           }}
         >
-          <FileBarChart size={40} style={{ margin: "0 auto 12px", color: "#6b7280", opacity: 0.3 }} />
-          <p style={{ color: "#6b7280", margin: 0 }}>
+          <FileBarChart size={40} style={{ margin: "0 auto 12px", color: "var(--text-muted)", opacity: 0.3 }} />
+          <p style={{ color: "var(--text-muted)", margin: 0 }}>
             Отчётов пока нет. Нажмите «Обновить отчёт» чтобы сгенерировать первый.
           </p>
         </motion.div>

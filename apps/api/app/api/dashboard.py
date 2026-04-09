@@ -785,7 +785,7 @@ async def rop_weekly_digest(
 
 @router.get("/rop/trends")
 async def rop_trends(
-    period: str = Query("month", regex="^(week|month|all)$"),
+    period: str = Query("month", pattern="^(week|month|all)$"),
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -892,7 +892,7 @@ async def rop_member_sessions(
 
 @router.get("/rop/export")
 async def rop_export_pdf(
-    period: str = Query("week", regex="^(week|month)$"),
+    period: str = Query("week", pattern="^(week|month)$"),
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):

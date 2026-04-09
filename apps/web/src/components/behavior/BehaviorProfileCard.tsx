@@ -35,11 +35,11 @@ function ScoreBar({ label, value, icon: Icon, color }: {
 function TrendBadge({ direction }: { direction: string | null }) {
   if (!direction) return null;
   const config = {
-    improving: { icon: TrendingUp, color: "#22C55E", text: "Рост" },
-    declining: { icon: TrendingDown, color: "#EF4444", text: "Спад" },
-    stable: { icon: Minus, color: "#F59E0B", text: "Стабильно" },
-    stagnating: { icon: Minus, color: "#9CA3AF", text: "Стагнация" },
-  }[direction] || { icon: Minus, color: "#9CA3AF", text: direction };
+    improving: { icon: TrendingUp, color: "var(--success)", text: "Рост" },
+    declining: { icon: TrendingDown, color: "var(--danger)", text: "Спад" },
+    stable: { icon: Minus, color: "var(--warning)", text: "Стабильно" },
+    stagnating: { icon: Minus, color: "var(--text-muted)", text: "Стагнация" },
+  }[direction] || { icon: Minus, color: "var(--text-muted)", text: direction };
 
   const Icon = config.icon;
   return (
@@ -87,13 +87,13 @@ export default function BehaviorProfileCard({ userId }: { userId?: string }) {
           label="Уверенность"
           value={profile.composite_scores.confidence}
           icon={Shield}
-          color="#6366F1"
+          color="var(--accent)"
         />
         <ScoreBar
           label="Стрессоустойчивость"
           value={profile.composite_scores.stress_resistance}
           icon={Zap}
-          color="#F59E0B"
+          color="var(--warning)"
         />
         <ScoreBar
           label="Адаптивность"

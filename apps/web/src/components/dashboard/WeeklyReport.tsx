@@ -39,7 +39,7 @@ function TrendBadge({ trend }: { trend: string | null }) {
   if (trend === "improving") {
     return (
       <span className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold"
-        style={{ background: "rgba(34, 197, 94, 0.1)", color: "#22c55e" }}>
+        style={{ background: "rgba(34, 197, 94, 0.1)", color: "var(--success)" }}>
         <TrendingUp size={10} /> Рост
       </span>
     );
@@ -47,7 +47,7 @@ function TrendBadge({ trend }: { trend: string | null }) {
   if (trend === "declining") {
     return (
       <span className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold"
-        style={{ background: "rgba(239, 68, 68, 0.1)", color: "#ef4444" }}>
+        style={{ background: "rgba(239, 68, 68, 0.1)", color: "var(--danger)" }}>
         <TrendingDown size={10} /> Спад
       </span>
     );
@@ -154,7 +154,7 @@ export function WeeklyReport() {
                   className="rounded-md px-2 py-0.5 text-xs font-mono"
                   style={{
                     background: delta > 0 ? "rgba(34,197,94,0.1)" : delta < 0 ? "rgba(239,68,68,0.1)" : "var(--input-bg)",
-                    color: delta > 0 ? "#22c55e" : delta < 0 ? "#ef4444" : "var(--text-muted)",
+                    color: delta > 0 ? "var(--success)" : delta < 0 ? "var(--danger)" : "var(--text-muted)",
                   }}
                 >
                   {SKILL_LABELS[skill] || skill}: {delta > 0 ? "+" : ""}{delta}

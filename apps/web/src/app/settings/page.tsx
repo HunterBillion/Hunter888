@@ -49,9 +49,9 @@ const EXPERIENCE_LEVELS = [
 
 const ACCENT_COLORS = [
   { key: "violet", label: "Violet", color: "#8A2BE2" },
-  { key: "blue", label: "Blue", color: "#3B82F6" },
-  { key: "emerald", label: "Emerald", color: "#10B981" },
-  { key: "amber", label: "Amber", color: "#F59E0B" },
+  { key: "blue", label: "Blue", color: "var(--info)" },
+  { key: "emerald", label: "Emerald", color: "var(--success)" },
+  { key: "amber", label: "Amber", color: "var(--warning)" },
   { key: "rose", label: "Rose", color: "#F43F5E" },
 ] as const;
 

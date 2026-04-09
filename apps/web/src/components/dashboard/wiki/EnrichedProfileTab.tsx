@@ -17,7 +17,7 @@ import type { EnrichedProfile } from "./types";
 export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | null }) {
   if (!profile) {
     return (
-      <div style={{ textAlign: "center", padding: "3rem", color: "#6b7280" }}>
+      <div style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
         <Activity size={36} style={{ margin: "0 auto 1rem", opacity: 0.4 }} />
         <p>Профиль загружается...</p>
       </div>
@@ -50,9 +50,9 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
       {
         label: profile.name,
         data: skillValues,
-        borderColor: "#f59e0b",
+        borderColor: "var(--warning)",
         backgroundColor: "rgba(245,158,11,0.15)",
-        pointBackgroundColor: "#f59e0b",
+        pointBackgroundColor: "var(--warning)",
         borderWidth: 2,
       },
     ],
@@ -65,9 +65,9 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
       r: {
         beginAtZero: true,
         max: 100,
-        ticks: { color: "#6b7280", backdropColor: "transparent", font: { size: 10 }, stepSize: 25 },
+        ticks: { color: "var(--text-muted)", backdropColor: "transparent", font: { size: 10 }, stepSize: 25 },
         grid: { color: "rgba(255,255,255,0.06)" },
-        pointLabels: { color: "#9ca3af", font: { size: 11 } },
+        pointLabels: { color: "var(--text-muted)", font: { size: 11 } },
       },
     },
     plugins: { legend: { display: false } },
@@ -81,12 +81,12 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
       {
         label: "Балл",
         data: trend.map((t) => t.score),
-        borderColor: "#6366f1",
+        borderColor: "var(--accent)",
         backgroundColor: "rgba(99,102,241,0.1)",
         fill: true,
         tension: 0.3,
         pointRadius: 4,
-        pointBackgroundColor: "#6366f1",
+        pointBackgroundColor: "var(--accent)",
       },
     ],
   };
@@ -95,8 +95,8 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
     responsive: true,
     maintainAspectRatio: false,
     scales: {
-      x: { ticks: { color: "#6b7280", font: { size: 10 } }, grid: { display: false } },
-      y: { beginAtZero: true, ticks: { color: "#6b7280" }, grid: { color: "rgba(255,255,255,0.04)" } },
+      x: { ticks: { color: "var(--text-muted)", font: { size: 10 } }, grid: { display: false } },
+      y: { beginAtZero: true, ticks: { color: "var(--text-muted)" }, grid: { color: "rgba(255,255,255,0.04)" } },
     },
     plugins: { legend: { display: false } },
   };
@@ -111,15 +111,15 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
       {/* KPI Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0.75rem", marginBottom: "1rem" }}>
         {[
-          { label: "Всего сессий", value: t.total_sessions, color: "#f59e0b", icon: Target },
-          { label: "Средний балл", value: t.avg_score.toFixed(1), color: "#22c55e", icon: TrendingUp },
-          { label: "Лучший балл", value: t.best_score.toFixed(1), color: "#6366f1", icon: Zap },
+          { label: "Всего сессий", value: t.total_sessions, color: "var(--warning)", icon: Target },
+          { label: "Средний балл", value: t.avg_score.toFixed(1), color: "var(--success)", icon: TrendingUp },
+          { label: "Лучший балл", value: t.best_score.toFixed(1), color: "var(--accent)", icon: Zap },
           { label: "Часов практики", value: t.total_hours.toFixed(1), color: "#ec4899", icon: Clock },
         ].map((kpi) => (
           <div key={kpi.label} style={glassCard}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.3rem" }}>
               <kpi.icon size={14} style={{ color: kpi.color }} />
-              <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>{kpi.label}</span>
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{kpi.label}</span>
             </div>
             <div style={{ fontSize: "1.4rem", fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
           </div>
@@ -136,11 +136,11 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
         flexWrap: "wrap",
         alignItems: "center",
       }}>
-        <Calendar size={16} style={{ color: "#6366f1" }} />
-        <span style={{ color: "#9ca3af", fontSize: "0.85rem" }}>Последние 14 дней:</span>
-        <span style={{ color: "#f59e0b", fontWeight: 600 }}>{t.recent_14d_sessions} сессий</span>
-        <span style={{ color: "#9ca3af" }}>|</span>
-        <span style={{ color: "#22c55e", fontWeight: 600 }}>Ср. балл: {t.recent_14d_avg_score.toFixed(1)}</span>
+        <Calendar size={16} style={{ color: "var(--accent)" }} />
+        <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Последние 14 дней:</span>
+        <span style={{ color: "var(--warning)", fontWeight: 600 }}>{t.recent_14d_sessions} сессий</span>
+        <span style={{ color: "var(--text-muted)" }}>|</span>
+        <span style={{ color: "var(--success)", fontWeight: 600 }}>Ср. балл: {t.recent_14d_avg_score.toFixed(1)}</span>
         {scoreDelta !== null && (
           <span style={{
             padding: "2px 8px",
@@ -148,7 +148,7 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
             fontSize: "0.75rem",
             fontWeight: 600,
             background: scoreDelta >= 0 ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
-            color: scoreDelta >= 0 ? "#22c55e" : "#ef4444",
+            color: scoreDelta >= 0 ? "var(--success)" : "var(--danger)",
           }}>
             {scoreDelta >= 0 ? "↑" : "↓"} {Math.abs(scoreDelta).toFixed(1)} vs всё время
           </span>
@@ -159,7 +159,7 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1rem" }}>
         {/* Score trend */}
         <div style={glassCard}>
-          <div style={{ color: "#9ca3af", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.5rem" }}>
             <TrendingUp size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
             Динамика баллов
           </div>
@@ -167,7 +167,7 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
             {trend.length > 0 ? (
               <Line data={trendData} options={trendOpts} />
             ) : (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#6b7280", fontSize: "0.85rem" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", fontSize: "0.85rem" }}>
                 Нет данных
               </div>
             )}
@@ -176,11 +176,11 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
 
         {/* Skills radar */}
         <div style={glassCard}>
-          <div style={{ color: "#9ca3af", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.5rem" }}>
             <Activity size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
             Навыки
             {profile.skills.level !== undefined && (
-              <span style={{ marginLeft: 8, color: "#f59e0b", fontSize: "0.75rem" }}>
+              <span style={{ marginLeft: 8, color: "var(--warning)", fontSize: "0.75rem" }}>
                 Ур. {profile.skills.level} | XP: {profile.skills.total_xp} | Hunter: {profile.skills.hunter_score}
               </span>
             )}
@@ -195,45 +195,45 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1rem" }}>
         {/* Patterns summary */}
         <div style={glassCard}>
-          <div style={{ color: "#9ca3af", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.75rem" }}>
             <Brain size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
             Паттерны ({profile.patterns_summary.total})
             <span style={{ marginLeft: 8 }}>
-              <span style={{ color: "#ef4444" }}>⚠ {profile.patterns_summary.weaknesses}</span>
+              <span style={{ color: "var(--danger)" }}>⚠ {profile.patterns_summary.weaknesses}</span>
               {" / "}
-              <span style={{ color: "#22c55e" }}>✓ {profile.patterns_summary.strengths}</span>
+              <span style={{ color: "var(--success)" }}>✓ {profile.patterns_summary.strengths}</span>
             </span>
           </div>
           {profile.patterns_summary.top_weaknesses.length > 0 && (
             <div style={{ marginBottom: "0.5rem" }}>
-              <div style={{ fontSize: "0.7rem", color: "#ef4444", fontWeight: 600, marginBottom: "0.25rem" }}>Основные слабости:</div>
+              <div style={{ fontSize: "0.7rem", color: "var(--danger)", fontWeight: 600, marginBottom: "0.25rem" }}>Основные слабости:</div>
               {profile.patterns_summary.top_weaknesses.map((p) => (
-                <div key={p.code} style={{ fontSize: "0.75rem", color: "#d1d5db", padding: "2px 0", display: "flex", justifyContent: "space-between" }}>
+                <div key={p.code} style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: "2px 0", display: "flex", justifyContent: "space-between" }}>
                   <span>{p.description || p.code}</span>
-                  <span style={{ color: "#6b7280" }}>{p.sessions} сес.</span>
+                  <span style={{ color: "var(--text-muted)" }}>{p.sessions} сес.</span>
                 </div>
               ))}
             </div>
           )}
           {profile.patterns_summary.top_strengths.length > 0 && (
             <div>
-              <div style={{ fontSize: "0.7rem", color: "#22c55e", fontWeight: 600, marginBottom: "0.25rem" }}>Сильные стороны:</div>
+              <div style={{ fontSize: "0.7rem", color: "var(--success)", fontWeight: 600, marginBottom: "0.25rem" }}>Сильные стороны:</div>
               {profile.patterns_summary.top_strengths.map((p) => (
-                <div key={p.code} style={{ fontSize: "0.75rem", color: "#d1d5db", padding: "2px 0", display: "flex", justifyContent: "space-between" }}>
+                <div key={p.code} style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: "2px 0", display: "flex", justifyContent: "space-between" }}>
                   <span>{p.description || p.code}</span>
-                  <span style={{ color: "#6b7280" }}>{p.sessions} сес.</span>
+                  <span style={{ color: "var(--text-muted)" }}>{p.sessions} сес.</span>
                 </div>
               ))}
             </div>
           )}
           {profile.patterns_summary.total === 0 && (
-            <div style={{ fontSize: "0.8rem", color: "#6b7280", fontStyle: "italic" }}>Паттерны ещё не обнаружены</div>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" }}>Паттерны ещё не обнаружены</div>
           )}
         </div>
 
         {/* Techniques summary */}
         <div style={glassCard}>
-          <div style={{ color: "#9ca3af", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.75rem" }}>
             <Lightbulb size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
             Техники ({profile.techniques_summary.total})
           </div>
@@ -247,16 +247,16 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
                 padding: "0.3rem 0",
                 borderBottom: "1px solid rgba(255,255,255,0.04)",
               }}>
-                <span style={{ color: "#d1d5db" }}>{t.name}</span>
+                <span style={{ color: "var(--text-muted)" }}>{t.name}</span>
                 <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                  <span style={{ color: "#6b7280", fontSize: "0.7rem" }}>{t.attempts} попыток</span>
+                  <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>{t.attempts} попыток</span>
                   <span style={{
                     padding: "1px 8px",
                     borderRadius: 8,
                     fontSize: "0.7rem",
                     fontWeight: 600,
                     background: t.success_rate >= 0.7 ? "rgba(34,197,94,0.12)" : t.success_rate >= 0.4 ? "rgba(245,158,11,0.12)" : "rgba(239,68,68,0.12)",
-                    color: t.success_rate >= 0.7 ? "#22c55e" : t.success_rate >= 0.4 ? "#f59e0b" : "#ef4444",
+                    color: t.success_rate >= 0.7 ? "var(--success)" : t.success_rate >= 0.4 ? "var(--warning)" : "var(--danger)",
                   }}>
                     {Math.round(t.success_rate * 100)}%
                   </span>
@@ -264,35 +264,35 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
               </div>
             ))
           ) : (
-            <div style={{ fontSize: "0.8rem", color: "#6b7280", fontStyle: "italic" }}>Техники ещё не обнаружены</div>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" }}>Техники ещё не обнаружены</div>
           )}
         </div>
       </div>
 
       {/* Wiki summary */}
       <div style={glassCard}>
-        <div style={{ color: "#9ca3af", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+        <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.5rem" }}>
           <BookOpen size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
           Wiki статус
         </div>
         <div style={{ display: "flex", gap: "2rem", fontSize: "0.85rem", flexWrap: "wrap" }}>
           <div>
-            <span style={{ color: "#6b7280" }}>Статус: </span>
-            <span style={{ color: profile.wiki.exists ? "#22c55e" : "#ef4444", fontWeight: 600 }}>
+            <span style={{ color: "var(--text-muted)" }}>Статус: </span>
+            <span style={{ color: profile.wiki.exists ? "var(--success)" : "var(--danger)", fontWeight: 600 }}>
               {profile.wiki.exists ? "Активна" : "Не создана"}
             </span>
           </div>
           <div>
-            <span style={{ color: "#6b7280" }}>Страниц: </span>
-            <span style={{ color: "#f59e0b", fontWeight: 600 }}>{profile.wiki.pages_count}</span>
+            <span style={{ color: "var(--text-muted)" }}>Страниц: </span>
+            <span style={{ color: "var(--warning)", fontWeight: 600 }}>{profile.wiki.pages_count}</span>
           </div>
           <div>
-            <span style={{ color: "#6b7280" }}>Проанализировано сессий: </span>
-            <span style={{ color: "#6366f1", fontWeight: 600 }}>{profile.wiki.sessions_ingested}</span>
+            <span style={{ color: "var(--text-muted)" }}>Проанализировано сессий: </span>
+            <span style={{ color: "var(--accent)", fontWeight: 600 }}>{profile.wiki.sessions_ingested}</span>
           </div>
           <div>
-            <span style={{ color: "#6b7280" }}>Обнаружено паттернов: </span>
-            <span style={{ color: "#ef4444", fontWeight: 600 }}>{profile.wiki.patterns_discovered}</span>
+            <span style={{ color: "var(--text-muted)" }}>Обнаружено паттернов: </span>
+            <span style={{ color: "var(--danger)", fontWeight: 600 }}>{profile.wiki.patterns_discovered}</span>
           </div>
         </div>
       </div>

@@ -44,7 +44,7 @@ export function WeakLinks() {
   if (!data || data.needs_attention.length === 0) {
     return (
       <div className="rounded-xl p-4 text-center" style={{ background: "rgba(34, 197, 94, 0.06)", border: "1px solid rgba(34, 197, 94, 0.2)" }}>
-        <span className="text-sm" style={{ color: "#22c55e" }}>
+        <span className="text-sm" style={{ color: "var(--success)" }}>
           Все менеджеры в норме
         </span>
       </div>
@@ -54,7 +54,7 @@ export function WeakLinks() {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <div className="flex items-center gap-2 mb-3">
-        <AlertTriangle size={16} style={{ color: "#f59e0b" }} />
+        <AlertTriangle size={16} style={{ color: "var(--warning)" }} />
         <h3 className="font-display text-sm font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
           ТРЕБУЮТ ВНИМАНИЯ ({data.attention_count}/{data.total_team})
         </h3>
@@ -88,7 +88,7 @@ export function WeakLinks() {
                   className="rounded-md px-2 py-0.5 text-xs"
                   style={{
                     background: "rgba(239, 68, 68, 0.1)",
-                    color: "#ef4444",
+                    color: "var(--danger)",
                   }}
                 >
                   {reason}
