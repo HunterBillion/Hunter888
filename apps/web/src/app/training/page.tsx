@@ -502,10 +502,10 @@ function RecommendedTab({
                     {/* Row 1: Icon + Name */}
                     <div className="flex items-center gap-3">
                       <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-lg"
-                        style={{ background: `color-mix(in srgb, ${diffColor} 15%, transparent)` }}
+                        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold text-white"
+                        style={{ background: diffColor }}
                       >
-                        {arch.icon}
+                        {arch.name[0]}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-base truncate" style={{ color: "var(--text-primary)" }}>

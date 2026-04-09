@@ -1089,19 +1089,19 @@ export function getArchetypesForLevel(level: number): ArchetypeInfo[] {
 /** Get tier color */
 export function getTierColor(tier: ArchetypeTier): string {
   switch (tier) {
-    case 1: return "#6C9A8B"; // muted sage — baseline
-    case 2: return "#B8943E"; // muted gold — intermediate
-    case 3: return "#C47A5A"; // muted copper — advanced
-    case 4: return "#A85A6A"; // muted rose — expert
+    case 1: return "#7C6AE8"; // accent purple — baseline
+    case 2: return "#9B7AE8"; // lighter purple — intermediate
+    case 3: return "#B896F0"; // lavender — advanced
+    case 4: return "#D4A84B"; // gold accent — expert (reward color)
   }
 }
 
-/** Muted difficulty colors that harmonize with Refined Cyber palette */
+/** Difficulty colors — monochrome purple scale + gold for extreme */
 export function getDifficultyColor(difficulty: number): string {
-  if (difficulty <= 3) return "#6C9A8B"; // sage — easy, calm
-  if (difficulty <= 6) return "#B8943E"; // gold — medium, warm
-  if (difficulty <= 8) return "#C47A5A"; // copper — hard, intense
-  return "#9B7AE8"; // accent purple — extreme
+  if (difficulty <= 3) return "#7C6AE8"; // accent — easy
+  if (difficulty <= 6) return "#9B7AE8"; // lighter — medium
+  if (difficulty <= 8) return "#B896F0"; // lavender — hard
+  return "#D4A84B"; // gold — extreme (reward/challenge)
 }
 
 /** Get tier label */
