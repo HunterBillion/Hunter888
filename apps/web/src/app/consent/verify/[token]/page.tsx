@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/public-origin";
+import { Twemoji } from "@/components/ui/Twemoji";
 
 /**
  * Consent Verification Page — PUBLIC (без авторизации).
@@ -146,7 +147,7 @@ export default function ConsentVerifyPage() {
               marginBottom: "12px",
             }}
           >
-            🛡️
+            <Twemoji emoji="🛡️" size={24} />
           </div>
           <h1
             style={{

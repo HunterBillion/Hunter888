@@ -10,6 +10,7 @@ import {
   ArrowRight, ArrowLeft, Loader2, Sparkles, RotateCcw, Check, Save, CheckCircle2,
   Lock, SkipForward,
 } from "lucide-react";
+import { Twemoji } from "@/components/ui/Twemoji";
 import { api } from "@/lib/api";
 import type {
   ArchetypeCode, ArchetypeGroup, ArchetypeTier, LeadSource, ProfessionCategory,
@@ -333,7 +334,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                   <button key={key} onClick={() => setGroupFilter(groupFilter === key ? null : key)}
                     className="rounded-full px-2 py-1 text-sm font-medium uppercase tracking-wide"
                     style={{ background: groupFilter === key ? g.color + "20" : "var(--input-bg)", color: groupFilter === key ? g.color : "var(--text-muted)", border: groupFilter === key ? `1px solid ${g.color}40` : "1px solid transparent" }}>
-                    {g.icon} {g.label} ({count})
+                    <Twemoji emoji={g.icon} size={14} /> {g.label} ({count})
                   </button>
                 );
               })}
@@ -380,7 +381,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                           style={{ borderColor: sel ? "var(--accent)60" : undefined, boxShadow: sel ? "0 0 16px rgba(99,102,241,0.15)" : undefined }}
                           whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
                           {sel && <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "var(--accent)" }}><Check size={8} className="text-white" /></div>}
-                          <div className="text-xl mb-1">{p.icon}</div>
+                          <div className="text-xl mb-1"><Twemoji emoji={p.icon} size={22} /></div>
                           <div className="text-xs font-bold" style={{ color: sel ? "var(--accent)" : "var(--text-primary)" }}>{p.name}</div>
                           <div className="text-sm font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>{p.debtRange} \u20BD</div>
                         </motion.button>
@@ -445,7 +446,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                     style={{ borderColor: sel ? "var(--accent)60" : undefined, boxShadow: sel ? "0 0 16px rgba(99,102,241,0.15)" : undefined }}
                     whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
                     {sel && <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "var(--accent)" }}><Check size={8} className="text-white" /></div>}
-                    <div className="text-2xl mb-2">{ep.icon}</div>
+                    <div className="text-2xl mb-2"><Twemoji emoji={ep.icon} size={28} /></div>
                     <div className="text-xs font-bold" style={{ color: sel ? "var(--accent)" : "var(--text-primary)" }}>{ep.name}</div>
                     <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>{ep.desc}</div>
                   </motion.button>
@@ -505,13 +506,13 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                 <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
                   <div className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>Архетип</div>
                   <div className="text-sm font-bold" style={{ color: selectedArchetype ? ARCHETYPE_GROUPS[selectedArchetype.group]?.color : "var(--text-primary)" }}>
-                    {selectedArchetype ? `${selectedArchetype.icon} ${selectedArchetype.name}` : "\u2014"}
+                    {selectedArchetype ? <><Twemoji emoji={selectedArchetype.icon} size={16} /> {selectedArchetype.name}</> : "\u2014"}
                   </div>
                   {selectedArchetype && <div className="text-xs mt-0.5 italic" style={{ color: "var(--text-muted)" }}>T{selectedArchetype.tier} \u00B7 Lv{selectedArchetype.unlock_level}+</div>}
                 </div>
                 <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
                   <div className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>Профессия</div>
-                  <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{selectedProfession ? `${selectedProfession.icon} ${selectedProfession.name}` : "\u2014"}</div>
+                  <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{selectedProfession ? <><Twemoji emoji={selectedProfession.icon} size={16} /> {selectedProfession.name}</> : "\u2014"}</div>
                 </div>
                 <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
                   <div className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>Источник</div>

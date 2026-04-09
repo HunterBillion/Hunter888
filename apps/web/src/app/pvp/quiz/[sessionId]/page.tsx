@@ -22,6 +22,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { Twemoji } from "@/components/ui/Twemoji";
 import { useSound } from "@/hooks/useSound";
 import { useKnowledgeStore, type QuizMessage } from "@/stores/useKnowledgeStore";
 import { ErrorBoundary } from "@/components/errors/ErrorBoundary";
@@ -1211,7 +1212,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
             border: "1px solid rgba(99,102,241,0.25)",
           }}
         >
-          {avatarEmoji || "\uD83D\uDCA1"}
+          {avatarEmoji ? <Twemoji emoji={avatarEmoji} size={20} /> : <Twemoji emoji={"\uD83D\uDCA1"} size={20} />}
         </div>
         <div
           className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
@@ -1247,7 +1248,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
             border: "1px solid rgba(99,102,241,0.25)",
           }}
         >
-          {avatarEmoji || <BookOpen size={14} style={{ color: "var(--accent)" }} />}
+          {avatarEmoji ? <Twemoji emoji={avatarEmoji} size={20} /> : <BookOpen size={14} style={{ color: "var(--accent)" }} />}
         </div>
         <div
           className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"

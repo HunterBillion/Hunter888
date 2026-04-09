@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useSessionStore } from "@/stores/useSessionStore";
+import { Twemoji } from "@/components/ui/Twemoji";
 import type { DifficultyMode, DifficultyTrend } from "@/stores/useSessionStore";
 
 interface DifficultyIndicatorProps {
@@ -86,7 +87,7 @@ export default function DifficultyIndicator({
             className="text-base leading-none"
             style={{ color: filled ? color : "var(--text-muted, #444)" }}
           >
-            {"\u2B50"}
+            <Twemoji emoji={"\u2B50"} size={16} />
           </motion.span>
         ))}
         <span className="ml-2 text-sm font-bold tabular-nums" style={{ color }}>
@@ -126,19 +127,19 @@ export default function DifficultyIndicator({
                 border: `1px solid color-mix(in srgb, ${modeConfig.color} 27%, transparent)`,
               }}
             >
-              {modeConfig.emoji} {modeConfig.label}
+              <Twemoji emoji={modeConfig.emoji} size={14} /> {modeConfig.label}
             </motion.span>
           )}
         </AnimatePresence>
 
         {goodStreak >= 3 && (
           <span className="text-sm" title={`Серия: ${goodStreak}`}>
-            {"\uD83D\uDD25"}{goodStreak}
+            <Twemoji emoji={"\uD83D\uDD25"} size={14} />{goodStreak}
           </span>
         )}
         {badStreak >= 3 && (
           <span className="text-sm" title={`Ошибки: ${badStreak}`}>
-            {"\u2744\uFE0F"}{badStreak}
+            <Twemoji emoji={"\u2744\uFE0F"} size={14} />{badStreak}
           </span>
         )}
         {hadComeback && (

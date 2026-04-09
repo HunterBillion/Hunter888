@@ -12,6 +12,7 @@ import { useNotificationStore } from "@/stores/useNotificationStore";
 import { RatingCard } from "@/components/pvp/RatingCard";
 import { MatchmakingOverlay } from "@/components/pvp/MatchmakingOverlay";
 import { FriendsPanel } from "@/components/pvp/FriendsPanel";
+import { Twemoji } from "@/components/ui/Twemoji";
 import { logger } from "@/lib/logger";
 
 const DUEL_STATUS_LABELS: Record<string, string> = {
@@ -440,7 +441,7 @@ function PvPLobbyContent() {
                                 style={{ opacity: locked ? 0.5 : 1, cursor: locked ? "not-allowed" : "default" }}
                               >
                                 {locked && <Lock size={14} className="absolute top-2 right-2" style={{ color: "var(--text-muted)" }} />}
-                                <span className="text-lg">{mode.icon}</span>
+                                <Twemoji emoji={mode.icon} size={20} />
                                 <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-primary)" }}>{mode.name}</p>
                                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
                                 {locked && <p className="text-xs font-medium mt-1" style={{ color: "var(--warning)" }}>Ур. {mode.level}</p>}
@@ -470,7 +471,7 @@ function PvPLobbyContent() {
                                 style={{ opacity: locked ? 0.5 : 1, cursor: locked ? "not-allowed" : "default" }}
                               >
                                 {locked && <Lock size={14} className="absolute top-2 right-2" style={{ color: "var(--text-muted)" }} />}
-                                <span className="text-lg">{mode.icon}</span>
+                                <Twemoji emoji={mode.icon} size={20} />
                                 <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-primary)" }}>{mode.name}</p>
                                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
                                 {locked && <p className="text-xs font-medium mt-1" style={{ color: "var(--warning)" }}>Ур. {mode.level}</p>}
@@ -636,7 +637,7 @@ function PvPLobbyContent() {
                                   border: aiPersonality === id ? "1px solid rgba(99,102,241,0.3)" : "1px solid transparent",
                                 }}
                               >
-                                <span className="text-lg mr-1">{emoji}</span>
+                                <Twemoji emoji={emoji} size={20} className="mr-1" />
                                 <span className="font-medium">{name}</span>
                                 <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>{desc}</p>
                               </button>

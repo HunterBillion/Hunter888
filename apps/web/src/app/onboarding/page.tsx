@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { Twemoji } from "@/components/ui/Twemoji";
 import { logger } from "@/lib/logger";
 
 // ── Steps config ───────────────────────────────────────────
@@ -475,7 +476,7 @@ export default function OnboardingPage() {
                           }}
                           whileTap={{ scale: 0.97 }}
                         >
-                          <span className="text-2xl">{r.icon}</span>
+                          <Twemoji emoji={r.icon} size={28} />
                           <div>
                             <div className="font-display font-bold text-sm" style={{ color: role === r.value ? "var(--accent)" : "var(--text-primary)" }}>{r.label}</div>
                             <div className="text-xs" style={{ color: "var(--text-muted)" }}>{r.desc}</div>
@@ -512,7 +513,7 @@ export default function OnboardingPage() {
                           }}
                           whileTap={{ scale: 0.97 }}
                         >
-                          <span className="text-lg">{s.icon}</span>
+                          <Twemoji emoji={s.icon} size={20} />
                           <div>
                             <div className="font-medium text-xs" style={{ color: specialization === s.value ? "var(--accent)" : "var(--text-primary)" }}>{s.label}</div>
                             <div className="text-xs" style={{ color: "var(--text-muted)" }}>{s.desc}</div>
@@ -533,7 +534,7 @@ export default function OnboardingPage() {
                           }}
                           whileTap={{ scale: 0.97 }}
                         >
-                          <span className="text-xl">{e.icon}</span>
+                          <Twemoji emoji={e.icon} size={24} />
                           <div>
                             <div className="font-medium text-sm" style={{ color: experience === e.value ? "var(--accent)" : "var(--text-primary)" }}>{e.label}</div>
                             <div className="text-xs" style={{ color: "var(--text-muted)" }}>{e.desc}</div>
@@ -626,7 +627,7 @@ export default function OnboardingPage() {
                       }}
                       whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
                     >
-                      <span className="text-2xl">{m.icon}</span>
+                      <Twemoji emoji={m.icon} size={28} />
                       <div>
                         <div className="font-medium text-sm" style={{ color: trainingMode === m.value ? "var(--accent)" : "var(--text-primary)" }}>{m.label}</div>
                         <div className="text-xs" style={{ color: "var(--text-muted)" }}>{m.desc}</div>

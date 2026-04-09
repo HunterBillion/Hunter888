@@ -356,19 +356,15 @@ export default function Header() {
                   >
                     {active && (
                       <>
-                        <motion.div
-                          layoutId="nav-active-pill"
+                        <div
                           className="absolute inset-0 rounded-[16px]"
-                          transition={{ type: "spring", stiffness: 400, damping: 35, mass: 0.6 }}
                           style={{
                             background: "var(--header-nav-active-bg)",
                             boxShadow: "var(--header-nav-active-shadow)",
                           }}
                         />
-                        <motion.div
-                          layoutId="nav-active-glow"
+                        <div
                           className="absolute rounded-full"
-                          transition={{ type: "spring", stiffness: 400, damping: 35, mass: 0.6 }}
                           style={{
                             bottom: -4,
                             left: "25%",

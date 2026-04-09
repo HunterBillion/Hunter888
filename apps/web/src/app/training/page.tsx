@@ -22,6 +22,7 @@ import {
   Info,
 } from "lucide-react";
 import Link from "next/link";
+import { Twemoji } from "@/components/ui/Twemoji";
 import { api } from "@/lib/api";
 import AuthLayout from "@/components/layout/AuthLayout";
 import CharacterBuilder from "@/components/training/CharacterBuilder";
@@ -403,7 +404,7 @@ function RecommendedTab({
   const recommendations = (() => {
     // Simple client-side recommendation engine
     // Groups recommendations into: main, skill-gap, challenge, new-group
-    const groups: { title: string; subtitle: string; color: string; archetypes: ArchetypeInfo[] }[] = [];
+    const groups: { title: string; icon?: string; subtitle: string; color: string; archetypes: ArchetypeInfo[] }[] = [];
 
     // 1. Main recommendation — moderate difficulty, varied groups
     const t1t2 = ARCHETYPES.filter((a) => a.tier <= 2 && a.difficulty <= 6);
@@ -428,7 +429,8 @@ function RecommendedTab({
       const g = ARCHETYPE_GROUPS[ng.key as keyof typeof ARCHETYPE_GROUPS];
       if (g && ng.archetypes.length > 0) {
         groups.push({
-          title: `${g.icon} ${g.label}`,
+          title: g.label,
+          icon: g.icon,
           subtitle: g.description,
           color: g.color,
           archetypes: ng.archetypes.slice(0, 3),
@@ -468,6 +470,7 @@ function RecommendedTab({
             <div className="flex items-center gap-2">
               {gi === 0 && <Sparkles size={18} style={{ color: group.color }} />}
               {gi === recommendations.length - 1 && <TrendingUp size={18} style={{ color: group.color }} />}
+              {group.icon && <Twemoji emoji={group.icon} size={18} />}
               <h3 className="font-display text-base font-bold tracking-wide" style={{ color: "var(--text-primary)" }}>
                 {group.title}
               </h3>

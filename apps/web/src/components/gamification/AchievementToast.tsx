@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Award } from "lucide-react";
+import { Twemoji } from "@/components/ui/Twemoji";
 import { useSound } from "@/hooks/useSound";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { Confetti } from "@/components/ui/Confetti";
@@ -79,7 +80,7 @@ export function AchievementToast({ achievement, onClose }: AchievementToastProps
             transition={reducedMotion ? {} : { duration: 0.6, delay: 0.3 }}
           >
             {achievement.icon ? (
-              <span className="text-2xl">{achievement.icon}</span>
+              <Twemoji emoji={achievement.icon} size={28} />
             ) : (
               <Award size={26} className="text-white" />
             )}
