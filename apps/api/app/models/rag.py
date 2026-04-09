@@ -236,9 +236,9 @@ class TraitCategory(str, enum.Enum):
 class PersonalityChunkSource(str, enum.Enum):
     """How this entry was created."""
     manual = "manual"
-    extracted_from_prompt = "extracted"
-    generated_llm = "generated"
-    learned_from_session = "learned"
+    extracted = "extracted"
+    generated = "generated"
+    learned = "learned"
 
 
 class PersonalityChunk(Base):
@@ -298,7 +298,7 @@ class PersonalityExample(Base):
     dialogue: Mapped[str] = mapped_column(Text, nullable=False)
     emotion: Mapped[str | None] = mapped_column(String(30), nullable=True)
     source: Mapped[PersonalityChunkSource] = mapped_column(
-        Enum(PersonalityChunkSource), default=PersonalityChunkSource.extracted_from_prompt
+        Enum(PersonalityChunkSource), default=PersonalityChunkSource.extracted
     )
 
     embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
