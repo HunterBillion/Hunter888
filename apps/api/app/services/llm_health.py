@@ -110,10 +110,49 @@ async def _broadcast_status_change(is_online: bool) -> None:
         logger.debug("Failed to broadcast LLM status change: %s", e)
 
 
+async def warm_up_model() -> None:
+    """Pre-warm the chat model so it stays in Ollama's RAM.
+
+    On M2 8GB, Ollama can only hold one model at a time.
+    This dummy request ensures gemma4 is loaded BEFORE any user session.
+    Also serves as keep-alive to prevent Ollama from unloading (default: 5min idle).
+    """
+    if not settings.local_llm_enabled or not settings.local_llm_url:
+        return
+
+    url = f"{settings.local_llm_url.rstrip('/')}/chat/completions"
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0)) as client:
+            resp = await client.post(
+                url,
+                headers={"Authorization": f"Bearer {settings.local_llm_api_key}"},
+                json={
+                    "model": settings.local_llm_model,
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 5,
+                },
+            )
+            if resp.status_code == 200:
+                logger.info("LLM warm-up: %s loaded and ready", settings.local_llm_model)
+            else:
+                logger.warning("LLM warm-up: status %d", resp.status_code)
+    except Exception as e:
+        logger.warning("LLM warm-up failed (model may cold-start on first request): %s", e)
+
+
+# Keep-alive interval: ping chat model every 4 min to prevent Ollama unloading (default 5min idle)
+_KEEP_ALIVE_INTERVAL = 240  # seconds
+
+
 async def _monitor_loop() -> None:
-    """Background loop: check Mac Mini every CHECK_INTERVAL seconds."""
+    """Background loop: check Mac Mini every CHECK_INTERVAL seconds + keep-alive ping."""
     global _last_known_status
-    logger.info("LLM health monitor started (interval=%ds)", CHECK_INTERVAL)
+    logger.info("LLM health monitor started (interval=%ds, keep-alive=%ds)", CHECK_INTERVAL, _KEEP_ALIVE_INTERVAL)
+
+    # Initial warm-up
+    await warm_up_model()
+
+    _ticks_since_keepalive = 0
 
     while True:
         try:
@@ -128,6 +167,12 @@ async def _monitor_loop() -> None:
                 await _broadcast_status_change(is_online)
 
             _last_known_status = is_online
+
+            # Keep-alive: ping chat model periodically to prevent Ollama unloading
+            _ticks_since_keepalive += CHECK_INTERVAL
+            if _ticks_since_keepalive >= _KEEP_ALIVE_INTERVAL and is_online:
+                _ticks_since_keepalive = 0
+                await warm_up_model()
 
         except asyncio.CancelledError:
             logger.info("LLM health monitor stopped")
