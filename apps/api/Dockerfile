@@ -38,10 +38,12 @@ EXPOSE 8000
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
-# Worker count: configurable via WEB_CONCURRENCY env var (default: 4)
+# Worker count: configurable via WEB_CONCURRENCY env var
+# Pilot: 2 workers (pool 50+20=70 × 2 = 140 < 200 max_connections)
+# Production: 4 workers (needs PgBouncer for >50 concurrent users)
 # --timeout 120: allow long WebSocket training sessions
 # --graceful-timeout 30: wait 30s for WS connections to close on deploy
-ENV WEB_CONCURRENCY=4
+ENV WEB_CONCURRENCY=2
 ENV PYTHONPATH=/app
 
 CMD ["gunicorn", "app.main:app", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--graceful-timeout", "30", "--access-logfile", "-"]

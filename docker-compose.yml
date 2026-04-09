@@ -47,6 +47,8 @@ services:
       --maxmemory 384mb
       --maxmemory-policy allkeys-lru
       --save 60 1000
+      --appendonly yes
+      --appendfsync everysec
       --tcp-keepalive 60
     ports:
       - "6379:6379"

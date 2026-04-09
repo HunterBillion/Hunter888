@@ -289,10 +289,22 @@ def _strip_stage_directions(text: str) -> str:
     return cleaned
 
 
+_WS_OUTGOING_MAX = 100  # Safety net: max queued messages per connection
+
 async def _send(ws: WebSocket, msg_type: str, data: dict) -> None:
-    """Helper to send a typed JSON message to the client."""
+    """Helper to send a typed JSON message to the client.
+    Includes backpressure safety: drops if outgoing queue exceeds limit.
+    """
     try:
+        # Starlette WebSocket doesn't expose queue size directly,
+        # but we can use a simple counter per-connection via ws.state
+        count = getattr(ws.state, "_outgoing_count", 0)
+        if count > _WS_OUTGOING_MAX:
+            logger.warning("WS outgoing queue overflow (%d), dropping %s", count, msg_type)
+            return
+        ws.state._outgoing_count = count + 1
         await ws.send_json({"type": msg_type, "data": data})
+        ws.state._outgoing_count = max(0, count)  # Decrement after successful send
     except Exception:
         logger.debug("Failed to send message type=%s", msg_type)
 
