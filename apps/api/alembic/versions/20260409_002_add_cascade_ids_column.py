@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "20260409_002"
-down_revision: Union[str, None] = "20260409_001"
+down_revision: Union[str, None] = "57bdac9bac0d"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
