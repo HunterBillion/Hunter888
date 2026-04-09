@@ -145,7 +145,7 @@ export default function LeaderboardPage() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className="relative flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-medium text-xs tracking-wide transition-colors"
+                  className="relative flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-medium text-sm tracking-wide transition-colors"
                   style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
                 >
                   {active && (
@@ -181,7 +181,7 @@ export default function LeaderboardPage() {
                     <motion.button
                       key={p.key}
                       onClick={() => setPeriod(p.key)}
-                      className="rounded-lg px-3 sm:px-4 py-2.5 font-medium text-xs sm:text-xs tracking-wide transition-all whitespace-nowrap"
+                      className="rounded-lg px-3 sm:px-4 py-2.5 font-medium text-sm tracking-wide transition-all whitespace-nowrap"
                       style={{
                         background: period === p.key ? "var(--accent-muted)" : "var(--input-bg)",
                         border: `1px solid ${period === p.key ? "var(--accent)" : "var(--border-color)"}`,
@@ -519,7 +519,7 @@ function CreateTournamentModal({ onClose, onCreated }: { onClose: () => void; on
 function LeaderboardList({
   loading,
   empty,
-  emptyText = "Пока нет данных за этот период",
+  emptyText = "Таблица пуста — займи первое место",
   items,
 }: {
   loading: boolean;

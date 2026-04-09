@@ -39,13 +39,13 @@ export function StreakCounter({ streak, className = "" }: StreakCounterProps) {
         className="font-mono text-sm font-black tabular-nums"
         style={{ color: isActive ? STREAK.color : "var(--text-muted)", letterSpacing: "-0.02em" }}
       >
-        {isActive ? streak : "0"}
+        {isActive ? streak : ""}
       </span>
       <span
         className="font-semibold text-xs uppercase tracking-wide"
         style={{ color: isActive ? STREAK.rgba(0.6) : "var(--text-muted)" }}
       >
-        {isActive ? dayLabel : "старт"}
+        {isActive ? dayLabel : "Начни серию"}
       </span>
     </motion.div>
   );

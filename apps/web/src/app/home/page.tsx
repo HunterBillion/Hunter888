@@ -145,11 +145,7 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0, duration: 0.6, ease: EASE_SNAP }}
-            className="relative rounded-2xl overflow-hidden p-6 sm:p-8 mb-6"
-            style={{
-              background: "linear-gradient(135deg, rgba(99,102,241,0.10) 0%, rgba(99,102,241,0.04) 50%, transparent 100%)",
-              border: "1px solid rgba(99,102,241,0.18)",
-            }}
+            className="relative rounded-2xl overflow-hidden p-6 sm:p-8 mb-6 glass-panel"
           >
             {/* Accent corner glow */}
             <div

@@ -1169,7 +1169,7 @@ export default function TrainingSessionPage() {
             <div className="flex items-center gap-2">
               <motion.div
                 className="w-2 h-2 rounded-full"
-                style={{ background: EMOTION_MAP[s.emotion]?.color || "#6D28D9" }}
+                style={{ background: EMOTION_MAP[s.emotion]?.color || "var(--brand-deep)" }}
                 animate={{
                   boxShadow: [
                     `0 0 4px ${EMOTION_MAP[s.emotion]?.glow || "rgba(109,40,217,0.4)"}`,
@@ -1183,7 +1183,7 @@ export default function TrainingSessionPage() {
                 <motion.span
                   key={s.emotion}
                   className="text-sm font-semibold"
-                  style={{ color: EMOTION_MAP[s.emotion]?.color || "#6D28D9" }}
+                  style={{ color: EMOTION_MAP[s.emotion]?.color || "var(--brand-deep)" }}
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 8 }}
@@ -1217,7 +1217,7 @@ export default function TrainingSessionPage() {
           {/* Avatar */}
           <div className="relative w-full max-w-[min(65vh,560px)] aspect-square flex items-center justify-center z-10">
             <div className="absolute inset-0 rounded-full opacity-20 blur-[60px] transition-colors duration-1000"
-              style={{ background: EMOTION_MAP[s.emotion]?.color || "#6D28D9" }}
+              style={{ background: EMOTION_MAP[s.emotion]?.color || "var(--brand-deep)" }}
             />
             <Avatar3D
               emotion={s.emotion}

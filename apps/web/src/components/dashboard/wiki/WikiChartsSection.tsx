@@ -35,7 +35,7 @@ const CHART_COMMON_OPTIONS = {
     legend: { display: false },
     tooltip: {
       backgroundColor: "rgba(17,24,39,0.95)",
-      titleColor: "#f3f4f6",
+      titleColor: "var(--text-primary)",
       bodyColor: "var(--text-muted)",
       borderColor: "rgba(255,255,255,0.1)",
       borderWidth: 1,

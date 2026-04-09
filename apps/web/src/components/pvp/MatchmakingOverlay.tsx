@@ -224,7 +224,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
               className="font-display text-2xl font-black tracking-wider"
               style={{ color: "var(--success)", textShadow: "0 0 20px rgba(0,255,102,0.25)" }}
             >
-              {opponentRating ? "МАТЧ НАЙДЕН" : "АРЕНА ГОТОВА"}
+              {opponentRating ? `Охотник ${Math.round(opponentRating)} бросает вызов` : "АРЕНА ГОТОВА"}
             </motion.h2>
 
             {/* VS layout */}

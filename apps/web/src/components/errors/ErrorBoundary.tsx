@@ -43,7 +43,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       const title = this.props.fallbackTitle || "Что-то пошло не так";
       const description =
         this.props.fallbackDescription ||
-        "Произошла ошибка при загрузке. Попробуйте перезагрузить.";
+        "Связь нестабильна. Попробуем через мгновение.";
 
       return (
         <div className="flex min-h-[400px] items-center justify-center p-8">

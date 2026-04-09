@@ -115,6 +115,10 @@ export default function ResultsPage() {
         if (score !== null && score !== undefined) {
           if (score >= 90) {
             setTimeout(() => setAchievement({ id: "ace", title: "Ас переговоров", description: "Набрано 90+ баллов за сессию", icon: "🏆" }), 1500);
+            // Emit perfect-score celebration
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent("gamification", { detail: { type: "perfect-score", score } }));
+            }, 800);
           } else if (score >= 70) {
             setTimeout(() => setAchievement({ id: "good", title: "Уверенный старт", description: "Набрано 70+ баллов за сессию", icon: "⭐" }), 1500);
           }

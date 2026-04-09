@@ -182,7 +182,7 @@ export const EMOTION_MAP: Record<string, EmotionConfig> = {
   guarded:      { label: "GUARDED",     labelRu: "Настороже",     color: "var(--info)", glow: "rgba(59,130,246,0.4)",  value: 20 },
   testing:      { label: "TESTING",     labelRu: "Проверяет",     color: "var(--warning)", glow: "rgba(245,158,11,0.4)",  value: 25 },
   curious:      { label: "CURIOUS",     labelRu: "Любопытен",     color: "#FFD700", glow: "rgba(255,215,0,0.4)",   value: 40 },
-  callback:     { label: "CALLBACK",    labelRu: "Перезвонит",    color: "#60A5FA", glow: "rgba(96,165,250,0.4)",  value: 45 },
+  callback:     { label: "CALLBACK",    labelRu: "Перезвонит",    color: "var(--info)", glow: "rgba(96,165,250,0.4)",  value: 45 },
   considering:  { label: "CONSIDERING", labelRu: "Обдумывает",    color: "#BF55EC", glow: "rgba(191,85,236,0.4)",  value: 60 },
   negotiating:  { label: "NEGOTIATING", labelRu: "Торгуется",     color: "var(--accent-hover)", glow: "rgba(167,139,250,0.4)", value: 75 },
   deal:         { label: "DEAL SYNC",   labelRu: "Сделка",        color: "#00FF94", glow: "rgba(0,255,148,0.4)",   value: 95 },

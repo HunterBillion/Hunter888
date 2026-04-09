@@ -57,14 +57,14 @@ interface AuditLogResponse {
 /* ─── Action metadata ─── */
 
 const ACTION_META: Record<string, { label: string; icon: typeof Eye; color: string }> = {
-  view_client:       { label: "Просмотр",           icon: Eye,       color: "#60A5FA" },
+  view_client:       { label: "Просмотр",           icon: Eye,       color: "var(--info)" },
   create_client:     { label: "Создание клиента",   icon: UserPlus,  color: "var(--success)" },
   update_client:     { label: "Обновление",         icon: Pencil,    color: "var(--warning)" },
   delete_client:     { label: "Удаление",           icon: Trash2,    color: "var(--danger)" },
   grant_consent:     { label: "Согласие выдано",     icon: FileCheck, color: "var(--success)" },
   revoke_consent:    { label: "Согласие отозвано",   icon: FileX,     color: "var(--danger)" },
   export_data:       { label: "Экспорт данных",     icon: Download,  color: "var(--accent-hover)" },
-  send_notification: { label: "Уведомление",        icon: Bell,      color: "#60A5FA" },
+  send_notification: { label: "Уведомление",        icon: Bell,      color: "var(--info)" },
   change_status:     { label: "Смена статуса",      icon: Activity,  color: "var(--warning)" },
   merge_clients:     { label: "Объединение",        icon: GitMerge,  color: "var(--accent-hover)" },
   bulk_reassign:     { label: "Перераспределение",  icon: Shuffle,   color: "#F472B6" },

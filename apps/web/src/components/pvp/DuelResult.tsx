@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, TrendingUp, TrendingDown, ArrowRight, Minus, ChevronDown, BookOpen, Zap } from "lucide-react";
 
@@ -61,6 +61,14 @@ export function DuelResult({
   turningPoint,
 }: Props) {
   const [showDetails, setShowDetails] = useState(false);
+
+  // Emit PvP win celebration event
+  useEffect(() => {
+    if (isWinner) {
+      window.dispatchEvent(new CustomEvent("gamification", { detail: { type: "pvp-win" } }));
+    }
+  }, [isWinner]);
+
   const resultColor = isDraw ? "var(--warning)" : isWinner ? "var(--success)" : "var(--danger)";
   const resultText = isDraw ? "Ничья" : isWinner ? "Победа!" : "Поражение";
   const deltaSign = myRatingDelta >= 0 ? "+" : "";

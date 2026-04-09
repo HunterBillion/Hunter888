@@ -6,7 +6,10 @@ import type { Achievement } from "@/types";
 export type GamificationEvent =
   | { type: "xp-gain"; amount: number }
   | { type: "level-up"; newLevel: number }
-  | { type: "streak-milestone"; days: number };
+  | { type: "streak-milestone"; days: number }
+  | { type: "pvp-win" }
+  | { type: "perfect-score"; score: number }
+  | { type: "first-session" };
 
 function emitGamificationEvent(event: GamificationEvent) {
   if (typeof window !== "undefined") {

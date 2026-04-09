@@ -251,7 +251,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                 <StatCard icon={Star} label="Лучший" value={report.best_score != null ? String(report.best_score) : "—"} color="#FFD700" />
                 <StatCard icon={Trophy} label="Win rate" value={report.win_rate != null ? `${Number(report.win_rate).toFixed(0)}%` : "—"} color="var(--success)" />
                 <StatCard icon={Zap} label="XP" value={`+${report.xp_earned}`} color="var(--warning)" />
-                <StatCard icon={Clock} label="Время" value={`${report.total_time_minutes} мин`} color="#60A5FA" />
+                <StatCard icon={Clock} label="Время" value={`${report.total_time_minutes} мин`} color="var(--info)" />
                 <StatCard
                   icon={TrendingUp}
                   label="Уровень"

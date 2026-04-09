@@ -11,7 +11,7 @@ const FACTOR_CONFIG: Record<string, { icon: typeof Brain; color: string; label: 
   anger: { icon: Flame, color: "#FF6B35", label: "Гнев" },
   fear: { icon: AlertTriangle, color: "var(--accent-hover)", label: "Страх" },
   distrust: { icon: Shield, color: "var(--info)", label: "Недоверие" },
-  sadness: { icon: Frown, color: "#60A5FA", label: "Грусть" },
+  sadness: { icon: Frown, color: "var(--info)", label: "Грусть" },
   empathy: { icon: Heart, color: "#EC4899", label: "Эмпатия" },
   default: { icon: Brain, color: "var(--accent)", label: "Фактор" },
 };

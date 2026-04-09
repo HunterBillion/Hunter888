@@ -165,7 +165,7 @@ function TrainingPageContent() {
               <div className="flex items-center gap-2">
                 <Link href="/training/archetypes">
                   <motion.button
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
                     style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" }}
                     whileTap={{ scale: 0.97 }}
                   >
@@ -273,7 +273,7 @@ function TrainingPageContent() {
                 <button
                   key={calls}
                   onClick={() => setStoryCalls(calls)}
-                  className="rounded-xl px-4 py-2 text-xs font-medium uppercase tracking-wide transition-all"
+                  className="rounded-xl px-4 py-2 text-sm font-medium uppercase tracking-wide transition-all"
                   style={{
                     background: storyCalls === calls ? "rgba(99,102,241,0.14)" : "var(--input-bg)",
                     border: `1px solid ${storyCalls === calls ? "rgba(99,102,241,0.42)" : "var(--border-color)"}`,
@@ -295,7 +295,7 @@ function TrainingPageContent() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className="relative flex-1 flex items-center justify-center gap-1.5 sm:gap-2 rounded-lg px-2 sm:px-4 py-2.5 text-xs sm:text-sm font-medium tracking-wide transition-colors whitespace-nowrap min-w-0"
+                  className="relative flex-1 flex items-center justify-center gap-1.5 sm:gap-2 rounded-lg px-2 sm:px-4 py-2.5 text-sm font-medium tracking-wide transition-colors whitespace-nowrap min-w-0"
                   style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
                 >
                   {active && (

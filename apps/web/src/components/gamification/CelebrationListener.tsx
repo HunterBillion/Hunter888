@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Flame, TrendingUp } from "lucide-react";
+import { Trophy, Flame, TrendingUp, Swords, Sparkles, Star } from "lucide-react";
 import { useSound } from "@/hooks/useSound";
 import type { GamificationEvent } from "@/stores/useGamificationStore";
 
@@ -32,10 +32,19 @@ export function CelebrationListener() {
         case "streak-milestone":
           playSound("streak");
           break;
+        case "pvp-win":
+          playSound("victory");
+          break;
+        case "perfect-score":
+          playSound("levelUp");
+          break;
+        case "first-session":
+          playSound("success");
+          break;
       }
 
       // Auto-dismiss
-      const duration = detail.type === "level-up" ? 3000 : 2000;
+      const duration = detail.type === "level-up" || detail.type === "pvp-win" || detail.type === "perfect-score" ? 3000 : 2000;
       setTimeout(() => setCelebration(null), duration);
     }
 
@@ -105,6 +114,68 @@ export function CelebrationListener() {
                 </div>
                 <div className="text-sm" style={{ color: "var(--text-muted)" }}>
                   Продолжай в том же духе
+                </div>
+              </div>
+            </div>
+          )}
+
+          {celebration.type === "pvp-win" && (
+            <div
+              className="flex items-center gap-3 rounded-2xl px-6 py-4 backdrop-blur-xl"
+              style={{
+                background: "linear-gradient(135deg, rgba(232, 166, 48, 0.25), rgba(255, 215, 0, 0.1))",
+                border: "1px solid rgba(255, 215, 0, 0.4)",
+                boxShadow: "0 8px 40px rgba(255, 215, 0, 0.3)",
+              }}
+            >
+              <Swords size={28} style={{ color: "#FFD700" }} />
+              <div>
+                <div className="font-bold text-lg" style={{ color: "#FFD700" }}>
+                  Победа в дуэли!
+                </div>
+                <div className="text-sm" style={{ color: "var(--text-muted)" }}>
+                  Соперник повержен
+                </div>
+              </div>
+            </div>
+          )}
+
+          {celebration.type === "perfect-score" && (
+            <div
+              className="flex items-center gap-3 rounded-2xl px-6 py-4 backdrop-blur-xl"
+              style={{
+                background: "linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(124, 106, 232, 0.15))",
+                border: "1px solid rgba(255, 215, 0, 0.35)",
+                boxShadow: "0 8px 40px rgba(255, 215, 0, 0.25), 0 0 60px rgba(124, 106, 232, 0.15)",
+              }}
+            >
+              <Star size={28} style={{ color: "#FFD700" }} />
+              <div>
+                <div className="font-bold text-lg" style={{ color: "#FFD700" }}>
+                  Идеальный результат! {celebration.score}/100
+                </div>
+                <div className="text-sm" style={{ color: "var(--text-muted)" }}>
+                  Мастерство на высшем уровне
+                </div>
+              </div>
+            </div>
+          )}
+
+          {celebration.type === "first-session" && (
+            <div
+              className="flex items-center gap-3 rounded-2xl px-6 py-4 backdrop-blur-xl"
+              style={{
+                background: "linear-gradient(135deg, var(--brand-deep), var(--accent))",
+                boxShadow: "0 8px 40px rgba(49, 21, 115, 0.5), 0 0 0 1px rgba(255,255,255,0.1)",
+              }}
+            >
+              <Sparkles size={28} className="text-white" />
+              <div>
+                <div className="text-white text-lg font-bold">
+                  Первая охота завершена!
+                </div>
+                <div className="text-white/70 text-sm">
+                  Добро пожаловать в мир Hunter888
                 </div>
               </div>
             </div>

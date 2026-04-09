@@ -7,8 +7,12 @@ type SoundName =
   // Arena sounds
   | "correct" | "incorrect" | "tick" | "challenge"
   | "match_start" | "victory" | "defeat" | "streak" | "rank_up"
+  // PvP sounds
+  | "pvpMatch" | "countdownTick"
   // Gamification sounds
-  | "click" | "xp" | "levelUp" | "notification";
+  | "click" | "xp" | "levelUp" | "notification"
+  // UI sounds
+  | "hover";
 
 export type { SoundName };
 
@@ -28,11 +32,16 @@ const SOUND_PATHS: Record<SoundName, string> = {
   defeat: "/sounds/defeat.mp3",
   streak: "/sounds/streak.mp3",
   rank_up: "/sounds/rank_up.mp3",
+  // PvP
+  pvpMatch: "",
+  countdownTick: "",
   // Gamification
   click: "/sounds/click.mp3",
   xp: "/sounds/xp.mp3",
   levelUp: "/sounds/levelup.mp3",
   notification: "/sounds/notification.mp3",
+  // UI
+  hover: "",
 };
 
 // ─── Multi-layer procedural sound synthesis ──────────────────────────────────
@@ -199,13 +208,15 @@ const SOUND_DESIGNS: Partial<Record<SoundName, SoundDesign>> = {
     ],
   },
 
-  // ── SUCCESS: warm confirming chord ──
+  // ── SUCCESS: rising chime — C5→G5 major, positive ──
   success: {
-    totalDur: 0.5,
+    totalDur: 0.4,
     layers: [
-      { freq: 523, type: "sine", gain: 0.3, dur: 0.35, attack: 0.01 },
-      { freq: 659, type: "sine", gain: 0.25, dur: 0.3, delay: 0.02 },
-      { freq: 784, type: "sine", gain: 0.2, dur: 0.25, delay: 0.04 },
+      { freq: 523, type: "sine", gain: 0.35, dur: 0.2, attack: 0.005 },
+      { freq: 784, type: "sine", gain: 0.35, dur: 0.2, delay: 0.15, attack: 0.005 },
+      // Shimmer harmonics
+      { freq: 1047, type: "sine", gain: 0.1, dur: 0.15, delay: 0.15 },
+      { freq: 1568, type: "sine", gain: 0.06, dur: 0.1, delay: 0.18 },
     ],
   },
 
@@ -241,13 +252,13 @@ const SOUND_DESIGNS: Partial<Record<SoundName, SoundDesign>> = {
     ],
   },
 
-  // ── FAIL: soft negative confirmation ──
+  // ── FAIL: descending tone 440→220Hz sweep, informational ──
   fail: {
-    totalDur: 0.5,
+    totalDur: 0.25,
     layers: [
-      { freq: 330, type: "sine", gain: 0.25, dur: 0.2, freqRamp: 0.8 },
-      { freq: 262, type: "sine", gain: 0.2, dur: 0.25, delay: 0.1 },
-      { freq: 196, type: "triangle", gain: 0.15, dur: 0.2, delay: 0.2 },
+      { freq: 440, type: "sine", gain: 0.3, dur: 0.2, freqRamp: 0.5, attack: 0.005 },
+      // Soft sub layer for body
+      { freq: 220, type: "triangle", gain: 0.12, dur: 0.15, delay: 0.05 },
     ],
   },
 
@@ -303,6 +314,34 @@ const SOUND_DESIGNS: Partial<Record<SoundName, SoundDesign>> = {
       { freq: 392, type: "sine", gain: 0.3, dur: 0.15, delay: 0.2 },
       { freq: 523, type: "sine", gain: 0.35, dur: 0.35, delay: 0.3 },
       { freq: 784, type: "sine", gain: 0.15, dur: 0.25, delay: 0.35 },
+    ],
+  },
+
+  // ── PVPMATCH: alert tone — 880Hz pulsed 3x, attention-grabbing ──
+  pvpMatch: {
+    totalDur: 0.5,
+    layers: [
+      { freq: 880, type: "sine", gain: 0.35, dur: 0.08, attack: 0.003 },
+      { freq: 880, type: "sine", gain: 0.35, dur: 0.08, delay: 0.16, attack: 0.003 },
+      { freq: 880, type: "sine", gain: 0.35, dur: 0.08, delay: 0.32, attack: 0.003 },
+      // Subtle harmonic on last pulse
+      { freq: 1760, type: "sine", gain: 0.1, dur: 0.06, delay: 0.33 },
+    ],
+  },
+
+  // ── COUNTDOWNTICK: single 1000Hz blip, 30ms, low volume ──
+  countdownTick: {
+    totalDur: 0.04,
+    layers: [
+      { freq: 1000, type: "sine", gain: 0.15, dur: 0.03, attack: 0.001 },
+    ],
+  },
+
+  // ── HOVER: very subtle 2000Hz blip, 20ms, barely audible ──
+  hover: {
+    totalDur: 0.03,
+    layers: [
+      { freq: 2000, type: "sine", gain: 0.05, dur: 0.02, attack: 0.001 },
     ],
   },
 };
