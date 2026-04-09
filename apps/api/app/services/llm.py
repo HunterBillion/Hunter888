@@ -469,12 +469,16 @@ def _resolve_provider(
 
 
 def _default_max_tokens(provider: str, task_type: str) -> int:
-    """Pick max_tokens based on provider and task type."""
+    """Pick max_tokens based on provider and task type.
+
+    Gemma 4 uses ~200-300 tokens for internal "thinking" before generating content.
+    Local models need higher max_tokens to accommodate thinking + actual response.
+    """
     if task_type in ("simple", "structured"):
-        return settings.llm_local_max_tokens_simple  # 400
+        return 600  # Was 400, increased for Gemma 4 thinking overhead
     if provider == "cloud":
         return 1200
-    return 800  # local default
+    return 1200  # Local: 800 response + ~300 thinking overhead for Gemma 4
 
 
 # ─── Centralized Embedding API ───────────────────────────────────────────────
