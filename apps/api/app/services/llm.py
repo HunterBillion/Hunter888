@@ -1457,38 +1457,53 @@ async def _call_local_llm(
     timeout: float,
 ) -> LLMResponse:
     """Call local LLM via OpenAI-compatible API (LM Studio / Ollama)."""
-    client = _get_local_client()
-    if client is None:
+    if not settings.local_llm_enabled or not settings.local_llm_url:
         raise LLMError("Local LLM not enabled")
 
-    oai_messages = [{"role": "system", "content": system_prompt}]
+    # Use Ollama native API (/api/chat) with think:false to disable Gemma 4 thinking mode.
+    # OpenAI-compat endpoint doesn't support think:false → content is empty.
+    ollama_base = settings.local_llm_url.replace("/v1", "").rstrip("/")
+    ollama_url = f"{ollama_base}/api/chat"
+
+    ollama_messages = [{"role": "system", "content": system_prompt}]
     for msg in messages:
-        oai_messages.append({"role": msg["role"], "content": msg["content"]})
+        ollama_messages.append({"role": msg["role"], "content": msg["content"]})
+
+    payload = {
+        "model": settings.local_llm_model,
+        "messages": ollama_messages,
+        "stream": False,
+        "think": False,  # Disable Gemma 4 thinking mode → 3-5x faster
+        "options": {
+            "num_predict": 800,
+            "temperature": 1.05,
+        },
+    }
 
     start = time.monotonic()
     try:
-        response = await client.chat.completions.create(
-            model=settings.local_llm_model,
-            messages=oai_messages,
-            max_tokens=800,
-            temperature=1.05,
-            timeout=timeout,
-        )
-    except openai.APIConnectionError:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=5.0)) as client:
+            resp = await client.post(ollama_url, json=payload)
+    except (httpx.ConnectError, httpx.ConnectTimeout):
         raise LLMError("Local LLM not reachable (is LM Studio / Ollama running?)")
-    except openai.APITimeoutError:
+    except httpx.ReadTimeout:
         raise LLMError("Local LLM timeout")
-    except openai.APIError as e:
+    except httpx.HTTPError as e:
         raise LLMError(f"Local LLM error: {e}")
 
     latency_ms = int((time.monotonic() - start) * 1000)
-    content = response.choices[0].message.content or ""
+
+    if resp.status_code != 200:
+        raise LLMError(f"Local LLM HTTP {resp.status_code}: {resp.text[:200]}")
+
+    data = resp.json()
+    content = data.get("message", {}).get("content", "")
 
     return LLMResponse(
         content=content,
-        model=f"local:{response.model or settings.local_llm_model}",
-        input_tokens=response.usage.prompt_tokens if response.usage else 0,
-        output_tokens=response.usage.completion_tokens if response.usage else 0,
+        model=f"local:{settings.local_llm_model}",
+        input_tokens=data.get("prompt_eval_count", 0),
+        output_tokens=data.get("eval_count", 0),
         latency_ms=latency_ms,
     )
 
