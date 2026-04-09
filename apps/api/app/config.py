@@ -45,11 +45,11 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""  # Get free: https://aistudio.google.com/apikey
     gemini_model: str = "gemini-2.5-flash"
 
-    # Local LLM (LM Studio / Ollama / CLIProxyAPI — OpenAI-compatible API)
-    local_llm_url: str = "http://localhost:8317/v1"
-    local_llm_model: str = "gemini-2.5-flash"
+    # Local LLM (Ollama / LM Studio / CLIProxyAPI — OpenAI-compatible API)
+    local_llm_url: str = "http://localhost:11434/v1"
+    local_llm_model: str = "gemma4:e2b"
     local_llm_enabled: bool = False  # Disabled by default; enable for local dev
-    local_llm_api_key: str = ""  # CLIProxyAPI API key — set in .env
+    local_llm_api_key: str = "ollama"  # Ollama doesn't require key; LM Studio may
     local_embedding_model: str = ""  # Embedding model on local LLM (e.g. "text-embedding-nomic-embed-text-v1.5")
 
     # Concurrency control (prevents API rate limit hits)

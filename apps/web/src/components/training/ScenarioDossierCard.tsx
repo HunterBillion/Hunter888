@@ -32,7 +32,7 @@ export function ScenarioDossierCard({ scenario, index, isStarting, onStart, onSt
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05, duration: 0.4 }}
-      className="relative overflow-hidden rounded-2xl transition-all duration-300 flex flex-col"
+      className="relative overflow-hidden rounded-2xl transition-all duration-300 flex flex-col h-full"
       style={{
         background: "var(--glass-bg)",
         border: `1px solid ${groupColor}25`,

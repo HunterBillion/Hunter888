@@ -291,7 +291,7 @@ export default function Home() {
                   <div className="font-display font-black leading-none" style={{ fontSize: "clamp(1.6rem, 6vw, 2.5rem)", color: "var(--accent)" }}>
                     <CountUp target={target} suffix={suffix} />
                   </div>
-                  <div className="font-display font-medium tracking-wide mt-1.5 uppercase" style={{ fontSize: "clamp(9px, 2vw, 13px)", color: "var(--text-muted)" }}>{label}</div>
+                  <div className="font-display font-medium tracking-wide mt-1.5 uppercase" style={{ fontSize: "clamp(11px, 2vw, 14px)", color: "var(--text-muted)" }}>{label}</div>
                 </div>
               </div>
             ))}

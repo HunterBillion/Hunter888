@@ -159,8 +159,8 @@ function PricingSection({ openRegister }: { openRegister: () => void }) {
               </div>
             )}
 
-            <div className={`relative z-10 ${tier.featured ? "pt-4" : ""}`}>
-              <h3 className="text-base font-bold tracking-wide uppercase mb-2" style={{ color: tier.featured ? "var(--accent)" : "var(--text-muted)" }}>
+            <div className={`relative z-10 ${tier.featured ? "pt-6" : ""}`}>
+              <h3 className="text-lg font-bold tracking-wide uppercase mb-3" style={{ color: tier.featured ? "var(--accent)" : "var(--text-muted)" }}>
                 {tier.label}
               </h3>
 

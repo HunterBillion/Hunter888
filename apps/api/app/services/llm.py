@@ -479,8 +479,11 @@ async def get_embeddings_batch(texts: list[str]) -> list[list[float]] | None:
     """
     client = _get_embedding_http_client()
 
-    # ── 1. Try Local LLM (Mac Mini via LM Studio /v1/embeddings) ──
-    if settings.local_llm_enabled and settings.local_llm_url:
+    # ── 1. Try Local LLM (Mac Mini via Ollama/LM Studio /v1/embeddings) ──
+    # NOTE: Gemma 4 E2B does NOT support embeddings. Requires separate embedding model
+    # (e.g. nomic-embed-text via Ollama: `ollama pull nomic-embed-text`).
+    # If no local embedding model available, falls through to Gemini cloud (step 2).
+    if settings.local_llm_enabled and settings.local_llm_url and settings.local_embedding_model:
         try:
             embed_url = f"{settings.local_llm_url.rstrip('/')}/embeddings"
             resp = await client.post(

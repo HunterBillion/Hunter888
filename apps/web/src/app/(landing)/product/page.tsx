@@ -71,11 +71,20 @@ export default function ProductPage() {
               <span style={{ color: "var(--text-primary)" }}>X Hunter</span>
             </h1>
 
-            <p className="text-lg sm:text-xl max-w-xl leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-              <strong style={{ color: "var(--text-primary)" }}>Шаг 1:</strong> Менеджер выбирает ситуацию — холодный звонок, жёсткие переговоры, кризис.{" "}
-              <strong style={{ color: "var(--text-primary)" }}>Шаг 2:</strong> Разговаривает с ИИ, который ведёт себя как настоящий клиент.{" "}
-              <strong style={{ color: "var(--text-primary)" }}>Шаг 3:</strong> Получает детальный разбор — что сработало, а где потерял клиента.
-            </p>
+            <div className="max-w-xl space-y-4 text-lg sm:text-xl leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+              <p>
+                <strong style={{ color: "var(--accent)", fontSize: "1.1em" }}>Шаг 1:</strong>{" "}
+                Менеджер выбирает ситуацию — холодный звонок, жёсткие переговоры, кризис.
+              </p>
+              <p>
+                <strong style={{ color: "var(--accent)", fontSize: "1.1em" }}>Шаг 2:</strong>{" "}
+                Разговаривает с ИИ, который ведёт себя как настоящий клиент.
+              </p>
+              <p>
+                <strong style={{ color: "var(--accent)", fontSize: "1.1em" }}>Шаг 3:</strong>{" "}
+                Получает детальный разбор — что сработало, а где потерял клиента.
+              </p>
+            </div>
 
             <div className="flex flex-wrap gap-5 pt-3">
               <div className="flex items-center gap-3 text-base" style={{ color: "var(--text-secondary)" }}>
@@ -230,7 +239,7 @@ export default function ProductPage() {
                 </h2>
               </div>
               <p className="text-lg leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                Менеджеры соревнуются друг с другом в реальном времени. Рейтинговая система как в шахматах — 24 ранга от Bronze до Diamond.
+                Менеджеры соревнуются друг с другом в реальном времени. Рейтинговая система — от Bronze до Diamond. Каждая победа приближает к следующему рангу.
               </p>
 
               {/* Features as simple text, not cards */}
@@ -253,7 +262,7 @@ export default function ProductPage() {
             {/* Rank visualization */}
             <div className="rounded-xl p-7 sm:p-8" style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}>
               <h3 className="text-base font-bold mb-1" style={{ color: "var(--text-muted)" }}>
-                24 ранга — от новичка до мастера
+                5 рангов — от Bronze до Diamond
               </h3>
               <p className="text-xs mb-5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
                 Целевое распределение

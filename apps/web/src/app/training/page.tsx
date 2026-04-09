@@ -748,7 +748,7 @@ function ScenariosTab({
           </p>
         </motion.div>
       ) : (
-        <div className="mt-6 grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6 grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 items-stretch">
           {filtered.map((scenario, i) => (
             <ScenarioDossierCard
               key={scenario.id}

@@ -224,14 +224,7 @@ export default function DashboardPage() {
                   ПАНЕЛЬ РОП
                 </h1>
               </div>
-              <button
-                onClick={handleExportPdf}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium uppercase tracking-wide transition-colors"
-                style={{ background: "var(--accent-muted)", color: "var(--accent)", border: "1px solid var(--accent)" }}
-              >
-                <ArrowRight size={14} />
-                Скачать PDF
-              </button>
+              {/* PDF export moved to Reports tab */}
             </div>
             <p className="mt-2 font-medium text-sm tracking-wide" style={{ color: "var(--text-muted)" }}>
               {data?.team.name ? `КОМАНДА: ${data.team.name.toUpperCase()}` : "АНАЛИТИКА КОМАНДЫ"}
