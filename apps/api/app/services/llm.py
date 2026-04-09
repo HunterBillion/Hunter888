@@ -31,16 +31,21 @@ _claude_client = None  # anthropic.AsyncAnthropic | None
 _openai_client: openai.AsyncOpenAI | None = None
 _gemini_http_client: httpx.AsyncClient | None = None
 
-# Global semaphore: limits concurrent LLM calls across all sessions
-_llm_semaphore: asyncio.Semaphore | None = None
+# Q11 fix: Two semaphores — realtime (user waiting) + background (can wait)
+_llm_sem_realtime: asyncio.Semaphore | None = None
+_llm_sem_background: asyncio.Semaphore | None = None
 
 
-def _get_llm_semaphore() -> asyncio.Semaphore:
-    """Lazy-init semaphore (must be created inside running event loop)."""
-    global _llm_semaphore
-    if _llm_semaphore is None:
-        _llm_semaphore = asyncio.Semaphore(settings.max_concurrent_llm_calls)
-    return _llm_semaphore
+def _get_llm_semaphore(task_type: str = "default") -> asyncio.Semaphore:
+    """Two semaphores: realtime (10 slots) for user-facing, background (5) for post-session."""
+    global _llm_sem_realtime, _llm_sem_background
+    if task_type in ("coach", "report", "wiki", "judge"):
+        if _llm_sem_background is None:
+            _llm_sem_background = asyncio.Semaphore(5)
+        return _llm_sem_background
+    if _llm_sem_realtime is None:
+        _llm_sem_realtime = asyncio.Semaphore(10)
+    return _llm_sem_realtime
 
 # ─── Circuit Breaker (Wave 1, Task 1.5) ──────────────────────────────────────
 
@@ -261,8 +266,8 @@ _GREETING_RESPONSES = [
 ]
 
 
-def _filter_output(text: str) -> tuple[str, list[str]]:
-    """Check LLM output for forbidden content."""
+def _filter_output(text: str, task_type: str = "default") -> tuple[str, list[str]]:
+    """Check LLM output for forbidden content + length bounds."""
     violations = []
 
     for pattern in _PROFANITY_PATTERNS:
@@ -279,6 +284,23 @@ def _filter_output(text: str) -> tuple[str, list[str]]:
         if re.search(pattern, text):
             violations.append("pii_leak")
             break
+
+    # Q17 fix: length filter for roleplay (20-300 words)
+    if task_type == "roleplay" and not violations:
+        word_count = len(text.split())
+        if word_count < 3:
+            violations.append("too_short")
+            logger.debug("Output too short (%d words): %s", word_count, text[:50])
+        elif word_count > 300:
+            # Truncate instead of rejecting — find sentence boundary near 300 words
+            words = text.split()
+            truncated = " ".join(words[:250])
+            last_period = truncated.rfind(".")
+            if last_period > len(truncated) * 0.5:
+                text = truncated[:last_period + 1]
+            else:
+                text = truncated + "..."
+            logger.debug("Output truncated from %d to ~250 words", word_count)
 
     if violations:
         logger.warning("Output filter triggered: %s", violations)
@@ -1781,7 +1803,7 @@ async def generate_response(
 
     trimmed = _trim_history(messages, settings.llm_max_history_messages)
     timeout = float(settings.llm_timeout_seconds)
-    semaphore = _get_llm_semaphore()
+    semaphore = _get_llm_semaphore(task_type)
 
     logger.info(
         "LLM route: prefer=%s → resolved=%s, task=%s, prompt_tokens≈%d, max_tokens=%d",
@@ -1789,7 +1811,7 @@ async def generate_response(
     )
 
     def _apply_filter(resp: LLMResponse) -> LLMResponse:
-        filtered_content, violations = _filter_output(resp.content)
+        filtered_content, violations = _filter_output(resp.content, task_type)
         if violations:
             resp.content = filtered_content
             resp.filter_violations = violations

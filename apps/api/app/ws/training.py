@@ -540,13 +540,33 @@ async def _handle_session_resume(
         custom_difficulty = custom_params.get("difficulty")
 
         state["character_prompt_path"] = character.prompt_path if character else None
+        state["character_name"] = character.name if character else ""
         state["archetype_code"] = custom_archetype or (character.slug if character else None)
         state["base_difficulty"] = custom_difficulty or (scenario.difficulty if scenario else 5)
         state["script_id"] = scenario.script_id if scenario else None
-        state["matched_checkpoints"] = set()  # Past matches already scored; fresh set for remainder
+        state["matched_checkpoints"] = set()
         state["last_character_message"] = ""
         state["fake_transition_prompt"] = ""
         state["stt_failure_count"] = 0
+
+        # C2 fix: restore story mode fields from session record
+        if session.client_story_id:
+            state["story_id"] = str(session.client_story_id)
+            state["call_number"] = session.call_number_in_story or 1
+        else:
+            state["story_id"] = None
+            state["call_number"] = 1
+
+        # Restore message count from DB if Redis lost it
+        if state.get("message_count", 0) == 0:
+            try:
+                from sqlalchemy import func as _sqf
+                msg_count_result = await db_resume.execute(
+                    select(_sqf.count(Message.id)).where(Message.session_id == session_id)
+                )
+                state["message_count"] = msg_count_result.scalar() or 0
+            except Exception:
+                pass
 
         # Restore template_checkpoints for scenarios without script_id
         state["template_checkpoints"] = None
@@ -4201,8 +4221,12 @@ async def training_websocket(websocket: WebSocket) -> None:
     _rate_limiter = training_limiter()
 
     try:
+        # H6 fix: include TTS/STT availability status so frontend can show banners
         await _send(websocket, "session.ready", {
             "message": err.WS_AUTHENTICATED,
+            "tts_available": settings.elevenlabs_enabled and is_tts_available(),
+            "stt_available": True,  # TODO: check Whisper service health
+            "llm_provider": "local" if settings.local_llm_enabled else "cloud",
         })
 
         while True:

@@ -300,21 +300,39 @@ export default function TrainingSessionPage() {
         case "session.ended":
           tts.stop();
           if (timerRef.current) clearInterval(timerRef.current);
-          if (isStoryMode) {
-            setStoryTransitionText("ФОРМИРУЕМ ОТЧЁТ ЗВОНКА...");
-            s.setSessionState("connecting");
-          } else {
+          {
+            // H2 fix: both story mode and single-call get immediate results
             s.setSessionState("completed");
-            // Show celebration overlay with score before redirecting
             const ended = data.data as Record<string, unknown> | undefined;
             const endedScores = ended?.scores as Record<string, number> | undefined;
-            const endedXp = ended?.xp_breakdown as Record<string, number> | undefined;
             sessionEndedRef.current = {
               score: (endedScores?.total as number) ?? null,
-              xp: (endedXp?.grand_total as number) ?? null,
-              levelUp: Boolean(ended?.level_up),
+              xp: null, // XP arrives later via session.xp_update (C4 fix)
+              levelUp: false,
             };
-            setTimeout(() => router.push(`/results/${routeId}`), 3500);
+            if (isStoryMode) {
+              setStoryTransitionText("ЗВОНОК ЗАВЕРШЁН. ФОРМИРУЕМ ОТЧЁТ...");
+              // H2 fix: timeout → redirect to results if no story.next_call in 15s
+              setTimeout(() => {
+                if (s.sessionState === "completed") {
+                  router.push(`/results/${routeId}`);
+                }
+              }, 15000);
+            } else {
+              setTimeout(() => router.push(`/results/${routeId}`), 3500);
+            }
+          }
+          break;
+
+        case "session.xp_update":
+          // C4 fix: XP/level arrives after background processing
+          {
+            const xpData = data.data as Record<string, unknown> | undefined;
+            const xpBreakdown = xpData?.xp_breakdown as Record<string, number> | undefined;
+            if (sessionEndedRef.current) {
+              sessionEndedRef.current.xp = (xpBreakdown?.grand_total as number) ?? null;
+              sessionEndedRef.current.levelUp = Boolean(xpData?.level_up);
+            }
           }
           break;
 
