@@ -52,9 +52,9 @@ export default function RealtimeScores() {
       </div>
 
       <div className="space-y-2">
-        <ScoreBar label="Возражения" value={scores.objection_handling} color="var(--neon-red, #ef4444)" />
+        <ScoreBar label="Возражения" value={scores.objection_handling} color="var(--danger)" />
         <ScoreBar label="Коммуникация" value={scores.communication} color="var(--accent, #6366f1)" />
-        <ScoreBar label="Человечность" value={scores.human_factor} color="var(--neon-green, #22c55e)" />
+        <ScoreBar label="Человечность" value={scores.human_factor} color="var(--success)" />
       </div>
     </div>
   );

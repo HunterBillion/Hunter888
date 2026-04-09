@@ -50,7 +50,7 @@ export function ThemeToggle() {
             animate={{ scale: 2.5, opacity: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.6, ease: "easeOut" }}
-            style={{ background: isDark ? "var(--neon-amber)" : "var(--accent)" }}
+            style={{ background: isDark ? "var(--warning)" : "var(--accent)" }}
           />
         )}
       </AnimatePresence>
@@ -77,7 +77,7 @@ export function ThemeToggle() {
             transition={{ duration: 0.25, ease: "easeOut" }}
             className="relative z-10"
           >
-            <Sun size={17} style={{ color: "var(--neon-amber)" }} />
+            <Sun size={17} style={{ color: "var(--warning)" }} />
           </motion.div>
         )}
       </AnimatePresence>

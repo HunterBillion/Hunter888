@@ -218,8 +218,8 @@ function MicTest({ onResult }: { onResult: (ok: boolean) => void }) {
           className="rounded-xl p-6 flex flex-col items-center gap-3"
           style={{ background: "rgba(0,255,148,0.05)", border: "1px solid rgba(0,255,148,0.2)" }}
         >
-          <Check size={32} style={{ color: "var(--neon-green)" }} />
-          <span className="font-medium" style={{ color: "var(--neon-green)" }}>Микрофон работает!</span>
+          <Check size={32} style={{ color: "var(--success)" }} />
+          <span className="font-medium" style={{ color: "var(--success)" }}>Микрофон работает!</span>
         </motion.div>
       )}
 
@@ -228,8 +228,8 @@ function MicTest({ onResult }: { onResult: (ok: boolean) => void }) {
           className="rounded-xl p-6 flex flex-col items-center gap-3"
           style={{ background: "rgba(255,42,109,0.05)", border: "1px solid rgba(255,42,109,0.2)" }}
         >
-          <Mic size={32} style={{ color: "var(--neon-red)" }} />
-          <span className="font-medium" style={{ color: "var(--neon-red)" }}>Микрофон недоступен</span>
+          <Mic size={32} style={{ color: "var(--danger)" }} />
+          <span className="font-medium" style={{ color: "var(--danger)" }}>Микрофон недоступен</span>
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>Можно использовать текстовый ввод</span>
           <button type="button" onClick={startTest} className="text-xs mt-1" style={{ color: "var(--accent)" }}>
             Попробовать снова
@@ -325,7 +325,7 @@ function TrialDialog() {
       )}
 
       {responded && (
-        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-center" style={{ color: "var(--neon-green)" }}>
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-center" style={{ color: "var(--success)" }}>
           ✅ Отлично! Вы готовы к настоящим тренировкам
         </motion.p>
       )}

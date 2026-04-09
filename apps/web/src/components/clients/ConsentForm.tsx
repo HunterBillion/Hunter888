@@ -44,7 +44,7 @@ export function ConsentForm({ onSubmit }: ConsentFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>
+        <label className="block text-xs font-medium tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>
           Тип согласия
         </label>
         <select
@@ -59,7 +59,7 @@ export function ConsentForm({ onSubmit }: ConsentFormProps) {
       </div>
 
       <div>
-        <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>
+        <label className="block text-xs font-medium tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>
           Канал получения
         </label>
         <select

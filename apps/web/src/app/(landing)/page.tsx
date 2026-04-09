@@ -166,9 +166,9 @@ function ScoringTerminal() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.25 }}
             style={{
-              color: line.text.includes("⚠") ? "var(--neon-red)"
-                : line.text.includes("✓") ? "var(--neon-green)"
-                : line.text.includes("Итог") ? "var(--neon-green)"
+              color: line.text.includes("⚠") ? "var(--danger)"
+                : line.text.includes("✓") ? "var(--success)"
+                : line.text.includes("Итог") ? "var(--success)"
                 : line.text.includes(">") ? "var(--accent)"
                 : "var(--text-secondary)",
             }}
@@ -311,7 +311,7 @@ export default function Home() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.85 }} className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5">
             {TRUST.map((t) => (
               <span key={t} className="flex items-center gap-2 text-sm sm:text-base" style={{ color: "var(--text-secondary)" }}>
-                <CheckCircle2 size={16} style={{ color: "var(--neon-green)", flexShrink: 0 }} />{t}
+                <CheckCircle2 size={16} style={{ color: "var(--success)", flexShrink: 0 }} />{t}
               </span>
             ))}
           </motion.div>
@@ -373,16 +373,16 @@ export default function Home() {
                   <div className="rounded-lg p-5 sm:p-6" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)" }}>
                     <h3 className="text-sm font-bold uppercase mb-5" style={{ color: "var(--text-muted)" }}>По типам клиентов</h3>
                     <div className="space-y-4">
-                      <ScoreBar label="Скептики" value={87} color="var(--neon-green)" />
+                      <ScoreBar label="Скептики" value={87} color="var(--success)" />
                       <ScoreBar label="Переговорщики" value={64} color="var(--text-muted)" />
-                      <ScoreBar label="Агрессоры" value={42} color="var(--neon-red)" />
+                      <ScoreBar label="Агрессоры" value={42} color="var(--danger)" />
                     </div>
                   </div>
 
                   <div className="rounded-lg p-5 sm:p-6" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)" }}>
                     <h3 className="text-sm font-bold uppercase mb-5" style={{ color: "var(--text-muted)" }}>Оценка звонка</h3>
                     <div className="space-y-4">
-                      <ScoreBar label="Следование скрипту" value={92} color="var(--neon-green)" />
+                      <ScoreBar label="Следование скрипту" value={92} color="var(--success)" />
                       <ScoreBar label="Работа с возражениями" value={71} color="var(--text-muted)" />
                     </div>
                   </div>

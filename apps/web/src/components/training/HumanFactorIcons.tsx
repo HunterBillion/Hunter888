@@ -6,7 +6,7 @@ import type { HumanFactor } from "@/types/story";
 import { colorAlpha } from "@/lib/utils";
 
 const FACTOR_CONFIG: Record<string, { icon: typeof Brain; color: string; label: string }> = {
-  stress: { icon: Zap, color: "var(--neon-red)", label: "Стресс" },
+  stress: { icon: Zap, color: "var(--danger)", label: "Стресс" },
   fatigue: { icon: Clock, color: "#F59E0B", label: "Усталость" },
   anger: { icon: Flame, color: "#FF6B35", label: "Гнев" },
   fear: { icon: AlertTriangle, color: "#A78BFA", label: "Страх" },

@@ -33,7 +33,7 @@ export function RoundIndicator({ roundNumber, myRole, timeRemaining }: Props) {
               key={r}
               className="w-8 h-1.5 rounded-full"
               style={{
-                background: r === roundNumber ? "var(--accent)" : r < roundNumber ? "var(--neon-green)" : "var(--input-bg)",
+                background: r === roundNumber ? "var(--accent)" : r < roundNumber ? "var(--success)" : "var(--input-bg)",
               }}
             />
           ))}
@@ -68,7 +68,7 @@ export function RoundIndicator({ roundNumber, myRole, timeRemaining }: Props) {
       {/* Timer */}
       <div
         className={`font-mono text-lg font-bold ${isLow && !reducedMotion ? "animate-pulse" : ""}`}
-        style={{ color: isLow ? "var(--neon-red)" : "var(--text-primary)" }}
+        style={{ color: isLow ? "var(--danger)" : "var(--text-primary)" }}
       >
         {mins}:{secs.toString().padStart(2, "0")}
       </div>

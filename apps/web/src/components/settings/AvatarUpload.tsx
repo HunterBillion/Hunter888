@@ -126,7 +126,7 @@ export function AvatarUpload({ currentUrl, userName, size = 48, onUploaded, onDe
           onClick={handleDelete}
           className="ml-1"
           style={{ color: "var(--text-muted)" }}
-          whileHover={{ color: "var(--neon-red, #FF3333)" }}
+          whileHover={{ color: "var(--danger)" }}
           whileTap={{ scale: 0.9 }}
           title="Удалить фото"
         >
@@ -135,7 +135,7 @@ export function AvatarUpload({ currentUrl, userName, size = 48, onUploaded, onDe
       )}
 
       {error && (
-        <span className="text-xs ml-1" style={{ color: "var(--neon-red, #FF3333)" }}>
+        <span className="text-xs ml-1" style={{ color: "var(--danger)" }}>
           {error}
         </span>
       )}

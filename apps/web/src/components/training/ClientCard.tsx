@@ -165,7 +165,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
             {/* Total debt */}
             <div className="rounded-xl p-4 mb-4" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>
               <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>ОБЩИЙ ДОЛГ</div>
-              <div className="font-display text-3xl font-bold" style={{ color: "var(--neon-red, #FF3333)" }}>
+              <div className="font-display text-3xl font-bold" style={{ color: "var(--danger)" }}>
                 <CountUp value={clientCard.total_debt} /> <span className="text-sm font-normal" style={{ color: "var(--text-muted)" }}>₽</span>
               </div>
             </div>
@@ -184,7 +184,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
                       <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
                         <motion.div
                           className="h-full rounded-full"
-                          style={{ background: i === 0 ? "var(--accent)" : i === 1 ? "var(--magenta)" : "var(--neon-amber)" }}
+                          style={{ background: i === 0 ? "var(--accent)" : i === 1 ? "var(--magenta)" : "var(--warning)" }}
                           initial={{ width: 0 }}
                           animate={{ width: `${(c.amount / maxCreditor) * 100}%` }}
                           transition={{ duration: 0.8, delay: 0.3 + i * 0.1 }}

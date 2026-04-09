@@ -20,9 +20,9 @@ export default function ClientReveal({ clientCard }: ClientRevealProps) {
 
   const revealItems = [
     { icon: Brain, label: "Архетип", value: clientCard.archetype_code, color: "var(--accent)" },
-    { icon: AlertTriangle, label: "Страхи", value: clientCard.fears?.join(", "), color: "var(--neon-red, #FF2A6D)" },
-    { icon: Heart, label: "Мягкая точка", value: clientCard.soft_spot, color: "var(--neon-green, #00FF94)" },
-    { icon: Target, label: "Точка слома", value: clientCard.breaking_point, color: "var(--neon-amber, #FFD700)" },
+    { icon: AlertTriangle, label: "Страхи", value: clientCard.fears?.join(", "), color: "var(--danger)" },
+    { icon: Heart, label: "Мягкая точка", value: clientCard.soft_spot, color: "var(--success)" },
+    { icon: Target, label: "Точка слома", value: clientCard.breaking_point, color: "var(--warning)" },
     { icon: Shield, label: "Скрытые возражения", value: clientCard.hidden_objections?.join(", "), color: "var(--magenta, #E028CC)" },
   ].filter((item) => item.value);
 

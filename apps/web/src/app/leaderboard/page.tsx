@@ -160,7 +160,7 @@ export default function LeaderboardPage() {
                     <Icon size={14} style={{ color: active ? "var(--accent)" : "var(--text-muted)" }} />
                     {t.label}
                     {t.id === "tournament" && tournament?.tournament && (
-                      <span className="flex h-2 w-2 rounded-full" style={{ background: "var(--neon-green, #00FF66)" }} />
+                      <span className="flex h-2 w-2 rounded-full" style={{ background: "var(--success)" }} />
                     )}
                   </span>
                 </button>
@@ -319,10 +319,10 @@ export default function LeaderboardPage() {
                               <span className="stat-chip text-xs" style={{ color: "var(--accent)" }}>
                                 T:{Math.round(entry.training_avg)}
                               </span>
-                              <span className="stat-chip text-xs" style={{ color: "var(--neon-green, #00FF94)" }}>
+                              <span className="stat-chip text-xs" style={{ color: "var(--success)" }}>
                                 P:{Math.round(entry.pvp_rating_norm)}
                               </span>
-                              <span className="stat-chip text-xs" style={{ color: "var(--neon-amber, #FFD700)" }}>
+                              <span className="stat-chip text-xs" style={{ color: "var(--warning)" }}>
                                 K:{Math.round(entry.knowledge_score)}
                               </span>
                               <span className="stat-chip text-xs" style={{ color: "var(--warning)" }}>
@@ -497,7 +497,7 @@ function CreateTournamentModal({ onClose, onCreated }: { onClose: () => void; on
           </div>
 
           {error && (
-            <p className="text-xs" style={{ color: "var(--neon-red, #FF3333)" }}>{error}</p>
+            <p className="text-xs" style={{ color: "var(--danger)" }}>{error}</p>
           )}
 
           <motion.button

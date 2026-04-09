@@ -108,8 +108,8 @@ export default function ScriptAdherence({
               border: "1px solid rgba(0, 255, 148, 0.3)",
             }}
           >
-            <CheckCircle2 size={14} style={{ color: "var(--neon-green, #00FF94)" }} strokeWidth={2.5} />
-            <span className="text-xs font-semibold" style={{ color: "var(--neon-green, #00FF94)" }}>
+            <CheckCircle2 size={14} style={{ color: "var(--success)" }} strokeWidth={2.5} />
+            <span className="text-xs font-semibold" style={{ color: "var(--success)" }}>
               {flashCheckpoint}
             </span>
           </motion.div>
@@ -144,7 +144,7 @@ export default function ScriptAdherence({
                       >
                         <CheckCircle2
                           size={20}
-                          style={{ color: "var(--neon-green, #00FF94)" }}
+                          style={{ color: "var(--success)" }}
                           strokeWidth={2.5}
                         />
                       </motion.div>
@@ -236,7 +236,7 @@ export default function ScriptAdherence({
                   {checkpoints.map((cp) => (
                     <div key={cp.id} className="flex items-center gap-2">
                       {cp.hit ? (
-                        <CheckCircle2 size={16} style={{ color: "var(--neon-green, #00FF94)" }} strokeWidth={2.5} />
+                        <CheckCircle2 size={16} style={{ color: "var(--success)" }} strokeWidth={2.5} />
                       ) : (
                         <Circle size={16} style={{ color: "var(--border-color)" }} strokeWidth={1.5} />
                       )}

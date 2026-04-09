@@ -275,8 +275,6 @@ function DuelPage() {
 
   return (
     <div className="flex h-screen flex-col" style={{ background: "var(--bg-primary)" }}>
-      {/* Scanlines */}
-      <div className="fixed inset-0 scanlines z-[100] opacity-10 mix-blend-overlay pointer-events-none" />
 
       {/* Header */}
       <header
@@ -367,7 +365,7 @@ function DuelPage() {
             </div>
             <div className="text-center">
               <div className="font-mono text-xs uppercase" style={{ color: "var(--text-muted)" }}>Юр. точность</div>
-              <div className="font-bold" style={{ color: "var(--neon-green)" }}>{Math.round(store.judgeScore.legal_accuracy)}</div>
+              <div className="font-bold" style={{ color: "var(--success)" }}>{Math.round(store.judgeScore.legal_accuracy)}</div>
             </div>
           </motion.div>
         )}

@@ -77,7 +77,7 @@ export function CRMClientCard({ client, compact, userRole }: ClientCardProps) {
               {client.next_contact_at && (
                 <span
                   className="flex items-center gap-1 text-xs"
-                  style={{ color: isOverdue ? "var(--neon-red, #FF3333)" : "var(--text-muted)" }}
+                  style={{ color: isOverdue ? "var(--danger)" : "var(--text-muted)" }}
                 >
                   <Calendar size={11} /> {formatDate(client.next_contact_at)}
                 </span>

@@ -88,7 +88,7 @@ function PlayerRow({
         background: isWinner ? "rgba(0,255,148,0.07)" : "transparent",
       }}
     >
-      {isWinner && <Trophy size={13} style={{ color: "var(--neon-green)" }} className="shrink-0" />}
+      {isWinner && <Trophy size={13} style={{ color: "var(--success)" }} className="shrink-0" />}
       {!isWinner && isCompleted && <Minus size={13} style={{ color: "var(--text-muted)" }} className="shrink-0" />}
       <span
         className="text-xs font-mono truncate flex-1"
@@ -100,8 +100,8 @@ function PlayerRow({
         {name}
       </span>
       {score !== null && (
-        <span className="stat-chip" style={{ ["--stat-color" as string]: isWinner ? "var(--neon-green)" : "var(--text-muted)" }}>
-          <span className="stat-chip__value" style={{ color: isWinner ? "var(--neon-green)" : "var(--text-muted)" }}>
+        <span className="stat-chip" style={{ ["--stat-color" as string]: isWinner ? "var(--success)" : "var(--text-muted)" }}>
+          <span className="stat-chip__value" style={{ color: isWinner ? "var(--success)" : "var(--text-muted)" }}>
             {Math.round(score)}
           </span>
         </span>
@@ -181,8 +181,8 @@ export function BracketView({ bracket }: Props) {
           className="glow-card"
         >
           <div className="glow-card-inner rounded-xl p-6 text-center">
-            <Trophy size={32} className="mx-auto mb-2 neon-pulse" style={{ color: "var(--neon-amber, #FFD700)" }} />
-            <div className="font-display text-xl font-bold" style={{ color: "var(--neon-amber, #FFD700)" }}>
+            <Trophy size={32} className="mx-auto mb-2 neon-pulse" style={{ color: "var(--warning)" }} />
+            <div className="font-display text-xl font-bold" style={{ color: "var(--warning)" }}>
               {bracket.participants.find((p) => p.final_placement === 1)?.full_name}
             </div>
             <div className="badge-neon mt-2" style={{ display: "inline-block" }}>

@@ -9,9 +9,9 @@ interface TalkListenRatioProps {
 }
 
 function getTalkColor(pct: number): string {
-  if (pct <= 40) return "var(--neon-green, #00FF94)";
-  if (pct <= 60) return "var(--neon-amber, #FFD700)";
-  return "var(--neon-red, #FF2A6D)";
+  if (pct <= 40) return "var(--success)";
+  if (pct <= 60) return "var(--warning)";
+  return "var(--danger)";
 }
 
 export default function TalkListenRatio({ talkPercent }: TalkListenRatioProps) {

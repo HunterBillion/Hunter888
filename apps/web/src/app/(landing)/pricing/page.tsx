@@ -135,7 +135,7 @@ function PricingSection({ openRegister }: { openRegister: () => void }) {
           />
         </button>
         <span className="text-sm font-medium" style={{ color: annual ? "var(--text-primary)" : "var(--text-muted)" }}>
-          Год <span className="text-xs font-bold ml-1" style={{ color: "var(--neon-green)" }}>-20%</span>
+          Год <span className="text-xs font-bold ml-1" style={{ color: "var(--success)" }}>-20%</span>
         </span>
       </div>
 
@@ -185,7 +185,7 @@ function PricingSection({ openRegister }: { openRegister: () => void }) {
                   <li key={f} className="flex items-start gap-3 text-sm sm:text-base" style={{ color: tier.featured ? "var(--text-primary)" : "var(--text-secondary)" }}>
                     {tier.featured
                       ? <Zap size={16} className="mt-1 flex-shrink-0" style={{ color: "var(--accent)" }} />
-                      : <CheckCircle2 size={16} className="mt-1 flex-shrink-0" style={{ color: "var(--neon-green)" }} />
+                      : <CheckCircle2 size={16} className="mt-1 flex-shrink-0" style={{ color: "var(--success)" }} />
                     }
                     {f}
                   </li>

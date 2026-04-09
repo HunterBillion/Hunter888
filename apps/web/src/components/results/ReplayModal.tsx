@@ -60,7 +60,7 @@ function scoreDeltaBadge(delta: number | null) {
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold"
       style={{
         background: isPositive ? "rgba(0,255,148,0.15)" : "rgba(255,51,51,0.15)",
-        color: isPositive ? "var(--neon-green)" : "var(--neon-red)",
+        color: isPositive ? "var(--success)" : "var(--danger)",
         border: `1px solid ${isPositive ? "rgba(0,255,148,0.3)" : "rgba(255,51,51,0.3)"}`,
       }}
     >
@@ -250,7 +250,7 @@ export default function ReplayModal({
               style={{
                 background: "rgba(255,51,51,0.1)",
                 border: "1px solid rgba(255,51,51,0.3)",
-                color: "var(--neon-red)",
+                color: "var(--danger)",
               }}
             >
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
@@ -268,8 +268,8 @@ export default function ReplayModal({
               {/* Ideal response */}
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <Sparkles className="w-4 h-4" style={{ color: "var(--neon-green, #00FF94)" }} />
-                  <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--neon-green, #00FF94)" }}>
+                  <Sparkles className="w-4 h-4" style={{ color: "var(--success)" }} />
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--success)" }}>
                     Идеальный ответ
                   </p>
                   {scoreDeltaBadge(result.score_delta)}
@@ -332,19 +332,19 @@ export default function ReplayModal({
                         {result.original_score_estimate.toFixed(1)}/100
                       </p>
                     </div>
-                    <ArrowRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--neon-green, #00FF94)" }} />
+                    <ArrowRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--success)" }} />
                     <div className="flex-1">
-                      <p className="text-xs mb-1" style={{ color: "var(--neon-green, #00FF94)" }}>С идеальным</p>
+                      <p className="text-xs mb-1" style={{ color: "var(--success)" }}>С идеальным</p>
                       <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.05)" }}>
                         <div
                           className="h-full rounded-full transition-all"
                           style={{
                             width: `${result.ideal_score_estimate}%`,
-                            background: "var(--neon-green, #00FF94)",
+                            background: "var(--success)",
                           }}
                         />
                       </div>
-                      <p className="text-xs mt-1 font-mono" style={{ color: "var(--neon-green, #00FF94)" }}>
+                      <p className="text-xs mt-1 font-mono" style={{ color: "var(--success)" }}>
                         {result.ideal_score_estimate.toFixed(1)}/100
                       </p>
                     </div>
@@ -356,8 +356,8 @@ export default function ReplayModal({
               {result.layer_impact && Object.keys(result.layer_impact).length > 0 && (
                 <div>
                   <div className="flex items-center gap-2 mb-2">
-                    <Zap className="w-4 h-4" style={{ color: "var(--neon-amber, #F59E0B)" }} />
-                    <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--neon-amber, #F59E0B)" }}>
+                    <Zap className="w-4 h-4" style={{ color: "var(--warning)" }} />
+                    <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--warning)" }}>
                       Влияние по слоям
                     </p>
                   </div>
@@ -369,7 +369,7 @@ export default function ReplayModal({
                         style={{
                           background: "rgba(245,158,11,0.1)",
                           border: "1px solid rgba(245,158,11,0.25)",
-                          color: "var(--neon-amber, #F59E0B)",
+                          color: "var(--warning)",
                         }}
                       >
                         {layer}: {delta}
@@ -425,9 +425,9 @@ export default function ReplayModal({
                             {trap.trap}
                           </span>
                           <div className="flex items-center gap-2">
-                            <span style={{ color: "var(--neon-red)" }}>{trap.original}</span>
+                            <span style={{ color: "var(--danger)" }}>{trap.original}</span>
                             <ArrowRight className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
-                            <span style={{ color: "var(--neon-green, #00FF94)" }}>
+                            <span style={{ color: "var(--success)" }}>
                               <CheckCircle2 className="w-3 h-3 inline mr-0.5" />
                               {trap.ideal}
                             </span>

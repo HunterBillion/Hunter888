@@ -85,6 +85,70 @@ function isPublicRoute(pathname: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Role-based access control
+// ---------------------------------------------------------------------------
+
+type UserRole = "manager" | "rop" | "methodologist" | "admin";
+
+/**
+ * Map of protected route prefixes → allowed roles.
+ * Any authenticated user NOT in the allowed list gets redirected to /home.
+ */
+const ROLE_PROTECTED_ROUTES: Record<string, UserRole[]> = {
+  "/admin": ["admin"],
+  "/methodologist": ["admin", "methodologist"],
+  "/dashboard": ["admin", "rop"],
+  "/reports": ["admin", "rop", "manager", "methodologist"],
+};
+
+/**
+ * Extract user role from JWT access_token without verifying signature.
+ *
+ * This is safe in middleware because:
+ * 1. The token was issued by our backend and is verified on every API call
+ * 2. Middleware role check is a UX guard (prevents loading unauthorized pages)
+ * 3. The real authorization happens server-side on data access
+ *
+ * If the token is malformed or missing role, returns null → access denied.
+ */
+function extractRoleFromJwt(token: string): UserRole | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    // Decode the payload (base64url → JSON)
+    const payload = JSON.parse(
+      Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8")
+    );
+    const role = payload.role || payload.user_role || payload.sub_role;
+    if (role && ["manager", "rop", "methodologist", "admin"].includes(role)) {
+      return role as UserRole;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if a pathname requires a specific role and whether the user has it.
+ * Returns redirect URL if unauthorized, null if allowed.
+ */
+function checkRoleAccess(pathname: string, token: string | undefined): string | null {
+  if (!token) return null; // No token = auth guard will handle redirect to /login
+
+  for (const [routePrefix, allowedRoles] of Object.entries(ROLE_PROTECTED_ROUTES)) {
+    if (pathname.startsWith(routePrefix)) {
+      const role = extractRoleFromJwt(token);
+      if (!role || !allowedRoles.includes(role)) {
+        return "/home"; // Redirect unauthorized users to home
+      }
+      break;
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Middleware entry point
 // ---------------------------------------------------------------------------
 
@@ -136,7 +200,18 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
-  // ── 4. Authenticated request — pass through ──────────────────────────
+  // ── 4. Role-based access control ──────────────────────────────────────
+  const tokenValue = hasAccessToken?.value;
+  const roleRedirect = checkRoleAccess(pathname, tokenValue);
+  if (roleRedirect) {
+    const redirectUrl = new URL(roleRedirect, request.url);
+    const response = NextResponse.redirect(redirectUrl);
+    response.headers.set("Content-Security-Policy", cspHeaderValue);
+    response.headers.set("x-nonce", nonce);
+    return response;
+  }
+
+  // ── 5. Authenticated + authorized request — pass through ────────────
   const response = NextResponse.next();
   response.headers.set("Content-Security-Policy", cspHeaderValue);
   response.headers.set("x-nonce", nonce);

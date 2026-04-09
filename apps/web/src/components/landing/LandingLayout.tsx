@@ -267,7 +267,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                               className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5"
                               style={{ background: "rgba(0,255,148,0.1)", border: "1px solid rgba(0,255,148,0.25)" }}
                             >
-                              <Mail size={22} style={{ color: "var(--neon-green)" }} />
+                              <Mail size={22} style={{ color: "var(--success)" }} />
                             </motion.div>
                             <h3 className="font-display font-bold text-lg mb-2" style={{ color: "var(--text-primary)" }}>Письмо отправлено</h3>
                             <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
@@ -296,7 +296,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                     ) : (
                       <motion.div key="main" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25 }}>
                         {error && (
-                          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 rounded-xl p-3 text-sm mb-5" style={{ background: "rgba(255,51,51,0.08)", border: "1px solid rgba(255,51,51,0.2)", color: "var(--neon-red)" }}>
+                          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 rounded-xl p-3 text-sm mb-5" style={{ background: "rgba(255,51,51,0.08)", border: "1px solid rgba(255,51,51,0.2)", color: "var(--danger)" }}>
                             <AlertCircle size={16} />{error}
                           </motion.div>
                         )}
@@ -351,7 +351,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                             <div>
                               <label className="vh-label">Повторите пароль</label>
                               <PasswordInput id="panel-confirm-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Введите пароль ещё раз" autoComplete="new-password" ariaLabel="Подтвердите пароль" />
-                              {!passwordsMatch && <p className="mt-1.5 text-xs" style={{ color: "var(--neon-red)" }}>Пароли не совпадают</p>}
+                              {!passwordsMatch && <p className="mt-1.5 text-xs" style={{ color: "var(--danger)" }}>Пароли не совпадают</p>}
                             </div>
                           )}
 

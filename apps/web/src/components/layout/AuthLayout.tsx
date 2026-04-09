@@ -297,8 +297,6 @@ export default function AuthLayout({
           {/* No duplication on page transitions since it's in this layout */}
           <div className="app-grid-layer" aria-hidden="true" />
 
-          {/* Scanlines CRT overlay — above grid, below content */}
-          <div className="fixed inset-0 scanlines z-[2] opacity-[0.06] mix-blend-overlay pointer-events-none" />
 
           <Header />
           <LLMDegradationBanner />

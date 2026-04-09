@@ -70,13 +70,13 @@ export function BetweenCallsOverlay({ callNumber, totalCalls, events, onContinue
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5">
                       {isHigh ? (
-                        <TriangleAlert size={16} style={{ color: "var(--neon-red, #FF3333)" }} />
+                        <TriangleAlert size={16} style={{ color: "var(--danger)" }} />
                       ) : (
                         <Sparkles size={16} style={{ color: "var(--accent)" }} />
                       )}
                     </div>
                     <div className="flex-1">
-                      <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: isHigh ? "var(--neon-red, #FF3333)" : "var(--accent)" }}>
+                      <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: isHigh ? "var(--danger)" : "var(--accent)" }}>
                         {event.title}
                       </div>
                       <div className="mt-1 text-sm" style={{ color: "var(--text-primary)" }}>

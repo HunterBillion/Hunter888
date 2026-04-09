@@ -116,7 +116,7 @@ export default function DuplicatesPage() {
             </div>
           ) : groups.length === 0 ? (
             <div className="text-center py-16">
-              <Check size={40} className="mx-auto mb-3" style={{ color: "var(--neon-green, #00FF66)", opacity: 0.4 }} />
+              <Check size={40} className="mx-auto mb-3" style={{ color: "var(--success)", opacity: 0.4 }} />
               <p className="text-sm" style={{ color: "var(--text-muted)" }}>Дубликатов не найдено</p>
             </div>
           ) : (

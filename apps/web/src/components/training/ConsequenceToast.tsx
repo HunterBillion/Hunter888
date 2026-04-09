@@ -25,7 +25,7 @@ export function ConsequenceToast({ consequence, onDismiss }: Props) {
   }, [consequence, shake, haptic]);
 
   const isHigh = consequence ? consequence.severity >= 0.7 : false;
-  const color = isHigh ? "var(--neon-red, #FF3333)" : "var(--warning, #F59E0B)";
+  const color = isHigh ? "var(--danger)" : "var(--warning, #F59E0B)";
   const bgColor = isHigh ? "rgba(255,51,51,0.1)" : "rgba(245,158,11,0.1)";
   const borderColor = isHigh ? "rgba(255,51,51,0.3)" : "rgba(245,158,11,0.3)";
 

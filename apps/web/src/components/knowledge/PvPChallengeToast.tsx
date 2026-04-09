@@ -55,7 +55,7 @@ export default function PvPChallengeToast({
   if (timeLeft <= 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-50 w-80 cyber-card border border-[var(--neon-amber)] rounded-xl shadow-2xl overflow-hidden animate-in slide-in-from-right">
+    <div className="fixed top-4 right-4 z-50 w-80 cyber-card border border-[var(--warning)] rounded-xl shadow-2xl overflow-hidden animate-in slide-in-from-right">
       {/* Timer bar */}
       <div className="h-1" style={{ background: "var(--glass-border)" }}>
         <div

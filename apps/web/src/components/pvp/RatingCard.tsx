@@ -48,9 +48,9 @@ export function RatingCard({ rating: r }: Props) {
   const placementLeft = Math.max(0, 10 - r.placement_count);
   const nextTier = r.placement_done ? getNextTier(r.rating, r.rank_tier) : null;
   const streakIcon = r.current_streak > 0
-    ? <TrendingUp size={14} style={{ color: "var(--neon-green)" }} />
+    ? <TrendingUp size={14} style={{ color: "var(--success)" }} />
     : r.current_streak < 0
-    ? <TrendingDown size={14} style={{ color: "var(--neon-red)" }} />
+    ? <TrendingDown size={14} style={{ color: "var(--danger)" }} />
     : <Minus size={14} style={{ color: "var(--text-muted)" }} />;
 
   return (
@@ -99,11 +99,11 @@ export function RatingCard({ rating: r }: Props) {
       <div className="grid grid-cols-2 gap-4 p-6 md:grid-cols-4">
         <div className="text-center">
           <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Побед</div>
-          <div className="font-display text-2xl font-bold" style={{ color: "var(--neon-green)" }}>{r.wins}</div>
+          <div className="font-display text-2xl font-bold" style={{ color: "var(--success)" }}>{r.wins}</div>
         </div>
         <div className="text-center">
           <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Поражений</div>
-          <div className="font-display text-2xl font-bold" style={{ color: "var(--neon-red)" }}>{r.losses}</div>
+          <div className="font-display text-2xl font-bold" style={{ color: "var(--danger)" }}>{r.losses}</div>
         </div>
         <div className="text-center">
           <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Процент побед</div>
@@ -113,7 +113,7 @@ export function RatingCard({ rating: r }: Props) {
           <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Серия</div>
           <div className="font-display text-2xl font-bold flex items-center justify-center gap-1">
             {streakIcon}
-            <span style={{ color: r.current_streak > 0 ? "var(--neon-green)" : r.current_streak < 0 ? "var(--neon-red)" : "var(--text-muted)" }}>
+            <span style={{ color: r.current_streak > 0 ? "var(--success)" : r.current_streak < 0 ? "var(--danger)" : "var(--text-muted)" }}>
               {Math.abs(r.current_streak)}
             </span>
           </div>

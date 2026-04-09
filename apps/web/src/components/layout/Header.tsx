@@ -19,7 +19,7 @@ import {
   Swords,
   FileBarChart,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { sanitizeText } from "@/lib/sanitize";
 import { useAuth } from "@/hooks/useAuth";
 import { useGamificationStore } from "@/stores/useGamificationStore";
@@ -30,18 +30,23 @@ import { NotificationBell } from "@/components/layout/NotificationBell";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import type { UserRole } from "@/types";
 
-type NavItem = { href: string; label: string; icon: typeof Home; roles?: UserRole[] };
 type OpenPanel = "none" | "user" | "notifications" | "mobile";
 
+type NavGroup = "main" | "manage";
+
+type NavItem = { href: string; label: string; icon: typeof Home; roles?: UserRole[]; group: NavGroup };
+
 const NAV_ITEMS: NavItem[] = [
-  { href: "/home", label: "Центр", icon: Home },
-  { href: "/training", label: "Тренировка", icon: Crosshair },
-  { href: "/clients", label: "Клиенты", icon: Users, roles: ["admin", "rop", "manager", "methodologist"] },
-  { href: "/history", label: "История", icon: History },
-  { href: "/leaderboard", label: "Лидерборд", icon: Trophy },
-  { href: "/pvp", label: "Арена", icon: Swords },
-  { href: "/reports", label: "Отчёты", icon: FileBarChart, roles: ["manager", "methodologist"] },
-  { href: "/dashboard", label: "Панель РОП", icon: LayoutDashboard, roles: ["rop", "admin"] },
+  /* ── Main: доступны всем ── */
+  { href: "/home", label: "Центр", icon: Home, group: "main" },
+  { href: "/training", label: "Тренировка", icon: Crosshair, group: "main" },
+  { href: "/history", label: "История", icon: History, group: "main" },
+  { href: "/leaderboard", label: "Лидерборд", icon: Trophy, group: "main" },
+  { href: "/pvp", label: "Арена", icon: Swords, group: "main" },
+  /* ── Manage: по ролям ── */
+  { href: "/clients", label: "Клиенты", icon: Users, roles: ["admin", "rop", "manager", "methodologist"], group: "manage" },
+  { href: "/reports", label: "Отчёты", icon: FileBarChart, roles: ["manager", "methodologist"], group: "manage" },
+  { href: "/dashboard", label: "Панель РОП", icon: LayoutDashboard, roles: ["rop", "admin"], group: "manage" },
 ];
 
 export default function Header() {
@@ -218,8 +223,8 @@ export default function Header() {
                       <motion.button
                         onClick={() => { setOpenPanel("none"); logout(); }}
                         className="flex w-full items-center gap-3 rounded-[18px] px-4 py-3 text-sm"
-                        style={{ color: "#FF889B", background: "rgba(255,42,109,0.08)" }}
-                        whileHover={{ background: "rgba(255,42,109,0.14)" }}
+                        style={{ color: "var(--danger)", background: "color-mix(in srgb, var(--danger) 8%, transparent)" }}
+                        whileHover={{ background: "color-mix(in srgb, var(--danger) 14%, transparent)" }}
                       >
                         <LogOut size={15} />
                         Выйти
@@ -327,11 +332,17 @@ export default function Header() {
               background: "var(--header-btn-bg)",
             }}
           >
-            {navItems.map((item) => {
+            {navItems.map((item, idx) => {
               const Icon = item.icon;
               const active = isActive(item.href);
+              const prevItem = navItems[idx - 1];
+              const showDivider = prevItem && prevItem.group === "main" && item.group === "manage";
               return (
-                <Link key={item.href} href={item.href} prefetch aria-current={active ? "page" : undefined}>
+                <React.Fragment key={item.href}>
+                  {showDivider && (
+                    <div className="mx-1 h-5 w-px" style={{ background: "var(--border-color)" }} />
+                  )}
+                <Link href={item.href} prefetch aria-current={active ? "page" : undefined}>
                   <div
                     className="relative flex items-center gap-2 rounded-[16px] px-4 xl:px-5 py-2.5 text-sm font-medium whitespace-nowrap transition-colors duration-200"
                     style={{
@@ -375,6 +386,7 @@ export default function Header() {
                     <span className="relative z-10 leading-none">{item.label}</span>
                   </div>
                 </Link>
+                </React.Fragment>
               );
             })}
           </nav>
@@ -411,8 +423,9 @@ export default function Header() {
                 <div className="mb-3 lg:hidden">
                   <XPBar level={level} currentXP={currentXP} nextLevelXP={nextLevelXP} />
                 </div>
+                {/* Main navigation */}
                 <div className="grid grid-cols-2 gap-1.5">
-                  {navItems.map((item, index) => {
+                  {navItems.filter(i => i.group === "main").map((item, index) => {
                     const Icon = item.icon;
                     const active = isActive(item.href);
                     return (
@@ -430,7 +443,7 @@ export default function Header() {
                           style={{
                             color: active ? "var(--header-text-active)" : "var(--header-text-muted)",
                             background: active ? "var(--accent-muted)" : "transparent",
-                            border: active ? "1px solid rgba(99,102,241,0.2)" : "1px solid transparent",
+                            border: active ? `1px solid var(--border-hover)` : "1px solid transparent",
                           }}
                         >
                           <Icon size={16} style={{ opacity: active ? 1 : 0.6 }} />
@@ -440,6 +453,46 @@ export default function Header() {
                     );
                   })}
                 </div>
+                {/* Management section (role-filtered) */}
+                {navItems.filter(i => i.group === "manage").length > 0 && (
+                  <>
+                    <div className="my-2 mx-2 h-px" style={{ background: "var(--border-color)" }} />
+                    <div className="px-1 pb-1">
+                      <div className="mb-1.5 px-2.5 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                        Управление
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {navItems.filter(i => i.group === "manage").map((item, index) => {
+                          const Icon = item.icon;
+                          const active = isActive(item.href);
+                          return (
+                            <motion.div
+                              key={item.href}
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: (index + 5) * 0.025 }}
+                            >
+                              <Link
+                                href={item.href}
+                                onClick={() => setOpenPanel("none")}
+                                aria-current={active ? "page" : undefined}
+                                className="flex items-center gap-2.5 rounded-[16px] px-3.5 py-3 text-sm font-medium transition-all duration-200"
+                                style={{
+                                  color: active ? "var(--header-text-active)" : "var(--header-text-muted)",
+                                  background: active ? "var(--accent-muted)" : "transparent",
+                                  border: active ? `1px solid var(--border-hover)` : "1px solid transparent",
+                                }}
+                              >
+                                <Icon size={16} style={{ opacity: active ? 1 : 0.6 }} />
+                                {item.label}
+                              </Link>
+                            </motion.div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </motion.nav>
           </>

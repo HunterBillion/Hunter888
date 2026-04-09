@@ -77,7 +77,7 @@ export default function Error({
         >
           <motion.div
             className="font-display text-2xl font-black"
-            style={{ color: "var(--neon-red, #FF2A6D)" }}
+            style={{ color: "var(--danger)" }}
             animate={{ opacity: [1, 0.5, 1] }}
             transition={{ duration: 2, repeat: Infinity }}
           >

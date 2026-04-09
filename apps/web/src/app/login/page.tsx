@@ -118,7 +118,7 @@ export default function LoginPage() {
                 className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5"
                 style={{ background: "rgba(0,255,148,0.1)", border: "1px solid rgba(0,255,148,0.25)" }}
               >
-                <Mail size={24} style={{ color: "var(--neon-green)" }} />
+                <Mail size={24} style={{ color: "var(--success)" }} />
               </motion.div>
               <h2 className="font-display font-bold text-xl mb-2" style={{ color: "var(--text-primary)" }}>Письмо отправлено</h2>
               <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
@@ -297,7 +297,7 @@ export default function LoginPage() {
               style={{
                 background: "rgba(255, 51, 51, 0.08)",
                 border: "1px solid rgba(255, 51, 51, 0.2)",
-                color: "var(--neon-red)",
+                color: "var(--danger)",
               }}
             >
               <AlertCircle size={16} />

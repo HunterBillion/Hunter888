@@ -48,10 +48,10 @@ export function TrainingToasts({
           >
             <div className="flex items-center gap-3">
               <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(255,51,51,0.2)" }}>
-                <PhoneOff size={14} style={{ color: "var(--neon-red)" }} />
+                <PhoneOff size={14} style={{ color: "var(--danger)" }} />
               </div>
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--neon-red)" }}>
+                <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--danger)" }}>
                   КЛИЕНТ ТЕРЯЕТ ТЕРПЕНИЕ
                 </div>
                 <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
@@ -129,9 +129,9 @@ export function TrainingToasts({
                 boxShadow: "0 4px 20px rgba(0,255,148,0.12)",
               }}
             >
-              <CheckCircle2 size={16} style={{ color: "var(--neon-green, #00FF94)" }} />
+              <CheckCircle2 size={16} style={{ color: "var(--success)" }} />
               <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                Сейчас хорошо бы: <span className="font-semibold" style={{ color: "var(--neon-green, #00FF94)" }}>{checkpointHint.checkpoint}</span>
+                Сейчас хорошо бы: <span className="font-semibold" style={{ color: "var(--success)" }}>{checkpointHint.checkpoint}</span>
               </span>
             </div>
           </motion.div>

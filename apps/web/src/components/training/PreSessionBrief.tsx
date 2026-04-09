@@ -65,9 +65,9 @@ function formatDebt(amount: number): string {
 }
 
 function difficultyLabel(d: number): { text: string; color: string } {
-  if (d <= 3) return { text: "ЛЕГКО", color: "var(--neon-green)" };
-  if (d <= 6) return { text: "СРЕДНЕ", color: "var(--neon-amber)" };
-  return { text: "СЛОЖНО", color: "var(--neon-red)" };
+  if (d <= 3) return { text: "ЛЕГКО", color: "var(--success)" };
+  if (d <= 6) return { text: "СРЕДНЕ", color: "var(--warning)" };
+  return { text: "СЛОЖНО", color: "var(--danger)" };
 }
 
 function scenarioTypeLabel(type: string): string {
@@ -115,7 +115,6 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
   if (countdown !== null) {
     return (
       <div className="flex h-screen items-center justify-center" style={{ background: "var(--bg-primary)" }}>
-        <div className="fixed inset-0 scanlines z-[100] opacity-10 mix-blend-overlay pointer-events-none" />
         <AnimatePresence mode="wait">
           <motion.div
             key={countdown}
@@ -130,7 +129,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                 {countdown}
               </span>
             ) : (
-              <span className="font-display text-4xl font-bold tracking-[0.3em]" style={{ color: "var(--neon-green)" }}>
+              <span className="font-display text-4xl font-bold tracking-[0.3em]" style={{ color: "var(--success)" }}>
                 GO
               </span>
             )}
@@ -142,7 +141,6 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
 
   return (
     <div className="flex h-screen flex-col overflow-hidden" style={{ background: "var(--bg-primary)" }}>
-      <div className="fixed inset-0 scanlines z-[100] opacity-10 mix-blend-overlay pointer-events-none" />
 
       <div className="flex-1 overflow-y-auto p-6 md:p-10 z-10">
         <div className="mx-auto max-w-4xl">
@@ -196,10 +194,10 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                 {/* Debt */}
                 <div className="mb-4 p-3 rounded-lg" style={{ background: "var(--input-bg)" }}>
                   <div className="flex items-center gap-2 mb-2">
-                    <Banknote size={14} style={{ color: "var(--neon-red)" }} />
+                    <Banknote size={14} style={{ color: "var(--danger)" }} />
                     <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>ДОЛГИ</span>
                   </div>
-                  <div className="font-display text-2xl font-bold" style={{ color: "var(--neon-red)" }}>
+                  <div className="font-display text-2xl font-bold" style={{ color: "var(--danger)" }}>
                     {formatDebt(client.total_debt)}
                   </div>
                   {client.creditors.length > 0 && (
@@ -218,12 +216,12 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                 {client.fears.length > 0 && (
                   <div className="mb-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <AlertTriangle size={14} style={{ color: "var(--neon-amber)" }} />
+                      <AlertTriangle size={14} style={{ color: "var(--warning)" }} />
                       <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>СТРАХИ</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {client.fears.slice(0, 5).map((fear, i) => (
-                        <span key={i} className="rounded-full px-2.5 py-0.5 text-xs" style={{ background: "rgba(255,215,0,0.08)", color: "var(--neon-amber)", border: "1px solid rgba(255,215,0,0.15)" }}>
+                        <span key={i} className="rounded-full px-2.5 py-0.5 text-xs" style={{ background: "rgba(255,215,0,0.08)", color: "var(--warning)", border: "1px solid rgba(255,215,0,0.15)" }}>
                           {fear}
                         </span>
                       ))}

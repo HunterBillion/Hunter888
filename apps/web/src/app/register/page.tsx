@@ -122,7 +122,7 @@ export default function RegisterPage() {
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               className="flex items-center gap-2 rounded-xl p-3 text-sm"
-              style={{ background: "rgba(255, 51, 51, 0.08)", border: "1px solid rgba(255, 51, 51, 0.2)", color: "var(--neon-red)" }}
+              style={{ background: "rgba(255, 51, 51, 0.08)", border: "1px solid rgba(255, 51, 51, 0.2)", color: "var(--danger)" }}
             >
               <AlertCircle size={16} />
               {error}
@@ -171,7 +171,7 @@ export default function RegisterPage() {
               ariaLabel="Подтвердите пароль"
             />
             {!passwordsMatch && (
-              <div className="mt-2 text-xs" style={{ color: "var(--neon-red)" }}>
+              <div className="mt-2 text-xs" style={{ color: "var(--danger)" }}>
                 Пароли не совпадают.
               </div>
             )}

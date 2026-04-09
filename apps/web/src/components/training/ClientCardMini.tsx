@@ -44,8 +44,8 @@ export function ClientCardMini({ clientCard, isExpanded, onToggle }: ClientCardM
           </div>
           <span style={{ color: "var(--border-color)" }}>|</span>
           <div className="flex items-center gap-1.5">
-            <Landmark size={12} style={{ color: "var(--neon-red, #FF3333)" }} />
-            <span style={{ color: "var(--neon-red, #FF3333)" }}>
+            <Landmark size={12} style={{ color: "var(--danger)" }} />
+            <span style={{ color: "var(--danger)" }}>
               Долг: {formatDebtCompact(clientCard.total_debt)} ₽
             </span>
           </div>

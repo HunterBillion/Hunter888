@@ -426,7 +426,7 @@ export default function SettingsPage() {
                         <div>
                           <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Web Push</span>
                           {webPush.isDenied && (
-                            <span className="block text-xs" style={{ color: "var(--neon-red)" }}>Заблокировано</span>
+                            <span className="block text-xs" style={{ color: "var(--danger)" }}>Заблокировано</span>
                           )}
                         </div>
                       </div>
@@ -451,7 +451,7 @@ export default function SettingsPage() {
                     </div>
                   )}
                   {webPush.error && (
-                    <p className="text-xs font-mono" style={{ color: "var(--neon-red)" }}>{webPush.error}</p>
+                    <p className="text-xs font-mono" style={{ color: "var(--danger)" }}>{webPush.error}</p>
                   )}
 
                   {/* Frequency */}
@@ -492,7 +492,7 @@ export default function SettingsPage() {
                     <svg width="20" height="20" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
                     <div>
                       <div className="text-[14px] font-medium" style={{ color: "var(--text-primary)" }}>Google</div>
-                      <div className="text-xs font-mono" style={{ color: linkedGoogle ? "var(--neon-green)" : "var(--text-muted)" }}>
+                      <div className="text-xs font-mono" style={{ color: linkedGoogle ? "var(--success)" : "var(--text-muted)" }}>
                         {linkedGoogle ? "Привязан" : "Не привязан"}
                       </div>
                     </div>
@@ -506,7 +506,7 @@ export default function SettingsPage() {
                       }}
                       disabled={unlinking === "google"}
                       className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[12px]"
-                      style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--neon-red)" }}
+                      style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--danger)" }}
                       whileTap={{ scale: 0.95 }}
                     >
                       {unlinking === "google" ? <Loader2 size={12} className="animate-spin" /> : <Unlink size={12} />}
@@ -532,7 +532,7 @@ export default function SettingsPage() {
                     <svg width="20" height="20" viewBox="0 0 24 24"><path d="M2 12C2 6.48 6.48 2 12 2s10 4.48 10 10-4.48 10-10 10S2 17.52 2 12z" fill="#FC3F1D"/><path d="M13.32 17.5h-1.88V7.38h-.97c-1.57 0-2.39.8-2.39 1.95 0 1.3.59 1.9 1.8 2.7l1 .65-2.9 4.82H6l2.62-4.33C7.37 12.26 6.56 11.22 6.56 9.5c0-2.07 1.45-3.5 4-3.5h2.76V17.5z" fill="white"/></svg>
                     <div>
                       <div className="text-[14px] font-medium" style={{ color: "var(--text-primary)" }}>Yandex</div>
-                      <div className="text-xs font-mono" style={{ color: linkedYandex ? "var(--neon-green)" : "var(--text-muted)" }}>
+                      <div className="text-xs font-mono" style={{ color: linkedYandex ? "var(--success)" : "var(--text-muted)" }}>
                         {linkedYandex ? "Привязан" : "Не привязан"}
                       </div>
                     </div>
@@ -546,7 +546,7 @@ export default function SettingsPage() {
                       }}
                       disabled={unlinking === "yandex"}
                       className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[12px]"
-                      style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--neon-red)" }}
+                      style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--danger)" }}
                       whileTap={{ scale: 0.95 }}
                     >
                       {unlinking === "yandex" ? <Loader2 size={12} className="animate-spin" /> : <Unlink size={12} />}
@@ -571,7 +571,7 @@ export default function SettingsPage() {
             {/* Save */}
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: nextDelay() }} className="flex flex-col items-end gap-2 pt-4">
               {saveError && (
-                <p className="text-sm font-mono" style={{ color: "var(--neon-red)" }}>{saveError}</p>
+                <p className="text-sm font-mono" style={{ color: "var(--danger)" }}>{saveError}</p>
               )}
               <motion.button
                 onClick={handleSave}

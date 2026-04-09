@@ -110,7 +110,7 @@ export function PipelineCard({
               <AlertTriangle
                 size={12}
                 className="shrink-0 mt-0.5"
-                style={{ color: "var(--neon-red, #FF3333)" }}
+                style={{ color: "var(--danger)" }}
               />
             )}
             <ExternalLink size={12} className="opacity-0 transition-opacity group-hover:opacity-100" style={{ color: "var(--text-muted)" }} />
@@ -150,10 +150,10 @@ export function PipelineCard({
         {/* Next contact */}
         {showField("next_contact") && nextContactLabel && (
           <div className="mt-2 flex items-center gap-1">
-            <Calendar size={10} style={{ color: overdue ? "var(--neon-red, #FF3333)" : color }} />
+            <Calendar size={10} style={{ color: overdue ? "var(--danger)" : color }} />
             <span
               className="text-xs font-mono"
-              style={{ color: overdue ? "var(--neon-red, #FF3333)" : "var(--text-muted)" }}
+              style={{ color: overdue ? "var(--danger)" : "var(--text-muted)" }}
             >
               {nextContactLabel}
             </span>

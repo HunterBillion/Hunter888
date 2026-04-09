@@ -5,9 +5,9 @@
 /** Returns a CSS color string based on score value. Theme-aware via CSS variables. */
 export function scoreColor(score: number | null): string {
   if (score === null || score === undefined) return "var(--text-muted)";
-  if (score >= 70) return "var(--neon-green)";
-  if (score >= 40) return "var(--neon-amber)";
-  return "var(--neon-red)";
+  if (score >= 70) return "var(--success)";
+  if (score >= 40) return "var(--warning)";
+  return "var(--danger)";
 }
 
 /**

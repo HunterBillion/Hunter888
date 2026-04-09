@@ -59,7 +59,6 @@ export function PostSessionVerdict({ score, onContinue, xpGained = 0 }: PostSess
       className="fixed inset-0 z-[200] flex items-center justify-center"
       style={{ background: "var(--bg-primary)" }}
     >
-      <div className="fixed inset-0 scanlines z-[201] opacity-10 mix-blend-overlay pointer-events-none" />
 
       <div className="relative z-[202] text-center">
         <AnimatePresence mode="wait">

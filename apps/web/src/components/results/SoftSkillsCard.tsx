@@ -22,9 +22,9 @@ interface MetricConfig {
 }
 
 function getRatingColor(r: Rating): string {
-  if (r === "good") return "var(--neon-green, #00FF94)";
-  if (r === "ok") return "var(--neon-amber, #FFD700)";
-  return "var(--neon-red, #FF2A6D)";
+  if (r === "good") return "var(--success)";
+  if (r === "ok") return "var(--warning)";
+  return "var(--danger)";
 }
 
 function getRatingLabel(r: Rating): string {

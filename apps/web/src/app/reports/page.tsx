@@ -3,7 +3,13 @@
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { BackButton } from "@/components/ui/BackButton";
-import { ReportsDashboard } from "@/components/dashboard/ReportsDashboard";
+import dynamic from "next/dynamic";
+import { DashboardSkeleton } from "@/components/ui/Skeleton";
+
+const ReportsDashboard = dynamic(
+  () => import("@/components/dashboard/ReportsDashboard").then((m) => m.ReportsDashboard),
+  { loading: () => <DashboardSkeleton />, ssr: false }
+);
 
 export default function ReportsPage() {
   const { user } = useAuth();

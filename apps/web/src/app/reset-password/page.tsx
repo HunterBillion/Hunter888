@@ -116,7 +116,7 @@ function ResetPasswordForm() {
                   border: "1px solid rgba(0,255,148,0.25)",
                 }}
               >
-                <CheckCircle2 size={28} style={{ color: "var(--neon-green)" }} />
+                <CheckCircle2 size={28} style={{ color: "var(--success)" }} />
               </motion.div>
               <h2
                 className="font-display font-bold text-xl mb-2"
@@ -205,7 +205,7 @@ function ResetPasswordForm() {
                     ariaLabel="Подтвердите пароль"
                   />
                   {!passwordsMatch && confirmPassword.length > 0 && (
-                    <p className="mt-1.5 text-xs" style={{ color: "var(--neon-red)" }}>
+                    <p className="mt-1.5 text-xs" style={{ color: "var(--danger)" }}>
                       Пароли не совпадают
                     </p>
                   )}

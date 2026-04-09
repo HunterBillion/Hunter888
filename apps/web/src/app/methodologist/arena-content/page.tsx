@@ -84,7 +84,7 @@ export default function ArenaContentPage() {
       <AuthLayout>
         <div className="flex min-h-screen items-center justify-center">
           <div className="text-center">
-            <ShieldAlert size={48} style={{ color: "var(--neon-red)", margin: "0 auto 16px" }} />
+            <ShieldAlert size={48} style={{ color: "var(--danger)", margin: "0 auto 16px" }} />
             <h2 className="font-display text-xl font-bold" style={{ color: "var(--text-primary)" }}>Доступ запрещён</h2>
             <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>Эта страница доступна только методологам, РОП и администраторам.</p>
           </div>

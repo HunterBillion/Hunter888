@@ -122,7 +122,7 @@ export const STREAK_MILESTONES = [7, 14, 30, 60, 100] as const;
 /* ── Difficulty tiers ─────────────────────────────────────────────── */
 
 export const DIFFICULTY_TIERS = {
-  easy: { label: 'Легко', emoji: '🟢', color: 'var(--neon-green, #00FF94)', range: [1, 3] },
+  easy: { label: 'Легко', emoji: '🟢', color: 'var(--success)', range: [1, 3] },
   medium: { label: 'Средне', emoji: '🟡', color: 'var(--warning, #F59E0B)', range: [4, 6] },
   hard: { label: 'Сложно', emoji: '🔴', color: 'var(--danger, #FF3333)', range: [7, 9] },
   boss: { label: 'Босс', emoji: '💀', color: '#A855F7', range: [10, 10] },
@@ -156,7 +156,7 @@ export function getGradeLabel(score: number, max: number): string {
 /** Returns a CSS color variable matching the grade tier. */
 export function getGradeColor(score: number, max: number): string {
   const pct = max > 0 ? (score / max) * 100 : 0;
-  if (pct >= 90) return 'var(--neon-green, #00FF94)';
+  if (pct >= 90) return 'var(--success)';
   if (pct >= 70) return 'var(--accent, #6366F1)';
   if (pct >= 50) return 'var(--warning, #F59E0B)';
   if (pct >= 30) return 'var(--danger, #FF3333)';

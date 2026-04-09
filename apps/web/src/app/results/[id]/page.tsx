@@ -38,8 +38,15 @@ import { api } from "@/lib/api";
 import { downloadTranscript, copyTranscript, copyToClipboard } from "@/lib/exportTranscript";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { PageSkeleton } from "@/components/ui/Skeleton";
-import PentagramChart from "@/components/results/PentagramChart";
-import EmotionTimeline from "@/components/results/EmotionTimeline";
+import dynamic from "next/dynamic";
+import { Skeleton } from "@/components/ui/Skeleton";
+
+const PentagramChart = dynamic(() => import("@/components/results/PentagramChart"), {
+  loading: () => <Skeleton height={280} width="100%" rounded="12px" />, ssr: false,
+});
+const EmotionTimeline = dynamic(() => import("@/components/results/EmotionTimeline"), {
+  loading: () => <Skeleton height={200} width="100%" rounded="12px" />, ssr: false,
+});
 import TrapResults from "@/components/results/TrapResults";
 import SoftSkillsCard from "@/components/results/SoftSkillsCard";
 import ClientReveal from "@/components/results/ClientReveal";
@@ -168,7 +175,7 @@ export default function ResultsPage() {
       <AuthLayout>
         <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg-primary)" }}>
           <div className="text-center" style={{ maxWidth: 400 }}>
-            <AlertCircle size={48} style={{ color: "var(--neon-red)", margin: "0 auto 16px" }} />
+            <AlertCircle size={48} style={{ color: "var(--danger)", margin: "0 auto 16px" }} />
             <h2 style={{ color: "var(--text-primary)", marginBottom: 8 }}>Ошибка загрузки</h2>
             <p style={{ color: "var(--text-muted)", marginBottom: 24 }}>{loadError}</p>
             <button
@@ -187,7 +194,7 @@ export default function ResultsPage() {
   if (!result) {
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg-primary)" }}>
-        <div className="flex items-center gap-2" style={{ color: "var(--neon-red)" }}>
+        <div className="flex items-center gap-2" style={{ color: "var(--danger)" }}>
           <AlertCircle size={20} />
           Сессия не найдена
         </div>
@@ -614,15 +621,15 @@ export default function ResultsPage() {
             transition={{ delay: 0.35 }}
             className="cyber-card mt-6 p-5 relative overflow-hidden"
           >
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, transparent, var(--neon-red, #FF2A6D), transparent)" }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, transparent, var(--danger), transparent)" }} />
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(255,42,109,0.1)", border: "1px solid rgba(255,42,109,0.2)" }}>
-                <BookOpen size={18} style={{ color: "var(--neon-red, #FF2A6D)" }} />
+                <BookOpen size={18} style={{ color: "var(--danger)" }} />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <AlertTriangle size={12} style={{ color: "var(--neon-red, #FF2A6D)" }} />
-                  <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--neon-red, #FF2A6D)" }}>СЛАБЫЕ МЕСТА ПО ФЗ-127</span>
+                  <AlertTriangle size={12} style={{ color: "var(--danger)" }} />
+                  <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--danger)" }}>СЛАБЫЕ МЕСТА ПО ФЗ-127</span>
                 </div>
                 <p className="text-sm mb-3" style={{ color: "var(--text-secondary)" }}>
                   Ваша юридическая точность ниже нормы. Подтяните знания в этих категориях:
@@ -673,9 +680,9 @@ export default function ResultsPage() {
                   }}
                 >
                   {p.fulfilled ? (
-                    <CheckCircle size={14} style={{ color: "var(--neon-green, #00FF94)" }} />
+                    <CheckCircle size={14} style={{ color: "var(--success)" }} />
                   ) : (
-                    <AlertCircle size={14} style={{ color: "var(--neon-red, #FF2A6D)" }} />
+                    <AlertCircle size={14} style={{ color: "var(--danger)" }} />
                   )}
                   <div className="flex-1">
                     <span className="text-xs" style={{ color: "var(--text-primary)" }}>{p.text}</span>
@@ -684,7 +691,7 @@ export default function ResultsPage() {
                     </span>
                   </div>
                   <span className={`stat-chip ${p.fulfilled ? "" : "neon-pulse"}`} style={{
-                    color: p.fulfilled ? "var(--neon-green, #00FF94)" : "var(--neon-red, #FF2A6D)",
+                    color: p.fulfilled ? "var(--success)" : "var(--danger)",
                     fontSize: "12px",
                   }}>
                     {p.fulfilled ? "+0.5" : "−1.0"}
@@ -843,7 +850,7 @@ export default function ResultsPage() {
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="mt-4 flex items-center gap-2 rounded-xl p-3 text-sm"
-                    style={{ background: "rgba(0,255,102,0.08)", border: "1px solid rgba(0,255,102,0.2)", color: "var(--neon-green, #00FF66)" }}
+                    style={{ background: "rgba(0,255,102,0.08)", border: "1px solid rgba(0,255,102,0.2)", color: "var(--success)" }}
                   >
                     <CheckCircle size={16} />
                     Результат отправлен! Попытка {tournamentResult.attempt} · {Math.round(tournamentResult.score)} баллов
@@ -871,7 +878,7 @@ export default function ResultsPage() {
                 )}
 
                 {tournamentError && (
-                  <div className="mt-2 flex items-center gap-2 text-xs" style={{ color: "var(--neon-red, #FF3333)" }}>
+                  <div className="mt-2 flex items-center gap-2 text-xs" style={{ color: "var(--danger)" }}>
                     <AlertCircle size={14} />
                     {tournamentError}
                   </div>
@@ -920,7 +927,7 @@ export default function ResultsPage() {
                   }
                 }}
                 className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs uppercase tracking-widest transition-colors"
-                style={{ background: "var(--input-bg)", color: transcriptCopied ? "var(--neon-green, #00FF66)" : "var(--text-muted)", border: "1px solid var(--border-color)" }}
+                style={{ background: "var(--input-bg)", color: transcriptCopied ? "var(--success)" : "var(--text-muted)", border: "1px solid var(--border-color)" }}
                 whileTap={{ scale: 0.95 }}
                 title="Скопировать транскрипт"
               >

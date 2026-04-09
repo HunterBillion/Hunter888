@@ -25,7 +25,7 @@ export function ConsentBadge({ consent }: ConsentBadgeProps) {
       style={{
         background: active ? "rgba(0,255,102,0.08)" : "rgba(255,51,51,0.08)",
         border: `1px solid ${active ? "rgba(0,255,102,0.2)" : "rgba(255,51,51,0.2)"}`,
-        color: active ? "var(--neon-green, #00FF66)" : "var(--neon-red, #FF3333)",
+        color: active ? "var(--success)" : "var(--danger)",
       }}
     >
       {active ? <ShieldCheck size={12} /> : <ShieldOff size={12} />}

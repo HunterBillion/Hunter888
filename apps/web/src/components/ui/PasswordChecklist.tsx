@@ -50,7 +50,7 @@ export function PasswordChecklist({ value, className = "" }: Props) {
           <li
             key={id}
             className="flex items-center gap-2 text-xs transition-colors duration-200"
-            style={{ color: ok ? "var(--neon-green)" : "var(--text-muted)" }}
+            style={{ color: ok ? "var(--success)" : "var(--text-muted)" }}
           >
             <span
               className="flex-shrink-0 w-3.5 h-3.5 rounded-full flex items-center justify-center"

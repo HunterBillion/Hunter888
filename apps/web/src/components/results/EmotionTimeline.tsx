@@ -331,7 +331,7 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
                 }`}
                 style={{
                   background: isForward ? "rgba(0,255,148,0.06)" : "rgba(255,42,109,0.06)",
-                  borderLeft: `2px solid ${isForward ? "var(--neon-green, #00FF94)" : "var(--neon-red, #FF2A6D)"}`,
+                  borderLeft: `2px solid ${isForward ? "var(--success)" : "var(--danger)"}`,
                 }}
                 onClick={() => {
                   if (onReplayMessage && tp.message_index != null) {

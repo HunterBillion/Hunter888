@@ -517,10 +517,10 @@ function PvPLobbyContent() {
                                 <div
                                   key={duel.id}
                                   className="glass-panel p-3 flex items-center gap-3 cursor-pointer"
-                                  style={{ borderLeft: `3px solid ${duel.is_draw ? "var(--warning)" : isWinner ? "var(--neon-green)" : "var(--neon-red)"}` }}
+                                  style={{ borderLeft: `3px solid ${duel.is_draw ? "var(--warning)" : isWinner ? "var(--success)" : "var(--danger)"}` }}
                                   onClick={() => router.push(`/pvp/duel/${duel.id}`)}
                                 >
-                                  <span className="text-xs font-medium" style={{ color: isWinner ? "var(--neon-green)" : duel.is_draw ? "var(--warning)" : "var(--neon-red)" }}>
+                                  <span className="text-xs font-medium" style={{ color: isWinner ? "var(--success)" : duel.is_draw ? "var(--warning)" : "var(--danger)" }}>
                                     {duel.is_draw ? "Ничья" : isWinner ? "Победа" : "Поражение"}
                                   </span>
                                   <span className="text-xs font-medium ml-auto" style={{ color: "var(--text-muted)" }}>
@@ -723,9 +723,9 @@ function PvPLobbyContent() {
                               router.push("/pvp/arena/lobby?mode=2");
                             }}
                             className="glass-panel rounded-xl p-4 text-left"
-                            style={{ borderColor: "var(--neon-red)", borderWidth: 1 }}
+                            style={{ borderColor: "var(--danger)", borderWidth: 1 }}
                           >
-                            <Swords size={20} style={{ color: "var(--neon-red)" }} />
+                            <Swords size={20} style={{ color: "var(--danger)" }} />
                             <p className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                               Дуэль 1 на 1
                             </p>
@@ -788,7 +788,7 @@ function PvPLobbyContent() {
                               transition={{ delay: i * 0.05 }}
                               className="glass-panel p-4 flex items-center gap-4 cursor-pointer"
                               style={{
-                                borderLeft: `3px solid ${duel.is_draw ? "var(--warning)" : isWinner ? "var(--neon-green)" : "var(--neon-red)"}`,
+                                borderLeft: `3px solid ${duel.is_draw ? "var(--warning)" : isWinner ? "var(--success)" : "var(--danger)"}`,
                               }}
                               onClick={() => router.push(`/pvp/duel/${duel.id}`)}
                             >
@@ -808,7 +808,7 @@ function PvPLobbyContent() {
                               </div>
                               <div
                                 className="font-mono text-sm font-bold"
-                                style={{ color: ratingApplied ? (myDelta >= 0 ? "var(--neon-green)" : "var(--neon-red)") : "var(--warning)" }}
+                                style={{ color: ratingApplied ? (myDelta >= 0 ? "var(--success)" : "var(--danger)") : "var(--warning)" }}
                               >
                                 {ratingApplied ? `${myDelta >= 0 ? "+" : ""}${Math.round(myDelta)}` : "Без рейтинга"}
                               </div>
@@ -874,7 +874,7 @@ function PvPLobbyContent() {
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   className="flex-1 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-2"
-                  style={{ background: "var(--neon-green)", color: "#000" }}
+                  style={{ background: "var(--success)", color: "#000" }}
                   disabled={pveAccepting}
                   onClick={async () => {
                     if (pveAccepting) return;

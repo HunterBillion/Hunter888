@@ -785,8 +785,15 @@ async def _handle_auth_refresh(ws: WebSocket, data: dict, state: dict) -> None:
             await _send(ws, "auth.refresh_error", {"reason": "user_mismatch"})
             return
 
+        # Fetch current role for JWT claim
+        from app.models.user import User as UserModel
+        from sqlalchemy import select as sa_select
+        async with async_session() as _db:
+            _role_result = await _db.execute(sa_select(UserModel.role).where(UserModel.id == user_id_str))
+            _user_role = _role_result.scalar_one_or_none() or "manager"
+
         # Create new tokens
-        new_access_token = create_access_token({"sub": user_id_str})
+        new_access_token = create_access_token({"sub": user_id_str, "role": _user_role})
         new_refresh_token = create_refresh_token({"sub": user_id_str})
 
         await _send(ws, "auth.refreshed", {

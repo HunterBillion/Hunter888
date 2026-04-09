@@ -123,7 +123,7 @@ export function ReminderCreateModal({ open, clientId, clientName, onClose, onCre
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>КОГДА *</label>
+                <label className="block text-xs font-medium tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>КОГДА *</label>
                 <input
                   type="datetime-local"
                   aria-label="Дата и время напоминания"
@@ -135,7 +135,7 @@ export function ReminderCreateModal({ open, clientId, clientName, onClose, onCre
               </div>
 
               <div>
-                <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>
+                <label className="block text-xs font-medium tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>
                   СООБЩЕНИЕ <span className="text-xs" style={{ color: "var(--text-muted)" }}>({message.length}/500)</span>
                 </label>
                 <textarea

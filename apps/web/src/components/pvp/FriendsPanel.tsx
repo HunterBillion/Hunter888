@@ -131,7 +131,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
                     {busyId === item.user_id ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
                   </button>
                 ) : (
-                  <div className="text-xs font-mono uppercase tracking-wider" style={{ color: item.status === "accepted" ? "var(--neon-green)" : "var(--warning)" }}>
+                  <div className="text-xs font-mono uppercase tracking-wider" style={{ color: item.status === "accepted" ? "var(--success)" : "var(--warning)" }}>
                     {item.status === "accepted" ? "В друзьях" : item.direction === "incoming" ? "Входящая" : "Отправлено"}
                   </div>
                 )}
@@ -156,7 +156,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
                 <div className="flex items-center gap-2">
                   <button
                     className="flex h-9 w-9 items-center justify-center rounded-xl"
-                    style={{ background: "rgba(0,255,148,0.15)", color: "var(--neon-green)" }}
+                    style={{ background: "rgba(0,255,148,0.15)", color: "var(--success)" }}
                     disabled={busyId === item.friendship_id}
                     aria-label="Принять запрос в друзья"
                     onClick={() => mutate(() => api.post(`/users/friends/${item.friendship_id}/accept`, {}), item.friendship_id)}
@@ -165,7 +165,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
                   </button>
                   <button
                     className="flex h-9 w-9 items-center justify-center rounded-xl"
-                    style={{ background: "rgba(255,42,109,0.12)", color: "var(--neon-red)" }}
+                    style={{ background: "rgba(255,42,109,0.12)", color: "var(--danger)" }}
                     disabled={busyId === item.friendship_id}
                     aria-label="Отклонить запрос в друзья"
                     onClick={() => mutate(() => api.delete(`/users/friends/${item.friendship_id}`), item.friendship_id)}
@@ -225,7 +225,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
                   </button>
                   <button
                     className="text-xs font-mono uppercase tracking-wider"
-                    style={{ color: "var(--neon-red)" }}
+                    style={{ color: "var(--danger)" }}
                     disabled={busyId === item.friendship_id}
                     aria-label={`Убрать из друзей: ${item.full_name}`}
                     onClick={() => mutate(() => api.delete(`/users/friends/${item.friendship_id}`), item.friendship_id)}

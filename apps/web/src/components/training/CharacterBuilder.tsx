@@ -477,14 +477,14 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                   <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>Влияет на агрессивность, ловушки и адаптивную сложность</p>
                 </div>
                 <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: `${difficulty <= 3 ? "rgba(0,255,102,0.08)" : difficulty <= 6 ? "rgba(255,215,0,0.08)" : "rgba(255,51,51,0.08)"}` }}>
-                  <span className="font-display text-2xl font-black tabular-nums" style={{ color: difficulty <= 3 ? "var(--neon-green)" : difficulty <= 6 ? "var(--warning)" : "var(--neon-red)" }}>{difficulty}</span>
+                  <span className="font-display text-2xl font-black tabular-nums" style={{ color: difficulty <= 3 ? "var(--success)" : difficulty <= 6 ? "var(--warning)" : "var(--danger)" }}>{difficulty}</span>
                   <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>/10</span>
                 </div>
               </div>
               <div className="flex gap-1.5">
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((level) => {
                   const active = level === difficulty; const filled = level <= difficulty;
-                  const cc = level <= 3 ? "var(--neon-green)" : level <= 6 ? "var(--warning)" : level <= 8 ? "var(--neon-red)" : "var(--neon-red)";
+                  const cc = level <= 3 ? "var(--success)" : level <= 6 ? "var(--warning)" : level <= 8 ? "var(--danger)" : "var(--danger)";
                   return (
                     <motion.button key={level} onClick={() => setDifficulty(level)}
                       className="relative flex-1 rounded-lg" style={{ height: active ? 36 : 28, background: filled ? `linear-gradient(180deg, ${cc}, ${cc}88)` : "var(--input-bg)", border: active ? `2px solid ${cc}` : "1px solid var(--border-color)", opacity: filled ? 1 : 0.35 }}
@@ -533,7 +533,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                 </div>
                 <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
                   <div className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>Сложность</div>
-                  <div className="text-lg font-black font-mono" style={{ color: difficulty <= 3 ? "var(--neon-green)" : difficulty <= 6 ? "var(--warning)" : "var(--neon-red)" }}>{difficulty}/10</div>
+                  <div className="text-lg font-black font-mono" style={{ color: difficulty <= 3 ? "var(--success)" : difficulty <= 6 ? "var(--warning)" : "var(--danger)" }}>{difficulty}/10</div>
                 </div>
               </div>
               {/* Extra params summary */}
@@ -586,7 +586,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
           ) : (
             <div className="flex gap-2">
               <motion.button onClick={handleSave} disabled={saving || saved || !archetype || !profession} className="btn-neon flex items-center gap-1.5 text-xs" whileTap={{ scale: 0.97 }}>
-                {saved ? <><CheckCircle2 size={12} style={{ color: "var(--neon-green)" }} /> Сохранён</> : saving ? <Loader2 size={12} className="animate-spin" /> : <><Save size={12} /> Сохранить</>}
+                {saved ? <><CheckCircle2 size={12} style={{ color: "var(--success)" }} /> Сохранён</> : saving ? <Loader2 size={12} className="animate-spin" /> : <><Save size={12} /> Сохранить</>}
               </motion.button>
               <motion.button onClick={() => handleStart(false)} disabled={starting || !archetype || !profession} className="btn-neon flex items-center gap-1.5 text-xs" whileTap={{ scale: 0.97 }}>
                 {starting ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={12} /> Начать</>}

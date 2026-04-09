@@ -60,18 +60,18 @@ const LAYER_DEFS: LayerScore[] = [
 
 function getBarColor(pct: number, isModifier: boolean): string {
   if (isModifier) return "var(--accent, #6366f1)";
-  if (pct >= 80) return "var(--neon-green, #00FF94)";
+  if (pct >= 80) return "var(--success)";
   if (pct >= 60) return "var(--warning, #FFD700)";
-  if (pct >= 40) return "var(--neon-red, #FF3333)";
-  return "var(--neon-red, #FF3333)";
+  if (pct >= 40) return "var(--danger)";
+  return "var(--danger)";
 }
 
 function getGradeLabel(pct: number): { label: string; color: string } {
-  if (pct >= 90) return { label: "Отлично", color: "var(--neon-green, #00FF94)" };
+  if (pct >= 90) return { label: "Отлично", color: "var(--success)" };
   if (pct >= 70) return { label: "Хорошо", color: "#22c55e" };
   if (pct >= 50) return { label: "Средне", color: "var(--warning, #FFD700)" };
   if (pct >= 25) return { label: "Слабо", color: "#F59E0B" };
-  return { label: "Критично", color: "var(--neon-red, #FF3333)" };
+  return { label: "Критично", color: "var(--danger)" };
 }
 
 interface Props {
@@ -228,7 +228,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
                               style={{
                                 background: h.delta < 0 ? "rgba(255,42,109,0.06)" : h.delta > 0 ? "rgba(0,255,148,0.06)" : "rgba(255,255,255,0.02)",
                                 borderLeft: h.delta !== 0
-                                  ? `3px solid ${h.delta < 0 ? "var(--neon-red, #FF2A6D)" : "var(--neon-green, #00FF94)"}`
+                                  ? `3px solid ${h.delta < 0 ? "var(--danger)" : "var(--success)"}`
                                   : "3px solid var(--border-color)",
                               }}
                             >
@@ -242,7 +242,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
                                     &ldquo;{h.excerpt}&rdquo;
                                   </p>
                                 )}
-                                <p className="text-sm mt-1" style={{ color: h.delta < 0 ? "var(--neon-red, #FF2A6D)" : h.delta > 0 ? "var(--neon-green, #00FF94)" : "var(--text-secondary)" }}>
+                                <p className="text-sm mt-1" style={{ color: h.delta < 0 ? "var(--danger)" : h.delta > 0 ? "var(--success)" : "var(--text-secondary)" }}>
                                   {h.impact}
                                   {h.delta !== 0 && (
                                     <span className="ml-2 font-mono font-bold">

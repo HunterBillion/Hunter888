@@ -24,9 +24,9 @@ export function ClientStats({ stats }: ClientStatsProps) {
 
   const cards = [
     { label: "В воронке", value: totalInPipeline, icon: Users, color: "var(--accent)" },
-    { label: "Конверсия", value: `${conversionRate}%`, icon: TrendingUp, color: "var(--neon-green, #00FF66)" },
-    { label: "Договоры", value: contractSigned, icon: ArrowRightLeft, color: "var(--neon-green, #00FF66)" },
-    { label: "Потеряны", value: lost, icon: Timer, color: "var(--neon-red, #FF3333)" },
+    { label: "Конверсия", value: `${conversionRate}%`, icon: TrendingUp, color: "var(--success)" },
+    { label: "Договоры", value: contractSigned, icon: ArrowRightLeft, color: "var(--success)" },
+    { label: "Потеряны", value: lost, icon: Timer, color: "var(--danger)" },
   ];
 
   return (

@@ -78,7 +78,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 <div
                   className="h-3 w-3 rounded-full"
                   style={{
-                    background: "var(--neon-red, #FF2A6D)",
+                    background: "var(--danger)",
                     boxShadow: "0 0 12px rgba(255,42,109,0.4)",
                     animation: "pulse 2s ease-in-out infinite",
                   }}

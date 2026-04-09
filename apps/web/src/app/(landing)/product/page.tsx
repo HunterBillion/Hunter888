@@ -176,7 +176,7 @@ export default function ProductPage() {
                     className="w-12 h-12 rounded-lg flex items-center justify-center mb-5"
                     style={{ background: isNeg ? "rgba(255,42,109,0.10)" : "rgba(0,255,148,0.08)" }}
                   >
-                    <Icon size={24} style={{ color: isNeg ? "var(--neon-red)" : "var(--neon-green)" }} />
+                    <Icon size={24} style={{ color: isNeg ? "var(--danger)" : "var(--success)" }} />
                   </div>
                   <h3 className="font-display font-bold text-xl mb-2" style={{ color: "var(--text-primary)" }}>{name}</h3>
                   <p className="text-base leading-relaxed" style={{ color: "var(--text-secondary)" }}>{desc}</p>
@@ -201,7 +201,7 @@ export default function ProductPage() {
                 const isNeg = "negative" in rest;
                 return (
                   <div key={name} className="flex items-start gap-3 py-3" style={{ borderBottom: "1px solid var(--border-color)" }}>
-                    <Icon size={18} className="mt-0.5 flex-shrink-0" style={{ color: isNeg ? "var(--neon-red)" : "var(--text-muted)", opacity: 0.6 }} />
+                    <Icon size={18} className="mt-0.5 flex-shrink-0" style={{ color: isNeg ? "var(--danger)" : "var(--text-muted)", opacity: 0.6 }} />
                     <div>
                       <span className="font-medium text-base" style={{ color: "var(--text-primary)" }}>{name}</span>
                       <span className="text-base ml-2" style={{ color: "var(--text-muted)" }}>{desc}</span>
@@ -236,13 +236,13 @@ export default function ProductPage() {
               {/* Features as simple text, not cards */}
               <div className="space-y-4 pt-2">
                 <div className="flex items-start gap-3">
-                  <Trophy size={18} className="mt-1 flex-shrink-0" style={{ color: "var(--neon-green)" }} />
+                  <Trophy size={18} className="mt-1 flex-shrink-0" style={{ color: "var(--success)" }} />
                   <p className="text-base" style={{ color: "var(--text-secondary)" }}>
                     <strong style={{ color: "var(--text-primary)" }}>Ранговые дуэли</strong> — побеждайте в серии из 3 матчей, чтобы подняться выше.
                   </p>
                 </div>
                 <div className="flex items-start gap-3">
-                  <Flame size={18} className="mt-1 flex-shrink-0" style={{ color: "var(--neon-green)" }} />
+                  <Flame size={18} className="mt-1 flex-shrink-0" style={{ color: "var(--success)" }} />
                   <p className="text-base" style={{ color: "var(--text-secondary)" }}>
                     <strong style={{ color: "var(--text-primary)" }}>Сезонные награды</strong> — лучшие охотники получают уникальные бонусы и XP.
                   </p>
@@ -363,7 +363,7 @@ export default function ProductPage() {
               className="rounded-xl p-6"
               style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}
             >
-              <Flame size={20} style={{ color: "var(--neon-green)" }} />
+              <Flame size={20} style={{ color: "var(--success)" }} />
               <h3 className="font-display font-bold text-base mt-3 mb-1" style={{ color: "var(--text-primary)" }}>Стрики и дейлики</h3>
               <p className="text-sm" style={{ color: "var(--text-muted)" }}>
                 Ежедневные цели. Серии тренировок = бонусный XP.
@@ -379,7 +379,7 @@ export default function ProductPage() {
               className="rounded-xl p-6"
               style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}
             >
-              <TrendingUp size={20} style={{ color: "var(--neon-green)" }} />
+              <TrendingUp size={20} style={{ color: "var(--success)" }} />
               <h3 className="font-display font-bold text-base mt-3 mb-1" style={{ color: "var(--text-primary)" }}>Прогресс команды</h3>
               <p className="text-sm" style={{ color: "var(--text-muted)" }}>
                 Дашборд руководителя. Кто растёт, кто буксует.

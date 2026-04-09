@@ -61,9 +61,9 @@ const DIFF_FILTERS = [
 ] as const;
 
 function getDifficultyConfig(d: number) {
-  if (d <= 3) return { label: "Легко", emoji: "🟢", color: "var(--neon-green, #00FF94)", bg: "rgba(0,255,148,0.08)", border: "rgba(0,255,148,0.2)", desc: "Клиент лояльный, мало возражений" };
+  if (d <= 3) return { label: "Легко", emoji: "🟢", color: "var(--success)", bg: "rgba(0,255,148,0.08)", border: "rgba(0,255,148,0.2)", desc: "Клиент лояльный, мало возражений" };
   if (d <= 6) return { label: "Средне", emoji: "🟡", color: "var(--warning)", bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.2)", desc: "Стандартные возражения и ловушки" };
-  if (d <= 8) return { label: "Сложно", emoji: "🔴", color: "var(--neon-red, #FF3333)", bg: "rgba(255,51,51,0.08)", border: "rgba(255,51,51,0.2)", desc: "Агрессивный клиент, каскад ловушек" };
+  if (d <= 8) return { label: "Сложно", emoji: "🔴", color: "var(--danger)", bg: "rgba(255,51,51,0.08)", border: "rgba(255,51,51,0.2)", desc: "Агрессивный клиент, каскад ловушек" };
   return { label: "Босс", emoji: "💀", color: "#FF0055", bg: "rgba(255,0,85,0.1)", border: "rgba(255,0,85,0.3)", desc: "Максимальная сложность, все ловушки" };
 }
 
@@ -141,7 +141,7 @@ function TrainingPageContent() {
             >
               <div
                 className="glass-panel flex items-center gap-3 px-5 py-3 text-sm"
-                style={{ borderColor: "var(--neon-red, #FF3333)", color: "var(--neon-red, #FF3333)" }}
+                style={{ borderColor: "var(--danger)", color: "var(--danger)" }}
               >
                 <AlertTriangle size={16} />
                 {startError}
@@ -313,7 +313,7 @@ function TrainingPageContent() {
                     {t.id === "assigned" && assignedCount > 0 && (
                       <span
                         className="min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-xs font-bold text-white px-1"
-                        style={{ background: overdueCount > 0 ? "var(--neon-red, #FF3333)" : "var(--accent)" }}
+                        style={{ background: overdueCount > 0 ? "var(--danger)" : "var(--accent)" }}
                       >
                         {assignedCount}
                       </span>
@@ -826,7 +826,7 @@ function AssignedTab({
             transition={{ delay: i * 0.08 }}
             className="glass-panel p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4"
             style={{
-              borderLeft: `3px solid ${isOverdue ? "var(--neon-red, #FF3333)" : "var(--accent)"}`,
+              borderLeft: `3px solid ${isOverdue ? "var(--danger)" : "var(--accent)"}`,
             }}
           >
             <div className="flex-1 min-w-0">
@@ -835,14 +835,14 @@ function AssignedTab({
                   {item.scenario_title}
                 </h3>
                 {isOverdue && (
-                  <AlertTriangle size={16} style={{ color: "var(--neon-red, #FF3333)", flexShrink: 0 }} />
+                  <AlertTriangle size={16} style={{ color: "var(--danger)", flexShrink: 0 }} />
                 )}
               </div>
               <div className="mt-1.5 flex items-center gap-3 text-xs" style={{ color: "var(--text-muted)" }}>
                 <span className="flex items-center gap-1">
                   <Clock size={11} />
                   {isOverdue ? (
-                    <span style={{ color: "var(--neon-red, #FF3333)" }}>
+                    <span style={{ color: "var(--danger)" }}>
                       Просрочено на {Math.abs(daysLeft)} дн.
                     </span>
                   ) : daysLeft <= 1 ? (
@@ -1032,7 +1032,7 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
                 }}
                 disabled={deleting === char.id}
                 className="btn-neon px-3 text-xs"
-                style={{ color: "var(--neon-red, #FF3333)", borderColor: "rgba(255,51,51,0.3)" }}
+                style={{ color: "var(--danger)", borderColor: "rgba(255,51,51,0.3)" }}
                 whileTap={{ scale: 0.97 }}
               >
                 {deleting === char.id ? <Loader2 size={12} className="animate-spin" /> : "×"}

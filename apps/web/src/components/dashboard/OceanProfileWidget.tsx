@@ -35,8 +35,8 @@ interface OceanData {
 
 const TRAIT_COLORS: Record<string, string> = {
   openness: "var(--accent)",
-  conscientiousness: "var(--neon-green)",
-  extraversion: "var(--neon-amber)",
+  conscientiousness: "var(--success)",
+  extraversion: "var(--warning)",
   agreeableness: "var(--accent)",
   neuroticism: "var(--magenta)",
 };
@@ -141,7 +141,7 @@ export function OceanProfileWidget() {
           style={{ background: "var(--bg-secondary)", border: "1px solid var(--glass-border)" }}
         >
           <div className="text-xs font-mono font-bold" style={{
-            color: data.performance.under_hostility >= 60 ? "var(--neon-green, #00FF94)" : "var(--neon-red, #FF2A6D)",
+            color: data.performance.under_hostility >= 60 ? "var(--success)" : "var(--danger)",
           }}>
             {Math.round(data.performance.under_hostility)}
           </div>
@@ -152,7 +152,7 @@ export function OceanProfileWidget() {
           style={{ background: "var(--bg-secondary)", border: "1px solid var(--glass-border)" }}
         >
           <div className="text-xs font-mono font-bold" style={{
-            color: data.performance.under_stress >= 60 ? "var(--neon-green, #00FF94)" : "var(--warning)",
+            color: data.performance.under_stress >= 60 ? "var(--success)" : "var(--warning)",
           }}>
             {Math.round(data.performance.under_stress)}
           </div>
@@ -163,7 +163,7 @@ export function OceanProfileWidget() {
           style={{ background: "var(--bg-secondary)", border: "1px solid var(--glass-border)" }}
         >
           <div className="text-xs font-mono font-bold" style={{
-            color: data.performance.with_empathy >= 60 ? "var(--neon-green, #00FF94)" : "var(--accent)",
+            color: data.performance.with_empathy >= 60 ? "var(--success)" : "var(--accent)",
           }}>
             {Math.round(data.performance.with_empathy)}
           </div>

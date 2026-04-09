@@ -60,10 +60,10 @@ const SKILL_LABELS: Record<string, string> = {
 
 const SKILL_COLORS: Record<string, string> = {
   script_adherence: "var(--accent, #8A2BE2)",
-  objection_handling: "var(--neon-blue, #3B82F6)",
-  communication: "var(--neon-green, #00FF94)",
-  anti_patterns: "var(--neon-red, #FF2A6D)",
-  result: "var(--neon-amber, #FFD700)",
+  objection_handling: "var(--info)",
+  communication: "var(--success)",
+  anti_patterns: "var(--danger)",
+  result: "var(--warning)",
 };
 
 const MASTERY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -85,8 +85,8 @@ const SUB_SKILL_LABELS: Record<string, string> = {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function TrendIcon({ trend }: { trend: string }) {
-  if (trend === "improving") return <TrendingUp size={14} style={{ color: "var(--neon-green, #00FF94)" }} />;
-  if (trend === "declining") return <TrendingDown size={14} style={{ color: "var(--neon-red, #FF2A6D)" }} />;
+  if (trend === "improving") return <TrendingUp size={14} style={{ color: "var(--success)" }} />;
+  if (trend === "declining") return <TrendingDown size={14} style={{ color: "var(--danger)" }} />;
   return <Minus size={14} style={{ color: "var(--text-muted)" }} />;
 }
 
@@ -337,7 +337,7 @@ export default function AnalyticsPage() {
               className="glass-panel p-5"
             >
               <div className="flex items-center gap-2 mb-4">
-                <Target size={16} style={{ color: "var(--neon-red, #FF2A6D)" }} />
+                <Target size={16} style={{ color: "var(--danger)" }} />
                 <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                   Зоны роста
                 </span>
@@ -530,7 +530,7 @@ export default function AnalyticsPage() {
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-display text-sm font-bold"
                       style={{
                         background: rec.priority <= 2 ? "rgba(255,42,109,0.12)" : "var(--accent-muted)",
-                        color: rec.priority <= 2 ? "var(--neon-red, #FF2A6D)" : "var(--accent)",
+                        color: rec.priority <= 2 ? "var(--danger)" : "var(--accent)",
                       }}
                     >
                       {rec.priority}

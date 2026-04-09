@@ -112,7 +112,7 @@ export default function PvPArenaMatch({ userId, sendMessage }: PvPArenaMatchProp
         <div className="text-sm text-[var(--text-secondary)]">
           Раунд {pvpRound}/{pvpTotalRounds}
         </div>
-        <div className={`text-lg font-mono font-bold ${pvpTimeLeft <= 10 ? "animate-pulse" : ""}`} style={{ color: pvpTimeLeft <= 10 ? "var(--neon-red)" : "var(--neon-green)" }}>
+        <div className={`text-lg font-mono font-bold ${pvpTimeLeft <= 10 ? "animate-pulse" : ""}`} style={{ color: pvpTimeLeft <= 10 ? "var(--danger)" : "var(--success)" }}>
           {Math.floor(pvpTimeLeft / 60)}:{String(pvpTimeLeft % 60).padStart(2, "0")}
         </div>
       </div>
@@ -152,7 +152,7 @@ export default function PvPArenaMatch({ userId, sendMessage }: PvPArenaMatchProp
                   <span className="font-medium" style={{ color: isMe ? "var(--accent)" : "var(--text-primary)" }}>
                     {isMe ? "Вы" : player.name}
                   </span>
-                  {isDisconnected && <span className="text-xs" style={{ color: "var(--neon-red)" }}>(отключен)</span>}
+                  {isDisconnected && <span className="text-xs" style={{ color: "var(--danger)" }}>(отключен)</span>}
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-sm text-[var(--text-muted)]">
@@ -238,7 +238,7 @@ export default function PvPArenaMatch({ userId, sendMessage }: PvPArenaMatchProp
                 </div>
                 <div className="flex items-center gap-2 text-[var(--text-muted)]">
                   <span className="text-xs max-w-[200px] truncate">&laquo;{p.answer}&raquo;</span>
-                  <span style={{ color: p.is_correct ? "var(--neon-green)" : "var(--neon-red)" }}>
+                  <span style={{ color: p.is_correct ? "var(--success)" : "var(--danger)" }}>
                     {p.score}{p.speed_bonus > 0 ? ` (+${p.speed_bonus})` : ""}
                   </span>
                 </div>
@@ -247,7 +247,7 @@ export default function PvPArenaMatch({ userId, sendMessage }: PvPArenaMatchProp
           </div>
           {lastResult.correct_answer && (
             <div className="mt-3 pt-3 border-t border-[var(--border-color)] text-sm">
-              <p style={{ color: "var(--neon-green)" }}>Правильный ответ: {lastResult.correct_answer}</p>
+              <p style={{ color: "var(--success)" }}>Правильный ответ: {lastResult.correct_answer}</p>
               {lastResult.article_ref && (
                 <p className="text-[var(--text-muted)] mt-1">{lastResult.article_ref}</p>
               )}
@@ -298,7 +298,7 @@ function ArenaResultsView({
               </div>
               <div className="text-right">
                 {player.rating_delta !== undefined && player.rating_delta !== 0 && (
-                  <span className="text-sm font-medium" style={{ color: player.rating_delta > 0 ? "var(--neon-green)" : "var(--neon-red)" }}>
+                  <span className="text-sm font-medium" style={{ color: player.rating_delta > 0 ? "var(--success)" : "var(--danger)" }}>
                     {player.rating_delta > 0 ? "+" : ""}
                     {Math.round(player.rating_delta)} ELO
                   </span>

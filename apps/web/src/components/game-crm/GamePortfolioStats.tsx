@@ -26,8 +26,8 @@ const PERIOD_OPTIONS = [
 ];
 
 function TrendIcon({ direction }: { direction: string }) {
-  if (direction === "up") return <TrendingUp size={12} style={{ color: "var(--neon-green)" }} />;
-  if (direction === "down") return <TrendingDown size={12} style={{ color: "var(--neon-red)" }} />;
+  if (direction === "up") return <TrendingUp size={12} style={{ color: "var(--success)" }} />;
+  if (direction === "down") return <TrendingDown size={12} style={{ color: "var(--danger)" }} />;
   return <Minus size={12} style={{ color: "var(--text-muted)" }} />;
 }
 
@@ -66,7 +66,7 @@ export function GamePortfolioStats({
       value: stats.total_calls,
       sub: `~${stats.avg_calls_per_story} / историю`,
       icon: Phone,
-      color: "var(--neon-green)",
+      color: "var(--success)",
     },
     {
       label: "Ср. балл",
@@ -77,7 +77,7 @@ export function GamePortfolioStats({
           ? `${stats.trend.change_pct}%`
           : "стабильно",
       icon: Target,
-      color: "var(--neon-amber)",
+      color: "var(--warning)",
     },
     {
       label: "Завершено",
@@ -86,7 +86,7 @@ export function GamePortfolioStats({
         ? `${Math.round((stats.completed / stats.total_stories) * 100)}%`
         : "0%",
       icon: BarChart3,
-      color: "var(--neon-green)",
+      color: "var(--success)",
     },
   ];
 

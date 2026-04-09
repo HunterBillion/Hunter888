@@ -145,14 +145,14 @@ export function InteractionCreateModal({
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>ТИП *</label>
+                <label className="block text-xs font-medium tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>ТИП *</label>
                 <select aria-label="ТИП" value={type} onChange={(e) => setType(e.target.value)} className="vh-input w-full">
                   {INTERACTION_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>ОПИСАНИЕ</label>
+                <label className="block text-xs font-medium tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>ОПИСАНИЕ</label>
                 <textarea
                   aria-label="ОПИСАНИЕ"
                   value={content}
@@ -165,7 +165,7 @@ export function InteractionCreateModal({
               </div>
 
               <div>
-                <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>РЕЗУЛЬТАТ</label>
+                <label className="block text-xs font-medium tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>РЕЗУЛЬТАТ</label>
                 <input
                   type="text"
                   aria-label="РЕЗУЛЬТАТ"
@@ -179,7 +179,7 @@ export function InteractionCreateModal({
               {/* Duration for calls */}
               {isCall && (
                 <div>
-                  <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>ДЛИТЕЛЬНОСТЬ</label>
+                  <label className="block text-xs font-medium tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>ДЛИТЕЛЬНОСТЬ</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"

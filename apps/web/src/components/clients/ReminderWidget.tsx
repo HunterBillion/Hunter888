@@ -70,7 +70,7 @@ export function ReminderWidget() {
                 className="flex items-center gap-3 rounded-lg p-2.5 transition-colors"
                 style={{ background: "var(--input-bg)" }}
               >
-                <Phone size={12} style={{ color: isOverdue ? "var(--neon-red, #FF3333)" : "var(--text-muted)" }} />
+                <Phone size={12} style={{ color: isOverdue ? "var(--danger)" : "var(--text-muted)" }} />
                 <div className="flex-1 min-w-0">
                   <span className="text-sm truncate block" style={{ color: "var(--text-primary)" }}>
                     {sanitizeText(r.client_name || "")}
@@ -84,7 +84,7 @@ export function ReminderWidget() {
                 <div className="shrink-0 text-right">
                   <span
                     className="text-xs font-mono"
-                    style={{ color: isOverdue ? "var(--neon-red, #FF3333)" : "var(--text-muted)" }}
+                    style={{ color: isOverdue ? "var(--danger)" : "var(--text-muted)" }}
                   >
                     {formatTime(r.remind_at)}
                   </span>

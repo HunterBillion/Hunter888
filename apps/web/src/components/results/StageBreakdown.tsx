@@ -157,7 +157,7 @@ export default function StageBreakdown({
           if (scorePct !== null) {
             if (scorePct >= 50) scoreColor = "var(--success, #00FF94)";
             else if (scorePct >= 20) scoreColor = "var(--warning, #F59E0B)";
-            else scoreColor = "var(--neon-red, #FF3333)";
+            else scoreColor = "var(--danger)";
           }
 
           return (
@@ -197,7 +197,7 @@ export default function StageBreakdown({
                 }}
               >
                 {isHangupStage ? (
-                  <PhoneOff size={12} style={{ color: "var(--neon-red)" }} />
+                  <PhoneOff size={12} style={{ color: "var(--danger)" }} />
                 ) : isCompleted ? (
                   <Check size={12} style={{ color: "var(--success, #00FF94)" }} strokeWidth={3} />
                 ) : isSkipped ? (
@@ -213,7 +213,7 @@ export default function StageBreakdown({
                   <span
                     className="text-sm font-medium"
                     style={{
-                      color: isHangupStage ? "var(--neon-red)" : isSkipped ? "var(--warning)" : "var(--text-primary)",
+                      color: isHangupStage ? "var(--danger)" : isSkipped ? "var(--warning)" : "var(--text-primary)",
                     }}
                   >
                     {meta.name}
@@ -224,7 +224,7 @@ export default function StageBreakdown({
                     </span>
                   )}
                   {isHangupStage && (
-                    <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(255,51,51,0.12)", color: "var(--neon-red)" }}>
+                    <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(255,51,51,0.12)", color: "var(--danger)" }}>
                       HANGUP
                     </span>
                   )}
@@ -258,7 +258,7 @@ export default function StageBreakdown({
         <span>Пройдено: <strong style={{ color: "var(--text-primary)" }}>{completed.size}/{totalStages}</strong></span>
         <span>Финальный этап: <strong style={{ color: "var(--text-primary)" }}>{STAGE_META[finalStage]?.name || `#${finalStage}`}</strong></span>
         {isHangup && (
-          <span style={{ color: "var(--neon-red)" }}>
+          <span style={{ color: "var(--danger)" }}>
             <PhoneOff size={11} className="inline mr-1" />
             Клиент бросил трубку
           </span>
@@ -295,7 +295,7 @@ export default function StageBreakdown({
                 {rec.type === "success" ? (
                   <Check size={14} className="flex-shrink-0 mt-0.5" style={{ color: "var(--success)" }} />
                 ) : rec.type === "warning" ? (
-                  <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" style={{ color: "var(--neon-red)" }} />
+                  <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" style={{ color: "var(--danger)" }} />
                 ) : (
                   <Lightbulb size={14} className="flex-shrink-0 mt-0.5" style={{ color: "var(--warning)" }} />
                 )}

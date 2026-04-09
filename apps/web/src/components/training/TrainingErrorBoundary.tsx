@@ -66,7 +66,7 @@ export class TrainingErrorBoundary extends Component<Props, State> {
                 <div
                   className="font-display text-xl font-black"
                   style={{
-                    color: "var(--neon-red, #FF2A6D)",
+                    color: "var(--danger)",
                     animation: "pulse 2s ease-in-out infinite",
                   }}
                 >

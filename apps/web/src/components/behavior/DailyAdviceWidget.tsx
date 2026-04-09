@@ -5,7 +5,7 @@ import { useBehaviorStore } from "@/stores/useBehaviorStore";
 import { Lightbulb, ArrowRight, Target, Brain, BookOpen, Flame, AlertTriangle } from "lucide-react";
 
 const CATEGORY_CONFIG: Record<string, { icon: typeof Lightbulb; color: string; label: string }> = {
-  weak_skill: { icon: Target, color: "var(--neon-red, #FF4444)", label: "Слабый навык" },
+  weak_skill: { icon: Target, color: "var(--danger)", label: "Слабый навык" },
   arena_knowledge: { icon: BookOpen, color: "var(--accent, #6366F1)", label: "Знания ФЗ-127" },
   confidence_low: { icon: Brain, color: "#F59E0B", label: "Уверенность" },
   stress_high: { icon: AlertTriangle, color: "#EF4444", label: "Стресс" },

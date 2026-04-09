@@ -1,7 +1,20 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
+import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/providers/Providers";
 import "./globals.css";
+
+const geistSans = Geist({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-geist-sans",
+  display: "swap",
+});
+
+const geistMono = Geist_Mono({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-geist-mono",
+  display: "swap",
+});
 
 // G5: OG/Twitter meta tags
 export const metadata: Metadata = {
@@ -57,24 +70,9 @@ export default async function RootLayout({
       <head>
         {/* CSP nonce — available to client scripts via document.querySelector */}
         <meta property="csp-nonce" content={nonce} />
-        {/* G2: Preload critical fonts */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          rel="preload"
-          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;700&display=swap"
-          as="style"
-          nonce={nonce}
-          suppressHydrationWarning
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;700&display=swap"
-          rel="stylesheet"
-          nonce={nonce}
-          suppressHydrationWarning
-        />
+        {/* Fonts loaded via next/font/google (Geist Sans + Geist Mono) */}
       </head>
-      <body className="min-h-screen antialiased">
+      <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased`}>
         <Providers>
           {children}
         </Providers>

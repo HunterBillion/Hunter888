@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useSessionStore } from "@/stores/useSessionStore";
 
 const STATUS_CONFIG = {
-  fell: { icon: "\u274C", color: "var(--neon-red, #ef4444)", label: "Fell" },
-  dodged: { icon: "\u2705", color: "var(--neon-green, #22c55e)", label: "Dodge" },
+  fell: { icon: "\u274C", color: "var(--danger)", label: "Fell" },
+  dodged: { icon: "\u2705", color: "var(--success)", label: "Dodge" },
   partial: { icon: "\u26A0\uFE0F", color: "var(--warning, #f59e0b)", label: "Partial" },
 } as const;
 
@@ -39,7 +39,7 @@ export default function TrapLog() {
         <div className="flex items-center gap-2.5">
           <span
             className="text-sm font-mono font-bold"
-            style={{ color: trapNetScore >= 0 ? "var(--neon-green, #22c55e)" : "var(--neon-red, #ef4444)" }}
+            style={{ color: trapNetScore >= 0 ? "var(--success)" : "var(--danger)" }}
           >
             {trapNetScore >= 0 ? "+" : ""}{trapNetScore}
           </span>

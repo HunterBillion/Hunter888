@@ -355,7 +355,7 @@ function ArenaLobbyPage() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="mt-2 text-xs"
-                    style={{ color: "var(--neon-green)" }}
+                    style={{ color: "var(--success)" }}
                   >
                     Игрок присоединился!
                   </motion.p>
@@ -416,7 +416,7 @@ function ArenaLobbyPage() {
 
                 <h3
                   className="font-display text-lg font-bold"
-                  style={{ color: "var(--neon-green)" }}
+                  style={{ color: "var(--success)" }}
                 >
                   СОПЕРНИК НАЙДЕН!
                 </h3>
@@ -528,7 +528,7 @@ function ArenaLobbyPage() {
                   <X size={28} style={{ color: "#EF4444" }} />
                 </div>
 
-                <h3 className="text-lg font-bold" style={{ color: "var(--neon-red)" }}>
+                <h3 className="text-lg font-bold" style={{ color: "var(--danger)" }}>
                   Ошибка
                 </h3>
                 <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>

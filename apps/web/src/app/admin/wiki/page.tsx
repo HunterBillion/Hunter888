@@ -5,7 +5,13 @@ import { ShieldCheck, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { isAdmin } from "@/lib/guards";
 import AuthLayout from "@/components/layout/AuthLayout";
-import { WikiDashboard } from "@/components/dashboard/WikiDashboard";
+import dynamic from "next/dynamic";
+import { DashboardSkeleton } from "@/components/ui/Skeleton";
+
+const WikiDashboard = dynamic(
+  () => import("@/components/dashboard/WikiDashboard").then((m) => m.WikiDashboard),
+  { loading: () => <DashboardSkeleton />, ssr: false }
+);
 
 export default function AdminWikiPage() {
   const router = useRouter();

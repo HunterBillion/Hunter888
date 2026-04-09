@@ -64,7 +64,7 @@ export default function CheckpointProgress({ checkpoints }: CheckpointProgressPr
                       size={22}
                       strokeWidth={2.5}
                       style={{
-                        color: "var(--neon-green, #00FF94)",
+                        color: "var(--success)",
                         filter: "drop-shadow(0 0 4px rgba(0,255,148,0.4))",
                       }}
                     />

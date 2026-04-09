@@ -61,7 +61,7 @@ export function DuelResult({
   turningPoint,
 }: Props) {
   const [showDetails, setShowDetails] = useState(false);
-  const resultColor = isDraw ? "var(--warning)" : isWinner ? "var(--neon-green)" : "var(--neon-red)";
+  const resultColor = isDraw ? "var(--warning)" : isWinner ? "var(--success)" : "var(--danger)";
   const resultText = isDraw ? "Ничья" : isWinner ? "Победа!" : "Поражение";
   const deltaSign = myRatingDelta >= 0 ? "+" : "";
 
@@ -136,7 +136,7 @@ export function DuelResult({
           className={`mt-4 inline-flex items-center gap-2 font-mono text-lg font-bold px-4 py-2 rounded-xl stat-chip ${ratingChangeApplied && myRatingDelta >= 0 ? "neon-pulse" : ""}`}
           style={{
             background: ratingChangeApplied ? (myRatingDelta >= 0 ? "rgba(0,255,148,0.1)" : "rgba(255,42,109,0.1)") : "rgba(255,215,0,0.1)",
-            color: ratingChangeApplied ? (myRatingDelta >= 0 ? "var(--neon-green)" : "var(--neon-red)") : "var(--warning)",
+            color: ratingChangeApplied ? (myRatingDelta >= 0 ? "var(--success)" : "var(--danger)") : "var(--warning)",
             border: `1px solid ${ratingChangeApplied ? (myRatingDelta >= 0 ? "rgba(0,255,148,0.2)" : "rgba(255,42,109,0.2)") : "rgba(255,215,0,0.2)"}`,
           }}
         >
@@ -253,9 +253,9 @@ export function DuelResult({
                     {myBreakdown.best_reply && (
                       <div
                         className="rounded-lg px-3 py-2"
-                        style={{ background: "rgba(0,255,148,0.06)", borderLeft: "2px solid var(--neon-green, #00FF94)" }}
+                        style={{ background: "rgba(0,255,148,0.06)", borderLeft: "2px solid var(--success)" }}
                       >
-                        <div className="text-xs font-mono tracking-wider mb-1" style={{ color: "var(--neon-green, #00FF94)" }}>
+                        <div className="text-xs font-mono tracking-wider mb-1" style={{ color: "var(--success)" }}>
                           ЛУЧШАЯ РЕПЛИКА
                         </div>
                         <p className="text-xs italic leading-relaxed" style={{ color: "var(--text-secondary)" }}>

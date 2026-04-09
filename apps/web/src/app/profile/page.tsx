@@ -15,7 +15,13 @@ import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { BackButton } from "@/components/ui/BackButton";
 import { HunterCard } from "@/components/profile/HunterCard";
-import { ProgressGraph } from "@/components/profile/ProgressGraph";
+import dynamic from "next/dynamic";
+import { Skeleton } from "@/components/ui/Skeleton";
+
+const ProgressGraph = dynamic(
+  () => import("@/components/profile/ProgressGraph").then((m) => m.ProgressGraph),
+  { loading: () => <Skeleton height={240} width="100%" rounded="12px" />, ssr: false }
+);
 import { AchievementWall } from "@/components/profile/AchievementWall";
 import type { TrainingStats, GamificationProgress, ProgressPoint } from "@/types";
 import { logger } from "@/lib/logger";

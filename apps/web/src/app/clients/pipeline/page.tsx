@@ -297,7 +297,7 @@ export default function PipelinePage() {
                   style={{
                     background: showLost ? "rgba(255,51,51,0.1)" : "var(--input-bg)",
                     border: `1px solid ${showLost ? "rgba(255,51,51,0.3)" : "var(--border-color)"}`,
-                    color: showLost ? "var(--neon-red)" : "var(--text-muted)",
+                    color: showLost ? "var(--danger)" : "var(--text-muted)",
                   }}
                   whileTap={{ scale: 0.97 }}
                 >

@@ -86,7 +86,7 @@ export default function TournamentPage() {
           {isBracket ? (
             <Swords size={18} style={{ color: "var(--accent)" }} />
           ) : (
-            <Trophy size={18} style={{ color: "var(--neon-amber, #FFD700)" }} />
+            <Trophy size={18} style={{ color: "var(--warning)" }} />
           )}
           <h1 className="font-display text-lg font-bold" style={{ color: "var(--text-primary)" }}>
             {isBracket ? "Турнир на выбывание" : "Турнир недели"}
@@ -135,7 +135,7 @@ export default function TournamentPage() {
             >
               <div className="glow-card-inner rounded-2xl p-6 text-center">
                 <div className="text-3xl mb-2">{isBracket ? "\u2694\uFE0F" : "\uD83C\uDFC6"}</div>
-                <h2 className="font-display text-xl font-bold mb-1" style={{ color: isBracket ? "var(--accent)" : "var(--neon-amber, #FFD700)" }}>
+                <h2 className="font-display text-xl font-bold mb-1" style={{ color: isBracket ? "var(--accent)" : "var(--warning)" }}>
                   {tournament.title}
                 </h2>
                 {tournament.description && (
@@ -245,7 +245,7 @@ export default function TournamentPage() {
                     className="glass-panel rounded-2xl p-6"
                   >
                     <h3 className="text-xs font-mono tracking-wider mb-4 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
-                      <Trophy size={12} style={{ color: "var(--neon-amber, #FFD700)" }} />
+                      <Trophy size={12} style={{ color: "var(--warning)" }} />
                       ПОДИУМ
                     </h3>
                     <div className="flex items-end justify-center gap-4">

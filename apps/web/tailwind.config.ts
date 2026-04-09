@@ -5,7 +5,22 @@ const config: Config = {
   darkMode: "class",
   theme: {
     extend: {
+      /* ── Design Tokens ─────────────────────────────────── */
+      borderRadius: {
+        sm: "8px",
+        md: "12px",
+        lg: "16px",
+        xl: "20px",
+      },
       colors: {
+        /* ── Brand ── */
+        brand: {
+          deep: "#311573",
+          DEFAULT: "#7C6AE8",
+          light: "#9584F0",
+          muted: "rgba(124, 106, 232, 0.14)",
+        },
+        /* ── Violet scale (kept for legacy compat) ── */
         violet: {
           50: "#f5f3ff",
           100: "#ede9fe",
@@ -35,23 +50,29 @@ const config: Config = {
         success: "#22c55e",
         warning: "#f59e0b",
         danger: "#ef4444",
-        /* ── Design concept colors ── */
-        "vh-black": "#050505",
-        "vh-purple": "#8B5CF6",
-        "vh-darkPurple": "#6D28D9",
+        /* ── Refined Cyber palette shortcuts ── */
+        "vh-black": "#0A0A12",
+        "vh-purple": "#7C6AE8",
+        "vh-darkPurple": "#311573",
         "vh-magenta": "#E028CC",
-        "vh-red": "#FF3333",
-        "vh-green": "#00FF66",
-        "vh-panel": "rgba(15, 15, 20, 0.6)",
+        "vh-red": "#E5484D",
+        "vh-green": "#3DDC84",
+        "vh-panel": "rgba(18, 18, 31, 0.6)",
       },
       fontFamily: {
-        sans: ["Plus Jakarta Sans", "system-ui", "sans-serif"],
-        display: ["Plus Jakarta Sans", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "monospace"],
+        sans: ["var(--font-geist-sans)", "system-ui", "sans-serif"],
+        display: ["var(--font-geist-sans)", "system-ui", "sans-serif"],
+        mono: ["var(--font-geist-mono)", "monospace"],
+      },
+      /* ── Spacing scale (8px grid) ── */
+      spacing: {
+        "4.5": "18px",
+        "13": "52px",
+        "15": "60px",
+        "18": "72px",
+        "22": "88px",
       },
       animation: {
-        scanline: "scanline 8s linear infinite",
-        "pulse-glow": "pulse-glow 2s ease-in-out infinite",
         "fade-in": "fade-in 0.4s ease-out",
         "fade-up": "fade-up 0.5s ease-out",
         "slide-in-right": "slide-in-right 0.3s ease-out",
@@ -59,19 +80,9 @@ const config: Config = {
         float: "float 6s ease-in-out infinite",
         "spin-slow": "spin 60s linear infinite",
         "spin-slow-reverse": "spin 40s linear infinite reverse",
-        "bounce-dots": "bounce-dots 1.4s ease-in-out infinite",
-        "glow-pulse": "glow-pulse 2s ease-in-out infinite alternate",
         shimmer: "shimmer 2s linear infinite",
       },
       keyframes: {
-        scanline: {
-          "0%": { transform: "translateY(-100vh)" },
-          "100%": { transform: "translateY(100vh)" },
-        },
-        "pulse-glow": {
-          "0%, 100%": { opacity: "0.4" },
-          "50%": { opacity: "1" },
-        },
         "fade-in": {
           "0%": { opacity: "0" },
           "100%": { opacity: "1" },
@@ -92,14 +103,6 @@ const config: Config = {
           "0%, 100%": { transform: "translateY(0)" },
           "50%": { transform: "translateY(-10px)" },
         },
-        "bounce-dots": {
-          "0%, 100%": { transform: "translateY(0)" },
-          "50%": { transform: "translateY(-6px)" },
-        },
-        "glow-pulse": {
-          "0%": { opacity: "0.2", transform: "scale(1)" },
-          "100%": { opacity: "0.6", transform: "scale(1.05)" },
-        },
         shimmer: {
           "0%": { backgroundPosition: "-200% 0" },
           "100%": { backgroundPosition: "200% 0" },
@@ -109,12 +112,12 @@ const config: Config = {
         xs: "2px",
       },
       boxShadow: {
-        glow: "0 0 20px rgba(139, 92, 246, 0.3)",
-        "glow-lg": "0 0 40px rgba(139, 92, 246, 0.4)",
-        "glow-sm": "0 0 10px rgba(139, 92, 246, 0.2)",
-        "glow-magenta": "0 0 30px rgba(224, 40, 204, 0.4)",
-        "glow-green": "0 0 20px rgba(0, 255, 102, 0.3)",
-        "glow-red": "0 0 20px rgba(255, 51, 51, 0.3)",
+        glow: "0 0 20px rgba(124, 106, 232, 0.3)",
+        "glow-lg": "0 0 40px rgba(124, 106, 232, 0.4)",
+        "glow-sm": "0 0 10px rgba(124, 106, 232, 0.2)",
+        "glow-brand": "0 0 30px rgba(49, 21, 115, 0.4)",
+        "glow-green": "0 0 20px rgba(61, 220, 132, 0.3)",
+        "glow-red": "0 0 20px rgba(229, 72, 77, 0.3)",
       },
     },
   },

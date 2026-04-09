@@ -185,7 +185,7 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center rounded-full px-1 text-xs font-bold text-white"
-              style={{ background: "var(--neon-red, #FF3333)" }}
+              style={{ background: "var(--danger)" }}
             >
               {unread > 99 ? "99+" : unread}
             </motion.div>
@@ -193,7 +193,7 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
           {/* WS connection indicator */}
           <div
             className="absolute bottom-0.5 right-0.5 w-1.5 h-1.5 rounded-full"
-            style={{ background: wsConnected ? "var(--neon-green, #00FF66)" : "var(--text-muted)" }}
+            style={{ background: wsConnected ? "var(--success)" : "var(--text-muted)" }}
             title={wsConnected ? "Подключено" : "Переподключение..."}
           />
         </motion.button>
@@ -221,14 +221,14 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
                     Уведомления
                   </span>
                   {wsConnected ? (
-                    <Wifi size={10} style={{ color: "var(--neon-green, #00FF66)" }} />
+                    <Wifi size={10} style={{ color: "var(--success)" }} />
                   ) : (
                     <WifiOff size={10} style={{ color: "var(--text-muted)" }} />
                   )}
                 </div>
                 {unread > 0 && (
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded-full"
-                    style={{ background: "rgba(255,51,51,0.1)", color: "var(--neon-red, #FF3333)" }}
+                    style={{ background: "rgba(255,51,51,0.1)", color: "var(--danger)" }}
                   >
                     {unread} новых
                   </span>

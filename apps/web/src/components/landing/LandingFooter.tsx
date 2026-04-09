@@ -54,7 +54,7 @@ export function LandingFooter() {
 
             {/* Status */}
             <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--neon-green)" }} />
+              <div className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--success)" }} />
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>Все системы работают</span>
             </div>
           </div>
@@ -149,7 +149,7 @@ export function LandingFooter() {
             {/* Security badge */}
             <div className="mt-6 pt-4" style={{ borderTop: "1px solid var(--border-color)" }}>
               <div className="flex items-center gap-2">
-                <Shield size={14} style={{ color: "var(--neon-green)", opacity: 0.7 }} />
+                <Shield size={14} style={{ color: "var(--success)", opacity: 0.7 }} />
                 <span className="text-[10px] leading-tight" style={{ color: "var(--text-muted)" }}>
                   152-ФЗ / 127-ФЗ<br />Compliance
                 </span>

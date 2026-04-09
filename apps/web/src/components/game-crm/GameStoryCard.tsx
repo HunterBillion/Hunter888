@@ -159,7 +159,7 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
           {story.is_completed && (
             <span
               className="flex items-center gap-1 text-xs font-mono"
-              style={{ color: "var(--neon-green)" }}
+              style={{ color: "var(--success)" }}
             >
               <CheckCircle size={10} />
               Завершена

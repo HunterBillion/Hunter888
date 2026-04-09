@@ -9,7 +9,7 @@ import type { ActivityFeedItem, ActivityEventType } from "@/types";
 const EVENT_CONFIG: Record<ActivityEventType, { icon: typeof Activity; color: string }> = {
   session_completed: { icon: Crosshair, color: "var(--accent)" },
   new_record: { icon: Crown, color: "#FFD700" },
-  rank_change: { icon: TrendingUp, color: "var(--neon-green)" },
+  rank_change: { icon: TrendingUp, color: "var(--success)" },
   achievement_unlocked: { icon: Award, color: "var(--magenta)" },
 };
 
@@ -53,7 +53,7 @@ export function ActivityFeed({ items, loading = false, className = "" }: Activit
         </span>
         <span
           className="w-2 h-2 rounded-full animate-pulse ml-1"
-          style={{ background: "var(--neon-green, #00FF94)" }}
+          style={{ background: "var(--success)" }}
         />
         <span className="ml-auto font-mono text-xs" style={{ color: "var(--text-muted)" }}>
           {items.length} событий

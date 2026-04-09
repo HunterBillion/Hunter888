@@ -278,7 +278,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
               <Brain size={14} style={{ color: "var(--accent)" }} />
               <div className="flex-1 grid grid-cols-3 gap-2">
                 <div className="text-center">
-                  <div className="text-xs font-mono font-bold" style={{ color: srs.overdue > 0 ? "var(--neon-red, #FF2A6D)" : "var(--neon-green, #00FF94)" }}>
+                  <div className="text-xs font-mono font-bold" style={{ color: srs.overdue > 0 ? "var(--danger)" : "var(--success)" }}>
                     {srs.overdue}
                   </div>
                   <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>ПОВТОР</div>
@@ -290,7 +290,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
                   <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>УЧЁБА</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-xs font-mono font-bold" style={{ color: "var(--neon-green, #00FF94)" }}>
+                  <div className="text-xs font-mono font-bold" style={{ color: "var(--success)" }}>
                     {srs.mastered}
                   </div>
                   <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>УСВОЕНО</div>

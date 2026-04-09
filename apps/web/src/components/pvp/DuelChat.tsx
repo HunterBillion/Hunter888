@@ -204,7 +204,7 @@ export function DuelChat({ messages, myRole, input, onInputChange, onSend, disab
           <div className="mt-1.5 text-right">
             <span
               className="text-xs font-mono"
-              style={{ color: charWarning ? "var(--neon-red)" : "var(--text-muted)" }}
+              style={{ color: charWarning ? "var(--danger)" : "var(--text-muted)" }}
             >
               {charCount}/{MAX_MESSAGE_LENGTH}
             </span>

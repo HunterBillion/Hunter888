@@ -18,7 +18,7 @@ interface DifficultyIndicatorProps {
 
 const MODE_CONFIG: Record<DifficultyMode, { emoji: string; label: string; color: string } | null> = {
   normal: null,
-  boss: { emoji: "\uD83D\uDC80", label: "Босс", color: "var(--neon-red, #FF2A6D)" },
+  boss: { emoji: "\uD83D\uDC80", label: "Босс", color: "var(--danger)" },
   safe: { emoji: "\uD83D\uDEE1\uFE0F", label: "Безопасный", color: "var(--success, #00FF94)" },
   coaching: { emoji: "\uD83D\uDCDA", label: "Обучение", color: "var(--info)" },
   challenge: { emoji: "\u26A1", label: "Челлендж", color: "var(--warning, #FFD700)" },
@@ -28,7 +28,7 @@ const MODE_CONFIG: Record<DifficultyMode, { emoji: string; label: string; color:
 function getDifficultyColor(level: number): string {
   if (level <= 3) return "var(--success, #00FF94)";
   if (level <= 6) return "var(--warning, #FFD700)";
-  return "var(--neon-red, #FF2A6D)";
+  return "var(--danger)";
 }
 
 function getTrendArrow(trend: DifficultyTrend): string {
@@ -92,7 +92,7 @@ export default function DifficultyIndicator({
         <span className="ml-2 text-sm font-bold tabular-nums" style={{ color }}>
           {effectiveDifficulty}
           {trendArrow && (
-            <span className="ml-0.5 text-xs" style={{ color: trend === "rising" ? "var(--neon-red, #FF2A6D)" : "var(--success, #00FF94)" }}>
+            <span className="ml-0.5 text-xs" style={{ color: trend === "rising" ? "var(--danger)" : "var(--success, #00FF94)" }}>
               {trendArrow}
             </span>
           )}
@@ -167,7 +167,7 @@ export default function DifficultyIndicator({
             <p>
               {difficultyReason || "Сложность адаптируется к вашему уровню."}
               <br />
-              Модификатор: <span style={{ color: modifier >= 0 ? "var(--success)" : "var(--neon-red)" }}>
+              Модификатор: <span style={{ color: modifier >= 0 ? "var(--success)" : "var(--danger)" }}>
                 {modifier >= 0 ? "+" : ""}{modifier}
               </span>
               {trend !== "stable" && (

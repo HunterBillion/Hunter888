@@ -146,7 +146,7 @@ async def register(request: Request, body: RegisterRequest, db: AsyncSession = D
         "auth.register.success user_id=%s email=%s ip=%s",
         user.id, body.email, request.client.host if request.client else "unknown",
     )
-    tokens = _create_tokens(str(user.id))
+    tokens = _create_tokens(str(user.id), user.role)
     response = JSONResponse(content=tokens.model_dump(), status_code=201)
     return _set_auth_cookies(response, tokens)
 
@@ -238,7 +238,7 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
     except Exception:
         _logger.debug("Failed to record login fingerprint for %s", user.id)
 
-    tokens = _create_tokens(str(user.id))
+    tokens = _create_tokens(str(user.id), user.role)
     tokens.must_change_password = user.must_change_password
     response = JSONResponse(content=tokens.model_dump())
     return _set_auth_cookies(response, tokens)
@@ -246,7 +246,7 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
 
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("10/minute")
-async def refresh(request: Request, body: RefreshRequest | None = None):
+async def refresh(request: Request, body: RefreshRequest | None = None, db: AsyncSession = Depends(get_db)):
     # Accept refresh token from JSON body OR httpOnly cookie (page reload fallback).
     token = (body.refresh_token if body and body.refresh_token else None) or request.cookies.get("refresh_token")
     if not token:
@@ -295,7 +295,12 @@ async def refresh(request: Request, body: RefreshRequest | None = None):
         except aioredis.RedisError as exc:
             _logger.warning("Failed to revoke old refresh token jti=%s: %s", old_jti, exc)
 
-    tokens = _create_tokens(user_id)
+    # Fetch current role from DB for the new access token
+    from app.models.user import User as UserModel
+    result = await db.execute(select(UserModel.role).where(UserModel.id == user_id))
+    user_role = result.scalar_one_or_none() or "manager"
+
+    tokens = _create_tokens(user_id, user_role)
     response = JSONResponse(content=tokens.model_dump())
     return _set_auth_cookies(response, tokens)
 
@@ -324,9 +329,9 @@ async def logout(request: Request, user: User = Depends(get_current_user)):
     return _clear_auth_cookies(response)
 
 
-def _create_tokens(user_id: str) -> TokenResponse:
+def _create_tokens(user_id: str, role: str = "manager") -> TokenResponse:
     return TokenResponse(
-        access_token=create_access_token({"sub": user_id}),
+        access_token=create_access_token({"sub": user_id, "role": role}),
         refresh_token=create_refresh_token({"sub": user_id}),
     )
 
@@ -724,7 +729,7 @@ async def _oauth_find_or_create(
     except aioredis.RedisError as exc:
         _logger.warning("Redis error clearing blacklist during OAuth for user %s: %s", user.id, exc)
 
-    return _create_tokens(str(user.id))
+    return _create_tokens(str(user.id), user.role)
 
 
 # --- Disconnect OAuth provider ---

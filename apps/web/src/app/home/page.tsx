@@ -289,7 +289,7 @@ export default function HomePage() {
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-xs uppercase tracking-wide" style={{ color: RANK.gold }}>ТУРНИР</span>
-                  <span className="flex h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: "var(--neon-green, #00FF66)" }} />
+                  <span className="flex h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: "var(--success)" }} />
                 </div>
                 <div className="text-sm font-medium mt-0.5" style={{ color: "var(--text-primary)" }}>
                   {dashboard.tournament.title}
@@ -450,7 +450,7 @@ export default function HomePage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {recommendations.slice(0, 6).map((rec, i) => {
-                  const diffColor = rec.difficulty >= 7 ? "var(--neon-red, #FF3333)" : rec.difficulty >= 4 ? "var(--neon-amber, #FFD700)" : "var(--neon-green, #00FF94)";
+                  const diffColor = rec.difficulty >= 7 ? "var(--danger)" : rec.difficulty >= 4 ? "var(--warning)" : "var(--success)";
                   return (
                     <motion.div
                       key={rec.scenario_id}
@@ -690,7 +690,7 @@ function AssignedBadge() {
       animate={{ opacity: 1, y: 0 }}
       className="mt-4 glass-panel p-4 flex items-center gap-4 cursor-pointer transition-all"
       style={{
-        borderLeft: overdueCount > 0 ? "3px solid var(--neon-red, #FF3333)" : "3px solid var(--accent)",
+        borderLeft: overdueCount > 0 ? "3px solid var(--danger)" : "3px solid var(--accent)",
       }}
       whileHover={{ y: -1, boxShadow: "0 4px 20px var(--accent-glow)" }}
       onClick={() => router.push("/training?tab=assigned")}
@@ -699,7 +699,7 @@ function AssignedBadge() {
         className="flex h-10 w-10 items-center justify-center rounded-xl"
         style={{ background: overdueCount > 0 ? "rgba(255,51,51,0.1)" : "var(--accent-muted)" }}
       >
-        <ClipboardList size={18} style={{ color: overdueCount > 0 ? "var(--neon-red, #FF3333)" : "var(--accent)" }} />
+        <ClipboardList size={18} style={{ color: overdueCount > 0 ? "var(--danger)" : "var(--accent)" }} />
       </div>
       <div className="flex-1">
         <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
@@ -708,7 +708,7 @@ function AssignedBadge() {
         <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
           {assigned.length} {assigned.length === 1 ? "сценарий" : assigned.length < 5 ? "сценария" : "сценариев"}
           {overdueCount > 0 && (
-            <span style={{ color: "var(--neon-red, #FF3333)", fontWeight: 600 }}>
+            <span style={{ color: "var(--danger)", fontWeight: 600 }}>
               {" "}· {overdueCount} просрочено!
             </span>
           )}
@@ -716,7 +716,7 @@ function AssignedBadge() {
       </div>
       <span
         className="min-w-[24px] h-6 flex items-center justify-center rounded-full text-xs font-bold text-white px-1.5"
-        style={{ background: overdueCount > 0 ? "var(--neon-red, #FF3333)" : "var(--accent)" }}
+        style={{ background: overdueCount > 0 ? "var(--danger)" : "var(--accent)" }}
       >
         {assigned.length}
       </span>

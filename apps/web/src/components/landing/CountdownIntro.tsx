@@ -271,8 +271,6 @@ export function CountdownIntro({ onDone }: CountdownIntroProps) {
         )}
       </AnimatePresence>
 
-      {/* Scanlines */}
-      <div className="absolute inset-0 scanlines opacity-[0.04] mix-blend-overlay pointer-events-none" />
     </motion.div>
   );
 }

@@ -47,8 +47,18 @@ import { useNotificationStore } from "@/stores/useNotificationStore";
 import { scoreColor } from "@/lib/utils";
 import { getApiBaseUrl } from "@/lib/public-origin";
 import { logger } from "@/lib/logger";
-import { WikiDashboard } from "@/components/dashboard/WikiDashboard";
-import { ReportsDashboard } from "@/components/dashboard/ReportsDashboard";
+import dynamic from "next/dynamic";
+import { DashboardSkeleton as WikiFallback } from "@/components/ui/Skeleton";
+
+const WikiDashboard = dynamic(
+  () => import("@/components/dashboard/WikiDashboard").then((m) => m.WikiDashboard),
+  { loading: () => <WikiFallback />, ssr: false }
+);
+
+const ReportsDashboard = dynamic(
+  () => import("@/components/dashboard/ReportsDashboard").then((m) => m.ReportsDashboard),
+  { loading: () => <WikiFallback />, ssr: false }
+);
 
 /* ─── Constants ──────────────────────────────────────────────────────────── */
 
@@ -68,7 +78,7 @@ const AVATAR_COLORS = [
   "#EAB308", "#22C55E", "#14B8A6", "#06B6D4", "#3B82F6",
 ];
 
-const podiumColors = ["var(--neon-amber, #FFD700)", "var(--text-secondary)", "var(--warning)"];
+const podiumColors = ["var(--warning)", "var(--text-secondary)", "var(--warning)"];
 
 type SortKey = "full_name" | "total_sessions" | "avg_score" | "best_score" | "sessions_this_week";
 type SortDir = "asc" | "desc";
@@ -342,7 +352,7 @@ export default function DashboardPage() {
                           <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-4">
                             {[
                               { label: "Менеджеров", value: data.team.total_members, icon: Users, color: "var(--accent)" },
-                              { label: "Всего сессий", value: data.stats.total_sessions, icon: Target, color: "var(--neon-green)" },
+                              { label: "Всего сессий", value: data.stats.total_sessions, icon: Target, color: "var(--success)" },
                               { label: "Активных", value: data.stats.active_this_week, icon: Clock, color: "var(--magenta)" },
                               { label: "В команде", value: data.team.active_members, icon: TrendingUp, color: "var(--warning)" },
                             ].map((stat) => {

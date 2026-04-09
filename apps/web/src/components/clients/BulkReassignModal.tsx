@@ -118,7 +118,7 @@ export function BulkReassignModal({ open, clientIds, onClose, onDone }: BulkReas
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>МЕНЕДЖЕР *</label>
+                <label className="block text-xs font-medium tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>МЕНЕДЖЕР *</label>
                 <select
                   aria-label="Выберите менеджера"
                   value={selectedManager}

@@ -75,19 +75,19 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                       : "rgba(255,42,109,0.06)",
                   borderLeft: `3px solid ${
                     trap.caught
-                      ? "var(--neon-green, #00FF94)"
+                      ? "var(--success)"
                       : isPartial
                         ? "#f59e0b"
-                        : "var(--neon-red, #FF2A6D)"
+                        : "var(--danger)"
                   }`,
                 }}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     {trap.caught ? (
-                      <CheckCircle2 size={14} className="shrink-0" style={{ color: "var(--neon-green, #00FF94)" }} />
+                      <CheckCircle2 size={14} className="shrink-0" style={{ color: "var(--success)" }} />
                     ) : (
-                      <XCircle size={14} className="shrink-0" style={{ color: isPartial ? "#f59e0b" : "var(--neon-red, #FF2A6D)" }} />
+                      <XCircle size={14} className="shrink-0" style={{ color: isPartial ? "#f59e0b" : "var(--danger)" }} />
                     )}
                     <span className="text-sm truncate" style={{ color: "var(--text-secondary)" }}>
                       {trap.name}
@@ -112,10 +112,10 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                     className="font-mono text-xs font-bold shrink-0 ml-2"
                     style={{
                       color: trap.caught
-                        ? "var(--neon-green, #00FF94)"
+                        ? "var(--success)"
                         : isPartial
                           ? "#f59e0b"
-                          : "var(--neon-red, #FF2A6D)",
+                          : "var(--danger)",
                     }}
                   >
                     {trap.caught ? `+${trap.bonus || 0}` : `-${trap.penalty || 0}`}
@@ -167,10 +167,10 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                           className="rounded px-2.5 py-2 space-y-0.5"
                           style={{
                             background: "rgba(0,255,148,0.06)",
-                            borderLeft: "2px solid var(--neon-green, #00FF94)",
+                            borderLeft: "2px solid var(--success)",
                           }}
                         >
-                          <span className="text-xs font-mono tracking-wider" style={{ color: "var(--neon-green, #00FF94)" }}>
+                          <span className="text-xs font-mono tracking-wider" style={{ color: "var(--success)" }}>
                             ПРАВИЛЬНЫЙ ОТВЕТ
                           </span>
                           <p className="text-xs leading-relaxed" style={{ color: "var(--text-primary)" }}>
@@ -196,7 +196,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                             <span
                               key={`w${ki}`}
                               className="badge-neon text-xs"
-                              style={{ background: "rgba(255,42,109,0.1)", color: "var(--neon-red)", borderColor: "rgba(255,42,109,0.25)" }}
+                              style={{ background: "rgba(255,42,109,0.1)", color: "var(--danger)", borderColor: "rgba(255,42,109,0.25)" }}
                             >
                               {kw}
                             </span>
@@ -205,7 +205,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                             <span
                               key={`c${ki}`}
                               className="badge-neon text-xs"
-                              style={{ background: "rgba(0,255,148,0.1)", color: "var(--neon-green)", borderColor: "rgba(0,255,148,0.25)" }}
+                              style={{ background: "rgba(0,255,148,0.1)", color: "var(--success)", borderColor: "rgba(0,255,148,0.25)" }}
                             >
                               {kw}
                             </span>
@@ -228,14 +228,14 @@ export default function TrapResults({ traps }: TrapResultsProps) {
       >
         <span style={{ color: "var(--text-muted)" }}>Итого:</span>
         <div className="flex items-center gap-3">
-          <span style={{ color: "var(--neon-green, #00FF94)" }}>+{totalBonus}</span>
+          <span style={{ color: "var(--success)" }}>+{totalBonus}</span>
           <span style={{ color: "var(--text-muted)" }}>/</span>
-          <span style={{ color: "var(--neon-red, #FF2A6D)" }}>-{totalPenalty}</span>
+          <span style={{ color: "var(--danger)" }}>-{totalPenalty}</span>
           <span style={{ color: "var(--text-muted)" }}>=</span>
           <span
             className="font-bold"
             style={{
-              color: net >= 0 ? "var(--neon-green, #00FF94)" : "var(--neon-red, #FF2A6D)",
+              color: net >= 0 ? "var(--success)" : "var(--danger)",
             }}
           >
             {net >= 0 ? `+${net}` : net}

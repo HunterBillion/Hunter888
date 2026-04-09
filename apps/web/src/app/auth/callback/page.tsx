@@ -66,7 +66,7 @@ function OAuthCallbackContent() {
 
         {status === "success" && (
           <>
-            <CheckCircle size={32} className="mx-auto" style={{ color: "var(--neon-green, #00FF66)" }} />
+            <CheckCircle size={32} className="mx-auto" style={{ color: "var(--success)" }} />
             <p className="mt-4 font-display text-lg font-bold" style={{ color: "var(--text-primary)" }}>
               Вход выполнен!
             </p>
@@ -78,7 +78,7 @@ function OAuthCallbackContent() {
 
         {status === "error" && (
           <>
-            <AlertCircle size={32} className="mx-auto" style={{ color: "var(--neon-red, #FF3333)" }} />
+            <AlertCircle size={32} className="mx-auto" style={{ color: "var(--danger)" }} />
             <p className="mt-4 font-display text-lg font-bold" style={{ color: "var(--text-primary)" }}>
               Ошибка входа
             </p>

@@ -902,7 +902,6 @@ export default function TrainingSessionPage() {
   if (!s.micChecked && s.sessionState === "ready") {
     return (
       <div className="flex h-screen items-center justify-center" style={{ background: "var(--bg-primary)" }}>
-        <div className="fixed inset-0 scanlines z-[100] opacity-10 mix-blend-overlay pointer-events-none" />
         <MicCheck
           onComplete={(micAvailable) => {
             if (!micAvailable) {
@@ -924,8 +923,6 @@ export default function TrainingSessionPage() {
   return (
     <TrainingErrorBoundary sessionId={routeId}>
     <div className="flex h-screen flex-col overflow-hidden" style={{ background: "var(--bg-primary)" }}>
-      {/* ── Scanlines overlay ──────────────────────────────── */}
-      <div className="fixed inset-0 scanlines z-[100] opacity-15 mix-blend-overlay pointer-events-none" />
 
       {/* Global mic glow */}
       <div className={`fixed inset-0 global-mic-glow z-50 ${s.micActive ? "active" : ""}`} />
