@@ -281,7 +281,7 @@ export default function HomePage() {
                   {dashboard.tournament.title}
                 </div>
                 {/* Mini podium */}
-                {dashboard.tournament.leaderboard.length > 0 && (
+                {dashboard.tournament?.leaderboard?.length > 0 && (
                   <div className="flex items-center gap-2 mt-1">
                     {dashboard.tournament.leaderboard.slice(0, 3).map((e) => (
                       <span key={e.user_id} className="font-mono text-xs flex items-center gap-0.5" style={{ color: "var(--text-muted)" }}>

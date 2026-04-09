@@ -520,12 +520,14 @@ export default function TrainingSessionPage() {
 
         case "tts.couple_audio":
           tts.cancelFallback();
-          tts.playCoupleAudio({
-            utterances: (data.data.utterances as Array<{ speaker: string; audio_b64: string; text: string }>).map((u) => ({
-              speaker: u.speaker as "A" | "B" | "AB",
-              audio: u.audio_b64,
-            })),
-          });
+          if (data.data?.utterances) {
+            tts.playCoupleAudio({
+              utterances: (data.data.utterances as Array<{ speaker: string; audio_b64: string; text: string }>).map((u) => ({
+                speaker: u.speaker as "A" | "B" | "AB",
+                audio: u.audio_b64,
+              })),
+            });
+          }
           break;
 
         // ── Story-mode messages ──
