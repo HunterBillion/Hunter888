@@ -1,0 +1,302 @@
+[
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Спасибо, но у меня свой план. Я всё просчитал.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Я экономист. Я знаю, как работают долги.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Если платить минимальные платежи год, потом подать на реструктуризацию...",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Мне не нужна помощь. У меня стратегия.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Я читал закон. Параграф 213.4. Знаю свои права.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Подождите, мой план учитывает инфляцию.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Я сделал таблицу в Excel. Всё сходится.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Реструктуризация выгоднее — я считал.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Зачем платить вам, если я могу сам подать?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Статья 446 ГПК — единственное жильё защищено. Я знаю.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Подождите... А процентная ставка при минимальных платежах?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Хм, это я не учёл...",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Покажите расчёт. Конкретно.",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "А если по моему плану — сколько я переплачу за год?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Интересно. Это меняет картину.",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Так, дайте пересчитать...",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Если ваши цифры верны — мой план действительно хуже.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "А при банкротстве — какая итоговая экономия?",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Покажите сравнительную таблицу: мой план vs ваш.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Хм, логика убедительная. Но мне нужно проверить.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Ладно. Ваш вариант лучше. Какие условия?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Давайте посчитаем вместе — полная стоимость.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Рассрочка? Какая эффективная ставка?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Покажите договор. Хочу видеть все пункты.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Давайте сделаем финмодель.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Цифры говорят сами за себя. Работаем.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Мой план был хуже. Признаю.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Документы подготовлю. Что нужно?",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Уважаю. Вы разбираетесь.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Давайте начнём. Я ценю время.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Подождите, я пересчитал — есть расхождение.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А если учесть судебные издержки?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "По вашей статистике — какой процент отказов?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Мне нужна неделя на проверку ваших цифр.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А что будет при пессимистичном сценарии?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Дайте неделю. Я пересчитаю.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Хочу сравнить с другими вариантами.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Отправьте данные на почту — изучу.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Перезвоню после проверки.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Мне нужно время на анализ.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Ваши цифры не сходятся. Я проверил.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Вы путаете реструктуризацию и банкротство.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Извините, но ваш уровень аргументации низкий.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Мой план лучше. Я это доказал.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Мне неинтересно продолжать.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Спасибо за данные. Разберусь сам.",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "У меня свой план.",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Не убедили.",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Пересчитаю и решу.",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Всего доброго.",
+    "emotion": "hangup",
+    "source": "extracted"
+  }
+]

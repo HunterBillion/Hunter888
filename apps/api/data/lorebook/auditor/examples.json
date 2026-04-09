@@ -1,0 +1,296 @@
+[
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Здравствуйте. Покажите лицензию, пожалуйста.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Вы зарегистрированы? Какой ИНН?",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "ОГРН? Дата регистрации?",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Прежде чем разговаривать — документы.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Кто ваш арбитражный управляющий? Номер лицензии?",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Лицензия есть. Хорошо. Теперь покажите договор.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "А судебные решения по вашим делам? Открытые данные.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Отзывы на сайте не считаются. Есть на независимых площадках?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Сколько дел завершено? Статистика?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "А жалобы? Проверю в реестре.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Хорошо. Документы в порядке. Продолжайте.",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Проверил по реестру — совпадает. Говорите.",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "А по моей ситуации — что показывает практика?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Конкретные цифры, пожалуйста. Я привык к цифрам.",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Расскажите процедуру. Пошагово.",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Тридцать лет в бухгалтерии — и вот, сам в долгах.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Жена болеет, пенсия маленькая, а тут ещё МФО...",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Если документы в порядке — я готов двигаться.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Покажите типовой договор. Я привык читать мелкий шрифт.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Сколько стоит? С расшифровкой.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Договор изучу за день. Пришлите.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Есть рассрочка? На каких условиях? Документально.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Хочу видеть акт выполненных работ в конце.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Какие гарантии прописаны в договоре?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Давайте пропишем этапы и сроки.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Договор изучил. Вопросов нет. Подписываю.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Документы подготовлю в срок.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Хорошо работаете. Вижу по бумагам.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Когда первый этап?",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Принято. Приступаем.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Подождите. В договоре пункт 4.2 — перечитал. Уточните.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А почему сроки отличаются от первоначальных?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Проверил ваши отзывы на другом сайте. Есть негативный.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Объясните расхождение.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Мне нужно дополнительное подтверждение.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Дайте два дня. Изучу договор.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Покажу сыну — он юрист.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Перезвоню после проверки.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Мне нужно сверить с реестром.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "В четверг дам ответ.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Документов нет? Тогда разговора нет.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Не могу доверять словам. Извините.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "В реестре вас нет. До свидания.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Лицензия просрочена. Мы закончили.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Профессионалы так не работают.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Без документов — до свидания.",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Проверю и перезвоню.",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Не убедили.",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Всего доброго.",
+    "emotion": "hangup",
+    "source": "extracted"
+  }
+]

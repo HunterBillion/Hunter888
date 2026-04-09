@@ -1,0 +1,296 @@
+[
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Кто вы? Коротко. У меня 5 минут.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Не по скрипту. По делу. Что предлагаете?",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Я директор. 50 человек в подчинении. Давайте на моём уровне.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Быстро: суть, цена, сроки.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "У меня нет времени на вступления.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "И? Таких предложений пять в день.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Чем отличаетесь? Конкретно.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "У меня юрист на зарплате. Зачем вы?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Банкротство — удар по репутации. Понимаете?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Цифры. Без историй.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Хм, интересно. Продолжайте. Кратко.",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "ROI? Сколько вложу, сколько сэкономлю?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Мой бизнес не пострадает?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Клиенты из бизнеса есть?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Конфиденциально можно?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Поручительство на 800К. Бизнес вытянул, я — нет.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Репутация — мой главный актив.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Мне нужно решение, которое не навредит компании.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Если тихо — готов обсуждать.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Опыт с предпринимателями какой?",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Условия. На стол. Без мелкого шрифта.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "VIP-сопровождение. Не стандартный пакет.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Личный менеджер? Один контакт?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Сроки — быстро. Месяцы, не годы.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Гарантии в договоре?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Договорились. Пришлите договор — подпишу сегодня.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Мой помощник свяжется.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Работаем. Контролирую каждый этап.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Уважаю профессионализм. Начинаем.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Время — деньги. Стартуем.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Юрист проверил — вопросы по пункту 6.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Почему задержка? Не привык ждать.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Не тот уровень сервиса.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Не устроит — уйду. Без предупреждения.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Требую отчёт по каждому этапу.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Перезвоните завтра в 9:00. Ровно.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "День нужен. Юрист проконсультирует.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "КП на почту. Решу за день.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Не сейчас. В пятницу.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Помощник свяжется.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Тратите моё время. Разговор окончен.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Непрофессионализм. Не терплю.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Скрипт? С кем разговариваете?",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Найду других. Вы не единственные.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Не звоните. Номер заблокирую.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Всего доброго.",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Не тратьте моё время.",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Неинтересно.",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Мой уровень — не ваш.",
+    "emotion": "hangup",
+    "source": "extracted"
+  }
+]

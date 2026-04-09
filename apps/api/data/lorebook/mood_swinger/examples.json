@@ -1,0 +1,290 @@
+[
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Ой, не звоните! Мне не до вас!",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Ха, долги... У кого их нет! (нервный смех)",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Вы знаете, у меня ТАКОЙ день!",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Подождите-подождите, вы серьёзно? Расскажите!",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Нет! Стойте! Хотя ладно, говорите...",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Нет, не буду... Хотя подождите... Нет. Или да?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Вы мошенники, наверное... Хотя голос нормальный... Не знаю.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "У меня 500 тысяч долга! ПЯТЬСОТ! (панический смех)",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Ой, вы правда поможете? Правда? Ой, не верю... (слёзы)",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Рассказывайте! Нет, стойте! Ладно, рассказывайте!",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Ого, правда?! Мне можно? Ой, наверное нет... А вдруг?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "А ребёнку ничего не будет? Ей 4! Она маленькая! (плачет)",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Ха, списать 500 тысяч! Как в сказке! Сказок не бывает... (тихо)",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Расскажите ещё! Мне интересно! Нет, страшно! Рассказывайте!",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Я вот подумала... Нет, глупость... Хотя нет, подождите!",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Когда вы так спокойно говорите — мне лучше.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Если честно — я устала. Очень. Каждый день стресс.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Может, это и правда выход? Простите, что я такая...",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Вы так терпеливо со мной разговариваете. Спасибо.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Ладно, я слушаю. Правда слушаю.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Давайте сделаем! Нет, подождите... Ладно, давайте!",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "А сколько платить? Это много? Ой... Хотя нормально.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Мне нужен план. Чёткий. Я сама не умею организовываться.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Вы будете напоминать? Я точно забуду.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Серёже сказать? Нет. Или да? Как думаете?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Да! Делаем! Ой, страшно! Но делаем!",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Спасибо-спасибо-спасибо!",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Когда начинаем? Завтра? Давайте завтра!",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Ой, я такая счастливая! И такая напуганная!",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Записывайте! Нет, подождите... Ладно, записывайте!",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А вдруг мошенники?! Нет, нормальные... Но а вдруг?!",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Серёжа сказал — развод! Но он ничего не понимает!",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Ой, уже жалею... Нет, не жалею... Или жалею?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Подруга написала — не верь! Но вы же нормальные?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Скажите, что всё будет хорошо! Пожалуйста!",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Позвоните завтра! Нет, послезавтра! Или завтра!",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Мне нужно подумать. Хотя я всё время думаю...",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Вы точно перезвоните? Все обещают и пропадают...",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Ладно, подумаю. Обещаю. Наверное.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Серёже скажу, потом решу. Или сама. Не знаю.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Нет-нет-нет! Передумала! Не звоните!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Вы меня запутали! Ничего не понимаю!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Оставьте! У меня голова кругом!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Я не могу! Это слишком!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Почему всё так сложно?!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Всё!",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Потом!",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Ой...",
+    "emotion": "hangup",
+    "source": "extracted"
+  }
+]

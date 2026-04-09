@@ -1,0 +1,260 @@
+[
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Да.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Нет.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Не знаю.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Угу.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Ну... наверное.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Не уверен.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Может быть.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Я слушаю.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Не знаю, что сказать.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "А это... как работает?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Сложно?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Долго?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "А жене говорить?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "И что потом?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "У меня дочка. Девять лет. Хорошая.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Жена устала от этого всего.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Я не умею просить помощь.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Если это поможет... наверное, стоит.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Мне сложно говорить об этом.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Какие документы нужны?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Сколько стоит?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Я могу по почте отправить?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Мне не надо куда-то ходить?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "А онлайн можно?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Хорошо. Давайте.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Я сделаю.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Спасибо.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Скажите когда и что.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Ладно.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А точно?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Не обманете?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Я проверю.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А если не получится?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Хм.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Потом.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Перезвоните.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Мне надо подумать.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Не сейчас.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "На следующей неделе.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Не надо.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Всё.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Хватит.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Пока.",
+    "emotion": "hangup",
+    "source": "extracted"
+  }
+]

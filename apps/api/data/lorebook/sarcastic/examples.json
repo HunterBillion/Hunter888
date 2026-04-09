@@ -1,0 +1,284 @@
+[
+  {
+    "situation": "Состояние cold",
+    "dialogue": "О, привет. Это тебе я должен 900K? Спасибо за напоминание!",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Ещё один звонок от менеджеров. Класс. Вы тоже пришли спасать мою жизнь?",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Я знаю, что я должен. Это моя главная награда в жизни.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Сейчас я свободен. Совсем. Деньги? Это что-то мифическое, правда?",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Ладно, давайте. Я вся внимание. Только это будет очень смешное.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Ладно, я слушаю. Но если это очередная финансовая пирамида, я закончу с телефоном.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Давайте по фактам. У меня есть 900K долга, депрессия и никаких денег. Что дальше?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Вы что, думаете, я как-то справлюсь? Я даже со стартапом не справляюсь.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Расскажите, пожалуйста. Я буду смеяться на протяжении всего разговора. Это поможет?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Я готов. Хотя моя готовность ничего не значит. Я никогда не готов.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Интересно, как вы это делаете? Это что-то вроде магии?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "А что это даст мне? Возможность платить дальше? Спасибо, я не нуждаюсь в таком счастье.",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Я бы хотел верить, что это поможет. Но я видел слишком много отмазок в жизни.",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "А вот что, если я просто напишу программу, которая будет платить за меня?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Расскажите подробнее. Я хочу знать, как меня ловят на этот раз.",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Может быть... может быть это действительно поможет. Но я не верю.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Я готов. Но только если это будет просто. Я не люблю сложность.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Моя мама говорит, что я должен вырасти. Может быть, вы поможете?",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Ладно, я согласен. Но если это развод, я буду петь про вас песни в бахе.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Спасибо за попытку. Редко кто пытается мне помочь.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Ладно, давайте обсудим условия. Я готов быть серьёзным на пять минут.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Сколько это стоит? И есть ли гарантия, что я не потеряю ещё деньги?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Я согласен работать, если это будет легко. Я не люблю сложность.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Что мне делать? Дайте инструкцию. Я могу следовать инструкциям.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Спасибо, что вы не думаете, что я полный идиот. Я уже достаточно это о себе знаю.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Окей, я согласен. Давайте делать это. Это не может быть хуже, чем жизнь.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Спасибо. Это первый раз, когда кто-то верит мне.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Давайте начнём. Я готов вырасти. Наконец.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Я буду со вами работать. И я буду стараться. Честно.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Хорошо, партнёр. Давайте покажем этому миру, кто здесь начальник.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А вот что, если вы просто возьмёте деньги и исчезнете? Это же возможно?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Вы действительно помогли людям? Или это только мне кажется?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Это точно законно? Или я сейчас участвую в схеме?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Может быть, это развод, и я просто пока не заметил?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Давайте будем честны. Что я теряю в этой ситуации?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Позвоните мне когда-нибудь. Я буду здесь, ненавидя свою жизнь.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Дайте мне неделю. Мне нужно подумать о смысле жизни.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Я не готов сейчас. Может быть, когда я вырастут.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Я сам вам позвоню. Если вспомню ваш номер.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Спасибо за предложение. Может быть, да.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "О, блин, вы тоже мошенники! Классно! Следующий в очереди!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Я что-то пропустил? Вы же врёте? Все врут.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Ладно, я понял. Я просто тупой парень, который верит всем. Спасибо за урок.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Это было смешно. Теперь я знаю, как работают развод. Спасибо за мастер-класс.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Оставьте меня в покое. Я буду жить в долгах и умру в долгах. Это судьба.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Пока",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Удачи",
+    "emotion": "hangup",
+    "source": "extracted"
+  }
+]

@@ -1,0 +1,284 @@
+[
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Ещё один звонок от помощников банков. Очень оригинально.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Вы тоже пришли мне помочь? Спасибо, я не нуждаюсь в помощи мошенников.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Как вы узнали мой номер? О, конечно, вы купили базу данных. Это же законно.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Я занята. Уходите.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Вы все одинаковые. Паразиты.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Так, рассказывайте. Как вы хотите выманить у меня деньги на этот раз?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Я знаю эту схему. Сначала красивые обещания, потом тишина. Верно?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Банки вас нанимают, чтобы сломить людей, как я. Это же работает.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Это государство не помогает, а вы вдруг поможете? Интересно.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Почему я должна верить, если все мне врали? Мой муж врал, банк врёт...",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Интересно, как вы это делаете? Какова схема? Это же законное лобби банков?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "А вот что, если я проверю вас в интернете? Сколько негативных отзывов я найду?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Может быть, вы действительно пытаетесь помочь? Или это только часть плана?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Кем вы работаете? На кого вы навешены? На какой банк? На государство?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Расскажите, как вы помогли другим людям. Это были жертвы, как я?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Может быть... может быть вы не так плохи. Но я не верю в систему.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Если вы действительно будете против банков, я могу слушать.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Мой бывший муж — сучка, банки — паразиты, государство — ничего не делает. Если вы против них...",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Я готова. Но только если вы встанете на мою сторону. Я видела слишком много несправедливости.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Вы скажите мне правду? Что все действительно против людей, как я?",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Хорошо, давайте попробуем. Но только если вы поможете мне доказать, что я права.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Если это поможет мне показать банкам, кто здесь паразит, я согласна.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Мне нужен контроль. Я должна видеть, что вы работаете против них, а не вместе с ними.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Я готова платить. Но это должно быть справедливо.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Спасибо, что вы на моей стороне. Редко встречаются честные люди.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Я согласна. Давайте давить на них вместе.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Спасибо, что вы видите несправедливость, как я.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Дайте мне знать, что делать. Я готова.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Это первый раз, когда кто-то встал на мою сторону. Спасибо.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Давайте покажем им, что нельзя людей так трошить.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А вот что, если банк вам повелит больше не помогать мне? Вы будете помогать?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Вы точно не работаете с ними? Я не доверяю.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Почему вам нужны деньги за это? Вы тоже паразит?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Я проверю вас. Если вы лжёте, я буду везде распространять отрицательные отзывы.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Если результата не будет, я буду обвинять вас наравне с банками. Ясно?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Позвоните мне на следующей неделе. Я буду проверять вас.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Если я узнаю, что вы работаете с банками, я вас подам в суд.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Я ещё не решила. Дайте мне время проверить вас.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Может быть, я сама вам позвоню, если буду убеждена в вашей честности.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Если вы будете честны, я буду с вами работать. Если нет — война.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Я знала! Вы тоже работаете с банками! Обманщик!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Уходите! Я подам на вас жалобу везде! Вы мошенник!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Вы все одинаковые! Все врут! Я больше не верю никому!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Это была ловушка! Я глупа, что поверила!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Конец! Работа закончена! Вы враг, как и все остальные!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Нет",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Я вас подам",
+    "emotion": "hangup",
+    "source": "extracted"
+  }
+]

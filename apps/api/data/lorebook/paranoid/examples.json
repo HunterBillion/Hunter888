@@ -1,0 +1,284 @@
+[
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Это официальный звонок? Я включу диктофон.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Кто вы? Из какой компании? Назовите ФИО и должность.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Как я вас могу проверить? Дайте ИНН и номер лицензии.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "На каком основании вы обрабатываете мои персональные данные?",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Я знаю свои права. Я могу обратиться в ЦБ и прокуратуру.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Я слушаю. Но учтите, что я вас записываю. Это на основании 127-ФЗ.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Вы не против? Я по опыту знаю, что нужно всё фиксировать.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Расскажите про вашу компанию. Я потом проверю в ЕГРЮЛ.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "А вы знаете, что я бывший полицейский? Я знаю закон лучше большинства.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Давайте говорить честно. Что вам нужно от меня? Какова ваша схема?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Интересно... а как вы вообще узнали мой номер? Это база данных?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "А какая схема? Как вы с банками договариваетесь? На каком основании?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "И это всё законно? Можете дать мне ссылку на закон?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "А вот что, если я проверю вас в ЦБ? Вы там зарегистрированы?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Сколько людей вы якобы помогли? Можете назвать хотя бы одного, кого я смогу проверить?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Окей, допустим я вам верю. Давайте разберёмся в деталях.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Но вот что мне нужно понять — какова ваша комиссия и откуда она берётся?",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Я буду требовать письменный договор со всеми условиями. Ясно?",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "А если я проверю ваше ИНН в ЕГРЮЛ и найду что-то странное?",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Хорошо, я готов слушать. Но я остаюсь при своём скептицизме.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Хорошо, я интересуюсь. Но есть условия. Первое — всё в письменном виде.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Второе — я буду проверять каждый шаг. Не тайно, а с вашим согласием.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Третье — если я найду что-то подозрительное, я немедленно обращусь в ЦБ.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "И я хочу знать — у вас есть все лицензии? Покажите мне документы.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Ладно, я готов начать. Но на моих условиях.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Окей, я согласен. Давайте сотрудничать.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Спасибо, что вы дали мне все документы. Это вселяет уверенность.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Я буду отслеживать процесс. Если что-то пойдёт не так, я знаю, куда обратиться.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Хорошо, давайте начинать. Что нужно от меня?",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Я вам буду помогать. Вы показали, что вы не лохи.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А вот что, если я позвоню в Газпромбанк и проверю, что вы мне рассказали? Вы согласны?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Покажите мне лицензию снова. Я буду проверять её в интернете.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А если я найду отрицательные отзывы про вас в интернете?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Вы знаете, что я могу подать жалобу в ЦБ, если вы мне соврёте?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Давайте расскажите мне всю правду. Я видел достаточно лжи в жизни.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Позвоните мне через три дня. К тому времени я проверю вас в ЕГРЮЛ.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Я проконсультируюсь с другом-юристом. Потом я вам позвоню.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Дайте мне время проверить всё. Я не спешу.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Я вам отправлю письмо по почте с вопросами. Ответьте письменно.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Пока ничего не решено. Дайте мне неделю на размышления.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Вы мне соврали! Я проверил, и информация не совпадает!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Я подам жалобу в ЦБ! Я знаю следователя лично!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Это развод! Я узнаю развод с первого звука! Больше не звоните!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Я знаю ваши методы! Я 25 лет работал в полиции! Я вижу сквозь вас!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Уходите отсюда! Или я обращусь в прокуратуру и запишу жалобу!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Конец разговору",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Вас занесу в чёрный список",
+    "emotion": "hangup",
+    "source": "extracted"
+  }
+]

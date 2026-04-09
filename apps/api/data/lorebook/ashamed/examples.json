@@ -1,0 +1,284 @@
+[
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Это... это про мои долги? Как вы узнали?",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Пожалуйста, тихо. Я не хочу, чтобы кто-то услышал...",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Кто вас послал? От банка? Я же плачу...",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Я об этом никому не рассказывала. Пожалуйста, молчите.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Не звоните мне на работу. Умоляю. Если узнают...",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Хорошо, я вас слушаю. Но это предельно конфиденциально, ясно?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Я не умная была. Я просто... я поверила, что смогу.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Пожалуйста, если вы поможете мне, никому не говорите. Мне просто стыдно.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Мой муж не знает. И пожалуйста, он не должен узнать.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "На работе никто об этом не знает. Это мой позор. Помогите мне молча.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Вы... вы можете мне помочь? Без того, чтобы это узнали другие?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Если я согласусь с вами, никто не узнает? Это будет конфиденциально?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "А мой муж узнает? Он не знает, и я не хочу его волновать...",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Это стыдно, я знаю. Но я хочу это исправить. Помогите мне.",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Я готова платить. Я просто хочу, чтобы это прошло как можно незаметнее.",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Я готова сотрудничать. Но это должно быть между нами.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Если это поможет мне прийти в норму, я согласна. Я очень устала от этого стыда.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Я доверяю вам. Пожалуйста, не разочаруйте меня. Мне уже очень плохо.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Что мне нужно делать? Я готова на всё, чтобы эта история закончилась.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Спасибо, что вы не судите меня. Это очень помогает.",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Хорошо, давайте обсудим условия. Но сохраняем конфиденциальность?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Мне нужно знать, это действительно поможет? Я очень боюсь, что это развод.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Какие гарантии у меня есть, что это не выплывет наружу?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Если я согласусь, когда это начнётся? Быстро, я надеюсь?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Спасибо за помощь. Это очень важно для меня.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Я согласна. Давайте делать это. Спасибо вам за помощь.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Вот мои документы. Я готова всё подписать.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Я так благодарна, что вы помогаете мне. Это очень важно.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Когда начнём? Я хочу поскорее разобраться с этим.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Пожалуйста, расскажите, что я должна делать дальше.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А что, если это как-то повредит мне? Мне уже много плохого было...",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Это действительно конфиденциально? Как я могу быть уверена?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А если муж как-то узнает? Это разрушит мою семью...",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Я прочитала в интернете, что есть развод. Это не оно?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Я боюсь, что я что-то неправильно поняла. Объясните мне ещё раз, пожалуйста.",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Дайте мне время подумать. Мне нужно со всем разобраться в голове.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Позвоните мне завтра вечером, когда муж уходит на работу.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Мне нужно убедиться, что я могу вам доверять. Дайте мне неделю.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Я очень нервничаю. Может быть, я сама вам позвоню, когда буду готова?",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Спасибо, что вы мне даёте время. Это очень важно для меня.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Почему вы мне звоните?! Это вторжение в мою приватность!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Я не готова! Оставьте меня! Это нарушает мой покой!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Если вы расскажете мужу, я не знаю, что я буду делать...",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Перестаньте мне звонить! Вы мне только больно делаете!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Я изменила решение. Я не хочу с вами работать. Оставьте меня!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Не могу...",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Оставьте меня в покое",
+    "emotion": "hangup",
+    "source": "extracted"
+  }
+]

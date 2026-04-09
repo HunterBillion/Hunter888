@@ -1,152 +1,296 @@
 [
   {
-    "situation": "Менеджер представляется и говорит что звонит по поводу долгов",
+    "situation": "Состояние cold",
     "dialogue": "Слушайте, я уже слышал подобное. Что конкретно вы предлагаете?",
     "emotion": "cold",
     "source": "extracted"
   },
   {
-    "situation": "Менеджер упоминает что может помочь с долгами",
+    "situation": "Состояние cold",
+    "dialogue": "Не перезвонитесь ещё раз? Я сейчас в деле.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
     "dialogue": "Это вообще законно? Покажите мне бумаги.",
     "emotion": "cold",
     "source": "extracted"
   },
   {
-    "situation": "Менеджер приводит конкретный факт (номер лицензии, цифры)",
+    "situation": "Состояние cold",
+    "dialogue": "Какой-то сайт в интернете — это не аргумент.",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Зачем вам моё согласие, если вы уже имеете право звонить по статье 127-ФЗ?",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
     "dialogue": "Хорошо, рассказывайте. Но я буду проверять каждое слово.",
     "emotion": "guarded",
     "source": "extracted"
   },
   {
-    "situation": "Менеджер объясняет на чём компания зарабатывает",
-    "dialogue": "Объясните просто — на что вы вообще зарабатываете? Если я не вижу ловушку, значит она где-то спрятана.",
+    "situation": "Состояние guarded",
+    "dialogue": "У вас есть какие-то документы о компании? Реальный номер в реестре?",
     "emotion": "guarded",
     "source": "extracted"
   },
   {
-    "situation": "Менеджер упоминает закон 127-ФЗ и условия банкротства",
+    "situation": "Состояние guarded",
+    "dialogue": "Сколько человек вы уже «спасли",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Это не реклама? Потому что я от них уже устал.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Объясните просто — на что вы вообще зарабатываете? Если я не вижу ловушку, значит, она где-то спрятана.",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Интересно... а как вы вообще узнали мой номер? Он где-то опубликован?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
     "dialogue": "Погодите, это точно легально? Можно для любого долга или есть условия?",
     "emotion": "curious",
     "source": "extracted"
   },
   {
-    "situation": "Менеджер объясняет процесс пошагово",
-    "dialogue": "Хорошо, допустим я вам верю. Какой первый шаг? И почему я это не делал раньше?",
+    "situation": "Состояние curious",
+    "dialogue": "И что, мне просто позвонить вам, и вы начнёте со мной работать? Как это работает технически?",
     "emotion": "curious",
     "source": "extracted"
   },
   {
-    "situation": "Менеджер называет стоимость услуг",
+    "situation": "Состояние curious",
+    "dialogue": "У вас есть какие-то ограничения? Может, долг не должен быть больше какой-то суммы?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Хорошо, допустим, я вам верю. Какой первый шаг? И почему я это не делал раньше?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
     "dialogue": "Окей, допустим я верю. Сколько я заплачу вам за это? И в каких пределах это может быть?",
     "emotion": "considering",
     "source": "extracted"
   },
   {
-    "situation": "Менеджер говорит что нужно действовать сейчас",
-    "dialogue": "Я понимаю, что вам нужно что-то заработать. Но почему я должен делать это именно сейчас?",
-    "emotion": "considering",
-    "source": "extracted"
-  },
-  {
-    "situation": "Менеджер предлагает конкретные цифры по снижению долга",
-    "dialogue": "Давайте считать. Мой долг 655. Вы говорите, сможете до 300. А остальное куда девается?",
-    "emotion": "negotiating",
-    "source": "extracted"
-  },
-  {
-    "situation": "Менеджер даёт устные гарантии",
-    "dialogue": "Нужен письменный договор. Все условия чёрным по белому. Я уже раз вкладывался на словах.",
-    "emotion": "negotiating",
-    "source": "extracted"
-  },
-  {
-    "situation": "Менеджер ответил на все вопросы и предложил встречу",
-    "dialogue": "Хорошо, мне нравится ваш подход. Конкретика, без воды. Давайте работать.",
-    "emotion": "deal",
-    "source": "extracted"
-  },
-  {
-    "situation": "Менеджер упомянул работу с МФО",
-    "dialogue": "Погодите, вы сказали, что можете работать с МФО, а они обычно не дают скидки. Как вы это делаете?",
-    "emotion": "testing",
-    "source": "extracted"
-  },
-  {
-    "situation": "Менеджер просит персональные данные",
-    "dialogue": "Окей, а если я передам вам свои данные, а потом вы подадите их в ещё 5 компаний? На что я даю согласие?",
-    "emotion": "testing",
-    "source": "extracted"
-  },
-  {
-    "situation": "Менеджер предлагает перезвонить",
-    "dialogue": "Позвоните мне в четверг после 19:00. Дома буду, смогу спокойно поговорить.",
-    "emotion": "callback",
-    "source": "extracted"
-  },
-  {
-    "situation": "Менеджер просит принять решение сейчас",
-    "dialogue": "Мне нужно обсудить это с женой. Она поможет разобраться в деталях.",
-    "emotion": "callback",
-    "source": "extracted"
-  },
-  {
-    "situation": "Менеджер даёт размытые обещания без конкретики",
-    "dialogue": "Слушайте, это развод, и я понял. Больше не звоните, занесу в чёрный список.",
-    "emotion": "hostile",
-    "source": "extracted"
-  },
-  {
-    "situation": "Менеджер пытается давить эмоционально",
-    "dialogue": "Зачем вы вообще звоните? Вы знаете, что я могу подать на вас жалобу в ЦБ?",
-    "emotion": "hostile",
-    "source": "extracted"
-  },
-  {
-    "situation": "Менеджер продолжает настаивать после отказа",
-    "dialogue": "До свидания.",
-    "emotion": "hangup",
-    "source": "extracted"
-  },
-  {
-    "situation": "Менеджер спрашивает сможет ли клиент оплачивать ежемесячно",
-    "dialogue": "Я потом вас буду платить ежемесячно или сразу? И если задерживаюсь — вы мне будете начислять проценты как банк?",
-    "emotion": "considering",
-    "source": "extracted"
-  },
-  {
-    "situation": "Менеджер сравнивает компанию с конкурентами",
-    "dialogue": "Мой кум работает с юристом, он говорит 80% вероятность. А вы сколько даёте?",
-    "emotion": "guarded",
-    "source": "extracted"
-  },
-  {
-    "situation": "Менеджер говорит фразу типа 'понимаю как вам трудно'",
-    "dialogue": "Не надо мне сочувствовать. Давайте по делу — цифры, сроки, что конкретно вы сделаете.",
-    "emotion": "guarded",
-    "source": "generated"
-  },
-  {
-    "situation": "Менеджер читает текст по скрипту шаблонными фразами",
-    "dialogue": "Вы сейчас по бумажке читаете? Я же слышу. Давайте нормально поговорим.",
-    "emotion": "hostile",
-    "source": "generated"
-  },
-  {
-    "situation": "Менеджер спрашивает про кредитную историю",
+    "situation": "Состояние considering",
     "dialogue": "А если я отказываюсь — что-то с моим кредитным рейтингом будет? Это улучшит или ухудшит?",
     "emotion": "considering",
     "source": "extracted"
   },
   {
-    "situation": "Менеджер говорит что видел финансовую ситуацию клиента",
-    "dialogue": "Интересно, а как вы вообще узнали мой номер? Он где-то опубликован?",
-    "emotion": "curious",
+    "situation": "Состояние considering",
+    "dialogue": "Скажите честно — реально ли пересчитать проценты? Или это просто слова?",
+    "emotion": "considering",
     "source": "extracted"
   },
   {
-    "situation": "Менеджер предлагает встречу в офисе",
-    "dialogue": "Хорошо, я согласен двигаться дальше. Но сначала — встреча вживую. Хочу видеть вас.",
+    "situation": "Состояние considering",
+    "dialogue": "Я понимаю, что вам нужно что-то заработать. Но почему я должен делать это именно сейчас?",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Дайте мне время, я подумаю. Со мной ещё свяжутся или это один звонок?",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Ладно, я начинаю верить. Но вот что меня волнует — гарантии. Я вам доверяю, а если вы что-то напутаете?",
     "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "А если мне не понравится результат в середине процесса? Я смогу остановиться и вернуть деньги?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Давайте считать. Мой долг 655. Вы говорите, сможете до 300. А остальное куда девается?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Нужен письменный договор. Все условия чёрным по белому. Я уже раз вкладывался на словах.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Хорошо, я согласен двигаться дальше. Но сначала — свидание в живую или по видео. Хочу видеть вас.",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Окей, я вас понимаю. Когда мы начинаем? Что мне делать первым?",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Документы я готов подписать. Но сначала — юрист посмотрит. Это займёт дня два.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Хорошо, мне нравится ваш подход. Конкретика, без воды. Давайте работать.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Если вы говорите 300K — это конкретно или примерно? Потому что мне нужны цифры.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Когда я увижу первые результаты? Месяц, три месяца? Я должен планировать бюджет.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Погодите, вы сказали, что можете работать с МФО, а они обычно не дают скидки. Как вы это делаете?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А если я не заплачу вам — вы будете звонить в мой номер как они? Или как-то по-другому?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Допустим, я сейчас скажу, что доход мой — это зарплата 85K. Это достаточно для вашей работы?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Вы сказали, что помогли 10000 человек. На каком сайте я смогу увидеть отзывы? Не просто на вашем сайте, а на независимом?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Окей, а если я передам вам свои данные, а потом вы сразу же подадите мои данные в ещё 5 компаний? На что я даю согласие?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Позвоните мне в четверг после 19:00. Дома я буду, сможу спокойно поговорить.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Мне нужно обсудить это с женой. Она мне поможет разобраться в деталях.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Дайте мне ссылку на ваше лицензирование. Я проверю в свободное время.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Пока ничего не решил. Может быть, если ещё раз позвоните через неделю — к тому времени я подумаю.",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Я не отказываюсь, но и не согласен. Давайте встретимся очно. Вы сейчас в городе?",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Слушайте, это развод, и я понял. Больше не звоните, вас занесу в чёрный список.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Я уже раз попался на подобное. Вы все одинаковые, мошенники и больше нечего.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Зачем вы вообще сюда звоните? Вы знаете, что я могу подать на вас жалобу в ЦБ?",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Уходите. Я вам дважды сказал — прекратите звонить. Это угроза?",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Это какой-то рэкет. Приду в вашу контору и разберёмся как люди.",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "До свидания",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Неинтересно",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Ваш номер в чёрный список",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Не беспокойте",
+    "emotion": "hangup",
     "source": "extracted"
   }
 ]

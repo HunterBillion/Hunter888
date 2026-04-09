@@ -1,0 +1,290 @@
+[
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Это... это про мои кредиты? Я же плачу...",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Не надо мне говорить про судебных приставов... Пожалуйста...",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Я не могу сейчас говорить, мама спит рядом... Можно позже?",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Сколько я вам должна? Это дополнительная задолженность?",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние cold",
+    "dialogue": "Пожалуйста, не звоните на мой рабочий номер, коллеги услышат...",
+    "emotion": "cold",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Кто вы? Какая компания? Вы из банка или это коллекторы?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Я знаю, что я должна. Но я же плачу понемногу каждый месяц...",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Это новый закон появился? Это из-за нового закона вы звоните?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "А если я не смогу платить ещё? Что со мной будет? Меня арестуют?",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние guarded",
+    "dialogue": "Можно вы расскажете медленнее? Я всё боюсь, что я что-то неправильно поняла...",
+    "emotion": "guarded",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "А вы... вы можете мне помочь? Это правда? Как это работает?",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Можно уменьшить сумму? Или сделать дольше платить? Я смогу по частям...",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Это не развод? Потому что я боюсь, что это развод и я потом ещё больше задолжу...",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "А мама — ей нужно знать про это? Она не должна волноваться...",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние curious",
+    "dialogue": "Сколько это будет стоить? У меня нет денег... Я не смогу платить комиссию, я и то на зарплату не могу жить...",
+    "emotion": "curious",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Окей, окей... давайте попробуем. Но медленно, ладно? Я очень нервничаю...",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "А если я подпишу договор, а потом банки не согласятся? Что тогда? Я потеряю деньги?",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Я всегда была ответственная, я никогда не хотела брать кредиты... Это было отчаяние, мама была больна...",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "А это будет на моей кредитной истории? Это же хорошо, что я решу проблему? Это не значит, что я была плохая?",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние considering",
+    "dialogue": "Ладно, я готова. Но это будет быстро? Я не выдержу долгие процессы, это убьёт мне здоровье...",
+    "emotion": "considering",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Хорошо, я согласна. Но мне нужны гарантии. Вы же не скроетесь потом?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "А если я не смогу в какой-то месяц заплатить? Что произойдёт? Ничего страшного?",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Пожалуйста, объясните мне ещё раз, как это будет работать. Я хочу всё понять, но я не очень разбираюсь в финансах...",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Когда я должна привезти документы? Мне нужно время, чтобы найти всё, что у меня есть...",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние negotiating",
+    "dialogue": "Спасибо... спасибо, что вы помогаете. Я не знаю, что бы я делала...",
+    "emotion": "negotiating",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Да, да, я согласна. Я подпишу всё, что вам нужно.",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Спасибо большое... вы не знаете, какой это для меня вес с плеч...",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Когда начнём? Что мне делать? Я готова прямо сейчас...",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Я буду вам платить вовремя, я обещаю. Я ответственная... я просто... мне нужна была помощь...",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние deal",
+    "dialogue": "Можете быть уверены, я не подведу. Спасибо, что поверили мне...",
+    "emotion": "deal",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А вот что, если я всё заплачу, а потом мне звонят из другой компании и говорят, что я им ещё должна?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Это точно законно? Я не нарушу какой-то закон, если буду с вами работать?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "А если менеджер мне врёт? Как я смогу проверить, что вы помогли другим людям?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Может быть, это ловушка? Может быть, мне просто надо игнорировать звонки и все разберётся?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние testing",
+    "dialogue": "Я прочитала в интернете, что есть МФО, которые берут очень много. Вы не такие, правда?",
+    "emotion": "testing",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Позвоните мне в выходной, когда я дома и мама уже спит... может быть в воскресенье?",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Мне нужно с подругой посоветоваться. Она мне поможет разобраться, что мне делать...",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Мне страшно... дайте мне время подумать, может неделю?",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Можете не звонить, я сама вам позвоню, когда буду готова. Это так напряжно...",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние callback",
+    "dialogue": "Спасибо за помощь... может быть, я потом позвоню. Но не обещаю...",
+    "emotion": "callback",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Почему вы звоните на мой номер?! Как вы его узнали?! Это вторжение в приватность!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Я вас не просила звонить! Оставьте меня в покое! Я и так в стрессе!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Это издевательство! Я уже плачу, я не могу платить больше! Вы что, хотите, чтобы я с голода умерла?!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Не надо мне ничего говорить! Просто не звоните больше! Вы все одинаковые, все хотите денег!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hostile",
+    "dialogue": "Я позвоню в полицию! Это же угрозы! Оставьте меня!",
+    "emotion": "hostile",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Не могу...",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Оставьте меня...",
+    "emotion": "hangup",
+    "source": "extracted"
+  },
+  {
+    "situation": "Состояние hangup",
+    "dialogue": "Позже...",
+    "emotion": "hangup",
+    "source": "extracted"
+  }
+]
