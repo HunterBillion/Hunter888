@@ -906,14 +906,16 @@ async def _generate_character_reply(
             logger.debug("Game Director context injection failed for story %s", _story_id, exc_info=True)
 
     try:
-        _call_num = state.get("call_number", 1)
+        # H1 fix: route by estimated token count, not call_number
+        _est_tokens = len(extra_system) // 2  # rough estimate for Russian text
+        _prefer = "local" if _est_tokens < 4000 else "auto"
         llm_result = await generate_response(
             system_prompt=extra_system,
             messages=messages,
             emotion_state=current_emotion,
             character_prompt_path=prompt_path,
             task_type="roleplay",
-            prefer_provider="auto" if _call_num >= 3 else "local",
+            prefer_provider=_prefer,
         )
     except LLMError as e:
         logger.error("LLM failed for session %s: %s", session_id, e)
@@ -1145,9 +1147,10 @@ async def _generate_character_reply(
             state["next_call_emotion"] = "hostile"
             logger.info("HANGUP multi-call | session=%s | reason=%s", session_id, hangup_reason)
         else:
-            # Single call: end session
+            # Single call: end session and signal main loop to stop
             logger.info("HANGUP single | session=%s | reason=%s", session_id, hangup_reason)
             await _handle_session_end(ws, {}, state)
+            state["_should_stop"] = True  # Signal main loop to break (C3 fix)
 
         return  # Stop — do not continue with normal flow
     # ─── END HANGUP DETECTION ───
@@ -4239,14 +4242,23 @@ async def training_websocket(websocket: WebSocket) -> None:
                     )
 
             elif msg_type == "audio.chunk":
+                state["text_mode"] = False  # H4 fix: re-enable silence watchdog on voice input
                 await _handle_audio_chunk(websocket, msg_data, state)
 
             elif msg_type == "audio.end":
                 await _handle_audio_end(websocket, msg_data, state)
+                # C3 fix: hangup detection inside message processing sets _should_stop
+                if state.get("_should_stop"):
+                    stop_event.set()
+                    break
 
             elif msg_type == "text.message":
                 state["text_mode"] = True  # Disable silence watchdog for text input
                 await _handle_text_message(websocket, msg_data, state)
+                # C3 fix: hangup detection inside message processing sets _should_stop
+                if state.get("_should_stop"):
+                    stop_event.set()
+                    break
 
             elif msg_type == "session.end":
                 await _handle_session_end(websocket, msg_data, state)

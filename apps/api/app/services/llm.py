@@ -343,8 +343,12 @@ def load_prompt(prompt_path: str) -> str:
         return ""
 
     if not requested.exists():
-        logger.warning("Prompt file not found: %s (resolved: %s)", prompt_path, requested)
-        return ""
+        logger.error("Prompt file not found: %s (resolved: %s)", prompt_path, requested)
+        raise FileNotFoundError(
+            f"Character prompt file not found: {prompt_path}. "
+            f"Ensure the file exists in {prompts_root}/. "
+            f"Available files: {[f.name for f in prompts_root.glob('characters/*.md')][:10]}"
+        )
     return requested.read_text(encoding="utf-8")
 
 
@@ -1557,12 +1561,34 @@ def _scripted_response(emotion_state: str, messages: list[dict]) -> LLMResponse:
 # Dedicated logger for token usage tracking (future billing)
 _token_logger = logging.getLogger("token_usage")
 
+# ─── Fallback rate counter (Phase 0 monitoring) ──────────────────────────────
+_llm_stats: dict[str, int] = {"total": 0, "fallback": 0, "by_provider": {}}
+
+
+def get_llm_stats() -> dict:
+    """Return LLM call statistics. Useful for monitoring fallback rates."""
+    total = _llm_stats["total"]
+    fallback = _llm_stats["fallback"]
+    return {
+        "total_calls": total,
+        "fallback_calls": fallback,
+        "fallback_rate": round(fallback / total * 100, 1) if total > 0 else 0.0,
+        "by_provider": dict(_llm_stats["by_provider"]),
+    }
+
 
 def _log_token_usage(response: "LLMResponse", user_id: str | None = None) -> None:
     """Log token usage for billing and analytics.
 
     Structured format: JSON-parseable line for easy aggregation.
     """
+    # Update in-memory stats counter
+    _llm_stats["total"] += 1
+    if response.is_fallback:
+        _llm_stats["fallback"] += 1
+    provider = response.model or "unknown"
+    _llm_stats["by_provider"][provider] = _llm_stats["by_provider"].get(provider, 0) + 1
+
     _token_logger.info(
         "TOKEN_USAGE user=%s model=%s input=%d output=%d total=%d latency_ms=%d fallback=%s",
         user_id or "unknown",
@@ -1609,8 +1635,76 @@ async def generate_response(
         max_tokens: Override max output tokens (default picked by task_type)
     """
     # ── Build system prompt ──
-    if character_prompt_path:
-        character_prompt = load_prompt(character_prompt_path)
+    _budget_mgr = get_context_budget_manager()
+    _use_lorebook = False  # Will be set True if lorebook path succeeds
+
+    if character_prompt_path and settings.use_lorebook:
+        # ── LOREBOOK PATH: dynamic context from DB ──
+        _arch_slug = character_prompt_path.replace("characters/", "").split("_")[0].split(".")[0]
+        try:
+            from app.services.rag_personality import retrieve_lorebook_context
+            from app.database import async_session as _llm_async_session
+            # Get last user message for keyword/embedding retrieval
+            _last_user_msg = ""
+            for m in reversed(messages):
+                if m.get("role") == "user":
+                    _last_user_msg = m.get("content", "")
+                    break
+
+            async with _llm_async_session() as _lb_db:
+                _lb_ctx = await retrieve_lorebook_context(
+                    archetype_code=_arch_slug,
+                    user_message=_last_user_msg,
+                    db=_lb_db,
+                    emotion_state=emotion_state,
+                )
+
+            if _lb_ctx.character_card:
+                # Lorebook has data for this archetype → use it
+                _use_lorebook = True
+                # Assemble: card + guardrails + lorebook entries + RAG examples
+                try:
+                    guardrails = load_prompt("guardrails.md")
+                    guardrails = _budget_mgr.trim_to_budget("guardrails", guardrails)
+                except FileNotFoundError:
+                    guardrails = ""
+
+                sections = []
+                # Card with emotion state injected
+                _card = _lb_ctx.character_card.replace("{emotion_state}", emotion_state)
+                sections.append(_card)
+                if guardrails:
+                    sections.append(guardrails)
+                # Lorebook entries + RAG examples
+                sections.extend(_lb_ctx.to_prompt_sections()[1:])  # skip card (already added)
+                full_system = "\n\n---\n\n".join(sections)
+
+                # Extra_system (objections, stage, traps) — budget capped
+                if system_prompt:
+                    _extra_budget = 1600
+                    if len(system_prompt) > _extra_budget:
+                        system_prompt = system_prompt[:_extra_budget] + "\n[...сокращено]"
+                    full_system = full_system + "\n\n" + system_prompt
+
+                logger.info(
+                    "LOREBOOK prompt [%s]: ~%d tokens (card=%d, entries=%d, examples=%d)",
+                    _arch_slug,
+                    _lb_ctx.total_tokens_estimate,
+                    len(_lb_ctx.character_card) // 2,
+                    len(_lb_ctx.entries),
+                    len(_lb_ctx.examples),
+                )
+        except Exception as e:
+            logger.warning("Lorebook retrieval failed for %s, falling back to file: %s", _arch_slug, e)
+            _use_lorebook = False
+
+    if character_prompt_path and not _use_lorebook:
+        # ── LEGACY PATH: full 25K character prompt file ──
+        try:
+            character_prompt = load_prompt(character_prompt_path)
+        except FileNotFoundError as e:
+            logger.error("Character prompt missing: %s", e)
+            raise LLMError(f"Character prompt not found: {character_prompt_path}") from e
         try:
             from app.services.prompt_registry import load_archetype_prompt_db
             from app.database import async_session as _llm_async_session
@@ -1621,12 +1715,28 @@ async def generate_response(
                     character_prompt = _db_prompt
         except Exception:
             pass
-        guardrails = load_prompt("guardrails.md")
+        try:
+            guardrails = load_prompt("guardrails.md")
+        except FileNotFoundError:
+            logger.warning("guardrails.md not found, proceeding without guardrails")
+            guardrails = ""
+
+        # C1 fix: enforce budget on single-call path (same as multi-call)
+        character_prompt = _budget_mgr.trim_to_budget("character_prompt", character_prompt)
+        guardrails = _budget_mgr.trim_to_budget("guardrails", guardrails)
+        if scenario_prompt:
+            scenario_prompt = _budget_mgr.trim_to_budget("scenario", scenario_prompt)
+
         full_system = _build_system_prompt(
             character_prompt, guardrails, emotion_state,
             scenario_prompt=scenario_prompt,
         )
+        # Budget cap for extra_system (from training.py: client_profile, objections, stage, traps)
         if system_prompt:
+            _extra_budget = 1600  # ~800 tokens for extra_system
+            if len(system_prompt) > _extra_budget:
+                system_prompt = system_prompt[:_extra_budget] + "\n[...сокращено]"
+                logger.debug("extra_system trimmed to %d chars", _extra_budget)
             full_system = full_system + "\n\n" + system_prompt
     else:
         if scenario_prompt:

@@ -2005,7 +2005,7 @@ class AchievementValidator:
     ) -> bool:
         """Rare: completed all 7 sales stages in a single session."""
         result = await db.execute(
-            select(TrainingSession.score_details).where(
+            select(TrainingSession.scoring_details).where(
                 TrainingSession.user_id == user_id,
                 TrainingSession.status == SessionStatus.completed,
             ).order_by(TrainingSession.started_at.desc()).limit(10)
@@ -2025,10 +2025,10 @@ class AchievementValidator:
     ) -> bool:
         """Rare: completed a full 5-call story."""
         result = await db.execute(
-            select(TrainingSession.score_details).where(
+            select(TrainingSession.scoring_details).where(
                 TrainingSession.user_id == user_id,
                 TrainingSession.status == SessionStatus.completed,
-                TrainingSession.story_mode.is_(True),
+                TrainingSession.client_story_id.isnot(None),
             ).order_by(TrainingSession.started_at.desc()).limit(20)
         )
         for (details,) in result.all():
@@ -2045,7 +2045,7 @@ class AchievementValidator:
     ) -> bool:
         """Common: 100% quality on qualification stage."""
         result = await db.execute(
-            select(TrainingSession.score_details).where(
+            select(TrainingSession.scoring_details).where(
                 TrainingSession.user_id == user_id,
                 TrainingSession.status == SessionStatus.completed,
             ).order_by(TrainingSession.started_at.desc()).limit(10)
@@ -2079,7 +2079,7 @@ class AchievementValidator:
     ) -> bool:
         """Rare: scored 80+ without using any hints."""
         result = await db.execute(
-            select(TrainingSession.score_total, TrainingSession.score_details).where(
+            select(TrainingSession.score_total, TrainingSession.scoring_details).where(
                 TrainingSession.user_id == user_id,
                 TrainingSession.status == SessionStatus.completed,
             ).order_by(TrainingSession.started_at.desc()).limit(10)

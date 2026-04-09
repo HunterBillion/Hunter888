@@ -282,7 +282,7 @@ export default function Header() {
           </div>
 
           <div className="relative z-20 flex items-center justify-end gap-2 sm:gap-3">
-            <div className="hidden lg:block w-32">
+            <div className="hidden lg:block w-44">
               <XPBar level={level} currentXP={currentXP} nextLevelXP={nextLevelXP} />
             </div>
 

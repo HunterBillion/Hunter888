@@ -123,7 +123,15 @@ from app.models.knowledge import (
     DailyChallenge,
     DailyChallengeEntry,
 )
-from app.models.rag import ChunkUsageLog, LegalKnowledgeChunk, LegalValidationResult
+from app.models.rag import (
+    ChunkUsageLog,
+    LegalKnowledgeChunk,
+    LegalValidationResult,
+    PersonalityChunk,
+    PersonalityExample,
+    TraitCategory,
+    PersonalityChunkSource,
+)
 from app.models.tournament import (
     BracketMatch,
     BracketMatchStatus,
@@ -294,6 +302,10 @@ __all__ = [
     "ProgressLeaderboardSnapshot",
     "LegalKnowledgeChunk",
     "LegalValidationResult",
+    "PersonalityChunk",
+    "PersonalityExample",
+    "TraitCategory",
+    "PersonalityChunkSource",
     "UserAnswerHistory",
     "BehaviorSnapshot",
     "EmotionProfile",

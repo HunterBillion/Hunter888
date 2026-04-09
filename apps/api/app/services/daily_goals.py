@@ -182,7 +182,7 @@ async def _gather_metrics(
     max_stages_today = 0
     if sessions_today > 0:
         stages_result = await db.execute(
-            select(TrainingSession.score_details).where(
+            select(TrainingSession.scoring_details).where(
                 TrainingSession.user_id == user_id,
                 TrainingSession.status == SessionStatus.completed,
                 TrainingSession.started_at >= today_start,
@@ -216,17 +216,17 @@ async def _gather_metrics(
         select(func.count(TrainingSession.id)).where(
             TrainingSession.user_id == user_id,
             TrainingSession.status == SessionStatus.completed,
-            TrainingSession.story_mode.is_(True),
+            TrainingSession.client_story_id.isnot(None),
             TrainingSession.started_at >= week_start,
         )
     )
     # Approximate: count story sessions with call_number >= total_calls
     stories_completed_week = 0
     story_sessions = await db.execute(
-        select(TrainingSession.score_details).where(
+        select(TrainingSession.scoring_details).where(
             TrainingSession.user_id == user_id,
             TrainingSession.status == SessionStatus.completed,
-            TrainingSession.story_mode.is_(True),
+            TrainingSession.client_story_id.isnot(None),
             TrainingSession.started_at >= week_start,
         )
     )

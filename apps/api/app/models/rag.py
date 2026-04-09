@@ -1,7 +1,7 @@
-"""Legal RAG models for 127-ФЗ knowledge base.
+"""RAG models for legal knowledge (127-ФЗ) and character personality (lorebook).
 
-MVP: hardcoded legal checks (Phase 4 will add pgvector embeddings).
-Stores validation results per session for audit and scoring (Layer 10).
+Legal: Stores validation results per session for audit and scoring (Layer 10).
+Personality: Lorebook entries for character archetypes — keyword-triggered context injection.
 """
 
 import enum
@@ -10,7 +10,7 @@ from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
 
 from app.database import Base
@@ -208,3 +208,102 @@ class LegalValidationResult(Base):
     law_reference: Mapped[str | None] = mapped_column(String(200))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PERSONALITY RAG — Lorebook entries for character archetypes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TraitCategory(str, enum.Enum):
+    """Categories of personality lorebook entries."""
+    core_identity = "core_identity"
+    financial_situation = "financial_situation"
+    backstory = "backstory"
+    family_context = "family_context"
+    legal_fears = "legal_fears"
+    objection_price = "objection_price"
+    objection_trust = "objection_trust"
+    objection_necessity = "objection_necessity"
+    objection_time = "objection_time"
+    objection_competitor = "objection_competitor"
+    breakpoint_trust = "breakpoint_trust"
+    speech_examples = "speech_examples"
+    emotional_triggers = "emotional_triggers"
+    decision_drivers = "decision_drivers"
+
+
+class PersonalityChunkSource(str, enum.Enum):
+    """How this entry was created."""
+    manual = "manual"
+    extracted_from_prompt = "extracted"
+    generated_llm = "generated"
+    learned_from_session = "learned"
+
+
+class PersonalityChunk(Base):
+    """A single lorebook entry for a character archetype.
+
+    Each chunk = one piece of character knowledge injected into the prompt
+    when triggered by keywords. Replaces monolithic 25K character prompt files.
+    """
+    __tablename__ = "personality_chunks"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    archetype_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    trait_category: Mapped[TraitCategory] = mapped_column(Enum(TraitCategory), nullable=False, index=True)
+
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    keywords: Mapped[dict] = mapped_column(JSONB, default=list)
+    priority: Mapped[int] = mapped_column(Integer, default=5)
+    source: Mapped[PersonalityChunkSource] = mapped_column(
+        Enum(PersonalityChunkSource), default=PersonalityChunkSource.manual
+    )
+
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+
+    retrieval_count: Mapped[int] = mapped_column(Integer, default=0)
+    hit_count: Mapped[int] = mapped_column(Integer, default=0)
+    effectiveness_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    content_hash: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
+    )
+
+    examples: Mapped[list["PersonalityExample"]] = relationship(
+        back_populates="chunk", cascade="all, delete-orphan"
+    )
+
+
+class PersonalityExample(Base):
+    """A few-shot dialogue example for RAG retrieval.
+
+    Retrieved by semantic similarity to user message. Injected as 3-5 examples
+    showing how the character speaks in similar situations.
+    """
+    __tablename__ = "personality_examples"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    chunk_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("personality_chunks.id", ondelete="SET NULL"),
+        nullable=True, index=True
+    )
+    archetype_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+
+    situation: Mapped[str] = mapped_column(Text, nullable=False)
+    dialogue: Mapped[str] = mapped_column(Text, nullable=False)
+    emotion: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    source: Mapped[PersonalityChunkSource] = mapped_column(
+        Enum(PersonalityChunkSource), default=PersonalityChunkSource.extracted_from_prompt
+    )
+
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+    retrieval_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    chunk: Mapped["PersonalityChunk | None"] = relationship(back_populates="examples")

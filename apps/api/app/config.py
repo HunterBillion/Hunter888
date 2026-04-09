@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     llm_local_max_tokens_simple: int = 400  # max_tokens for simple/structured tasks on local
     gemini_rpm_limit: int = 15  # Free tier limit, used by RPM counter to avoid 429
 
+    # Lorebook (personality RAG — replaces monolithic character prompts)
+    use_lorebook: bool = False  # Feature flag: False=old 25K prompts, True=lorebook+RAG
+    lorebook_max_entry_tokens: int = 400  # Max tokens for keyword-triggered entries per turn
+    lorebook_max_examples: int = 3  # Max few-shot RAG examples per turn
+    lorebook_history_messages: int = 10  # Sliding window size for local LLM
+
     # Embeddings
     embeddings_service_url: str = "http://localhost:8002"  # Legacy local service
     gemini_embedding_api_key: str = ""  # Free Gemini API key for embeddings

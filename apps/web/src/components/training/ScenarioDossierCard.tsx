@@ -18,8 +18,7 @@ interface ScenarioDossierCardProps {
 export function ScenarioDossierCard({ scenario, index, isStarting, onStart, onStartStory, storyCalls }: ScenarioDossierCardProps) {
   const archetype = findArchetype(scenario.character_name) ?? findArchetypeFromTitle(scenario.title);
   const group = archetype ? ARCHETYPE_GROUPS[archetype.group] : null;
-  // FIX-3: Card color reflects difficulty, not archetype group
-  const groupColor = getDifficultyColor(scenario.difficulty);
+  const accentColor = getDifficultyColor(scenario.difficulty);
   const typeConfig = getScenarioTypeConfig(scenario.scenario_type);
 
   const rawName = scenario.character_name ?? "";
@@ -29,109 +28,65 @@ export function ScenarioDossierCard({ scenario, index, isStarting, onStart, onSt
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05, duration: 0.4 }}
-      className="relative overflow-hidden rounded-2xl transition-all duration-300 flex flex-col h-full"
-      style={{
-        background: "var(--glass-bg)",
-        border: `1px solid ${groupColor}25`,
-        backdropFilter: "blur(24px) saturate(1.5)",
-      }}
-      whileHover={{
-        y: -6,
-        boxShadow: `0 20px 60px ${groupColor}20, 0 0 0 1px ${groupColor}40`,
-        borderColor: `${groupColor}50`,
-      }}
+      transition={{ delay: index * 0.04, duration: 0.3 }}
+      className="glass-panel flex flex-col h-full overflow-hidden"
+      style={{ borderColor: `color-mix(in srgb, ${accentColor} 20%, transparent)` }}
     >
-      {/* Top accent bar */}
-      <div className="relative h-1.5 shrink-0">
-        <div className="absolute inset-0" style={{ background: `linear-gradient(90deg, transparent 5%, ${groupColor} 50%, transparent 95%)` }} />
-        <div className="absolute inset-0" style={{ background: `linear-gradient(90deg, transparent 20%, ${groupColor}60 50%, transparent 80%)`, filter: "blur(6px)" }} />
-      </div>
+      {/* Accent top bar — thin, clean */}
+      <div className="h-[3px] shrink-0" style={{ background: accentColor }} />
 
-      {/* Corner glow */}
-      <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${groupColor}12 0%, transparent 70%)` }} />
+      {/* Content — fixed structure for alignment */}
+      <div className="p-5 flex flex-col flex-1 gap-3">
 
-      {/* Content area — flex-1 pushes buttons to bottom */}
-      <div className="p-6 flex flex-col flex-1">
-
-        {/* Row 1: Avatar + archetype */}
-        <div className="flex items-start gap-4 mb-4">
+        {/* Row 1: Icon + Name — fixed height */}
+        <div className="flex items-center gap-3">
           <div
-            className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0"
-            style={{
-              background: `linear-gradient(135deg, ${groupColor}, ${groupColor}BB)`,
-              boxShadow: `0 8px 24px ${groupColor}40, inset 0 1px 0 rgba(255,255,255,0.2)`,
-            }}
+            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-white font-bold text-sm"
+            style={{ background: accentColor }}
           >
-            <span className="text-xl font-bold text-white">
-              {archetype ? archetype.name[0] : <User size={24} />}
-            </span>
+            {archetype ? archetype.name[0] : <User size={18} />}
           </div>
-
           <div className="flex-1 min-w-0">
-            {archetype ? (
-              <>
-                <div className="font-display text-xl font-bold tracking-wide" style={{ color: groupColor, textShadow: `0 0 20px ${groupColor}30` }}>
-                  {archetype.name}
-                </div>
-                <div className="text-sm mt-1 leading-relaxed line-clamp-2" style={{ color: "var(--text-secondary)" }}>
-                  {archetype.description}
-                </div>
-              </>
-            ) : (
-              <div className="font-display text-xl font-bold leading-tight" style={{ color: "var(--text-primary)" }}>
+            <div className="font-semibold text-base truncate" style={{ color: "var(--text-primary)" }}>
+              {archetype?.name ?? scenario.title}
+            </div>
+            {archetype && (
+              <div className="text-sm truncate" style={{ color: "var(--text-muted)" }}>
                 {scenario.title}
               </div>
             )}
           </div>
         </div>
 
-        {/* Row 2: Scenario title */}
-        {archetype && (
-          <h3 className="font-display text-base font-semibold leading-snug mb-3" style={{ color: "var(--text-primary)" }}>
-            {scenario.title}
-          </h3>
-        )}
+        {/* Row 2: Description — fixed 2 lines */}
+        <div className="text-sm leading-relaxed line-clamp-2 min-h-[2.5rem]" style={{ color: "var(--text-secondary)" }}>
+          {archetype?.description ?? clientBrief ?? scenario.description}
+        </div>
 
-        {/* Row 3: Client brief — fixed height with line-clamp */}
-        {clientBrief && (
-          <div
-            className="rounded-xl px-4 py-3 mb-4 relative overflow-hidden"
-            style={{ background: `linear-gradient(135deg, ${groupColor}08, transparent)`, border: `1px solid ${groupColor}15` }}
-          >
-            <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: groupColor, opacity: 0.5 }} />
-            <div className="flex items-center gap-2 mb-1">
-              <User size={12} style={{ color: groupColor, opacity: 0.7 }} />
-              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: groupColor, opacity: 0.7 }}>Клиент</span>
-            </div>
-            <p className="text-sm leading-relaxed line-clamp-2" style={{ color: "var(--text-secondary)" }}>{clientBrief}</p>
+        {/* Row 3: Client brief — optional, fixed height slot */}
+        {clientBrief && archetype && (
+          <div className="rounded-lg px-3 py-2 text-sm line-clamp-2" style={{ background: "var(--input-bg)", color: "var(--text-secondary)" }}>
+            {clientBrief}
           </div>
         )}
 
-        {/* Row 4: Description fallback */}
-        {!clientBrief && !archetype && (
-          <p className="text-sm leading-relaxed mb-4 line-clamp-2" style={{ color: "var(--text-secondary)" }}>
-            {scenario.description}
-          </p>
-        )}
-
-        {/* Spacer — pushes badges and buttons to bottom */}
+        {/* Spacer — pushes everything below to bottom */}
         <div className="flex-1" />
 
-        {/* Row 5: Meta badges */}
-        <div className="flex items-center gap-2 flex-wrap mb-5">
+        {/* Row 4: Badges — always at same position */}
+        <div className="flex items-center gap-2 flex-wrap">
           <span
-            className="rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide"
-            style={{ background: typeConfig.bg, border: `1px solid ${typeConfig.border}`, color: typeConfig.color, boxShadow: `0 2px 8px ${typeConfig.color}15` }}
+            className="rounded-md px-2.5 py-1 text-xs font-semibold uppercase tracking-wide"
+            style={{ background: typeConfig.bg, color: typeConfig.color }}
           >
             {typeConfig.label}
           </span>
           {group && (
             <span
-              className="rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide"
-              style={{ background: `${groupColor}12`, border: `1px solid ${groupColor}25`, color: groupColor }}
+              className="rounded-md px-2.5 py-1 text-xs font-semibold uppercase tracking-wide"
+              style={{ background: `color-mix(in srgb, ${accentColor} 12%, transparent)`, color: accentColor }}
             >
               {group.label}
             </span>
@@ -142,39 +97,35 @@ export function ScenarioDossierCard({ scenario, index, isStarting, onStart, onSt
           </span>
         </div>
 
-        {/* Row 6: Action buttons — always at bottom */}
-        <div className="grid grid-cols-[1.2fr_0.8fr] gap-3">
+        {/* Row 5: Buttons — ALWAYS at bottom, same level */}
+        <div className="grid grid-cols-[1.2fr_0.8fr] gap-2 pt-1">
           <motion.button
             onClick={() => onStart(scenario.id)}
             disabled={isStarting}
-            className="relative overflow-hidden flex items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold uppercase tracking-wider transition-all"
+            className="flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold text-white transition-all"
             style={{
-              background: `linear-gradient(135deg, ${groupColor}, ${groupColor}CC)`,
-              color: "white",
-              boxShadow: `0 4px 16px ${groupColor}40`,
+              background: accentColor,
               opacity: isStarting ? 0.6 : 1,
             }}
-            whileHover={{ boxShadow: `0 8px 32px ${groupColor}50`, scale: 1.02 }}
+            whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
           >
-            {isStarting ? <Loader2 size={16} className="animate-spin" /> : <><span>Начать</span><ArrowRight size={16} /></>}
+            {isStarting ? <Loader2 size={16} className="animate-spin" /> : <><span>Начать</span><ArrowRight size={14} /></>}
           </motion.button>
           <motion.button
             onClick={() => onStartStory(scenario.id, storyCalls)}
             disabled={isStarting}
-            className="flex items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-medium transition-all"
+            className="flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-medium transition-all"
             style={{
-              border: `1px solid ${groupColor}30`,
-              background: `${groupColor}08`,
-              color: groupColor,
+              border: `1px solid color-mix(in srgb, ${accentColor} 30%, transparent)`,
+              color: accentColor,
               opacity: isStarting ? 0.4 : 1,
-              pointerEvents: isStarting ? "none" : "auto",
             }}
-            whileHover={{ background: `${groupColor}15`, borderColor: `${groupColor}50` }}
+            whileHover={{ background: `color-mix(in srgb, ${accentColor} 8%, transparent)` }}
             whileTap={{ scale: 0.97 }}
           >
-            <BookOpen size={14} />
-            История {storyCalls}x
+            <BookOpen size={13} />
+            {storyCalls}x
           </motion.button>
         </div>
       </div>
