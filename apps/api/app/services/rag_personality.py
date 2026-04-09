@@ -276,24 +276,71 @@ async def retrieve_lorebook_context(
     # 1. Character card (always)
     card = await get_character_card(archetype_code, db)
 
-    # 2. Keyword-triggered entries
-    entries = await retrieve_by_keywords(archetype_code, user_message, db, max_tokens=max_entry_tokens)
+    # 2. Always load high-priority entries (priority >= 8) as baseline context
+    #    These provide essential character knowledge regardless of conversation topic
+    baseline_result = await db.execute(
+        select(PersonalityChunk).where(
+            and_(
+                PersonalityChunk.archetype_code == archetype_code,
+                PersonalityChunk.is_active.is_(True),
+                PersonalityChunk.trait_category != TraitCategory.core_identity,
+                PersonalityChunk.priority >= 8,
+            )
+        ).order_by(PersonalityChunk.priority.desc())
+    )
+    baseline_entries = [
+        LorebookEntry(
+            chunk_id=str(c.id), trait_category=c.trait_category.value,
+            content=c.content, priority=c.priority, trigger_method="always",
+        )
+        for c in baseline_result.scalars().all()
+    ]
 
-    # 3. Fallback to embedding if keywords missed
-    if not entries:
-        entries = await retrieve_by_embedding(archetype_code, user_message, db, top_k=3)
-        # Cap by budget
-        budget_used = 0
-        capped = []
-        for e in entries:
-            t = len(e.content) // 2
-            if budget_used + t <= max_entry_tokens:
-                capped.append(e)
-                budget_used += t
-        entries = capped
+    # 3. Keyword-triggered entries (lower priority, topic-specific)
+    keyword_entries = await retrieve_by_keywords(archetype_code, user_message, db, max_tokens=max_entry_tokens)
 
-    # 4. Few-shot examples
-    examples = await retrieve_examples(archetype_code, user_message, db, top_k=max_examples)
+    # 4. Fallback to embedding if keywords missed (requires pre-computed embeddings)
+    if not keyword_entries:
+        keyword_entries = await retrieve_by_embedding(archetype_code, user_message, db, top_k=3)
+
+    # 5. Merge: baseline + keyword, deduplicate, cap by budget
+    seen_ids = set()
+    entries = []
+    budget_used = 0
+    for e in baseline_entries + keyword_entries:
+        if e.chunk_id in seen_ids:
+            continue
+        t = len(e.content) // 2
+        if budget_used + t <= max_entry_tokens:
+            entries.append(e)
+            seen_ids.add(e.chunk_id)
+            budget_used += t
+
+    # 6. Few-shot examples (keyword-based, no embeddings needed)
+    examples = []
+    if user_message:
+        # Simple keyword match for examples too
+        msg_lower = user_message.lower()
+        ex_result = await db.execute(
+            select(PersonalityExample).where(
+                and_(
+                    PersonalityExample.archetype_code == archetype_code,
+                    PersonalityExample.is_active.is_(True),
+                )
+            ).limit(50)  # Load pool, then filter
+        )
+        all_examples = ex_result.scalars().all()
+        # Score by keyword overlap with situation
+        scored = []
+        for ex in all_examples:
+            sit_lower = ex.situation.lower()
+            overlap = sum(1 for word in msg_lower.split() if word in sit_lower and len(word) > 3)
+            scored.append((overlap, ex))
+        scored.sort(key=lambda x: -x[0])
+        examples = [
+            RetrievedExample(situation=ex.situation, dialogue=ex.dialogue, emotion=ex.emotion)
+            for _, ex in scored[:max_examples]
+        ]
 
     # Estimate total tokens
     total = len(card) // 2
