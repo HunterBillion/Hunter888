@@ -3084,6 +3084,33 @@ async def _handle_session_end(
 
         await db.commit()
 
+    # ── C4 fix: Send results to client NOW (critical path done) ──
+    # Everything below is background work — user should not wait for it.
+    state["last_ended_session_id"] = session_id
+    state["active"] = False
+    state["session_id"] = None
+
+    _early_result = {"message": err.WS_SESSION_ENDED}
+    if session:
+        _early_result.update({
+            "session_id": str(session.id),
+            "duration_seconds": session.duration_seconds,
+            "status": session.status.value,
+        })
+        if scores:
+            _early_result["scores"] = {
+                "script_adherence": scores.script_adherence,
+                "objection_handling": scores.objection_handling,
+                "communication": scores.communication,
+                "anti_patterns": scores.anti_patterns,
+                "result": scores.result,
+                "total": scores.total,
+            }
+    await _send(ws, "session.ended", _early_result)
+    logger.info("Session ended (fast path): %s, score=%s", session_id, scores.total if scores else "N/A")
+
+    # ═══ BACKGROUND TASKS (fire-and-forget, user already got results) ═══
+
     # Cleanup Redis state
     try:
         from app.services.trap_detector import cleanup_trap_state
@@ -3182,32 +3209,8 @@ async def _handle_session_end(
     except Exception as e:
         logger.warning("Failed to update ManagerProgress after session: %s", e)
 
-    state["last_ended_session_id"] = session_id
-    state["active"] = False
-    state["session_id"] = None
-
-    result_data = {"message": err.WS_SESSION_ENDED}
-    if session:
-        result_data.update({
-            "session_id": str(session.id),
-            "duration_seconds": session.duration_seconds,
-            "status": session.status.value,
-        })
-        if scores:
-            result_data["scores"] = {
-                "script_adherence": scores.script_adherence,
-                "objection_handling": scores.objection_handling,
-                "communication": scores.communication,
-                "anti_patterns": scores.anti_patterns,
-                "result": scores.result,
-                "total": scores.total,
-            }
-        # Include XP/level data from ManagerProgress update
-        if mp_result:
-            result_data["xp_breakdown"] = mp_result.get("xp_breakdown", {})
-            result_data["level_up"] = mp_result.get("level_up", False)
-            result_data["new_level"] = mp_result.get("new_level")
-            result_data["new_level_name"] = mp_result.get("new_level_name")
+    # XP/level data sent as separate event after background processing
+    # (user already received session.ended with scores)
 
     # --- Behavioral Intelligence hooks ---
     try:
@@ -3323,7 +3326,6 @@ async def _handle_session_end(
             async with async_session() as rec_db:
                 feedback = await generate_recommendations(session_id, rec_db, scores)
                 if feedback:
-                    result_data["feedback_text"] = feedback
                     # Persist to session record
                     async with async_session() as upd_db:
                         from app.models.training import TrainingSession as TS
@@ -3349,7 +3351,18 @@ async def _handle_session_end(
     except Exception:
         logger.debug("Failed to schedule wiki ingest for session %s", session_id)
 
-    await _send(ws, "session.ended", result_data)
+    # Send XP/level update as separate event (after background processing)
+    if mp_result:
+        try:
+            await _send(ws, "session.xp_update", {
+                "session_id": str(session_id),
+                "xp_breakdown": mp_result.get("xp_breakdown", {}),
+                "level_up": mp_result.get("level_up", False),
+                "new_level": mp_result.get("new_level"),
+                "new_level_name": mp_result.get("new_level_name"),
+            })
+        except Exception:
+            logger.debug("Failed to send XP update for session %s", session_id)
 
 
 # ===========================================================================

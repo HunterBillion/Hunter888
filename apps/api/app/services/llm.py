@@ -66,6 +66,20 @@ class _ProviderHealth:
                 self.consecutive_failures, self.recovery_seconds,
             )
 
+    def record_quota_exhaustion(self, retry_after: float = 0) -> None:
+        """Q5 fix: 429 quota exceeded is NOT a failure — it's a temporary cooldown.
+        Don't increment consecutive_failures (keeps circuit healthy for recovery).
+        """
+        cooldown = max(retry_after, self.recovery_seconds)
+        # Exponential cooldown: 60s → 120s → 300s → 600s
+        if self.open_until > 0:
+            cooldown = min(cooldown * 2, 600.0)
+        self.open_until = time.monotonic() + cooldown
+        logger.info(
+            "Quota exhaustion cooldown: %.0fs (not counted as failure, consecutive=%d)",
+            cooldown, self.consecutive_failures,
+        )
+
     def is_available(self) -> bool:
         if self.open_until == 0.0:
             return True
@@ -116,7 +130,16 @@ async def _call_with_backoff(
             )
             return response
         except LLMError as e:
-            is_timeout = "timeout" in str(e).lower()
+            err_str = str(e).lower()
+            is_timeout = "timeout" in err_str
+
+            # Q5 fix: 429/quota errors → cooldown, not failure
+            is_quota = "429" in err_str or "quota" in err_str or "rate_limit" in err_str
+            if is_quota:
+                health.record_quota_exhaustion()
+                logger.info("%s quota exhausted, cooldown applied: %s", provider_name, e)
+                return None  # Skip retries — quota won't recover in seconds
+
             if retry_on_timeout_only and not is_timeout:
                 logger.warning("%s failed (non-timeout, no retry): %s", provider_name, e)
                 health.record_failure()
