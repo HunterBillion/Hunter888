@@ -1690,6 +1690,7 @@ async def generate_response(
     if character_prompt_path and settings.use_lorebook:
         # ── LOREBOOK PATH: dynamic context from DB ──
         _arch_slug = character_prompt_path.replace("characters/", "").split("_")[0].split(".")[0]
+        logger.info("LOREBOOK attempt: path=%s → slug=%s", character_prompt_path, _arch_slug)
         try:
             from app.services.rag_personality import retrieve_lorebook_context
             from app.database import async_session as _llm_async_session
@@ -1708,6 +1709,8 @@ async def generate_response(
                     emotion_state=emotion_state,
                 )
 
+            logger.info("LOREBOOK result: slug=%s, card=%d chars, entries=%d, examples=%d",
+                _arch_slug, len(_lb_ctx.character_card), len(_lb_ctx.entries), len(_lb_ctx.examples))
             if _lb_ctx.character_card:
                 # Lorebook has data for this archetype → use it
                 _use_lorebook = True
