@@ -27,10 +27,10 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
   }
 
   const glassCard: React.CSSProperties = {
-    background: "rgba(255,255,255,0.03)",
-    border: "1px solid rgba(255,255,255,0.06)",
+    background: "var(--bg-secondary)",
+    border: "1px solid var(--border-color)",
     borderRadius: 12,
-    padding: "1rem",
+    padding: "1.25rem",
   };
 
   const SKILL_LABELS: Record<string, string> = {
@@ -52,10 +52,10 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
       {
         label: profile.name,
         data: skillValues,
-        borderColor: "var(--warning)",
-        backgroundColor: "rgba(245,158,11,0.15)",
-        pointBackgroundColor: "var(--warning)",
-        borderWidth: 2,
+        borderColor: "var(--accent)",
+        backgroundColor: "rgba(124,106,232,0.25)",
+        pointBackgroundColor: "var(--accent)",
+        borderWidth: 2.5,
       },
     ],
   };
@@ -67,9 +67,9 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
       r: {
         beginAtZero: true,
         max: 100,
-        ticks: { color: "var(--text-muted)", backdropColor: "transparent", font: { size: 10 }, stepSize: 25 },
-        grid: { color: "rgba(255,255,255,0.06)" },
-        pointLabels: { color: "var(--text-muted)", font: { size: 11 } },
+        ticks: { color: "var(--text-muted)", backdropColor: "transparent", font: { size: 11 }, stepSize: 25 },
+        grid: { color: "rgba(124,106,232,0.12)" },
+        pointLabels: { color: "var(--text-secondary)", font: { size: 13, weight: 500 as const } },
       },
     },
     plugins: { legend: { display: false } },
@@ -84,11 +84,12 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
         label: "Балл",
         data: trend.map((t) => t.score),
         borderColor: "var(--accent)",
-        backgroundColor: "rgba(124,106,232,0.1)",
+        backgroundColor: "rgba(124,106,232,0.2)",
         fill: true,
-        tension: 0.3,
-        pointRadius: 4,
+        tension: 0.35,
+        pointRadius: 5,
         pointBackgroundColor: "var(--accent)",
+        borderWidth: 2.5,
       },
     ],
   };
@@ -97,8 +98,8 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
     responsive: true,
     maintainAspectRatio: false,
     scales: {
-      x: { ticks: { color: "var(--text-muted)", font: { size: 10 } }, grid: { display: false } },
-      y: { beginAtZero: true, ticks: { color: "var(--text-muted)" }, grid: { color: "rgba(255,255,255,0.04)" } },
+      x: { ticks: { color: "var(--text-secondary)", font: { size: 12 } }, grid: { display: false } },
+      y: { beginAtZero: true, ticks: { color: "var(--text-secondary)", font: { size: 12 } }, grid: { color: "rgba(124,106,232,0.08)" } },
     },
     plugins: { legend: { display: false } },
   };
@@ -119,11 +120,11 @@ export function EnrichedProfileTab({ profile }: { profile: EnrichedProfile | nul
           { label: "Часов практики", value: t.total_hours.toFixed(1), color: "var(--magenta)", icon: Clock },
         ].map((kpi) => (
           <div key={kpi.label} style={glassCard}>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.3rem" }}>
-              <kpi.icon size={14} style={{ color: kpi.color }} />
-              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{kpi.label}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+              <kpi.icon size={16} style={{ color: kpi.color }} />
+              <span style={{ fontSize: "0.875rem", color: "var(--text-secondary)", fontWeight: 500 }}>{kpi.label}</span>
             </div>
-            <div style={{ fontSize: "1.4rem", fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
+            <div style={{ fontSize: "1.75rem", fontWeight: 800, color: kpi.color, fontFamily: "var(--font-geist-mono), monospace" }}>{kpi.value}</div>
           </div>
         ))}
       </div>

@@ -240,36 +240,24 @@ export default function Header() {
               href="/home"
               prefetch={true}
               className="group flex items-center gap-0 rounded-[20px] px-3 py-1.5 transition-opacity duration-200 hover:opacity-85"
-              aria-label="X·HUNTER — Главная"
+              aria-label="X HUNTER — Главная"
             >
               {/* X — accent */}
               <span
-                className="font-display font-black leading-none tracking-tight"
+                className="font-display font-black leading-none"
                 style={{
                   fontSize: "clamp(1.6rem, 2.8vw, 2.15rem)",
                   color: "var(--accent)",
-                  textShadow: "0 0 28px var(--accent-glow)",
                   lineHeight: 1,
                 }}
               >
                 X
               </span>
-              {/* Separator dot */}
-              <span
-                className="mx-[3px] font-display font-black"
-                style={{
-                  fontSize: "clamp(0.9rem, 1.4vw, 1.2rem)",
-                  color: "var(--accent)",
-                  opacity: 0.6,
-                  lineHeight: 1,
-                  marginBottom: "1px",
-                }}
-              >
-                ·
-              </span>
+              {/* Space */}
+              <span className="w-1.5" />
               {/* HUNTER */}
               <span
-                className="font-display font-black leading-none tracking-[0.16em]"
+                className="font-display font-black leading-none tracking-[0.12em]"
                 style={{
                   fontSize: "clamp(1.05rem, 1.8vw, 1.45rem)",
                   color: "var(--header-text)",
