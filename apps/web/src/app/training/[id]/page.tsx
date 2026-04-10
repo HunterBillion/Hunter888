@@ -233,6 +233,8 @@ export default function TrainingSessionPage() {
     sessionId: s.sessionId || null,
     lastSequenceNumber: lastSeqNum,
     onMessage: (data) => {
+      // Global guard: ensure data.data is always an object (never undefined)
+      if (!data.data || typeof data.data !== "object") data.data = {};
       logger.log(`[WS] ${data.type}`, data.type === "tts.audio" ? `(audio ${(data.data?.audio_b64 as string)?.length || 0} chars)` : data.data);
       switch (data.type) {
         case "auth.success":
