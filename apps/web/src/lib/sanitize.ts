@@ -17,7 +17,8 @@ const HTML_ENTITIES: Record<string, string> = {
  * Escape HTML entities in user input.
  * Prevents XSS when rendering user content.
  */
-export function sanitizeText(input: string): string {
+export function sanitizeText(input: string | null | undefined): string {
+  if (!input) return "";
   return input.replace(/[&<>"'/]/g, (char) => HTML_ENTITIES[char] || char);
 }
 
@@ -25,7 +26,8 @@ export function sanitizeText(input: string): string {
  * Strip HTML tags from input.
  * More aggressive than sanitizeText — removes tags entirely.
  */
-export function stripHtml(input: string): string {
+export function stripHtml(input: string | null | undefined): string {
+  if (!input) return "";
   return input.replace(/<[^>]*>/g, "");
 }
 
