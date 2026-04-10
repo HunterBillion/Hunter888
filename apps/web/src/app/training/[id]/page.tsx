@@ -100,7 +100,10 @@ async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 const Avatar3D = dynamic(
-  () => import("@/components/training/Avatar3D").then((m) => m.Avatar3D),
+  () => import("@/components/training/Avatar3D").then((m) => m.Avatar3D).catch(() => {
+    // If Avatar3D fails to load (WebGL not supported, context lost), render nothing
+    return () => null;
+  }),
   {
     ssr: false,
     loading: () => (
