@@ -14,6 +14,7 @@ import {
   Radio,
   MessageSquare,
   Mic,
+  Loader2,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useMicrophone } from "@/hooks/useMicrophone";
@@ -427,15 +428,26 @@ export default function TrainingSessionPage() {
           wsTimersRef.current.push(setTimeout(() => s.setHangupWarning(null), 5000));
           break;
 
-        case "client.hangup":
+        case "client.hangup": {
+          const canContinue = Boolean(data.data.call_can_continue);
           s.setHangupData({
             reason: (data.data.reason as string) || "",
             hangupPhrase: (data.data.hangup_phrase as string) || "",
-            canContinue: Boolean(data.data.call_can_continue),
+            canContinue,
             triggers: (data.data.triggers as string[]) || [],
           });
           s.setShowHangupModal(true);
+          // C3 fix: auto-send session.end for single-call hangup after 3s
+          // so backend can clean up (no zombie sessions)
+          if (!canContinue) {
+            wsTimersRef.current.push(
+              setTimeout(() => {
+                sendMessage({ type: "session.end", data: {} });
+              }, 3000),
+            );
+          }
           break;
+        }
 
         case "trap.triggered": {
           const trapEvent: TrapEvent = {
@@ -608,6 +620,14 @@ export default function TrainingSessionPage() {
         case "session.resumed":
           s.setEmotion(data.data.emotion as EmotionState);
           s.setElapsed(Math.floor(data.data.elapsed_seconds as number));
+          // C2 fix: restore full session state on reconnect
+          if (data.data.character_name) s.setCharacterName(data.data.character_name as string);
+          if (data.data.archetype_code) s.setArchetypeCode(data.data.archetype_code as string);
+          if (data.data.scenario_title) s.setScenarioTitle(data.data.scenario_title as string);
+          if (data.data.character_gender) s.setCharacterGender(data.data.character_gender as "M" | "F" | "neutral");
+          if (data.data.client_card) {
+            s.setClientCard(data.data.client_card as ClientCardData);
+          }
           // Sort messages by sequence number to ensure correct order after replay
           s.sortMessagesBySequence();
           s.setSessionState("ready");
@@ -747,7 +767,7 @@ export default function TrainingSessionPage() {
 
   const handleSend = () => {
     const text = s.input.trim();
-    if (!text || s.sessionState !== "ready") return;
+    if (!text || s.sessionState !== "ready" || s.isTyping) return;
     // Block sending when WS is not connected — messages would be buffered silently
     if (connectionState !== "connected") {
       logger.warn("[Training] Send blocked: WS not connected (state=%s)", connectionState);
@@ -1171,13 +1191,13 @@ export default function TrainingSessionPage() {
                 />
                 <motion.button
                   onClick={handleSend}
-                  disabled={!s.input.trim() || s.sessionState !== "ready" || connectionState !== "connected"}
+                  disabled={!s.input.trim() || s.sessionState !== "ready" || connectionState !== "connected" || s.isTyping}
                   aria-label="Отправить"
                   className="flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-xl text-white"
-                  style={{ background: "var(--accent)", opacity: !s.input.trim() || s.sessionState !== "ready" ? 0.4 : 1 }}
+                  style={{ background: "var(--accent)", opacity: !s.input.trim() || s.sessionState !== "ready" || s.isTyping ? 0.4 : 1 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  <Send size={16} />
+                  {s.isTyping ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                 </motion.button>
               </div>
             </div>
