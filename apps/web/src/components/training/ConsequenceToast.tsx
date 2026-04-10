@@ -60,7 +60,7 @@ export function ConsequenceToast({ consequence, onDismiss }: Props) {
                 ПОСЛЕДСТВИЕ · ЗВОНОК {consequence.call}
               </div>
               <div className="text-sm mt-1 font-medium" style={{ color: "var(--text-primary)" }}>
-                {consequence.type.replace(/_/g, " ")}
+                {(consequence.type || "event").replace(/_/g, " ")}
               </div>
               <div className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
                 {consequence.detail}

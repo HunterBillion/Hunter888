@@ -1424,7 +1424,7 @@ export default function TrainingSessionPage() {
                 <div className="space-y-1.5">
                   {s.consequences.slice(-2).reverse().map((consequence, index) => (
                     <div key={`${consequence.call}-${consequence.type}-${index}`} className="rounded-lg px-3 py-2.5 text-sm" style={{ background: "rgba(239,68,68,0.06)", color: "var(--text-secondary)" }}>
-                      <span className="font-semibold" style={{ color: "var(--danger)" }}>{consequence.type.replace(/_/g, " ")}</span>
+                      <span className="font-semibold" style={{ color: "var(--danger)" }}>{(consequence.type || "event").replace(/_/g, " ")}</span>
                       <span className="ml-2 line-clamp-1">{consequence.detail}</span>
                     </div>
                   ))}

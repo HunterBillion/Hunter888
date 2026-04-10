@@ -205,7 +205,7 @@ export default function AICoachSection({ sessionId, coachData, difficulty }: AIC
                             Реплика #{cm.message_index} ({STAGE_LABELS[cm.stage] || cm.stage})
                           </span>
                           <span className="text-xs font-mono px-1.5 rounded" style={{ background: "rgba(229,72,77,0.1)", color: "#FF6666" }}>
-                            {cm.category.replace(/_/g, " ")}
+                            {(cm.category || "general").replace(/_/g, " ")}
                           </span>
                         </div>
                         <p className="text-xs italic" style={{ color: "var(--text-secondary)" }}>
