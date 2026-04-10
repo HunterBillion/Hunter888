@@ -58,6 +58,7 @@ export function DuelResult({
   myRatingDelta,
   summary,
   onClose,
+  duelId,
   myBreakdown,
   opponentBreakdown,
   turningPoint,
