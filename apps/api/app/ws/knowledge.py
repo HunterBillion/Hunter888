@@ -1091,6 +1091,19 @@ async def _handle_find_opponent(
     data: dict,
 ) -> None:
     """Create a PvP challenge via Redis and broadcast to all workers."""
+    # ── Level gate: PvP knowledge quiz requires level 5+ ──
+    from app.services.arena_gates import can_access_feature
+    from app.models.progress import ManagerProgress
+    async with async_session() as db:
+        prog_r = await db.execute(
+            select(ManagerProgress).where(ManagerProgress.user_id == user_id)
+        )
+        prog = prog_r.scalar_one_or_none()
+        user_level = prog.current_level if prog else 1
+    if not can_access_feature(user_level, "pvp"):
+        await _send_error(ws, "PvP арена доступна с уровня 5", "level_gate")
+        return
+
     arena = get_arena_redis()
 
     # Check if user is already in an active match
@@ -1563,6 +1576,39 @@ async def _generate_bot_answer(
     return random.choice(generic_wrong)
 
 
+async def _replace_with_bot_after_grace(
+    arena,
+    session_id: str,
+    user_id: str,
+    grace_seconds: int = 60,
+) -> None:
+    """After grace period, if player hasn't reconnected, replace with bot."""
+    await asyncio.sleep(grace_seconds)
+    try:
+        # Check if player reconnected during grace
+        still_disconnected = not await arena.check_reconnect(user_id)
+        player = await arena.get_player(session_id, user_id)
+        if player and not player.connected and still_disconnected:
+            bot_id = f"bot_replace_{user_id[:8]}"
+            bot_name = f"Бот ({player.name})"
+            # Update player record to bot
+            await arena.update_player_score(session_id, bot_id, 0, 0)  # Initialize bot player
+            await arena.set_player_connected(session_id, user_id, False)
+            await arena.clear_user_active_match(user_id)
+            await arena.publish_match_event(session_id, {
+                "type": "pvp.player_replaced_by_bot",
+                "original_user_id": user_id,
+                "bot_id": bot_id,
+                "bot_name": bot_name,
+            })
+            logger.info(
+                "Player %s replaced by bot %s in session %s after %ds grace",
+                user_id, bot_id, session_id, grace_seconds,
+            )
+    except Exception as e:
+        logger.error("Failed to replace player %s with bot: %s", user_id, e)
+
+
 async def _pvp_game_loop_redis(session_id: str) -> None:
     """Run the PvP quiz using Redis state machine.
 
@@ -1873,15 +1919,34 @@ async def _finalize_match(
         try:
             from app.services.anti_cheat import run_anti_cheat, save_anti_cheat_result
 
+            # Collect player answers from Redis for anti-cheat analysis
+            player_answer_messages: dict[str, list[dict]] = {}
+            match_data = await arena.get_match(session_id)
+            total_r = match_data.total_rounds if match_data else 10
+            for rnd in range(1, total_r + 1):
+                raw_answers = await arena.get_round_answers(session_id, rnd)
+                if raw_answers:
+                    for uid_str, answer_json in raw_answers.items():
+                        if uid_str.startswith("bot_"):
+                            continue
+                        if uid_str not in player_answer_messages:
+                            player_answer_messages[uid_str] = []
+                        player_answer_messages[uid_str].append({
+                            "role": "user",
+                            "text": answer_json if isinstance(answer_json, str) else str(answer_json),
+                            "round": rnd,
+                        })
+
             async with async_session() as db:
                 for pid in player_ids:
                     if pid.startswith("bot_"):
                         continue
                     try:
+                        pid_messages = player_answer_messages.get(pid, [])
                         result = await run_anti_cheat(
                             user_id=uuid.UUID(pid),
                             duel_id=uuid.UUID(session_id),
-                            messages=[],  # Knowledge arena doesn't use chat messages
+                            messages=pid_messages,
                             db=db,
                         )
                         if result and result.overall_flagged:
@@ -2767,7 +2832,7 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
             except Exception as e:
                 logger.error("Failed to mark quiz as abandoned: %s", e)
 
-        # Handle PvP disconnect: set reconnect grace period
+        # Handle PvP disconnect: set reconnect grace period + auto-replace with bot
         if user_id:
             try:
                 arena = get_arena_redis()
@@ -2782,5 +2847,11 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
                             "user_id": str(user_id),
                             "grace_seconds": 60,
                         })
+                        # Schedule bot replacement after grace period expires
+                        asyncio.create_task(
+                            _replace_with_bot_after_grace(
+                                arena, active_match, str(user_id), grace_seconds=60,
+                            )
+                        )
             except Exception as e:
                 logger.error("Failed to handle PvP disconnect: %s", e)

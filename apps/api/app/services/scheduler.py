@@ -247,16 +247,23 @@ class ReminderScheduler:
             )
 
             # Soft rating reset: compress ratings toward 1500
+            # Applies to ALL rating types: training_duel, knowledge_arena, team_battle, rapid_fire
             # new_rating = 1500 + (old_rating - 1500) * 0.75
             all_ratings = await db.execute(select(PvPRating))
+            reset_count = 0
             for r in all_ratings.scalars().all():
                 old = r.rating
                 r.rating = 1500 + (old - 1500) * 0.75
                 r.rd = min(r.rd + 30, 350)  # Increase uncertainty
                 r.current_streak = 0
+                r.season_id = season.id
+                reset_count += 1
 
             await db.commit()
-            logger.info("PvP season reset complete: new season '%s'", season.name)
+            logger.info(
+                "PvP season reset complete: new season '%s', %d ratings reset (all types)",
+                season.name, reset_count,
+            )
 
     async def check_stale_clients(self, db: AsyncSession) -> None:
         """

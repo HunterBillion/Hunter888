@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, TrendingUp, TrendingDown, ArrowRight, Minus, ChevronDown, BookOpen, Zap } from "lucide-react";
+import { Trophy, TrendingUp, TrendingDown, ArrowRight, Minus, ChevronDown, BookOpen, Zap, PlayCircle } from "lucide-react";
+import Link from "next/link";
 
 interface PlayerBreakdown {
   selling_score: number;
@@ -27,6 +28,7 @@ interface Props {
   myRatingDelta: number;
   summary: string;
   onClose: () => void;
+  duelId?: string | null;
   myBreakdown?: PlayerBreakdown | null;
   opponentBreakdown?: PlayerBreakdown | null;
   turningPoint?: { round?: number; description?: string } | null;
@@ -305,6 +307,23 @@ export function DuelResult({
         >
           Продолжить <ArrowRight size={14} />
         </motion.button>
+
+        {duelId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.4 }}
+            className="mt-3 text-center"
+          >
+            <Link
+              href={`/pvp/duel/${duelId}?replay=true`}
+              className="inline-flex items-center gap-2 text-sm"
+              style={{ color: "var(--text-muted)" }}
+            >
+              <PlayCircle size={14} /> Посмотреть повтор
+            </Link>
+          </motion.div>
+        )}
       </motion.div>
     </motion.div>
   );

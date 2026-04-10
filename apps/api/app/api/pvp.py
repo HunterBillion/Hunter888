@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors as err
 from app.core.deps import get_current_user, require_role
+from app.services.arena_gates import can_access_mode, can_access_feature, FEATURE_LEVEL_GATES
 from app.database import get_db
 from app.models.pvp import (
     AntiCheatLog,
@@ -77,9 +78,10 @@ limiter = Limiter(key_func=get_remote_address)
 async def get_my_rating(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    rating_type: str = Query("training_duel", description="Rating type: training_duel | knowledge_arena | team_battle | rapid_fire"),
 ):
     """Get current user's PvP rating and rank."""
-    rating = await get_or_create_rating(user.id, db)
+    rating = await get_or_create_rating(user.id, db, rating_type=rating_type)
 
     return RatingResponse(
         user_id=rating.user_id,
@@ -761,6 +763,11 @@ async def create_rapid_fire(
     Returns match_id. Client should then connect via WS and send
     {type: "rapid_fire.start", match_id: "<id>"}.
     """
+    if not can_access_feature(user.level, "pvp_rapid_fire"):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Rapid Fire доступен с уровня {FEATURE_LEVEL_GATES['pvp_rapid_fire']}",
+        )
     match = RapidFireMatch(
         player1_id=user.id,
         is_pve=True,
@@ -804,6 +811,11 @@ async def create_gauntlet(
     Returns run_id. Client should then connect via WS and send
     {type: "gauntlet.start", run_id: "<id>"}.
     """
+    if not can_access_feature(user.level, "pvp_gauntlet"):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Gauntlet доступен с уровня {FEATURE_LEVEL_GATES['pvp_gauntlet']}",
+        )
     # Check cooldown
     cooldown = await check_gauntlet_cooldown(user.id)
     if cooldown["on_cooldown"]:
@@ -851,6 +863,11 @@ async def create_team_battle(
     Returns team_id. Both players should connect via WS and send
     {type: "team.start", team_id: "<id>"}.
     """
+    if not can_access_feature(user.level, "team_battle_2v2"):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Командный бой 2v2 доступен с уровня {FEATURE_LEVEL_GATES['team_battle_2v2']}",
+        )
     if body.partner_id == user.id:
         raise HTTPException(status_code=400, detail="Нельзя создать команду с самим собой")
 

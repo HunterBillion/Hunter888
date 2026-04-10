@@ -3314,6 +3314,33 @@ async def get_leaderboard_extended(
         entry["total_xp"] = progress_row[0] if progress_row else 0
         entry["level"] = progress_row[1] if progress_row else 1
 
+        # Include Knowledge Arena quiz sessions in composite scores
+        from app.models.knowledge import KnowledgeQuizSession, QuizSessionStatus
+        arena_result = await db.execute(
+            select(
+                func.count(KnowledgeQuizSession.id),
+                func.coalesce(func.avg(KnowledgeQuizSession.score), 0),
+            ).where(
+                KnowledgeQuizSession.user_id == user_id_val,
+                KnowledgeQuizSession.status == QuizSessionStatus.completed,
+                KnowledgeQuizSession.started_at >= since,
+            )
+        )
+        arena_row = arena_result.one_or_none()
+        arena_sessions = arena_row[0] if arena_row else 0
+        arena_avg_score = float(arena_row[1]) if arena_row else 0.0
+
+        # Merge arena data: add sessions count and blend avg_score
+        if arena_sessions > 0:
+            total_sessions = entry["sessions_count"] + arena_sessions
+            # Weighted average of training and arena scores
+            entry["avg_score"] = round(
+                (entry["avg_score"] * entry["sessions_count"] + arena_avg_score * arena_sessions)
+                / total_sessions,
+                1,
+            )
+            entry["sessions_count"] = total_sessions
+
         # Calculate streak
         streak = await calculate_streak(user_id_val, db)
         entry["streak"] = streak

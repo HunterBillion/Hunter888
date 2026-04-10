@@ -83,7 +83,7 @@ interface PvPState {
   leaderboardLoading: boolean;
 
   // Actions
-  fetchRating: () => Promise<void>;
+  fetchRating: (ratingType?: string) => Promise<void>;
   fetchMyDuels: () => Promise<void>;
   fetchLeaderboard: (tier?: string, limit?: number) => Promise<void>;
   fetchActiveSeason: () => Promise<void>;
@@ -129,10 +129,11 @@ export const usePvPStore = create<PvPState>((set, get) => ({
   leaderboardLoading: false,
   _msgCounter: 0,
 
-  fetchRating: async () => {
+  fetchRating: async (ratingType?: string) => {
     set({ ratingLoading: true });
     try {
-      const data = await api.get("/pvp/rating/me");
+      const params = ratingType ? `?rating_type=${ratingType}` : "";
+      const data = await api.get(`/pvp/rating/me${params}`);
       set({ rating: data, ratingLoading: false });
     } catch (err) {
       logger.warn("[PvP] Failed to fetch rating, using default:", err);

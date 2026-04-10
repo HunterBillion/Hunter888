@@ -29,6 +29,8 @@ def calculate_speed_bonuses(
     2nd correct answer: +2 points
     3rd correct answer: +1 point
     4th+ correct answer: +0 points
+
+    Ties (same position/submission time) get the same bonus.
     """
     # Build a set of correct user_ids
     correct_uids = set()
@@ -38,10 +40,14 @@ def calculate_speed_bonuses(
 
     bonuses: dict[str, int] = {}
     correct_rank = 0
+    prev_position = -1
 
-    for user_id, _position in speed_rankings:
+    for user_id, position in speed_rankings:
         if user_id in correct_uids:
-            correct_rank += 1
+            # If same position as previous (tie), keep same rank/bonus
+            if position != prev_position:
+                correct_rank += 1
+            prev_position = position
             bonuses[user_id] = max(0, 4 - correct_rank)  # 3, 2, 1, 0
         else:
             bonuses[user_id] = 0
