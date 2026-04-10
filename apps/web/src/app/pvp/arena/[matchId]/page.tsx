@@ -80,6 +80,26 @@ export default function ArenaMatchPage() {
           });
           break;
 
+        case "pvp.match_state_restore": {
+          // Reconnect: restore full match state from server
+          const restorePlayers = (data.players as { user_id: string; name: string; score: number; correct_count: number; is_bot: boolean }[]) || [];
+          s.setPvPMatch(
+            data.session_id as string,
+            restorePlayers.map((p) => ({
+              user_id: p.user_id,
+              name: p.name,
+              score: p.score,
+              correct: p.correct_count || 0,
+              is_bot: p.is_bot || false,
+              rating: 1500,
+            })),
+            (data.total_rounds as number) || 10,
+          );
+          // Current round will be set when next pvp.round_question arrives
+          logger.log("[Arena] Match state restored after reconnect, round", data.current_round);
+          break;
+        }
+
         case "pvp.player_disconnected":
           s.addDisconnectedPlayer(data.user_id as string);
           break;
