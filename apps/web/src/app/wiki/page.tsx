@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Lightbulb,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/BackButton";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { api } from "@/lib/api";
 
@@ -138,9 +139,7 @@ export default function MyWikiPage() {
     <div className="mx-auto max-w-5xl px-4 py-6">
       {/* Header */}
       <div className="mb-6 flex items-center gap-3">
-        <button onClick={() => router.back()} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
-          <ChevronLeft size={20} />
-        </button>
+        <BackButton href="/home" />
         <BookOpen size={24} className="text-[var(--accent)]" />
         <h1 className="text-xl font-bold text-[var(--text-primary)]">Моя база знаний</h1>
       </div>
@@ -183,7 +182,7 @@ export default function MyWikiPage() {
         <div className="space-y-2">
           {pages.length === 0 ? (
             <p className="py-8 text-center text-sm text-[var(--text-muted)]">
-              Пока нет страниц. Они появятся после нескольких тренировок.
+              База знаний ещё не создана. Знания появятся по мере тренировок.
             </p>
           ) : (
             pages.map((page) => (

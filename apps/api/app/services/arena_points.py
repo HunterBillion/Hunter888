@@ -81,6 +81,7 @@ async def award_arena_points(
 
     profile.arena_points += pts
     profile.arena_points_total_earned += pts
+    await db.flush()
     return profile.arena_points
 
 
@@ -121,6 +122,7 @@ async def purchase_item(
         expires_at=expires_at,
     )
     db.add(purchase)
+    await db.flush()
 
     return {
         "success": True,
@@ -143,6 +145,7 @@ async def reset_monthly_ap(db: AsyncSession) -> int:
             arena_points=0,
         )
     )
+    await db.flush()
     return result.rowcount or 0
 
 

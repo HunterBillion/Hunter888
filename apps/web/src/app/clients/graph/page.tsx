@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, type PanInfo } from "framer-motion";
 import Link from "next/link";
 import {
-  ArrowLeft,
+  ChevronLeft,
   ArrowRight,
   GitBranch,
   Loader2,
@@ -231,10 +231,10 @@ export default function ClientGraphPage() {
             >
               <Users size={48} style={{ color: "var(--text-muted)", margin: "0 auto 16px", opacity: 0.4 }} />
               <h3 className="font-display text-lg font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
-                Нет клиентов
+                Портфель клиентов пуст
               </h3>
               <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
-                Граф заполнится когда появятся клиенты. Добавьте первого клиента или завершите тренировку и нажмите &quot;Добавить в CRM&quot;.
+                Граф дел появится когда вы добавите первого клиента. Начните с охоты или добавьте клиента вручную через CRM.
               </p>
               <Link href="/clients" className="btn-neon inline-flex items-center gap-2 text-sm">
                 Перейти к клиентам
@@ -533,7 +533,7 @@ export default function ClientGraphPage() {
                       opacity: stageNavigation.previous ? 1 : 0.5,
                     }}
                   >
-                    <ArrowLeft size={12} />
+                    <ChevronLeft size={12} />
                     Назад
                   </button>
                   <button

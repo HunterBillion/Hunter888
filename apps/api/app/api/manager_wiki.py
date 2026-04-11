@@ -24,7 +24,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_role
+from app.core.deps import check_wiki_access, get_current_user, require_role
 from app.database import get_db
 from app.models.manager_wiki import (
     ManagerPattern,
@@ -692,9 +692,10 @@ async def reanalyze_wiki(
 @router.get("/{manager_id}")
 async def get_manager_wiki(
     manager_id: uuid.UUID,
-    admin: User = Depends(require_role("admin", "rop")),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    check_wiki_access(user, manager_id)
     """Get a specific manager's wiki overview. Admin only."""
     result = await db.execute(
         select(ManagerWiki).where(ManagerWiki.manager_id == manager_id)
@@ -735,9 +736,10 @@ async def get_manager_wiki(
 @router.get("/{manager_id}/pages")
 async def list_manager_wiki_pages(
     manager_id: uuid.UUID,
-    admin: User = Depends(require_role("admin", "rop")),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    check_wiki_access(user, manager_id)
     """List all wiki pages for a given manager. Admin only."""
     result = await db.execute(
         select(ManagerWiki).where(ManagerWiki.manager_id == manager_id)
@@ -777,10 +779,11 @@ async def list_manager_wiki_pages(
 async def get_manager_wiki_page(
     manager_id: uuid.UUID,
     page_path: str,
-    admin: User = Depends(require_role("admin", "rop")),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a specific wiki page content. Admin only."""
+    """Get a specific wiki page content."""
+    check_wiki_access(user, manager_id)
     result = await db.execute(
         select(ManagerWiki).where(ManagerWiki.manager_id == manager_id)
     )
@@ -818,9 +821,10 @@ async def get_manager_wiki_page(
 @router.get("/{manager_id}/patterns")
 async def list_manager_patterns(
     manager_id: uuid.UUID,
-    admin: User = Depends(require_role("admin", "rop")),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    check_wiki_access(user, manager_id)
     """List all discovered behavioral patterns for a manager. Admin only."""
     result = await db.execute(
         select(ManagerPattern)
@@ -856,9 +860,10 @@ async def list_manager_patterns(
 @router.get("/{manager_id}/techniques")
 async def list_manager_techniques(
     manager_id: uuid.UUID,
-    admin: User = Depends(require_role("admin", "rop")),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    check_wiki_access(user, manager_id)
     """List all effective techniques for a manager. Admin only."""
     result = await db.execute(
         select(ManagerTechnique)
@@ -893,11 +898,12 @@ async def list_manager_techniques(
 @router.get("/{manager_id}/log")
 async def list_manager_wiki_log(
     manager_id: uuid.UUID,
-    admin: User = Depends(require_role("admin", "rop")),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     limit: int = 50,
 ):
-    """Get wiki update history for a manager. Admin only."""
+    """Get wiki update history for a manager. Admin/ROP or self."""
+    check_wiki_access(user, manager_id)
     result = await db.execute(
         select(ManagerWiki).where(ManagerWiki.manager_id == manager_id)
     )
@@ -1098,10 +1104,11 @@ async def ingest_all_sessions(
 async def export_wiki(
     manager_id: uuid.UUID,
     format: str = Query("pdf", pattern="^(pdf|csv)$"),
-    admin: User = Depends(require_role("admin", "rop")),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Export wiki data for a manager. Formats: pdf, csv. Admin only."""
+    """Export wiki data for a manager. Formats: pdf, csv. Admin/ROP or self."""
+    check_wiki_access(user, manager_id)
     from app.services.wiki_export_service import export_wiki_pdf, export_wiki_csv
 
     # Verify wiki exists

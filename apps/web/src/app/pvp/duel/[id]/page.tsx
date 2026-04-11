@@ -40,12 +40,12 @@ function DuelPage() {
     if (timerRef.current) clearInterval(timerRef.current);
     store.setTimeRemaining(seconds);
     timerRef.current = setInterval(() => {
-      const t = usePvPStore.getState().timeRemaining;
-      if (t <= 0) {
+      // Pause countdown when WS is disconnected — server keeps its own timer
+      if (usePvPStore.getState().timeRemaining <= 0) {
         if (timerRef.current) clearInterval(timerRef.current);
         return;
       }
-      usePvPStore.setState({ timeRemaining: t - 1 });
+      usePvPStore.setState({ timeRemaining: usePvPStore.getState().timeRemaining - 1 });
     }, 1000);
   };
 
@@ -185,6 +185,14 @@ function DuelPage() {
   }, [duelId]); // eslint-disable-line react-hooks/exhaustive-deps -- store.resetDuel is a stable Zustand action
 
   // Send ready on connect
+  // Pause timer when disconnected — server keeps its own timer
+  useEffect(() => {
+    if (connectionState !== "connected" && timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, [connectionState]);
+
   useEffect(() => {
     if (connectionState === "connected") {
       sendMessage({ type: "duel.ready", duel_id: duelId });
@@ -230,6 +238,9 @@ function DuelPage() {
     sendMessage({ type: "duel.message", text });
     setInput("");
   };
+
+  // Deduplicate duel.message — backend echo arrives after optimistic add would cause double.
+  // Currently we rely on backend echo only. If bot fails, user still sees their own messages.
 
   // Loading state
   if (!store.duelBrief && !store.duelResult) {
@@ -291,6 +302,23 @@ function DuelPage() {
           {store.duelBrief?.scenario_title || "Сценарий"}
         </div>
       </header>
+
+      {/* Connection status */}
+      {connectionState !== "connected" && (
+        <div className="px-4 pt-3 z-20">
+          <div
+            className="rounded-xl px-4 py-2 text-xs font-mono flex items-center gap-2"
+            style={{
+              background: connectionState === "reconnecting" ? "rgba(245,158,11,0.1)" : "rgba(239,68,68,0.1)",
+              color: connectionState === "reconnecting" ? "var(--warning)" : "var(--danger)",
+              border: `1px solid ${connectionState === "reconnecting" ? "rgba(245,158,11,0.2)" : "rgba(239,68,68,0.2)"}`,
+            }}
+          >
+            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: connectionState === "reconnecting" ? "var(--warning)" : "var(--danger)" }} />
+            {connectionState === "reconnecting" ? "Переподключение..." : "Нет связи с сервером"}
+          </div>
+        </div>
+      )}
 
       {statusNotice && (
         <div className="px-4 pt-3 z-20">
@@ -361,7 +389,7 @@ function DuelPage() {
             </div>
             <div className="text-center">
               <div className="font-mono text-xs uppercase" style={{ color: "var(--text-muted)" }}>Актёрство</div>
-              <div className="font-bold" style={{ color: "#FFD700" }}>{Math.round(store.judgeScore.acting_score)}</div>
+              <div className="font-bold" style={{ color: "var(--rank-gold)" }}>{Math.round(store.judgeScore.acting_score)}</div>
             </div>
             <div className="text-center">
               <div className="font-mono text-xs uppercase" style={{ color: "var(--text-muted)" }}>Юр. точность</div>

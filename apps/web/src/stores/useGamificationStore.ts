@@ -9,7 +9,8 @@ export type GamificationEvent =
   | { type: "streak-milestone"; days: number }
   | { type: "pvp-win" }
   | { type: "perfect-score"; score: number }
-  | { type: "first-session" };
+  | { type: "first-session" }
+  | { type: "legendary-unlock"; title: string; description: string; icon?: string };
 
 function emitGamificationEvent(event: GamificationEvent) {
   if (typeof window !== "undefined") {

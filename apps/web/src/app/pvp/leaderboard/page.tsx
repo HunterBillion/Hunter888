@@ -33,8 +33,8 @@ const TIERS: { key: string; label: string }[] = [
 
 function getRankIcon(rank: number) {
   if (rank === 1) return <Crown size={18} style={{ color: "var(--warning)" }} />;
-  if (rank === 2) return <Medal size={18} style={{ color: "#C0C0C0" }} />;
-  if (rank === 3) return <Medal size={18} style={{ color: "#CD7F32" }} />;
+  if (rank === 2) return <Medal size={18} style={{ color: "var(--rank-silver)" }} />;
+  if (rank === 3) return <Medal size={18} style={{ color: "var(--rank-bronze)" }} />;
   return <span className="font-mono text-sm font-bold" style={{ color: "var(--text-muted)" }}>{rank}</span>;
 }
 
@@ -164,8 +164,9 @@ export default function PvPLeaderboardPage() {
           ) : store.leaderboard.length === 0 ? (
             <EmptyState
               icon={Trophy}
-              title="Рейтинг ждёт первого бойца"
-              description="Проведите первый PvP-бой, чтобы попасть в рейтинг"
+              title="Арена ждёт своего чемпиона"
+              description="Вызовите соперника на поединок, чтобы заявить о себе в рейтинге"
+              illustration={<img src="/pixel/empty/empty-arena.png" alt="" className="w-24 h-24 mx-auto mb-2 opacity-80" />}
               actionLabel="Начать бой"
               onAction={() => window.location.href = "/pvp"}
             />
@@ -276,8 +277,9 @@ function ArenaLeaderboardSection() {
       ) : kStore.arenaLeaderboard.length === 0 ? (
         <EmptyState
           icon={Trophy}
-          title="Арена ждёт участников"
-          description="Пройдите первый тест в Арене знаний"
+          title="Арена знаний ждёт первого испытания"
+          description="Начните изучение 127-ФЗ и займите место в рейтинге"
+          illustration={<img src="/pixel/empty/knight-waiting.png" alt="" className="w-24 h-24 mx-auto mb-2 opacity-80" />}
           actionLabel="К Арене"
           onAction={() => window.location.href = "/knowledge"}
         />

@@ -57,7 +57,9 @@ import AICoachSection from "@/components/results/AICoachSection";
 import ScoreLayersBreakdown from "@/components/results/ScoreLayersBreakdown";
 import ReplayModal from "@/components/results/ReplayModal";
 import { AchievementToast } from "@/components/gamification/AchievementToast";
+import { PostSessionVerdict } from "@/components/results/PostSessionVerdict";
 import { BackButton } from "@/components/ui/BackButton";
+import { Button } from "@/components/ui/Button";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { EMOTION_MAP, type EmotionState, type ChatMessage, type SessionResultResponse, type ActiveTournamentResponse, type TournamentSubmitResponse } from "@/types";
 import { logger } from "@/lib/logger";
@@ -81,7 +83,7 @@ function emotionLabelRu(state: string): string {
 }
 
 function getScoreColor(score: number): string {
-  return score >= 70 ? "var(--success)" : score >= 40 ? "#FFD700" : "var(--danger)";
+  return score >= 70 ? "var(--success)" : score >= 40 ? "var(--gf-xp)" : "var(--danger)";
 }
 
 export default function ResultsPage() {
@@ -90,6 +92,7 @@ export default function ResultsPage() {
   const [result, setResult] = useState<SessionResultResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [repeating, setRepeating] = useState(false);
+  const [showVerdict, setShowVerdict] = useState(true);
   const [copied, setCopied] = useState(false);
   const [transcriptCopied, setTranscriptCopied] = useState(false);
   const [achievement, setAchievement] = useState<{ id: string; title: string; description: string; icon?: string } | null>(null);
@@ -302,7 +305,16 @@ export default function ResultsPage() {
     <AuthLayout>
       <AchievementToast achievement={achievement} onClose={() => setAchievement(null)} />
 
-      <div className="app-page flex flex-col min-h-screen">
+      {/* Score verdict overlay — shows first, then fades into full report */}
+      {showVerdict && hasScores && (
+        <PostSessionVerdict
+          score={totalScore}
+          xpGained={result.xp_breakdown?.grand_total ?? result.xp_breakdown?.session_total ?? 0}
+          onContinue={() => setShowVerdict(false)}
+        />
+      )}
+
+      <div className="app-page flex flex-col min-h-screen" style={{ display: showVerdict && hasScores ? "none" : undefined }}>
         <Breadcrumb items={[{ label: "История", href: "/history" }, { label: "Результат" }]} />
         <BackButton href="/training" label="К тренировкам" />
 
@@ -332,7 +344,7 @@ export default function ResultsPage() {
             <div className="font-mono text-sm tracking-[0.3em] mb-2 uppercase" style={{ color: "var(--accent)" }}>
               Сессия завершена
             </div>
-            <h1 className="font-display font-bold text-3xl md:text-4xl tracking-wide uppercase glow-text-purple" style={{ color: "var(--text-primary)" }}>
+            <h1 className="font-display font-bold text-3xl md:text-4xl tracking-wide uppercase " style={{ color: "var(--text-primary)" }}>
               Отчёт по сессии
             </h1>
           </div>
@@ -491,7 +503,7 @@ export default function ResultsPage() {
                 className="grid grid-cols-1 sm:grid-cols-2 gap-4"
               >
                 {criticalDrop && (
-                  <div className="glass-panel p-5 rounded-xl" style={{ borderLeft: "4px solid #FF3333", background: "linear-gradient(to right, rgba(229,72,77,0.05), transparent)" }}>
+                  <div className="glass-panel p-5 rounded-xl" style={{ borderLeft: "4px solid var(--danger)", background: "linear-gradient(to right, rgba(229,72,77,0.05), transparent)" }}>
                     <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle size={14} style={{ color: "var(--danger)" }} />
                       <div className="font-mono text-sm uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Критич. падение</div>
@@ -502,7 +514,7 @@ export default function ResultsPage() {
                   </div>
                 )}
                 {keyRecovery && (
-                  <div className="glass-panel p-5 rounded-xl" style={{ borderLeft: "4px solid #00FF66", background: "linear-gradient(to right, rgba(61,220,132,0.05), transparent)" }}>
+                  <div className="glass-panel p-5 rounded-xl" style={{ borderLeft: "4px solid var(--success)", background: "linear-gradient(to right, rgba(61,220,132,0.05), transparent)" }}>
                     <div className="flex items-center gap-2 mb-2">
                       <CheckCircle size={14} style={{ color: "var(--success)" }} />
                       <div className="font-mono text-sm uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Восстановление</div>
@@ -649,15 +661,9 @@ export default function ResultsPage() {
                     </Link>
                   ))}
                 </div>
-                <Link href={`/knowledge?category=${encodeURIComponent(result.weak_legal_categories[0]?.category || "")}`}>
-                  <motion.button
-                    className="btn-neon flex items-center gap-2 text-sm"
-                    whileTap={{ scale: 0.97 }}
-                  >
-                    <BookOpen size={14} /> Подтяни знания по ФЗ-127
-                    <ArrowRight size={14} />
-                  </motion.button>
-                </Link>
+                <Button href={`/knowledge?category=${encodeURIComponent(result.weak_legal_categories[0]?.category || "")}`} size="sm" icon={<BookOpen size={14} />}>
+                    Подтяни знания по ФЗ-127
+                </Button>
               </div>
             </div>
           </motion.div>
@@ -722,7 +728,7 @@ export default function ResultsPage() {
             <div className="space-y-4">
               {scoreItems.map((item, i) => {
                 const pct = item.max > 0 ? (item.value / item.max) * 100 : 0;
-                const barColor = pct >= 70 ? "var(--success)" : pct >= 40 ? "#FFD700" : "var(--danger)";
+                const barColor = pct >= 70 ? "var(--success)" : pct >= 40 ? "var(--gf-xp)" : "var(--danger)";
                 return (
                   <motion.div key={item.label} initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 + i * 0.1 }}>
                     <div className="flex items-center justify-between mb-1.5">
@@ -799,18 +805,18 @@ export default function ResultsPage() {
             className="glass-panel mt-8 p-6 rounded-2xl relative overflow-hidden"
             style={{ borderColor: "rgba(212,168,75,0.3)" }}
           >
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, transparent, #FFD700, transparent)" }} />
-            <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full opacity-10 blur-[60px] pointer-events-none" style={{ background: "#FFD700" }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, transparent, var(--gf-xp), transparent)" }} />
+            <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full opacity-10 blur-[60px] pointer-events-none" style={{ background: "var(--gf-xp)" }} />
 
             <div className="flex items-start gap-4 relative z-10">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(212,168,75,0.1)", border: "1px solid rgba(212,168,75,0.2)" }}>
-                <Trophy size={22} style={{ color: "#FFD700" }} />
+                <Trophy size={22} style={{ color: "var(--gf-xp)" }} />
               </div>
 
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <Swords size={14} style={{ color: "#FFD700" }} />
-                  <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "#FFD700" }}>ЕЖЕНЕДЕЛЬНЫЙ ТУРНИР</span>
+                  <Swords size={14} style={{ color: "var(--gf-xp)" }} />
+                  <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--gf-xp)" }}>ЕЖЕНЕДЕЛЬНЫЙ ТУРНИР</span>
                 </div>
                 <h3 className="font-display text-lg font-bold" style={{ color: "var(--text-primary)" }}>
                   {tournament.tournament.title}
@@ -821,13 +827,13 @@ export default function ResultsPage() {
 
                 {/* Prize info */}
                 <div className="mt-3 flex items-center gap-4 font-mono text-xs">
-                  <span className="flex items-center gap-1" style={{ color: "#FFD700" }}>
+                  <span className="flex items-center gap-1" style={{ color: "var(--gf-xp)" }}>
                     <Crown size={12} /> {tournament.tournament.bonus_xp[0]} XP
                   </span>
-                  <span className="flex items-center gap-1" style={{ color: "#C0C0C0" }}>
+                  <span className="flex items-center gap-1" style={{ color: "var(--rank-silver)" }}>
                     <Medal size={12} /> {tournament.tournament.bonus_xp[1]} XP
                   </span>
-                  <span className="flex items-center gap-1" style={{ color: "#CD7F32" }}>
+                  <span className="flex items-center gap-1" style={{ color: "var(--rank-bronze)" }}>
                     <Medal size={12} /> {tournament.tournament.bonus_xp[2]} XP
                   </span>
                 </div>
@@ -863,20 +869,9 @@ export default function ResultsPage() {
                   </motion.div>
                 ) : (
                   <div className="mt-4 flex items-center gap-3">
-                    <motion.button
-                      onClick={submitToTournament}
-                      disabled={tournamentSubmitting}
-                      className="btn-neon flex items-center gap-2"
-                      whileTap={{ scale: 0.97 }}
-                    >
-                      {tournamentSubmitting ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <>
-                          <Trophy size={16} /> Отправить в турнир ({Math.round(totalScore)} баллов)
-                        </>
-                      )}
-                    </motion.button>
+                    <Button onClick={submitToTournament} loading={tournamentSubmitting} icon={<Trophy size={16} />}>
+                      Отправить в турнир ({Math.round(totalScore)} баллов)
+                    </Button>
                     <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                       макс. {tournament.tournament.max_attempts} попыток
                     </span>
@@ -1047,19 +1042,17 @@ export default function ResultsPage() {
                     // Client already exists or other error — ignore silently
                   }
                 }}
-                className="btn-neon flex items-center gap-2 text-sm"
-                style={addedToCRM ? { background: "rgba(61,220,132,0.15)", borderColor: "rgba(61,220,132,0.3)" } : {}}
+                className="inline-flex items-center justify-center gap-2 font-bold tracking-wide uppercase rounded-xl px-3 py-1.5 text-xs transition-all duration-200"
+                style={addedToCRM ? { background: "rgba(61,220,132,0.15)", borderColor: "rgba(61,220,132,0.3)", border: "1px solid rgba(61,220,132,0.3)", color: "var(--success)" } : { background: "var(--glass-bg)", color: "var(--text-primary)", border: "1px solid var(--accent)" }}
                 whileTap={{ scale: 0.97 }}
               >
                 <Users size={14} />
                 {addedToCRM ? "Добавлен в CRM" : "Добавить клиента в CRM"}
               </motion.button>
               {addedToCRM && (
-                <Link href="/clients">
-                  <motion.span className="btn-neon flex items-center gap-2 text-sm" whileTap={{ scale: 0.97 }}>
-                    Открыть CRM <ArrowRight size={14} />
-                  </motion.span>
-                </Link>
+                <Button href="/clients" size="sm" iconRight={<ArrowRight size={14} />}>
+                  Открыть CRM
+                </Button>
               )}
             </div>
           </motion.div>
@@ -1067,7 +1060,7 @@ export default function ResultsPage() {
 
         {/* Actions */}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }} className="mt-8 flex justify-center gap-3 pb-8">
-          <motion.button
+          <Button
             onClick={async () => {
               const ok = await copyToClipboard(window.location.href);
               if (ok) {
@@ -1075,18 +1068,12 @@ export default function ResultsPage() {
                 setTimeout(() => setCopied(false), 2000);
               }
             }}
-            className="btn-neon flex items-center gap-2"
-            whileTap={{ scale: 0.97 }}
+            icon={copied ? <Check size={16} /> : <Share2 size={16} />}
           >
-            {copied ? <Check size={16} /> : <Share2 size={16} />}
             {copied ? "Скопировано" : "Поделиться"}
-          </motion.button>
-          <Link href="/home">
-            <motion.span className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
-              <Home size={16} /> На главную
-            </motion.span>
-          </Link>
-          <motion.button
+          </Button>
+          <Button href="/home" icon={<Home size={16} />}>На главную</Button>
+          <Button
             onClick={async () => {
               if (repeating || !session.scenario_id) return;
               setRepeating(true);
@@ -1098,17 +1085,14 @@ export default function ResultsPage() {
               }
             }}
             disabled={repeating}
-            className="btn-neon flex items-center gap-2"
-            whileTap={{ scale: 0.97 }}
+            loading={repeating}
+            icon={<Repeat size={16} />}
           >
-            {repeating ? <Loader2 size={16} className="animate-spin" /> : <Repeat size={16} />}
             Повторить сценарий
-          </motion.button>
-          <Link href="/training">
-            <motion.span className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
-              Новая тренировка <ArrowRight size={16} />
-            </motion.span>
-          </Link>
+          </Button>
+          <Button href="/training" variant="primary" iconRight={<ArrowRight size={16} />}>
+            Новая тренировка
+          </Button>
         </motion.div>
       </div>
 

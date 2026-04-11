@@ -77,11 +77,11 @@ interface KnowledgeStats {
 
 const RANK_COLORS: Record<string, string> = {
   unranked: "var(--text-muted)",
-  bronze: "#CD7F32",
-  silver: "#C0C0C0",
+  bronze: "var(--rank-bronze)",
+  silver: "var(--rank-silver)",
   gold: "var(--rank-gold)",
-  platinum: "#00CED1",
-  diamond: "#B9F2FF",
+  platinum: "var(--rank-platinum)",
+  diamond: "var(--rank-diamond)",
 };
 
 const RANK_NAMES: Record<string, string> = {
@@ -263,7 +263,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
                 {pvp.wins}W {pvp.losses}L
               </span>
               {pvp.current_streak > 0 && (
-                <span className="text-xs" style={{ color: "#FF6B00" }}>
+                <span className="text-xs" style={{ color: "var(--gf-streak)" }}>
                   <Flame size={14} className="inline" /> {pvp.current_streak}
                 </span>
               )}

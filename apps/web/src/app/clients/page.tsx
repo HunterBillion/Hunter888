@@ -208,13 +208,14 @@ export default function ClientsPage() {
                 </motion.button>
               </Link>
               {!isReadOnly && (
-                <motion.button
-                  onClick={() => setCreateOpen(true)}
-                  className="btn-neon flex items-center gap-1.5 text-sm"
-                  whileTap={{ scale: 0.97 }}
-                >
-                  <Plus size={14} /> Добавить
-                </motion.button>
+                <Link href="/training">
+                  <motion.button
+                    className="btn-neon flex items-center gap-1.5 text-sm"
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    <Plus size={14} /> Новая тренировка
+                  </motion.button>
+                </Link>
               )}
             </div>
           </div>
@@ -449,10 +450,11 @@ export default function ClientsPage() {
           ) : clients.length === 0 ? (
             <EmptyState
               icon={Users}
-              title={search || statusFilter ? "Клиенты не найдены" : "Пока нет клиентов"}
-              description={search || statusFilter ? "Попробуйте изменить параметры поиска" : "Добавьте первого клиента для начала работы с CRM"}
-              actionLabel={!search && !statusFilter ? "Добавить клиента" : undefined}
-              onAction={undefined}
+              title={search || statusFilter ? "Нет совпадений в портфеле" : "Портфель пуст — время открыть первое дело"}
+              description={search || statusFilter ? "Уточните критерии поиска по делам" : "Завершите охоту и нажмите «Добавить в CRM» или создайте клиента вручную"}
+              illustration={!search && !statusFilter ? <img src="/pixel/empty/treasure-locked.png" alt="" className="w-24 h-24 mx-auto mb-2 opacity-80" /> : undefined}
+              actionLabel={!search && !statusFilter ? "Начать тренировку" : undefined}
+              onAction={!search && !statusFilter ? () => window.location.href = "/training" : undefined}
             />
           ) : (
             clients.map((c, i) => (
@@ -523,14 +525,7 @@ export default function ClientsPage() {
             })()}
           </div>
         )}
-        <ClientCreateModal
-          open={createOpen}
-          onClose={() => setCreateOpen(false)}
-          onCreated={(id) => {
-            setCreateOpen(false);
-            router.push(`/clients/${id}`);
-          }}
-        />
+        {/* ClientCreateModal removed — clients are added via training sessions */}
         <BulkReassignModal
           open={showReassign}
           clientIds={Array.from(selected)}

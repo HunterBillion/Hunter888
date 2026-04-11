@@ -10,7 +10,7 @@ import { BracketView } from "@/components/pvp/BracketView";
 import { useSound } from "@/hooks/useSound";
 import { AppIcon } from "@/components/ui/AppIcon";
 
-const PODIUM_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32"]; // Gold, Silver, Bronze
+const PODIUM_COLORS = ["var(--rank-gold)", "var(--rank-silver)", "var(--rank-bronze)"];
 const PODIUM_EMOJI = ["\uD83E\uDD47", "\uD83E\uDD48", "\uD83E\uDD49"];
 
 export default function TournamentPage() {

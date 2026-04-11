@@ -208,13 +208,13 @@ export default function GameCRMPage() {
                   className="text-sm"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  Нет игровых клиентов
+                  Список клиентов для охоты пуст
                 </p>
                 <p
                   className="text-xs mt-1"
                   style={{ color: "var(--text-muted)", opacity: 0.7 }}
                 >
-                  Начните тренировку чтобы создать историю
+                  Завершите охоту, чтобы создать портфель дел
                 </p>
               </motion.div>
             ) : (
