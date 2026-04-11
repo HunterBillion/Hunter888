@@ -73,7 +73,9 @@ async def award_arena_points(
     )
     profile = result.scalar_one_or_none()
     if not profile:
-        return 0
+        profile = ManagerProgress(user_id=user_id)
+        db.add(profile)
+        await db.flush()
 
     pts = amount if amount is not None else AP_RATES.get(source, 0)
     if pts <= 0:

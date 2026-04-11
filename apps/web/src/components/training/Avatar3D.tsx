@@ -576,6 +576,7 @@ export function Avatar3D({
   className = "",
 }: Avatar3DProps) {
   const [webglSupported, setWebglSupported] = useState(true);
+  const [contextLost, setContextLost] = useState(false);
   const reducedMotion = useReducedMotion();
 
   const checkGL = useCallback(() => {
@@ -586,8 +587,8 @@ export function Avatar3D({
     checkGL();
   }, [checkGL]);
 
-  // Show lightweight SVG fallback for reduced motion (avoids heavy 3D canvas)
-  if (reducedMotion || !webglSupported) {
+  // Show lightweight SVG fallback for reduced motion, no WebGL, or context lost
+  if (reducedMotion || !webglSupported || contextLost) {
     return (
       <div className={`relative ${className}`}>
         <AvatarFallback emotion={emotion} />
@@ -607,6 +608,11 @@ export function Avatar3D({
         onCreated={({ gl }) => {
           gl.toneMapping = THREE.ACESFilmicToneMapping;
           gl.toneMappingExposure = 1.2;
+          const canvas = gl.domElement;
+          canvas.addEventListener("webglcontextlost", (e) => {
+            e.preventDefault();
+            setContextLost(true);
+          });
         }}
       >
         <ResponsiveCamera />

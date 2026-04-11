@@ -153,6 +153,16 @@ function DuelPage() {
           break;
         }
 
+        case "ap.earned": {
+          const apAmount = Number(d.amount || 0);
+          if (apAmount > 0) {
+            window.dispatchEvent(new CustomEvent("gamification", {
+              detail: { type: "xp-gain", amount: apAmount },
+            }));
+          }
+          break;
+        }
+
         case "opponent.disconnected":
           setStatusNotice(`Соперник переподключается. Ждём ${String(d.seconds_remaining || 60)} сек.`);
           break;

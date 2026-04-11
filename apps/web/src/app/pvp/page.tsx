@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Swords, ArrowRight, Loader2, Trophy, Zap, BookOpen, Brain, Clock, Target, Lock, Info } from "lucide-react";
+import { ArrowRight, Loader2, Lock, Info } from "lucide-react";
+import { Sword, Trophy, Lightning, BookOpen, Brain, Clock, Target } from "@phosphor-icons/react";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -42,6 +43,7 @@ function PvPLobbyContent() {
   const [quizStarting, setQuizStarting] = useState(false);
   const [aiPersonality, setAiPersonality] = useState<string | null>(null);
   const [pveAccepting, setPveAccepting] = useState(false);
+  const [arenaPoints, setArenaPoints] = useState<number>(0);
   const inviteSentRef = useRef(false);
   const autoPvERef = useRef(false);
   const searchStartedAtRef = useRef<number | null>(null);
@@ -50,6 +52,11 @@ function PvPLobbyContent() {
     store.fetchRating();
     store.fetchMyDuels();
     store.fetchActiveSeason();
+    api.get("/progression/arena-points")
+      .then((data: Record<string, unknown>) => {
+        if (typeof data?.arena_points === "number") setArenaPoints(data.arena_points);
+      })
+      .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only init; store actions are stable Zustand refs
 
   // PvP WebSocket
@@ -171,7 +178,12 @@ function PvPLobbyContent() {
 
   return (
     <AuthLayout>
-      <div className="relative arena-grid-bg min-h-screen">
+      <motion.div
+        className="relative arena-grid-bg min-h-screen"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+      >
         <div className="app-page">
           {/* PvP-4 fix: connection status banner */}
           {connectionState !== "connected" && (
@@ -197,7 +209,7 @@ function PvPLobbyContent() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Swords size={28} style={{ color: "var(--accent)" }} />
+                <Sword weight="duotone" size={28} style={{ color: "var(--accent)" }} />
                 <div>
                   <h1 className="font-display text-2xl sm:text-3xl font-black tracking-wide" style={{ color: "var(--text-primary)" }}>
                     PVP Арена
@@ -223,7 +235,7 @@ function PvPLobbyContent() {
                   className="btn-neon flex items-center gap-2 text-xs"
                   whileTap={{ scale: 0.97 }}
                 >
-                  <Trophy size={14} /> Рейтинг
+                  <Trophy weight="duotone" size={14} /> Рейтинг
                 </motion.button>
               </div>
             </div>
@@ -247,15 +259,15 @@ function PvPLobbyContent() {
                   className="glass-panel rounded-2xl p-6 max-w-md w-full"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <h3 className="text-lg font-bold mb-4" style={{ color: "var(--text-primary)" }}>Arena — руководство</h3>
+                  <h3 className="text-lg font-bold mb-4" style={{ color: "var(--text-primary)" }}>Арена — руководство</h3>
                   <div className="space-y-3 text-sm leading-relaxed max-h-[65vh] overflow-y-auto pr-1" style={{ color: "var(--text-secondary)", scrollbarWidth: "thin" }}>
                     <div>
                       <p className="font-bold mb-1.5" style={{ color: "var(--text-primary)" }}>Режимы PvP:</p>
                       <ul className="space-y-1.5">
-                        <li className="flex gap-2"><Swords size={14} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Классическая дуэль</strong> — 2 раунда, смена ролей (продавец/клиент)</span></li>
-                        <li className="flex gap-2"><Zap size={14} className="shrink-0 mt-0.5" style={{ color: "var(--rank-gold)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Скоростной бой</strong> — 5 мини-раундов по 2 минуты</span></li>
-                        <li className="flex gap-2"><Target size={14} className="shrink-0 mt-0.5" style={{ color: "var(--danger)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Испытание</strong> — 3-5 дуэлей подряд, сложность растёт</span></li>
-                        <li className="flex gap-2"><Brain size={14} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Командный 2v2</strong> — вместе с коллегой</span></li>
+                        <li className="flex gap-2"><Sword weight="duotone" size={14} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Классическая дуэль</strong> — 2 раунда, смена ролей (продавец/клиент)</span></li>
+                        <li className="flex gap-2"><Lightning weight="duotone" size={14} className="shrink-0 mt-0.5" style={{ color: "var(--rank-gold)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Скоростной бой</strong> — 5 мини-раундов по 2 минуты</span></li>
+                        <li className="flex gap-2"><Target weight="duotone" size={14} className="shrink-0 mt-0.5" style={{ color: "var(--danger)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Испытание</strong> — 3-5 дуэлей подряд, сложность растёт</span></li>
+                        <li className="flex gap-2"><Brain weight="duotone" size={14} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} /><span><strong style={{ color: "var(--text-primary)" }}>Командный 2v2</strong> — вместе с коллегой</span></li>
                       </ul>
                     </div>
 
@@ -310,7 +322,7 @@ function PvPLobbyContent() {
               className="mt-4 rounded-xl p-3 flex items-center gap-3"
               style={{ background: "rgba(212,168,75,0.06)", border: "1px solid rgba(212,168,75,0.15)" }}
             >
-              <Zap size={16} style={{ color: "var(--rank-gold)" }} />
+              <Lightning weight="duotone" size={16} style={{ color: "var(--rank-gold)" }} />
               <span className="font-medium text-xs" style={{ color: "var(--text-secondary)" }}>
                 {store.activeSeason.name}
               </span>
@@ -345,9 +357,9 @@ function PvPLobbyContent() {
             <div className="mt-6">
               {store.rating.total_duels === 0 ? (
                 <div className="flex flex-col items-center py-12 text-center">
-                  <Swords size={48} style={{ color: "var(--accent)" }} className="mb-4" />
+                  <Sword weight="duotone" size={48} style={{ color: "var(--accent)" }} className="mb-4" />
                   <h2 className="text-2xl font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
-                    Добро пожаловать в Arena!
+                    Добро пожаловать в Арену!
                   </h2>
                   <p className="text-gray-400 mb-6 max-w-md">
                     Пройдите калибровочный бой, чтобы определить ваш стартовый ранг.
@@ -364,6 +376,23 @@ function PvPLobbyContent() {
               ) : (
                 <RatingCard rating={store.rating} />
               )}
+
+              {/* Arena Points balance */}
+              <div
+                className="mt-3 flex items-center gap-2 rounded-xl px-4 py-2"
+                style={{
+                  background: "color-mix(in srgb, var(--gf-xp) 8%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--gf-xp) 20%, transparent)",
+                }}
+              >
+                <Lightning weight="fill" size={16} style={{ color: "var(--gf-xp)" }} />
+                <span className="font-mono text-sm font-bold" style={{ color: "var(--gf-xp)" }}>
+                  {arenaPoints} AP
+                </span>
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Arena Points
+                </span>
+              </div>
             </div>
           )}
 
@@ -387,7 +416,7 @@ function PvPLobbyContent() {
                     <Loader2 size={20} className="animate-spin" />
                   ) : (
                     <>
-                      <Swords size={22} /> Найти соперника
+                      <Sword weight="duotone" size={22} /> Найти соперника
                     </>
                   )}
                 </motion.button>
@@ -483,7 +512,7 @@ function PvPLobbyContent() {
 
                       {/* Quick info */}
                       <div className="glass-panel p-4 flex items-center gap-3">
-                        <Swords size={18} style={{ color: "var(--accent)" }} />
+                        <Sword weight="duotone" size={18} style={{ color: "var(--accent)" }} />
                         <div>
                           <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Голосовая дуэль</p>
                           <p className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -649,7 +678,7 @@ function PvPLobbyContent() {
                       {/* Blitz mode: show auto-assigned personality */}
                       {quizMode === "blitz" && (
                         <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                          <Zap size={18} className="mr-1 inline" style={{ color: "var(--warning)" }} /> Ваш ведущий — <strong>Блиц-Мастер</strong>
+                          <Lightning weight="duotone" size={18} className="mr-1 inline" style={{ color: "var(--warning)" }} /> Ваш ведущий — <strong>Блиц-Мастер</strong>
                         </p>
                       )}
 
@@ -683,7 +712,7 @@ function PvPLobbyContent() {
                             }
                           }}
                         >
-                          {quizStarting ? <Loader2 size={16} className="animate-spin" /> : <Brain size={16} />}
+                          {quizStarting ? <Loader2 size={16} className="animate-spin" /> : <Brain weight="duotone" size={16} />}
                           Начать тест
                         </motion.button>
                       )}
@@ -700,7 +729,7 @@ function PvPLobbyContent() {
                         onClick={() => router.push("/pvp/tournament")}
                       >
                         <div className="flex items-center gap-2 mb-1">
-                          <Trophy size={20} style={{ color: "var(--rank-gold)" }} />
+                          <Trophy weight="duotone" size={20} style={{ color: "var(--rank-gold)" }} />
                           <span className="text-sm font-bold" style={{ color: "var(--rank-gold)" }}>Турнир недели</span>
                           <span className="ml-auto text-xs font-medium" style={{ color: "var(--text-muted)" }}>
                             Подробнее →
@@ -725,9 +754,9 @@ function PvPLobbyContent() {
                               router.push("/pvp/arena/lobby?mode=2");
                             }}
                             className="glass-panel rounded-xl p-4 text-left"
-                            style={{ borderColor: "var(--danger)", borderWidth: 1 }}
+                            style={{ borderColor: "var(--accent)", borderWidth: 1 }}
                           >
-                            <Swords size={20} style={{ color: "var(--danger)" }} />
+                            <Sword weight="duotone" size={20} style={{ color: "var(--accent)" }} />
                             <p className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                               Дуэль 1 на 1
                             </p>
@@ -744,7 +773,7 @@ function PvPLobbyContent() {
                             className="glass-panel rounded-xl p-4 text-left"
                             style={{ borderColor: "var(--warning)", borderWidth: 1 }}
                           >
-                            <Trophy size={20} style={{ color: "var(--warning)" }} />
+                            <Trophy weight="duotone" size={20} style={{ color: "var(--warning)" }} />
                             <p className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                               Командный бой
                             </p>
@@ -769,7 +798,7 @@ function PvPLobbyContent() {
                       </div>
                     ) : store.myDuels.length === 0 ? (
                       <div className="mt-12 text-center">
-                        <Swords size={32} style={{ color: "var(--text-muted)" }} />
+                        <Sword weight="duotone" size={32} style={{ color: "var(--text-muted)" }} />
                         <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>Ещё нет дуэлей</p>
                       </div>
                     ) : (
@@ -831,7 +860,7 @@ function PvPLobbyContent() {
             }} />
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Matchmaking overlay */}
       <AnimatePresence>
@@ -864,7 +893,7 @@ function PvPLobbyContent() {
               style={{ border: "1px solid rgba(212,168,75,0.2)" }}
             >
               <div className="flex items-center gap-2 mb-4">
-                <Zap size={20} style={{ color: "var(--warning)" }} />
+                <Lightning weight="duotone" size={20} style={{ color: "var(--warning)" }} />
                 <h3 className="font-display text-lg font-bold" style={{ color: "var(--text-primary)" }}>
                   Дуэль с AI-ботом
                 </h3>

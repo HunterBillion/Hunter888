@@ -132,6 +132,8 @@ _active_connections: dict[uuid.UUID, tuple[WebSocket, str]] = {}
 _duel_messages: dict[uuid.UUID, dict[int, list[dict[str, Any]]]] = {}
 _duel_sessions: dict[uuid.UUID, dict[str, Any]] = {}
 _disconnect_tasks: dict[tuple[uuid.UUID, uuid.UUID], asyncio.Task] = {}
+# Phase 2: Spectator connections per duel
+_spectator_connections: dict[uuid.UUID, list[WebSocket]] = {}
 # Lock to protect concurrent access to _duel_sessions (race condition prevention)
 _duel_sessions_lock = asyncio.Lock()
 
@@ -160,6 +162,55 @@ async def _send_to_user(user_id: uuid.UUID, msg_type: str, data: dict | None = N
         logger.warning(
             "PvP message lost: user %s not connected, type=%s", user_id, msg_type
         )
+
+
+async def _broadcast_to_spectators(duel_id: uuid.UUID, msg_type: str, data: dict) -> None:
+    """Send update to all spectators of a duel."""
+    spectators = _spectator_connections.get(duel_id, [])
+    dead: list[WebSocket] = []
+    for ws in spectators:
+        try:
+            await ws.send_json({"type": msg_type, "data": data})
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        spectators.remove(ws)
+
+
+async def _handle_spectator(ws: WebSocket, duel_id: uuid.UUID) -> None:
+    """Handle a spectator connection to a live duel."""
+    session = _duel_sessions.get(duel_id)
+    if not session:
+        await _send(ws, "error", {"message": "Duel not found or already finished"})
+        await ws.close()
+        return
+
+    if duel_id not in _spectator_connections:
+        _spectator_connections[duel_id] = []
+    _spectator_connections[duel_id].append(ws)
+
+    # Send current state (catch-up)
+    await _send(ws, "spectator.state", {
+        "duel_id": str(duel_id),
+        "player1_name": session.get("player_names", {}).get(str(session.get("player1_id", "")), "Player 1"),
+        "player2_name": session.get("player_names", {}).get(str(session.get("player2_id", "")), "Player 2"),
+        "round": session.get("round", 1),
+        "messages": _duel_messages.get(duel_id, {}).get(session.get("round", 1), []),
+        "spectator_count": len(_spectator_connections[duel_id]),
+    })
+
+    try:
+        while True:
+            # Spectators only receive, never send meaningful messages
+            data = await ws.receive_json()
+            if data.get("type") == "ping":
+                await _send(ws, "pong", {})
+    except Exception:
+        pass
+    finally:
+        specs = _spectator_connections.get(duel_id, [])
+        if ws in specs:
+            specs.remove(ws)
 
 
 async def _auth_websocket(ws: WebSocket) -> tuple[uuid.UUID, str] | None:
@@ -495,6 +546,12 @@ async def _send_ai_message(duel_id: uuid.UUID, round_number: int, ai_role: str, 
     for pid in [session["player1_id"], session["player2_id"]]:
         if pid != BOT_ID:
             await _send_to_user(pid, "duel.message", payload)
+    # Phase 2: broadcast to spectators
+    await _broadcast_to_spectators(session["duel_id"], "spectator.message", {
+        "role": payload.get("sender_role", "unknown"),
+        "content": payload.get("text", ""),
+        "round": session.get("round", 1),
+    })
 
 
 async def _generate_ai_reply(session: dict[str, Any], round_number: int, user_text: str, ai_role: str) -> str:
@@ -1408,6 +1465,15 @@ async def _handle_rapid_fire(ws: WebSocket, user_id: uuid.UUID, match_id: uuid.U
         except Exception as exc:
             logger.debug("Rapid Fire AP award failed: %s", exc)
 
+        # Send separate ap.earned message for CelebrationListener
+        if ap_data:
+            await _send(ws, "ap.earned", {
+                "amount": ap_data.get("ap_earned", 0),
+                "source": ap_data.get("ap_source", "pve_match"),
+                "balance": ap_data.get("ap_balance", 0),
+                "season": ap_data.get("season"),
+            })
+
         await _send(ws, "rapid.completed", {
             "match_id": str(match_id),
             "total": total,
@@ -1650,6 +1716,15 @@ async def _handle_gauntlet(ws: WebSocket, user_id: uuid.UUID, run_id: uuid.UUID)
                 }
         except Exception as exc:
             logger.debug("Gauntlet AP award failed: %s", exc)
+
+        # Send separate ap.earned message for CelebrationListener
+        if gauntlet_ap_data:
+            await _send(ws, "ap.earned", {
+                "amount": gauntlet_ap_data.get("ap_earned", 0),
+                "source": gauntlet_ap_data.get("ap_source", "gauntlet"),
+                "balance": gauntlet_ap_data.get("ap_balance", 0),
+                "season": gauntlet_ap_data.get("season"),
+            })
 
         await _send(ws, "gauntlet.completed", {
             "run_id": str(run_id),
@@ -1956,6 +2031,19 @@ async def _handle_team_battle(ws: WebSocket, user_id: uuid.UUID, team_id: uuid.U
 
 async def pvp_websocket(websocket: WebSocket) -> None:
     await websocket.accept()
+
+    # Phase 2: Spectator mode — observe live duels without participating
+    _qs = dict(websocket.query_params)
+    if _qs.get("mode") == "spectator" and _qs.get("match_id"):
+        try:
+            _match_id = uuid.UUID(_qs["match_id"])
+        except (ValueError, TypeError):
+            await _send(websocket, "error", {"message": "Invalid match_id"})
+            await websocket.close()
+            return
+        await _handle_spectator(websocket, _match_id)
+        return
+
     auth = await _auth_websocket(websocket)
     if not auth:
         try:
@@ -2032,7 +2120,11 @@ async def pvp_websocket(websocket: WebSocket) -> None:
                 except (TypeError, ValueError):
                     await _send(websocket, "error", {"detail": "Invalid duel_id format"})
                     continue
-                await _handle_duel_ready(user_id, duel_id_parsed)
+                try:
+                    await _handle_duel_ready(user_id, duel_id_parsed)
+                except Exception as exc:
+                    logger.error("duel.ready handler error [user=%s duel=%s]: %s", user_id, duel_id_parsed, exc, exc_info=True)
+                    await _send(websocket, "error", {"detail": "Ошибка инициализации дуэли"})
                 continue
 
             if msg_type == "duel.message":
@@ -2040,7 +2132,11 @@ async def pvp_websocket(websocket: WebSocket) -> None:
                 # B.3: Defense-in-depth — truncate before any processing
                 text = text[:2000]
                 if text:
-                    await _handle_duel_message(user_id, text)
+                    try:
+                        await _handle_duel_message(user_id, text)
+                    except Exception as exc:
+                        logger.error("duel.message handler error [user=%s]: %s", user_id, exc, exc_info=True)
+                        await _send(websocket, "error", {"detail": "Ошибка обработки сообщения. Попробуйте ещё раз."})
                 continue
 
             if msg_type == "queue.leave":

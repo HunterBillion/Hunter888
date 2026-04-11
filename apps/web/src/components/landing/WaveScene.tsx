@@ -416,6 +416,7 @@ function FloatingParticles({ isDark }: { isDark: boolean }) {
 // ── Main Export ────────────────────────────────────────────
 export function WaveScene() {
   const [isDark, setIsDark] = useState(true);
+  const [contextLost, setContextLost] = useState(false);
   const mouseWorld = useRef(new THREE.Vector2(-999, -999));
   const mouseSmooth = useRef(new THREE.Vector2(-999, -999));
   const mouseActive = useRef(0);
@@ -434,6 +435,20 @@ export function WaveScene() {
 
   const shared = { mouseSmooth, mouseActive, clicksRef };
 
+  // Graceful fallback when WebGL context is lost
+  if (contextLost) {
+    return (
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "radial-gradient(ellipse 70% 50% at 50% 80%, var(--grid-glow) 0%, transparent 70%)",
+          opacity: 0.4,
+        }}
+      />
+    );
+  }
+
   return (
     <Canvas
       camera={{ position: [0, 20, 35], fov: 60, near: 0.1, far: 300 }}
@@ -441,6 +456,12 @@ export function WaveScene() {
       gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
       dpr={[1, 1.5]}
       eventPrefix="client"
+      onCreated={({ gl }) => {
+        gl.domElement.addEventListener("webglcontextlost", (e) => {
+          e.preventDefault();
+          setContextLost(true);
+        });
+      }}
     >
       <Tick mouseWorld={mouseWorld} {...shared} />
       <OceanLayer cfg={layers.sub} isDark={isDark} {...shared} />

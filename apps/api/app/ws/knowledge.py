@@ -551,15 +551,29 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
                 diff_range = themed_difficulty_range(state.current_question, state.total_questions)
                 diff = (diff_range[0] + diff_range[1]) // 2
 
-            question = await generate_question(
-                db,
-                mode=state.mode,
-                category=state.category,
-                difficulty=diff,
-                question_number=state.current_question,
-                user_weak_areas=weak_areas,
-                used_chunk_ids=state.asked_chunk_ids,
-            )
+            try:
+                async with asyncio.timeout(15):
+                    question = await generate_question(
+                        db,
+                        mode=state.mode,
+                        category=state.category,
+                        difficulty=diff,
+                        question_number=state.current_question,
+                        user_weak_areas=weak_areas,
+                        used_chunk_ids=state.asked_chunk_ids,
+                    )
+            except (TimeoutError, Exception) as exc:
+                logger.warning("generate_question timeout/error (q=%d): %s", state.current_question, exc)
+                # Fallback: hardcoded question so the quiz doesn't hang
+                question = QuizQuestion(
+                    question_text="Какие последствия наступают для должника после признания его банкротом согласно ФЗ-127?",
+                    category=state.category or "general",
+                    difficulty=diff,
+                    expected_article="ФЗ-127",
+                    question_number=state.current_question,
+                    total_questions=state.total_questions,
+                    generation_strategy="timeout_fallback",
+                )
 
     state.current_q = question
     # Track question text for dedup
@@ -640,13 +654,25 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
     # V2: Use evaluate_answer_v2 with personality prompt
     personality_prompt = state.personality.system_prompt if state.personality else None
     async with async_session() as db:
-        result = await evaluate_answer_v2(
-            db,
-            question=state.current_q,
-            user_answer=text,
-            mode=state.mode,
-            personality_prompt=personality_prompt,
-        )
+        try:
+            async with asyncio.timeout(15):
+                result = await evaluate_answer_v2(
+                    db,
+                    question=state.current_q,
+                    user_answer=text,
+                    mode=state.mode,
+                    personality_prompt=personality_prompt,
+                )
+        except (TimeoutError, Exception) as exc:
+            logger.warning("evaluate_answer_v2 timeout/error: %s", exc)
+            # Fallback: mark as incorrect with generic feedback
+            from app.services.knowledge_quiz import QuizFeedback
+            result = QuizFeedback(
+                is_correct=False,
+                explanation="Не удалось оценить ответ из-за таймаута. Попробуйте ответить более развёрнуто.",
+                article_reference="",
+                score_delta=0.0,
+            )
 
     # Calculate score delta
     speed_bonus = 0.0
@@ -1059,6 +1085,10 @@ async def _finish_solo_quiz(ws: WebSocket, state: _SoloQuizState) -> None:
             }
         except Exception:
             logger.debug("SRS completion summary failed", exc_info=True)
+
+    # Send separate ap.earned message for CelebrationListener
+    if "ap_earned" in results_data:
+        await _send(ws, "ap.earned", results_data["ap_earned"])
 
     await _send(ws, "quiz.completed", {"results": results_data})
 

@@ -685,6 +685,154 @@ async def reanalyze_wiki(
     }
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# MANAGER SELF-ACCESS: /my/* endpoints (Task 2.1)
+# Convenience routes that resolve to the current user's own wiki.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.get("/my/overview")
+async def my_wiki_overview(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current manager's wiki overview."""
+    return await get_manager_wiki(user.id, user, db)
+
+
+@router.get("/my/patterns")
+async def my_wiki_patterns(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current manager's behavioral patterns (weaknesses, strengths, quirks)."""
+    return await list_manager_patterns(user.id, user, db)
+
+
+@router.get("/my/techniques")
+async def my_wiki_techniques(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current manager's effective techniques with success rates."""
+    return await list_manager_techniques(user.id, user, db)
+
+
+@router.get("/my/recommendations")
+async def my_wiki_recommendations(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get personalized recommendations based on wiki patterns."""
+    result = await db.execute(
+        select(ManagerWiki).where(ManagerWiki.manager_id == user.id)
+    )
+    wiki = result.scalar_one_or_none()
+    if not wiki:
+        return {"recommendations": [], "message": "Wiki ещё не создана. Пройдите несколько тренировок."}
+
+    # Get weakness patterns
+    patterns_result = await db.execute(
+        select(ManagerPattern)
+        .where(ManagerPattern.manager_id == user.id)
+        .order_by(ManagerPattern.sessions_in_pattern.desc())
+    )
+    patterns = patterns_result.scalars().all()
+    weaknesses = [p for p in patterns if str(getattr(p, "category", "")) == "weakness"]
+
+    # Get techniques
+    techniques_result = await db.execute(
+        select(ManagerTechnique)
+        .where(ManagerTechnique.manager_id == user.id)
+        .order_by(ManagerTechnique.success_rate.desc())
+    )
+    techniques = techniques_result.scalars().all()
+
+    recommendations = []
+
+    # Recommend based on weaknesses
+    for w in weaknesses[:3]:
+        rec = {
+            "type": "fix_weakness",
+            "pattern_code": w.pattern_code,
+            "description": w.description,
+            "suggestion": w.mitigation_technique or f"Тренируйтесь на сценариях с фокусом на '{w.pattern_code}'",
+            "sessions_affected": w.sessions_in_pattern,
+        }
+        recommendations.append(rec)
+
+    # Highlight top techniques
+    for t in techniques[:2]:
+        if t.success_rate >= 0.6:
+            rec = {
+                "type": "reinforce_strength",
+                "technique_code": t.technique_code,
+                "description": f"Техника '{t.technique_name}' работает в {round(t.success_rate * 100)}% случаев",
+                "suggestion": t.how_to_apply or "Продолжайте использовать эту технику",
+                "success_rate": round(t.success_rate, 2),
+            }
+            recommendations.append(rec)
+
+    return {"recommendations": recommendations}
+
+
+@router.get("/my/progress")
+async def my_wiki_progress(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get how manager's patterns change over time."""
+    result = await db.execute(
+        select(ManagerWiki).where(ManagerWiki.manager_id == user.id)
+    )
+    wiki = result.scalar_one_or_none()
+    if not wiki:
+        return {"progress": [], "message": "Wiki ещё не создана."}
+
+    # Get wiki update log to show progress over time
+    log_result = await db.execute(
+        select(WikiUpdateLog)
+        .where(WikiUpdateLog.wiki_id == wiki.id)
+        .order_by(WikiUpdateLog.started_at.desc())
+        .limit(20)
+    )
+    logs = log_result.scalars().all()
+
+    # Get pattern timeline (discovered_at dates)
+    patterns_result = await db.execute(
+        select(ManagerPattern)
+        .where(ManagerPattern.manager_id == user.id)
+        .order_by(ManagerPattern.discovered_at.asc())
+    )
+    patterns = patterns_result.scalars().all()
+
+    return {
+        "sessions_ingested": wiki.sessions_ingested,
+        "patterns_discovered": wiki.patterns_discovered,
+        "pages_count": wiki.pages_count,
+        "timeline": [
+            {
+                "date": log.started_at.isoformat() if log.started_at else None,
+                "action": str(log.action) if log.action else "ingest",
+                "pages_modified": log.pages_modified,
+                "pages_created": log.pages_created,
+                "status": str(log.status) if log.status else "completed",
+            }
+            for log in logs
+        ],
+        "pattern_history": [
+            {
+                "pattern_code": p.pattern_code,
+                "category": str(p.category) if p.category else "weakness",
+                "discovered_at": p.discovered_at.isoformat() if p.discovered_at else None,
+                "confirmed_at": p.confirmed_at.isoformat() if p.confirmed_at else None,
+                "sessions_in_pattern": p.sessions_in_pattern,
+            }
+            for p in patterns
+        ],
+    }
+
+
 # ---------------------------------------------------------------------------
 # GET /api/wiki/{manager_id} — wiki overview for specific manager (admin only)
 # ---------------------------------------------------------------------------

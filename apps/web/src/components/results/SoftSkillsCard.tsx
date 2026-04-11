@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Clock, Mic, UserCheck, AlertTriangle, MessageSquare, BarChart3 } from "lucide-react";
+import { Clock, Microphone, UserCheck, Warning, ChatCircle, ChartBar } from "@phosphor-icons/react";
 import type { SoftSkillsResult } from "@/types";
 
 /** @deprecated Use SoftSkillsResult from @/types instead */
@@ -15,7 +15,8 @@ type Rating = "good" | "ok" | "bad";
 
 interface MetricConfig {
   label: string;
-  icon: React.ComponentType<{ size: number; style?: React.CSSProperties }>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  icon: React.ComponentType<any>;
   value: string;
   rating: Rating;
   pct: number;
@@ -58,10 +59,10 @@ function buildMetrics(s: SoftSkillsResult): MetricConfig[] {
 
   return [
     { label: "Время ответа", icon: Clock, value: `${s.avg_response_time_sec.toFixed(1)}с`, rating: rtRating, pct: rtPct },
-    { label: "Говорю/Слушаю", icon: Mic, value: `${Math.round(tr * 100)}/${Math.round((1 - tr) * 100)}`, rating: trRating, pct: trPct },
+    { label: "Говорю/Слушаю", icon: Microphone, value: `${Math.round(tr * 100)}/${Math.round((1 - tr) * 100)}`, rating: trRating, pct: trPct },
     { label: "Обращение по имени", icon: UserCheck, value: `${s.name_usage_count} раз`, rating: nuRating, pct: nuPct },
-    { label: "Перебивания", icon: AlertTriangle, value: `${s.interruptions}`, rating: intRating, pct: intPct },
-    { label: "Длина сообщений", icon: MessageSquare, value: `~${Math.round(ml)} симв.`, rating: mlRating, pct: mlPct },
+    { label: "Перебивания", icon: Warning, value: `${s.interruptions}`, rating: intRating, pct: intPct },
+    { label: "Длина сообщений", icon: ChatCircle, value: `~${Math.round(ml)} симв.`, rating: mlRating, pct: mlPct },
   ];
 }
 
@@ -87,7 +88,7 @@ export default function SoftSkillsCard({ skills }: SoftSkillsCardProps) {
       className="glass-panel rounded-2xl p-6"
     >
       <h3 className="font-display text-base tracking-widest flex items-center gap-2 mb-4" style={{ color: "var(--text-primary)" }}>
-        <BarChart3 size={16} style={{ color: "var(--accent)" }} />
+        <ChartBar size={16} weight="duotone" style={{ color: "var(--accent)" }} />
         НАВЫКИ ОБЩЕНИЯ
       </h3>
 
@@ -99,7 +100,7 @@ export default function SoftSkillsCard({ skills }: SoftSkillsCardProps) {
             <motion.div key={m.label} variants={item}>
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
-                  <Icon size={14} style={{ color: "var(--text-muted)" }} />
+                  <Icon size={14} weight="duotone" style={{ color: "var(--text-muted)" }} />
                   <span className="text-sm" style={{ color: "var(--text-secondary)" }}>{m.label}</span>
                 </div>
                 <div className="flex items-center gap-2">

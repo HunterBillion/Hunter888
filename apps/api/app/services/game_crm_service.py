@@ -709,6 +709,30 @@ class GameCRMService:
         traps = await self._get_story_traps(story)
         chain_prompt = await self._get_story_chain_prompt(story)
 
+        # Step 3b: Wiki injection — fetch manager's weakness patterns (Task 2.2)
+        wiki_weaknesses: list[dict] = []
+        try:
+            from app.models.manager_wiki import ManagerPattern
+            wp_result = await self.db.execute(
+                select(ManagerPattern)
+                .where(
+                    ManagerPattern.manager_id == actor_id,
+                    ManagerPattern.category == "weakness",
+                )
+                .order_by(ManagerPattern.sessions_in_pattern.desc())
+                .limit(3)
+            )
+            wiki_weaknesses = [
+                {
+                    "code": p.pattern_code,
+                    "description": p.description,
+                    "mitigation": p.mitigation_technique,
+                }
+                for p in wp_result.scalars().all()
+            ]
+        except Exception as exc:
+            logger.debug("Wiki weakness fetch skipped: %s", exc)
+
         profile = None
         if story.client_profile_id:
             profile_result = await self.db.execute(
@@ -732,6 +756,7 @@ class GameCRMService:
             chain_prompt=chain_prompt,
             manager_skill=manager_skill,
             legal_context=legal_context.to_prompt_context() if legal_context.has_results else "",
+            wiki_weaknesses=wiki_weaknesses,
         )
         messages = list(recent_messages)
         if not (
@@ -962,6 +987,7 @@ class GameCRMService:
         chain_prompt: str,
         manager_skill: dict[str, Any],
         legal_context: str,
+        wiki_weaknesses: list[dict] | None = None,
     ) -> str:
         ds = story.director_state or {}
         active_factors = story.active_factors or []
@@ -1037,6 +1063,21 @@ class GameCRMService:
 
         if legal_context:
             parts.append(legal_context)
+
+        # Wiki injection: manager's known weaknesses (Task 2.2)
+        if wiki_weaknesses:
+            weakness_lines = []
+            for w in wiki_weaknesses:
+                line = f"- {w['code']}: {w['description']}"
+                if w.get("mitigation"):
+                    line += f" (создай ситуацию для тренировки: {w['mitigation']})"
+                weakness_lines.append(line)
+            parts.append(
+                "ИЗВЕСТНЫЕ СЛАБОСТИ этого менеджера (из его персональной wiki):\n"
+                + "\n".join(weakness_lines) + "\n"
+                "Используй это для обучения: создавай моменты, где менеджер ДОЛЖЕН проявить слабое место. "
+                "Это не наказание — это обучающий механизм. Не говори менеджеру что знаешь его слабости."
+            )
 
         if traps:
             parts.append(build_trap_injection_prompt(traps))
