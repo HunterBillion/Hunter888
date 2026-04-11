@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Home, ArrowLeft } from "lucide-react";
+import { Home } from "lucide-react";
+import { BackButton } from "@/components/ui/BackButton";
 import { EASE_SNAP } from "@/lib/constants";
 
 export default function NotFound() {
@@ -109,20 +110,7 @@ export default function NotFound() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.6 }}
         >
-          <Link href="/">
-            <motion.span
-              className="flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-colors"
-              style={{
-                background: "var(--input-bg)",
-                color: "var(--text-primary)",
-                border: "1px solid var(--border-color)",
-              }}
-              whileHover={{ scale: 1.03, y: -1 }}
-              whileTap={{ scale: 0.97 }}
-            >
-              <ArrowLeft size={16} /> Назад
-            </motion.span>
-          </Link>
+          <BackButton href="/" />
           <Link href="/home">
             <motion.span
               className="flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-colors"

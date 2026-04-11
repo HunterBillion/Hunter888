@@ -14,7 +14,7 @@ import {
   Phone,
   StickyNote,
   Lock,
-  ArrowLeft,
+  ChevronLeft,
   ArrowRight,
   Loader2,
   DollarSign,
@@ -174,7 +174,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
             </div>
 
             {/* Creditors bar chart */}
-            {clientCard.creditors.length > 0 && (
+            {creditors.length > 0 && (
               <div className="mb-4">
                 <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>КРЕДИТОРЫ</div>
                 <div className="space-y-2">
@@ -218,7 +218,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
                   <Building2 size={12} style={{ color: "var(--accent)" }} />
                   <span className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Имущество</span>
                 </div>
-                {clientCard.property.length > 0 ? (
+                {property.length > 0 ? (
                   <div className="space-y-0.5">
                     {property.map((p, i) => (
                       <div key={i} className="text-xs" style={{ color: "var(--text-primary)" }}>
@@ -239,7 +239,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
               <Phone size={16} style={{ color: "var(--accent)" }} />
               ИСТОРИЯ ЗВОНКОВ
             </h2>
-            {clientCard.call_history.length > 0 ? (
+            {callHistory.length > 0 ? (
               <div className="relative pl-4">
                 {/* Timeline line */}
                 <div className="absolute left-0 top-1 bottom-1 w-px" style={{ background: "var(--border-color)" }} />
@@ -300,7 +300,7 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
             className="btn-neon flex items-center justify-center gap-2"
             whileTap={{ scale: 0.97 }}
           >
-            <ArrowLeft size={16} /> Назад
+            <ChevronLeft size={16} /> Назад
           </motion.button>
           <motion.button
             onClick={onStart}

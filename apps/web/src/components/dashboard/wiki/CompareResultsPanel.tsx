@@ -1,12 +1,22 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Users, Brain, Lightbulb, X } from "lucide-react";
+import { X } from "lucide-react";
+import { UsersThree, Brain, Lightbulb } from "@phosphor-icons/react";
 import { Bar, Radar } from "react-chartjs-2";
+import { cssVar } from "@/lib/chartTheme";
 import type { CompareManager } from "./types";
 import { CATEGORY_CONFIG } from "./types";
 
-const COMPARE_COLORS = ["var(--warning)", "var(--accent)", "var(--success)", "var(--danger)", "var(--magenta)"];
+function getCompareColors() {
+  return [
+    cssVar("--warning", "#E8A630"),
+    cssVar("--accent", "#7C6AE8"),
+    cssVar("--success", "#3DDC84"),
+    cssVar("--danger", "#E5484D"),
+    cssVar("--magenta", "#D926B8"),
+  ];
+}
 
 export function CompareResultsPanel({ data, onClose }: { data: CompareManager[]; onClose: () => void }) {
   const LAYER_LABELS: Record<string, string> = {
@@ -26,6 +36,10 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
     qualification: "Квалификация",
   };
 
+  const colors = getCompareColors();
+  const chartText = cssVar("--chart-text", "#D0CDE0");
+  const chartGrid = cssVar("--chart-grid", "rgba(255,255,255,0.12)");
+
   const glassCard: React.CSSProperties = {
     background: "rgba(255,255,255,0.03)",
     border: "1px solid rgba(255,255,255,0.06)",
@@ -39,9 +53,9 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
     datasets: data.map((m, i) => ({
       label: m.name,
       data: Object.keys(LAYER_LABELS).map((k) => m.score_layers[k] || 0),
-      borderColor: COMPARE_COLORS[i],
-      backgroundColor: COMPARE_COLORS[i] + "20",
-      pointBackgroundColor: COMPARE_COLORS[i],
+      borderColor: colors[i],
+      backgroundColor: colors[i] + "33",
+      pointBackgroundColor: colors[i],
       borderWidth: 2,
     })),
   };
@@ -53,9 +67,9 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
     datasets: data.map((m, i) => ({
       label: m.name,
       data: skillKeys.map((k) => m.skills[k] || 0),
-      borderColor: COMPARE_COLORS[i],
-      backgroundColor: COMPARE_COLORS[i] + "20",
-      pointBackgroundColor: COMPARE_COLORS[i],
+      borderColor: colors[i],
+      backgroundColor: colors[i] + "33",
+      pointBackgroundColor: colors[i],
       borderWidth: 2,
     })),
   };
@@ -66,12 +80,12 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
     scales: {
       r: {
         beginAtZero: true,
-        ticks: { color: "var(--text-muted)", backdropColor: "transparent", font: { size: 10 } },
-        grid: { color: "rgba(255,255,255,0.06)" },
-        pointLabels: { color: "var(--text-muted)", font: { size: 11 } },
+        ticks: { color: chartText, backdropColor: "transparent", font: { size: 13 } },
+        grid: { color: chartGrid },
+        pointLabels: { color: chartText, font: { size: 14 } },
       },
     },
-    plugins: { legend: { labels: { color: "var(--text-muted)", font: { size: 11 } } } },
+    plugins: { legend: { labels: { color: chartText, font: { size: 14 }, padding: 12 } } },
   };
 
   // Bar chart for avg scores
@@ -81,16 +95,16 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
       {
         label: "Средний балл",
         data: data.map((m) => m.avg_score),
-        backgroundColor: data.map((_, i) => COMPARE_COLORS[i] + "80"),
-        borderColor: data.map((_, i) => COMPARE_COLORS[i]),
+        backgroundColor: data.map((_, i) => colors[i] + "80"),
+        borderColor: data.map((_, i) => colors[i]),
         borderWidth: 1,
         borderRadius: 6,
       },
       {
         label: "Лучший балл",
         data: data.map((m) => m.best_score),
-        backgroundColor: data.map((_, i) => COMPARE_COLORS[i] + "30"),
-        borderColor: data.map((_, i) => COMPARE_COLORS[i]),
+        backgroundColor: data.map((_, i) => colors[i] + "30"),
+        borderColor: data.map((_, i) => colors[i]),
         borderWidth: 1,
         borderRadius: 6,
         borderDash: [3, 3],
@@ -106,7 +120,7 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
     >
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
-        <Users size={22} style={{ color: "var(--accent)" }} />
+        <UsersThree size={22} weight="duotone" style={{ color: "var(--accent)" }} />
         <h2 style={{ fontSize: "1.3rem", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
           Сравнение менеджеров
         </h2>
@@ -131,7 +145,7 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
         {data.map((m, i) => (
           <div key={m.manager_id + i} style={{
             ...glassCard,
-            borderTop: `3px solid ${COMPARE_COLORS[i]}`,
+            borderTop: `3px solid ${colors[i]}`,
           }}>
             <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "1rem", marginBottom: "0.5rem" }}>{m.name}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.3rem", fontSize: "0.8rem" }}>
@@ -186,7 +200,7 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
         {/* Patterns */}
         <div style={glassCard}>
           <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.75rem" }}>
-            <Brain size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
+            <Brain size={14} weight="duotone" style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
             Паттерны по категориям
           </div>
           <table style={{ width: "100%", fontSize: "0.8rem", borderCollapse: "collapse" }}>
@@ -194,7 +208,7 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
               <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
                 <th style={{ textAlign: "left", padding: "4px 8px", color: "var(--text-muted)", fontWeight: 500 }}>Категория</th>
                 {data.map((m, i) => (
-                  <th key={m.manager_id + i} style={{ textAlign: "center", padding: "4px 8px", color: COMPARE_COLORS[i], fontWeight: 600 }}>
+                  <th key={m.manager_id + i} style={{ textAlign: "center", padding: "4px 8px", color: colors[i], fontWeight: 600 }}>
                     {m.name.split(" ")[0]}
                   </th>
                 ))}
@@ -216,7 +230,7 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
               <tr style={{ fontWeight: 600 }}>
                 <td style={{ padding: "4px 8px", color: "var(--text-muted)" }}>Всего</td>
                 {data.map((m, i) => (
-                  <td key={m.manager_id + i} style={{ textAlign: "center", padding: "4px 8px", color: COMPARE_COLORS[i] }}>
+                  <td key={m.manager_id + i} style={{ textAlign: "center", padding: "4px 8px", color: colors[i] }}>
                     {m.patterns_total}
                   </td>
                 ))}
@@ -228,17 +242,17 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
         {/* Techniques */}
         <div style={glassCard}>
           <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.75rem" }}>
-            <Lightbulb size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
+            <Lightbulb size={14} weight="duotone" style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
             Лучшие техники
           </div>
           {data.map((m, i) => (
             <div key={m.manager_id + i} style={{ marginBottom: "0.5rem" }}>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: COMPARE_COLORS[i], marginBottom: "0.25rem" }}>{m.name}</div>
+              <div style={{ fontSize: "0.85rem", fontWeight: 600, color: colors[i], marginBottom: "0.25rem" }}>{m.name}</div>
               {m.techniques.length === 0 ? (
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontStyle: "italic" }}>Нет техник</div>
+                <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontStyle: "italic" }}>Нет техник</div>
               ) : (
                 m.techniques.slice(0, 3).map((t) => (
-                  <div key={t.code} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--text-muted)", padding: "2px 0" }}>
+                  <div key={t.code} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", color: "var(--text-muted)", padding: "2px 0" }}>
                     <span>{t.name}</span>
                     <span style={{ color: t.success_rate >= 0.7 ? "var(--success)" : t.success_rate >= 0.4 ? "var(--warning)" : "var(--danger)" }}>
                       {Math.round(t.success_rate * 100)}%

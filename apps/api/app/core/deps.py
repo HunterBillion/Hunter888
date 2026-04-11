@@ -128,3 +128,37 @@ def require_role(*roles: str):
         return user
 
     return checker
+
+
+def check_wiki_access(user: User, manager_id) -> None:
+    """Raise 403 if user is not admin/rop and not the wiki owner."""
+    if user.role.value in ("admin", "rop"):
+        return
+    if str(user.id) == str(manager_id):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Cannot access other managers' wikis",
+    )
+
+
+async def check_entitlement(feature: str, user: User, db) -> None:
+    """Check if user's subscription plan allows a feature. Raises 403 if not."""
+    from app.services.entitlement import get_entitlement, check_feature
+    ent = await get_entitlement(user.id, db)
+    if not check_feature(ent, feature):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Feature '{feature}' requires a higher plan. Current: {ent.plan.value}",
+        )
+
+
+async def check_session_limit(user: User, db) -> None:
+    """Check if user hasn't exceeded daily session limit. Raises 429 if exceeded."""
+    from app.services.entitlement import get_entitlement, check_session_limit as _check
+    ent = await get_entitlement(user.id, db)
+    if not _check(ent):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily session limit reached ({ent.limits.sessions_per_day}). Upgrade your plan.",
+        )

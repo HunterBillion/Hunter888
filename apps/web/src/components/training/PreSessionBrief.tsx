@@ -200,7 +200,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                   <div className="font-display text-2xl font-bold" style={{ color: "var(--danger)" }}>
                     {formatDebt(client.total_debt)}
                   </div>
-                  {client.creditors.length > 0 && (
+                  {(client.creditors || []).length > 0 && (
                     <div className="mt-2 space-y-1">
                       {client.creditors.slice(0, 4).map((c, i) => (
                         <div key={i} className="flex justify-between text-xs" style={{ color: "var(--text-secondary)" }}>
@@ -213,7 +213,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                 </div>
 
                 {/* Fears */}
-                {client.fears.length > 0 && (
+                {(client.fears || []).length > 0 && (
                   <div className="mb-4">
                     <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle size={14} style={{ color: "var(--warning)" }} />

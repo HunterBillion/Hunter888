@@ -453,6 +453,7 @@ async def resolve_anti_cheat_flag(
     log.resolved_by = admin.id
     log.resolved_at = datetime.now(timezone.utc)
     db.add(log)
+    await db.commit()
 
     return {"status": "resolved", "resolution": resolution}
 

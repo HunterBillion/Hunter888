@@ -112,17 +112,16 @@ async def _upsert_wiki_page(
         )
     )
     page = result.scalar_one_or_none()
+    is_new = False
     if page:
         page.content = content
         page.version += 1
         page.updated_at = datetime.now(timezone.utc)
-        # Append session to source list
         sources = list(page.source_sessions or [])
         sid = str(session_id)
         if sid not in sources:
             sources.append(sid)
         page.source_sessions = sources
-        return False, page
     else:
         page = WikiPage(
             wiki_id=wiki_id,
@@ -132,7 +131,16 @@ async def _upsert_wiki_page(
             source_sessions=[str(session_id)],
         )
         db.add(page)
-        return True, page
+        is_new = True
+
+    # Phase 2: Generate embedding for semantic wiki search
+    try:
+        from app.services.rag_wiki import generate_wiki_embedding
+        await generate_wiki_embedding(page, db)
+    except Exception:
+        pass  # Non-critical — page still usable without embedding
+
+    return is_new, page
 
 
 async def _upsert_pattern(
@@ -258,9 +266,13 @@ async def ingest_session(session_id: uuid.UUID, db: AsyncSession) -> dict:
         '  "session_summary": "1-2 предложения о сессии",\n'
         '  "patterns_found": [{"code": "код_паттерна", "category": "weakness|strength|quirk|misconception", "description": "описание"}],\n'
         '  "techniques_used": [{"code": "код_техники", "name": "название", "description": "описание"}],\n'
+        '  "best_practices": [],\n'
         '  "weakness_update": "обновление матрицы слабостей или null",\n'
         '  "recommendation": "рекомендация для следующей тренировки"\n'
-        "}"
+        "}\n\n"
+        "ВАЖНО: Если общий балл >= 85, ОБЯЗАТЕЛЬНО заполни best_practices:\n"
+        '[{"phrase": "точная фраза менеджера", "context": "что сказал клиент до", "effect": "реакция клиента после", "skill": "empathy|objection_handling|closing|..."}]\n'
+        "Извлекай фразы, которые вызвали положительную реакцию клиента."
     )
 
     # Create log entry
@@ -392,6 +404,31 @@ async def ingest_session(session_id: uuid.UUID, db: AsyncSession) -> dict:
             t.get("description", ""),
             db,
         )
+
+    # Best practices (Phase 2: extracted when score >= 85)
+    best_practices = analysis.get("best_practices", [])
+    if best_practices and isinstance(best_practices, list):
+        bp_content = "## Best Practices\n\n"
+        for bp in best_practices:
+            if not isinstance(bp, dict):
+                continue
+            bp_content += f"**Фраза:** {bp.get('phrase', '')}\n"
+            bp_content += f"- Контекст: {bp.get('context', '')}\n"
+            bp_content += f"- Эффект: {bp.get('effect', '')}\n"
+            bp_content += f"- Навык: {bp.get('skill', '')}\n\n"
+        if len(best_practices) > 0:
+            is_new, _ = await _upsert_wiki_page(
+                wiki.id,
+                "practices/best_phrases",
+                bp_content,
+                WikiPageType.insight,
+                session_id,
+                db,
+            )
+            if is_new:
+                pages_created += 1
+            else:
+                pages_modified += 1
 
     # Recommendation page
     recommendation = analysis.get("recommendation")

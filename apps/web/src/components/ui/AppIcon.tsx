@@ -1,22 +1,25 @@
 "use client";
 
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import {
-  Shield, Heart, Crown, Wind, Star, Brain, Users, Clock,
-  Briefcase, Sparkles, Target, Trophy, Flame, Zap, Lock,
-  AlertTriangle, CheckCircle, XCircle, HelpCircle, Info,
-  Swords, Medal, Award, TrendingUp, TrendingDown,
-  Skull, CircleDot, Crosshair, Eye, EyeOff,
-  ThumbsUp, ThumbsDown, MessageSquare, Phone, Mail,
-  DollarSign, CreditCard, Building, Home, Car,
-  Stethoscope, GraduationCap, Scale, Gavel, Newspaper,
-  Monitor, Settings, User, UserCheck, UserX,
-  ClipboardList, Sprout, BarChart3, Bot, Castle,
-  Signal, Handshake, AlarmClock, Fish,
-  type LucideIcon,
-} from "lucide-react";
+  Shield, Heart, Crown, Wind, Star, Brain, Users, Hourglass,
+  Briefcase, Sparkle, Target, Trophy, Flame, Lightning, Lock,
+  Warning, CheckCircle, XCircle, Question, Info,
+  Sword, Medal, MedalMilitary, TrendUp, TrendDown,
+  Skull, Circle, Crosshair, Eye, EyeClosed,
+  ThumbsUp, ThumbsDown, ChatCircle, Phone, Envelope,
+  CurrencyDollar, CreditCard, Buildings, House, Car,
+  Stethoscope, GraduationCap, Scales, Gavel, Newspaper,
+  Monitor, Gear, User, UserCheck, UserMinus,
+  ClipboardText, Plant, ChartBar, Robot, CastleTurret,
+  WifiHigh, Handshake, Alarm, Fish,
+  GraduationCap as Wheat, Truck, ShoppingCart, Barbell, Palette,
+  Microscope, Bank, SealCheck, HardHat, Wrench,
+  SmileyMeh, SmileyNervous, SmileyAngry, HandHeart, Moon, Timer, Smiley,
+} from "@phosphor-icons/react";
 
-/** Maps emoji characters to Lucide icons */
-const EMOJI_TO_ICON: Record<string, LucideIcon> = {
+/** Maps emoji characters to Phosphor icons (rendered as duotone) */
+const EMOJI_TO_ICON: Record<string, PhosphorIcon> = {
   // Groups
   "🛡️": Shield, "🛡": Shield,
   "💜": Heart,
@@ -25,63 +28,87 @@ const EMOJI_TO_ICON: Record<string, LucideIcon> = {
   "⭐": Star,
   "🧠": Brain,
   "👥": Users,
-  "⏳": Clock,
+  "⏳": Hourglass,
   "💼": Briefcase,
-  "🔮": Sparkles,
+  "🔮": Sparkle,
   // Actions/States
   "🎯": Target,
   "🏆": Trophy,
   "🔥": Flame,
-  "⚡": Zap,
+  "⚡": Lightning,
   "🔒": Lock,
-  "⚠️": AlertTriangle, "⚠": AlertTriangle,
+  "⚠️": Warning, "⚠": Warning,
   "✅": CheckCircle,
   "❌": XCircle,
-  "❓": HelpCircle,
+  "❓": Question,
   "ℹ️": Info,
-  "⚔️": Swords, "⚔": Swords,
+  "⚔️": Sword, "⚔": Sword,
   "🥇": Medal,
   "🥈": Medal,
   "🥉": Medal,
-  "🏅": Award,
-  "📈": TrendingUp,
-  "📉": TrendingDown,
+  "🏅": MedalMilitary,
+  "📈": TrendUp,
+  "📉": TrendDown,
   "💀": Skull,
-  "🟢": CircleDot,
-  "🟡": CircleDot,
-  "🔴": CircleDot,
+  "🟢": Circle,
+  "🟡": Circle,
+  "🔴": Circle,
   "👁": Eye,
   "👍": ThumbsUp,
   "👎": ThumbsDown,
-  "💬": MessageSquare,
+  "💬": ChatCircle,
   "📞": Phone,
-  "📧": Mail,
-  "💰": DollarSign,
+  "📧": Envelope,
+  "💰": CurrencyDollar,
   "💳": CreditCard,
-  "🏢": Building,
-  "🏠": Home,
+  "🏢": Buildings,
+  "🏠": House,
   "🚗": Car,
   "🏥": Stethoscope,
   "🎓": GraduationCap,
-  "⚖️": Scale, "⚖": Scale,
+  "⚖️": Scales, "⚖": Scales,
   "🔨": Gavel,
   "📰": Newspaper,
   "💻": Monitor,
-  "⚙️": Settings, "⚙": Settings,
+  "⚙️": Gear, "⚙": Gear,
   "👤": User,
   "✓": CheckCircle,
-  "❄️": Sparkles, "❄": Sparkles,
-  "📋": ClipboardList,
-  "🌱": Sprout,
-  "📊": BarChart3,
-  "🤖": Bot,
-  "🏰": Castle,
-  "📶": Signal,
+  "❄️": Sparkle, "❄": Sparkle,
+  "📋": ClipboardText,
+  "🌱": Plant,
+  "📊": ChartBar,
+  "🤖": Robot,
+  "🏰": CastleTurret,
+  "📶": WifiHigh,
   "🤝": Handshake,
-  "⏰": AlarmClock,
+  "⏰": Alarm,
   "🐟": Fish,
-  "💡": Sparkles,
-  // Fallback handled in component
+  "💡": Sparkle,
+  // Professions
+  "🏛️": Bank, "🏛": Bank,
+  "🎖️": SealCheck, "🎖": SealCheck,
+  "👮": SealCheck,
+  "📚": GraduationCap,
+  "💹": TrendUp,
+  "🔧": Wrench,
+  "🏗️": HardHat, "🏗": HardHat,
+  "🚚": Truck,
+  "🌾": Wheat,
+  "🔬": Microscope,
+  "🎨": Palette,
+  "🛒": ShoppingCart,
+  "👴": User,
+  "🎒": GraduationCap,
+  // Family
+  "👨‍👩‍👧": Users,
+  "👨‍👩‍👧‍👦": Users,
+  // Moods
+  "😐": SmileyMeh,
+  "😰": SmileyNervous,
+  "😠": SmileyAngry,
+  "🤞": HandHeart,
+  "😴": Moon,
+  "😁": Smiley,
 };
 
 interface AppIconProps {
@@ -92,13 +119,13 @@ interface AppIconProps {
 }
 
 /**
- * Renders emoji as a Lucide icon. Consistent on all platforms.
+ * Renders emoji as a Phosphor duotone icon. Consistent on all platforms.
  * Falls back to the emoji character if no mapping exists.
  */
 export function AppIcon({ emoji, size = 18, className = "", style }: AppIconProps) {
-  const Icon = EMOJI_TO_ICON[emoji];
-  if (Icon) {
-    return <Icon size={size} className={className} style={style} />;
+  const IconComponent = EMOJI_TO_ICON[emoji];
+  if (IconComponent) {
+    return <IconComponent size={size} weight="duotone" className={className} style={style} />;
   }
   // Fallback: render raw emoji with consistent sizing
   return (

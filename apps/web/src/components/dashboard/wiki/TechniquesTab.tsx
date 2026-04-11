@@ -1,6 +1,6 @@
 "use client";
 
-import { Zap } from "lucide-react";
+import { Lightning } from "@phosphor-icons/react";
 import type { TechniqueItem } from "./types";
 
 export function TechniquesTab({ techniques }: { techniques: TechniqueItem[] }) {
@@ -20,7 +20,7 @@ export function TechniquesTab({ techniques }: { techniques: TechniqueItem[] }) {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-            <Zap size={16} style={{ color: "var(--warning)" }} />
+            <Lightning size={16} weight="duotone" style={{ color: "var(--warning)" }} />
             <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>{t.technique_name}</span>
             {t.applicable_to_archetype && (
               <span

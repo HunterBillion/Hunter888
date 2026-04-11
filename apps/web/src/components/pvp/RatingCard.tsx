@@ -1,7 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { TrendingUp, TrendingDown, Minus, Swords, Flame, ChevronUp } from "lucide-react";
+import { Minus, ChevronUp } from "lucide-react";
+import { TrendUp, TrendDown, Sword, Flame } from "@phosphor-icons/react";
 import type { PvPRating, PvPRankTier } from "@/types";
 import { RankBadge } from "./RankBadge";
 
@@ -48,9 +49,9 @@ export function RatingCard({ rating: r }: Props) {
   const placementLeft = Math.max(0, 10 - r.placement_count);
   const nextTier = r.placement_done ? getNextTier(r.rating, r.rank_tier) : null;
   const streakIcon = r.current_streak > 0
-    ? <TrendingUp size={14} style={{ color: "var(--success)" }} />
+    ? <TrendUp weight="duotone" size={14} style={{ color: "var(--success)" }} />
     : r.current_streak < 0
-    ? <TrendingDown size={14} style={{ color: "var(--danger)" }} />
+    ? <TrendDown weight="duotone" size={14} style={{ color: "var(--danger)" }} />
     : <Minus size={14} style={{ color: "var(--text-muted)" }} />;
 
   return (
@@ -150,11 +151,11 @@ export function RatingCard({ rating: r }: Props) {
       {/* Peak info */}
       <div className="flex items-center justify-between border-t px-6 py-4 font-mono text-xs" style={{ color: "var(--text-muted)", borderColor: "rgba(255,255,255,0.06)" }}>
         <span className="flex items-center gap-1">
-          <Flame size={13} style={{ color: "var(--streak-color)" }} />
+          <Flame weight="duotone" size={13} style={{ color: "var(--streak-color)" }} />
           Лучший streak: {r.best_streak}
         </span>
         <span className="flex items-center gap-1">
-          <Swords size={13} />
+          <Sword weight="duotone" size={13} />
           Всего дуэлей: {r.total_duels}
         </span>
         <span>Пик: {Math.round(r.peak_rating)}</span>

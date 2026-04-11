@@ -57,7 +57,7 @@ export function PreCallBriefOverlay({ brief, onStart }: Props) {
           </div>
 
           {/* Active Human Factors */}
-          {brief.active_factors.length > 0 && (
+          {(brief.active_factors || []).length > 0 && (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
                 АКТИВНЫЕ ФАКТОРЫ КЛИЕНТА
@@ -67,7 +67,7 @@ export function PreCallBriefOverlay({ brief, onStart }: Props) {
           )}
 
           {/* Previous Consequences */}
-          {brief.previous_consequences.length > 0 && (
+          {(brief.previous_consequences || []).length > 0 && (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5" style={{ color: "var(--warning)" }}>
                 <AlertTriangle size={12} /> ПОСЛЕДСТВИЯ ПРОШЛЫХ ЗВОНКОВ

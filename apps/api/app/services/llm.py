@@ -1702,7 +1702,16 @@ async def generate_response(
     _budget_mgr = get_context_budget_manager()
     _use_lorebook = False  # Will be set True if lorebook path succeeds
 
-    if character_prompt_path and settings.use_lorebook:
+    # A/B test: lorebook enabled for 50% of sessions (by user_id hash)
+    _lorebook_ab_enabled = settings.use_lorebook
+    if not _lorebook_ab_enabled and user_id:
+        # If use_lorebook=False but A/B test active: enable for ~50% based on user_id
+        _uid_hash = hash(str(user_id)) % 100
+        _lorebook_ab_enabled = _uid_hash < 50  # 50% get lorebook
+        if _lorebook_ab_enabled:
+            logger.info("LOREBOOK A/B: enabled for user %s (hash=%d)", user_id, _uid_hash)
+
+    if character_prompt_path and _lorebook_ab_enabled:
         # ── LOREBOOK PATH: dynamic context from DB ──
         _arch_slug = character_prompt_path.replace("characters/", "").split("_")[0].split(".")[0]
         logger.info("LOREBOOK attempt: path=%s → slug=%s", character_prompt_path, _arch_slug)
@@ -1904,3 +1913,203 @@ async def generate_response(
     response = _scripted_response(emotion_state, trimmed)
     _log_token_usage(response, user_id)
     return response
+
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║ STREAMING LLM (Phase 1 — text-level streaming)                           ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+
+from typing import AsyncGenerator
+
+
+async def _stream_ollama(
+    system_prompt: str,
+    messages: list[dict],
+    timeout: float,
+) -> AsyncGenerator[str, None]:
+    """Stream tokens from Ollama native API."""
+    if not settings.local_llm_enabled or not settings.local_llm_url:
+        raise LLMError("Local LLM not enabled")
+
+    ollama_base = settings.local_llm_url.replace("/v1", "").rstrip("/")
+    ollama_url = f"{ollama_base}/api/chat"
+
+    ollama_messages = [{"role": "system", "content": system_prompt}]
+    for msg in messages:
+        ollama_messages.append({"role": msg["role"], "content": msg["content"]})
+
+    payload = {
+        "model": settings.local_llm_model,
+        "messages": ollama_messages,
+        "stream": True,
+        "think": False,
+        "options": {
+            "num_predict": 800,
+            "temperature": 1.05,
+        },
+    }
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout, connect=5.0)
+        ) as client:
+            async with client.stream("POST", ollama_url, json=payload) as resp:
+                if resp.status_code != 200:
+                    raise LLMError(f"Ollama stream HTTP {resp.status_code}")
+                async for line in resp.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                        token = chunk.get("message", {}).get("content", "")
+                        if token:
+                            yield token
+                        if chunk.get("done"):
+                            break
+                    except json.JSONDecodeError:
+                        continue
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        raise LLMError("Local LLM not reachable for streaming")
+    except httpx.ReadTimeout:
+        raise LLMError("Local LLM stream timeout")
+
+
+async def _stream_gemini(
+    system_prompt: str,
+    messages: list[dict],
+    timeout: float,
+) -> AsyncGenerator[str, None]:
+    """Stream tokens from Gemini API via SSE."""
+    client = _get_gemini_client()
+    if client is None:
+        raise LLMError("Gemini API key not configured")
+
+    model = settings.gemini_model
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/"
+        f"models/{model}:streamGenerateContent?alt=sse"
+    )
+
+    contents = []
+    for msg in messages:
+        role = "user" if msg["role"] == "user" else "model"
+        contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+
+    payload = {
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": contents,
+        "generationConfig": {"maxOutputTokens": 1200, "temperature": 1.05},
+        "safetySettings": [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        ],
+    }
+
+    try:
+        async with client.stream(
+            "POST", url, json=payload,
+            headers={"x-goog-api-key": settings.gemini_api_key},
+        ) as resp:
+            if resp.status_code != 200:
+                raise LLMError(f"Gemini stream HTTP {resp.status_code}")
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    chunk = json.loads(line[6:])
+                    parts = (
+                        chunk.get("candidates", [{}])[0]
+                        .get("content", {})
+                        .get("parts", [])
+                    )
+                    for part in parts:
+                        token = part.get("text", "")
+                        if token:
+                            yield token
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    continue
+    except httpx.TimeoutException:
+        raise LLMError("Gemini stream timeout")
+
+
+async def generate_response_stream(
+    system_prompt: str,
+    messages: list[dict],
+    emotion_state: str = "cold",
+    character_prompt_path: str | None = None,
+    user_id: str | None = None,
+    scenario_prompt: str = "",
+    prefer_provider: str = "auto",
+    task_type: str = "default",
+) -> AsyncGenerator[str, None]:
+    """Stream LLM response token-by-token. Falls back to blocking if streaming fails.
+
+    Uses the same provider resolution, system prompt building, and semaphore
+    logic as generate_response(), but yields tokens as they arrive.
+    """
+    from app.services.lorebook import build_lorebook_system_prompt
+
+    # Build system prompt (same logic as generate_response, including A/B test)
+    full_system = system_prompt
+    _lorebook_ab_stream = settings.use_lorebook
+    if not _lorebook_ab_stream and user_id:
+        _uid_hash = hash(str(user_id)) % 100
+        _lorebook_ab_stream = _uid_hash < 50
+    if character_prompt_path and _lorebook_ab_stream:
+        try:
+            lorebook_prompt = await build_lorebook_system_prompt(
+                character_prompt_path, messages, emotion_state,
+            )
+            if lorebook_prompt:
+                full_system = lorebook_prompt + "\n\n" + system_prompt
+        except Exception:
+            pass
+
+    if scenario_prompt:
+        full_system = full_system + "\n\n" + scenario_prompt
+
+    # Constitution injection for quality-critical tasks
+    if task_type in ("judge", "coach", "report", "structured"):
+        constitution = _get_constitution()
+        if constitution:
+            full_system = full_system + "\n\n" + constitution
+
+    # Provider resolution
+    resolved = _resolve_provider(task_type, prefer_provider, full_system)
+    trimmed = _trim_history(messages)
+
+    semaphore = _get_llm_semaphore(task_type)
+    async with semaphore:
+        # Try streaming providers
+        try:
+            if resolved == "local" and settings.local_llm_enabled:
+                async for token in _stream_ollama(full_system, trimmed, 60.0):
+                    yield token
+                return
+        except LLMError:
+            logger.debug("Ollama streaming failed, trying Gemini")
+
+        try:
+            if settings.gemini_api_key:
+                async for token in _stream_gemini(full_system, trimmed, 30.0):
+                    yield token
+                return
+        except LLMError:
+            logger.debug("Gemini streaming failed, falling back to blocking")
+
+    # Fallback: blocking call → yield full response at once
+    logger.warning("Streaming unavailable, falling back to blocking generate_response")
+    response = await generate_response(
+        system_prompt=system_prompt,
+        messages=messages,
+        emotion_state=emotion_state,
+        character_prompt_path=character_prompt_path,
+        user_id=user_id,
+        scenario_prompt=scenario_prompt,
+        prefer_provider=prefer_provider,
+        task_type=task_type,
+    )
+    if response and response.content:
+        yield response.content

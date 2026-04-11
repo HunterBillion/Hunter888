@@ -64,8 +64,8 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 const QUALITY_CONFIG = {
-  good: { color: "var(--success, #00FF94)", icon: CheckCircle2, label: "Хорошо" },
-  weak: { color: "var(--warning, #F59E0B)", icon: AlertTriangle, label: "Слабо" },
+  good: { color: "var(--success)", icon: CheckCircle2, label: "Хорошо" },
+  weak: { color: "var(--warning)", icon: AlertTriangle, label: "Слабо" },
   skipped: { color: "var(--danger)", icon: XCircle, label: "Пропущен" },
 };
 
@@ -217,7 +217,7 @@ export default function AICoachSection({ sessionId, coachData, difficulty }: AIC
                       </div>
                       {/* Better response */}
                       <div className="px-4 py-2.5" style={{ background: "rgba(61,220,132,0.04)" }}>
-                        <span className="text-xs font-mono uppercase" style={{ color: "var(--success, #00FF94)" }}>
+                        <span className="text-xs font-mono uppercase" style={{ color: "var(--success)" }}>
                           Лучше сказать:
                         </span>
                         <p className="text-xs mt-0.5" style={{ color: "var(--text-primary)" }}>

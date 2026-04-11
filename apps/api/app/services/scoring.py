@@ -1146,7 +1146,10 @@ async def calculate_realtime_scores(
 ) -> dict:
     """Calculate real-time scores (L1-L8) for WS hints during active session.
 
-    Returns a dict suitable for WS emission, not full ScoreBreakdown.
+    Phase 2 (B9): All 8 real-time layers calculated and sent.
+    L9 (narrative) and L10 (legal) are post-session only.
+
+    Returns a dict suitable for WS emission.
     """
     if isinstance(session_id, str):
         session_id = uuid.UUID(session_id)
@@ -1169,27 +1172,78 @@ async def calculate_realtime_scores(
     assistant_messages = [m.content for m in messages if m.role == MessageRole.assistant]
     emotion_timeline = session.emotion_timeline or []
 
-    # L2: Objection handling
+    # L1: Script adherence (0-22.5)
+    l1_score = 0.0
+    try:
+        scenario_result = await db.execute(
+            select(Scenario).where(Scenario.id == session.scenario_id)
+        )
+        scenario = scenario_result.scalar_one_or_none()
+        if scenario and scenario.script_id:
+            from app.services.script_checker import get_session_checkpoint_progress
+            message_history = [{"role": m.role.value, "content": m.content} for m in messages]
+            progress = await get_session_checkpoint_progress(scenario.script_id, message_history)
+            l1_score = progress["total_score"] * 0.225
+    except Exception:
+        pass
+
+    # L2: Objection handling (0-18.75)
     l2_score, _ = _score_objection_handling(user_messages, assistant_messages)
 
-    # L3: Communication
+    # L3: Communication (0-15)
     l3_score, _ = _score_communication(user_messages)
 
-    # L8: Human Factor
+    # L4: Anti-patterns (0 to -11.25 penalty)
+    l4_penalty = 0.0
+    try:
+        l4_penalty, _ = await _score_anti_patterns(user_messages)
+    except Exception:
+        pass
+
+    # L5: Result (0-7.5)
+    l5_score, _ = _score_result(assistant_messages, emotion_timeline)
+
+    # L6: Chain traversal (0-7.5)
+    l6_score = 0.0
+    try:
+        from app.services.objection_chain import calculate_chain_score
+        chain_data = await calculate_chain_score(session_id)
+        l6_score = float(chain_data.get("chain_score", 0)) * V3_RESCALE
+    except Exception:
+        pass
+
+    # L7: Trap handling (-7.5 to +7.5)
+    l7_score = 0.0
+    try:
+        from app.services.trap_detector import get_session_trap_state
+        trap_state = await get_session_trap_state(session_id)
+        l7_score = float(trap_state.net_score) * V3_RESCALE
+    except Exception:
+        pass
+
+    # L8: Human Factor (0-15)
     l8_score, _ = _score_human_factor(
         user_messages, assistant_messages, emotion_timeline,
         session.custom_params,
     )
 
-    # Simplified real-time total (L2 + L3 + L8 as main indicators)
-    realtime_est = l2_score + l3_score + l8_score
+    # Total (L1-L8, excluding L9/L10 which are post-session)
+    realtime_total = l1_score + l2_score + l3_score + l4_penalty + l5_score + l6_score + l7_score + l8_score
+    max_possible = 22.5 + 18.75 + 15 + 0 + 7.5 + 7.5 + 7.5 + 15  # 93.75 (L4 is penalty only)
 
     return {
+        "script_adherence": round(l1_score, 1),
         "objection_handling": round(l2_score, 1),
         "communication": round(l3_score, 1),
+        "anti_patterns": round(l4_penalty, 1),
+        "result": round(l5_score, 1),
+        "chain_traversal": round(l6_score, 1),
+        "trap_handling": round(l7_score, 1),
         "human_factor": round(l8_score, 1),
-        "realtime_estimate": round(realtime_est, 1),
-        "max_possible_realtime": round(18.75 + 15 + 15, 1),  # 48.75
+        "realtime_estimate": round(max(0, realtime_total), 1),
+        "max_possible_realtime": round(max_possible, 1),
+        "layers_count": 8,
+        "note": "L9 (narrative) and L10 (legal) calculated after session end",
     }
 
 

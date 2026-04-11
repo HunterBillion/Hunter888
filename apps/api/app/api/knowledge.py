@@ -190,6 +190,19 @@ async def create_session(
             detail="PvP mode requires max_players >= 2.",
         )
 
+    # Auto-close any stale active/waiting sessions for this user to prevent IntegrityError
+    stale_stmt = (
+        select(KnowledgeQuizSession)
+        .where(
+            KnowledgeQuizSession.user_id == user.id,
+            KnowledgeQuizSession.status.in_([QuizSessionStatus.active, QuizSessionStatus.waiting]),
+        )
+    )
+    stale_result = await db.execute(stale_stmt)
+    for stale in stale_result.scalars().all():
+        stale.status = QuizSessionStatus.abandoned
+        stale.ended_at = func.now()
+
     session = KnowledgeQuizSession(
         user_id=user.id,
         mode=mode,
@@ -200,6 +213,7 @@ async def create_session(
         status=QuizSessionStatus.waiting if mode == QuizMode.pvp else QuizSessionStatus.active,
     )
     db.add(session)
+    await db.flush()  # populate session.id before creating participant FK
 
     # Add creator as first participant
     participant = QuizParticipant(

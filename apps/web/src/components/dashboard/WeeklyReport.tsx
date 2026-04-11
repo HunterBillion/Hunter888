@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Calendar, TrendingUp, TrendingDown, Minus, Award, Loader2, BookOpen } from "lucide-react";
+import { Minus, Loader2 } from "lucide-react";
+import { Calendar, TrendUp, TrendDown, Medal, BookOpen } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
 
@@ -40,7 +41,7 @@ function TrendBadge({ trend }: { trend: string | null }) {
     return (
       <span className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold"
         style={{ background: "rgba(34, 197, 94, 0.1)", color: "var(--success)" }}>
-        <TrendingUp size={10} /> Рост
+        <TrendUp size={10} weight="duotone" /> Рост
       </span>
     );
   }
@@ -48,7 +49,7 @@ function TrendBadge({ trend }: { trend: string | null }) {
     return (
       <span className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold"
         style={{ background: "rgba(239, 68, 68, 0.1)", color: "var(--danger)" }}>
-        <TrendingDown size={10} /> Спад
+        <TrendDown size={10} weight="duotone" /> Спад
       </span>
     );
   }
@@ -82,7 +83,7 @@ export function WeeklyReport() {
   if (!data || data.message) {
     return (
       <div className="rounded-xl p-4 text-center" style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)" }}>
-        <BookOpen size={24} style={{ color: "var(--text-muted)", margin: "0 auto 8px" }} />
+        <BookOpen size={24} weight="duotone" style={{ color: "var(--text-muted)", margin: "0 auto 8px" }} />
         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
           {data?.message || "Нет отчётов. Первый отчёт будет сгенерирован в понедельник."}
         </p>
@@ -100,7 +101,7 @@ export function WeeklyReport() {
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Calendar size={16} style={{ color: "var(--accent)" }} />
+          <Calendar size={16} weight="duotone" style={{ color: "var(--accent)" }} />
           <h3 className="font-display text-sm font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
             НЕДЕЛЬНЫЙ ОТЧЁТ
           </h3>
@@ -180,7 +181,7 @@ export function WeeklyReport() {
             <ul className="space-y-1">
               {data.recommendations.map((rec, i) => (
                 <li key={i} className="text-xs flex items-start gap-1" style={{ color: "var(--text-secondary)" }}>
-                  <Award size={10} className="mt-0.5 flex-shrink-0" style={{ color: "var(--accent)" }} />
+                  <Medal size={10} weight="duotone" className="mt-0.5 flex-shrink-0" style={{ color: "var(--accent)" }} />
                   {rec}
                 </li>
               ))}

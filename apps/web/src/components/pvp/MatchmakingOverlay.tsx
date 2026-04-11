@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Search, Swords, Loader2, X, Shield, Zap } from "lucide-react";
+import { Search, Loader2, X } from "lucide-react";
+import { Sword, Shield, Lightning } from "@phosphor-icons/react";
+import { Button } from "@/components/ui/Button";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 interface Props {
@@ -175,20 +177,16 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
                 exit={{ opacity: 0, y: -8 }}
                 className="flex items-start gap-2 max-w-xs"
               >
-                <Zap size={12} className="mt-0.5 shrink-0" style={{ color: "var(--accent)" }} />
+                <Lightning weight="duotone" size={12} className="mt-0.5 shrink-0" style={{ color: "var(--accent)" }} />
                 <p className="text-xs leading-relaxed text-left" style={{ color: "var(--text-muted)" }}>
                   {TIPS[tipIndex]}
                 </p>
               </motion.div>
             </div>
 
-            <motion.button
-              onClick={onCancel}
-              className="mt-5 btn-neon flex items-center gap-2 mx-auto text-sm"
-              whileTap={{ scale: 0.97 }}
-            >
-              <X size={14} /> Отмена
-            </motion.button>
+            <Button variant="ghost" onClick={onCancel} icon={<X size={14} />} className="mt-5 mx-auto">
+              Отмена
+            </Button>
           </>
         ) : (
           /* ── Match Found: VS Screen ── */
@@ -214,7 +212,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
                 boxShadow: "0 0 30px rgba(61,220,132,0.15)",
               }}
             >
-              <Swords size={36} style={{ color: "var(--success)" }} />
+              <Sword weight="duotone" size={36} style={{ color: "var(--success)" }} />
             </motion.div>
 
             <motion.h2
@@ -240,7 +238,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
                 <div className="w-14 h-14 rounded-xl mx-auto flex items-center justify-center"
                   style={{ background: "rgba(124,106,232,0.15)", border: "1px solid rgba(124,106,232,0.3)" }}
                 >
-                  <Shield size={24} style={{ color: "var(--accent)" }} />
+                  <Shield weight="duotone" size={24} style={{ color: "var(--accent)" }} />
                 </div>
                 <p className="mt-2 text-xs font-mono font-bold" style={{ color: "var(--text-primary)" }}>ВЫ</p>
               </div>
@@ -262,7 +260,7 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
                   style={{ background: "rgba(229,72,77,0.1)", border: "1px solid rgba(229,72,77,0.25)" }}
                 >
                   {opponentRating ? (
-                    <Shield size={24} style={{ color: "var(--danger)" }} />
+                    <Shield weight="duotone" size={24} style={{ color: "var(--danger)" }} />
                   ) : (
                     <span className="text-2xl">&#x1F916;</span>
                   )}

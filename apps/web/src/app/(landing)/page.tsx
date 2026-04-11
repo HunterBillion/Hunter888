@@ -291,7 +291,7 @@ export default function Home() {
                   <div className="font-display font-black leading-none" style={{ fontSize: "clamp(1.6rem, 6vw, 2.5rem)", color: "var(--accent)" }}>
                     <CountUp target={target} suffix={suffix} />
                   </div>
-                  <div className="font-display font-medium tracking-wide mt-1.5 uppercase" style={{ fontSize: "clamp(11px, 2vw, 14px)", color: "var(--text-muted)" }}>{label}</div>
+                  <div className="font-display font-semibold tracking-wide mt-1.5 uppercase" style={{ fontSize: "clamp(13px, 2.2vw, 15px)", color: "var(--text-primary)", opacity: 0.75 }}>{label}</div>
                 </div>
               </div>
             ))}
@@ -299,10 +299,16 @@ export default function Home() {
 
           {/* CTA in Hero */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.72 }} className="mb-5">
+            <style>{`
+              @keyframes pulse-glow {
+                0%, 100% { box-shadow: 0 0 8px rgba(124,106,232,0.3), 0 0 24px rgba(124,106,232,0.1); }
+                50% { box-shadow: 0 0 16px rgba(124,106,232,0.5), 0 0 40px rgba(124,106,232,0.25); }
+              }
+            `}</style>
             <button
               onClick={openRegister}
               className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl text-base font-bold transition-transform hover:scale-[1.02] active:scale-[0.98]"
-              style={{ background: "var(--accent)", color: "white" }}
+              style={{ background: "var(--accent)", color: "white", animation: "pulse-glow 2s ease-in-out infinite" }}
             >
               Начать бесплатно <ArrowRight size={18} />
             </button>
@@ -481,6 +487,79 @@ export default function Home() {
                 </div>
               </div>
             </motion.div>
+          </div>
+
+          {/* ═══ TESTIMONIALS ═══════════════════════════════════════ */}
+          <div className="mt-16">
+            <motion.p
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              className="text-sm font-medium mb-3"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Отзывы
+            </motion.p>
+            <motion.h2
+              initial={{ opacity: 0, y: 12 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="font-display font-black tracking-tight mb-10"
+              style={{ fontSize: "clamp(1.4rem, 3vw, 2rem)", color: "var(--text-primary)" }}
+            >
+              Что говорят клиенты
+            </motion.h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[
+                {
+                  name: "Алексей М.",
+                  role: "Руководитель ОП",
+                  company: "ФинТраст",
+                  text: "За 2 месяца средний балл команды вырос с 54 до 78. Менеджеры сами просят доступ к тренажёру — раньше от обучения бегали.",
+                  initials: "АМ",
+                },
+                {
+                  name: "Дарья К.",
+                  role: "Менеджер по продажам",
+                  company: "КредитПро",
+                  text: "Наконец-то тренировка, где клиент ведёт себя как настоящий. Первый раз я проиграла — и это было полезнее любого тренинга.",
+                  initials: "ДК",
+                },
+                {
+                  name: "Игорь С.",
+                  role: "Директор по развитию",
+                  company: "ДолгофСервис",
+                  text: "Подключили 12 менеджеров. Конверсия из первого звонка выросла на 23% за квартал. ROI окупился за первый месяц.",
+                  initials: "ИС",
+                },
+              ].map((t, i) => (
+                <motion.div
+                  key={t.name}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1 }}
+                  className="rounded-xl p-6 flex flex-col"
+                  style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}
+                >
+                  <p className="text-sm leading-relaxed flex-1 mb-5" style={{ color: "var(--text-secondary)" }}>
+                    &laquo;{t.text}&raquo;
+                  </p>
+                  <div className="flex items-center gap-3 pt-4" style={{ borderTop: "1px solid var(--border-color)" }}>
+                    <div
+                      className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                      style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+                    >
+                      <span className="text-xs font-black">{t.initials}</span>
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{t.name}</div>
+                      <div className="text-xs" style={{ color: "var(--text-muted)" }}>{t.role}, {t.company}</div>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
           </div>
 
           {/* Pre-footer CTA */}

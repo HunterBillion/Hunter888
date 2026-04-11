@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 import { motion } from "framer-motion";
-import { Trophy, Swords, Clock, Check, Minus, Shield, Medal } from "lucide-react";
+import { Check, Minus } from "lucide-react";
+import { Trophy, Sword, Clock, Shield, Medal } from "@phosphor-icons/react";
 import type { BracketData, BracketMatchData } from "@/stores/useTournamentStore";
 
 function getRoundLabel(roundNum: number, totalRounds: number): string {
@@ -55,11 +56,11 @@ function MatchCard({
           </span>
         ) : isActive ? (
           <span className="status-badge status-badge--warning">
-            <Swords size={8} /> ИДЁТ БОЙ
+            <Sword weight="duotone" size={8} /> ИДЁТ БОЙ
           </span>
         ) : (
           <span className="status-badge status-badge--neutral">
-            <Clock size={8} /> ОЖИДАНИЕ
+            <Clock weight="duotone" size={8} /> ОЖИДАНИЕ
           </span>
         )}
       </div>
@@ -88,7 +89,7 @@ function PlayerRow({
         background: isWinner ? "rgba(61,220,132,0.07)" : "transparent",
       }}
     >
-      {isWinner && <Trophy size={13} style={{ color: "var(--success)" }} className="shrink-0" />}
+      {isWinner && <Trophy weight="duotone" size={13} style={{ color: "var(--success)" }} className="shrink-0" />}
       {!isWinner && isCompleted && <Minus size={13} style={{ color: "var(--text-muted)" }} className="shrink-0" />}
       <span
         className="text-xs font-mono truncate flex-1"
@@ -124,7 +125,7 @@ export function BracketView({ bracket }: Props) {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center gap-2">
-        <Shield size={16} style={{ color: "var(--accent)" }} />
+        <Shield weight="duotone" size={16} style={{ color: "var(--accent)" }} />
         <span className="badge-neon">
           СЕТКА ТУРНИРА
         </span>
@@ -181,7 +182,7 @@ export function BracketView({ bracket }: Props) {
           className="glow-card"
         >
           <div className="glow-card-inner rounded-xl p-6 text-center">
-            <Trophy size={32} className="mx-auto mb-2 neon-pulse" style={{ color: "var(--warning)" }} />
+            <Trophy weight="duotone" size={32} className="mx-auto mb-2 neon-pulse" style={{ color: "var(--warning)" }} />
             <div className="font-display text-xl font-bold" style={{ color: "var(--warning)" }}>
               {bracket.participants.find((p) => p.final_placement === 1)?.full_name}
             </div>
@@ -195,7 +196,7 @@ export function BracketView({ bracket }: Props) {
       {/* Participants list */}
       <div className="glass-panel rounded-xl p-4">
         <div className="text-xs font-mono tracking-wider mb-3 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
-          <Swords size={13} style={{ color: "var(--accent)" }} />
+          <Sword weight="duotone" size={13} style={{ color: "var(--accent)" }} />
           УЧАСТНИКИ ({bracket.participants.length})
         </div>
         <div className="grid grid-cols-2 gap-1.5">
@@ -235,7 +236,7 @@ export function BracketView({ bracket }: Props) {
                 </span>
                 {isPodium && (
                   <span className="text-xs">
-                    <Medal size={14} />
+                    <Medal weight="duotone" size={14} />
                   </span>
                 )}
                 {p.eliminated_at_round && !isPodium && (

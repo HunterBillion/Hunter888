@@ -43,6 +43,25 @@ async def seed():
         # Auto-accept required consents for all seed users so training works immediately.
         await _seed_consents(db)
 
+        # ── PvE Bot sentinel user ─────────────────────────────────────
+        # PvP Arena creates PvE duels with player2_id = BOT_ID.
+        # The FK on pvp_duels.player2_id → users.id requires this row.
+        _BOT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+        bot_exists = await db.execute(
+            text("SELECT 1 FROM users WHERE id = :bid"), {"bid": _BOT_ID}
+        )
+        if not bot_exists.scalar():
+            bot_user = User(
+                id=_BOT_ID,
+                email="bot@system.local",
+                hashed_password=hash_password("!disabled-bot-account!"),
+                full_name="AI Бот",
+                role=UserRole.manager,
+                is_active=False,  # Cannot log in
+            )
+            db.add(bot_user)
+            print("  ✓ PvE bot user created (00..001)")
+
         # Commit users+teams+consents early so they survive if later steps fail
         await db.commit()
         print("  ✓ Users, teams, and consents committed.")

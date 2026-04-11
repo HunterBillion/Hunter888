@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Lock, ArrowLeft, Search } from "lucide-react";
+import { Lock, Search } from "lucide-react";
 import Link from "next/link";
+import { BackButton } from "@/components/ui/BackButton";
 import AuthLayout from "@/components/layout/AuthLayout";
 import {
   ARCHETYPES,
@@ -13,7 +14,7 @@ import {
 } from "@/lib/archetypes";
 import type { ArchetypeInfo, ArchetypeGroupInfo } from "@/lib/archetypes";
 import { ArchetypeCard } from "@/components/training/ArchetypeCard";
-import { AppIcon } from "@/components/ui/AppIcon";
+import { GROUP_ICONS } from "@/lib/groupIcons";
 import type { ArchetypeGroup } from "@/types";
 import { useGamificationStore } from "@/stores/useGamificationStore";
 
@@ -68,13 +69,7 @@ export default function ArchetypesPage() {
         <div className="app-page">
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <Link
-              href="/training"
-              className="inline-flex items-center gap-1.5 text-sm font-medium mb-4"
-              style={{ color: "var(--text-muted)" }}
-            >
-              <ArrowLeft size={14} /> Тренировки
-            </Link>
+            <BackButton href="/training" label="Тренировки" />
 
             <div className="flex items-start justify-between flex-wrap gap-4">
               <div>
@@ -135,7 +130,7 @@ export default function ArchetypesPage() {
                     border: `1px solid ${active ? `${g.color}50` : "var(--border-color)"}`,
                   }}
                 >
-                  <AppIcon emoji={g.icon} size={14} /> {g.label} ({count})
+                  {(() => { const I = GROUP_ICONS[g.icon]; return I ? <I size={14} weight="duotone" style={{ color: active ? g.color : "var(--text-muted)" }} /> : null; })()} {g.label} ({count})
                 </button>
               );
             })}

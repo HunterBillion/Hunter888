@@ -35,9 +35,12 @@ function buildCsp(nonce: string): string {
 
   // Development: unsafe-eval is required for Next.js Fast Refresh / HMR.
   // Production: strict nonce — no unsafe-inline, no unsafe-eval.
+  // next-themes injects an inline script to prevent FOUC (flash of wrong theme).
+  // Its hash must be whitelisted alongside the nonce for other scripts.
+  const nextThemesHash = "'sha256-osMMQj3FsFuFoINhDY6u/ERO7gP52tI8DTruJmDXHD8='";
   const scriptSrc = isDev
     ? `script-src 'self' 'unsafe-inline' 'unsafe-eval'`
-    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`;
+    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${nextThemesHash}`;
 
   // Tailwind injects styles at runtime — unsafe-inline is required.
   const styleSrc = "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com";

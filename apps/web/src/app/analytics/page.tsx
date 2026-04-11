@@ -69,9 +69,9 @@ const SKILL_COLORS: Record<string, string> = {
 const MASTERY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   untrained: { label: "Не тренирован", color: "var(--text-muted)", bg: "var(--input-bg)" },
   beginner: { label: "Новичок", color: "var(--info)", bg: "rgba(59,130,246,0.12)" },
-  intermediate: { label: "Средний", color: "#FFD700", bg: "rgba(212,168,75,0.12)" },
-  advanced: { label: "Продвинутый", color: "#BF55EC", bg: "rgba(191,85,236,0.12)" },
-  mastered: { label: "Мастер", color: "#00FF94", bg: "rgba(61,220,132,0.12)" },
+  intermediate: { label: "Средний", color: "var(--gf-xp)", bg: "var(--gf-xp-muted)" },
+  advanced: { label: "Продвинутый", color: "var(--accent)", bg: "var(--accent-muted)" },
+  mastered: { label: "Мастер", color: "var(--success)", bg: "var(--gf-reward-muted)" },
 };
 
 const SUB_SKILL_LABELS: Record<string, string> = {
@@ -345,7 +345,7 @@ export default function AnalyticsPage() {
 
               {weak_spots.length === 0 ? (
                 <div className="flex flex-col items-center py-8">
-                  <Crown size={28} style={{ color: "#00FF94" }} />
+                  <Crown size={28} style={{ color: "var(--success)" }} />
                   <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
                     Слабых мест не обнаружено!
                   </p>

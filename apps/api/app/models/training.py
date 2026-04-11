@@ -94,6 +94,11 @@ class TrainingSession(Base):
     # Custom character builder params (from Конструктор)
     custom_params: Mapped[dict | None] = mapped_column(NormalizedJSONB)
 
+    # Phase 2: Link to real CRM client (for "потренируйся на клиенте X")
+    real_client_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("real_clients.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

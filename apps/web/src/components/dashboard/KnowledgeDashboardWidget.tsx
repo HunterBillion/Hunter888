@@ -3,18 +3,20 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
-  BookOpen,
-  Swords,
-  TrendingUp,
-  AlertTriangle,
-  Lightbulb,
   Loader2,
   ArrowRight,
+  CheckCircle2,
+} from "lucide-react";
+import {
+  BookOpen,
+  Sword,
+  TrendUp,
+  Warning,
+  Lightbulb,
   Brain,
   Clock,
-  CheckCircle2,
   Flame,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
@@ -177,7 +179,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <BookOpen size={16} style={{ color: "var(--accent)" }} />
+          <BookOpen size={16} weight="duotone" style={{ color: "var(--accent)" }} />
           <h3
             className="text-xs font-semibold uppercase tracking-wide"
             style={{ color: "var(--accent)" }}
@@ -252,7 +254,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
               className="flex items-center gap-3 mb-4 p-2 rounded"
               style={{ background: "var(--bg-secondary)" }}
             >
-              <Swords size={14} style={{ color: rankColor }} />
+              <Sword size={14} weight="duotone" style={{ color: rankColor }} />
               <span className="text-xs font-mono" style={{ color: rankColor }}>
                 {Math.round(pvp.rating)} ELO
               </span>
@@ -264,7 +266,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
               </span>
               {pvp.current_streak > 0 && (
                 <span className="text-xs" style={{ color: "var(--gf-streak)" }}>
-                  <Flame size={14} className="inline" /> {pvp.current_streak}
+                  <Flame size={14} weight="duotone" className="inline" /> {pvp.current_streak}
                 </span>
               )}
             </div>
@@ -276,7 +278,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
               className="flex items-center gap-3 mb-4 p-2.5 rounded-lg"
               style={{ background: "var(--bg-secondary)", border: "1px solid var(--glass-border)" }}
             >
-              <Brain size={14} style={{ color: "var(--accent)" }} />
+              <Brain size={14} weight="duotone" style={{ color: "var(--accent)" }} />
               <div className="flex-1 grid grid-cols-3 gap-2">
                 <div className="text-center">
                   <div className="text-xs font-mono font-bold" style={{ color: srs.overdue > 0 ? "var(--danger)" : "var(--success)" }}>
@@ -300,7 +302,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
               {srs.overdue > 0 && (
                 <Link href="/knowledge">
                   <span className="status-badge status-badge--danger" style={{ fontSize: "12px", cursor: "pointer" }}>
-                    <Clock size={8} /> {srs.overdue} просрочено
+                    <Clock size={8} weight="duotone" /> {srs.overdue} просрочено
                   </span>
                 </Link>
               )}
@@ -310,8 +312,9 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
           {/* Weak areas warning */}
           {data.weak_areas.length > 0 && (
             <div className="flex items-start gap-2 mb-3">
-              <AlertTriangle
+              <Warning
                 size={12}
+                weight="duotone"
                 className="mt-0.5 flex-shrink-0"
                 style={{ color: "var(--warning)" }}
               />
@@ -345,6 +348,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
                 <div key={i} className="flex items-start gap-2">
                   <Lightbulb
                     size={11}
+                    weight="duotone"
                     className="mt-0.5 flex-shrink-0"
                     style={{ color: PRIORITY_COLORS[rec.priority] || "var(--accent)" }}
                   />
@@ -361,6 +365,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
         <div className="text-center py-4">
           <BookOpen
             size={24}
+            weight="duotone"
             className="mx-auto mb-2"
             style={{ color: "var(--text-muted)", opacity: 0.5 }}
           />

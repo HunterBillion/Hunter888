@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, XCircle, Shield, ChevronDown, BookOpen, Scale } from "lucide-react";
+import { CheckCircle2, XCircle, ChevronDown } from "lucide-react";
+import { Shield, BookOpen, Scales } from "@phosphor-icons/react";
 import type { TrapResultItem } from "@/types";
 
 /** @deprecated Use TrapResultItem from @/types instead */
@@ -49,7 +50,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
       className="cyber-card rounded-2xl p-6"
     >
       <h3 className="font-display text-sm tracking-widest flex items-center gap-2 mb-4" style={{ color: "var(--text-primary)" }}>
-        <Shield size={16} style={{ color: "var(--accent)" }} />
+        <Shield size={16} weight="duotone" style={{ color: "var(--accent)" }} />
         ЛОВУШКИ
       </h3>
 
@@ -153,7 +154,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                       {trap.explanation && (
                         <div className="space-y-0.5">
                           <span className="text-xs font-mono tracking-wider flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
-                            <BookOpen size={9} /> ПОЯСНЕНИЕ
+                            <BookOpen size={9} weight="duotone" /> ПОЯСНЕНИЕ
                           </span>
                           <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                             {trap.explanation}
@@ -182,7 +183,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                       {/* Law reference */}
                       {trap.law_reference && (
                         <div className="flex items-start gap-1.5 pt-0.5">
-                          <Scale size={10} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
+                          <Scales size={10} weight="duotone" className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
                           <p className="text-xs font-mono" style={{ color: "var(--accent)" }}>
                             {trap.law_reference}
                           </p>

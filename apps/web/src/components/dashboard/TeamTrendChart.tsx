@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { TrendingUp, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { TrendUp } from "@phosphor-icons/react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -15,6 +16,7 @@ import {
 import { Line } from "react-chartjs-2";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { getChartTheme } from "@/lib/chartTheme";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
 
@@ -40,6 +42,8 @@ export function TeamTrendChart() {
       .finally(() => setLoading(false));
   }, [period]);
 
+  const theme = getChartTheme();
+
   const chartData = {
     labels: data.map((d) => {
       const date = new Date(d.week);
@@ -49,12 +53,14 @@ export function TeamTrendChart() {
       {
         label: "Средний балл",
         data: data.map((d) => d.avg_score),
-        borderColor: "var(--accent)",
-        backgroundColor: "rgba(139, 92, 246, 0.1)",
+        borderColor: theme.colors.line,
+        backgroundColor: theme.colors.fill,
         fill: true,
         tension: 0.4,
-        pointRadius: 3,
-        pointBackgroundColor: "var(--accent)",
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        pointBackgroundColor: theme.colors.line,
+        borderWidth: 3,
       },
     ],
   };
@@ -62,17 +68,19 @@ export function TeamTrendChart() {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
+    plugins: { legend: { display: false }, tooltip: theme.defaults.plugins.tooltip },
     scales: {
       x: {
-        grid: { color: "rgba(255,255,255,0.05)" },
-        ticks: { color: "rgba(255,255,255,0.4)", font: { size: 10 } },
+        grid: { color: theme.defaults.scales.x.grid.color },
+        ticks: { color: theme.colors.text, font: { size: 14 } },
+        border: { color: "transparent" },
       },
       y: {
         min: 0,
         max: 100,
-        grid: { color: "rgba(255,255,255,0.05)" },
-        ticks: { color: "rgba(255,255,255,0.4)", font: { size: 10 } },
+        grid: { color: theme.defaults.scales.y.grid.color },
+        ticks: { color: theme.colors.text, font: { size: 14 } },
+        border: { color: "transparent" },
       },
     },
   };
@@ -86,7 +94,7 @@ export function TeamTrendChart() {
     >
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <TrendingUp size={16} style={{ color: "var(--accent)" }} />
+          <TrendUp weight="duotone" size={18} style={{ color: "var(--accent)" }} />
           <span className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
             Тренд команды
           </span>
@@ -113,7 +121,7 @@ export function TeamTrendChart() {
           <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
         </div>
       ) : data.length > 0 ? (
-        <div style={{ height: 180 }}>
+        <div style={{ height: 200 }}>
           <Line data={chartData} options={options} />
         </div>
       ) : (

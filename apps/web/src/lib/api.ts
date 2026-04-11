@@ -57,7 +57,7 @@ async function _doRefresh(): Promise<boolean> {
     if (!res.ok) return false;
 
     const data = await res.json();
-    setTokens(data.access_token, data.refresh_token);
+    setTokens(data.access_token, data.refresh_token, data.csrf_token);
     try { useAuthStore.getState().invalidate(); } catch { /* store may not be mounted */ }
     return true;
   } catch {

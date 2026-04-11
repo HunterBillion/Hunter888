@@ -5,11 +5,11 @@ import { motion } from "framer-motion";
 import {
   ChevronRight,
   Edit3,
-  FileText,
   Loader2,
   Save,
   X,
 } from "lucide-react";
+import { FileText } from "@phosphor-icons/react";
 import Markdown from "react-markdown";
 import type { WikiPageItem, WikiPageContent } from "./types";
 import { formatDate } from "./utils";
@@ -85,7 +85,7 @@ export function PagesTab({
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-              <FileText size={16} style={{ color: "var(--warning)" }} />
+              <FileText size={16} weight="duotone" style={{ color: "var(--warning)" }} />
               <div>
                 <div style={{ fontWeight: 500 }}>{p.page_path}</div>
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>

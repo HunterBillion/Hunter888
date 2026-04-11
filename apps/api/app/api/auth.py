@@ -57,8 +57,15 @@ def _make_csrf_token() -> str:
 
 
 def _set_auth_cookies(response: JSONResponse, tokens: TokenResponse) -> JSONResponse:
-    """Set httpOnly cookies for access and refresh tokens + CSRF token cookie."""
+    """Set httpOnly cookies for access and refresh tokens + CSRF token cookie.
+
+    Also injects ``csrf_token`` into the JSON response body so the frontend can
+    set the cookie via ``document.cookie`` — cross-origin ``Set-Cookie`` headers
+    are silently dropped by browsers when port differs (localhost:3000 → :8000).
+    """
     is_prod = settings.app_env == "production"
+    csrf_value = _make_csrf_token()
+
     response.set_cookie(
         key="access_token",
         value=tokens.access_token,
@@ -91,13 +98,23 @@ def _set_auth_cookies(response: JSONResponse, tokens: TokenResponse) -> JSONResp
     # Validated by CSRFMiddleware on state-changing requests via X-CSRF-Token header.
     response.set_cookie(
         key="csrf_token",
-        value=_make_csrf_token(),
+        value=csrf_value,
         httponly=False,
         secure=is_prod,
         samesite="lax",
         max_age=settings.jwt_refresh_token_expire_days * 86400,
         path="/",
     )
+
+    # Inject csrf_token into response body so frontend can set it via document.cookie
+    # (cross-origin Set-Cookie is unreliable between localhost:3000 and :8000).
+    import json as _json
+    body = _json.loads(response.body)
+    body["csrf_token"] = csrf_value
+    response.body = _json.dumps(body).encode()
+    # Update Content-Length to match new body
+    response.headers["content-length"] = str(len(response.body))
+
     return response
 
 
@@ -707,6 +724,7 @@ async def _oauth_find_or_create(
         if user:
             setattr(user, f"{provider}_id", provider_id)
             db.add(user)
+            await db.flush()
 
     if not user:
         # 3) Create new user (OAuth users don't need password)
@@ -752,4 +770,5 @@ async def disconnect_oauth(
 
     setattr(user, f"{provider}_id", None)
     db.add(user)
+    await db.commit()
     return {"message": f"{provider.capitalize()} отвязан от аккаунта"}

@@ -100,7 +100,7 @@ export function ClientCardMini({ clientCard, isExpanded, onToggle }: ClientCardM
                   Долг: {fmt.format(clientCard.total_debt)} ₽
                 </div>
                 <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  Кредиторов: {clientCard.creditors.length} · Доход: {clientCard.income > 0 ? `${fmt.format(clientCard.income)} ₽` : "нет"}
+                  Кредиторов: {(clientCard.creditors || []).length} · Доход: {clientCard.income > 0 ? `${fmt.format(clientCard.income)} ₽` : "нет"}
                 </div>
               </div>
 
@@ -109,7 +109,7 @@ export function ClientCardMini({ clientCard, isExpanded, onToggle }: ClientCardM
                 <div className="text-xs font-semibold uppercase tracking-wide flex items-center gap-1" style={{ color: "var(--accent)" }}>
                   <Phone size={10} /> ИСТОРИЯ
                 </div>
-                {clientCard.call_history.length > 0 ? (
+                {(clientCard.call_history || []).length > 0 ? (
                   <div className="text-xs" style={{ color: "var(--text-secondary)" }}>
                     Последний: {clientCard.call_history[0].date}
                     <div className="mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>

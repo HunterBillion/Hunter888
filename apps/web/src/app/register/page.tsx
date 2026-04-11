@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { UserPlus, Mail, User, ArrowRight, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -56,7 +57,7 @@ export default function RegisterPage() {
         password,
         full_name: normalizedName,
       });
-      setTokens(data.access_token, data.refresh_token);
+      setTokens(data.access_token, data.refresh_token, data.csrf_token);
       router.push("/onboarding");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Ошибка регистрации";
@@ -177,22 +178,9 @@ export default function RegisterPage() {
             )}
           </div>
 
-          <motion.button
-            type="submit"
-            disabled={loading || !passwordsMatch}
-            className="btn-neon flex w-full items-center justify-center gap-2"
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.99 }}
-          >
-            {loading ? (
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-            ) : (
-              <>
-                Зарегистрироваться
-                <ArrowRight size={16} />
-              </>
-            )}
-          </motion.button>
+          <Button type="submit" variant="primary" fluid loading={loading} disabled={!passwordsMatch} iconRight={<ArrowRight size={16} />}>
+            Зарегистрироваться
+          </Button>
         </form>
 
         <p className="mt-6 text-center text-sm" style={{ color: "var(--text-muted)" }}>

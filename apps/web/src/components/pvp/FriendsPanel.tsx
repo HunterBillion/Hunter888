@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Search, UserPlus, Users, Check, X, Swords } from "lucide-react";
+import { Loader2, Search, UserPlus, Users, Check, X } from "lucide-react";
+import { Sword } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import type { FriendItem, FriendSearchResponse } from "@/types";
@@ -220,7 +221,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
                       onChallengeSent?.();
                     }, `challenge-${item.user_id}`)}
                   >
-                    {busyId === `challenge-${item.user_id}` ? <Loader2 size={12} className="animate-spin" /> : <Swords size={12} />}
+                    {busyId === `challenge-${item.user_id}` ? <Loader2 size={12} className="animate-spin" /> : <Sword weight="duotone" size={12} />}
                     Вызов
                   </button>
                   <button

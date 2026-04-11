@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Loader2, BookOpen, Lock } from "lucide-react";
 import { getDifficultyColor, getSkillLabel, ARCHETYPE_GROUPS } from "@/lib/archetypes";
+import { GROUP_ICONS } from "@/lib/groupIcons";
 import type { ArchetypeInfo } from "@/lib/archetypes";
 import type { Scenario } from "@/types";
 
@@ -35,8 +36,8 @@ export function ArchetypeCard({ arch, size, selected, onSelect, scenario, isStar
       >
         <div className="h-[2px] absolute top-0 left-0 right-0" style={{ background: selected ? accentColor : "transparent" }} />
         <div className="flex items-center gap-2 mb-1">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ background: accentColor }}>
-            {arch.name[0]}
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: `color-mix(in srgb, ${accentColor} 18%, transparent)` }}>
+            {(() => { const I = group?.icon ? GROUP_ICONS[group.icon] : null; return I ? <I size={16} weight="duotone" style={{ color: accentColor }} /> : <span className="text-xs font-bold" style={{ color: accentColor }}>{arch.name[0]}</span>; })()}
           </div>
           <div className="min-w-0">
             <div className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>{arch.name}</div>
@@ -62,8 +63,8 @@ export function ArchetypeCard({ arch, size, selected, onSelect, scenario, isStar
         <div className="h-[3px] shrink-0" style={{ background: accentColor }} />
         <div className="p-5 flex flex-col flex-1 gap-2">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold text-white shrink-0" style={{ background: accentColor }}>
-              {arch.name[0]}
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `color-mix(in srgb, ${accentColor} 18%, transparent)` }}>
+              {(() => { const I = group?.icon ? GROUP_ICONS[group.icon] : null; return I ? <I size={20} weight="duotone" style={{ color: accentColor }} /> : <span className="text-sm font-bold" style={{ color: accentColor }}>{arch.name[0]}</span>; })()}
             </div>
             <div className="flex-1 min-w-0">
               <div className="font-semibold text-base truncate" style={{ color: "var(--text-primary)" }}>{arch.name}</div>
@@ -100,8 +101,8 @@ export function ArchetypeCard({ arch, size, selected, onSelect, scenario, isStar
       <div className="p-5 flex flex-col flex-1 gap-3">
         {/* Row 1: Avatar + Name */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold text-white shrink-0" style={{ background: accentColor }}>
-            {arch.name[0]}
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: `color-mix(in srgb, ${accentColor} 18%, transparent)` }}>
+            {(() => { const I = group?.icon ? GROUP_ICONS[group.icon] : null; return I ? <I size={22} weight="duotone" style={{ color: accentColor }} /> : <span className="text-sm font-bold" style={{ color: accentColor }}>{arch.name[0]}</span>; })()}
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-base truncate" style={{ color: "var(--text-primary)" }}>{arch.name}</div>
@@ -135,11 +136,11 @@ export function ArchetypeCard({ arch, size, selected, onSelect, scenario, isStar
 
         {/* Row 5: Action buttons */}
         {scenario && onStart && onStartStory ? (
-          <div className="grid grid-cols-[1.2fr_0.8fr] gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
             <motion.button
               onClick={() => onStart(scenario.id)}
               disabled={isStarting}
-              className="flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold text-white"
+              className="flex-1 min-w-[120px] flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold text-white"
               style={{ background: accentColor, opacity: isStarting ? 0.6 : 1 }}
               whileTap={{ scale: 0.97 }}
             >
@@ -148,7 +149,7 @@ export function ArchetypeCard({ arch, size, selected, onSelect, scenario, isStar
             <motion.button
               onClick={() => onStartStory(scenario.id, storyCalls)}
               disabled={isStarting}
-              className="flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-medium"
+              className="min-w-[80px] flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-medium"
               style={{ border: `1px solid color-mix(in srgb, ${accentColor} 30%, transparent)`, color: accentColor }}
               whileTap={{ scale: 0.97 }}
             >

@@ -147,7 +147,7 @@ function PricingSection({ openRegister }: { openRegister: () => void }) {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1, duration: 0.6 }}
-            className={`group relative rounded-xl p-8 transition-all overflow-hidden ${tier.featured ? "md:scale-105 z-10" : ""}`}
+            className={`group relative rounded-xl p-8 transition-all overflow-hidden flex flex-col ${tier.featured ? "md:scale-105 z-10" : ""}`}
             style={{
               background: tier.featured ? "var(--bg-tertiary)" : "var(--bg-panel)",
               border: tier.featured ? "1px solid var(--accent)" : "1px solid var(--border-color)",
@@ -159,7 +159,7 @@ function PricingSection({ openRegister }: { openRegister: () => void }) {
               </div>
             )}
 
-            <div className={`relative z-10 ${tier.featured ? "pt-6" : ""}`}>
+            <div className={`relative z-10 flex-1 flex flex-col ${tier.featured ? "pt-6" : ""}`}>
               <h3 className="text-lg font-bold tracking-wide uppercase mb-3" style={{ color: tier.featured ? "var(--accent)" : "var(--text-muted)" }}>
                 {tier.label}
               </h3>
@@ -180,7 +180,7 @@ function PricingSection({ openRegister }: { openRegister: () => void }) {
                 {tier.badge}
               </div>
 
-              <ul className="space-y-3 mb-8">
+              <ul className="space-y-3 mb-8 flex-1">
                 {tier.features.map((f) => (
                   <li key={f} className="flex items-start gap-3 text-sm sm:text-base" style={{ color: tier.featured ? "var(--text-primary)" : "var(--text-secondary)" }}>
                     {tier.featured
@@ -272,8 +272,8 @@ export default function PricingPage() {
           <motion.h1
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            className="font-display font-black tracking-tighter uppercase mb-6"
-            style={{ fontSize: "clamp(2.5rem, 7vw, 5.5rem)", color: "var(--text-primary)" }}
+            className="font-display font-black tracking-tight uppercase mb-6"
+            style={{ fontSize: "clamp(2.5rem, 7vw, 5.5rem)", color: "var(--text-primary)", wordSpacing: "0.1em" }}
           >
             Выберите <span className="italic" style={{ color: "var(--accent)" }}>свой</span> план
           </motion.h1>

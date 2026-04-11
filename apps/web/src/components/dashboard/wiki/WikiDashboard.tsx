@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
+import { CheckCircle, Loader2 } from "lucide-react";
+import { Warning } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import type {
   View,
@@ -317,7 +318,7 @@ export function WikiDashboard() {
                 gap: "0.5rem",
               }}
             >
-              {actionMessage.type === "success" ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
+              {actionMessage.type === "success" ? <CheckCircle size={16} /> : <Warning size={16} weight="duotone" />}
               {actionMessage.text}
             </motion.div>
           )}

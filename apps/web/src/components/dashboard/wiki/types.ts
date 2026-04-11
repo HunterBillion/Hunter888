@@ -1,4 +1,4 @@
-import { AlertTriangle, TrendingUp, Zap } from "lucide-react";
+import { Warning, TrendUp, Lightning } from "@phosphor-icons/react";
 
 /* ─── Types ─── */
 
@@ -158,11 +158,11 @@ export type DetailTab = "pages" | "patterns" | "techniques" | "log" | "charts" |
 
 /* ─── Category config ─── */
 
-export const CATEGORY_CONFIG: Record<string, { label: string; color: string; icon: typeof AlertTriangle }> = {
-  weakness: { label: "Слабость", color: "var(--danger)", icon: AlertTriangle },
-  strength: { label: "Сила", color: "var(--success)", icon: TrendingUp },
-  quirk: { label: "Особенность", color: "var(--warning)", icon: Zap },
-  misconception: { label: "Заблуждение", color: "var(--accent)", icon: AlertTriangle },
+export const CATEGORY_CONFIG: Record<string, { label: string; color: string; icon: typeof Warning }> = {
+  weakness: { label: "Слабость", color: "var(--danger)", icon: Warning },
+  strength: { label: "Сила", color: "var(--success)", icon: TrendUp },
+  quirk: { label: "Особенность", color: "var(--warning)", icon: Lightning },
+  misconception: { label: "Заблуждение", color: "var(--accent)", icon: Warning },
 };
 
 export const ACTION_LABELS: Record<string, string> = {

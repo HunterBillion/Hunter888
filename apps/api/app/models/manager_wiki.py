@@ -22,6 +22,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -138,6 +139,8 @@ class WikiPage(Base):
         String(50), nullable=False
     )
     tags: Mapped[dict] = mapped_column(JSONB, default=list)  # list of strings
+    # Phase 2: pgvector embedding for semantic wiki search
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

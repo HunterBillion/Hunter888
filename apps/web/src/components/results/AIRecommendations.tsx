@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Bot } from "lucide-react";
+import { Robot } from "@phosphor-icons/react";
 import Markdown from "react-markdown";
 
 interface AIRecommendationsProps {
@@ -22,9 +22,9 @@ export default function AIRecommendations({ text }: AIRecommendationsProps) {
           className="flex h-6 w-6 items-center justify-center rounded-lg"
           style={{ background: "var(--accent-muted)" }}
         >
-          <Bot size={14} style={{ color: "var(--accent)" }} />
+          <Robot weight="duotone" size={16} style={{ color: "var(--accent)" }} />
         </div>
-        <h3 className="font-display text-sm tracking-widest" style={{ color: "var(--text-primary)" }}>
+        <h3 className="font-display text-base font-bold tracking-widest" style={{ color: "var(--text-primary)" }}>
           AI РЕКОМЕНДАЦИИ
         </h3>
       </div>

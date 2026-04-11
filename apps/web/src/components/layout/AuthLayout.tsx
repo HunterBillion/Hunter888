@@ -65,7 +65,7 @@ class AuthErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState
                 this.setState({ hasError: false, error: null });
                 window.location.reload();
               }}
-              className="btn-neon flex items-center gap-2 mx-auto"
+              className="inline-flex items-center justify-center gap-2 font-bold tracking-wide uppercase rounded-xl px-5 py-2.5 text-sm transition-all duration-200 mx-auto" style={{ background: "var(--glass-bg)", color: "var(--text-primary)", border: "1px solid var(--accent)" }}
             >
               <RefreshCw size={14} />
               Перезагрузить
@@ -133,7 +133,7 @@ export default function AuthLayout({
           if (res.ok) {
             const data = await res.json();
             if (data.access_token) {
-              setTokens(data.access_token, data.refresh_token);
+              setTokens(data.access_token, data.refresh_token, data.csrf_token);
               token = data.access_token;
             }
           }
@@ -233,7 +233,7 @@ export default function AuthLayout({
                       if (res.ok) {
                         const data = await res.json();
                         if (data.access_token) {
-                          setTokens(data.access_token, data.refresh_token);
+                          setTokens(data.access_token, data.refresh_token, data.csrf_token);
                           token = data.access_token;
                         }
                       }
@@ -256,7 +256,7 @@ export default function AuthLayout({
                 fullRetry();
               }, delay);
             }}
-            className="btn-neon flex items-center gap-2 mx-auto"
+            className="inline-flex items-center justify-center gap-2 font-bold tracking-wide uppercase rounded-xl px-5 py-2.5 text-sm transition-all duration-200 mx-auto" style={{ background: "var(--glass-bg)", color: "var(--text-primary)", border: "1px solid var(--accent)" }}
           >
             <RefreshCw size={14} />
             Повторить

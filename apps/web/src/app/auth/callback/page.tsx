@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Loader2, AlertCircle, CheckCircle } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
 import { useAuthStore } from "@/stores/useAuthStore";
@@ -35,8 +36,8 @@ function OAuthCallbackContent() {
 
     api
       .post(`/auth/${provider}/callback`, { code, state })
-      .then((data: { access_token: string; refresh_token: string }) => {
-        setTokens(data.access_token, data.refresh_token);
+      .then((data: { access_token: string; refresh_token: string; csrf_token?: string }) => {
+        setTokens(data.access_token, data.refresh_token, data.csrf_token);
         // Invalidate auth store so /home fetches fresh user with correct preferences
         useAuthStore.getState().invalidate();
         setStatus("success");
@@ -85,13 +86,9 @@ function OAuthCallbackContent() {
             <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
               {errorMsg}
             </p>
-            <motion.button
-              onClick={() => router.replace("/login")}
-              className="btn-neon mt-6"
-              whileTap={{ scale: 0.97 }}
-            >
+            <Button onClick={() => router.replace("/login")} className="mt-6">
               Вернуться к входу
-            </motion.button>
+            </Button>
           </>
         )}
       </motion.div>

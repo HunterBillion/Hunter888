@@ -30,6 +30,7 @@ import { ScenarioDossierCard } from "@/components/training/ScenarioDossierCard";
 import { useTrainingStore } from "@/stores/useTrainingStore";
 import { ARCHETYPES, ARCHETYPE_GROUPS, getTierColor, getDifficultyColor } from "@/lib/archetypes";
 import { ArchetypeCard } from "@/components/training/ArchetypeCard";
+import { GROUP_ICONS } from "@/lib/groupIcons";
 import type { ArchetypeInfo } from "@/lib/archetypes";
 import type { Scenario } from "@/types";
 
@@ -57,9 +58,9 @@ const TYPE_FILTERS = [
 
 const DIFF_FILTERS = [
   { key: "all", label: "Любая" },
-  { key: "easy", label: "1-3" },
-  { key: "medium", label: "4-6" },
-  { key: "hard", label: "7-10" },
+  { key: "easy", label: "Лёгкая (1-3)" },
+  { key: "medium", label: "Средняя (4-6)" },
+  { key: "hard", label: "Сложная (7-10)" },
 ] as const;
 
 function getDifficultyConfig(d: number) {
@@ -468,9 +469,13 @@ function RecommendedTab({
         <div key={gi}>
           <div className="flex items-center gap-3 mb-4">
             <div className="flex items-center gap-2">
-              {gi === 0 && <Sparkles size={18} style={{ color: group.color }} />}
-              {gi === recommendations.length - 1 && <TrendingUp size={18} style={{ color: group.color }} />}
-              {group.icon && <AppIcon emoji={group.icon} size={18} />}
+              {(() => {
+                const GroupIcon = group.icon ? GROUP_ICONS[group.icon] : null;
+                if (GroupIcon) return <GroupIcon size={20} weight="duotone" style={{ color: group.color }} />;
+                if (gi === 0) return <Sparkles size={18} style={{ color: group.color }} />;
+                if (gi === recommendations.length - 1) return <TrendingUp size={18} style={{ color: group.color }} />;
+                return null;
+              })()}
               <h3 className="font-display text-base font-bold tracking-wide" style={{ color: "var(--text-primary)" }}>
                 {group.title}
               </h3>

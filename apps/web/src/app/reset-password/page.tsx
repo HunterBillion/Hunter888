@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { KeyRound, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { PasswordInput } from "@/components/ui/PasswordInput";
@@ -211,22 +212,9 @@ function ResetPasswordForm() {
                   )}
                 </div>
 
-                <motion.button
-                  type="submit"
-                  disabled={!canSubmit}
-                  className="btn-neon flex w-full items-center justify-center gap-2"
-                  whileHover={{ scale: canSubmit ? 1.01 : 1 }}
-                  whileTap={{ scale: canSubmit ? 0.99 : 1 }}
-                >
-                  {loading ? (
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  ) : (
-                    <>
-                      Сохранить пароль
-                      <ArrowRight size={16} />
-                    </>
-                  )}
-                </motion.button>
+                <Button type="submit" variant="primary" fluid loading={loading} disabled={!canSubmit} iconRight={<ArrowRight size={16} />}>
+                  Сохранить пароль
+                </Button>
               </form>
             </motion.div>
           )}

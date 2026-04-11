@@ -3,23 +3,25 @@
 import { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity,
-  Archive,
-  ArrowLeft,
-  BarChart3,
-  BookOpen,
-  Brain,
-  Calendar,
-  Clock,
+  ChevronLeft,
   Download,
-  FileText,
-  Lightbulb,
   Loader2,
   PauseCircle,
   Play,
   PlayCircle,
   RotateCcw,
 } from "lucide-react";
+import {
+  Pulse,
+  Archive,
+  ChartBar,
+  BookOpen,
+  Brain,
+  Calendar,
+  Clock,
+  FileText,
+  Lightbulb,
+} from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import type {
   DetailTab,
@@ -42,11 +44,11 @@ import { WikiChartsSection } from "./WikiChartsSection";
 import { LogTab } from "./LogTab";
 
 const DETAIL_TABS: { id: DetailTab; label: string; icon: typeof BookOpen }[] = [
-  { id: "profile", label: "Профиль", icon: Activity },
+  { id: "profile", label: "Профиль", icon: Pulse },
   { id: "pages", label: "Страницы", icon: FileText },
   { id: "patterns", label: "Паттерны", icon: Brain },
   { id: "techniques", label: "Техники", icon: Lightbulb },
-  { id: "charts", label: "Графики", icon: BarChart3 },
+  { id: "charts", label: "Графики", icon: ChartBar },
   { id: "log", label: "Лог изменений", icon: Clock },
 ];
 
@@ -134,7 +136,7 @@ export function ManagerDetailView({
             fontSize: "0.85rem",
           }}
         >
-          <ArrowLeft size={16} />
+          <ChevronLeft size={16} />
           Назад
         </button>
         <div style={{ flex: 1 }}>
@@ -151,7 +153,7 @@ export function ManagerDetailView({
                 color: manager.status === "paused" ? "var(--warning)" : "var(--text-muted)",
                 fontWeight: 600,
               }}>
-                {manager.status === "paused" ? "⏸ На паузе" : "📦 Архив"}
+                {manager.status === "paused" ? <><PauseCircle size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} /> На паузе</> : <><Archive size={12} weight="duotone" style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} /> Архив</>}
               </span>
             )}
           </div>
@@ -217,7 +219,7 @@ export function ManagerDetailView({
               transition: "all 0.2s",
             }}
           >
-            <t.icon size={16} />
+            <t.icon size={16} weight="duotone" />
             {t.label}
             {t.id === "patterns" && patterns.length > 0 && (
               <span style={{

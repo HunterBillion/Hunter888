@@ -1,7 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { CheckCircle2, Circle, Flag } from "lucide-react";
+import { CheckCircle2, Circle } from "lucide-react";
+import { Flag } from "@phosphor-icons/react";
 
 export interface CheckpointResult {
   name: string;
@@ -25,8 +26,8 @@ export default function CheckpointProgress({ checkpoints }: CheckpointProgressPr
       className="glass-panel rounded-2xl p-6"
     >
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-display text-sm tracking-widest flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-          <Flag size={16} style={{ color: "var(--accent)" }} />
+        <h3 className="font-display text-base font-bold tracking-widest flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+          <Flag weight="duotone" size={18} style={{ color: "var(--accent)" }} />
           ЧЕКПОИНТЫ СКРИПТА
         </h3>
         <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>

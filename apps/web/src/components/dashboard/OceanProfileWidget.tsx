@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Brain, Loader2, ArrowRight, Lightbulb } from "lucide-react";
+import { Loader2, ArrowRight } from "lucide-react";
+import { Brain, Lightbulb } from "@phosphor-icons/react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
@@ -92,13 +93,13 @@ export function OceanProfileWidget() {
     return (
       <div className="glass-panel p-5">
         <div className="flex items-center gap-2 mb-3">
-          <Brain size={16} style={{ color: "var(--accent)" }} />
+          <Brain size={16} weight="duotone" style={{ color: "var(--accent)" }} />
           <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
             OCEAN ПРОФИЛЬ
           </h3>
         </div>
         <div className="text-center py-4">
-          <Brain size={24} className="mx-auto mb-2" style={{ color: "var(--text-muted)", opacity: 0.5 }} />
+          <Brain size={24} weight="duotone" className="mx-auto mb-2" style={{ color: "var(--text-muted)", opacity: 0.5 }} />
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>
             Пройдите минимум 3 тренировки для построения профиля
           </p>
@@ -117,7 +118,7 @@ export function OceanProfileWidget() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Brain size={16} style={{ color: "var(--accent)" }} />
+          <Brain size={16} weight="duotone" style={{ color: "var(--accent)" }} />
           <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
             OCEAN ПРОФИЛЬ
           </h3>
@@ -178,6 +179,7 @@ export function OceanProfileWidget() {
             <div key={i} className="flex items-start gap-2">
               <Lightbulb
                 size={11}
+                weight="duotone"
                 className="mt-0.5 flex-shrink-0"
                 style={{ color: "var(--warning)" }}
               />

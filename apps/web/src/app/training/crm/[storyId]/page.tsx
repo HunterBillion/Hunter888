@@ -208,9 +208,10 @@ export default function GameClientPanelPage() {
           </span>
           <Link
             href="/training/crm"
-            className="text-xs font-mono underline"
+            className="inline-flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-80"
             style={{ color: "var(--accent)" }}
           >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
             Назад
           </Link>
         </div>

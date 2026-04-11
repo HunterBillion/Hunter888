@@ -181,16 +181,16 @@ export const EMOTION_MAP: Record<string, EmotionConfig> = {
   hangup:       { label: "HANGUP",      labelRu: "Бросил трубку", color: "#666666", glow: "rgba(102,102,102,0.4)", value: 0  },
   guarded:      { label: "GUARDED",     labelRu: "Настороже",     color: "var(--info)", glow: "rgba(59,130,246,0.4)",  value: 20 },
   testing:      { label: "TESTING",     labelRu: "Проверяет",     color: "var(--warning)", glow: "rgba(245,158,11,0.4)",  value: 25 },
-  curious:      { label: "CURIOUS",     labelRu: "Любопытен",     color: "#FFD700", glow: "rgba(212,168,75,0.4)",   value: 40 },
+  curious:      { label: "CURIOUS",     labelRu: "Любопытен",     color: "var(--gf-xp)", glow: "color-mix(in srgb, var(--gf-xp) 40%, transparent)",   value: 40 },
   callback:     { label: "CALLBACK",    labelRu: "Перезвонит",    color: "var(--info)", glow: "rgba(96,165,250,0.4)",  value: 45 },
-  considering:  { label: "CONSIDERING", labelRu: "Обдумывает",    color: "#BF55EC", glow: "rgba(191,85,236,0.4)",  value: 60 },
+  considering:  { label: "CONSIDERING", labelRu: "Обдумывает",    color: "var(--accent)", glow: "color-mix(in srgb, var(--accent) 40%, transparent)",  value: 60 },
   negotiating:  { label: "NEGOTIATING", labelRu: "Торгуется",     color: "var(--accent-hover)", glow: "rgba(167,139,250,0.4)", value: 75 },
-  deal:         { label: "DEAL SYNC",   labelRu: "Сделка",        color: "#00FF94", glow: "rgba(61,220,132,0.4)",   value: 95 },
+  deal:         { label: "DEAL SYNC",   labelRu: "Сделка",        color: "var(--success)", glow: "color-mix(in srgb, var(--success) 40%, transparent)",   value: 95 },
 
   // ── Legacy aliases (backend LEGACY_MAP sends these) ──
   skeptical:    { label: "SKEPTICAL",   labelRu: "Скептичный",    color: "var(--info)", glow: "rgba(59,130,246,0.4)",  value: 20 },
-  warming:      { label: "WARMING",     labelRu: "Теплеет",       color: "#FFD700", glow: "rgba(212,168,75,0.4)",   value: 40 },
-  open:         { label: "OPEN",        labelRu: "Открытый",      color: "#BF55EC", glow: "rgba(191,85,236,0.4)",  value: 60 },
+  warming:      { label: "WARMING",     labelRu: "Теплеет",       color: "var(--gf-xp)", glow: "color-mix(in srgb, var(--gf-xp) 40%, transparent)",   value: 40 },
+  open:         { label: "OPEN",        labelRu: "Открытый",      color: "var(--accent)", glow: "color-mix(in srgb, var(--accent) 40%, transparent)",  value: 60 },
 };
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
@@ -946,7 +946,7 @@ export const CLIENT_STATUS_LABELS: Record<ClientStatus, string> = {
 
 export const CLIENT_STATUS_COLORS: Record<ClientStatus, string> = {
   new: "var(--text-muted)",
-  contacted: "#FFD700",
+  contacted: "var(--gf-xp)",
   interested: "var(--info)",
   consultation: "var(--accent)",
   thinking: "var(--accent-hover)",
@@ -1231,6 +1231,8 @@ export interface ChatBubble {
   isReplay?: boolean;
   /** True if this is a fallback response from the server */
   is_fallback?: boolean;
+  /** True while this message is being streamed (content may be partial) */
+  isStreaming?: boolean;
 }
 
 // ─── Transcription ─────────────────────────────────────────────────────────
@@ -1327,7 +1329,7 @@ export const GAME_STATUS_LABELS: Record<GameClientStatus, string> = {
 
 export const GAME_STATUS_COLORS: Record<GameClientStatus, string> = {
   new: "var(--text-muted)",
-  contacted: "#FFD700",
+  contacted: "var(--gf-xp)",
   interested: "var(--info)",
   thinking: "var(--accent-hover)",
   consent_given: "var(--success)",

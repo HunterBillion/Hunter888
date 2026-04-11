@@ -3,17 +3,18 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { ArrowRight } from "lucide-react";
 import {
   Clock,
-  CheckCircle2,
+  CheckCircle,
   XCircle,
-  AlertTriangle,
-  Inbox,
-  ArrowRight,
-  BarChart3,
-  Layers3,
-  Sparkles,
-} from "lucide-react";
+  Warning,
+  Tray,
+  ChartBar,
+  Stack,
+  Sparkle,
+} from "@phosphor-icons/react";
+import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { scoreColor } from "@/lib/utils";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -22,11 +23,11 @@ import type { HistoryEntry } from "@/types";
 function statusConfig(status: string) {
   switch (status) {
     case "completed":
-      return { label: "Завершено", icon: CheckCircle2, color: "var(--success)" };
+      return { label: "Завершено", icon: CheckCircle, color: "var(--success)" };
     case "abandoned":
       return { label: "Прервано", icon: XCircle, color: "var(--danger)" };
     case "error":
-      return { label: "Ошибка", icon: AlertTriangle, color: "var(--warning)" };
+      return { label: "Ошибка", icon: Warning, color: "var(--warning)" };
     default:
       return { label: "Активно", icon: Clock, color: "var(--accent)" };
   }
@@ -150,10 +151,10 @@ export default function HistoryPage() {
               className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4"
             >
               {[
-                { label: "Всего", value: entries.length, icon: BarChart3, color: "var(--accent)" },
-                { label: "Историй", value: storyCount, icon: Layers3, color: "var(--magenta)" },
-                { label: "Завершено", value: completed.length, icon: CheckCircle2, color: "var(--success)" },
-                { label: "Ср. балл", value: avgScore !== null ? avgScore : "—", icon: Sparkles, color: "var(--warning)", hero: true },
+                { label: "Всего", value: entries.length, icon: ChartBar, color: "var(--accent)" },
+                { label: "Историй", value: storyCount, icon: Stack, color: "var(--magenta)" },
+                { label: "Завершено", value: completed.length, icon: CheckCircle, color: "var(--success)" },
+                { label: "Ср. балл", value: avgScore !== null ? avgScore : "—", icon: Sparkle, color: "var(--warning)", hero: true },
               ].map((item) => {
                 const Icon = item.icon;
                 const isHero = "hero" in item && item.hero;
@@ -163,7 +164,7 @@ export default function HistoryPage() {
                     className="glass-panel p-4 text-center"
                     style={isHero ? { borderBottom: `2px solid ${item.color}` } : undefined}
                   >
-                    <Icon size={isHero ? 18 : 14} className="mx-auto mb-1" style={{ color: item.color }} />
+                    <Icon size={isHero ? 18 : 14} weight="duotone" className="mx-auto mb-1" style={{ color: item.color }} />
                     <div className={`font-display font-bold ${isHero ? "text-2xl" : "text-xl"}`} style={{ color: isHero ? item.color : "var(--text-primary)" }}>{item.value}</div>
                     <div className="font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{item.label}</div>
                   </div>
@@ -195,16 +196,16 @@ export default function HistoryPage() {
             </div>
           ) : error ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-16 flex flex-col items-center">
-              <AlertTriangle size={40} style={{ color: "var(--danger)" }} />
+              <Warning size={40} weight="duotone" style={{ color: "var(--danger)" }} />
               <p className="mt-3 text-sm" style={{ color: "var(--danger)" }}>{error}</p>
             </motion.div>
           ) : entries.length === 0 ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-16 flex flex-col items-center">
-              <Inbox size={40} style={{ color: "var(--text-muted)" }} />
+              <Tray size={40} weight="duotone" style={{ color: "var(--text-muted)" }} />
               <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>Твоя история начнётся с первой тренировки.</p>
-              <motion.button onClick={() => router.push("/training")} className="btn-neon mt-4 flex items-center gap-2" whileTap={{ scale: 0.97 }}>
-                Начать первую охоту <ArrowRight size={16} />
-              </motion.button>
+              <Button onClick={() => router.push("/training")} className="mt-4" iconRight={<ArrowRight size={16} />}>
+                Начать первую охоту
+              </Button>
             </motion.div>
           ) : (
             <div className="mt-6 space-y-6">
@@ -232,17 +233,17 @@ export default function HistoryPage() {
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: i * 0.04 }}
                           className={`glass-panel p-5 flex items-center gap-4 transition-all ${canOpenEntry ? "cursor-pointer" : ""}`}
-                          style={{ boxShadow: `inset 3px 0 0 ${st.color}` }}
+                          style={{ boxShadow: `inset 3px 0 0 ${scoreColor(entry.avg_score ?? session.score_total)}` }}
                           whileHover={canOpenEntry ? { y: -2, boxShadow: "0 4px 20px rgba(139, 92, 246, 0.1)" } : undefined}
                           onClick={() => canOpenEntry && router.push(targetHref)}
                         >
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: `color-mix(in srgb, ${st.color} 8%, transparent)` }}>
-                            {story ? <Sparkles size={18} style={{ color: "var(--accent)" }} /> : <Icon size={18} style={{ color: st.color }} />}
+                            {story ? <Sparkle size={18} weight="duotone" style={{ color: "var(--accent)" }} /> : <Icon size={18} weight="duotone" style={{ color: st.color }} />}
                           </div>
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-medium text-xs uppercase tracking-wide px-2 py-0.5 rounded-full" style={{ background: `color-mix(in srgb, ${story ? "var(--accent)" : st.color} 8%, transparent)`, color: story ? "var(--accent)" : st.color }}>
+                              <span className="font-medium text-xs uppercase tracking-wide px-2 py-0.5 rounded-full inline-flex items-center gap-1" style={{ background: `color-mix(in srgb, ${story ? "var(--accent)" : st.color} 8%, transparent)`, color: story ? "var(--accent)" : st.color }}>
                                 {story ? "AI Story" : st.label}
                               </span>
                               <span className="text-xs" style={{ color: "var(--text-muted)" }}>{formatDate(session.started_at)}</span>
@@ -251,7 +252,7 @@ export default function HistoryPage() {
                               {story ? story.story_name : "Одиночная тренировка"}
                             </div>
                             <div className="mt-1 flex items-center gap-4 text-xs" style={{ color: "var(--text-secondary)" }}>
-                              <span className="flex items-center gap-1"><Clock size={12} />{formatDuration(session.duration_seconds)}</span>
+                              <span className="flex items-center gap-1"><Clock size={12} weight="duotone" />{formatDuration(session.duration_seconds)}</span>
                               {story && (
                                 <span>{story.completed_calls}/{story.total_calls_planned} звонков</span>
                               )}

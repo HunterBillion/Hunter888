@@ -167,8 +167,13 @@ export default function TrainingSessionPage() {
   } | null>(null);
   const [activeConsequence, setActiveConsequence] = useState<import("@/types/story").ConsequenceEvent | null>(null);
   const [scoreHint, setScoreHint] = useState<{
+    script_adherence: number;
     objection_handling: number;
     communication: number;
+    anti_patterns: number;
+    result: number;
+    chain_traversal: number;
+    trap_handling: number;
     human_factor: number;
     realtime_estimate: number;
     max_possible_realtime: number;
@@ -264,6 +269,26 @@ export default function TrainingSessionPage() {
           s.setIsTyping(data.data.is_typing as boolean);
           break;
 
+        case "character.response_chunk": {
+          // Streaming: append chunk to last assistant message (or create one)
+          const chunkText = (data.data?.text as string) || "";
+          if (!chunkText) break;
+          const lastMsg = s.messages[s.messages.length - 1];
+          if (lastMsg && lastMsg.role === "assistant" && lastMsg.isStreaming) {
+            s.appendToLastAssistantMessage(chunkText);
+          } else {
+            // First chunk — create new streaming message
+            s.addMessage({
+              id: s.nextMsgId(),
+              role: "assistant",
+              content: chunkText,
+              timestamp: new Date().toISOString(),
+              isStreaming: true,
+            });
+          }
+          break;
+        }
+
         case "character.response": {
           s.setIsTyping(false);
           // Deduplicate by sequence_number (may overlap with message.replay)
@@ -271,14 +296,20 @@ export default function TrainingSessionPage() {
           if (seq != null && s.messages.some(m => m.sequenceNumber === seq)) break;
           const rawContent = (data.data?.content as string) || "";
           const content = stripStageDirections(rawContent);
-          s.addMessage({
-            id: s.nextMsgId(),
-            role: "assistant",
-            content,
-            emotion: data.data.emotion as EmotionState | undefined,
-            timestamp: new Date().toISOString(),
-            sequenceNumber: data.data.sequence_number as number | undefined,
-          });
+          // If last message was streaming, finalize it with full content
+          const lastMsgFinal = s.messages[s.messages.length - 1];
+          if (lastMsgFinal && lastMsgFinal.role === "assistant" && lastMsgFinal.isStreaming) {
+            s.finalizeStreamingMessage(content, data.data.emotion as EmotionState | undefined, seq);
+          } else {
+            s.addMessage({
+              id: s.nextMsgId(),
+              role: "assistant",
+              content,
+              emotion: data.data.emotion as EmotionState | undefined,
+              timestamp: new Date().toISOString(),
+              sequenceNumber: seq,
+            });
+          }
           if (data.data.emotion) s.setEmotion(data.data.emotion as EmotionState);
           if (data.data.script_score !== undefined) s.setScriptScore(data.data.script_score as number);
           s.setListenTime(s.listenTime + 1);
@@ -297,6 +328,20 @@ export default function TrainingSessionPage() {
             });
           } else {
             logger.warn("[WS] tts.audio received but audio_b64 is not a string:", typeof audioB64);
+          }
+          break;
+        }
+
+        case "tts.audio_chunk": {
+          // Phase 2: Sentence-level TTS — queue audio chunks for sequential playback
+          tts.cancelFallback();
+          const chunkAudio = data.data.audio_b64 as string;
+          if (chunkAudio && typeof chunkAudio === "string") {
+            tts.queueAudioChunk({
+              audio: chunkAudio,
+              index: data.data.sentence_index as number,
+              isLast: Boolean(data.data.is_last),
+            });
           }
           break;
         }
@@ -391,20 +436,31 @@ export default function TrainingSessionPage() {
           break;
 
         case "score.hint":
+          // B9: All 8 real-time layers
           setScoreHint({
+            script_adherence: Number(data.data.script_adherence || 0),
             objection_handling: Number(data.data.objection_handling || 0),
             communication: Number(data.data.communication || 0),
+            anti_patterns: Number(data.data.anti_patterns || 0),
+            result: Number(data.data.result || 0),
+            chain_traversal: Number(data.data.chain_traversal || 0),
+            trap_handling: Number(data.data.trap_handling || 0),
             human_factor: Number(data.data.human_factor || 0),
             realtime_estimate: Number(data.data.realtime_estimate || 0),
             max_possible_realtime: Number(data.data.max_possible_realtime || 0),
           });
           // Also store in Zustand for RealtimeScores panel
           s.setRealtimeScores({
+            script_adherence: Number(data.data.script_adherence || 0),
             objection_handling: Number(data.data.objection_handling || 0),
             communication: Number(data.data.communication || 0),
+            anti_patterns: Number(data.data.anti_patterns || 0),
+            result: Number(data.data.result || 0),
+            chain_traversal: Number(data.data.chain_traversal || 0),
+            trap_handling: Number(data.data.trap_handling || 0),
             human_factor: Number(data.data.human_factor || 0),
             realtime_estimate: Number(data.data.realtime_estimate || 0),
-            max_possible: Number(data.data.max_possible_realtime || 0),
+            max_possible_realtime: Number(data.data.max_possible_realtime || 0),
           });
           break;
 
@@ -618,6 +674,9 @@ export default function TrainingSessionPage() {
 
         // ── v6: Session resume messages ──
         case "session.resumed":
+          // Clear local messages before replay to prevent duplicates —
+          // locally-added messages lack sequenceNumber so replay dedup misses them.
+          s.clearMessages();
           s.setEmotion(data.data.emotion as EmotionState);
           s.setElapsed(Math.floor(data.data.elapsed_seconds as number));
           // C2 fix: restore full session state on reconnect

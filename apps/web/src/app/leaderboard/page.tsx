@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Medal, Crown, TrendingUp, Loader2, Swords, Clock, Zap, Plus, X as XIcon } from "lucide-react";
+import { Loader2, Plus, X as XIcon } from "lucide-react";
+import { Trophy, Medal, Crown, TrendUp, Sword, Clock, Lightning } from "@phosphor-icons/react";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { LeaderboardSkeleton } from "@/components/ui/Skeleton";
@@ -39,9 +40,9 @@ interface CompositeEntry {
 type Tab = "general" | "tournament" | "composite";
 
 function getRankIcon(rank: number) {
-  if (rank === 1) return <Crown size={18} style={{ color: RANK.gold }} />;
-  if (rank === 2) return <Medal size={18} style={{ color: RANK.silver }} />;
-  if (rank === 3) return <Medal size={18} style={{ color: RANK.bronze }} />;
+  if (rank === 1) return <Crown weight="duotone" size={18} style={{ color: RANK.gold }} />;
+  if (rank === 2) return <Medal weight="duotone" size={18} style={{ color: RANK.silver }} />;
+  if (rank === 3) return <Medal weight="duotone" size={18} style={{ color: RANK.bronze }} />;
   return <span className="font-mono text-sm font-bold" style={{ color: "var(--text-muted)" }}>{rank}</span>;
 }
 
@@ -117,10 +118,10 @@ export default function LeaderboardPage() {
       .finally(() => setCompositeLoading(false));
   }, [tab]);
 
-  const TABS: { id: Tab; label: string; icon: React.ComponentType<{ size: number; style?: React.CSSProperties }> }[] = [
+  const TABS: { id: Tab; label: string; icon: React.ComponentType<Record<string, unknown>> }[] = [
     { id: "general", label: "Общий", icon: Trophy },
-    { id: "tournament", label: "Турнир", icon: Swords },
-    { id: "composite", label: "Комплексный", icon: Zap },
+    { id: "tournament", label: "Турнир", icon: Sword },
+    { id: "composite", label: "Комплексный", icon: Lightning },
   ];
 
   return (
@@ -128,12 +129,19 @@ export default function LeaderboardPage() {
       <div className="relative panel-grid-bg min-h-screen">
         <div className="app-page max-w-3xl">
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="font-display text-2xl font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
-              РЕЙТИНГ
-            </h1>
-            <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
-              Лучшие результаты за период
-            </p>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "var(--gf-xp-muted)" }}>
+                <Trophy weight="duotone" size={20} style={{ color: "var(--gf-xp)" }} />
+              </div>
+              <div>
+                <h1 className="font-display text-2xl font-extrabold" style={{ color: "var(--text-primary)" }}>
+                  Рейтинг охотников
+                </h1>
+                <p className="mt-0.5 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  Сравни свои результаты с лучшими
+                </p>
+              </div>
+            </div>
           </motion.div>
 
           {/* Tabs */}
@@ -232,7 +240,7 @@ export default function LeaderboardPage() {
                       style={{ background: "color-mix(in srgb, var(--rank-gold) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--rank-gold) 15%, transparent)" }}
                     >
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "color-mix(in srgb, var(--rank-gold) 10%, transparent)" }}>
-                        <Swords size={18} style={{ color: RANK.gold }} />
+                        <Sword weight="duotone" size={18} style={{ color: RANK.gold }} />
                       </div>
                       <div className="flex-1">
                         <div className="font-display text-sm font-bold" style={{ color: "var(--text-primary)" }}>
@@ -240,13 +248,13 @@ export default function LeaderboardPage() {
                         </div>
                         <div className="flex items-center gap-3 mt-1 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                           <span className="flex items-center gap-1">
-                            <Clock size={10} /> {formatTimeLeft(tournament.tournament.week_end)}
+                            <Clock weight="duotone" size={10} /> {formatTimeLeft(tournament.tournament.week_end)}
                           </span>
                           <span className="flex items-center gap-1" style={{ color: RANK.gold }}>
-                            <Crown size={10} /> {tournament.tournament.bonus_xp[0]} XP
+                            <Crown weight="duotone" size={10} /> {tournament.tournament.bonus_xp[0]} XP
                           </span>
                           <span className="flex items-center gap-1">
-                            <Zap size={10} /> макс. {tournament.tournament.max_attempts} попыток
+                            <Lightning weight="duotone" size={10} /> макс. {tournament.tournament.max_attempts} попыток
                           </span>
                         </div>
                       </div>
@@ -269,7 +277,7 @@ export default function LeaderboardPage() {
                   </>
                 ) : (
                   <div className="mt-16 flex flex-col items-center py-8">
-                    <Swords size={32} style={{ color: "var(--text-muted)" }} />
+                    <Sword weight="duotone" size={32} style={{ color: "var(--text-muted)" }} />
                     <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
                       {tournamentLoading ? "Загрузка..." : "Охотничьих турниров нет на этой неделе"}
                     </p>
@@ -343,7 +351,7 @@ export default function LeaderboardPage() {
                   </div>
                 ) : (
                   <div className="mt-16 flex flex-col items-center py-8">
-                    <Zap size={32} style={{ color: "var(--text-muted)" }} />
+                    <Lightning weight="duotone" size={32} style={{ color: "var(--text-muted)" }} />
                     <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
                       Недостаточно данных для комплексного рейтинга
                     </p>
@@ -438,7 +446,7 @@ function CreateTournamentModal({ onClose, onCreated }: { onClose: () => void; on
       >
         <div className="flex items-center justify-between mb-5">
           <h2 className="font-display text-lg font-bold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-            <Swords size={18} style={{ color: RANK.gold }} /> Новый турнир
+            <Sword weight="duotone" size={18} style={{ color: RANK.gold }} /> Новый турнир
           </h2>
           <button onClick={onClose} className="p-1 rounded-lg" style={{ color: "var(--text-muted)" }}>
             <XIcon size={18} />
@@ -484,15 +492,15 @@ function CreateTournamentModal({ onClose, onCreated }: { onClose: () => void; on
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="vh-label"><Medal size={14} className="inline" /> 1st XP</label>
+              <label className="vh-label"><Medal weight="duotone" size={14} className="inline" /> 1st XP</label>
               <input type="number" value={bonusFirst} onChange={(e) => setBonusFirst(Number(e.target.value))} className="vh-input w-full" />
             </div>
             <div>
-              <label className="vh-label"><Medal size={14} className="inline" /> 2nd XP</label>
+              <label className="vh-label"><Medal weight="duotone" size={14} className="inline" /> 2nd XP</label>
               <input type="number" value={bonusSecond} onChange={(e) => setBonusSecond(Number(e.target.value))} className="vh-input w-full" />
             </div>
             <div>
-              <label className="vh-label"><Medal size={14} className="inline" /> 3rd XP</label>
+              <label className="vh-label"><Medal weight="duotone" size={14} className="inline" /> 3rd XP</label>
               <input type="number" value={bonusThird} onChange={(e) => setBonusThird(Number(e.target.value))} className="vh-input w-full" />
             </div>
           </div>
@@ -507,7 +515,7 @@ function CreateTournamentModal({ onClose, onCreated }: { onClose: () => void; on
             className="btn-neon w-full flex items-center justify-center gap-2"
             whileTap={{ scale: 0.98 }}
           >
-            {creating ? <Loader2 size={16} className="animate-spin" /> : <><Swords size={16} /> Создать турнир</>}
+            {creating ? <Loader2 size={16} className="animate-spin" /> : <><Sword weight="duotone" size={16} /> Создать турнир</>}
           </motion.button>
         </div>
       </motion.div>
@@ -541,6 +549,9 @@ function LeaderboardList({
         title={emptyText}
         description="Пройдите охоту, чтобы попасть в рейтинг"
         hint="1 сессия — и вы среди охотников"
+        illustration={<img src="/pixel/empty/sword-in-stone.png" alt="" className="w-24 h-24 mx-auto mb-2 opacity-80" />}
+        actionLabel="Начать тренировку"
+        onAction={() => window.location.href = "/training"}
       />
     );
   }
@@ -579,21 +590,27 @@ function LeaderboardList({
               <div className="font-medium text-xs sm:text-sm truncate" style={{ color: "var(--text-primary)" }}>{entry.name}</div>
               <div className="mt-0.5 text-xs sm:text-xs truncate" style={{ color: "var(--text-muted)" }}>{entry.subtitle}</div>
             </div>
-            <div className="text-right shrink-0">
-              <div className="flex items-center gap-1">
-                <TrendingUp size={12} style={{ color: entry.rank === 1 ? RANK.gold : entry.rank === 2 ? RANK.silver : entry.rank === 3 ? RANK.bronze : "var(--accent)" }} />
-                <motion.span
-                  className="font-display text-base sm:text-lg font-bold inline-block"
+            <div className="text-right shrink-0 flex flex-col items-end">
+              <motion.div
+                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1"
+                style={{
+                  background: entry.rank <= 3
+                    ? `color-mix(in srgb, ${entry.rank === 1 ? RANK.gold : entry.rank === 2 ? RANK.silver : RANK.bronze} 12%, transparent)`
+                    : "var(--accent-muted)",
+                }}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: i * 0.05 + 0.15, type: "spring", stiffness: 400, damping: 25 }}
+              >
+                <TrendUp weight="duotone" size={14} style={{ color: entry.rank === 1 ? RANK.gold : entry.rank === 2 ? RANK.silver : entry.rank === 3 ? RANK.bronze : "var(--accent)" }} />
+                <span
+                  className="font-display text-lg sm:text-xl font-extrabold tabular-nums"
                   style={{ color: entry.rank === 1 ? RANK.gold : entry.rank === 2 ? RANK.silver : entry.rank === 3 ? RANK.bronze : "var(--accent)" }}
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: i * 0.05 + 0.15, type: "spring", stiffness: 400, damping: 25 }}
-                  whileHover={{ scale: 1.12 }}
                 >
                   {entry.score}
-                </motion.span>
-              </div>
-              <span className="text-xs sm:text-xs" style={{ color: "var(--text-muted)" }}>{entry.scoreLabel}</span>
+                </span>
+              </motion.div>
+              <span className="text-xs mt-0.5 font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{entry.scoreLabel}</span>
             </div>
           </motion.div>
         );

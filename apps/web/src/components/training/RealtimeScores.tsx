@@ -47,7 +47,7 @@ export default function RealtimeScores() {
           {Math.round(scores.realtime_estimate)}/100
         </span>
         <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-          макс: {Math.round(scores.max_possible)}
+          макс: {Math.round(scores.max_possible_realtime)}
         </span>
       </div>
 

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Loader2, UserPlus } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
@@ -214,7 +215,7 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
             )}
 
             {error && (
-              <div className="rounded-lg p-3 mb-4 text-xs" style={{ background: "rgba(255,68,68,0.1)", color: "var(--danger, #FF4444)" }}>
+              <div className="rounded-lg p-3 mb-4 text-xs" style={{ background: "color-mix(in srgb, var(--danger) 10%, transparent)", color: "var(--danger)" }}>
                 {error}
               </div>
             )}
@@ -341,15 +342,9 @@ export function ClientCreateModal({ open, onClose, onCreated }: ClientCreateModa
               </div>
 
               {/* Submit */}
-              <motion.button
-                type="submit"
-                disabled={saving}
-                className="btn-neon w-full flex items-center justify-center gap-2 py-3"
-                whileTap={{ scale: 0.97 }}
-              >
-                {saving ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
+              <Button type="submit" variant="primary" fluid loading={saving} icon={<UserPlus size={16} />}>
                 Создать клиента
-              </motion.button>
+              </Button>
             </form>
           </motion.div>
         </motion.div>

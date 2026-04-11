@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   User,
@@ -10,6 +11,7 @@ import {
   CheckCircle,
   Loader2,
 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -26,8 +28,11 @@ import { AchievementWall } from "@/components/profile/AchievementWall";
 import type { TrainingStats, GamificationProgress, ProgressPoint } from "@/types";
 import { logger } from "@/lib/logger";
 
-export default function ProfilePage() {
+function ProfilePageContent() {
+  const searchParams = useSearchParams();
+  const viewUserId = searchParams.get("user");
   const { user, loading: authLoading } = useAuth();
+  const [viewedUser, setViewedUser] = useState<{ id: string; full_name: string; role: string; avatar_url?: string | null } | null>(null);
   const [stats, setStats] = useState<TrainingStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [progress, setProgress] = useState<GamificationProgress | null>(null);
@@ -40,24 +45,44 @@ export default function ProfilePage() {
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
 
+  const isViewingOther = !!viewUserId && viewUserId !== user?.id;
+  const targetUserId = isViewingOther ? viewUserId : user?.id;
+
+  // Fetch viewed user info if viewing someone else
   useEffect(() => {
-    if (!user) return;
+    if (!isViewingOther || !viewUserId) { setViewedUser(null); return; }
+    api.get(`/users/${viewUserId}/profile`)
+      .then((data: { id: string; full_name: string; role: string; avatar_url?: string | null }) => setViewedUser(data))
+      .catch(() => setViewedUser(null));
+  }, [viewUserId, isViewingOther]);
+
+  useEffect(() => {
+    if (!targetUserId) return;
+    setStatsLoading(true);
     api
-      .get(`/users/${user.id}/stats`)
+      .get(`/users/${targetUserId}/stats`)
       .then(setStats)
       .catch((err) => { logger.error("Failed to load user stats:", err); setStats(null); })
       .finally(() => setStatsLoading(false));
 
-    api
-      .get("/gamification/me/progress")
-      .then(setProgress)
-      .catch((err) => { logger.error("Failed to load gamification progress:", err); setProgress(null); });
+    if (!isViewingOther) {
+      api
+        .get("/gamification/me/progress")
+        .then(setProgress)
+        .catch((err) => { logger.error("Failed to load gamification progress:", err); setProgress(null); });
 
-    api
-      .get("/analytics/me/snapshot")
-      .then((data: { progress?: ProgressPoint[] }) => setProgressData(data.progress ?? []))
-      .catch((err) => { logger.error("Failed to load progress data:", err); });
-  }, [user]);
+      api
+        .get("/analytics/me/snapshot")
+        .then((data: { progress?: ProgressPoint[] }) => setProgressData(data.progress ?? []))
+        .catch((err) => { logger.error("Failed to load progress data:", err); });
+    } else {
+      // For other users — try fetching their progress via admin endpoint
+      api
+        .get(`/users/${targetUserId}/progress`)
+        .then((data: { progress?: ProgressPoint[] }) => setProgressData(data.progress ?? []))
+        .catch(() => setProgressData([]));
+    }
+  }, [targetUserId, isViewingOther]);
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,25 +212,26 @@ export default function ProfilePage() {
                 </div>
               ))}
 
-              <motion.button
+              <Button
                 type="submit"
                 disabled={passwordLoading}
-                className="btn-neon flex items-center gap-2"
-                whileTap={{ scale: 0.98 }}
+                loading={passwordLoading}
+                iconRight={<ArrowRight size={16} />}
               >
-                {passwordLoading ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <>
-                    Изменить пароль
-                    <ArrowRight size={16} />
-                  </>
-                )}
-              </motion.button>
+                Изменить пароль
+              </Button>
             </form>
           </motion.div>
         </div>
       </div>
     </AuthLayout>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={<AuthLayout><div className="flex items-center justify-center min-h-screen"><Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} /></div></AuthLayout>}>
+      <ProfilePageContent />
+    </Suspense>
   );
 }

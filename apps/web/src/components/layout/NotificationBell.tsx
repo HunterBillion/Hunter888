@@ -80,8 +80,8 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
     consent: { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.25)", color: "var(--success)" },
     warning: { bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)", color: "var(--warning)" },
     reminder: { bg: "rgba(124,106,232,0.1)", border: "rgba(124,106,232,0.25)", color: "var(--accent)" },
-    achievement: { bg: "rgba(212,168,75,0.1)", border: "rgba(212,168,75,0.25)", color: "#FFD700" },
-    pvp_invitation: { bg: "rgba(212,168,75,0.12)", border: "rgba(212,168,75,0.3)", color: "#FFD700" },
+    achievement: { bg: "rgba(212,168,75,0.1)", border: "rgba(212,168,75,0.25)", color: "var(--gf-xp)" },
+    pvp_invitation: { bg: "rgba(212,168,75,0.12)", border: "rgba(212,168,75,0.3)", color: "var(--gf-xp)" },
   };
 
   const router = useRouter();

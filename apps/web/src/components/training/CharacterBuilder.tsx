@@ -6,10 +6,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { logger } from "@/lib/logger";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import {
-  Brain, Briefcase, Radio, Users as UsersIcon, Heart, Gauge, Cloud, FileSearch,
-  ArrowRight, ArrowLeft, Loader2, Sparkles, RotateCcw, Check, Save, CheckCircle2,
+  ArrowRight, ChevronLeft, Loader2, Sparkles, RotateCcw, Check, Save, CheckCircle2,
   Lock, SkipForward,
 } from "lucide-react";
+import {
+  Brain, Briefcase, Broadcast, UsersThree, Heart, Gauge, Cloud, FileMagnifyingGlass,
+} from "@phosphor-icons/react";
+import { Button } from "@/components/ui/Button";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { api } from "@/lib/api";
 import type {
@@ -34,19 +37,19 @@ interface CharacterBuilderProps {
 type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 const STEPS: {
-  icon: React.ComponentType<{ size: number; style?: React.CSSProperties }>;
+  icon: React.ComponentType<Record<string, unknown>>;
   label: string;
   unlockLevel: number;
   required: boolean;
 }[] = [
   { icon: Brain, label: "Архетип", unlockLevel: 1, required: true },        // 0
   { icon: Briefcase, label: "Профессия", unlockLevel: 1, required: true },   // 1
-  { icon: Radio, label: "Источник", unlockLevel: 1, required: true },        // 2
-  { icon: UsersIcon, label: "Контекст", unlockLevel: 3, required: false },   // 3 — FIX-4
+  { icon: Broadcast, label: "Источник", unlockLevel: 1, required: true },    // 2
+  { icon: UsersThree, label: "Контекст", unlockLevel: 3, required: false },  // 3 — FIX-4
   { icon: Heart, label: "Настроение", unlockLevel: 5, required: false },     // 4 — FIX-4
   { icon: Gauge, label: "Сложность", unlockLevel: 1, required: true },       // 5
   { icon: Cloud, label: "Среда", unlockLevel: 8, required: false },           // 6
-  { icon: FileSearch, label: "Превью", unlockLevel: 1, required: false },     // 7 — FIX-4: level 9
+  { icon: FileMagnifyingGlass, label: "Превью", unlockLevel: 1, required: false },     // 7 — FIX-4: level 9
 ];
 
 // ─── Emotion presets data ───────────────────────────────────────────────────
@@ -367,7 +370,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
           {/* ═══ Step 1: Profession (25) ═══ */}
           {step === 1 && (<>
             <h3 className="font-display text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>Профессия клиента</h3>
-            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>Определяет доход, стиль общения, лексику и модификаторы OCEAN</p>
+            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>Определяет доход, стиль общения и манеру поведения</p>
             <div className="space-y-5 max-h-[55vh] overflow-y-auto pr-1">
               {Object.entries(PROFESSION_GROUPS).map(([key, group]) => (
                 <div key={key}>
@@ -410,7 +413,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                           style={{ background: sel ? "var(--accent-muted)" : "var(--input-bg)", border: `1px solid ${sel ? "var(--accent)" : "var(--border-color)"}`, color: sel ? "var(--accent)" : "var(--text-secondary)" }}>
                           <div className="text-xs font-bold">{s.name}</div>
                           <div className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
-                            Trust: {s.trust > 0 ? "+" : ""}{s.trust} \u00B7 Aware: {s.awareness}/3
+                            {s.trust >= 2 ? "Высокое доверие" : s.trust >= 1 ? "Открытый контакт" : s.trust === 0 ? "Нейтральный" : s.trust >= -1 ? "Настороженный" : "Холодный контакт"}
                           </div>
                         </button>
                       );
@@ -460,26 +463,36 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
             <div className="glass-panel p-6 rounded-2xl">
               <div className="flex items-center justify-between mb-5">
                 <div>
-                  <h3 className="font-display text-sm font-bold" style={{ color: "var(--text-primary)" }}>Уровень сложности</h3>
-                  <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>Влияет на агрессивность, ловушки и адаптивную сложность</p>
+                  <h3 className="font-display text-base font-bold" style={{ color: "var(--text-primary)" }}>Уровень сложности</h3>
+                  <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>Влияет на агрессивность, ловушки и адаптивную сложность</p>
                 </div>
-                <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: `${difficulty <= 3 ? "rgba(61,220,132,0.08)" : difficulty <= 6 ? "rgba(212,168,75,0.08)" : "rgba(229,72,77,0.08)"}` }}>
-                  <span className="font-display text-2xl font-black tabular-nums" style={{ color: difficulty <= 3 ? "var(--success)" : difficulty <= 6 ? "var(--warning)" : "var(--danger)" }}>{difficulty}</span>
-                  <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>/10</span>
+                <div className="flex items-center gap-2 rounded-xl px-4 py-2.5" style={{ background: `${difficulty <= 3 ? "rgba(61,220,132,0.10)" : difficulty <= 6 ? "rgba(212,168,75,0.10)" : "rgba(229,72,77,0.10)"}` }}>
+                  <span className="font-display text-3xl font-black tabular-nums" style={{ color: difficulty <= 3 ? "var(--success)" : difficulty <= 6 ? "var(--warning)" : "var(--danger)" }}>{difficulty}</span>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>/10</span>
+                    <span className="text-xs font-bold" style={{ color: difficulty <= 3 ? "var(--success)" : difficulty <= 6 ? "var(--warning)" : "var(--danger)" }}>
+                      {difficulty <= 3 ? "Лёгкий" : difficulty <= 6 ? "Средний" : difficulty <= 8 ? "Сложный" : "Эксперт"}
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-1.5">
+              <div className="flex gap-1.5 mb-3">
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((level) => {
                   const active = level === difficulty; const filled = level <= difficulty;
                   const cc = level <= 3 ? "var(--success)" : level <= 6 ? "var(--warning)" : level <= 8 ? "var(--danger)" : "var(--danger)";
                   return (
                     <motion.button key={level} onClick={() => setDifficulty(level)}
-                      className="relative flex-1 rounded-lg" style={{ height: active ? 36 : 28, background: filled ? `linear-gradient(180deg, ${cc}, ${cc}88)` : "var(--input-bg)", border: active ? `2px solid ${cc}` : "1px solid var(--border-color)", opacity: filled ? 1 : 0.35 }}
+                      className="relative flex-1 rounded-lg" style={{ height: active ? 40 : 32, background: filled ? `linear-gradient(180deg, ${cc}, ${cc}88)` : "var(--input-bg)", border: active ? `2px solid ${cc}` : "1px solid var(--border-color)", opacity: filled ? 1 : 0.35 }}
                       whileHover={{ scale: 1.1, y: -2 }} whileTap={{ scale: 0.93 }}>
                       <span className="absolute inset-0 flex items-center justify-center font-mono text-sm font-bold" style={{ color: filled ? "#fff" : "var(--text-muted)" }}>{level}</span>
                     </motion.button>
                   );
                 })}
+              </div>
+              <div className="flex justify-between text-xs" style={{ color: "var(--text-muted)" }}>
+                <span style={{ color: "var(--success)" }}>Лёгкий</span>
+                <span style={{ color: "var(--warning)" }}>Средний</span>
+                <span style={{ color: "var(--danger)" }}>Сложный</span>
               </div>
             </div>
           </>)}
@@ -545,42 +558,33 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
 
       {/* Navigation */}
       <div className="mt-8 flex items-center justify-between">
-        <div className="flex gap-2">
+        <div className="flex gap-2.5">
           {step > 0 && (
-            <motion.button onClick={prevStep} className="btn-neon flex items-center gap-1.5 text-xs" whileTap={{ scale: 0.97 }}>
-              <ArrowLeft size={12} /> Назад
-            </motion.button>
+            <Button variant="ghost" onClick={prevStep} size="sm" icon={<ChevronLeft size={16} />}>Назад</Button>
           )}
           {(archetype || profession) && (
-            <motion.button onClick={reset} className="btn-neon flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }} whileTap={{ scale: 0.97 }}>
-              <RotateCcw size={12} /> Сбросить
-            </motion.button>
+            <Button variant="ghost" onClick={reset} size="sm" icon={<RotateCcw size={14} />}>Сбросить</Button>
           )}
         </div>
 
-        <div className="flex gap-2">
-          {/* Skip button for optional steps */}
+        <div className="flex gap-2.5">
           {step < 7 && !STEPS[step].required && (
-            <motion.button onClick={nextStep} className="btn-neon flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }} whileTap={{ scale: 0.97 }}>
-              <SkipForward size={12} /> Пропустить
-            </motion.button>
+            <Button variant="ghost" onClick={nextStep} size="sm" icon={<SkipForward size={14} />}>Пропустить</Button>
           )}
 
           {step < 7 ? (
-            <motion.button onClick={nextStep} disabled={!canNext()} className="btn-neon flex items-center gap-1.5 text-xs" whileTap={canNext() ? { scale: 0.97 } : {}}>
-              Далее <ArrowRight size={12} />
-            </motion.button>
+            <Button onClick={nextStep} disabled={!canNext()} size="sm" iconRight={<ArrowRight size={16} />}>Далее</Button>
           ) : (
-            <div className="flex gap-2">
-              <motion.button onClick={handleSave} disabled={saving || saved || !archetype || !profession} className="btn-neon flex items-center gap-1.5 text-xs" whileTap={{ scale: 0.97 }}>
-                {saved ? <><CheckCircle2 size={12} style={{ color: "var(--success)" }} /> Сохранён</> : saving ? <Loader2 size={12} className="animate-spin" /> : <><Save size={12} /> Сохранить</>}
-              </motion.button>
-              <motion.button onClick={() => handleStart(false)} disabled={starting || !archetype || !profession} className="btn-neon flex items-center gap-1.5 text-xs" whileTap={{ scale: 0.97 }}>
-                {starting ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={12} /> Начать</>}
-              </motion.button>
-              <motion.button onClick={() => handleStart(true)} disabled={starting || !archetype || !profession} className="btn-neon flex items-center gap-1.5 text-xs" style={{ borderColor: "rgba(124,106,232,0.28)", color: "var(--accent)" }} whileTap={{ scale: 0.97 }}>
-                {starting ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={12} /> AI x{storyCalls}</>}
-              </motion.button>
+            <div className="flex gap-2.5">
+              <Button onClick={handleSave} disabled={saving || saved || !archetype || !profession} size="sm" loading={saving} icon={saved ? <CheckCircle2 size={16} style={{ color: "var(--success)" }} /> : <Save size={16} />}>
+                {saved ? "Сохранён" : "Сохранить"}
+              </Button>
+              <Button variant="primary" onClick={() => handleStart(false)} disabled={starting || !archetype || !profession} size="sm" loading={starting} icon={<Sparkles size={16} />}>
+                Начать
+              </Button>
+              <Button onClick={() => handleStart(true)} disabled={starting || !archetype || !profession} size="sm" loading={starting} icon={<Sparkles size={16} />} style={{ borderColor: "rgba(124,106,232,0.28)", color: "var(--accent)" }}>
+                AI x{storyCalls}
+              </Button>
             </div>
           )}
         </div>

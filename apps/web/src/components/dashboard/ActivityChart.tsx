@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { BarChart3, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { ChartBar } from "@phosphor-icons/react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -13,6 +14,7 @@ import {
 import { Bar } from "react-chartjs-2";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { getChartTheme } from "@/lib/chartTheme";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 
@@ -37,6 +39,8 @@ export function ActivityChart() {
       .finally(() => setLoading(false));
   }, []);
 
+  const theme = getChartTheme();
+
   const chartData = {
     labels: data.map((d) => {
       const date = new Date(d.date);
@@ -46,9 +50,9 @@ export function ActivityChart() {
       {
         label: "Сессии",
         data: data.map((d) => d.sessions),
-        backgroundColor: "rgba(139, 92, 246, 0.5)",
-        borderRadius: 4,
-        barThickness: 12,
+        backgroundColor: theme.colors.bar1,
+        borderRadius: 6,
+        barThickness: 18,
       },
     ],
   };
@@ -56,16 +60,18 @@ export function ActivityChart() {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
+    plugins: { legend: { display: false }, tooltip: theme.defaults.plugins.tooltip },
     scales: {
       x: {
         grid: { display: false },
-        ticks: { color: "rgba(255,255,255,0.4)", font: { size: 9 } },
+        ticks: { color: theme.colors.text, font: { size: 14 } },
+        border: { color: "transparent" },
       },
       y: {
         beginAtZero: true,
-        grid: { color: "rgba(255,255,255,0.05)" },
-        ticks: { color: "rgba(255,255,255,0.4)", font: { size: 10 }, stepSize: 1 },
+        grid: { color: theme.defaults.scales.y.grid.color },
+        ticks: { color: theme.colors.text, font: { size: 14 }, stepSize: 1 },
+        border: { color: "transparent" },
       },
     },
   };
@@ -79,7 +85,7 @@ export function ActivityChart() {
     >
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <BarChart3 size={16} style={{ color: "var(--accent)" }} />
+          <ChartBar weight="duotone" size={18} style={{ color: "var(--accent)" }} />
           <span className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
             Активность (14 дней)
           </span>
@@ -94,7 +100,7 @@ export function ActivityChart() {
           <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
         </div>
       ) : data.length > 0 ? (
-        <div style={{ height: 140 }}>
+        <div style={{ height: 180 }}>
           <Bar data={chartData} options={options} />
         </div>
       ) : (

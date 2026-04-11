@@ -2,9 +2,10 @@
 
 import { useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Camera, Trash2, Loader2, Info } from "lucide-react";
+import { Camera, Trash2, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { UserAvatar } from "@/components/ui/UserAvatar";
+import { InfoButton } from "@/components/ui/InfoButton";
 
 const ACCEPT = "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm";
 const MAX_IMAGE_MB = 10;
@@ -21,7 +22,7 @@ interface AvatarUploadProps {
 export function AvatarUpload({ currentUrl, userName, size = 48, onUploaded, onDeleted }: AvatarUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showTooltip, setShowTooltip] = useState(false);
+
   const [bust, setBust] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -98,27 +99,7 @@ export function AvatarUpload({ currentUrl, userName, size = 48, onUploaded, onDe
 
       <input ref={inputRef} type="file" accept={ACCEPT} onChange={handleFile} className="hidden" />
 
-      {/* Info icon with tooltip */}
-      <div
-        className="relative"
-        onMouseEnter={() => setShowTooltip(true)}
-        onMouseLeave={() => setShowTooltip(false)}
-      >
-        <Info size={14} style={{ color: "var(--text-muted)", cursor: "help" }} />
-        {showTooltip && (
-          <div
-            className="absolute left-6 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-mono z-50"
-            style={{
-              background: "var(--bg-tertiary)",
-              border: "1px solid var(--border-color)",
-              color: "var(--text-secondary)",
-              boxShadow: "var(--shadow-md)",
-            }}
-          >
-            JPEG, PNG, WebP, GIF, MP4, WebM • макс 10MB
-          </div>
-        )}
-      </div>
+      <InfoButton text="JPEG, PNG, WebP, GIF, MP4, WebM · макс 10 MB" size={14} side="right" />
 
       {/* Delete button (only if avatar exists) */}
       {currentUrl && !uploading && (

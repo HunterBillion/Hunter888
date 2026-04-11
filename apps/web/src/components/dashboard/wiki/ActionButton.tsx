@@ -10,7 +10,7 @@ export function ActionButton({
   color = "var(--warning)",
   disabled = false,
 }: {
-  icon: typeof Play;
+  icon: React.ComponentType<Record<string, unknown>>;
   label: string;
   onClick: () => void;
   loading: boolean;
@@ -36,7 +36,7 @@ export function ActionButton({
         opacity: disabled ? 0.5 : 1,
       }}
     >
-      {loading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Icon size={14} />}
+      {loading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Icon size={14} weight="duotone" />}
       {label}
     </button>
   );

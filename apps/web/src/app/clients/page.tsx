@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users, Search, Filter, Plus, Loader2, ChevronDown, Check, UserCheck, Download, X, Copy } from "lucide-react";
+import { Search, Filter, Plus, Loader2, ChevronDown, Check, UserCheck, Download, X, Copy } from "lucide-react";
+import { UsersThree } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { getApiBaseUrl } from "@/lib/public-origin";
 import { getToken } from "@/lib/auth";
@@ -117,6 +118,10 @@ export default function ClientsPage() {
 
   const totalPages = Math.ceil(total / limit);
 
+  // Status summary counts
+  const activeCount = clients.filter((c) => ["in_process", "contract_signed", "consultation"].includes(c.status)).length;
+  const thinkingCount = clients.filter((c) => ["thinking", "interested", "contacted"].includes(c.status)).length;
+
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -176,6 +181,13 @@ export default function ClientsPage() {
                   {scopeLabel}
                 </p>
               )}
+              {!loading && clients.length > 0 && (
+                <div className="flex items-center gap-3 text-xs font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: "var(--success)" }} />{activeCount} активных</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: "var(--warning)" }} />{thinkingCount} думают</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: "var(--text-muted)" }} />{total} всего</span>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <Link href="/clients/graph" prefetch={true}>
@@ -184,7 +196,7 @@ export default function ClientsPage() {
                   style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" }}
                   whileTap={{ scale: 0.97 }}
                 >
-                  <Users size={12} /> Граф
+                  <UsersThree size={12} weight="duotone" /> Граф
                 </motion.button>
               </Link>
               {isAdminOrRop && (
@@ -449,10 +461,14 @@ export default function ClientsPage() {
             <ClientListSkeleton />
           ) : clients.length === 0 ? (
             <EmptyState
-              icon={Users}
               title={search || statusFilter ? "Нет совпадений в портфеле" : "Портфель пуст — время открыть первое дело"}
-              description={search || statusFilter ? "Уточните критерии поиска по делам" : "Завершите охоту и нажмите «Добавить в CRM» или создайте клиента вручную"}
-              illustration={!search && !statusFilter ? <img src="/pixel/empty/treasure-locked.png" alt="" className="w-24 h-24 mx-auto mb-2 opacity-80" /> : undefined}
+              description={search || statusFilter ? "Попробуйте изменить фильтры или сбросить поиск — клиент может быть в другом статусе" : "Завершите первую тренировку и нажмите «Добавить в CRM». Каждый клиент — это ваш прогресс"}
+              hint={!search && !statusFilter ? "Первый клиент — первый шаг к результату" : undefined}
+              illustration={
+                search || statusFilter
+                  ? <motion.div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl" style={{ background: "var(--accent-muted)" }} animate={{ y: [0, -4, 0] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}><UsersThree size={48} weight="duotone" style={{ color: "var(--accent)", opacity: 0.7 }} /></motion.div>
+                  : <img src="/pixel/empty/treasure-locked.png" alt="" className="w-24 h-24 mx-auto mb-2 opacity-80" />
+              }
               actionLabel={!search && !statusFilter ? "Начать тренировку" : undefined}
               onAction={!search && !statusFilter ? () => window.location.href = "/training" : undefined}
             />

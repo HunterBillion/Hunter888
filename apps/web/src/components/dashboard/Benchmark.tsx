@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { BarChart3, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { ChartBar } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
 
@@ -57,7 +58,7 @@ export function Benchmark() {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <div className="flex items-center gap-2 mb-3">
-        <BarChart3 size={16} style={{ color: "var(--accent)" }} />
+        <ChartBar size={16} weight="duotone" style={{ color: "var(--accent)" }} />
         <h3 className="font-display text-sm font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
           BENCHMARK vs ПЛАТФОРМА
         </h3>

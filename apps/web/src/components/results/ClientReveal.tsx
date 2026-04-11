@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Eye, Brain, Heart, AlertTriangle, Target, Shield, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
+import { Eye, Brain, Heart, Warning, Target, Shield } from "@phosphor-icons/react";
 import type { ClientProfile } from "@/types";
 import { colorAlpha } from "@/lib/utils";
 
@@ -20,7 +21,7 @@ export default function ClientReveal({ clientCard }: ClientRevealProps) {
 
   const revealItems = [
     { icon: Brain, label: "Архетип", value: clientCard.archetype_code, color: "var(--accent)" },
-    { icon: AlertTriangle, label: "Страхи", value: clientCard.fears?.join(", "), color: "var(--danger)" },
+    { icon: Warning, label: "Страхи", value: clientCard.fears?.join(", "), color: "var(--danger)" },
     { icon: Heart, label: "Мягкая точка", value: clientCard.soft_spot, color: "var(--success)" },
     { icon: Target, label: "Точка слома", value: clientCard.breaking_point, color: "var(--warning)" },
     { icon: Shield, label: "Скрытые возражения", value: clientCard.hidden_objections?.join(", "), color: "var(--magenta, #E028CC)" },
@@ -35,8 +36,8 @@ export default function ClientReveal({ clientCard }: ClientRevealProps) {
         whileTap={{ scale: 0.99 }}
       >
         <div className="flex items-center gap-2">
-          <Eye size={16} style={{ color: "var(--accent)" }} />
-          <span className="font-display text-sm tracking-widest" style={{ color: "var(--text-primary)" }}>
+          <Eye weight="duotone" size={18} style={{ color: "var(--accent)" }} />
+          <span className="font-display text-base font-bold tracking-widest" style={{ color: "var(--text-primary)" }}>
             РАСКРЫТИЕ КЛИЕНТА
           </span>
         </div>
@@ -84,7 +85,7 @@ export default function ClientReveal({ clientCard }: ClientRevealProps) {
                     }}
                   >
                     <div className="flex items-center gap-2 mb-2">
-                      <Icon size={13} style={{ color: item.color }} />
+                      <Icon size={13} weight="duotone" style={{ color: item.color }} />
                       <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                         {item.label}
                       </span>

@@ -135,6 +135,7 @@ export default function NotificationsPage() {
               icon={Inbox}
               title={tab === "unread" ? "Нет непрочитанных" : "Нет уведомлений"}
               description={tab === "unread" ? "Все уведомления прочитаны — отличная работа!" : "Уведомления появятся по мере активности"}
+              illustration={<img src="/pixel/empty/scroll-blank.png" alt="" className="w-24 h-24 mx-auto mb-2 opacity-80" />}
             />
           ) : (
             items.map((n, i) => (

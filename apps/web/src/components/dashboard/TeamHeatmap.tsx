@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Flame, TrendingUp, TrendingDown, Minus, Loader2 } from "lucide-react";
+import { Minus, Loader2 } from "lucide-react";
+import { Flame, TrendUp, TrendDown } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
 
@@ -45,8 +46,8 @@ function getScoreColor(score: number): string {
 }
 
 function TrendIcon({ trend }: { trend: string }) {
-  if (trend === "improving") return <TrendingUp size={10} style={{ color: "var(--success)" }} />;
-  if (trend === "declining") return <TrendingDown size={10} style={{ color: "var(--danger)" }} />;
+  if (trend === "improving") return <TrendUp size={10} weight="duotone" style={{ color: "var(--success)" }} />;
+  if (trend === "declining") return <TrendDown size={10} weight="duotone" style={{ color: "var(--danger)" }} />;
   return <Minus size={10} style={{ color: "var(--text-muted)" }} />;
 }
 
@@ -80,7 +81,7 @@ export function TeamHeatmap() {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="overflow-x-auto">
       <div className="flex items-center gap-2 mb-3">
-        <Flame size={16} style={{ color: "var(--accent)" }} />
+        <Flame size={16} weight="duotone" style={{ color: "var(--accent)" }} />
         <h3 className="font-display text-sm font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
           ТЕПЛОВАЯ КАРТА НАВЫКОВ
         </h3>

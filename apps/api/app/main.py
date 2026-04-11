@@ -108,6 +108,33 @@ async def lifespan(application: FastAPI):
     except Exception as e:
         logger.warning("Lifespan: seed lock failed: %s", e)
 
+    # ── Ensure PvE bot user exists (FK target for pvp_duels.player2_id) ──
+    try:
+        _BOT_UUID = "00000000-0000-0000-0000-000000000001"
+        async with async_session() as _bot_db:
+            from sqlalchemy import text as _text
+            _exists = (await _bot_db.execute(
+                _text("SELECT 1 FROM users WHERE id = :bid"),
+                {"bid": _BOT_UUID},
+            )).scalar()
+            if not _exists:
+                from app.core.security import hash_password as _hp
+                from app.models.user import User as _U, UserRole as _UR
+                import uuid as _uuid
+                _bot = _U(
+                    id=_uuid.UUID(_BOT_UUID),
+                    email="bot@system.local",
+                    hashed_password=_hp("!disabled-bot-account!"),
+                    full_name="AI Бот",
+                    role=_UR.manager,
+                    is_active=False,
+                )
+                _bot_db.add(_bot)
+                await _bot_db.commit()
+                logger.info("Lifespan: PvE bot user created")
+    except Exception as e:
+        logger.warning("Lifespan: PvE bot user check failed (non-blocking): %s", e)
+
     # Load BlitzQuestionPool for zero-latency blitz mode
     try:
         async with async_session() as db:

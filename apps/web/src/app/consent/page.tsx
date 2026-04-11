@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Shield, AlertTriangle, Check, X, ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { clearTokens } from "@/lib/auth";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -27,9 +28,13 @@ export default function ConsentPage() {
       });
       router.replace("/home");
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Не удалось сохранить согласие";
-      setError(message);
+      const raw = err instanceof Error ? err.message : "";
+      // CSRF 403 — session expired, re-login needed
+      if (raw.toLowerCase().includes("csrf") || raw.includes("403")) {
+        setError("Сессия истекла. Пожалуйста, войдите заново.");
+      } else {
+        setError(raw || "Не удалось сохранить согласие");
+      }
     } finally {
       setLoading(false);
     }
@@ -39,7 +44,7 @@ export default function ConsentPage() {
 
   const handleLogout = () => {
     clearTokens();
-    router.replace("/login");
+    router.replace("/");
   };
 
   if (declined) {
@@ -64,13 +69,9 @@ export default function ConsentPage() {
             обработку персональных данных в соответствии с ФЗ N 152-ФЗ.
           </p>
           <div className="mt-6 flex justify-center gap-3">
-            <motion.button
-              onClick={() => setDeclined(false)}
-              className="btn-neon"
-              whileTap={{ scale: 0.97 }}
-            >
+            <Button onClick={() => setDeclined(false)}>
               Вернуться
-            </motion.button>
+            </Button>
             <motion.button
               onClick={handleLogout}
               className="rounded-xl px-6 py-3 text-sm font-semibold transition-colors"
@@ -225,27 +226,20 @@ export default function ConsentPage() {
 
           <div className="flex gap-3">
             <motion.button
-              onClick={handleAccept}
-              disabled={!accepted || loading}
-              className="btn-neon flex flex-1 items-center justify-center gap-2"
-              whileTap={{ scale: 0.98 }}
-            >
-              {loading ? (
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-              ) : (
-                <>
-                  Подтвердить
-                  <ArrowRight size={16} />
-                </>
-              )}
-            </motion.button>
-            <motion.button
               onClick={handleDecline}
-              className="btn-neon flex-1"
+              className="rounded-xl px-6 py-3 text-sm font-medium flex-1 transition-colors"
+              style={{
+                background: "var(--input-bg)",
+                border: "1px solid var(--border-color)",
+                color: "var(--text-secondary)",
+              }}
               whileTap={{ scale: 0.98 }}
             >
               Отклонить
             </motion.button>
+            <Button variant="primary" loading={loading} disabled={!accepted} iconRight={<ArrowRight size={16} />} onClick={handleAccept} className="flex-1">
+              Подтвердить
+            </Button>
           </div>
         </div>
       </motion.div>

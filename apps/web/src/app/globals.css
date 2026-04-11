@@ -945,6 +945,16 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
     }
   }
 
+  /* ── Pulse glow for CTA buttons ─────────────────── */
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 20px rgba(124,106,232,0.3), 0 0 60px rgba(124,106,232,0.1);
+    }
+    50% {
+      box-shadow: 0 0 30px rgba(124,106,232,0.5), 0 0 80px rgba(124,106,232,0.2);
+    }
+  }
+
   /* ── Glitch text ───────────────────────────────────── */
   .glitch-text {
     position: relative;

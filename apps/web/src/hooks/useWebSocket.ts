@@ -141,7 +141,7 @@ export function useWebSocket({
       }
 
       const data = await res.json();
-      setTokens(data.access_token, data.refresh_token);
+      setTokens(data.access_token, data.refresh_token, data.csrf_token);
       logger.log("[WS] Token refreshed via REST, reconnecting...");
       // Reconnect will happen automatically via connect()
     } catch {
@@ -206,7 +206,7 @@ export function useWebSocket({
 
           // Handle token refresh responses internally
           if (data.type === "auth.refreshed") {
-            setTokens(data.data.access_token, data.data.refresh_token);
+            setTokens(data.data.access_token, data.data.refresh_token, data.data.csrf_token);
             logger.log("[WS] Token refreshed via WS");
             return;
           }

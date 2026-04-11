@@ -103,11 +103,16 @@ interface SessionStore {
 
   // Real-time scores (from score.hint)
   realtimeScores: {
+    script_adherence: number;
     objection_handling: number;
     communication: number;
+    anti_patterns: number;
+    result: number;
+    chain_traversal: number;
+    trap_handling: number;
     human_factor: number;
     realtime_estimate: number;
-    max_possible: number;
+    max_possible_realtime: number;
   } | null;
 
   // Trap history (persistent log)
@@ -151,6 +156,9 @@ interface SessionStore {
   reset: () => void;
   nextMsgId: () => string;
   addMessage: (msg: ChatBubble) => void;
+  clearMessages: () => void;
+  appendToLastAssistantMessage: (text: string) => void;
+  finalizeStreamingMessage: (fullContent: string, emotion?: EmotionState, seq?: number) => void;
   sortMessagesBySequence: () => void;
   setSessionState: (state: SessionState) => void;
   setConnectionState: (state: string) => void;
@@ -302,6 +310,31 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       return s; // Skip duplicate
     }
     return { messages: [...s.messages, msg].slice(-500) };
+  }),
+  clearMessages: () => set({ messages: [], _msgCounter: 0 }),
+  appendToLastAssistantMessage: (text) => set((s) => {
+    const msgs = [...s.messages];
+    const last = msgs[msgs.length - 1];
+    if (last && last.role === "assistant" && last.isStreaming) {
+      msgs[msgs.length - 1] = { ...last, content: last.content + text };
+      return { messages: msgs };
+    }
+    return s;
+  }),
+  finalizeStreamingMessage: (fullContent, emotion, seq) => set((s) => {
+    const msgs = [...s.messages];
+    const last = msgs[msgs.length - 1];
+    if (last && last.role === "assistant" && last.isStreaming) {
+      msgs[msgs.length - 1] = {
+        ...last,
+        content: fullContent,
+        emotion,
+        sequenceNumber: seq,
+        isStreaming: false,
+      };
+      return { messages: msgs };
+    }
+    return s;
   }),
   sortMessagesBySequence: () =>
     set((s) => ({

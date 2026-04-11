@@ -5,10 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  Zap, TrendingUp, Target, Clock, ArrowRight, Crosshair,
-  Users, BarChart3, Loader2, X, Flame, RotateCcw,
-  Swords, Crown, Medal, ClipboardList, Check,
+  ArrowRight, Loader2, X, RotateCcw, Check,
 } from "lucide-react";
+import {
+  Lightning, TrendUp, Target, Clock, Crosshair,
+  UsersThree, ChartBar, Flame, Sword, Crown, Medal,
+  ClipboardText, Sun, Moon, Star,
+} from "@phosphor-icons/react";
+import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -27,16 +31,16 @@ import { EASE_SNAP, TIMING, STORAGE, RANK, STREAK } from "@/lib/constants";
 // useTiltEffect kept in hooks/ for future use on non-motion elements
 
 
-function getGreeting(): string {
+function getGreeting(): { text: string; icon: typeof Sun } {
   const h = new Date().getHours();
-  if (h >= 5 && h < 8) return "Раннее утро — лучшее время";
-  if (h >= 8 && h < 12) return "Доброе утро";
-  if (h >= 12 && h < 14) return "Добрый день";
-  if (h >= 14 && h < 17) return "Продуктивного дня";
-  if (h >= 17 && h < 19) return "Добрый вечер";
-  if (h >= 19 && h < 22) return "Вечерняя тренировка";
-  if (h >= 22 && h < 24) return "Поздний сет";
-  return "Ночная смена";
+  if (h >= 5 && h < 8) return { text: "Раннее утро — лучшее время", icon: Sun };
+  if (h >= 8 && h < 12) return { text: "Доброе утро", icon: Sun };
+  if (h >= 12 && h < 14) return { text: "Добрый день", icon: Lightning };
+  if (h >= 14 && h < 17) return { text: "Продуктивного дня", icon: Lightning };
+  if (h >= 17 && h < 19) return { text: "Добрый вечер", icon: Moon };
+  if (h >= 19 && h < 22) return { text: "Вечерняя тренировка", icon: Moon };
+  if (h >= 22 && h < 24) return { text: "Поздний сет", icon: Star };
+  return { text: "Ночная смена", icon: Star };
 }
 
 // F3: Daily challenges — expanded pool in /lib/daily-challenges.ts
@@ -181,8 +185,8 @@ export default function HomePage() {
 
                 {/* Name + status */}
                 <div className="min-w-0">
-                  <div className="font-semibold text-sm uppercase tracking-wide mb-1.5" style={{ color: "var(--accent)", opacity: 0.8 }}>
-                    {getGreeting()}
+                  <div className="font-semibold text-sm uppercase tracking-wide mb-1.5 flex items-center gap-1.5" style={{ color: "var(--accent)", opacity: 0.8 }}>
+                    {(() => { const g = getGreeting(); const GIcon = g.icon; return <><GIcon size={14} weight="duotone" />{g.text}</>; })()}
                   </div>
                   <h1
                     className="font-display font-black leading-none truncate"
@@ -199,14 +203,14 @@ export default function HomePage() {
                         className="inline-flex items-center gap-1 font-mono text-xs px-2.5 py-1 rounded-full uppercase tracking-wider"
                         style={{ background: STREAK.rgba(0.1), border: `1px solid ${STREAK.rgba(0.25)}`, color: STREAK.light }}
                       >
-                        <Flame size={10} /> {streakDays} дней
+                        <Flame weight="duotone" size={10} /> {streakDays} дней
                       </span>
                     )}
                     <span
                       className="inline-flex items-center gap-1 font-mono text-xs px-2.5 py-1 rounded-full uppercase tracking-wider"
                       style={{ background: "var(--accent-muted)", border: "1px solid rgba(124,106,232,0.25)", color: "var(--accent)" }}
                     >
-                      <Zap size={10} /> {xpCurrent} / {xpNext} XP
+                      <Lightning weight="duotone" size={10} /> {xpCurrent} / {xpNext} XP
                     </span>
                   </div>
                 </div>
@@ -216,8 +220,8 @@ export default function HomePage() {
               <motion.button
                 onClick={quickStart}
                 disabled={starting}
-                className="btn-neon flex items-center justify-center gap-3 font-display font-bold shrink-0"
-                style={{ fontSize: "clamp(0.95rem, 2vw, 1.1rem)", padding: "clamp(0.85rem, 2vw, 1.1rem) clamp(1.5rem, 4vw, 2.5rem)" }}
+                className="inline-flex items-center justify-center gap-3 font-display font-bold shrink-0 rounded-xl uppercase tracking-wide transition-all duration-200 disabled:opacity-40"
+                style={{ fontSize: "clamp(0.95rem, 2vw, 1.1rem)", padding: "clamp(0.85rem, 2vw, 1.1rem) clamp(1.5rem, 4vw, 2.5rem)", background: "var(--accent)", color: "#fff", border: "1px solid var(--accent)", boxShadow: "0 0 20px rgba(124,106,232,0.4), 0 0 60px rgba(124,106,232,0.15)", animation: starting ? "none" : "pulse-glow 2.5s ease-in-out infinite" }}
                 whileHover={{ scale: 1.04, boxShadow: "0 12px 40px rgba(49,21,115,0.55)" }}
                 whileTap={{ scale: 0.97 }}
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -226,7 +230,7 @@ export default function HomePage() {
               >
                 {starting
                   ? <Loader2 size={20} className="animate-spin" />
-                  : <><Zap size={20} /><span>Быстрая охота</span><ArrowRight size={18} /></>
+                  : <><Lightning weight="duotone" size={20} /><span>Быстрая охота</span><ArrowRight size={18} /></>
                 }
               </motion.button>
             </div>
@@ -270,7 +274,7 @@ export default function HomePage() {
               onClick={() => router.push("/leaderboard")}
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: RANK.goldRgba(0.1) }}>
-                <Swords size={18} style={{ color: RANK.gold }} />
+                <Sword weight="duotone" size={18} style={{ color: RANK.gold }} />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
@@ -285,7 +289,7 @@ export default function HomePage() {
                   <div className="flex items-center gap-2 mt-1">
                     {dashboard.tournament.leaderboard.slice(0, 3).map((e) => (
                       <span key={e.user_id} className="font-mono text-xs flex items-center gap-0.5" style={{ color: "var(--text-muted)" }}>
-                        {e.rank === 1 ? <Crown size={9} style={{ color: RANK.gold }} /> : e.rank === 2 ? <Medal size={9} style={{ color: RANK.silver }} /> : <Medal size={9} style={{ color: RANK.bronze }} />}
+                        {e.rank === 1 ? <Crown weight="duotone" size={9} style={{ color: RANK.gold }} /> : e.rank === 2 ? <Medal weight="duotone" size={9} style={{ color: RANK.silver }} /> : <Medal weight="duotone" size={9} style={{ color: RANK.bronze }} />}
                         {e.full_name.split(" ")[0]}
                       </span>
                     ))}
@@ -340,8 +344,8 @@ export default function HomePage() {
             <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
               {[
                 { label: "Сессий", value: stats?.completed_sessions ?? 0, icon: Target, color: "var(--accent)", suffix: "", sparkData: [1, 2, 1, 3, 2, 4, stats?.completed_sessions ?? 0] },
-                { label: "Ср. балл", value: stats?.avg_score != null ? Math.round(stats.avg_score) : 0, icon: TrendingUp, color: scoreColor(stats?.avg_score ?? null), suffix: "", sparkData: [60, 65, 55, 70, 68, 75, Math.round(stats?.avg_score ?? 0)] },
-                { label: "Лучший", value: stats?.best_score != null ? Math.round(stats.best_score) : 0, icon: BarChart3, color: scoreColor(stats?.best_score ?? null), suffix: "", sparkData: [50, 60, 65, 70, 75, 80, Math.round(stats?.best_score ?? 0)] },
+                { label: "Ср. балл", value: stats?.avg_score != null ? Math.round(stats.avg_score) : 0, icon: TrendUp, color: scoreColor(stats?.avg_score ?? null), suffix: "", sparkData: [60, 65, 55, 70, 68, 75, Math.round(stats?.avg_score ?? 0)] },
+                { label: "Лучший", value: stats?.best_score != null ? Math.round(stats.best_score) : 0, icon: ChartBar, color: scoreColor(stats?.best_score ?? null), suffix: "", sparkData: [50, 60, 65, 70, 75, 80, Math.round(stats?.best_score ?? 0)] },
                 { label: "За неделю", value: stats?.sessions_this_week ?? 0, icon: Clock, color: STREAK.light, suffix: "", sparkData: [0, 1, 0, 2, 1, 1, stats?.sessions_this_week ?? 0] },
               ].map((card, i) => (
                 <StatCard key={card.label} card={card} i={i} />
@@ -362,7 +366,7 @@ export default function HomePage() {
                 <div className="glass-panel rounded-2xl p-5 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Zap size={16} style={{ color: "var(--warning)" }} />
+                      <Lightning weight="duotone" size={16} style={{ color: "var(--warning)" }} />
                       <span className="font-display font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
                         Вызов дня
                       </span>
@@ -373,18 +377,14 @@ export default function HomePage() {
                     <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>{dailyChallenge.title}</p>
                     <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>{dailyChallenge.desc}</p>
                   </div>
-                  <Link href="/training">
-                    <span className="btn-neon text-xs inline-flex items-center gap-1.5">
-                      <Crosshair size={13} /> Начать
-                    </span>
-                  </Link>
+                  <Button href="/training" size="sm" icon={<Crosshair weight="duotone" size={13} />}>Начать</Button>
                 </div>
               )}
               {/* Daily Goals */}
               {dailyGoals.length > 0 && (
                 <div className="glass-panel rounded-2xl p-5 flex flex-col gap-3">
                   <div className="flex items-center gap-2">
-                    <Target size={16} style={{ color: "var(--accent)" }} />
+                    <Target weight="duotone" size={16} style={{ color: "var(--accent)" }} />
                     <span className="font-display font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
                       Цели на сегодня
                     </span>
@@ -422,7 +422,7 @@ export default function HomePage() {
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="mt-8">
               <div className="flex items-center justify-between mb-4 sm:mb-5">
                 <h2 className="font-display font-bold tracking-wider flex items-center gap-2.5" style={{ fontSize: "clamp(1rem, 2.5vw, 1.25rem)", color: "var(--text-primary)" }}>
-                  <Crosshair size={18} style={{ color: "var(--accent)" }} /> РЕКОМЕНДАЦИИ
+                  <Crosshair weight="duotone" size={18} style={{ color: "var(--accent)" }} /> РЕКОМЕНДАЦИИ
                 </h2>
                 <motion.button
                   onClick={() => router.push("/training")}
@@ -517,7 +517,7 @@ export default function HomePage() {
           {user?.role && (user.role === "rop" || user.role === "admin") && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="mt-8">
               <button onClick={() => router.push("/dashboard")} className="glass-panel glass-panel-interactive p-5 w-full flex items-center gap-4 transition-all">
-                <Users size={20} style={{ color: "var(--accent)" }} />
+                <UsersThree weight="duotone" size={20} style={{ color: "var(--accent)" }} />
                 <div className="text-left">
                   <div className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>Панель команды</div>
                   <div className="text-xs" style={{ color: "var(--text-muted)" }}>Аналитика, назначение тренировок, прогресс</div>
@@ -685,7 +685,7 @@ function AssignedBadge() {
         className="flex h-10 w-10 items-center justify-center rounded-xl"
         style={{ background: overdueCount > 0 ? "rgba(229,72,77,0.1)" : "var(--accent-muted)" }}
       >
-        <ClipboardList size={18} style={{ color: overdueCount > 0 ? "var(--danger)" : "var(--accent)" }} />
+        <ClipboardText weight="duotone" size={18} style={{ color: overdueCount > 0 ? "var(--danger)" : "var(--accent)" }} />
       </div>
       <div className="flex-1">
         <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>

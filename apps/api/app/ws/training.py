@@ -75,6 +75,7 @@ from app.services.session_manager import (
 )
 from app.services.llm import (
     LLMError,
+    LLMResponse,
     FactorInteractionMatrix,
     build_multi_call_prompt,
     generate_personality_profile,
@@ -521,6 +522,10 @@ async def _handle_session_resume(
     # 4b. Restore full session context from DB (scenario, character, client profile, traps)
     # Without this, LLM calls get no character prompt, trap detection fails,
     # scoring features break, and adaptive difficulty uses wrong base_difficulty.
+    # C2 fix: init outside async-with so they're available for session.resumed message
+    scenario = None
+    client_card = None
+    client_gender = ""
     async with async_session() as db_resume:
         # Load scenario
         scenario = None
@@ -601,10 +606,13 @@ async def _handle_session_resume(
         client_name = ""
         client_gender = ""
         try:
-            from app.models.roleplay import ClientProfile
+            from app.models.roleplay import ClientProfile, ProfessionProfile
             from app.services.client_generator import get_crm_card
+            from sqlalchemy.orm import selectinload
             cp_result = await db_resume.execute(
-                select(ClientProfile).where(ClientProfile.session_id == session_id)
+                select(ClientProfile)
+                .options(selectinload(ClientProfile.profession))
+                .where(ClientProfile.session_id == session_id)
             )
             profile = cp_result.scalar_one_or_none()
             if profile:
@@ -770,13 +778,20 @@ async def _handle_session_resume(
             started = started.replace(tzinfo=timezone.utc)
         elapsed = (datetime.now(timezone.utc) - started).total_seconds()
 
-    # 9. Confirm resume
-    await _send(ws, "session.resumed", {
+    # 9. Confirm resume (C2 fix: send full state to frontend)
+    _resumed_data: dict = {
         "session_id": str(session_id),
         "elapsed_seconds": elapsed,
         "message_count": len(messages),
         "emotion": str(emotion),
-    })
+        "character_name": state.get("character_name", ""),
+        "archetype_code": state.get("archetype_code", ""),
+        "scenario_title": scenario.title if scenario else "Тренировка",
+        "character_gender": client_gender or "M",
+    }
+    if client_card:
+        _resumed_data["client_card"] = client_card
+    await _send(ws, "session.resumed", _resumed_data)
 
     # Refresh Redis TTLs
     await refresh_session_ttl(session_id)
@@ -941,14 +956,64 @@ async def _generate_character_reply(
         # H1 fix: route by estimated token count, not call_number
         _est_tokens = len(extra_system) // 2  # rough estimate for Russian text
         _prefer = "local" if _est_tokens < 4000 else "auto"
-        llm_result = await generate_response(
-            system_prompt=extra_system,
-            messages=messages,
-            emotion_state=current_emotion,
-            character_prompt_path=prompt_path,
-            task_type="roleplay",
-            prefer_provider=_prefer,
-        )
+
+        # Phase 1 streaming: try streaming first, fall back to blocking
+        from app.services.llm import generate_response_stream
+        _streamed_text = ""
+        _stream_ok = False
+        try:
+            _chunk_buffer = ""
+            _start_stream = time.monotonic()
+            async for token in generate_response_stream(
+                system_prompt=extra_system,
+                messages=messages,
+                emotion_state=current_emotion,
+                character_prompt_path=prompt_path,
+                task_type="roleplay",
+                prefer_provider=_prefer,
+            ):
+                _streamed_text += token
+                _chunk_buffer += token
+                # Send chunk every ~40 chars or on sentence boundary
+                if len(_chunk_buffer) >= 40 or (
+                    _chunk_buffer.rstrip()
+                    and _chunk_buffer.rstrip()[-1] in ".!?…"
+                    and len(_chunk_buffer) > 10
+                ):
+                    await _send(ws, "character.response_chunk", {
+                        "text": _chunk_buffer,
+                    })
+                    _chunk_buffer = ""
+            # Flush remaining buffer
+            if _chunk_buffer:
+                await _send(ws, "character.response_chunk", {
+                    "text": _chunk_buffer,
+                })
+            _stream_latency = int((time.monotonic() - _start_stream) * 1000)
+            if _streamed_text.strip():
+                _stream_ok = True
+                # Build LLMResponse-compatible object for rest of pipeline
+                llm_result = LLMResponse(
+                    content=_streamed_text,
+                    model=settings.local_llm_model if _prefer == "local" else settings.gemini_model,
+                    input_tokens=_est_tokens,
+                    output_tokens=len(_streamed_text) // 2,
+                    latency_ms=_stream_latency,
+                    is_fallback=False,
+                )
+        except Exception as stream_err:
+            logger.debug("Streaming failed, falling back to blocking: %s", stream_err)
+
+        if not _stream_ok:
+            # Blocking fallback
+            llm_result = await generate_response(
+                system_prompt=extra_system,
+                messages=messages,
+                emotion_state=current_emotion,
+                character_prompt_path=prompt_path,
+                task_type="roleplay",
+                prefer_provider=_prefer,
+            )
     except LLMError as e:
         logger.error("LLM failed for session %s: %s", session_id, e)
         await _send(ws, "avatar.typing", {"is_typing": False})
@@ -958,8 +1023,6 @@ async def _generate_character_reply(
             "emotion": current_emotion,
             "is_fallback": True,
         })
-        # Save fallback message to DB to keep history consistent
-        # (user message was already saved, so assistant must follow)
         try:
             async with async_session() as db:
                 await add_message(
@@ -1336,8 +1399,8 @@ async def _generate_character_reply(
         logger.debug("Stage tracker update for assistant message failed, session %s: %s", session_id, e)
 
     # TTS: convert AI response to natural speech audio (ElevenLabs)
-    # Respects user preference tts_enabled (default: True).
-    # Runs after character.response so text appears immediately.
+    # Phase 2: Sentence-level TTS pipelining — synthesize and send per-sentence
+    # for faster first-audio (~1.5s instead of 5-13s)
     user_tts_pref = state.get("user_prefs", {}).get("tts_enabled", True)
     tts_available = is_tts_available()
     tts_enabled = settings.elevenlabs_enabled and user_tts_pref
@@ -1347,26 +1410,68 @@ async def _generate_character_reply(
     )
     if tts_available and tts_enabled:
         try:
-            # get_tts_audio_b64 returns a DICT: {"audio": b64_str, "format", "emotion", "voice_params", "duration_ms"}
-            tts_result = await get_tts_audio_b64(clean_content, str(session_id), emotion=new_emotion)
-            logger.info("TTS_RESULT | session=%s | audio_received=%s | audio_len=%d",
-                        session_id, tts_result is not None,
-                        len(tts_result["audio"]) if tts_result else 0)
-            if tts_result and tts_result.get("audio"):
-                await _send(ws, "tts.audio", {
-                    "audio_b64": tts_result["audio"],
-                    "format": tts_result.get("format", "mp3"),
-                    "emotion": tts_result.get("emotion"),
-                    "voice_params": tts_result.get("voice_params"),
-                    "duration_ms": tts_result.get("duration_ms"),
-                    "text": clean_content,  # for subtitle sync
-                })
+            # Split into sentences for pipelined TTS
+            import re as _re
+            _sentences = _re.split(r'(?<=[.!?…])\s+', clean_content)
+            # Merge very short sentences with next (avoid tiny TTS calls)
+            _merged: list[str] = []
+            for _s in _sentences:
+                if _merged and len(_merged[-1]) < 30:
+                    _merged[-1] = _merged[-1] + " " + _s
+                else:
+                    _merged.append(_s)
+            if not _merged:
+                _merged = [clean_content]
+
+            if len(_merged) <= 1:
+                # Single sentence — no pipelining benefit, use original path
+                tts_result = await get_tts_audio_b64(clean_content, str(session_id), emotion=new_emotion)
+                if tts_result and tts_result.get("audio"):
+                    await _send(ws, "tts.audio", {
+                        "audio_b64": tts_result["audio"],
+                        "format": tts_result.get("format", "mp3"),
+                        "emotion": tts_result.get("emotion"),
+                        "voice_params": tts_result.get("voice_params"),
+                        "duration_ms": tts_result.get("duration_ms"),
+                        "text": clean_content,
+                    })
+            else:
+                # Multiple sentences — synthesize in parallel, send sequentially
+                async def _synth_sentence(_text: str, _idx: int) -> tuple[int, dict | None]:
+                    try:
+                        result = await get_tts_audio_b64(_text, str(session_id), emotion=new_emotion)
+                        return (_idx, result)
+                    except Exception:
+                        return (_idx, None)
+
+                _tasks = [
+                    asyncio.create_task(_synth_sentence(s, i))
+                    for i, s in enumerate(_merged)
+                ]
+                # Send audio chunks as they complete, but IN ORDER
+                _results: dict[int, dict | None] = {}
+                _next_to_send = 0
+                for coro in asyncio.as_completed(_tasks):
+                    idx, result = await coro
+                    _results[idx] = result
+                    # Send any consecutive ready chunks
+                    while _next_to_send in _results:
+                        _r = _results[_next_to_send]
+                        if _r and _r.get("audio"):
+                            await _send(ws, "tts.audio_chunk", {
+                                "audio_b64": _r["audio"],
+                                "format": _r.get("format", "mp3"),
+                                "sentence_index": _next_to_send,
+                                "is_last": _next_to_send == len(_merged) - 1,
+                                "text": _merged[_next_to_send],
+                            })
+                        _next_to_send += 1
+
         except TTSQuotaExhausted:
             logger.warning("TTS quota exhausted for session %s, frontend fallback", session_id)
             await _send(ws, "tts.fallback", {"reason": "quota_exhausted"})
         except TTSError as e:
             logger.error("TTS error for session %s: %s", session_id, e)
-            # Notify frontend to use browser fallback immediately (don't wait 3s timer)
             await _send(ws, "tts.fallback", {"reason": f"tts_error: {e}"})
 
     if new_emotion != current_emotion:
@@ -1964,8 +2069,11 @@ async def _handle_session_start(
             client_gender = ""
             try:
                 from app.models.roleplay import ClientProfile
+                from sqlalchemy.orm import selectinload
                 cp_result = await db.execute(
-                    select(ClientProfile).where(ClientProfile.session_id == session.id)
+                    select(ClientProfile)
+                    .options(selectinload(ClientProfile.profession))
+                    .where(ClientProfile.session_id == session.id)
                 )
                 existing_profile = cp_result.scalar_one_or_none()
 

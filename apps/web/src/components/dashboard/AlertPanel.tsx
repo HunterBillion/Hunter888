@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, AlertTriangle, Trophy, TrendingDown, UserX, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { Bell, Warning, Trophy, TrendDown, UserMinus } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
 
@@ -24,10 +25,10 @@ const SEVERITY_COLORS: Record<string, { bg: string; border: string; icon: string
 };
 
 const TYPE_ICONS: Record<string, typeof Bell> = {
-  inactive: UserX,
+  inactive: UserMinus,
   record: Trophy,
-  skill_drop: TrendingDown,
-  overdue: AlertTriangle,
+  skill_drop: TrendDown,
+  overdue: Warning,
 };
 
 interface AlertPanelProps {
@@ -61,7 +62,7 @@ export function AlertPanel({ compact = false }: AlertPanelProps) {
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Bell size={16} style={{ color: "var(--accent)" }} />
+          <Bell size={16} weight="duotone" style={{ color: "var(--accent)" }} />
           <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
             Алерты
           </span>
@@ -105,7 +106,7 @@ export function AlertPanel({ compact = false }: AlertPanelProps) {
                     className="flex items-start gap-2 rounded-lg px-3 py-2"
                     style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
                   >
-                    <Icon size={14} style={{ color: colors.icon, marginTop: 1, flexShrink: 0 }} />
+                    <Icon size={14} weight="duotone" style={{ color: colors.icon, marginTop: 1, flexShrink: 0 }} />
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>
                         {alert.manager_name}

@@ -2,20 +2,19 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { ChevronDown } from "lucide-react";
 import {
-  ChevronDown,
-  MessageCircle,
   FileText,
   Shield,
-  MessageSquare,
-  AlertOctagon,
+  ChatCircle,
+  Warning,
   Target,
-  Link2,
+  Link,
   Crosshair,
   Heart,
   BookOpen,
-  Scale,
-} from "lucide-react";
+  Scales,
+} from "@phosphor-icons/react";
 import { colorAlpha } from "@/lib/utils";
 
 interface LayerScore {
@@ -26,7 +25,7 @@ interface LayerScore {
   value: number;
   maxValue: number;
   isModifier?: boolean;
-  icon: React.ComponentType<{ size: number; style?: React.CSSProperties }>;
+  icon: React.ComponentType<Record<string, unknown>>;
 }
 
 export interface LayerExplanation {
@@ -48,28 +47,28 @@ export interface LayerExplanation {
 const LAYER_DEFS: LayerScore[] = [
   { key: "score_script_adherence", label: "Следование скрипту", shortLabel: "L1 Скрипт", description: "Насколько точно вы следовали этапам продажи", value: 0, maxValue: 22.5, icon: FileText },
   { key: "score_objection_handling", label: "Обработка возражений", shortLabel: "L2 Возражения", description: "Качество работы с возражениями клиента", value: 0, maxValue: 18.75, icon: Shield },
-  { key: "score_communication", label: "Коммуникация", shortLabel: "L3 Коммуникация", description: "Тон, эмпатия и стиль общения", value: 0, maxValue: 15, icon: MessageSquare },
-  { key: "score_anti_patterns", label: "Антипаттерны (штраф)", shortLabel: "L4 Антипаттерны", description: "Штрафы за перебивание, давление, грубость", value: 0, maxValue: 11.25, isModifier: true, icon: AlertOctagon },
+  { key: "score_communication", label: "Коммуникация", shortLabel: "L3 Коммуникация", description: "Тон, эмпатия и стиль общения", value: 0, maxValue: 15, icon: ChatCircle },
+  { key: "score_anti_patterns", label: "Антипаттерны (штраф)", shortLabel: "L4 Антипаттерны", description: "Штрафы за перебивание, давление, грубость", value: 0, maxValue: 11.25, isModifier: true, icon: Warning },
   { key: "score_result", label: "Результат", shortLabel: "L5 Результат", description: "Удалось ли достичь цели звонка", value: 0, maxValue: 7.5, icon: Target },
-  { key: "score_chain_traversal", label: "Цепочки возражений", shortLabel: "L6 Цепочки", description: "Глубина проработки серии возражений", value: 0, maxValue: 7.5, icon: Link2 },
+  { key: "score_chain_traversal", label: "Цепочки возражений", shortLabel: "L6 Цепочки", description: "Глубина проработки серии возражений", value: 0, maxValue: 7.5, icon: Link },
   { key: "score_trap_handling", label: "Ловушки", shortLabel: "L7 Ловушки", description: "Как вы справились с ловушками клиента", value: 0, maxValue: 7.5, isModifier: true, icon: Crosshair },
   { key: "score_human_factor", label: "Человеческий фактор", shortLabel: "L8 Человечность", description: "Учёт эмоций, усталости и давления", value: 0, maxValue: 15, isModifier: true, icon: Heart },
   { key: "score_narrative", label: "Нарративная прогрессия", shortLabel: "L9 Нарратив", description: "Развитие истории между звонками", value: 0, maxValue: 10, isModifier: true, icon: BookOpen },
-  { key: "score_legal", label: "Юридическая точность", shortLabel: "L10 Юр.точность", description: "Корректность ссылок на 127-ФЗ", value: 0, maxValue: 5, isModifier: true, icon: Scale },
+  { key: "score_legal", label: "Юридическая точность", shortLabel: "L10 Юр.точность", description: "Корректность ссылок на 127-ФЗ", value: 0, maxValue: 5, isModifier: true, icon: Scales },
 ];
 
 function getBarColor(pct: number, isModifier: boolean): string {
   if (isModifier) return "var(--accent, #6366f1)";
   if (pct >= 80) return "var(--success)";
-  if (pct >= 60) return "var(--warning, #FFD700)";
-  if (pct >= 40) return "var(--danger)";
+  if (pct >= 60) return "var(--warning, #E8A630)";
+  if (pct >= 40) return "var(--info, #5B9EE9)";
   return "var(--danger)";
 }
 
 function getGradeLabel(pct: number): { label: string; color: string } {
   if (pct >= 90) return { label: "Отлично", color: "var(--success)" };
   if (pct >= 70) return { label: "Хорошо", color: "var(--success)" };
-  if (pct >= 50) return { label: "Средне", color: "var(--warning, #FFD700)" };
+  if (pct >= 50) return { label: "Средне", color: "var(--warning, var(--gf-xp))" };
   if (pct >= 25) return { label: "Слабо", color: "var(--warning)" };
   return { label: "Критично", color: "var(--danger)" };
 }
@@ -99,7 +98,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-base font-display font-bold tracking-wide" style={{ color: "var(--text-primary)" }}>
+          <h3 className="text-lg font-display font-bold tracking-wide" style={{ color: "var(--text-primary)" }}>
             Детальный скоринг
           </h3>
           <p className="mt-0.5 text-sm" style={{ color: "var(--text-muted)" }}>
@@ -150,7 +149,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
               >
                 <div className="flex items-center gap-3 mb-1.5">
                   <div className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0" style={{ background: colorAlpha(barColor, 8), border: `1px solid ${colorAlpha(barColor, 18)}` }}>
-                    <Icon size={14} style={{ color: barColor }} />
+                    <Icon size={14} weight="duotone" style={{ color: barColor }} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -182,7 +181,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
                     <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{layer.description}</p>
                   </div>
                 </div>
-                <div className="ml-10 h-2 rounded-full" style={{ background: "var(--input-bg)" }}>
+                <div className="ml-10 h-2.5 rounded-full" style={{ background: "rgba(255,255,255,0.12)" }}>
                   <motion.div
                     className="h-full rounded-full"
                     initial={{ width: 0 }}
@@ -232,7 +231,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
                                   : "3px solid var(--border-color)",
                               }}
                             >
-                              <MessageCircle size={12} className="mt-0.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+                              <ChatCircle weight="duotone" size={12} className="mt-0.5 shrink-0" style={{ color: "var(--text-muted)" }} />
                               <div className="min-w-0 flex-1">
                                 <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
                                   {h.message_index >= 0 ? `#${h.message_index + 1} ${h.role === "user" ? "Менеджер" : "Клиент"}` : ""}

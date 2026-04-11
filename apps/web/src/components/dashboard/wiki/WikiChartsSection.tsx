@@ -14,55 +14,55 @@ import {
   Filler,
 } from "chart.js";
 import { Bar, Line, Doughnut } from "react-chartjs-2";
+import { Loader2 } from "lucide-react";
 import {
-  Activity,
+  Pulse,
   BookOpen,
-  Loader2,
-  PieChart,
-  TrendingUp,
-  Users,
-} from "lucide-react";
+  ChartPie,
+  TrendUp,
+  UsersThree,
+} from "@phosphor-icons/react";
 import type { WikiChartData } from "./types";
+import { cssVar, getChartTheme } from "@/lib/chartTheme";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, RadialLinearScale, Tooltip, Legend, Filler);
 
 /* ─── Charts Section ─── */
 
-const CHART_COMMON_OPTIONS = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: { display: false },
-    tooltip: {
-      backgroundColor: "rgba(17,24,39,0.95)",
-      titleColor: "var(--text-primary)",
-      bodyColor: "var(--text-muted)",
-      borderColor: "rgba(255,255,255,0.1)",
-      borderWidth: 1,
-      cornerRadius: 8,
-      padding: 10,
+function getChartOptions() {
+  const theme = getChartTheme();
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: theme.defaults.plugins.tooltip,
     },
-  },
-  scales: {
-    x: {
-      grid: { color: "rgba(124,106,232,0.08)" },
-      ticks: { color: "var(--text-muted)", font: { size: 12 } },
+    scales: {
+      x: {
+        grid: { color: theme.defaults.scales.x.grid.color },
+        ticks: { color: theme.colors.text, font: { size: 14 } },
+        border: { color: "transparent" },
+      },
+      y: {
+        grid: { color: theme.colors.grid },
+        ticks: { color: theme.colors.text, font: { size: 14 } },
+        border: { color: "transparent" },
+        beginAtZero: true,
+      },
     },
-    y: {
-      grid: { color: "rgba(124,106,232,0.08)" },
-      ticks: { color: "var(--text-muted)", font: { size: 12 } },
-      beginAtZero: true,
-    },
-  },
-};
+  };
+}
 
-const CATEGORY_COLORS: Record<string, string> = {
-  weakness: "var(--danger)",
-  strength: "var(--success)",
-  quirk: "var(--warning)",
-  misconception: "var(--accent)",
-  unknown: "var(--text-muted)",
-};
+function getCategoryColors(): Record<string, string> {
+  return {
+    weakness: cssVar("--danger", "#E5484D"),
+    strength: cssVar("--success", "#3DDC84"),
+    quirk: cssVar("--warning", "#E8A630"),
+    misconception: cssVar("--accent", "#7C6AE8"),
+    unknown: cssVar("--text-muted", "#807DA0"),
+  };
+}
 
 const CATEGORY_LABELS_RU: Record<string, string> = {
   weakness: "Слабости",
@@ -82,6 +82,8 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
     );
   }
 
+  const categoryColors = getCategoryColors();
+  const theme = getChartTheme();
   const dailySessions = data.daily_sessions;
   const patternDist = data.pattern_distribution;
   const wikiActivity = data.wiki_activity;
@@ -114,13 +116,14 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
       {
         label: "Средний балл",
         data: dailySessions.map((d) => d.avg_score),
-        borderColor: "var(--accent)",
-        backgroundColor: "rgba(124, 106, 232, 0.15)",
-        borderWidth: 2.5,
+        borderColor: theme.colors.accent,
+        backgroundColor: "rgba(124, 106, 232, 0.22)",
+        borderWidth: 3,
         fill: true,
         tension: 0.35,
         pointRadius: 5,
-        pointBackgroundColor: "var(--accent)",
+        pointHoverRadius: 7,
+        pointBackgroundColor: theme.colors.accent,
       },
     ],
   };
@@ -131,7 +134,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
     datasets: [
       {
         data: patternDist.map((p) => p.count),
-        backgroundColor: patternDist.map((p) => CATEGORY_COLORS[p.category] || "var(--text-muted)"),
+        backgroundColor: patternDist.map((p) => categoryColors[p.category] || categoryColors.unknown),
         borderColor: "rgba(0,0,0,0.3)",
         borderWidth: 2,
       },
@@ -165,18 +168,18 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
   };
 
   const lineOptions = {
-    ...CHART_COMMON_OPTIONS,
+    ...getChartOptions(),
     plugins: {
-      ...CHART_COMMON_OPTIONS.plugins,
+      ...getChartOptions().plugins,
       legend: { display: false },
     },
   };
 
   const barOptions = {
-    ...CHART_COMMON_OPTIONS,
+    ...getChartOptions(),
     plugins: {
-      ...CHART_COMMON_OPTIONS.plugins,
-      legend: { display: true, position: "top" as const, labels: { color: "var(--text-muted)", boxWidth: 12, font: { size: 13 } } },
+      ...getChartOptions().plugins,
+      legend: { display: true, position: "top" as const, labels: { color: theme.colors.text, boxWidth: 14, font: { size: 14 }, padding: 12 } },
     },
   };
 
@@ -186,9 +189,9 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
     plugins: {
       legend: {
         position: "right" as const,
-        labels: { color: "var(--text-muted)", boxWidth: 12, font: { size: 13 }, padding: 8 },
+        labels: { color: theme.colors.text, boxWidth: 14, font: { size: 14 }, padding: 12 },
       },
-      tooltip: CHART_COMMON_OPTIONS.plugins.tooltip,
+      tooltip: getChartOptions().plugins.tooltip,
     },
   };
 
@@ -201,13 +204,13 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
         border: "1px solid var(--border-color)",
         borderRadius: 12,
       }}>
-        <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "0.9rem", fontWeight: 600 }}>
-          <Activity size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--accent)" }} />
+        <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "1rem", fontWeight: 600 }}>
+          <Pulse size={15} weight="duotone" style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--accent)" }} />
           Сессии по дням
         </h4>
         <div style={{ height: 200 }}>
           {dailySessions.length > 0 ? (
-            <Bar data={sessionsBarData} options={CHART_COMMON_OPTIONS as any} />
+            <Bar data={sessionsBarData} options={getChartOptions() as any} />
           ) : (
             <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", textAlign: "center", paddingTop: "4rem" }}>Нет данных</p>
           )}
@@ -221,8 +224,8 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
         border: "1px solid var(--border-color)",
         borderRadius: 12,
       }}>
-        <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "0.9rem", fontWeight: 600 }}>
-          <TrendingUp size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--warning)" }} />
+        <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "1rem", fontWeight: 600 }}>
+          <TrendUp size={15} weight="duotone" style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--warning)" }} />
           Тренд среднего балла
         </h4>
         <div style={{ height: 200 }}>
@@ -241,8 +244,8 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
         border: "1px solid var(--border-color)",
         borderRadius: 12,
       }}>
-        <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "0.9rem", fontWeight: 600 }}>
-          <PieChart size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--danger)" }} />
+        <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "1rem", fontWeight: 600 }}>
+          <ChartPie size={15} weight="duotone" style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--danger)" }} />
           Распределение паттернов
         </h4>
         <div style={{ height: 200 }}>
@@ -261,8 +264,8 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
         border: "1px solid var(--border-color)",
         borderRadius: 12,
       }}>
-        <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "0.9rem", fontWeight: 600 }}>
-          <BookOpen size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--success)" }} />
+        <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "1rem", fontWeight: 600 }}>
+          <BookOpen size={15} weight="duotone" style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--success)" }} />
           Активность Wiki
         </h4>
         <div style={{ height: 200 }}>
@@ -283,8 +286,8 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
           border: "1px solid var(--border-color)",
           borderRadius: 12,
         }}>
-          <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "0.9rem", fontWeight: 600 }}>
-            <Users size={15} style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--accent)" }} />
+          <h4 style={{ margin: "0 0 0.75rem", color: "var(--text-secondary)", fontSize: "1rem", fontWeight: 600 }}>
+            <UsersThree size={15} weight="duotone" style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--accent)" }} />
             Топ менеджеров по паттернам
           </h4>
           <div style={{ overflowX: "auto" }}>

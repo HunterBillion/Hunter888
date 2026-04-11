@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Mail, ArrowRight, AlertCircle, KeyRound } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { EASE_SNAP } from "@/lib/constants";
 import { setTokens } from "@/lib/auth";
 import { getApiBaseUrl } from "@/lib/public-origin";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { LogoSeparator } from "@/components/ui/LogoSeparator";
+import { XHunterLogo } from "@/components/ui/XHunterLogo";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import dynamic from "next/dynamic";
 const WaveScene = dynamic(
@@ -26,7 +28,10 @@ type ForgotMode = "idle" | "form" | "sent";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => {
+    if (typeof window !== "undefined") return sessionStorage.getItem("vh-login-email") ?? "";
+    return "";
+  });
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -68,7 +73,8 @@ export default function LoginPage() {
 
     try {
       const data = await api.post("/auth/login", { email: trimmedEmail, password });
-      setTokens(data.access_token, data.refresh_token);
+      setTokens(data.access_token, data.refresh_token, data.csrf_token);
+      try { sessionStorage.removeItem("vh-login-email"); } catch {}
       // router.push keeps tokens in memory (no page reload), middleware sees
       // vh_authenticated cookie set by setTokens above.
       if (data.must_change_password) {
@@ -124,14 +130,16 @@ export default function LoginPage() {
               <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
                 Проверьте <strong style={{ color: "var(--text-secondary)" }}>{forgotEmail}</strong><br />и следуйте инструкциям в письме.
               </p>
-              <button onClick={() => { setForgotMode("idle"); setForgotEmail(""); }} className="text-sm font-medium" style={{ color: "var(--accent)" }}>
-                ← Вернуться ко входу
+              <button onClick={() => { setForgotMode("idle"); setForgotEmail(""); }} className="flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-80" style={{ color: "var(--accent)" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                Вернуться ко входу
               </button>
             </div>
           ) : (
             <div>
-              <button onClick={() => setForgotMode("idle")} className="flex items-center gap-1.5 text-xs mb-6" style={{ color: "var(--text-muted)" }}>
-                ← Назад
+              <button onClick={() => setForgotMode("idle")} className="flex items-center gap-1.5 text-sm font-medium mb-6 transition-opacity hover:opacity-80" style={{ color: "var(--text-secondary)" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                Назад
               </button>
               <div className="mb-6 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "var(--accent-muted)" }}>
@@ -151,15 +159,9 @@ export default function LoginPage() {
                   onKeyDown={(e) => e.key === "Enter" && handleForgot()}
                 />
               </div>
-              <motion.button
-                onClick={handleForgot} disabled={forgotLoading || !forgotEmail.trim()}
-                className="btn-neon flex w-full items-center justify-center gap-2"
-                whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}
-              >
-                {forgotLoading
-                  ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  : <><Mail size={15} />Отправить ссылку</>}
-              </motion.button>
+              <Button variant="primary" fluid loading={forgotLoading} disabled={!forgotEmail.trim()} icon={<Mail size={15} />} onClick={handleForgot}>
+                Отправить ссылку
+              </Button>
             </div>
           )}
         </motion.div>
@@ -234,20 +236,18 @@ export default function LoginPage() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="font-display text-[2.375rem] font-black tracking-[0.2em] inline-flex items-center justify-center"
+            className="inline-flex items-center justify-center"
           >
-            <span style={{ color: "var(--accent)" }}>X</span>
-            <LogoSeparator size={32} />
-            <span style={{ color: "var(--text-primary)" }}>HUNTER</span>
+            <XHunterLogo size="lg" />
           </motion.h1>
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
-            className="mt-2 font-display text-base font-bold tracking-[0.12em] italic"
-            style={{ color: "var(--accent)", textShadow: "0 0 20px rgba(124,106,232,0.4)" }}
+            className="mt-2 text-sm font-medium tracking-wide"
+            style={{ color: "var(--text-muted)" }}
           >
-            Выбор игры, важнее самой игры
+            Тренажёр продаж
           </motion.p>
         </div>
 
@@ -276,7 +276,7 @@ export default function LoginPage() {
                 id="email"
                 type="text"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); try { sessionStorage.setItem("vh-login-email", e.target.value); } catch {} }}
                 required
                 className="vh-input pl-10"
                 placeholder="you@example.com"
@@ -309,22 +309,9 @@ export default function LoginPage() {
             />
           </div>
 
-          <motion.button
-            type="submit"
-            disabled={loading}
-            className="btn-neon flex w-full items-center justify-center gap-2"
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.99 }}
-          >
-            {loading ? (
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-            ) : (
-              <>
-                Войти
-                <ArrowRight size={16} />
-              </>
-            )}
-          </motion.button>
+          <Button type="submit" variant="primary" fluid loading={loading} iconRight={<ArrowRight size={16} />}>
+            Войти
+          </Button>
 
           {/* Social login */}
           <div className="relative">

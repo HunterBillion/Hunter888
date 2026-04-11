@@ -247,7 +247,7 @@ class DebateSession(Base):
         index=True,
     )
     topic: Mapped[str] = mapped_column(String(500), nullable=False)
-    position: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pro")
+    position: Mapped[str] = mapped_column("player_position", String(20), nullable=False, server_default="pro")
     ai_position: Mapped[str] = mapped_column(String(20), nullable=False, server_default="contra")
     total_rounds: Mapped[int] = mapped_column(Integer, nullable=False, server_default="5")
     rounds_data: Mapped[dict | None] = mapped_column(JSONB, nullable=False, server_default="'[]'::jsonb")
@@ -267,9 +267,9 @@ class TeamQuizTeam(Base):
         index=True,
     )
     team_name: Mapped[str] = mapped_column(String(1), nullable=False)  # "A" or "B"
-    captain_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    member_ids: Mapped[list | None] = mapped_column(JSONB, nullable=False, server_default="'[]'::jsonb")
-    score: Mapped[float] = mapped_column(Float, nullable=False, server_default="0.0")
+    captain_id: Mapped[uuid.UUID] = mapped_column("player1_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    member_ids: Mapped[uuid.UUID | None] = mapped_column("player2_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    score: Mapped[float] = mapped_column("team_score", Float, nullable=False, server_default="0.0")
     passes_used: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -282,7 +282,7 @@ class DailyChallenge(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     challenge_date: Mapped[datetime] = mapped_column(sa.Date(), nullable=False, unique=True)
     questions: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    category: Mapped[str | None] = mapped_column("personality", String(50), nullable=True)
     total_participants: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

@@ -14,7 +14,7 @@ from app.core.deps import get_current_user
 from app.database import get_db
 from app.core.deps import require_role
 from app.models.roleplay import ClientStory
-from app.models.training import AssignedTraining, Message, SessionStatus, TrainingSession
+from app.models.training import AssignedTraining, Message, MessageRole, SessionStatus, TrainingSession
 from app.models.scenario import Scenario, ScenarioTemplate, ScenarioType
 from app.models.user import User
 from pydantic import BaseModel, Field, field_validator
@@ -1058,6 +1058,135 @@ async def ask_coach(
         "answer": answer,
         "cited_messages": cited,
         "session_id": str(session_id),
+    }
+
+
+# ── Phase 2: AI Coach 2.0 ─────────────────────────────────────────────────────
+
+
+class CoachChatRequest(BaseModel):
+    message: str
+
+
+@router.post("/coach/chat")
+@limiter.limit("10/minute")
+async def coach_chat_endpoint(
+    request: Request,
+    body: CoachChatRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Chat with AI Coach. Coach knows your patterns, techniques, and weak spots."""
+    from app.services.ai_coach import coach_chat
+    result = await coach_chat(user.id, body.message, db)
+    return {
+        "text": result.text,
+        "action": result.action,
+        "action_data": result.action_data,
+    }
+
+
+@router.get("/coach/tip")
+async def coach_proactive_tip(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get proactive coaching tip based on current state."""
+    from app.services.ai_coach import get_proactive_tip
+    tip = await get_proactive_tip(user.id, db)
+    return {"tip": tip}
+
+
+# ── Phase 2: What-If Branching ────────────────────────────────────────────────
+
+
+class WhatIfRequest(BaseModel):
+    alternative_text: str
+
+
+@router.post("/sessions/{session_id}/messages/{message_id}/what-if")
+@limiter.limit("5/minute")
+async def simulate_what_if(
+    request: Request,
+    session_id: uuid.UUID,
+    message_id: uuid.UUID,
+    body: WhatIfRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Simulate what would happen if the manager said something different.
+
+    Takes a completed session + specific message + alternative text.
+    Returns: AI client response to alternative, predicted emotion, score comparison.
+    """
+    from app.services.llm import generate_response
+
+    session = await db.get(TrainingSession, session_id)
+    if not session or session.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.status != SessionStatus.completed:
+        raise HTTPException(status_code=400, detail="Session must be completed")
+
+    # Load messages up to target
+    msg_result = await db.execute(
+        select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.sequence_number)
+    )
+    all_messages = msg_result.scalars().all()
+
+    target_msg = None
+    for m in all_messages:
+        if m.id == message_id:
+            target_msg = m
+            break
+    if not target_msg or target_msg.role != MessageRole.user:
+        raise HTTPException(status_code=400, detail="Target must be a user message")
+
+    # Build context up to target message
+    history = []
+    for m in all_messages:
+        if m.sequence_number >= target_msg.sequence_number:
+            break
+        history.append({"role": m.role.value, "content": m.content})
+
+    # Add alternative message
+    history.append({"role": "user", "content": body.alternative_text})
+
+    emotion_at_point = target_msg.emotion_state or "cold"
+
+    # Get scenario for system prompt
+    scenario = await db.get(Scenario, session.scenario_id) if session.scenario_id else None
+    system_prompt = f"Ты — AI-клиент в тренировочной симуляции. Сценарий: {scenario.title if scenario else 'Тренировка'}. Текущая эмоция: {emotion_at_point}. Отвечай как клиент."
+
+    try:
+        client_response = await generate_response(
+            system_prompt=system_prompt,
+            messages=history,
+            emotion_state=emotion_at_point,
+            task_type="roleplay",
+        )
+    except Exception:
+        raise HTTPException(status_code=500, detail="LLM generation failed")
+
+    # Find original response (next message after target)
+    original_response = None
+    for m in all_messages:
+        if m.sequence_number == target_msg.sequence_number + 1 and m.role == MessageRole.assistant:
+            original_response = m
+            break
+
+    return {
+        "alternative": {
+            "manager_said": body.alternative_text,
+            "client_would_say": client_response.content,
+            "predicted_emotion": emotion_at_point,
+        },
+        "original": {
+            "manager_said": target_msg.content,
+            "client_said": original_response.content if original_response else None,
+            "actual_emotion": original_response.emotion_state if original_response else None,
+        },
     }
 
 

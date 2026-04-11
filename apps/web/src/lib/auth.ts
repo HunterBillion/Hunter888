@@ -35,7 +35,7 @@ export function getRefreshToken(): string | null {
   return null;
 }
 
-export function setTokens(accessToken: string, refreshToken: string): void {
+export function setTokens(accessToken: string, refreshToken: string, csrfToken?: string): void {
   _accessToken = accessToken;
   _refreshToken = refreshToken;
   // Persist refresh token to sessionStorage for page-reload recovery.
@@ -50,6 +50,13 @@ export function setTokens(accessToken: string, refreshToken: string): void {
     try {
       document.cookie = "vh_authenticated=1; path=/; max-age=604800; samesite=lax";
     } catch {}
+    // Set CSRF token cookie via JS — cross-origin Set-Cookie from API (port 8000)
+    // is silently dropped by browsers when the page is on port 3000.
+    if (csrfToken) {
+      try {
+        document.cookie = `csrf_token=${encodeURIComponent(csrfToken)}; path=/; max-age=604800; samesite=lax`;
+      } catch {}
+    }
   }
 }
 

@@ -4,6 +4,7 @@ import { type ReactNode } from "react";
 import { motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import { Inbox } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 
 interface EmptyStateProps {
   icon?: LucideIcon;
@@ -59,33 +60,28 @@ export function EmptyState({
         </motion.div>
       )}
       <h3
-        className="font-display text-sm font-bold tracking-wider uppercase"
+        className="font-display text-base font-bold"
         style={{ color: "var(--text-primary)" }}
       >
         {title}
       </h3>
       {description && (
-        <p className="mt-1.5 text-xs max-w-xs" style={{ color: "var(--text-muted)" }}>
+        <p className="mt-2 text-sm max-w-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
           {description}
         </p>
       )}
       {hint && (
         <p
-          className="mt-3 font-mono text-xs uppercase tracking-wider"
-          style={{ color: "var(--accent)", opacity: 0.7 }}
+          className="mt-3 text-sm font-medium"
+          style={{ color: "var(--accent)" }}
         >
           {hint}
         </p>
       )}
       {actionLabel && onAction && (
-        <motion.button
-          onClick={onAction}
-          className="btn-neon mt-5 flex items-center gap-2 text-xs"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.97 }}
-        >
+        <Button size="sm" onClick={onAction} className="mt-5">
           {actionLabel}
-        </motion.button>
+        </Button>
       )}
     </motion.div>
   );

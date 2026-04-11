@@ -104,6 +104,9 @@ interface UseTTSReturn {
   /** Schedule fallback: if playAudio isn't called within timeout, auto-speak. */
   scheduleFallback: (text: string, timeoutMs?: number) => void;
 
+  /** Queue audio chunk for sentence-level TTS pipelining (Phase 2). */
+  queueAudioChunk: (chunk: { audio: string; index: number; isLast: boolean }) => void;
+
   /** Cancel scheduled fallback (call when tts.audio arrives). */
   cancelFallback: () => void;
 
@@ -661,6 +664,50 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
   );
 
   // ---------------------------------------------------------------------------
+  // Phase 2: Sentence-level TTS queue
+  // ---------------------------------------------------------------------------
+  const audioQueueRef = useRef<{ audio: string; index: number; isLast: boolean }[]>([]);
+  const playingChunkRef = useRef(false);
+
+  const playNextChunk = useCallback(() => {
+    if (playingChunkRef.current || audioQueueRef.current.length === 0) return;
+    playingChunkRef.current = true;
+    const chunk = audioQueueRef.current.shift()!;
+    const blob = new Blob(
+      [Uint8Array.from(atob(chunk.audio), (c) => c.charCodeAt(0))],
+      { type: "audio/mpeg" },
+    );
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      playingChunkRef.current = false;
+      setSpeaking(audioQueueRef.current.length > 0);
+      playNextChunk();
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      playingChunkRef.current = false;
+      playNextChunk();
+    };
+    setSpeaking(true);
+    audio.play().catch(() => {
+      playingChunkRef.current = false;
+      playNextChunk();
+    });
+  }, []);
+
+  const queueAudioChunk = useCallback(
+    (chunk: { audio: string; index: number; isLast: boolean }) => {
+      // Insert sorted by index
+      audioQueueRef.current.push(chunk);
+      audioQueueRef.current.sort((a, b) => a.index - b.index);
+      playNextChunk();
+    },
+    [playNextChunk],
+  );
+
+  // ---------------------------------------------------------------------------
   // Return
   // ---------------------------------------------------------------------------
   return {
@@ -669,6 +716,8 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     // ТЗ-04 API
     playAudioMessage,
     playCoupleAudio,
+    // Phase 2: sentence-level TTS queue
+    queueAudioChunk,
     // Fallback
     speak,
     scheduleFallback,

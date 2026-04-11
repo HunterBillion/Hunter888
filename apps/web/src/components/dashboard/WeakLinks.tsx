@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, Loader2, Clock, TrendingDown, XCircle } from "lucide-react";
+import { Loader2, XCircle } from "lucide-react";
+import { Warning, Clock, TrendDown } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
 
@@ -54,7 +55,7 @@ export function WeakLinks() {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <div className="flex items-center gap-2 mb-3">
-        <AlertTriangle size={16} style={{ color: "var(--warning)" }} />
+        <Warning size={16} weight="duotone" style={{ color: "var(--warning)" }} />
         <h3 className="font-display text-sm font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
           ТРЕБУЮТ ВНИМАНИЯ ({data.attention_count}/{data.total_team})
         </h3>

@@ -3,19 +3,24 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
-  Settings, Volume2, Bell, Palette, Save, Loader2, CheckCircle2,
-  Link2, Unlink, Mail, MessageSquare, Clock, Smartphone, SendHorizonal,
-  Gamepad2, GraduationCap, Kanban, LayoutGrid, Paintbrush, Info,
+  Save, Loader2, CheckCircle2,
+  Unlink, Link2, Smartphone, SendHorizonal,
 } from "lucide-react";
+import {
+  Gear, SpeakerHigh, Bell, Palette, Envelope, ChatCircle, Clock,
+  GameController, Kanban, LinkSimple, Lightning, Terminal, Keyboard, Flame,
+} from "@phosphor-icons/react";
 import { useTheme } from "next-themes";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import { useGamificationStore } from "@/stores/useGamificationStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useWebPush } from "@/hooks/useWebPush";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { BackButton } from "@/components/ui/BackButton";
+import { Button } from "@/components/ui/Button";
 import { AvatarUpload } from "@/components/settings/AvatarUpload";
-import { PIPELINE_STATUSES, CLIENT_STATUS_LABELS } from "@/types";
+import { PIPELINE_STATUSES, CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
 import type { ClientStatus, User } from "@/types";
 import { logger } from "@/lib/logger";
 
@@ -173,6 +178,9 @@ export default function SettingsPage() {
   };
 
   const showCRM = user?.role && ["admin", "rop", "manager"].includes(user.role);
+  const { level, currentXP, nextLevelXP, streak, fetchProgress } = useGamificationStore();
+  useEffect(() => { fetchProgress(); }, [fetchProgress]);
+  const xpPct = nextLevelXP > 0 ? Math.round((currentXP / nextLevelXP) * 100) : 0;
   let delay = 0;
   const nextDelay = () => { delay += 0.05; return delay; };
 
@@ -180,7 +188,7 @@ export default function SettingsPage() {
   const Chip = ({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) => (
     <motion.button
       onClick={onClick}
-      className="rounded-lg px-3.5 py-2 font-mono text-xs transition-all"
+      className="rounded-lg px-3.5 py-2 font-mono text-sm transition-all"
       style={{
         background: active ? "var(--accent-muted)" : "var(--input-bg)",
         border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
@@ -199,25 +207,48 @@ export default function SettingsPage() {
           <BackButton href="/home" label="На главную" />
           {/* Header: avatar + name + title */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-4 mb-8"
+            className="relative flex items-center gap-4 mb-8 rounded-2xl p-6 overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, var(--glass-bg), rgba(124,106,232,0.06))",
+              border: "1px solid rgba(124,106,232,0.15)",
+            }}
           >
+            {/* Corner glow */}
+            <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(124,106,232,0.12) 0%, transparent 70%)" }} />
             <AvatarUpload
               currentUrl={avatarUrl}
               userName={user?.full_name || ""}
-              size={52}
+              size={56}
               onUploaded={(url) => { setAvatarUrl(url); invalidateUserCache(); }}
               onDeleted={() => { setAvatarUrl(null); invalidateUserCache(); }}
             />
-            <div className="flex-1 min-w-0">
+            <div className="relative z-10 flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <Settings size={18} style={{ color: "var(--accent)" }} />
+                <Gear weight="duotone" size={22} style={{ color: "var(--accent)" }} />
                 <h1 className="font-display text-2xl font-bold tracking-[0.12em]" style={{ color: "var(--text-primary)" }}>
                   НАСТРОЙКИ
                 </h1>
               </div>
-              <p className="text-xs mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
-                {user?.full_name} • {user?.role ? roleLabels[user.role] || user.role : ""}
-              </p>
+              <div className="flex items-center gap-3 mt-2 flex-wrap">
+                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-mono" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
+                  {roleLabels[user?.role || ""] || user?.role || ""}
+                </span>
+                <span className="inline-flex items-center gap-1 text-xs font-mono" style={{ color: "var(--accent)" }}>
+                  <Lightning weight="duotone" size={12} /> Lv.{level}
+                </span>
+                <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                  {currentXP}/{nextLevelXP} XP
+                </span>
+                {streak > 0 && (
+                  <span className="inline-flex items-center gap-1 text-xs font-mono" style={{ color: "var(--streak-color, var(--warning))" }}>
+                    <Flame weight="duotone" size={12} /> {streak}д
+                  </span>
+                )}
+              </div>
+              {/* XP progress mini-bar */}
+              <div className="mt-2 h-1 rounded-full w-full max-w-[200px]" style={{ background: "rgba(255,255,255,0.08)" }}>
+                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${xpPct}%`, background: "var(--accent)" }} />
+              </div>
             </div>
           </motion.div>
 
@@ -225,13 +256,16 @@ export default function SettingsPage() {
 
             {/* ── Appearance ── */}
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: nextDelay() }}
-              className="glass-panel p-5"
+              className="glass-panel p-5 relative overflow-hidden"
+              style={{ borderLeft: "3px solid var(--accent)" }}
             >
               <div className="flex items-center gap-3 mb-4">
-                <Palette size={18} style={{ color: "var(--text-secondary)" }} />
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--accent-muted)" }}>
+                  <Palette weight="duotone" size={20} style={{ color: "var(--accent)" }} />
+                </div>
                 <div>
-                  <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Оформление</div>
-                  <div className="text-sm" style={{ color: "var(--text-muted)" }}>Тема и акцентный цвет</div>
+                  <div className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Оформление</div>
+                  <div className="text-sm" style={{ color: "var(--text-muted)" }}>Тема, акцент и плотность</div>
                 </div>
               </div>
 
@@ -252,7 +286,7 @@ export default function SettingsPage() {
               </div>
 
               {/* Accent color row */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-4">
                 <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Акцент</span>
                 <div className="flex gap-2">
                   {ACCENT_COLORS.map((c) => (
@@ -272,16 +306,25 @@ export default function SettingsPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Compact mode (moved from Interface section) */}
+              <div className="flex items-center justify-between pt-4" style={{ borderTop: "1px solid var(--border-color)" }}>
+                <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Компактный режим</span>
+                <Toggle on={compactMode} onChange={() => setCompactMode(!compactMode)} />
+              </div>
             </motion.div>
 
             {/* ── Training ── */}
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: nextDelay() }}
-              className="glass-panel p-5"
+              className="glass-panel p-5 relative overflow-hidden"
+              style={{ borderLeft: "3px solid var(--success)" }}
             >
               <div className="flex items-center gap-3 mb-4">
-                <Gamepad2 size={18} style={{ color: "var(--text-secondary)" }} />
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "rgba(61,220,132,0.1)" }}>
+                  <GameController weight="duotone" size={20} style={{ color: "var(--success)" }} />
+                </div>
                 <div>
-                  <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Тренировки</div>
+                  <div className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Тренировки</div>
                   <div className="text-sm" style={{ color: "var(--text-muted)" }}>Режим и сложность</div>
                 </div>
               </div>
@@ -289,7 +332,7 @@ export default function SettingsPage() {
               {/* TTS */}
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <Volume2 size={15} style={{ color: "var(--text-muted)" }} />
+                  <SpeakerHigh weight="duotone" size={16} style={{ color: "var(--text-muted)" }} />
                   <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Озвучка AI-клиента</span>
                 </div>
                 <Toggle on={ttsEnabled} onChange={() => setTtsEnabled(!ttsEnabled)} />
@@ -316,33 +359,19 @@ export default function SettingsPage() {
               </div>
             </motion.div>
 
-            {/* ── Interface ── */}
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: nextDelay() }}
-              className="glass-panel p-5"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <LayoutGrid size={18} style={{ color: "var(--text-secondary)" }} />
-                <div>
-                  <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Интерфейс</div>
-                  <div className="text-sm" style={{ color: "var(--text-muted)" }}>Плотность и отображение</div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Компактный режим</span>
-                <Toggle on={compactMode} onChange={() => setCompactMode(!compactMode)} />
-              </div>
-            </motion.div>
 
             {/* ── Pipeline columns (CRM roles only) ── */}
             {showCRM && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: nextDelay() }}
-                className="glass-panel p-5"
+                className="glass-panel p-5 relative overflow-hidden"
+                style={{ borderLeft: "3px solid var(--warning)" }}
               >
                 <div className="flex items-center gap-3 mb-4">
-                  <Kanban size={18} style={{ color: "var(--text-secondary)" }} />
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "rgba(232,166,48,0.1)" }}>
+                    <Kanban weight="duotone" size={20} style={{ color: "var(--warning)" }} />
+                  </div>
                   <div>
-                    <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Воронка</div>
+                    <div className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Воронка</div>
                     <div className="text-sm" style={{ color: "var(--text-muted)" }}>Видимые столбцы в канбане</div>
                   </div>
                 </div>
@@ -350,6 +379,7 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {PIPELINE_STATUSES.map((status) => {
                     const on = pipelineColumns.includes(status);
+                    const statusColor = CLIENT_STATUS_COLORS[status as ClientStatus] || "var(--text-muted)";
                     return (
                       <motion.button
                         key={status}
@@ -360,19 +390,19 @@ export default function SettingsPage() {
                             : [...pipelineColumns, status],
                           );
                         }}
-                        className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-mono transition-all text-left"
+                        className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-mono transition-all text-left"
                         style={{
-                          background: on ? "var(--accent-muted)" : "var(--input-bg)",
-                          border: `1px solid ${on ? "var(--accent)" : "var(--border-color)"}`,
-                          color: on ? "var(--accent)" : "var(--text-muted)",
+                          background: on ? `${statusColor}12` : "var(--input-bg)",
+                          border: `1px solid ${on ? `${statusColor}40` : "var(--border-color)"}`,
+                          color: on ? statusColor : "var(--text-muted)",
                         }}
                         whileTap={{ scale: 0.97 }}
                       >
                         <div
-                          className="w-2 h-2 rounded-full shrink-0"
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
                           style={{
-                            background: on ? "var(--accent)" : "var(--text-muted)",
-                            opacity: on ? 1 : 0.4,
+                            background: statusColor,
+                            opacity: on ? 1 : 0.3,
                           }}
                         />
                         {CLIENT_STATUS_LABELS[status as ClientStatus]}
@@ -385,13 +415,16 @@ export default function SettingsPage() {
 
             {/* ── Notifications & Channels ── */}
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: nextDelay() }}
-              className="glass-panel p-5"
+              className="glass-panel p-5 relative overflow-hidden"
+              style={{ borderLeft: "3px solid var(--info)" }}
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <Bell size={18} style={{ color: "var(--text-secondary)" }} />
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "rgba(91,158,233,0.1)" }}>
+                    <Bell weight="duotone" size={20} style={{ color: "var(--info)" }} />
+                  </div>
                   <div>
-                    <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Уведомления</div>
+                    <div className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Уведомления</div>
                     <div className="text-sm" style={{ color: "var(--text-muted)" }}>Каналы и частота</div>
                   </div>
                 </div>
@@ -403,7 +436,7 @@ export default function SettingsPage() {
                   {/* In-app */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <MessageSquare size={14} style={{ color: "var(--text-muted)" }} />
+                      <ChatCircle weight="duotone" size={15} style={{ color: "var(--text-muted)" }} />
                       <span className="text-sm" style={{ color: "var(--text-secondary)" }}>В приложении</span>
                     </div>
                     <Toggle on={notifyPush} onChange={() => setNotifyPush(!notifyPush)} size="sm" />
@@ -412,7 +445,7 @@ export default function SettingsPage() {
                   {/* Email */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Mail size={14} style={{ color: "var(--text-muted)" }} />
+                      <Envelope weight="duotone" size={15} style={{ color: "var(--text-muted)" }} />
                       <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Email</span>
                     </div>
                     <Toggle on={notifyEmail} onChange={() => setNotifyEmail(!notifyEmail)} size="sm" />
@@ -424,7 +457,7 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-2">
                         <Smartphone size={14} style={{ color: "var(--text-muted)" }} />
                         <div>
-                          <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Web Push</span>
+                          <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Push-уведомления</span>
                           {webPush.isDenied && (
                             <span className="block text-xs" style={{ color: "var(--danger)" }}>Заблокировано</span>
                           )}
@@ -457,7 +490,7 @@ export default function SettingsPage() {
                   {/* Frequency */}
                   <div className="pt-2 border-t" style={{ borderColor: "var(--border-color)" }}>
                     <div className="flex items-center gap-2 mb-2">
-                      <Clock size={14} style={{ color: "var(--text-muted)" }} />
+                      <Clock weight="duotone" size={15} style={{ color: "var(--text-muted)" }} />
                       <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Частота</span>
                     </div>
                     <div className="flex gap-2">
@@ -476,12 +509,15 @@ export default function SettingsPage() {
 
             {/* ── Linked Accounts ── */}
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: nextDelay() }}
-              className="glass-panel p-5"
+              className="glass-panel p-5 relative overflow-hidden"
+              style={{ borderLeft: "3px solid var(--magenta, #D926B8)" }}
             >
               <div className="flex items-center gap-3 mb-4">
-                <Link2 size={18} style={{ color: "var(--text-secondary)" }} />
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "rgba(217,38,184,0.1)" }}>
+                  <LinkSimple weight="duotone" size={20} style={{ color: "var(--magenta, #D926B8)" }} />
+                </div>
                 <div>
-                  <div className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>Привязанные аккаунты</div>
+                  <div className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Привязанные аккаунты</div>
                   <div className="text-sm" style={{ color: "var(--text-muted)" }}>Вход через Google или Yandex</div>
                 </div>
               </div>
@@ -568,20 +604,44 @@ export default function SettingsPage() {
               </div>
             </motion.div>
 
+            {/* ── System Info ── */}
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: nextDelay() }}
+              className="rounded-xl p-4"
+              style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <Terminal weight="duotone" size={14} style={{ color: "var(--text-muted)" }} />
+                <span className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Система</span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                <span>Платформа</span><span style={{ color: "var(--text-secondary)" }}>Hunter888 v0.1.0</span>
+                <span>User ID</span><span style={{ color: "var(--text-secondary)" }}>{user?.id ? `${user.id.slice(0, 8)}...` : "—"}</span>
+                <span>Роль</span><span style={{ color: "var(--text-secondary)" }}>{roleLabels[user?.role || ""] || "—"}</span>
+                <span>Тема</span><span style={{ color: "var(--text-secondary)" }}>{theme || "system"}</span>
+              </div>
+              <div className="mt-3 pt-3 flex items-center gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                <Keyboard weight="duotone" size={13} style={{ color: "var(--text-muted)" }} />
+                <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                  <kbd className="px-1.5 py-0.5 rounded" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>Ctrl</kbd>
+                  {" + "}
+                  <kbd className="px-1.5 py-0.5 rounded" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>K</kbd>
+                  {" — Command Palette"}
+                </span>
+              </div>
+            </motion.div>
+
             {/* Save */}
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: nextDelay() }} className="flex flex-col items-end gap-2 pt-4">
               {saveError && (
                 <p className="text-sm font-mono" style={{ color: "var(--danger)" }}>{saveError}</p>
               )}
-              <motion.button
+              <Button
                 onClick={handleSave}
-                disabled={saving}
-                className="btn-neon flex items-center gap-2 text-[14px]"
-                whileTap={{ scale: 0.97 }}
+                loading={saving}
+                icon={saved ? <CheckCircle2 size={16} /> : <Save size={16} />}
               >
-                {saving ? <Loader2 size={16} className="animate-spin" /> : saved ? <CheckCircle2 size={16} /> : <Save size={16} />}
                 {saved ? "Сохранено" : "Сохранить настройки"}
-              </motion.button>
+              </Button>
             </motion.div>
           </div>
         </div>

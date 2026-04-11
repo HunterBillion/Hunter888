@@ -12,6 +12,8 @@ import {
   type ChartOptions,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
+import { Sparkles } from "lucide-react";
+import { cssVar } from "@/lib/chartTheme";
 import { type EmotionState, EMOTION_MAP } from "@/types";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
@@ -116,19 +118,27 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
     return `${m}:${s.toString().padStart(2, "0")}`;
   });
 
+  const dangerHex = cssVar("--danger", "#E5484D");
+  const warningHex = cssVar("--warning", "#E8A630");
+  const accentHex = cssVar("--accent", "#7C6AE8");
+  const magentaHex = cssVar("--magenta", "#D926B8");
+
   const dataValues = timeline.map((e) => EMOTION_MAP[e.state as EmotionState]?.value ?? 30);
   const pointColors = timeline.map((e) => {
-    if (e.is_fake) return "#FF2A6D"; // neon red for fake
-    if (e.rollback) return "var(--warning)"; // amber for rollback
-    return EMOTION_MAP[e.state as EmotionState]?.color ?? "var(--accent)";
+    if (e.is_fake) return dangerHex;
+    if (e.rollback) return warningHex;
+    // EMOTION_MAP colors may contain var() — resolve them
+    const raw = EMOTION_MAP[e.state as EmotionState]?.color ?? accentHex;
+    if (raw.startsWith("var(")) return accentHex;
+    return raw;
   });
 
   // Point styling: larger for fakes/rollbacks, dashed border for fakes
   const pointRadii = timeline.map((e) => (e.is_fake || e.rollback ? 7 : 5));
   const pointBorderWidths = timeline.map((e) => (e.is_fake ? 3 : 2));
   const pointBorderColors = timeline.map((e) => {
-    if (e.is_fake) return "#FF2A6D";
-    if (e.rollback) return "var(--warning)";
+    if (e.is_fake) return dangerHex;
+    if (e.rollback) return warningHex;
     return isDark ? "#fff" : "#1a1a1a";
   });
   const pointStyles = timeline.map((e) => {
@@ -143,7 +153,7 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
       {
         label: "Vibe",
         data: dataValues,
-        borderColor: "var(--magenta)",
+        borderColor: magentaHex,
         backgroundColor: (ctx: { chart: { ctx: CanvasRenderingContext2D } }) => {
           const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 300);
           g.addColorStop(0, "rgba(224, 40, 204, 0.4)");
@@ -188,7 +198,7 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
         backgroundColor: tooltipBg,
         titleColor: tooltipText,
         bodyColor: tooltipText,
-        borderColor: "var(--magenta)",
+        borderColor: magentaHex,
         borderWidth: 1,
         callbacks: {
           title: (items: { dataIndex: number }[]) => {
@@ -264,9 +274,9 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
         {hasFakes && (
           <span
             className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-mono uppercase tracking-wider"
-            style={{ background: "rgba(229,72,77,0.1)", color: "#FF2A6D", border: "1px solid rgba(229,72,77,0.2)" }}
+            style={{ background: "rgba(229,72,77,0.1)", color: "var(--danger)", border: "1px solid rgba(229,72,77,0.2)" }}
           >
-            <span style={{ width: 7, height: 7, transform: "rotate(45deg)", background: "#FF2A6D", display: "inline-block" }} />
+            <span style={{ width: 7, height: 7, transform: "rotate(45deg)", background: "var(--danger)", display: "inline-block" }} />
             Фейк
           </span>
         )}
@@ -307,7 +317,7 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
           {journeySummary.fake_count != null && journeySummary.fake_count > 0 && (
             <span className="stat-chip">
               <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>Фейков</span>
-              <span className="text-xs font-mono font-bold" style={{ color: "#FF2A6D" }}>{journeySummary.fake_count}</span>
+              <span className="text-xs font-mono font-bold" style={{ color: "var(--danger)" }}>{journeySummary.fake_count}</span>
             </span>
           )}
         </div>
@@ -353,7 +363,7 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
                 )}
                 {onReplayMessage && tp.message_index != null && (
                   <span className="ml-auto opacity-40 hover:opacity-100 transition-opacity" style={{ color: "var(--accent)" }}>
-                    ✨ Replay
+                    <Sparkles size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} /> Replay
                   </span>
                 )}
               </div>

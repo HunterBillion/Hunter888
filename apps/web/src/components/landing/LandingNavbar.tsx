@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Menu, X as XIcon } from "lucide-react";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { XHunterLogo } from "@/components/ui/XHunterLogo";
 
 const NAV_LINKS = [
   { href: "/", label: "ГЛАВНАЯ" },
@@ -42,8 +43,8 @@ export function LandingNavbar({ onLogin, onRegister }: LandingNavbarProps) {
       >
         {/* Left: Logo */}
         <div className="flex items-center">
-          <Link href="/" className="font-display font-black text-xl sm:text-2xl tracking-tighter" style={{ color: "var(--text-primary)" }}>
-            X HUNTER
+          <Link href="/" className="transition-opacity hover:opacity-85">
+            <XHunterLogo size="lg" />
           </Link>
         </div>
 

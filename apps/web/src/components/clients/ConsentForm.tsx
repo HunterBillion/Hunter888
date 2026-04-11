@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { ShieldPlus, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 
 interface ConsentFormProps {
   clientId: string;
@@ -73,15 +74,9 @@ export function ConsentForm({ onSubmit }: ConsentFormProps) {
         </select>
       </div>
 
-      <motion.button
-        type="submit"
-        disabled={saving}
-        className="btn-neon flex items-center gap-2 w-full justify-center"
-        whileTap={{ scale: 0.97 }}
-      >
-        {saving ? <Loader2 size={14} className="animate-spin" /> : <ShieldPlus size={14} />}
+      <Button type="submit" variant="primary" fluid loading={saving} icon={<ShieldPlus size={14} />}>
         Зафиксировать согласие
-      </motion.button>
+      </Button>
     </form>
   );
 }

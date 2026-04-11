@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Shield } from "lucide-react";
+import { Shield } from "@phosphor-icons/react";
 import { type PvPRankTier, PVP_RANK_COLORS, PVP_RANK_LABELS } from "@/types";
 import { getDivision } from "./RatingCard";
 import { colorAlpha } from "@/lib/utils";
@@ -38,7 +38,7 @@ export function RankBadge({ tier, rating, size = "md", showDivision = true }: Pr
       }}
       whileHover={{ scale: 1.05 }}
     >
-      <Shield size={s.icon} />
+      <Shield weight="duotone" size={s.icon} />
       <span>{label}{division ? ` ${division}` : ""}</span>
       {rating !== undefined && (
         <span style={{ opacity: 0.7 }}>{Math.round(rating)}</span>

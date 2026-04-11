@@ -6,22 +6,24 @@ import {
   FileBarChart,
   Loader2,
   RefreshCw,
-  TrendingUp,
-  TrendingDown,
   Minus,
+  ChevronDown,
+  ArrowUp,
+  ArrowDown,
+} from "lucide-react";
+import {
+  TrendUp,
+  TrendDown,
   Trophy,
   Target,
   Clock,
-  Zap,
+  Lightning,
   Star,
-  ChevronDown,
-  Award,
-  AlertTriangle,
+  Medal,
+  Warning,
   Lightbulb,
-  ArrowUp,
-  ArrowDown,
-  Users,
-} from "lucide-react";
+  UsersThree,
+} from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { scoreColor } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -88,8 +90,8 @@ function formatWeek(iso: string): string {
 }
 
 function trendIcon(trend: string | null) {
-  if (trend === "growing") return <TrendingUp size={14} style={{ color: "var(--success)" }} />;
-  if (trend === "declining") return <TrendingDown size={14} style={{ color: "var(--danger)" }} />;
+  if (trend === "growing") return <TrendUp size={14} weight="duotone" style={{ color: "var(--success)" }} />;
+  if (trend === "declining") return <TrendDown size={14} weight="duotone" style={{ color: "var(--danger)" }} />;
   return <Minus size={14} style={{ color: "var(--text-muted)" }} />;
 }
 
@@ -135,7 +137,7 @@ function StatCard({ icon: Icon, label, value, color }: { icon: typeof Target; la
       border: "1px solid rgba(255,255,255,0.06)",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.2rem" }}>
-        <Icon size={12} style={{ color }} />
+        <Icon size={12} weight="duotone" style={{ color }} />
         <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{label}</span>
       </div>
       <span style={{ fontSize: "1.1rem", fontWeight: 700, fontFamily: "monospace", color }}>
@@ -250,10 +252,10 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                 <StatCard icon={Target} label="Ср. балл" value={report.average_score != null ? Number(report.average_score).toFixed(0) : "—"} color={scoreColor(report.average_score)} />
                 <StatCard icon={Star} label="Лучший" value={report.best_score != null ? String(report.best_score) : "—"} color="var(--rank-gold)" />
                 <StatCard icon={Trophy} label="Win rate" value={report.win_rate != null ? `${Number(report.win_rate).toFixed(0)}%` : "—"} color="var(--success)" />
-                <StatCard icon={Zap} label="XP" value={`+${report.xp_earned}`} color="var(--warning)" />
+                <StatCard icon={Lightning} label="XP" value={`+${report.xp_earned}`} color="var(--warning)" />
                 <StatCard icon={Clock} label="Время" value={`${report.total_time_minutes} мин`} color="var(--info)" />
                 <StatCard
-                  icon={TrendingUp}
+                  icon={TrendUp}
                   label="Уровень"
                   value={report.level_at_start === report.level_at_end ? `${report.level_at_end}` : `${report.level_at_start} → ${report.level_at_end}`}
                   color="var(--accent-hover)"
@@ -300,7 +302,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {report.new_achievements.length > 0 && (
                 <div style={{ marginBottom: "1rem" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
-                    <Award size={13} /> Достижения недели
+                    <Medal size={13} weight="duotone" /> Достижения недели
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
                     {report.new_achievements.map((a) => (
@@ -324,7 +326,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {report.weak_points.length > 0 && (
                 <div style={{ marginBottom: "1rem" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
-                    <AlertTriangle size={13} /> Слабые места
+                    <Warning size={13} weight="duotone" /> Слабые места
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
                     {report.weak_points.map((wp) => (
@@ -347,7 +349,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {report.recommendations.length > 0 && (
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
-                    <Lightbulb size={13} /> Рекомендации
+                    <Lightbulb size={13} weight="duotone" /> Рекомендации
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
                     {report.recommendations.map((rec, i) => (
@@ -484,7 +486,7 @@ export function ReportsDashboard({
           borderRadius: 10,
           flexWrap: "wrap",
         }}>
-          <Users size={16} style={{ color: "var(--accent)" }} />
+          <UsersThree size={16} weight="duotone" style={{ color: "var(--accent)" }} />
           <span style={{ color: "var(--accent-hover)", fontSize: "0.85rem" }}>Менеджер:</span>
           <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
             {teamMembers.map((m) => (

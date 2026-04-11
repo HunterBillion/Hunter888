@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { CheckCircle, XCircle, Clock, Pencil, Medal, Bot, User } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Pencil, Medal, Bot, User, Star } from "lucide-react";
 import { useKnowledgeStore } from "@/stores/useKnowledgeStore";
 import type { ArenaRoundResult, ArenaFinalResults } from "@/types";
 
@@ -20,9 +20,10 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 function DifficultyStars({ level }: { level: number }) {
   return (
-    <span style={{ color: "var(--warning)" }}>
-      {"★".repeat(Math.min(level, 5))}
-      {"☆".repeat(Math.max(0, 5 - level))}
+    <span className="inline-flex gap-0.5" style={{ color: "var(--warning)" }}>
+      {Array.from({ length: 5 }, (_, i) => (
+        <Star key={i} size={14} fill={i < level ? "currentColor" : "none"} />
+      ))}
     </span>
   );
 }

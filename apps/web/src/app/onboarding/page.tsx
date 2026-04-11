@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   User, Settings, Target, Mic, MessageCircle,
-  ArrowRight, ArrowLeft, Check, Crosshair,
+  ArrowRight, ChevronLeft, Check, Crosshair,
   Sun, Moon, Volume2, Bell, CheckCircle, Lightbulb,
 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AppIcon } from "@/components/ui/AppIcon";
@@ -307,15 +308,7 @@ function TrialDialog() {
             className="vh-input flex-1"
             placeholder="Ваш ответ..."
           />
-          <motion.button
-            type="button"
-            onClick={sendMessage}
-            disabled={!input.trim()}
-            className="btn-neon px-4"
-            whileTap={{ scale: 0.95 }}
-          >
-            <ArrowRight size={16} />
-          </motion.button>
+          <Button size="sm" onClick={sendMessage} disabled={!input.trim()} icon={<ArrowRight size={16} />} />
         </div>
       )}
 
@@ -652,23 +645,19 @@ export default function OnboardingPage() {
         {/* Navigation */}
         <div className="mt-6 flex justify-between">
           {step > 1 ? (
-            <motion.button type="button" onClick={() => setStep(step - 1)} className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
-              <ArrowLeft size={16} /> Назад
-            </motion.button>
+            <Button variant="ghost" onClick={() => setStep(step - 1)} icon={<ChevronLeft size={16} />}>
+              Назад
+            </Button>
           ) : <div />}
 
           {step < totalSteps ? (
-            <motion.button type="button" onClick={() => setStep(step + 1)} disabled={!canAdvance()}
-              className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}
-              style={{ opacity: canAdvance() ? 1 : 0.4 }}
-            >
-              Далее <ArrowRight size={16} />
-            </motion.button>
+            <Button onClick={() => setStep(step + 1)} disabled={!canAdvance()} iconRight={<ArrowRight size={16} />}>
+              Далее
+            </Button>
           ) : (
-            <motion.button type="button" onClick={handleFinish} disabled={loading}
-              className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
-              {loading ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <><Crosshair size={16} /> Начать охоту</>}
-            </motion.button>
+            <Button variant="primary" onClick={handleFinish} loading={loading} icon={<Crosshair size={16} />}>
+              Начать охоту
+            </Button>
           )}
         </div>
 

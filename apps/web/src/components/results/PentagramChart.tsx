@@ -10,6 +10,7 @@ import {
   Tooltip,
 } from "chart.js";
 import { Radar } from "react-chartjs-2";
+import { cssVar } from "@/lib/chartTheme";
 
 ChartJS.register(RadialLinearScale, PointElement, LineElement, Filler, Tooltip);
 
@@ -39,6 +40,7 @@ export default function PentagramChart({ data }: { data: PentagramData }) {
   const tooltipBg = isDark ? "rgba(5,5,5,0.9)" : "rgba(255,255,255,0.95)";
   const tooltipText = isDark ? "#fff" : "#1a1a1a";
   const pointBorder = isDark ? "#fff" : "#1a1a1a";
+  const accentHex = cssVar("--accent", "#7C6AE8");
 
   // Guard: ensure labels and values arrays are the same length.
   // If mismatched, pad the shorter array to prevent Chart.js rendering artifacts.
@@ -52,12 +54,12 @@ export default function PentagramChart({ data }: { data: PentagramData }) {
     {
       label: "Текущая сессия",
       data: safeValues,
-      backgroundColor: "rgba(138, 43, 226, 0.3)",
-      borderColor: "var(--accent)",
-      pointBackgroundColor: "#BF55EC",
+      backgroundColor: "rgba(124, 106, 232, 0.3)",
+      borderColor: accentHex,
+      pointBackgroundColor: accentHex,
       pointBorderColor: pointBorder,
       pointHoverBackgroundColor: pointBorder,
-      pointHoverBorderColor: "#BF55EC",
+      pointHoverBorderColor: accentHex,
       borderWidth: 2,
     },
   ];
@@ -93,7 +95,7 @@ export default function PentagramChart({ data }: { data: PentagramData }) {
       },
     },
     plugins: {
-      legend: { display: false },
+      legend: { display: true },
       tooltip: {
         backgroundColor: tooltipBg,
         titleColor: tooltipText,

@@ -18,6 +18,8 @@ import {
   ChevronDown,
   Swords,
   FileBarChart,
+  BookOpen,
+  Brain,
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { sanitizeText } from "@/lib/sanitize";
@@ -28,6 +30,7 @@ import { XPBar } from "@/components/gamification/XPBar";
 import { StreakCounter } from "@/components/gamification/StreakCounter";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { UserAvatar } from "@/components/ui/UserAvatar";
+import { XHunterLogo } from "@/components/ui/XHunterLogo";
 import type { UserRole } from "@/types";
 
 type OpenPanel = "none" | "user" | "notifications" | "mobile";
@@ -44,6 +47,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/leaderboard", label: "Лидерборд", icon: Trophy, group: "main" },
   { href: "/pvp", label: "Арена", icon: Swords, group: "main" },
   /* ── Manage: по ролям ── */
+  { href: "/wiki", label: "База знаний", icon: BookOpen, roles: ["manager"], group: "manage" },
   { href: "/clients", label: "Клиенты", icon: Users, roles: ["admin", "rop", "manager", "methodologist"], group: "manage" },
   { href: "/reports", label: "Отчёты", icon: FileBarChart, roles: ["manager", "methodologist"], group: "manage" },
   { href: "/dashboard", label: "Панель РОП", icon: LayoutDashboard, roles: ["rop", "admin"], group: "manage" },
@@ -239,33 +243,10 @@ export default function Header() {
             <Link
               href="/home"
               prefetch={true}
-              className="group flex items-center gap-0 rounded-[20px] px-3 py-1.5 transition-opacity duration-200 hover:opacity-85"
+              className="group rounded-[20px] px-3 py-1.5 transition-opacity duration-200 hover:opacity-85"
               aria-label="X HUNTER — Главная"
             >
-              {/* X — accent */}
-              <span
-                className="font-display font-black leading-none"
-                style={{
-                  fontSize: "clamp(1.6rem, 2.8vw, 2.15rem)",
-                  color: "var(--accent)",
-                  lineHeight: 1,
-                }}
-              >
-                X
-              </span>
-              {/* Space */}
-              <span className="w-1.5" />
-              {/* HUNTER */}
-              <span
-                className="font-display font-black leading-none tracking-[0.12em]"
-                style={{
-                  fontSize: "clamp(1.05rem, 1.8vw, 1.45rem)",
-                  color: "var(--header-text)",
-                  lineHeight: 1,
-                }}
-              >
-                HUNTER
-              </span>
+              <XHunterLogo size="md" />
             </Link>
           </div>
 

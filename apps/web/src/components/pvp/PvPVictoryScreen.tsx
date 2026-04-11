@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Swords, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Minus } from "lucide-react";
+import { Sword, TrendUp, TrendDown } from "@phosphor-icons/react";
 import { useSound } from "@/hooks/useSound";
 import { useHaptic } from "@/hooks/useHaptic";
 import { Confetti } from "@/components/ui/Confetti";
@@ -84,7 +85,8 @@ export function PvPVictoryScreen({
               animate={isWinner ? { rotate: [0, -10, 10, 0] } : {}}
               transition={{ duration: 0.5, delay: 0.3 }}
             >
-              <Swords
+              <Sword
+                weight="duotone"
                 size={64}
                 style={{
                   color: resultColor,
@@ -158,9 +160,9 @@ export function PvPVictoryScreen({
               }}
             >
               {ratingDelta > 0 ? (
-                <TrendingUp size={18} style={{ color: "var(--success)" }} />
+                <TrendUp weight="duotone" size={18} style={{ color: "var(--success)" }} />
               ) : ratingDelta < 0 ? (
-                <TrendingDown size={18} style={{ color: "var(--danger)" }} />
+                <TrendDown weight="duotone" size={18} style={{ color: "var(--danger)" }} />
               ) : (
                 <Minus size={18} style={{ color: "var(--text-muted)" }} />
               )}

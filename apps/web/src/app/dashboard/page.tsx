@@ -5,21 +5,23 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
-  Users,
-  TrendingUp,
+  ArrowRight,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
+  FileBarChart,
+} from "lucide-react";
+import {
+  UsersThree,
+  TrendUp,
   Clock,
   Target,
   Trophy,
-  ArrowRight,
-  ArrowUpDown,
-  ShieldAlert,
+  ShieldWarning,
   Crown,
-  BarChart3,
-  ChevronUp,
-  ChevronDown,
+  ChartBar,
   BookOpen,
-  FileBarChart,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -64,10 +66,10 @@ const ReportsDashboard = dynamic(
 
 type TabId = "overview" | "analytics" | "team" | "tournament" | "wiki" | "reports";
 
-const TABS: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
+const TABS: { id: TabId; label: string; icon: any }[] = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
-  { id: "analytics", label: "Аналитика", icon: BarChart3 },
-  { id: "team", label: "Команда", icon: Users },
+  { id: "analytics", label: "Аналитика", icon: ChartBar },
+  { id: "team", label: "Команда", icon: UsersThree },
   { id: "tournament", label: "Турнир", icon: Trophy },
   { id: "wiki", label: "Wiki", icon: BookOpen },
   { id: "reports", label: "Отчёты", icon: FileBarChart },
@@ -236,7 +238,7 @@ export default function DashboardPage() {
             <DashboardSkeleton />
           ) : error ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-16 flex flex-col items-center">
-              <ShieldAlert size={40} style={{ color: "var(--danger)" }} />
+              <ShieldWarning size={40} weight="duotone" style={{ color: "var(--danger)" }} />
               <p className="mt-3 text-sm" style={{ color: "var(--danger)" }}>{error}</p>
             </motion.div>
           ) : data ? (
@@ -256,13 +258,13 @@ export default function DashboardPage() {
                       <button
                         key={tab.id}
                         onClick={() => switchTab(tab.id)}
-                        className="relative flex items-center gap-2.5 flex-1 px-3 sm:px-5 py-3 rounded-xl font-medium text-sm uppercase tracking-wide whitespace-nowrap transition-all duration-200"
+                        className="relative flex items-center justify-center gap-2 flex-1 px-3 sm:px-5 py-3 rounded-xl font-medium text-sm uppercase tracking-wide whitespace-nowrap transition-all duration-200"
                         style={{
                           color: isActive ? "var(--text-primary)" : "var(--text-muted)",
                           fontWeight: isActive ? 700 : 500,
                         }}
                       >
-                        <Icon size={18} style={{ color: isActive ? "var(--accent)" : undefined }} />
+                        <Icon size={18} weight="duotone" style={{ color: isActive ? "var(--accent)" : undefined }} />
                         <span className="hidden sm:inline">{tab.label}</span>
                         {isActive && (
                           <motion.div
@@ -333,7 +335,7 @@ export default function DashboardPage() {
                             </div>
                             {data.stats.best_performer && (
                               <div className="flex items-center gap-1.5 mt-2">
-                                <Crown size={16} style={{ color: "#FFD700" }} />
+                                <Crown size={16} weight="duotone" style={{ color: "var(--gf-xp)" }} />
                                 <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
                                   Лучший: <span className="font-medium" style={{ color: "var(--text-primary)" }}>{data.stats.best_performer}</span>
                                 </span>
@@ -344,10 +346,10 @@ export default function DashboardPage() {
                           {/* Secondary stats */}
                           <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                             {[
-                              { label: "Менеджеров", value: data.team.total_members, icon: Users, color: "var(--accent)" },
+                              { label: "Менеджеров", value: data.team.total_members, icon: UsersThree, color: "var(--accent)" },
                               { label: "Всего сессий", value: data.stats.total_sessions, icon: Target, color: "var(--success)" },
                               { label: "Активных", value: data.stats.active_this_week, icon: Clock, color: "var(--magenta)" },
-                              { label: "В команде", value: data.team.active_members, icon: TrendingUp, color: "var(--warning)" },
+                              { label: "В команде", value: data.team.active_members, icon: TrendUp, color: "var(--warning)" },
                             ].map((stat) => {
                               const SIcon = stat.icon;
                               return (
@@ -359,7 +361,7 @@ export default function DashboardPage() {
                                   <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, color-mix(in srgb, ${stat.color} 6%, transparent) 0%, transparent 70%)` }} />
                                   <div className="flex items-center gap-2 mb-2">
                                     <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `color-mix(in srgb, ${stat.color} 8%, transparent)` }}>
-                                      <SIcon size={16} style={{ color: stat.color }} />
+                                      <SIcon size={16} weight="duotone" style={{ color: stat.color }} />
                                     </div>
                                     <span className="font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                                       {stat.label}
@@ -389,7 +391,7 @@ export default function DashboardPage() {
                         className="cyber-card overflow-hidden"
                       >
                         <div className="p-5 border-b flex items-center gap-2" style={{ borderColor: "var(--border-color)", background: "var(--input-bg)" }}>
-                          <Users size={18} style={{ color: "var(--accent)" }} />
+                          <UsersThree size={18} weight="duotone" style={{ color: "var(--accent)" }} />
                           <h2 className="font-display text-base tracking-widest" style={{ color: "var(--text-secondary)" }}>
                             МЕНЕДЖЕРЫ
                           </h2>
@@ -398,8 +400,9 @@ export default function DashboardPage() {
                           </span>
                         </div>
 
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-base min-w-[600px]">
+                        <div className="relative overflow-x-auto">
+                          <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-10 md:hidden" style={{ background: "linear-gradient(to left, var(--surface-card), transparent)" }} />
+                          <table className="w-full text-sm min-w-[600px]">
                             <thead>
                               <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
                                 <SortHeader label="Имя" sortField="full_name" />
@@ -557,7 +560,7 @@ export default function DashboardPage() {
                         className="cyber-card overflow-hidden"
                       >
                         <div className="p-5 border-b flex items-center gap-2" style={{ borderColor: "var(--border-color)", background: "var(--input-bg)" }}>
-                          <Trophy size={18} style={{ color: "#FFD700" }} />
+                          <Trophy size={18} weight="duotone" style={{ color: "var(--gf-xp)" }} />
                           <h2 className="font-display text-base tracking-widest" style={{ color: "var(--text-secondary)" }}>
                             ТУРНИР
                           </h2>
@@ -615,7 +618,7 @@ export default function DashboardPage() {
                           </div>
                         ) : (
                           <div className="p-8 flex flex-col items-center justify-center text-center">
-                            <Trophy size={40} style={{ color: "var(--border-color)" }} />
+                            <Trophy size={40} weight="duotone" style={{ color: "var(--border-color)" }} />
                             <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
                               Нет активных турниров
                             </p>
@@ -635,7 +638,7 @@ export default function DashboardPage() {
                           >
                             <div className="flex items-center justify-between mb-3">
                               <h2 className="font-display text-sm tracking-widest flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
-                                <Users size={16} style={{ color: "var(--accent)" }} />
+                                <UsersThree size={16} weight="duotone" style={{ color: "var(--accent)" }} />
                                 ВОРОНКА КЛИЕНТОВ
                               </h2>
                               <Link href="/clients/pipeline" className="font-medium text-xs flex items-center gap-1" style={{ color: "var(--accent)" }}>

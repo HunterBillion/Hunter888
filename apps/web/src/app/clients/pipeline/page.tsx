@@ -578,9 +578,9 @@ export default function PipelinePage() {
               <div
                 className="mx-auto mb-4 max-w-[1600px] rounded-xl px-4 py-3 text-sm"
                 style={{
-                  background: "rgba(239,68,68,0.12)",
-                  border: "1px solid rgba(239,68,68,0.2)",
-                  color: "#FCA5A5",
+                  background: "color-mix(in srgb, var(--danger) 12%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--danger) 20%, transparent)",
+                  color: "var(--danger)",
                 }}
               >
                 {error}
@@ -592,7 +592,7 @@ export default function PipelinePage() {
               transition={{ delay: 0.1 }}
               className={
                 layoutMode === "board"
-                  ? "mx-auto flex min-w-max gap-3 pb-6"
+                  ? "mx-auto flex min-w-max gap-3 pb-6 snap-x snap-mandatory"
                   : "mx-auto grid max-w-[1600px] gap-3 pb-6 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
               }
             >
@@ -602,7 +602,7 @@ export default function PipelinePage() {
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.04 * i }}
-                  className="h-full"
+                  className="h-full snap-start min-w-[260px]"
                 >
                   <PipelineColumn
                     ref={(el) => setColumnRef(status, el)}

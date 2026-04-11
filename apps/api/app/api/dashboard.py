@@ -11,7 +11,8 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import Integer, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -763,6 +764,53 @@ async def get_weekly_report_history(
         ],
         "total": len(reports),
     }
+
+
+@router.get("/weekly-report/export")
+async def export_weekly_report(
+    report_id: uuid.UUID = Query(...),
+    format: str = Query("csv", regex="^(csv|json)$"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export individual weekly report as CSV or JSON."""
+    from app.models.progress import WeeklyReport
+
+    report = await db.get(WeeklyReport, report_id)
+    if not report or report.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    data = {
+        "week": f"{report.week_start.strftime('%Y-%m-%d')} — {report.week_end.strftime('%Y-%m-%d')}",
+        "sessions": report.sessions_completed,
+        "average_score": float(report.average_score) if report.average_score else 0,
+        "best_score": float(report.best_score) if report.best_score else 0,
+        "score_trend": report.score_trend or "stable",
+        "xp_earned": report.xp_earned or 0,
+        "weekly_rank": report.weekly_rank,
+        "skills": report.skills_snapshot or {},
+    }
+
+    if format == "csv":
+        import csv
+        import io
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Metric", "Value"])
+        for k, v in data.items():
+            if isinstance(v, dict):
+                for sk, sv in v.items():
+                    writer.writerow([f"{k}.{sk}", sv])
+            else:
+                writer.writerow([k, v])
+        content = output.getvalue()
+        return Response(
+            content=content,
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=report_{report.week_start.strftime('%Y%m%d')}.csv"},
+        )
+
+    return data
 
 
 @router.get("/rop/weekly-digest")

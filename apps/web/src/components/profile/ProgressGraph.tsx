@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { motion } from "framer-motion";
-import { TrendingUp, BarChart3 } from "lucide-react";
+import { TrendUp, ChartBar } from "@phosphor-icons/react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -15,6 +15,7 @@ import {
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 import { AnimatedChart } from "@/components/ui/AnimatedChart";
+import { getChartTheme } from "@/lib/chartTheme";
 import type { ProgressPoint } from "@/types";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Filler);
@@ -24,6 +25,8 @@ interface ProgressGraphProps {
 }
 
 export function ProgressGraph({ data }: ProgressGraphProps) {
+  const theme = getChartTheme();
+
   const chartData = useMemo(() => {
     if (data.length === 0) return null;
 
@@ -39,12 +42,14 @@ export function ProgressGraph({ data }: ProgressGraphProps) {
           type: "line" as const,
           label: "Средний балл",
           data: data.map((p) => p.avg_total),
-          borderColor: "rgba(124,106,232,0.9)",
-          backgroundColor: "rgba(124,106,232,0.1)",
+          borderColor: theme.colors.line,
+          backgroundColor: theme.colors.fill,
           fill: true,
           tension: 0.4,
-          pointRadius: 4,
-          pointBackgroundColor: "rgba(124,106,232,1)",
+          borderWidth: 3,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          pointBackgroundColor: theme.colors.line,
           pointBorderColor: "transparent",
           yAxisID: "y",
           order: 1,
@@ -53,14 +58,15 @@ export function ProgressGraph({ data }: ProgressGraphProps) {
           type: "bar" as const,
           label: "Сессий",
           data: data.map((p) => p.sessions_count),
-          backgroundColor: "rgba(124,106,232,0.15)",
-          borderRadius: 4,
+          backgroundColor: theme.colors.bar2,
+          borderRadius: 6,
+          barThickness: 18,
           yAxisID: "y1",
           order: 2,
         },
       ],
     };
-  }, [data]);
+  }, [data, theme]);
 
   if (!chartData) {
     return (
@@ -69,7 +75,7 @@ export function ProgressGraph({ data }: ProgressGraphProps) {
         animate={{ opacity: 1, y: 0 }}
         className="glass-panel p-8 text-center"
       >
-        <BarChart3 size={32} className="mx-auto animate-float-subtle" style={{ color: "var(--text-muted)", opacity: 0.4 }} />
+        <ChartBar weight="duotone" size={32} className="mx-auto animate-float-subtle" style={{ color: "var(--text-muted)", opacity: 0.4 }} />
         <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
           Пройдите несколько тренировок для отображения прогресса
         </p>
@@ -84,7 +90,7 @@ export function ProgressGraph({ data }: ProgressGraphProps) {
       className="glass-panel p-6"
     >
       <div className="flex items-center gap-2 mb-4">
-        <TrendingUp size={16} style={{ color: "var(--accent)" }} />
+        <TrendUp weight="duotone" size={18} style={{ color: "var(--accent)" }} />
         <span className="font-display text-sm font-bold tracking-widest uppercase" style={{ color: "var(--text-secondary)" }}>
           Прогресс
         </span>
@@ -97,35 +103,35 @@ export function ProgressGraph({ data }: ProgressGraphProps) {
           options={{
             responsive: true,
             maintainAspectRatio: true,
-            aspectRatio: 2.5,
+            aspectRatio: 2.2,
             interaction: { mode: "index", intersect: false },
             plugins: {
-              tooltip: {
-                backgroundColor: "rgba(10,10,22,0.9)",
-                borderColor: "rgba(124,106,232,0.3)",
-                borderWidth: 1,
-                titleFont: { family: "JetBrains Mono", size: 11 },
-                bodyFont: { family: "Plus Jakarta Sans", size: 12 },
-                padding: 10,
+              tooltip: theme.defaults.plugins.tooltip,
+              legend: {
+                display: true,
+                labels: theme.defaults.plugins.legend.labels,
               },
             },
             scales: {
               x: {
-                ticks: { color: "rgba(148,148,173,0.6)", font: { family: "JetBrains Mono", size: 10 } },
-                grid: { color: "rgba(124,106,232,0.06)" },
+                ticks: { color: theme.colors.text, font: { size: 14 } },
+                grid: { color: theme.colors.grid },
+                border: { color: "transparent" },
               },
               y: {
                 position: "left",
                 min: 0,
                 max: 100,
-                ticks: { color: "rgba(148,148,173,0.6)", font: { family: "JetBrains Mono", size: 10 } },
-                grid: { color: "rgba(124,106,232,0.06)" },
+                ticks: { color: theme.colors.text, font: { size: 14 } },
+                grid: { color: theme.colors.grid },
+                border: { color: "transparent" },
               },
               y1: {
                 position: "right",
                 min: 0,
-                ticks: { color: "rgba(148,148,173,0.4)", font: { family: "JetBrains Mono", size: 10 } },
+                ticks: { color: theme.colors.text, font: { size: 14 } },
                 grid: { display: false },
+                border: { color: "transparent" },
               },
             },
           }}

@@ -11,11 +11,13 @@ import {
   X as XIcon,
 } from "lucide-react";
 import { FishermanError } from "@/components/errors/FishermanError";
+import { Button } from "@/components/ui/Button";
 import { getToken, setTokens } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { getApiBaseUrl } from "@/lib/public-origin";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { PasswordChecklist, isPasswordValid } from "@/components/ui/PasswordChecklist";
+import { XHunterLogo } from "@/components/ui/XHunterLogo";
 import { LandingNavbar } from "./LandingNavbar";
 import { LandingFooter } from "./LandingFooter";
 import { LandingAuthContext, type Panel } from "./LandingAuthContext";
@@ -54,10 +56,16 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
   const [networkError, setNetworkError] = useState(false);
 
   // Main form
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => {
+    if (typeof window !== "undefined") return sessionStorage.getItem("vh-auth-email") ?? "";
+    return "";
+  });
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [fullName, setFullName] = useState("");
+  const [fullName, setFullName] = useState(() => {
+    if (typeof window !== "undefined") return sessionStorage.getItem("vh-auth-name") ?? "";
+    return "";
+  });
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -105,13 +113,14 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
     try {
       if (activePanel === "login") {
         const data = await api.post("/auth/login", { email: email.trim(), password });
-        setTokens(data.access_token, data.refresh_token);
+        setTokens(data.access_token, data.refresh_token, data.csrf_token);
+        try { sessionStorage.removeItem("vh-auth-email"); sessionStorage.removeItem("vh-auth-name"); } catch {}
         router.push(data.must_change_password ? "/change-password" : "/home");
       } else {
         const data = await api.post("/auth/register", {
           email: email.trim(), password, full_name: fullName.trim(),
         });
-        setTokens(data.access_token, data.refresh_token);
+        setTokens(data.access_token, data.refresh_token, data.csrf_token);
         router.push("/onboarding");
       }
     } catch (err: unknown) {
@@ -228,15 +237,14 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                   className="sticky top-0 z-10 flex items-center justify-between px-5 sm:px-8 py-5"
                   style={{ background: "var(--bg-primary)", borderBottom: "1px solid var(--border-color)" }}
                 >
-                  <div>
-                    <h2 className="font-display font-bold text-base tracking-[0.12em]" style={{ color: "var(--text-primary)" }}>
+                  <div className="flex items-center gap-3">
+                    <XHunterLogo size="sm" />
+                    <div className="h-6 w-px" style={{ background: "var(--border-color)" }} />
+                    <h2 className="font-display font-bold text-base" style={{ color: "var(--text-secondary)" }}>
                       {forgotMode !== "idle"
-                        ? "ВОССТАНОВЛЕНИЕ"
-                        : activePanel === "login" ? "ВХОД В СИСТЕМУ" : "РЕГИСТРАЦИЯ"}
+                        ? "Восстановление"
+                        : activePanel === "login" ? "Вход" : "Регистрация"}
                     </h2>
-                    <p className="font-mono text-xs mt-0.5 tracking-wider" style={{ color: "var(--text-muted)" }}>
-                      X·HUNTER PLATFORM
-                    </p>
                   </div>
                   <button
                     onClick={closePanel}
@@ -273,13 +281,17 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                             <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
                               Проверьте <strong style={{ color: "var(--text-secondary)" }}>{forgotEmail}</strong><br />и следуйте инструкциям.
                             </p>
-                            <button onClick={() => { setForgotMode("idle"); setForgotEmail(""); }} className="text-sm font-medium" style={{ color: "var(--accent)" }}>
-                              ← Вернуться ко входу
+                            <button onClick={() => { setForgotMode("idle"); setForgotEmail(""); }} className="flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-80" style={{ color: "var(--accent)" }}>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                              Вернуться ко входу
                             </button>
                           </div>
                         ) : (
                           <div>
-                            <button onClick={() => setForgotMode("idle")} className="flex items-center gap-1.5 text-xs mb-6" style={{ color: "var(--text-muted)" }}>← Назад</button>
+                            <button onClick={() => setForgotMode("idle")} className="flex items-center gap-1.5 text-sm font-medium mb-6 transition-colors hover:opacity-80" style={{ color: "var(--text-secondary)" }}>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                              Назад
+                            </button>
                             <h3 className="font-display font-bold text-xl mb-1.5" style={{ color: "var(--text-primary)" }}>Забыли пароль?</h3>
                             <p className="text-sm mb-6" style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>Введите email — пришлём ссылку для сброса.</p>
                             <label className="vh-label">Email</label>
@@ -287,9 +299,9 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                               <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
                               <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} className="vh-input pl-10 w-full" placeholder="you@example.com" autoComplete="email" />
                             </div>
-                            <motion.button onClick={handleForgot} disabled={forgotLoading || !forgotEmail.trim()} className="btn-neon flex w-full items-center justify-center gap-2" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
-                              {forgotLoading ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <><Mail size={15} />Отправить ссылку</>}
-                            </motion.button>
+                            <Button variant="primary" fluid loading={forgotLoading} disabled={!forgotEmail.trim()} icon={<Mail size={15} />} onClick={handleForgot}>
+                              Отправить ссылку
+                            </Button>
                           </div>
                         )}
                       </motion.div>
@@ -312,7 +324,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                           </div>
                           <div className="flex items-center gap-3 mt-4">
                             <div className="flex-1 h-px" style={{ background: "var(--border-color)" }} />
-                            <span className="font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>или через email</span>
+                            <span className="text-sm" style={{ color: "var(--text-muted)" }}>или через email</span>
                             <div className="flex-1 h-px" style={{ background: "var(--border-color)" }} />
                           </div>
                         </div>
@@ -323,7 +335,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                               <label className="vh-label">Полное имя</label>
                               <div className="relative">
                                 <User size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
-                                <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} required className="vh-input pl-10 w-full" placeholder="Иван Петров" autoComplete="name" />
+                                <input type="text" value={fullName} onChange={(e) => { setFullName(e.target.value); try { sessionStorage.setItem("vh-auth-name", e.target.value); } catch {} }} required className="vh-input pl-10 w-full" placeholder="Иван Петров" autoComplete="name" />
                               </div>
                             </div>
                           )}
@@ -332,7 +344,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                             <label className="vh-label">Email</label>
                             <div className="relative">
                               <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
-                              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="vh-input pl-10 w-full" placeholder="you@example.com" autoComplete="email" />
+                              <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); try { sessionStorage.setItem("vh-auth-email", e.target.value); } catch {} }} required className="vh-input pl-10 w-full" placeholder="you@example.com" autoComplete="email" />
                             </div>
                           </div>
 
@@ -340,7 +352,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                             <div className="flex items-center justify-between mb-1">
                               <label className="vh-label mb-0">Пароль</label>
                               {activePanel === "login" && (
-                                <button type="button" onClick={() => setForgotMode("form")} className="text-xs" style={{ color: "var(--text-muted)" }}>Забыли пароль?</button>
+                                <button type="button" onClick={() => setForgotMode("form")} className="text-sm transition-colors hover:opacity-80" style={{ color: "var(--accent)" }}>Забыли пароль?</button>
                               )}
                             </div>
                             <PasswordInput id="panel-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={activePanel === "register" ? "Минимум 8 символов" : "Введите пароль"} autoComplete={activePanel === "login" ? "current-password" : "new-password"} ariaLabel="Пароль" />
@@ -364,9 +376,9 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                             </label>
                           )}
 
-                          <motion.button type="submit" disabled={loading || !passwordsMatch} className="btn-neon flex w-full items-center justify-center gap-2" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
-                            {loading ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <>{activePanel === "login" ? "Войти" : "Зарегистрироваться"}<ArrowRight size={16} /></>}
-                          </motion.button>
+                          <Button type="submit" variant="primary" fluid loading={loading} disabled={!passwordsMatch} iconRight={<ArrowRight size={16} />}>
+                            {activePanel === "login" ? "Войти" : "Зарегистрироваться"}
+                          </Button>
 
                           {activePanel === "register" && (
                             <p className="text-center text-sm mt-2" style={{ color: "var(--text-muted)" }}>14 дней бесплатно · Без кредитной карты</p>

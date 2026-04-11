@@ -12,7 +12,7 @@ const GROUP_CONFIGS: Record<ScenarioGroup, Omit<ScenarioTypeConfig, "group"> & {
   cold:       { label: "Холодный",    color: "var(--info)", bg: "rgba(59,130,246,0.1)",  border: "rgba(59,130,246,0.25)", group: "cold" },
   warm:       { label: "Тёплый",      color: "var(--warning)", bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.25)", group: "warm" },
   inbound:    { label: "Входящий",    color: "var(--success)", bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.25)",  group: "inbound" },
-  special:    { label: "Особый",      color: "#BF55EC", bg: "rgba(191,85,236,0.1)",  border: "rgba(191,85,236,0.25)", group: "special" },
+  special:    { label: "Особый",      color: "var(--magenta)", bg: "rgba(191,85,236,0.1)",  border: "rgba(191,85,236,0.25)", group: "special" },
   follow_up:  { label: "Follow-up",   color: "var(--accent)", bg: "rgba(124,106,232,0.1)",  border: "rgba(124,106,232,0.25)", group: "follow_up" },
   crisis:     { label: "Кризис",      color: "var(--danger)", bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.25)",  group: "crisis" },
   compliance: { label: "Комплаенс",   color: "var(--text-muted)", bg: "rgba(100,116,139,0.1)", border: "rgba(100,116,139,0.25)", group: "compliance" },

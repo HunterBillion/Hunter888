@@ -50,14 +50,19 @@ const config: Config = {
         success: "#22c55e",
         warning: "#f59e0b",
         danger: "#ef4444",
-        /* ── Refined Cyber palette shortcuts ── */
-        "vh-black": "#0A0A12",
+        /* ── Gamified Cyber palette shortcuts ── */
+        "vh-black": "#100F1A",
         "vh-purple": "#7C6AE8",
         "vh-darkPurple": "#311573",
         "vh-magenta": "#E028CC",
         "vh-red": "#E5484D",
         "vh-green": "#3DDC84",
-        "vh-panel": "rgba(18, 18, 31, 0.6)",
+        "vh-panel": "rgba(24, 23, 42, 0.65)",
+        /* ── Gamification ── */
+        "gf-xp": "var(--gf-xp)",
+        "gf-streak": "var(--gf-streak)",
+        "gf-levelup": "var(--gf-levelup)",
+        "gf-reward": "var(--gf-reward)",
       },
       fontFamily: {
         sans: ["var(--font-geist-sans)", "system-ui", "sans-serif"],
@@ -121,14 +126,7 @@ const config: Config = {
       backdropBlur: {
         xs: "2px",
       },
-      boxShadow: {
-        glow: "0 0 20px rgba(124, 106, 232, 0.3)",
-        "glow-lg": "0 0 40px rgba(124, 106, 232, 0.4)",
-        "glow-sm": "0 0 10px rgba(124, 106, 232, 0.2)",
-        "glow-brand": "0 0 30px rgba(49, 21, 115, 0.4)",
-        "glow-green": "0 0 20px rgba(61, 220, 132, 0.3)",
-        "glow-red": "0 0 20px rgba(229, 72, 77, 0.3)",
-      },
+      boxShadow: {},
     },
   },
   plugins: [require("tailwindcss-animate")],

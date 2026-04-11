@@ -3,22 +3,26 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Activity,
-  BarChart3,
-  Brain,
-  Calendar,
   CheckCircle,
   ChevronRight,
-  FileText,
   Info,
   Loader2,
+  PauseCircle,
   RefreshCw,
   Search,
   Settings,
-  ShieldCheck,
-  Users,
-  Zap,
 } from "lucide-react";
+import {
+  Pulse,
+  Archive,
+  ChartBar,
+  Brain,
+  Calendar,
+  FileText,
+  ShieldCheck,
+  UsersThree,
+  Lightning,
+} from "@phosphor-icons/react";
 import type {
   CompareManager,
   GlobalStats,
@@ -81,7 +85,7 @@ export function ManagerListView({
     <>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
-        <ShieldCheck size={28} style={{ color: "var(--warning)" }} />
+        <ShieldCheck size={28} weight="duotone" style={{ color: "var(--warning)" }} />
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
             Wiki менеджеров
@@ -120,7 +124,7 @@ export function ManagerListView({
           }}
           title="Сравнить менеджеров"
         >
-          <Users size={16} />
+          <UsersThree size={16} weight="duotone" />
           Сравнить
         </button>
         <button
@@ -152,7 +156,7 @@ export function ManagerListView({
           borderRadius: 10,
           flexWrap: "wrap",
         }}>
-          <Users size={18} style={{ color: "var(--accent)" }} />
+          <UsersThree size={18} weight="duotone" style={{ color: "var(--accent)" }} />
           <span style={{ color: "var(--accent-hover)", fontSize: "0.85rem" }}>
             Выберите 2–5 менеджеров для сравнения ({compareSelected.length} выбрано)
           </span>
@@ -174,7 +178,7 @@ export function ManagerListView({
               gap: "0.3rem",
             }}
           >
-            {compareLoading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <BarChart3 size={14} />}
+            {compareLoading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <ChartBar size={14} weight="duotone" />}
             Сравнить
           </button>
         </div>
@@ -237,11 +241,11 @@ export function ManagerListView({
           }}
         >
           {[
-            { label: "Wiki создано", value: globalStats.total_wikis, icon: Users, color: "var(--accent)" },
-            { label: "Сессий", value: globalStats.total_sessions_ingested, icon: Activity, color: "var(--warning)" },
+            { label: "Wiki создано", value: globalStats.total_wikis, icon: UsersThree, color: "var(--accent)" },
+            { label: "Сессий", value: globalStats.total_sessions_ingested, icon: Pulse, color: "var(--warning)" },
             { label: "Паттернов", value: globalStats.total_patterns_discovered, icon: Brain, color: "var(--danger)" },
             { label: "Страниц", value: globalStats.total_pages, icon: FileText, color: "var(--success)" },
-            { label: "Токенов LLM", value: globalStats.total_tokens_used.toLocaleString("ru-RU"), icon: Zap, color: "var(--accent)" },
+            { label: "Токенов LLM", value: globalStats.total_tokens_used.toLocaleString("ru-RU"), icon: Lightning, color: "var(--accent)" },
           ].map((s) => (
             <div
               key={s.label}
@@ -253,7 +257,7 @@ export function ManagerListView({
                 textAlign: "center",
               }}
             >
-              <s.icon size={18} style={{ color: s.color, marginBottom: "0.25rem" }} />
+              <s.icon size={18} weight="duotone" style={{ color: s.color, marginBottom: "0.25rem" }} />
               <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "var(--text-primary)" }}>{s.value}</div>
               <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{s.label}</div>
             </div>
@@ -310,7 +314,7 @@ export function ManagerListView({
           color="var(--accent)"
         />
         <ActionButton
-          icon={BarChart3}
+          icon={ChartBar}
           label={showCharts ? "Скрыть графики" : "Графики"}
           onClick={() => setShowCharts(!showCharts)}
           loading={false}
@@ -359,7 +363,7 @@ export function ManagerListView({
       {/* Manager list */}
       {wikis.length === 0 ? (
         <div style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
-          <Brain size={40} style={{ margin: "0 auto 1rem", opacity: 0.4 }} />
+          <Brain size={40} weight="duotone" style={{ margin: "0 auto 1rem", opacity: 0.4 }} />
           <p>Wiki ещё не созданы.</p>
           <p style={{ fontSize: "0.85rem" }}>
             Менеджеры должны пройти хотя бы одну тренировочную сессию.
@@ -422,7 +426,7 @@ export function ManagerListView({
                       color: w.status === "paused" ? "var(--warning)" : "var(--text-muted)",
                       fontWeight: 600,
                     }}>
-                      {w.status === "paused" ? "⏸ Пауза" : "📦 Архив"}
+                      {w.status === "paused" ? <><PauseCircle size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 2 }} /> Пауза</> : <><Archive size={10} weight="duotone" style={{ display: "inline", verticalAlign: "middle", marginRight: 2 }} /> Архив</>}
                     </span>
                   )}
                 </div>

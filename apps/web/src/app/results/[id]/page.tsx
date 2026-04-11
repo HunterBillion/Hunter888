@@ -722,7 +722,7 @@ export default function ResultsPage() {
             transition={{ delay: 0.4 }}
             className="glass-panel mt-8 p-6 md:p-8 rounded-2xl"
           >
-            <h3 className="font-display text-base font-bold tracking-wide mb-5" style={{ color: "var(--text-primary)" }}>
+            <h3 className="font-display text-lg font-bold tracking-wide mb-5" style={{ color: "var(--text-primary)" }}>
               Базовые категории
             </h3>
             <div className="space-y-4">
@@ -738,7 +738,7 @@ export default function ResultsPage() {
                         <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>/ {item.max}</span>
                       </div>
                     </div>
-                    <div className="h-2.5 w-full overflow-hidden rounded-full" style={{ background: "var(--input-bg)" }}>
+                    <div className="h-3 w-full overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.12)" }}>
                       <motion.div
                         className="h-full rounded-full"
                         initial={{ width: 0 }}

@@ -1582,22 +1582,36 @@ def get_crm_card(profile) -> dict:
     """Build a CRM card dict from a ClientProfile or GeneratedProfile.
 
     This is the information shown to the manager in the left panel
-    during training. Intentionally limited -- no hidden data.
+    during training. Intentionally limited -- no hidden data (fears,
+    soft_spot, breaking_point are withheld until post-session reveal).
     """
     creditors = getattr(profile, "creditors", []) or []
-    creditor_names = [c.get("name", "Кредитор") if isinstance(c, dict) else str(c) for c in creditors[:5]]
+    property_list = getattr(profile, "property_list", []) or []
+    call_history = getattr(profile, "call_history", []) or []
+
+    # Resolve profession name if relationship is loaded
+    profession = None
+    prof_obj = getattr(profile, "profession", None)
+    if prof_obj and hasattr(prof_obj, "display_name"):
+        profession = {"name": prof_obj.display_name, "category": getattr(prof_obj, "category", "")}
 
     return {
-        "name": getattr(profile, "full_name", "Клиент"),
+        "full_name": getattr(profile, "full_name", "Клиент"),
         "age": getattr(profile, "age", 30),
+        "gender": getattr(profile, "gender", ""),
         "city": getattr(profile, "city", ""),
         "total_debt": getattr(profile, "total_debt", 0),
+        "creditors": creditors,
         "creditors_count": len(creditors),
-        "creditor_names": creditor_names,
         "income": getattr(profile, "income", None),
         "income_type": getattr(profile, "income_type", ""),
         "lead_source": getattr(profile, "lead_source", "cold_base"),
         "trust_level": getattr(profile, "trust_level", 5),
+        "property_list": property_list,
+        "call_history": call_history,
+        "crm_notes": getattr(profile, "crm_notes", None),
+        "profession": profession,
+        "archetype_code": getattr(profile, "archetype_code", ""),
     }
 
 
@@ -1613,7 +1627,5 @@ def get_full_reveal_card(profile) -> dict:
         "soft_spot": getattr(profile, "soft_spot", ""),
         "breaking_point": getattr(profile, "breaking_point", ""),
         "resistance_level": getattr(profile, "resistance_level", 5),
-        "archetype_code": getattr(profile, "archetype_code", ""),
-        "gender": getattr(profile, "gender", ""),
     })
     return base

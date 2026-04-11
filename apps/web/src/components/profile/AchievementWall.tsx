@@ -1,7 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Trophy, Swords, BookOpen, Star, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
+import { Trophy, Sword, BookOpen, Star } from "@phosphor-icons/react";
 import type { Achievement } from "@/types";
 import { colorAlpha } from "@/lib/utils";
 
@@ -12,14 +13,14 @@ interface AchievementWallProps {
 interface Category {
   key: string;
   label: string;
-  icon: typeof Trophy;
+  icon: React.ComponentType<Record<string, unknown>>;
   color: string;
   match: (slug: string) => boolean;
 }
 
 const CATEGORIES: Category[] = [
   { key: "training", label: "Тренировки", icon: Trophy, color: "var(--accent)", match: (s) => /session|complete|score|train|scenario/.test(s) },
-  { key: "pvp", label: "PvP Арена", icon: Swords, color: "var(--warning)", match: (s) => /pvp|duel|arena|rating|rank/.test(s) },
+  { key: "pvp", label: "PvP Арена", icon: Sword, color: "var(--warning)", match: (s) => /pvp|duel|arena|rating|rank/.test(s) },
   { key: "knowledge", label: "Знания", icon: BookOpen, color: "var(--success)", match: (s) => /knowledge|quiz|law|legal/.test(s) },
   { key: "special", label: "Особые", icon: Star, color: "var(--magenta)", match: () => true },
 ];
@@ -66,7 +67,7 @@ export function AchievementWall({ achievements }: AchievementWallProps) {
         return (
           <div key={cat.key}>
             <div className="flex items-center gap-2 mb-3">
-              <Icon size={16} style={{ color: cat.color }} />
+              <Icon size={16} weight="duotone" style={{ color: cat.color }} />
               <span className="font-display text-sm font-bold tracking-widest uppercase" style={{ color: "var(--text-secondary)" }}>
                 {cat.label}
               </span>
@@ -81,7 +82,7 @@ export function AchievementWall({ achievements }: AchievementWallProps) {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {items.map((a, i) => (
                 <motion.div
-                  key={a.id}
+                  key={a.id ?? `${cat.key}-${i}`}
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: i * 0.04 }}
