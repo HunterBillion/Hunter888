@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen,
   Send,
-  ArrowLeft,
+  ChevronLeft,
   Clock,
   CheckCircle2,
   XCircle,
@@ -661,6 +661,36 @@ function KnowledgeSessionPage() {
               </div>
             )}
 
+            {/* Weak categories — highlight areas needing improvement */}
+            {Array.isArray(results.category_progress) && (() => {
+              const weak = (results.category_progress as Array<{ category: string; correct: number; total: number }>)
+                .filter(c => c.total > 0 && (c.correct / c.total) < 0.6);
+              if (weak.length === 0) return null;
+              return (
+                <div
+                  className="mt-4 rounded-xl p-4"
+                  style={{
+                    background: "color-mix(in srgb, var(--warning) 6%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--warning) 20%, transparent)",
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-mono text-xs uppercase tracking-widest font-bold" style={{ color: "var(--warning)" }}>
+                      Слабые категории ФЗ-127
+                    </span>
+                  </div>
+                  <ul className="space-y-1">
+                    {weak.map(c => (
+                      <li key={c.category} className="flex items-start gap-2 text-xs" style={{ color: "var(--text-secondary)" }}>
+                        <span style={{ color: "var(--danger)", flexShrink: 0 }}>→</span>
+                        <span><strong>{c.category}</strong> — {c.correct}/{c.total} ({Math.round((c.correct / c.total) * 100)}%). Рекомендуем дополнительную тренировку.</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()}
+
             {/* Server summary */}
             {typeof results.summary === "string" && results.summary && (
               <div
@@ -685,7 +715,7 @@ function KnowledgeSessionPage() {
                 }}
                 whileTap={{ scale: 0.98 }}
               >
-                <ArrowLeft size={14} />
+                <ChevronLeft size={14} />
                 К выбору режима
               </motion.button>
               <motion.button
@@ -739,7 +769,7 @@ function KnowledgeSessionPage() {
               whileHover={{ background: "rgba(255,255,255,0.06)" }}
               whileTap={{ scale: 0.95 }}
             >
-              <ArrowLeft size={16} />
+              <ChevronLeft size={16} />
             </motion.button>
             <div>
               <div
