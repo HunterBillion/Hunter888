@@ -69,11 +69,16 @@ export function CelebrationListener() {
         case "legendary-unlock":
           setLegendary({ title: detail.title, description: detail.description, icon: detail.icon });
           return; // LegendaryUnlockModal handles its own lifecycle
+        case "rank-up":
+          playSound("legendary");
+          haptic("victory");
+          setConfettiTrigger((n) => n + 1);
+          break;
       }
 
       // Auto-dismiss: level-up gets full-screen (shorter auto, user can click), rest are toasts
       const duration =
-        detail.type === "level-up" ? 3000 :
+        detail.type === "level-up" || detail.type === "rank-up" ? 3000 :
         detail.type === "pvp-win" || detail.type === "perfect-score" ? 3000 :
         detail.type === "xp-gain" ? 1500 :
         2500;
@@ -218,6 +223,68 @@ export function CelebrationListener() {
                     transition={{ delay: 0.7 }}
                   >
                     Новые сценарии разблокированы
+                  </motion.div>
+                </motion.div>
+              </motion.div>
+            )}
+
+            {/* ── RANK UP: Full-screen overlay ── */}
+            {celebration.type === "rank-up" && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="fixed inset-0 z-[200] flex items-center justify-center"
+                style={{ background: "rgba(0, 0, 0, 0.85)" }}
+                onClick={() => setCelebration(null)}
+              >
+                <motion.div
+                  initial={{ scale: 0.3, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                  className="text-center space-y-4"
+                >
+                  <motion.div
+                    className="mx-auto rounded-full flex items-center justify-center"
+                    style={{
+                      width: 100,
+                      height: 100,
+                      background: "linear-gradient(135deg, rgba(255, 215, 0, 0.3), rgba(124, 106, 232, 0.2))",
+                      boxShadow: "0 0 60px rgba(255, 215, 0, 0.3)",
+                    }}
+                    animate={{ scale: [1, 1.08, 1] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                  >
+                    <Trophy size={44} style={{ color: "var(--gf-xp)" }} />
+                  </motion.div>
+                  <motion.div
+                    className="font-display font-black text-3xl"
+                    style={{ color: "var(--gf-xp)", textShadow: "0 0 30px rgba(255, 215, 0, 0.3)" }}
+                    initial={{ scale: 0 }}
+                    animate={{ scale: [0, 1.2, 1] }}
+                    transition={{ delay: 0.3 }}
+                  >
+                    {celebration.newRank}
+                  </motion.div>
+                  <motion.div
+                    className="font-mono text-sm tracking-[0.3em] uppercase"
+                    style={{ color: "var(--text-muted)" }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.5 }}
+                  >
+                    НОВЫЙ РАНГ ДОСТИГНУТ
+                  </motion.div>
+                  <motion.div
+                    className="font-mono text-lg font-bold"
+                    style={{ color: celebration.ratingDelta > 0 ? "var(--success)" : "var(--text-secondary)" }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.7 }}
+                  >
+                    {celebration.ratingDelta > 0 ? "+" : ""}{celebration.ratingDelta} ELO
                   </motion.div>
                 </motion.div>
               </motion.div>

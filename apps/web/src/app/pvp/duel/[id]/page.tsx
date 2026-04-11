@@ -10,6 +10,7 @@ import { usePvPStore } from "@/stores/usePvPStore";
 import { DuelChat } from "@/components/pvp/DuelChat";
 import { RoundIndicator } from "@/components/pvp/RoundIndicator";
 import { DuelResult } from "@/components/pvp/DuelResult";
+import { PvPVictoryScreen } from "@/components/pvp/PvPVictoryScreen";
 import { Confetti } from "@/components/ui/Confetti";
 import { useScreenShake } from "@/components/ui/ScreenShake";
 import { api } from "@/lib/api";
@@ -31,6 +32,7 @@ function DuelPage() {
   const store = usePvPStore();
   const shake = useScreenShake();
   const [confettiTrigger, setConfettiTrigger] = useState(0);
+  const [showVictoryScreen, setShowVictoryScreen] = useState(true);
   const [input, setInput] = useState("");
   const [duelMeta, setDuelMeta] = useState<PvPDuel | null>(null);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
@@ -271,6 +273,23 @@ function DuelPage() {
     const myTotal = isP1 ? store.duelResult.player1_total : store.duelResult.player2_total;
     const oppTotal = isP1 ? store.duelResult.player2_total : store.duelResult.player1_total;
     const isWinner = userId != null && store.duelResult.winner_id === userId;
+    const myRatingDelta = isP1 ? store.duelResult.player1_rating_delta : store.duelResult.player2_rating_delta;
+
+    // Phase 1: Victory Screen (full-screen reveal), then Phase 2: DuelResult (detailed breakdown)
+    if (showVictoryScreen) {
+      return (
+        <AnimatePresence>
+          <PvPVictoryScreen
+            isWinner={isWinner}
+            isDraw={store.duelResult.is_draw}
+            myScore={myTotal}
+            opponentScore={oppTotal}
+            ratingDelta={myRatingDelta}
+            onContinue={() => setShowVictoryScreen(false)}
+          />
+        </AnimatePresence>
+      );
+    }
 
     return (<>
       <DuelResult
@@ -280,8 +299,9 @@ function DuelPage() {
         isDraw={store.duelResult.is_draw}
         isPvE={store.duelResult.is_pve}
         ratingChangeApplied={store.duelResult.rating_change_applied}
-        myRatingDelta={isP1 ? store.duelResult.player1_rating_delta : store.duelResult.player2_rating_delta}
+        myRatingDelta={myRatingDelta}
         summary={store.duelResult.summary}
+        duelId={duelId}
         myBreakdown={isP1 ? store.duelResult.player1_breakdown : store.duelResult.player2_breakdown}
         opponentBreakdown={isP1 ? store.duelResult.player2_breakdown : store.duelResult.player1_breakdown}
         turningPoint={store.duelResult.turning_point}

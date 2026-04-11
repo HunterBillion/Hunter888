@@ -248,7 +248,7 @@ async def composite_leaderboard(
     """Composite leaderboard: 40% training + 30% PvP + 20% knowledge + 10% streak."""
     from sqlalchemy import select as sa_select, func as sa_func, case, literal
     from app.models.training import TrainingSession
-    from app.models.pvp import PvPProfile
+    from app.models.pvp import PvPRating as PvPProfile
     from app.models.user import User as UserModel
 
     # Sub-query: training avg score per user
@@ -262,12 +262,13 @@ async def composite_leaderboard(
         .subquery()
     )
 
-    # Sub-query: PvP rating
+    # Sub-query: PvP rating (training_duel only for composite)
     pvp_sq = (
         sa_select(
             PvPProfile.user_id,
             PvPProfile.rating,
         )
+        .where(PvPProfile.rating_type == "training_duel")
         .subquery()
     )
 

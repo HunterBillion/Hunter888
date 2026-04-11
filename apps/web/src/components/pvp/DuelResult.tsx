@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, TrendingUp, TrendingDown, ArrowRight, Minus, ChevronDown, BookOpen, Zap, PlayCircle } from "lucide-react";
+import { ArrowRight, Minus, ChevronDown, PlayCircle } from "lucide-react";
+import { Trophy, TrendUp, TrendDown, BookOpen, Lightning } from "@phosphor-icons/react";
+import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 
 interface PlayerBreakdown {
@@ -100,9 +102,9 @@ export function DuelResult({
           {isDraw ? (
             <Minus size={36} style={{ color: resultColor }} />
           ) : isWinner ? (
-            <Trophy size={36} style={{ color: resultColor }} />
+            <Trophy weight="duotone" size={36} style={{ color: resultColor }} />
           ) : (
-            <TrendingDown size={36} style={{ color: resultColor }} />
+            <TrendDown weight="duotone" size={36} style={{ color: resultColor }} />
           )}
         </motion.div>
 
@@ -152,7 +154,7 @@ export function DuelResult({
           }}
         >
           {ratingChangeApplied ? (
-            myRatingDelta >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />
+            myRatingDelta >= 0 ? <TrendUp weight="duotone" size={18} /> : <TrendDown weight="duotone" size={18} />
           ) : (
             <Minus size={18} />
           )}
@@ -168,7 +170,7 @@ export function DuelResult({
             className="mt-3 flex items-center justify-center gap-2 text-xs font-mono"
             style={{ color: "var(--accent)" }}
           >
-            <Zap size={12} />
+            <Lightning weight="duotone" size={12} />
             {turningPoint.description}
           </motion.div>
         )}
@@ -222,7 +224,7 @@ export function DuelResult({
                     {myBreakdown.selling_breakdown && Object.keys(myBreakdown.selling_breakdown).length > 0 && (
                       <div className="glass-panel rounded-lg p-3">
                         <div className="text-xs font-mono tracking-wider mb-2 flex items-center gap-1.5" style={{ color: "var(--accent)" }}>
-                          <Zap size={9} /> ВАШИ ПРОДАЖИ
+                          <Lightning weight="duotone" size={9} /> ВАШИ ПРОДАЖИ
                         </div>
                         <div className="space-y-1">
                           {Object.entries(myBreakdown.selling_breakdown).map(([key, val]) => (
@@ -243,7 +245,7 @@ export function DuelResult({
                     {myBreakdown.acting_breakdown && Object.keys(myBreakdown.acting_breakdown).length > 0 && (
                       <div className="glass-panel rounded-lg p-3">
                         <div className="text-xs font-mono tracking-wider mb-2 flex items-center gap-1.5" style={{ color: "var(--accent)" }}>
-                          <Trophy size={9} /> ВАША ИГРА КЛИЕНТА
+                          <Trophy weight="duotone" size={9} /> ВАША ИГРА КЛИЕНТА
                         </div>
                         <div className="space-y-1">
                           {Object.entries(myBreakdown.acting_breakdown).map(([key, val]) => (
@@ -279,7 +281,7 @@ export function DuelResult({
                     {myBreakdown.recommendations && myBreakdown.recommendations.length > 0 && (
                       <div className="glass-panel rounded-lg p-3">
                         <div className="text-xs font-mono tracking-wider mb-2 flex items-center gap-1" style={{ color: "var(--accent)" }}>
-                          <BookOpen size={13} /> РЕКОМЕНДАЦИИ
+                          <BookOpen weight="duotone" size={13} /> РЕКОМЕНДАЦИИ
                         </div>
                         <ul className="space-y-1">
                           {myBreakdown.recommendations.map((rec, i) => (
@@ -297,17 +299,47 @@ export function DuelResult({
           </motion.div>
         )}
 
-        {/* Close button */}
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.2 }}
-          onClick={onClose}
-          className="mt-6 btn-neon flex items-center gap-2 mx-auto"
-          whileTap={{ scale: 0.97 }}
-        >
-          Продолжить <ArrowRight size={14} />
-        </motion.button>
+        {/* Recommendations — "Что улучшить" */}
+        {myBreakdown?.recommendations && myBreakdown.recommendations.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.0 }}
+            className="mt-6 rounded-xl p-4"
+            style={{
+              background: "color-mix(in srgb, var(--warning) 6%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--warning) 20%, transparent)",
+            }}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <Lightning weight="fill" size={16} style={{ color: "var(--warning)" }} />
+              <span className="font-mono text-xs uppercase tracking-wider font-bold" style={{ color: "var(--warning)" }}>
+                Фокус на улучшение
+              </span>
+            </div>
+            <ul className="space-y-2">
+              {myBreakdown.recommendations.map((rec, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                  <span style={{ color: "var(--warning)", flexShrink: 0 }}>→</span>
+                  {rec}
+                </li>
+              ))}
+            </ul>
+          </motion.div>
+        )}
+
+        {/* Action buttons: Rematch + Continue */}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.2 }} className="mt-6 flex items-center justify-center gap-3">
+          <Link href="/pvp">
+            <Button
+              className="btn-neon--green"
+              iconRight={<PlayCircle size={14} />}
+            >
+              Реванш
+            </Button>
+          </Link>
+          <Button onClick={onClose} iconRight={<ArrowRight size={14} />}>К арене</Button>
+        </motion.div>
 
         {duelId && (
           <motion.div

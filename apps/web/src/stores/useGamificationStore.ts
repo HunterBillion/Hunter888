@@ -10,7 +10,8 @@ export type GamificationEvent =
   | { type: "pvp-win" }
   | { type: "perfect-score"; score: number }
   | { type: "first-session" }
-  | { type: "legendary-unlock"; title: string; description: string; icon?: string };
+  | { type: "legendary-unlock"; title: string; description: string; icon?: string }
+  | { type: "rank-up"; newRank: string; ratingDelta: number };
 
 function emitGamificationEvent(event: GamificationEvent) {
   if (typeof window !== "undefined") {
