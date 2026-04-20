@@ -264,7 +264,7 @@ class DebateSession(Base):
     position: Mapped[str] = mapped_column("player_position", String(20), nullable=False, server_default="pro")
     ai_position: Mapped[str] = mapped_column(String(20), nullable=False, server_default="contra")
     total_rounds: Mapped[int] = mapped_column(Integer, nullable=False, server_default="5")
-    rounds_data: Mapped[dict | None] = mapped_column(JSONB, nullable=False, server_default="'[]'::jsonb")
+    rounds_data: Mapped[dict | None] = mapped_column(JSONB, nullable=False, server_default=sa.text("'[]'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
