@@ -22,13 +22,6 @@ const HEARTBEAT_INTERVAL = 30_000; // 30 seconds
 const MAX_RECONNECT_DELAY = 30_000; // 30 seconds max
 const INITIAL_RECONNECT_DELAY = 1_000; // 1 second
 const TOKEN_REFRESH_INTERVAL = 25 * 60 * 1000; // 25 minutes (token TTL = 30 min)
-// 2026-04-20: cap reconnect attempts. Before, the loop spun forever with
-// exponential backoff maxed at 30s — that's 2 retries per minute, per tab,
-// indefinitely, until the user closed the page. That's real battery drain
-// on mobile and zero user feedback about what's happening. 8 attempts gives
-// ~2 minutes of recovery window (1+2+4+8+16+30+30+30s) before we surface
-// "permanently disconnected" and let the UI offer a manual reconnect.
-const MAX_RECONNECT_ATTEMPTS = 8;
 
 export function useWebSocket({
   path = "/ws/training",
@@ -45,7 +38,6 @@ export function useWebSocket({
   const onMessageRef = useRef(onMessage);
   const onErrorRef = useRef(onError);
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY);
-  const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tokenRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -173,12 +165,6 @@ export function useWebSocket({
     }
 
     manualCloseRef.current = false;
-    // 2026-04-20: explicit connect() — either first mount or user clicked
-    // "reconnect" after MAX_RECONNECT_ATTEMPTS. Either way give this call a
-    // fresh budget; the auto-reconnect branch in `ws.onclose` is what does
-    // the counting, not this entry.
-    reconnectAttemptsRef.current = 0;
-    reconnectDelayRef.current = INITIAL_RECONNECT_DELAY;
     const isReconnect = hasConnectedRef.current;
     setConnectionState(isReconnect ? "reconnecting" : "connecting");
 
@@ -190,9 +176,6 @@ export function useWebSocket({
         if (!mountedRef.current) return;
         setConnectionState("connected");
         reconnectDelayRef.current = INITIAL_RECONNECT_DELAY;
-        // 2026-04-20: reset retry counter so a later transient drop gets
-        // the full MAX_RECONNECT_ATTEMPTS budget again.
-        reconnectAttemptsRef.current = 0;
         hasConnectedRef.current = true;
         startHeartbeat();
         startTokenRefresh();
@@ -277,18 +260,6 @@ export function useWebSocket({
 
         // Auto-reconnect with exponential backoff unless manually closed
         if (!manualCloseRef.current) {
-          // 2026-04-20: cap reconnect attempts so a dead socket doesn't spin
-          // forever (battery + orphan fetches on mobile). After the cap we
-          // stay in "disconnected" so the UI can show a reconnect banner
-          // and let the user retry on demand.
-          if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
-            logger.warn(
-              "[WS] max reconnect attempts (%d) exhausted — giving up until manual retry",
-              MAX_RECONNECT_ATTEMPTS,
-            );
-            return;
-          }
-          reconnectAttemptsRef.current += 1;
           setConnectionState("reconnecting");
           const delay = reconnectDelayRef.current;
           // BUG-9 fix: use connectRef to avoid stale closure

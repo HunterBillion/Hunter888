@@ -1821,13 +1821,8 @@ async def generate_response(
             full_system = system_prompt
 
     # ── Inject constitution (only for tasks needing legal knowledge) ──
-    # Roleplay and simple tasks don't need 1400 extra tokens of legal articles.
-    # 2026-04-20 (re-applied after merge): "coach" is explicitly excluded — the
-    # legal preamble was drowning the actual coaching task, making the
-    # "Варианты ответа" feature suggest law-school answers instead of sales
-    # moves. If a coaching suggestion legitimately needs a law citation, pull
-    # it via RAG — don't prefix the prompt constitutionally.
-    if task_type in ("judge", "report", "structured"):
+    # Roleplay and simple tasks don't need 1400 extra tokens of legal articles
+    if task_type in ("judge", "coach", "report", "structured"):
         constitution = _get_constitution()
         if constitution:
             full_system = constitution + "\n\n---\n\n" + full_system
@@ -2075,10 +2070,8 @@ async def generate_response_stream(
     if scenario_prompt:
         full_system = full_system + "\n\n" + scenario_prompt
 
-    # Constitution injection for quality-critical tasks.
-    # 2026-04-20 (re-applied): "coach" excluded — see matching block ~250
-    # lines above for rationale. Both entry points must stay in sync.
-    if task_type in ("judge", "report", "structured"):
+    # Constitution injection for quality-critical tasks
+    if task_type in ("judge", "coach", "report", "structured"):
         constitution = _get_constitution()
         if constitution:
             full_system = full_system + "\n\n" + constitution
