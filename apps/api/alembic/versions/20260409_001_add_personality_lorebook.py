@@ -17,6 +17,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Enable pgvector extension (idempotent) — needed for embedding vector(768)
+    # on fresh DB where the earlier 20260323_001 branch may not have run yet
+    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
     # Create enum types
     op.execute("""
         DO $$ BEGIN
