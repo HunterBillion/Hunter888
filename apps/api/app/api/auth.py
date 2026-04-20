@@ -500,6 +500,23 @@ async def reset_password(request: Request, body: ResetPasswordRequest, db: Async
     db.add(user)
     await db.commit()
 
+    # 2026-04-20 security fix: invalidate ALL outstanding tokens for this
+    # user after password reset. Previously the password rotation was
+    # cosmetic from an attacker's perspective — an old access/refresh token
+    # would remain valid for its full lifetime. Now we set the user-level
+    # blacklist key (same mechanism logout uses), so `get_current_user`
+    # rejects every token minted before this moment.
+    try:
+        r = get_redis()
+        ttl = settings.jwt_refresh_token_expire_days * 86400
+        await r.setex(f"blacklist:user:{user.id}", ttl, "1")
+    except aioredis.RedisError as exc:
+        # Reset itself succeeded — don't fail the request, but log loudly.
+        _logger.error(
+            "Password reset OK but failed to blacklist tokens for user %s: %s",
+            user.id, exc,
+        )
+
     _logger.info("auth.password_reset.success user_id=%s", user.id)
     return {"message": "Пароль успешно изменён. Войдите с новым паролем."}
 

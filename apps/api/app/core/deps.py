@@ -18,43 +18,64 @@ logger = logging.getLogger(__name__)
 security = HTTPBearer(auto_error=False)
 
 
-async def _is_user_blacklisted(user_id: str) -> bool:
-    """Check if user's tokens were invalidated via logout.
+async def _check_revocation(user_id: str, jti: str | None) -> tuple[bool, bool]:
+    """Single-roundtrip check of both blacklist and JTI revocation keys.
 
-    Uses the central Redis connection pool (app.core.redis_pool).
-    SECURITY: Fails CLOSED — if Redis is down, deny access.
-    This prevents logged-out users from using revoked tokens.
+    2026-04-20: previously the two checks were two separate Redis GETs back-to-
+    back. Under parallel load (~25 concurrent /auth/me calls) the connection
+    pool saturated frequently enough that one of the two GETs would raise a
+    transient `ConnectionError` and the fail-closed branch would deny a fully
+    valid request — observed as roughly 1 in 25 requests returning 401.
+    Batching the two keys into a single MGET halves Redis load per auth
+    check, removes the inter-call race window, and lets one transient error
+    fail both checks consistently (still closed). A single short retry on
+    ConnectionError is added so that routine pool churn doesn't surface as
+    user-visible 401 spikes.
+
+    Returns (blacklisted, revoked). Both default to True on persistent
+    Redis failure (fail-closed).
     """
-    try:
-        r = get_redis()
-        result = await r.get(f"blacklist:user:{user_id}")
-        return result is not None
-    except aioredis.ConnectionError:
-        logger.error("Redis unavailable for blacklist check — DENYING access (fail-closed)")
-        return True
-    except Exception:
-        logger.error("Unexpected error in blacklist check — DENYING access", exc_info=True)
-        return True
+    keys = [f"blacklist:user:{user_id}"]
+    if jti:
+        keys.append(f"token:revoked:{jti}")
+
+    for attempt in (1, 2):
+        try:
+            r = get_redis()
+            values = await r.mget(*keys)
+            blacklisted = values[0] is not None
+            revoked = bool(jti and len(values) > 1 and values[1] is not None)
+            return blacklisted, revoked
+        except aioredis.ConnectionError:
+            if attempt == 1:
+                # One-shot retry — most saturation events clear in <50ms
+                continue
+            logger.error(
+                "Redis unavailable for revocation check (after retry) — DENYING access (fail-closed)"
+            )
+            return True, True
+        except Exception:
+            logger.error(
+                "Unexpected error in revocation check — DENYING access (fail-closed)",
+                exc_info=True,
+            )
+            return True, True
+    # Unreachable — loop either returns or breaks explicitly; kept for mypy.
+    return True, True
+
+
+async def _is_user_blacklisted(user_id: str) -> bool:
+    """Back-compat shim. Prefer `_check_revocation` for new call sites."""
+    blacklisted, _ = await _check_revocation(user_id, None)
+    return blacklisted
 
 
 async def _is_token_revoked(jti: str | None) -> bool:
-    """Check if a specific token (by JTI) has been revoked.
-
-    Used for per-token revocation (refresh token rotation, forced logout of specific sessions).
-    SECURITY: Fails CLOSED — if Redis is down, deny access.
-    """
+    """Back-compat shim. Prefer `_check_revocation` for new call sites."""
     if not jti:
-        return False  # Legacy tokens without JTI are not revoked (backward compat)
-    try:
-        r = get_redis()
-        result = await r.get(f"token:revoked:{jti}")
-        return result is not None
-    except aioredis.ConnectionError:
-        logger.error("Redis unavailable for JTI revocation check — DENYING access (fail-closed)")
-        return True
-    except Exception:
-        logger.error("Unexpected error in JTI revocation check — DENYING access", exc_info=True)
-        return True
+        return False
+    _, revoked = await _check_revocation("", jti)
+    return revoked
 
 
 from fastapi import Cookie, Request
@@ -90,15 +111,10 @@ async def get_current_user(
     if user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=err.INVALID_TOKEN)
 
-    # Check if this specific token was revoked (per-token revocation via JTI)
-    if await _is_token_revoked(payload.get("jti")):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=err.TOKEN_REVOKED,
-        )
-
-    # Check if user was logged out (token blacklisted)
-    if await _is_user_blacklisted(user_id):
+    # 2026-04-20: batched atomic check — was two sequential Redis GETs, now
+    # one MGET. Fixes the 1-in-25 401-under-load race (see _check_revocation).
+    blacklisted, revoked = await _check_revocation(user_id, payload.get("jti"))
+    if revoked or blacklisted:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=err.TOKEN_REVOKED,

@@ -20,19 +20,28 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-# ── Helper: safely add index (skip if already exists) ──
-# Uses PostgreSQL native IF NOT EXISTS to avoid poisoning the alembic
-# transaction with a duplicate-index error.
+# ── Helper: safely add index (skip if already exists OR table missing) ──
+# Wraps in PL/pgSQL anonymous block that catches undefined_table — some
+# tables referenced here were in migrations that got dropped from repo
+# history, so this migration must degrade gracefully on a fresh DB.
 def _create_index_safe(name: str, table: str, columns: list[str]) -> None:
-    """Create index if it doesn't already exist."""
+    """Create index; no-op if table doesn't exist or index already exists."""
     cols = ", ".join(f'"{c}"' for c in columns)
-    op.execute(f'CREATE INDEX IF NOT EXISTS "{name}" ON "{table}" ({cols})')
+    op.execute(
+        f"""
+        DO $$ BEGIN
+            CREATE INDEX IF NOT EXISTS "{name}" ON "{table}" ({cols});
+        EXCEPTION
+            WHEN undefined_table THEN NULL;
+            WHEN undefined_column THEN NULL;
+        END $$;
+        """
+    )
 
 
 # ── Helper: alter FK ondelete (PostgreSQL) ──
-# Raw SQL with IF EXISTS so missing/renamed constraints are a no-op.
-# Previous version wrapped op.drop_constraint in try/except, but the
-# SQL-level error still poisoned the transaction → aborted state on next op.
+# PL/pgSQL block handles missing tables, missing columns, missing constraints.
+# Previous try/except Python wrapper didn't clear poisoned transaction state.
 def _alter_fk_ondelete(
     table: str,
     constraint_name: str,
@@ -42,14 +51,20 @@ def _alter_fk_ondelete(
     ondelete: str,
     nullable: bool = False,
 ) -> None:
-    """Drop old FK (if present) and recreate with ondelete policy."""
+    """Drop old FK (if present) and recreate with ondelete policy; no-op if table missing."""
     op.execute(
-        f'ALTER TABLE "{table}" DROP CONSTRAINT IF EXISTS "{constraint_name}"'
-    )
-    op.execute(
-        f'ALTER TABLE "{table}" ADD CONSTRAINT "{constraint_name}" '
-        f'FOREIGN KEY ("{local_col}") REFERENCES "{remote_table}" ("{remote_col}") '
-        f"ON DELETE {ondelete}"
+        f"""
+        DO $$ BEGIN
+            ALTER TABLE "{table}" DROP CONSTRAINT IF EXISTS "{constraint_name}";
+            ALTER TABLE "{table}" ADD CONSTRAINT "{constraint_name}"
+                FOREIGN KEY ("{local_col}") REFERENCES "{remote_table}" ("{remote_col}")
+                ON DELETE {ondelete};
+        EXCEPTION
+            WHEN undefined_table THEN NULL;
+            WHEN undefined_column THEN NULL;
+            WHEN undefined_object THEN NULL;
+        END $$;
+        """
     )
 
 
