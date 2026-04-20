@@ -77,27 +77,71 @@ done
 
 log "Database is ready."
 
-# ── Alembic migrations ───────────────────────────────────────────────
-# Record current revision so we can rollback on failure
-CURRENT_REV=$(python -m alembic current 2>/dev/null | grep -oE '[a-f0-9]{12}' | head -1 || echo "")
+# ── DB schema setup ───────────────────────────────────────────────────
+# On a fresh DB: bypass the broken alembic chain (several migrations
+# reference tables/columns from commits that were dropped from history).
+# Use SQLAlchemy Base.metadata.create_all() to reflect current intended
+# schema, then stamp alembic to head for future migrations.
+# On existing DB: run normal alembic upgrade.
 
-log "Running Alembic migrations (current: ${CURRENT_REV:-none})..."
-if ! python -m alembic upgrade head; then
-    log "ERROR: Migration failed!"
-    if [ -n "$CURRENT_REV" ]; then
-        log "Rolling back to previous revision: $CURRENT_REV"
-        python -m alembic downgrade "$CURRENT_REV" || {
-            log "CRITICAL: Rollback also failed. Manual intervention required."
-            exit 1
-        }
-        log "Rollback complete. Starting with previous schema version."
-    else
-        log "No previous revision to rollback to. Exiting."
+IS_FRESH=$(python -c "
+import asyncio, asyncpg, os
+async def check():
+    url = os.environ.get('DATABASE_URL', '').replace('+asyncpg', '')
+    if not url: url = 'postgresql://trainer:trainer_pass@postgres:5432/trainer_db'
+    conn = await asyncpg.connect(url)
+    try:
+        r = await conn.fetchval(\"SELECT to_regclass('public.alembic_version')\")
+        print('yes' if r is None else 'no')
+    finally:
+        await conn.close()
+asyncio.run(check())
+" 2>/dev/null)
+
+if [ "$IS_FRESH" = "yes" ]; then
+    log "Fresh DB — creating schema via SQLAlchemy (bypass broken migration chain)..."
+    if ! python -c "
+import asyncio
+from sqlalchemy import text
+from app.database import engine, Base
+import app.models  # noqa: F401 — register all models on Base
+
+async def setup():
+    async with engine.begin() as conn:
+        await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
+        await conn.run_sync(Base.metadata.create_all)
+    await engine.dispose()
+
+asyncio.run(setup())
+"; then
+        log "ERROR: Schema creation failed."
         exit 1
     fi
+    log "Schema created. Stamping alembic to head..."
+    if ! python -m alembic stamp head; then
+        log "ERROR: alembic stamp head failed."
+        exit 1
+    fi
+    log "DB ready (schema from models, alembic stamped at head)."
+else
+    CURRENT_REV=$(python -m alembic current 2>/dev/null | grep -oE '[a-f0-9]{12}' | head -1 || echo "")
+    log "Running Alembic migrations (current: ${CURRENT_REV:-none})..."
+    if ! python -m alembic upgrade head; then
+        log "ERROR: Migration failed!"
+        if [ -n "$CURRENT_REV" ]; then
+            log "Rolling back to previous revision: $CURRENT_REV"
+            python -m alembic downgrade "$CURRENT_REV" || {
+                log "CRITICAL: Rollback also failed. Manual intervention required."
+                exit 1
+            }
+            log "Rollback complete. Starting with previous schema version."
+        else
+            log "No previous revision to rollback to. Exiting."
+            exit 1
+        fi
+    fi
+    log "Migrations complete."
 fi
-
-log "Migrations complete."
 
 # ── Seed database ─────────────────────────────────────────────────────
 # Idempotent: seed_db.py checks if data exists before inserting.
