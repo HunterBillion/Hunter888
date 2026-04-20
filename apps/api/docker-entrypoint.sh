@@ -102,13 +102,33 @@ if [ "$IS_FRESH" = "yes" ]; then
     log "Fresh DB — creating schema via SQLAlchemy (bypass broken migration chain)..."
     if ! python -c "
 import asyncio
-from sqlalchemy import text
+from sqlalchemy import text, Enum as SAEnum
 from app.database import engine, Base
 import app.models  # noqa: F401 — register all models on Base
 
 async def setup():
     async with engine.begin() as conn:
+        # pgvector extension (needed for Vector(768) columns in rag/wiki/legal)
         await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
+
+        # Create all ENUM types up-front. Some models declare them with
+        # create_type=False (assuming alembic would create them), some
+        # duplicate-declare across columns. We walk metadata, collect every
+        # unique enum name, and create each idempotently.
+        seen = set()
+        for tbl in Base.metadata.tables.values():
+            for col in tbl.columns:
+                t = col.type
+                if isinstance(t, SAEnum) and t.name and t.name not in seen:
+                    seen.add(t.name)
+                    values = ', '.join(\"'\" + v.replace(\"'\", \"''\") + \"'\" for v in t.enums)
+                    await conn.execute(text(
+                        f\"DO \$\$ BEGIN CREATE TYPE {t.name} AS ENUM ({values}); \"
+                        f\"EXCEPTION WHEN duplicate_object THEN NULL; END \$\$;\"
+                    ))
+        print(f'[schema-init] Ensured {len(seen)} enum types')
+
+        # Now create all tables
         await conn.run_sync(Base.metadata.create_all)
     await engine.dispose()
 
