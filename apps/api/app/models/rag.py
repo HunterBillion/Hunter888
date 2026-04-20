@@ -86,6 +86,13 @@ class LegalKnowledgeChunk(Base):
     blitz_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Short answer: "500 000 рублей при просрочке от 3 месяцев"
 
+    # ── 2026-04-20: Multiple-choice options for blitz mode ────────────────────
+    # If present (2-4 strings), the warm-up UI renders radio options instead
+    # of the free-form textarea. `correct_choice_index` is 0-based.
+    # NULL = use free-form flow (legacy).
+    choices: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    correct_choice_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # ── Deep context ──────────────────────────────────────────────────────────
     source_article_full_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Full text of the relevant law article (for deep evaluation)

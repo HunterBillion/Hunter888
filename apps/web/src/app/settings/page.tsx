@@ -225,7 +225,7 @@ export default function SettingsPage() {
             <div className="relative z-10 flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <Gear weight="duotone" size={22} style={{ color: "var(--accent)" }} />
-                <h1 className="font-display text-2xl font-bold tracking-[0.12em]" style={{ color: "var(--text-primary)" }}>
+                <h1 className="font-display text-2xl font-bold tracking-widest" style={{ color: "var(--text-primary)" }}>
                   НАСТРОЙКИ
                 </h1>
               </div>

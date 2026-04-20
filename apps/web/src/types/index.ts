@@ -1233,6 +1233,29 @@ export interface ChatBubble {
   is_fallback?: boolean;
   /** True while this message is being streamed (content may be partial) */
   isStreaming?: boolean;
+  /** 2026-04-18: user-pinned messages (jump-to via pinned navigation bar). */
+  pinned?: boolean;
+  /**
+   * 2026-04-19 Phase 2.6: URL of a media attachment on this message
+   * (generated via MCP `generate_image`). Rendered below the text content
+   * as an inline `<img>` when set. Lives under /uploads/ai/... on the API
+   * backend and is served through the reverse proxy.
+   */
+  mediaUrl?: string;
+  /**
+   * 2026-04-19 Phase 2.6: caption accompanying a generated image.
+   */
+  mediaCaption?: string;
+  /**
+   * 2026-04-19 Phase 2.6: id of the message this bubble is quoting.
+   * Populated when the manager clicked "Ответить" on an older bubble.
+   */
+  quotedMessageId?: string;
+  /**
+   * 2026-04-19 Phase 2.6: cached preview of the quoted text so the bubble
+   * can render the citation without a separate fetch.
+   */
+  quotedPreview?: string;
 }
 
 // ─── Transcription ─────────────────────────────────────────────────────────

@@ -59,7 +59,7 @@ class RecommendedScenario:
     archetype_name: str
     reason: str
     priority: int  # 1 = highest
-    tags: list[str]  # e.g. ["untrained", "rotation", "challenge"]
+    tags: list[str]  # e.g. ["Новый архетип", "Ротация", "Вызов"] — RU-only
 
 
 # ── Performance bands ────────────────────────────────────────────────────────
@@ -288,7 +288,7 @@ async def get_recommended_scenarios(
             sc, ch = match
             _add(sc, ch,
                  f"Вы ещё не пробовали архетип «{ch.name}». Начните с него для расширения опыта.",
-                 1, ["untrained", "explore"])
+                 1, ["Новый", "Попробуй"])
         if len(recommendations) >= 1:
             break
 
@@ -302,7 +302,7 @@ async def get_recommended_scenarios(
             avg = usage[slug]["avg_score"]
             _add(sc, ch,
                  f"Архетип «{ch.name}» — ваша зона роста (avg {avg:.0f}). Практика закрепит навык.",
-                 2, ["weakness", "practice"])
+                 2, ["Слабое место", "Практика"])
         if len(recommendations) >= 2:
             break
 
@@ -316,7 +316,7 @@ async def get_recommended_scenarios(
             days = usage[slug]["days_since"]
             _add(sc, ch,
                  f"Вы не тренировались с «{ch.name}» {days} дней. Навыки теряются без практики.",
-                 3, ["rotation", "refresh"])
+                 3, ["Ротация", "Освежить"])
 
     # ── Priority 4: Challenge (push band) ──
     if profile.band == "push" and len(recommendations) < count:
@@ -326,7 +326,7 @@ async def get_recommended_scenarios(
                 if sc.difficulty >= target:
                     _add(sc, ch,
                          f"Вы показываете отличные результаты ({profile.avg_score:.0f}). Попробуйте сложнее!",
-                         4, ["challenge", "growth"])
+                         4, ["Вызов", "Рост"])
                     break
 
     # ── Priority 5: Fill to count ──
@@ -337,7 +337,7 @@ async def get_recommended_scenarios(
             if abs(sc.difficulty - target) <= 2:
                 _add(sc, ch,
                      "Для разнообразия — попробуйте этот сценарий.",
-                     5, ["variety"])
+                     5, ["Разнообразие"])
 
     recommendations.sort(key=lambda r: r.priority)
     return recommendations[:count]

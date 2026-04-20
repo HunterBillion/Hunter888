@@ -129,7 +129,7 @@ export function PreSessionBrief({ scenario, client, onStart, loading }: PreSessi
                 {countdown}
               </span>
             ) : (
-              <span className="font-display text-4xl font-bold tracking-[0.3em]" style={{ color: "var(--success)" }}>
+              <span className="font-display text-4xl font-bold tracking-widest" style={{ color: "var(--success)" }}>
                 GO
               </span>
             )}

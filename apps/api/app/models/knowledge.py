@@ -44,6 +44,14 @@ class QuizSessionStatus(str, enum.Enum):
 
 
 class KnowledgeQuizSession(Base):
+    """Quiz session (solo or PvP arena).
+
+    HISTORY PRESERVATION CONTRACT (Phase C, 2026-04-20, owner-locked):
+    Quiz history persists regardless of subscription — Scout users who
+    re-subscribe months later must see their old scores/answers. Do NOT
+    add retention cleanup or plan-gated read filters. See ``TrainingSession``
+    for the same contract.
+    """
     """A single knowledge testing session."""
     __tablename__ = "knowledge_quiz_sessions"
 
@@ -108,6 +116,12 @@ class QuizParticipant(Base):
 
     # Position after game ends (1st, 2nd, etc.)
     final_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Phase A (2026-04-20): progression bookkeeping for Duolingo-style UX.
+    # streak_counter counts consecutive correct answers (resets on wrong);
+    # xp_earned is the XP accrued across this session for post-match HUD.
+    streak_counter: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    xp_earned: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

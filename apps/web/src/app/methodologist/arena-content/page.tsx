@@ -102,7 +102,7 @@ export default function ArenaContentPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <Database size={20} style={{ color: "var(--accent)" }} />
-                  <h1 className="font-display text-xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
+                  <h1 className="font-display text-xl font-bold tracking-widest" style={{ color: "var(--text-primary)" }}>
                     КОНТЕНТ АРЕНЫ
                   </h1>
                 </div>

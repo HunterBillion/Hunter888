@@ -134,7 +134,7 @@ export function PostSessionVerdict({ score, onContinue, xpGained = 0 }: PostSess
                   {displayScore}
                 </motion.div>
               </div>
-              <div className="font-mono text-sm tracking-[0.3em] mt-2" style={{ color: "var(--text-muted)" }}>
+              <div className="font-mono text-sm tracking-widest mt-2" style={{ color: "var(--text-muted)" }}>
                 MASTERY SCORE
               </div>
             </motion.div>
@@ -156,7 +156,7 @@ export function PostSessionVerdict({ score, onContinue, xpGained = 0 }: PostSess
                 style={{ background: verdict.color }}
               />
               <div
-                className="font-display font-black tracking-[0.2em] glitch-text"
+                className="font-display font-black tracking-wider glitch-text"
                 data-text={verdict.word}
                 style={{
                   fontSize: "80px",
@@ -171,7 +171,7 @@ export function PostSessionVerdict({ score, onContinue, xpGained = 0 }: PostSess
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 }}
-                className="font-mono text-xl tracking-[0.3em]"
+                className="font-mono text-xl tracking-widest"
                 style={{ color: "var(--text-secondary)" }}
               >
                 {verdict.wordRu}
@@ -209,7 +209,7 @@ export function PostSessionVerdict({ score, onContinue, xpGained = 0 }: PostSess
                   <span className="text-3xl" style={{ color: "var(--text-muted)" }}>/100</span>
                 </div>
                 <div
-                  className="font-display text-2xl font-bold tracking-[0.15em] mt-2"
+                  className="font-display text-2xl font-bold tracking-widest mt-2"
                   style={{ color: verdict.color }}
                 >
                   {verdict.word}

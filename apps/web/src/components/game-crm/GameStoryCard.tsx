@@ -18,7 +18,7 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
     : 0;
 
   return (
-    <Link href={`/training/crm/${story.id}`}>
+    <Link href={`/stories/${story.id}`}>
       <div
         className="group rounded-[24px] p-5 transition-all duration-200 hover:-translate-y-1"
         style={{
@@ -79,7 +79,7 @@ export function GameStoryCard({ story }: GameStoryCardProps) {
 
         <div className="flex items-start justify-between gap-2">
           <div>
-            <div className="font-mono text-xs uppercase tracking-[0.2em]" style={{ color: "var(--text-muted)" }}>
+            <div className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
               Progress Matrix
             </div>
             <div className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>

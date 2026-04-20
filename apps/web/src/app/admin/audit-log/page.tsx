@@ -29,7 +29,8 @@ import { BackButton } from "@/components/ui/BackButton";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { isAdmin } from "@/lib/guards";
-import AuthLayout from "@/components/layout/AuthLayout";
+// 2026-04-20: AuthLayout теперь в admin/layout.tsx (общий таб-бар на
+// /admin и /admin/audit-log). Локальная обёртка убрана ниже.
 
 /* ─── Types ─── */
 
@@ -227,12 +228,11 @@ export default function AuditLogPage() {
   const hasActiveFilters = filterAction || filterEntity || filterDateFrom || filterDateTo;
 
   return (
-    <AuthLayout>
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 16px" }}>
-        {/* ── Header — compact ── */}
-        <div style={{ marginBottom: 16 }}>
-          <BackButton href="/home" label="Назад" />
-        </div>
+    <>
+      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+        {/* 2026-04-20: BackButton удалён — навигация внутри admin-секции
+            теперь через табы (layout.tsx). Старая кнопка "Назад в /home"
+            дублировала кнопку "← К команде" в шапке layout'a. */}
 
         <motion.div
           initial={{ opacity: 0, y: -8 }}
@@ -626,6 +626,6 @@ export default function AuditLogPage() {
           </motion.div>
         )}
       </div>
-    </AuthLayout>
+    </>
   );
 }

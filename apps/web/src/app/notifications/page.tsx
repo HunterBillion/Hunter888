@@ -73,7 +73,7 @@ export default function NotificationsPage() {
         <div className="app-page max-w-2xl">
         {/* Header — compact */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
+          <h1 className="font-display text-2xl font-bold tracking-widest" style={{ color: "var(--text-primary)" }}>
             УВЕДОМЛЕНИЯ
           </h1>
           <div className="flex items-center justify-between mt-1">

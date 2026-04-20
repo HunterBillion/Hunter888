@@ -663,7 +663,11 @@ async def upload_avatar(
     # Run all blocking I/O + PIL in a thread to avoid blocking the event loop
     ext = await asyncio.to_thread(_process_avatar_sync, user.id, data, content_type, is_image)
 
-    avatar_url = f"/api/uploads/avatars/{user.id}.{ext}"
+    # 2026-04-18 fix: append cache-buster so browser re-fetches after re-upload.
+    # Filename path is stable (user.id.ext), so without ?v= the browser serves
+    # stale image from disk cache after a user changes their avatar.
+    import time as _time
+    avatar_url = f"/api/uploads/avatars/{user.id}.{ext}?v={int(_time.time())}"
     user.avatar_url = avatar_url
     db.add(user)
     await db.commit()

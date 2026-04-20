@@ -18,6 +18,7 @@ import { logger } from "@/lib/logger";
 import { BulkReassignModal } from "@/components/clients/BulkReassignModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ClientListSkeleton } from "@/components/ui/Skeleton";
+import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -219,6 +220,17 @@ export default function ClientsPage() {
                   <Filter size={12} /> Воронка
                 </motion.button>
               </Link>
+              <PixelInfoButton
+                title="Клиенты (CRM)"
+                sections={[
+                  { icon: UsersThree, label: "Карточки клиентов", text: "Каждая карточка — AI-клиент, которого вы встречали на тренировке. Показывает статус, прогресс, напоминания" },
+                  { icon: Filter, label: "Воронка", text: "Канбан-доска по статусам: новый → в работе → думает → согласие/отказ" },
+                  { icon: Search, label: "Поиск + фильтры", text: "Ищите по имени, фильтруйте по статусу, руководителю, дате последнего касания" },
+                  { icon: UserCheck, label: "Массовые действия", text: "Для админов/РОП: переназначить клиентов другому менеджеру, экспорт CSV" },
+                  { icon: Plus, label: "Новая тренировка", text: "Создаёт новую тренировку — после разбора клиент появится здесь автоматически" },
+                ]}
+                footer="Совет: кликните карточку → откроется граф взаимодействий с клиентом"
+              />
               {!isReadOnly && (
                 <Link href="/training">
                   <motion.button

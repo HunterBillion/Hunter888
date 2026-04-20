@@ -89,7 +89,7 @@ export function AchievementToast({ achievement, onClose }: AchievementToastProps
           {/* Content */}
           <div className="py-4 pr-5">
             <motion.div
-              className="font-mono text-xs uppercase tracking-[0.2em] font-bold"
+              className="font-mono text-xs uppercase tracking-wider font-bold"
               style={{ color: "var(--accent)" }}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}

@@ -4,6 +4,25 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { CheckCircle, XCircle, Clock, Pencil, Medal, Bot, User, Star } from "lucide-react";
 import { useKnowledgeStore } from "@/stores/useKnowledgeStore";
 import type { ArenaRoundResult, ArenaFinalResults } from "@/types";
+import { ArenaAudioPlayer } from "@/components/pvp/ArenaAudioPlayer";
+
+// Sprint 1-3 Arena upgrade (2026-04-20):
+//  - Post-answer reveal with right-answer highlight + article + explanation
+//  - Confetti / wrong-shake animations
+//  - SFX pack (correct / wrong / round_start / round_end)
+//  - Voice-enabled input (ArenaAnswerInput)
+import { CorrectAnswerReveal } from "@/components/arena/reveal/CorrectAnswerReveal";
+import { CelebrationBurst } from "@/components/arena/reveal/CelebrationBurst";
+import { WrongShake } from "@/components/arena/reveal/WrongShake";
+import { ArenaAnswerInput } from "@/components/arena/input/ArenaAnswerInput";
+import { useSFX } from "@/components/arena/sfx/useSFX";
+import type { CorrectAnswerPayload } from "@/components/arena/reveal/CorrectAnswerReveal";
+// Sprint 4 (2026-04-20): lifelines (hint / skip / 50-50) wired to REST endpoints
+import { useLifelines } from "@/components/arena/hooks/useLifelines";
+import { HintBubble } from "@/components/arena/reveal/HintBubble";
+// Phase C (2026-04-20): power-ups (×2 XP) — active modifier, one-shot per arm
+import { usePowerUps } from "@/components/arena/hooks/usePowerUps";
+import { Zap } from "lucide-react";
 
 const CATEGORY_LABELS: Record<string, string> = {
   eligibility: "Условия банкротства",
@@ -48,13 +67,84 @@ export default function PvPArenaMatch({ userId, sendMessage }: PvPArenaMatchProp
     pvpCurrentCategory,
     pvpCurrentDifficulty,
     pvpDisconnectedPlayers,
+    pvpArenaAudioUrl,
+    pvpMatchId,
     submitPvPAnswer,
     tickPvPTimer,
   } = useKnowledgeStore();
 
+  // Sprint 4 — lifelines (hint / skip / 50-50) persisted on the backend
+  const lifelines = useLifelines({
+    sessionId: pvpMatchId,
+    mode: "arena",
+    enabled: !!pvpMatchId,
+  });
+  // Phase C — active power-up modifiers (×2 XP)
+  const powerups = usePowerUps({
+    sessionId: pvpMatchId,
+    mode: "arena",
+    enabled: !!pvpMatchId,
+  });
+
   const [inputText, setInputText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Sprint 1-3 Arena upgrade state
+  const sfx = useSFX();
+  const [revealPayload, setRevealPayload] = useState<CorrectAnswerPayload | null>(null);
+  const [revealOpen, setRevealOpen] = useState(false);
+  const [celebrate, setCelebrate] = useState(false);
+  const [shake, setShake] = useState(false);
+  const lastSeenRoundRef = useRef<number>(0);
+
+  // Prime sound pack on mount so first correct/wrong fires instantly
+  useEffect(() => {
+    sfx.prime();
+  }, [sfx]);
+
+  // Watch round results — when a new one arrives for US, show reveal + play SFX
+  useEffect(() => {
+    if (!pvpRoundResults.length) return;
+    const latest = pvpRoundResults[pvpRoundResults.length - 1];
+    const round = latest.round_number ?? pvpRoundResults.length;
+    if (round <= lastSeenRoundRef.current) return;
+    lastSeenRoundRef.current = round;
+
+    const mine = latest.players?.find((p) => p.user_id === userId);
+    if (!mine) return;
+
+    // Fire SFX + burst/shake
+    if (mine.is_correct) {
+      sfx.play("correct");
+      setCelebrate(true);
+      setTimeout(() => setCelebrate(false), 1200);
+    } else {
+      sfx.play("wrong");
+      setShake(true);
+      setTimeout(() => setShake(false), 600);
+    }
+
+    // Phase C — sync power-up state after the round (it may have been
+    // consumed by backend scoring). A no-op when nothing was armed.
+    powerups.refresh();
+
+    setRevealPayload({
+      isCorrect: !!mine.is_correct,
+      scoreDelta: (mine.score ?? 0) + (mine.speed_bonus ?? 0),
+      correctAnswer: latest.correct_answer ?? null,
+      articleReference: (latest as unknown as { article_reference?: string }).article_reference ?? null,
+      explanation: (latest as unknown as { explanation?: string }).explanation ?? null,
+      userAnswer: mine.answer ?? null,
+    });
+    setRevealOpen(true);
+  }, [pvpRoundResults, userId, sfx]);
+
+  // Round start ping
+  useEffect(() => {
+    if (pvpCurrentQuestion) sfx.play("round_start");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pvpCurrentQuestion]);
 
   // Timer countdown
   useEffect(() => {
@@ -129,6 +219,16 @@ export default function PvPArenaMatch({ userId, sendMessage }: PvPArenaMatchProp
             )}
             <DifficultyStars level={pvpCurrentDifficulty} />
           </div>
+          {/* 2026-04-19 Phase 2.8: arcade-themed narration for the round. */}
+          {pvpArenaAudioUrl && (
+            <div className="mt-3 flex justify-end">
+              <ArenaAudioPlayer
+                audioUrl={pvpArenaAudioUrl}
+                label={`РАУНД ${pvpRound}`}
+                autoplay={true}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -188,34 +288,106 @@ export default function PvPArenaMatch({ userId, sendMessage }: PvPArenaMatchProp
         </div>
       </div>
 
-      {/* Answer input */}
+      {/* Answer input — Sprint 2: voice + lifelines + accent theme */}
       {pvpCurrentQuestion && (
-        <div className="mx-4 mt-3 p-3 glass-panel rounded-lg">
+        <div className="mx-4 mt-3">
           {pvpMyAnswerSubmitted ? (
-            <div className="text-center py-3 text-[var(--text-muted)]">
-              <p>Ответ отправлен. Ожидаем соперников...</p>
+            <div
+              className="rounded-xl px-4 py-3 text-center text-sm"
+              style={{
+                background: "var(--input-bg)",
+                border: "1px solid var(--border-color)",
+                color: "var(--text-muted)",
+              }}
+            >
+              ✓ Ответ отправлен. Ожидаем соперников…
             </div>
           ) : (
-            <div className="flex gap-2">
-              <input
-                ref={inputRef}
-                type="text"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Введите ваш ответ..."
-                className="flex-1 px-3 py-2 rounded-lg focus:outline-none bg-[var(--input-bg)] text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[var(--accent)]"
-                maxLength={1000}
-                disabled={pvpTimeLeft <= 0}
-              />
-              <button
-                onClick={handleSubmitAnswer}
-                disabled={!inputText.trim() || pvpTimeLeft <= 0}
-                className="px-4 py-2 btn-neon disabled:opacity-40 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
-              >
-                Отправить
-              </button>
-            </div>
+            <>
+              {/* Phase C — Power-up chip row (above lifelines bar).
+                  Armed state shows a pulsing glow; click debits a charge
+                  and arms the ×2 multiplier for the next answer. */}
+              {(powerups.counts.doublexp > 0 || powerups.activeKind) && (
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={
+                      !!powerups.activeKind || powerups.counts.doublexp <= 0 || pvpTimeLeft <= 0
+                    }
+                    onClick={async () => {
+                      const ok = await powerups.activate("doublexp");
+                      if (ok) sfx.play("hint");
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold uppercase tracking-wider transition-all disabled:opacity-45"
+                    style={{
+                      background: powerups.activeKind === "doublexp" ? "#facc15" : "#facc1518",
+                      color: powerups.activeKind === "doublexp" ? "#0b0b14" : "#facc15",
+                      border: "1px solid #facc1555",
+                      boxShadow: powerups.activeKind === "doublexp"
+                        ? "0 0 18px #facc15aa"
+                        : undefined,
+                    }}
+                    title={
+                      powerups.activeKind === "doublexp"
+                        ? "Активно — следующий верный ответ даст ×2"
+                        : "Активировать ×2 на следующий ответ"
+                    }
+                  >
+                    <Zap size={12} />
+                    {powerups.activeKind === "doublexp" ? "×2 АКТИВНО" : "×2 очков"}
+                    {powerups.activeKind !== "doublexp" && (
+                      <span className="font-mono opacity-80">×{powerups.counts.doublexp}</span>
+                    )}
+                  </button>
+                  {powerups.error && (
+                    <span
+                      className="text-[10px] uppercase tracking-widest"
+                      style={{ color: "var(--danger)" }}
+                    >
+                      {powerups.error}
+                    </span>
+                  )}
+                </div>
+              )}
+              <ArenaAnswerInput
+              accentColor="#a78bfa"
+              placeholder="Введи ответ или нажми микрофон…"
+              disabled={pvpTimeLeft <= 0}
+              onSubmit={(text) => {
+                submitPvPAnswer(text);
+                sendMessage({
+                  type: "pvp.answer",
+                  data: { text, round_number: pvpRound },
+                });
+                setInputText("");
+              }}
+              lifelines={{
+                hintsLeft: lifelines.counts.hints,
+                skipsLeft: lifelines.counts.skips,
+                fiftyFiftysLeft: lifelines.counts.fiftys,
+              }}
+              onHint={async () => {
+                if (!pvpCurrentQuestion) return;
+                const r = await lifelines.useHint(pvpCurrentQuestion);
+                if (r) sfx.play("hint");
+              }}
+              onSkip={async () => {
+                const ok = await lifelines.useSkip();
+                if (!ok) return;
+                // Still debit the round clock on the server via an empty
+                // answer (convention: "__skip__" sentinel).
+                submitPvPAnswer("__skip__");
+                sendMessage({
+                  type: "pvp.answer",
+                  data: { text: "__skip__", round_number: pvpRound },
+                });
+              }}
+              onFiftyFifty={async () => {
+                const ok = await lifelines.useFifty();
+                if (ok) sfx.play("hint");
+              }}
+            />
+            </>
           )}
         </div>
       )}
@@ -260,6 +432,25 @@ export default function PvPArenaMatch({ userId, sendMessage }: PvPArenaMatchProp
 
       {/* Spacer */}
       <div className="flex-1" />
+
+      {/* Sprint 1 overlays: reveal + celebration + wrong-shake */}
+      <CorrectAnswerReveal
+        open={revealOpen}
+        payload={revealPayload}
+        accentColor="#a78bfa"
+        onDismiss={() => setRevealOpen(false)}
+      />
+      <CelebrationBurst trigger={celebrate} />
+      <WrongShake trigger={shake} />
+      {lifelines.lastHint && (
+        <HintBubble
+          open={!!lifelines.lastHint}
+          text={lifelines.lastHint.text}
+          article={lifelines.lastHint.article}
+          confidence={lifelines.lastHint.confidence}
+          onDismiss={lifelines.dismissHint}
+        />
+      )}
     </div>
   );
 }

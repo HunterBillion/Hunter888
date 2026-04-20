@@ -9,9 +9,14 @@ import { getToken, getRefreshToken, setTokens } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { getApiBaseUrl } from "@/lib/public-origin";
 import Header from "./Header";
-// Breadcrumbs removed — page name is already shown in navbar active tab
+// 2026-04-20: Breadcrumbs вернулись — но теперь авто-генератор по
+// pathname, а не ручной компонент. Рендерится только на вложенных
+// страницах (/training/[id], /pvp/duel/[id], /admin/audit-log, ...),
+// на корневых (/home, /pvp) ничего не добавляет.
+import { AutoBreadcrumbs } from "./AutoBreadcrumbs";
 import { KeyboardShortcutsOverlay } from "@/components/ui/KeyboardShortcutsOverlay";
 import { CommandPalette } from "@/components/ui/CommandPalette";
+import { PlanLimitModal } from "@/components/billing/PlanLimitModal";
 import { PageTransition } from "@/components/layout/PageTransition";
 import { ScreenShakeProvider } from "@/components/ui/ScreenShake";
 import { LLMDegradationBanner } from "@/components/ui/LLMDegradationBanner";
@@ -303,10 +308,14 @@ export default function AuthLayout({
           <LLMDegradationBanner />
           <CelebrationListener />
           <main className="flex-1" style={{ position: "relative", zIndex: 1, minHeight: "calc(100vh - 200px)", overflow: "clip" }}>
+            <div className="app-page pt-3">
+              <AutoBreadcrumbs />
+            </div>
             <PageTransition>{children}</PageTransition>
           </main>
           <KeyboardShortcutsOverlay />
           <CommandPalette />
+          <PlanLimitModal />
         </div>
       </ScreenShakeProvider>
     </AuthErrorBoundary>

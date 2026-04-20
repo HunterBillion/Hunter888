@@ -297,7 +297,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                             <label className="vh-label">Email</label>
                             <div className="relative mb-4">
                               <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
-                              <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} className="vh-input pl-10 w-full" placeholder="you@example.com" autoComplete="email" />
+                              <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} className="vh-input pl-10 w-full" placeholder="Ваш email" autoComplete="email" />
                             </div>
                             <Button variant="primary" fluid loading={forgotLoading} disabled={!forgotEmail.trim()} icon={<Mail size={15} />} onClick={handleForgot}>
                               Отправить ссылку
@@ -344,7 +344,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                             <label className="vh-label">Email</label>
                             <div className="relative">
                               <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
-                              <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); try { sessionStorage.setItem("vh-auth-email", e.target.value); } catch {} }} required className="vh-input pl-10 w-full" placeholder="you@example.com" autoComplete="email" />
+                              <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); try { sessionStorage.setItem("vh-auth-email", e.target.value); } catch {} }} required className="vh-input pl-10 w-full" placeholder="Ваш email" autoComplete="email" />
                             </div>
                           </div>
 

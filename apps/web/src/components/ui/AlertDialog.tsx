@@ -90,7 +90,7 @@ const AlertDialogAction = React.forwardRef<
     ref={ref}
     className={cn(
       "inline-flex h-10 items-center justify-center px-4 py-2 text-sm font-semibold transition-colors",
-      "focus:outline-none focus:ring-2 disabled:pointer-events-none disabled:opacity-50",
+      "focus:outline-none focus:ring-2 disabled:pointer-events-none disabled:opacity-40",
       className,
     )}
     style={{
@@ -111,7 +111,7 @@ const AlertDialogCancel = React.forwardRef<
     ref={ref}
     className={cn(
       "mt-2 inline-flex h-10 items-center justify-center border px-4 py-2 text-sm font-medium transition-colors sm:mt-0",
-      "focus:outline-none focus:ring-2 disabled:pointer-events-none disabled:opacity-50",
+      "focus:outline-none focus:ring-2 disabled:pointer-events-none disabled:opacity-40",
       className,
     )}
     style={{

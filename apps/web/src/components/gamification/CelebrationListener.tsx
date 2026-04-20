@@ -206,7 +206,7 @@ export function CelebrationListener() {
                   </motion.div>
 
                   <motion.div
-                    className="font-mono text-sm tracking-[0.3em] uppercase"
+                    className="font-mono text-sm tracking-widest uppercase"
                     style={{ color: "var(--text-muted)" }}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -269,7 +269,7 @@ export function CelebrationListener() {
                     {celebration.newRank}
                   </motion.div>
                   <motion.div
-                    className="font-mono text-sm tracking-[0.3em] uppercase"
+                    className="font-mono text-sm tracking-widest uppercase"
                     style={{ color: "var(--text-muted)" }}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}

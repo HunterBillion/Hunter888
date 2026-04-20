@@ -83,7 +83,12 @@ export function TrapNotification({ event, onDismiss }: TrapNotificationProps) {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 20, scale: 0.95 }}
           transition={{ type: "spring", stiffness: 400, damping: 25 }}
-          className="fixed bottom-6 right-6 z-[160] max-w-sm cursor-pointer"
+          // Phase F2.2 (2026-04-20): shifted up from bottom-6 to bottom-28
+          // (7rem) so it doesn't stack on top of ConsequenceToast which
+          // also lived at bottom-6 right-6. Owner feedback: «три подсказки
+          // то наверху то внизу, хотя должны быть сбоку и плавно». Разные
+          // notification-типы теперь имеют детерминированные offset-slots.
+          className="fixed bottom-28 right-6 z-[160] max-w-sm cursor-pointer"
           onClick={onDismiss}
         >
           <motion.div

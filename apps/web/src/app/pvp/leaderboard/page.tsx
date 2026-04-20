@@ -81,7 +81,7 @@ export default function PvPLeaderboardPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <Trophy size={20} style={{ color: "var(--accent)" }} />
-                  <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
+                  <h1 className="font-display text-2xl font-bold tracking-widest" style={{ color: "var(--text-primary)" }}>
                     PVP РЕЙТИНГ
                   </h1>
                 </div>
@@ -246,7 +246,7 @@ function ArenaLeaderboardSection() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <div className="flex items-center gap-2 mb-4">
           <Trophy size={20} style={{ color: "var(--accent)" }} />
-          <h2 className="font-display text-xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
+          <h2 className="font-display text-xl font-bold tracking-widest" style={{ color: "var(--text-primary)" }}>
             АРЕНА ЗНАНИЙ
           </h2>
         </div>

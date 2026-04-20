@@ -62,6 +62,234 @@ REDIS_TTL = 86400  # 24 часа
 
 
 # ──────────────────────────────────────────────────────────────────────
+#  Phase 3.1 (2026-04-19) — DIFFICULTY_PARAMS table
+#
+#  Problem: scenarios at difficulty=1 and difficulty=10 previously felt
+#  equally hard because there was no monotonic ramp for OCEAN shift, LLM
+#  temperature, script-matcher threshold, agreement probability, etc.
+#
+#  Solution: a single authoritative table indexed by level 1..10. Every
+#  consumer (scenario_engine, llm.py, script_checker, game_director) reads
+#  through ``resolve_params(level)`` so the ramp is uniform.
+#
+#  Values designed so that:
+#    - L1 is forgiving (high agreeableness shift, low temp, easy threshold,
+#      hint coverage = all)
+#    - L5 is neutral baseline
+#    - L10 is brutal (low agreeableness, high neuroticism, high temp,
+#      tight threshold, no hints)
+#
+#  Changes here are backward-compatible with the mood-buffer machine
+#  above; those constants remain in effect as a parallel axis (streak
+#  adaptation), not replaced.
+# ──────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class OceanShift:
+    """Additive delta applied to archetype OCEAN baseline for a difficulty.
+
+    All fields in [-1.0, +1.0]. Semantics match
+    ``client_generator.ARCHETYPE_OCEAN`` single-letter keys.
+    """
+
+    O: float = 0.0
+    C: float = 0.0
+    E: float = 0.0
+    A: float = 0.0
+    N: float = 0.0
+
+    def as_dict(self) -> dict[str, float]:
+        return {"O": self.O, "C": self.C, "E": self.E, "A": self.A, "N": self.N}
+
+
+@dataclass(frozen=True)
+class DifficultyParams:
+    """Parameters applied uniformly across the training pipeline per level.
+
+    Read only through ``resolve_params()``; the dataclass is frozen so
+    accidental mutation raises.
+    """
+
+    level: int
+    """1..10 — the ordinal surfaced to the user."""
+
+    llm_temperature: float
+    """Base temperature for the client LLM. Monotonic 0.30 → 0.85."""
+
+    script_similarity_threshold: float
+    """``script_checker.check_checkpoint_match`` threshold. 0.45 → 0.68."""
+
+    coaching_hints: str
+    """One of ``"all" | "half" | "crisis_only" | "none"`` — what the
+    ``WhisperPanel``/coach surfaces to the manager on this level."""
+
+    agreement_base_probability: float
+    """Rough prior probability the client will soften on a well-played
+    turn. 0.80 (L1) → 0.12 (L10). Referenced by game_director when
+    deciding ``relationship_score`` deltas."""
+
+    gd_relationship_gain_per_turn: int
+    """How fast ``relationship_score`` rises on positive turns. 5 → 1."""
+
+    gd_relationship_loss_multiplier: float
+    """Penalty multiplier on bad turns. 0.5 (soft) → 1.8 (harsh)."""
+
+    objection_density: float
+    """Expected density of client objections per turn. 0.2 → 0.9."""
+
+    interrupt_probability: float
+    """P(client interrupts manager's long explanation). 0.0 → 0.35."""
+
+    ocean_shift: OceanShift
+    """Additive shift to archetype OCEAN baseline for this level."""
+
+
+DIFFICULTY_PARAMS: dict[int, DifficultyParams] = {
+    1: DifficultyParams(
+        level=1,
+        llm_temperature=0.30,
+        script_similarity_threshold=0.45,
+        coaching_hints="all",
+        agreement_base_probability=0.80,
+        gd_relationship_gain_per_turn=5,
+        gd_relationship_loss_multiplier=0.5,
+        objection_density=0.20,
+        interrupt_probability=0.00,
+        ocean_shift=OceanShift(A=+0.15, N=-0.15),
+    ),
+    2: DifficultyParams(
+        level=2,
+        llm_temperature=0.35,
+        script_similarity_threshold=0.47,
+        coaching_hints="all",
+        agreement_base_probability=0.72,
+        gd_relationship_gain_per_turn=4,
+        gd_relationship_loss_multiplier=0.6,
+        objection_density=0.28,
+        interrupt_probability=0.03,
+        ocean_shift=OceanShift(A=+0.10, N=-0.10),
+    ),
+    3: DifficultyParams(
+        level=3,
+        llm_temperature=0.40,
+        script_similarity_threshold=0.50,
+        coaching_hints="half",
+        agreement_base_probability=0.62,
+        gd_relationship_gain_per_turn=4,
+        gd_relationship_loss_multiplier=0.7,
+        objection_density=0.35,
+        interrupt_probability=0.05,
+        ocean_shift=OceanShift(A=+0.05, N=-0.05),
+    ),
+    4: DifficultyParams(
+        level=4,
+        llm_temperature=0.45,
+        script_similarity_threshold=0.52,
+        coaching_hints="half",
+        agreement_base_probability=0.55,
+        gd_relationship_gain_per_turn=3,
+        gd_relationship_loss_multiplier=0.9,
+        objection_density=0.42,
+        interrupt_probability=0.08,
+        ocean_shift=OceanShift(),
+    ),
+    5: DifficultyParams(
+        level=5,
+        llm_temperature=0.50,
+        script_similarity_threshold=0.55,
+        coaching_hints="half",
+        agreement_base_probability=0.48,
+        gd_relationship_gain_per_turn=3,
+        gd_relationship_loss_multiplier=1.0,
+        objection_density=0.50,
+        interrupt_probability=0.12,
+        ocean_shift=OceanShift(),
+    ),
+    6: DifficultyParams(
+        level=6,
+        llm_temperature=0.55,
+        script_similarity_threshold=0.58,
+        coaching_hints="crisis_only",
+        agreement_base_probability=0.40,
+        gd_relationship_gain_per_turn=2,
+        gd_relationship_loss_multiplier=1.15,
+        objection_density=0.58,
+        interrupt_probability=0.17,
+        ocean_shift=OceanShift(A=-0.05, N=+0.05),
+    ),
+    7: DifficultyParams(
+        level=7,
+        llm_temperature=0.60,
+        script_similarity_threshold=0.60,
+        coaching_hints="crisis_only",
+        agreement_base_probability=0.32,
+        gd_relationship_gain_per_turn=2,
+        gd_relationship_loss_multiplier=1.30,
+        objection_density=0.65,
+        interrupt_probability=0.22,
+        ocean_shift=OceanShift(A=-0.10, N=+0.10),
+    ),
+    8: DifficultyParams(
+        level=8,
+        llm_temperature=0.70,
+        script_similarity_threshold=0.63,
+        coaching_hints="crisis_only",
+        agreement_base_probability=0.25,
+        gd_relationship_gain_per_turn=1,
+        gd_relationship_loss_multiplier=1.45,
+        objection_density=0.72,
+        interrupt_probability=0.27,
+        ocean_shift=OceanShift(A=-0.12, N=+0.15),
+    ),
+    9: DifficultyParams(
+        level=9,
+        llm_temperature=0.78,
+        script_similarity_threshold=0.65,
+        coaching_hints="none",
+        agreement_base_probability=0.18,
+        gd_relationship_gain_per_turn=1,
+        gd_relationship_loss_multiplier=1.65,
+        objection_density=0.82,
+        interrupt_probability=0.32,
+        ocean_shift=OceanShift(A=-0.15, N=+0.20),
+    ),
+    10: DifficultyParams(
+        level=10,
+        llm_temperature=0.85,
+        script_similarity_threshold=0.68,
+        coaching_hints="none",
+        agreement_base_probability=0.12,
+        gd_relationship_gain_per_turn=1,
+        gd_relationship_loss_multiplier=1.80,
+        objection_density=0.90,
+        interrupt_probability=0.35,
+        ocean_shift=OceanShift(O=-0.10, A=-0.20, N=+0.25),
+    ),
+}
+
+
+def resolve_params(level: int | float | None) -> DifficultyParams:
+    """Return the ``DifficultyParams`` for ``level`` (clamped to [1..10]).
+
+    Accepts float (e.g. scenario.difficulty may be 6.5 after modifier) —
+    rounds to nearest integer. ``None`` / garbage → level 5 (neutral).
+
+    The return value is always a real entry from ``DIFFICULTY_PARAMS``;
+    callers never need to None-check.
+    """
+
+    if level is None:
+        return DIFFICULTY_PARAMS[5]
+    try:
+        lvl = int(round(float(level)))
+    except (TypeError, ValueError):
+        return DIFFICULTY_PARAMS[5]
+    lvl = max(1, min(10, lvl))
+    return DIFFICULTY_PARAMS[lvl]
+
+
+# ──────────────────────────────────────────────────────────────────────
 #  Reply Quality
 # ──────────────────────────────────────────────────────────────────────
 

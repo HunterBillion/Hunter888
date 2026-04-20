@@ -95,7 +95,7 @@ export function PvPVictoryScreen({
               />
             </motion.div>
             <div
-              className="font-display font-black text-7xl tracking-[0.2em]"
+              className="font-display font-black text-7xl tracking-wider"
               style={{
                 color: resultColor,
                 textShadow: `0 0 60px ${resultGlow}`,

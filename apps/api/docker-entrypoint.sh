@@ -11,6 +11,38 @@ log() {
     echo "[$(date -Iseconds)] $*"
 }
 
+# ── Security pre-flight (2026-04-18, FIND-002) ───────────────────────
+# Refuse to start with default or placeholder secrets in production.
+# Local dev (APP_ENV != production) may keep placeholders for convenience.
+if [ "${APP_ENV:-development}" = "production" ]; then
+    _DEFAULT_JWT="4ec3d26de8b0623fe427d7d28c684d57d0dfad80acaab0785d5bfca839878ca2"
+    if [ "${JWT_SECRET:-}" = "${_DEFAULT_JWT}" ] || [ -z "${JWT_SECRET:-}" ]; then
+        log "FATAL: JWT_SECRET is empty or set to default value. Generate a new one: openssl rand -hex 32"
+        exit 1
+    fi
+    if [ "${#JWT_SECRET}" -lt 32 ]; then
+        log "FATAL: JWT_SECRET must be at least 32 characters in production"
+        exit 1
+    fi
+    case "${POSTGRES_PASSWORD:-}" in
+        ""|"trainer_pass"|"postgres"|"password"|"123456")
+            log "FATAL: POSTGRES_PASSWORD is empty or using a known weak/default value"
+            exit 1
+            ;;
+    esac
+    case "${REDIS_PASSWORD:-}" in
+        ""|"redis_secret_pass"|"redis"|"password"|"123456")
+            log "FATAL: REDIS_PASSWORD is empty or using a known weak/default value"
+            exit 1
+            ;;
+    esac
+    if [ "${APP_DEBUG:-false}" = "true" ]; then
+        log "FATAL: APP_DEBUG=true in production — Swagger UI and debug traces would be exposed"
+        exit 1
+    fi
+    log "Security pre-flight: OK (strong secrets, debug off)"
+fi
+
 # ── Graceful shutdown ──────────────────────────────────────────────────
 # Forward SIGTERM to child process (gunicorn) for clean shutdown
 cleanup() {

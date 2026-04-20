@@ -86,8 +86,13 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
             Добавляй игроков, принимай заявки и быстро заходи в дуэли.
           </p>
         </div>
+        {/* 2026-04-20: раньше здесь было "N онлайн-контактов", что вводило
+            пользователя в заблуждение — FriendItem не имеет поля is_online,
+            счётчик показывал ВСЕХ друзей, а не активных. Пока нет real-time
+            presence — честно пишем "в друзьях". Будет тут `is_online` из
+            бэкенда → снова добавим зелёную точку + "N онлайн". */}
         <div className="rounded-full px-3 py-1 text-xs font-mono" style={{ background: "var(--input-bg)", color: "var(--text-secondary)" }}>
-          {accepted.length} онлайн-контактов
+          {accepted.length} в друзьях
         </div>
       </div>
 
@@ -144,7 +149,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
 
       {incoming.length > 0 && (
         <div className="mt-5">
-          <div className="mb-2 text-xs font-mono uppercase tracking-[0.18em]" style={{ color: "var(--warning)" }}>
+          <div className="mb-2 text-xs font-mono uppercase tracking-wider" style={{ color: "var(--warning)" }}>
             Входящие заявки
           </div>
           <div className="space-y-2">
@@ -181,7 +186,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
       )}
 
       <div className="mt-5">
-        <div className="mb-2 text-xs font-mono uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
+        <div className="mb-2 text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
           Твой круг
         </div>
         {loading ? (

@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.morning_drill import MorningDrillSession
 from app.models.training import TrainingSession, SessionStatus
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,18 @@ class GoalDef:
 
 
 DAILY_GOALS: list[GoalDef] = [
+    # 2026-04-20: warm-up is first — it's the lightest action of the day
+    # (2 min, no shame on <5/5) and gates the psychological "я начал день".
+    GoalDef(
+        id="daily_warmup",
+        label="Пройди утреннюю разминку",
+        description="Ответь на 5 коротких вопросов. Важен факт завершения, не 5/5.",
+        target=1,
+        xp=20,
+        period="daily",
+        metric="warmups_today",
+        icon="coffee",
+    ),
     GoalDef(
         id="daily_session",
         label="Пройди 1 тренировку",
@@ -237,6 +250,21 @@ async def _gather_metrics(
             if call_num >= total and total >= 3:
                 stories_completed_week += 1
 
+    # 2026-04-20: daily_warmup metric — count of completed morning drills
+    # on today's LOCAL date. We COUNT(*) on (user_id, date) which uses the
+    # ix_morning_drill_sessions_user_date index. `MorningDrillSession.date`
+    # is stored in the local business tz (see morning_drill.py /complete).
+    from app.utils.local_time import local_today
+    today_local = local_today()
+    warmup_result = await db.execute(
+        select(func.count(MorningDrillSession.id)).where(
+            MorningDrillSession.user_id == user_id,
+            MorningDrillSession.date == today_local,
+            MorningDrillSession.completed_at.isnot(None),
+        )
+    )
+    warmups_today = warmup_result.scalar() or 0
+
     return {
         "sessions_today": sessions_today,
         "best_score_today": best_score_today,
@@ -244,6 +272,7 @@ async def _gather_metrics(
         "sessions_week": sessions_week,
         "avg_score_week": round(avg_score_week, 1),
         "stories_completed_week": stories_completed_week,
+        "warmups_today": warmups_today,
     }
 
 

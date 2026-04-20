@@ -12,6 +12,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.core import errors as err
@@ -1042,9 +1043,17 @@ async def api_my_reminders(
     user: User = Depends(require_role("manager", "rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Мои напоминания (сегодня + предстоящие)."""
+    """Мои напоминания (сегодня + предстоящие).
+
+    2026-04-20: eager-load `client` via selectinload — without it the
+    response serializer triggers lazy loading after the session has
+    exited, which in async SQLAlchemy surfaces as MissingGreenlet and
+    returns 500 (CORS headers never get attached → browser also reports
+    a CORS failure). See _reminder_to_response → r.client.full_name.
+    """
     query = (
         select(ManagerReminder)
+        .options(selectinload(ManagerReminder.client))
         .where(ManagerReminder.manager_id == user.id)
     )
     if not include_completed:
@@ -1214,11 +1223,19 @@ def _notification_to_response(n: ClientNotification) -> NotificationResponse:
 
 
 def _reminder_to_response(r: ManagerReminder) -> ReminderResponse:
+    # Defensive: if the caller didn't eager-load `client` (e.g. a future
+    # code path that doesn't go through the list endpoint), we catch the
+    # lazy-load error instead of leaking a 500. The list endpoint above
+    # DOES use selectinload, so this branch is a pure safety net.
+    try:
+        client_name = r.client.full_name if r.client else None
+    except Exception:
+        client_name = None
     return ReminderResponse(
         id=r.id,
         manager_id=r.manager_id,
         client_id=r.client_id,
-        client_name=r.client.full_name if r.client else None,
+        client_name=client_name,
         remind_at=r.remind_at,
         message=r.message,
         is_completed=r.is_completed,

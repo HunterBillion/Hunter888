@@ -101,7 +101,7 @@ export function LegendaryUnlockModal({ title, description, icon, onClose }: Lege
 
               {/* Label */}
               <motion.div
-                className="font-mono text-xs uppercase tracking-[0.3em] font-bold"
+                className="font-mono text-xs uppercase tracking-widest font-bold"
                 style={{ color: "var(--gf-xp)" }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

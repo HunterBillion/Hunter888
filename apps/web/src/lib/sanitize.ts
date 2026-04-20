@@ -1,10 +1,87 @@
 /**
- * Input sanitization for XSS prevention.
- * All user-generated content (chat messages, profile names, etc.)
- * should pass through sanitizeText before display.
+ * Text sanitization for chat / UI display.
+ *
+ * IMPORTANT architectural note (2026-04-20):
+ * React's JSX `{variable}` interpolation already auto-escapes HTML for text
+ * children. That means manually escaping via `sanitizeText()` BEFORE passing
+ * a string into `{...}` produced DOUBLE escaping: quotes and ampersands in
+ * legitimate content ended up rendered as literal `&quot;`, `&amp;`, etc.
+ *
+ * So `sanitizeText()` now does the opposite of what it used to do:
+ * it DECODES any HTML entities that may have leaked in (from the LLM, from
+ * legacy DB rows, from any upstream escape step) and returns clean Unicode.
+ * React then auto-escapes on render, which is the correct boundary for XSS
+ * protection. If you ever need the actual escape-for-innerHTML behavior,
+ * use `escapeHtml()` below — it is only safe to feed into
+ * `dangerouslySetInnerHTML`, never into plain JSX text children.
  */
 
-const HTML_ENTITIES: Record<string, string> = {
+// Common named HTML entities. Numeric (`&#39;`, `&#x27;`) are handled
+// generically by the regex below, so only named ones need listing here.
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  quot: '"',
+  apos: "'",
+  lt: "<",
+  gt: ">",
+  nbsp: "\u00A0",
+  mdash: "\u2014",
+  ndash: "\u2013",
+  laquo: "\u00AB",
+  raquo: "\u00BB",
+  hellip: "\u2026",
+  copy: "\u00A9",
+  reg: "\u00AE",
+  trade: "\u2122",
+};
+
+/**
+ * SSR-safe decoder: turns `&quot;`, `&amp;`, `&#39;`, `&#x27;`, etc. back into
+ * real Unicode characters. Uses a single pass so `&amp;quot;` correctly stays
+ * as `&quot;` (not double-decoded into `"`).
+ */
+function decodeHtmlEntities(input: string): string {
+  return input.replace(
+    /&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]{1,8});/g,
+    (match, entity: string) => {
+      // Numeric: &#123; or &#x7B;
+      if (entity.charCodeAt(0) === 35 /* '#' */) {
+        const isHex = entity[1] === "x" || entity[1] === "X";
+        const codeStr = isHex ? entity.slice(2) : entity.slice(1);
+        const code = parseInt(codeStr, isHex ? 16 : 10);
+        if (Number.isFinite(code) && code > 0 && code <= 0x10ffff) {
+          try {
+            return String.fromCodePoint(code);
+          } catch {
+            return match;
+          }
+        }
+        return match;
+      }
+      // Named: &amp;, &quot;, ...
+      const val = NAMED_ENTITIES[entity];
+      return val !== undefined ? val : match;
+    },
+  );
+}
+
+/**
+ * Clean a string for display in the UI.
+ *
+ * - Returns `""` for null/undefined.
+ * - Decodes any HTML entities that leaked in from upstream.
+ * - Does NOT escape anything — React auto-escapes JSX text children.
+ *
+ * Only call this on strings that will be rendered as text children.
+ * For strings passed to `dangerouslySetInnerHTML`, use `escapeHtml()`.
+ */
+export function sanitizeText(input: string | null | undefined): string {
+  if (!input) return "";
+  return decodeHtmlEntities(input);
+}
+
+/** Map used by `escapeHtml` — the INVERSE of decoding. */
+const ESCAPE_MAP: Record<string, string> = {
   "&": "&amp;",
   "<": "&lt;",
   ">": "&gt;",
@@ -14,17 +91,17 @@ const HTML_ENTITIES: Record<string, string> = {
 };
 
 /**
- * Escape HTML entities in user input.
- * Prevents XSS when rendering user content.
+ * Escape text so it is safe to inject into HTML via `dangerouslySetInnerHTML`
+ * or `innerHTML`. DO NOT use this for normal JSX text children — React
+ * already escapes those, and pre-escaping will double-encode.
  */
-export function sanitizeText(input: string | null | undefined): string {
+export function escapeHtml(input: string | null | undefined): string {
   if (!input) return "";
-  return input.replace(/[&<>"'/]/g, (char) => HTML_ENTITIES[char] || char);
+  return input.replace(/[&<>"'/]/g, (char) => ESCAPE_MAP[char] || char);
 }
 
 /**
- * Strip HTML tags from input.
- * More aggressive than sanitizeText — removes tags entirely.
+ * Strip HTML tags from input. Unchanged behavior.
  */
 export function stripHtml(input: string | null | undefined): string {
   if (!input) return "";

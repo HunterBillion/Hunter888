@@ -262,6 +262,13 @@ class PvPDuel(Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Phase A (2026-04-20): persistent post-match analytics — previously the
+    # judge computed these per-round and we re-derived on replay load. Having
+    # them as first-class columns unblocks rapid "похожие дуэли" queries.
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    turning_point: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
 
 class PvPRating(Base):
     """Glicko-2 rating state per user.

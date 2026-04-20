@@ -109,7 +109,7 @@ export default function RegisterPage() {
           >
             <UserPlus size={26} className="text-white" />
           </motion.div>
-          <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
+          <h1 className="font-display text-2xl font-bold tracking-widest" style={{ color: "var(--text-primary)" }}>
             РЕГИСТРАЦИЯ
           </h1>
           <p className="mt-1 font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>

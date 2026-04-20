@@ -15,6 +15,7 @@ import {
   Sparkle,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/Button";
+import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import { api } from "@/lib/api";
 import { scoreColor } from "@/lib/utils";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -133,13 +134,30 @@ export default function HistoryPage() {
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
         <div className="app-page max-w-4xl">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="font-display text-2xl font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
-              ИСТОРИЯ
-            </h1>
-            <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
-              Все ваши прошлые сессии
-            </p>
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-start justify-between gap-3"
+          >
+            <div>
+              <h1 className="font-display text-2xl font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
+                ИСТОРИЯ
+              </h1>
+              <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
+                Все ваши прошлые сессии
+              </p>
+            </div>
+            <PixelInfoButton
+              title="История тренировок"
+              sections={[
+                { icon: Stack, label: "Сессии", text: "Полный список ваших завершённых и прерванных звонков с AI-клиентами" },
+                { icon: ChartBar, label: "Оценки", text: "Общий балл сессии — среднее по техникам, работе с возражениями и эмоциональному управлению" },
+                { icon: CheckCircle, label: "Завершена", text: "Звонок прошёл до конца: клиент согласился или вежливо отказал" },
+                { icon: XCircle, label: "Прервана", text: "Клиент повесил трубку из-за грубых ошибок менеджера" },
+                { icon: Sparkle, label: "Разбор", text: "Нажмите на карточку — откроется детальный анализ с таймкодами и рекомендациями" },
+              ]}
+              footer="Фильтруйте по дате и оценке — в планах: экспорт в PDF"
+            />
           </motion.div>
 
           {/* Summary stats */}
@@ -223,8 +241,13 @@ export default function HistoryPage() {
                       const Icon = st.icon;
                       const canViewResults = session.status === "completed" && session.score_total !== null;
                       const story = entry.story;
-                      const targetHref = story ? `/training/crm/${story.id}` : `/results/${session.id}`;
-                      const canOpenEntry = Boolean(story) || canViewResults;
+                      // 2026-04-18 routing fix: card click ALWAYS goes to session
+                      // debrief (/results). Story (portfolio arc) opens via a
+                      // dedicated secondary button below — so users can't
+                      // accidentally land in the portfolio when they wanted
+                      // the session score breakdown.
+                      const targetHref = `/results/${session.id}`;
+                      const canOpenEntry = canViewResults;
 
                       return (
                         <motion.div
@@ -258,7 +281,7 @@ export default function HistoryPage() {
                               )}
                             </div>
                             {story && (
-                              <div className="mt-2 flex flex-wrap gap-2">
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
                                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                                   Статус: {story.game_status}
                                 </span>
@@ -268,6 +291,24 @@ export default function HistoryPage() {
                                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                                   Последствий: {story.consequences.length}
                                 </span>
+                                {/* 2026-04-18 UX: dedicated entry to AI-Portfolio arc.
+                                    Stops event bubbling so card click stays on /results. */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    router.push(`/stories/${story.id}`);
+                                  }}
+                                  className="ml-auto text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition-opacity hover:opacity-80"
+                                  style={{
+                                    background: "var(--accent-muted)",
+                                    color: "var(--accent)",
+                                    border: "1px solid var(--accent-glow)",
+                                  }}
+                                  aria-label="Открыть арку клиента в AI-Портфеле"
+                                >
+                                  Открыть арку →
+                                </button>
                               </div>
                             )}
                             {canViewResults && <MiniScoreBars session={session} />}

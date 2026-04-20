@@ -61,7 +61,7 @@ export default function MethodologistPage() {
       <div className="relative panel-grid-bg min-h-screen">
         <div className="app-page max-w-3xl">
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="font-display text-2xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
+            <h1 className="font-display text-2xl font-bold tracking-widest" style={{ color: "var(--text-primary)" }}>
               МЕТОДОЛОГ
             </h1>
             <p className="mt-1 font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>

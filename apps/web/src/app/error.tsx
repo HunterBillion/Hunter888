@@ -87,7 +87,7 @@ export default function Error({
 
         {/* Terminal label */}
         <motion.div
-          className="font-mono text-xs tracking-[0.3em] uppercase mb-3"
+          className="font-mono text-xs tracking-widest uppercase mb-3"
           style={{ color: "rgba(229,72,77,0.6)" }}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

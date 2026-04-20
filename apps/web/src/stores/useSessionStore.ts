@@ -130,6 +130,12 @@ interface SessionStore {
   // Input
   input: string;
 
+  // 2026-04-19 Phase 2.6: quote-reply target. Set when user taps "Ответить"
+  // on an older bubble via MessageActionMenu; cleared after the next
+  // text.message WS send.
+  pendingQuotedId: string | null;
+  pendingQuotedPreview: string | null;
+
   // Adaptive difficulty
   effectiveDifficulty: number;
   difficultyModifier: number;
@@ -156,6 +162,7 @@ interface SessionStore {
   reset: () => void;
   nextMsgId: () => string;
   addMessage: (msg: ChatBubble) => void;
+  togglePinMessage: (id: string) => void;
   clearMessages: () => void;
   appendToLastAssistantMessage: (text: string) => void;
   finalizeStreamingMessage: (fullContent: string, emotion?: EmotionState, seq?: number) => void;
@@ -205,6 +212,9 @@ interface SessionStore {
   setDifficultyReason: (reason: string | null) => void;
   setTranscription: (t: TranscriptionState) => void;
   setInput: (input: string) => void;
+  // 2026-04-19 Phase 2.6: quote-reply setters.
+  setPendingQuote: (quote: { id: string; preview: string } | null) => void;
+  clearPendingQuote: () => void;
   // Difficulty actions
   setDifficultyUpdate: (data: DifficultyUpdate) => void;
   // Story actions
@@ -272,6 +282,9 @@ const INITIAL_STATE = {
   difficultyReason: null as string | null,
   transcription: { status: "idle", partial: "", final: "" } as TranscriptionState,
   input: "",
+  // 2026-04-19 Phase 2.6: quote-reply pending state.
+  pendingQuotedId: null as string | null,
+  pendingQuotedPreview: null as string | null,
   // Adaptive difficulty
   effectiveDifficulty: 5,
   difficultyModifier: 0,
@@ -304,44 +317,76 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     return `msg-${counter}`;
   },
   addMessage: (msg) => set((s) => {
-    // Deduplication: skip if last message has same content and role
-    const last = s.messages[s.messages.length - 1];
-    if (last && last.role === msg.role && last.content === msg.content) {
-      return s; // Skip duplicate
+    // 2026-04-18: stronger deduplication — checks last 5 messages of same
+    // role + exact content. Previous "last only" version failed when
+    // another message sneaked between the streaming bubble and the late
+    // character.response echo (reported by user: duplicate AI messages).
+    // Skip if any of the last-5 same-role messages has identical content.
+    const recent = s.messages.slice(-5);
+    for (const m of recent) {
+      if (m.role === msg.role && m.content === msg.content) {
+        return s; // Skip duplicate
+      }
     }
     return { messages: [...s.messages, msg].slice(-500) };
   }),
   clearMessages: () => set({ messages: [], _msgCounter: 0 }),
+  // 2026-04-18: message pinning (user can return to important moments via pin-bar).
+  togglePinMessage: (id: string) => set((s) => ({
+    messages: s.messages.map((m) => m.id === id ? { ...m, pinned: !m.pinned } : m),
+  })),
   appendToLastAssistantMessage: (text) => set((s) => {
+    // 2026-04-18 dup-fix: find the most recent streaming assistant in the last
+    // 8 messages. Previously only checked [length-1], which broke streaming
+    // when a user reply was interleaved with TTS audio chunks.
     const msgs = [...s.messages];
-    const last = msgs[msgs.length - 1];
-    if (last && last.role === "assistant" && last.isStreaming) {
-      msgs[msgs.length - 1] = { ...last, content: last.content + text };
-      return { messages: msgs };
+    const searchFrom = Math.max(0, msgs.length - 8);
+    for (let i = msgs.length - 1; i >= searchFrom; i--) {
+      const m = msgs[i];
+      if (m.role === "assistant" && m.isStreaming) {
+        msgs[i] = { ...m, content: m.content + text };
+        return { messages: msgs };
+      }
     }
     return s;
   }),
   finalizeStreamingMessage: (fullContent, emotion, seq) => set((s) => {
+    // 2026-04-18 dup-fix: scan the last 8 messages for a streaming assistant
+    // message (not just the very last). User replies or trap hints could
+    // land between streaming chunks and the final character.response event
+    // — previous "last-only" check missed them and the message stayed
+    // frozen as isStreaming:true, causing a duplicate bubble later.
     const msgs = [...s.messages];
-    const last = msgs[msgs.length - 1];
-    if (last && last.role === "assistant" && last.isStreaming) {
-      msgs[msgs.length - 1] = {
-        ...last,
-        content: fullContent,
-        emotion,
-        sequenceNumber: seq,
-        isStreaming: false,
-      };
-      return { messages: msgs };
+    const searchFrom = Math.max(0, msgs.length - 8);
+    for (let i = msgs.length - 1; i >= searchFrom; i--) {
+      const m = msgs[i];
+      if (m.role === "assistant" && m.isStreaming) {
+        msgs[i] = {
+          ...m,
+          content: fullContent,
+          emotion,
+          sequenceNumber: seq,
+          isStreaming: false,
+        };
+        return { messages: msgs };
+      }
     }
     return s;
   }),
   sortMessagesBySequence: () =>
     set((s) => ({
+      // 2026-04-20: previously `?? 0` caused every un-sequenced (optimistic)
+      // message to collapse to position 0, so an AI reply that arrived without
+      // a sequence_number could leapfrog the user turn. Now: if both sides have
+      // a sequence number, compare by it; if either is missing, fall back to
+      // wall-clock timestamp so insertion order is preserved.
       messages: [...s.messages].sort((a, b) => {
-        const seqA = a.sequenceNumber ?? 0;
-        const seqB = b.sequenceNumber ?? 0;
-        return seqA - seqB;
+        const seqA = a.sequenceNumber;
+        const seqB = b.sequenceNumber;
+        if (seqA != null && seqB != null) return seqA - seqB;
+        const tA = new Date(a.timestamp).getTime();
+        const tB = new Date(b.timestamp).getTime();
+        return tA - tB;
       }),
     })),
   setSessionState: (sessionState) => set({ sessionState }),
@@ -404,6 +449,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   setDifficultyReason: (difficultyReason) => set({ difficultyReason }),
   setTranscription: (transcription) => set({ transcription }),
   setInput: (input) => set({ input }),
+  setPendingQuote: (quote) => set({
+    pendingQuotedId: quote?.id ?? null,
+    pendingQuotedPreview: quote?.preview ?? null,
+  }),
+  clearPendingQuote: () => set({ pendingQuotedId: null, pendingQuotedPreview: null }),
   // Difficulty actions
   setDifficultyUpdate: (data) => set({
     effectiveDifficulty: data.effective_difficulty,
@@ -484,6 +534,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       difficultyReason: null,
       transcription: { status: "idle", partial: "", final: "" },
       input: "",
+      pendingQuotedId: null,
+      pendingQuotedPreview: null,
       storyId: s.storyId,
       storyMode: s.storyMode,
       preCallBrief: s.preCallBrief,
@@ -493,6 +545,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       totalCalls: s.totalCalls,
       showPreCallBrief: false,
       showBetweenCalls: false,
-      betweenCallsEvents: s.betweenCallsEvents,
+      // 2026-04-18 audit fix: clear stale between-call events when a new
+      // call starts. Previously they persisted across calls and produced
+      // a flash of the PREVIOUS call's events if the overlay opened
+      // before the new `story.between_calls` payload arrived.
+      betweenCallsEvents: [],
     })),
 }));

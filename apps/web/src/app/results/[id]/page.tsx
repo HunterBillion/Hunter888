@@ -341,7 +341,7 @@ export default function ResultsPage() {
           style={{ borderColor: "var(--border-color)" }}
         >
           <div>
-            <div className="font-mono text-sm tracking-[0.3em] mb-2 uppercase" style={{ color: "var(--accent)" }}>
+            <div className="font-mono text-sm tracking-widest mb-2 uppercase" style={{ color: "var(--accent)" }}>
               Сессия завершена
             </div>
             <h1 className="font-display font-bold text-3xl md:text-4xl tracking-wide uppercase " style={{ color: "var(--text-primary)" }}>
@@ -374,7 +374,7 @@ export default function ResultsPage() {
               </div>
             )}
             {story && (
-              <Link href={`/training/crm/${story.id}`}>
+              <Link href={`/stories/${story.id}`}>
                 <motion.span
                   className="flex items-center gap-2 rounded-lg px-4 py-3 font-mono text-xs tracking-widest transition-colors backdrop-blur"
                   style={{ background: "rgba(124,106,232,0.12)", border: "1px solid rgba(124,106,232,0.25)", color: "var(--accent)" }}

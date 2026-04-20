@@ -42,6 +42,15 @@ class JudgeRoundScore:
     flags: list[str] = field(default_factory=list)
     legal_details: list[dict] = field(default_factory=list)
 
+    # Phase A (2026-04-20) — coaching payload propagated to all 5 Arena modes.
+    # Populated by LLM judge when role == "seller". 1-2 sentence ideal line
+    # the seller SHOULD have said, plus 127-ФЗ статьи to cite, plus a
+    # short coaching hint. All are optional — fallback to flags/summary if
+    # LLM didn't return them (old prompts).
+    coaching_tip: str = ""           # "Подсказка: раскрой срок и порог долга сразу"
+    ideal_reply: str = ""            # "Иван, при долге от 500т вы можете списать всё за 6 мес через суд..."
+    key_articles: list[str] = field(default_factory=list)  # ["ст. 213.3", "ст. 213.28"]
+
 
 @dataclass
 class PlayerBreakdown:
@@ -134,7 +143,10 @@ JUDGE_SYSTEM_PROMPT = """Ты — AI-судья PvP-дуэли между дву
     {{"claim": "<утверждение>", "accuracy": "correct|incorrect|partial|correct_cited", "explanation": "<пояснение>"}}
   ],
   "flags": ["<замечания, если есть>"],
-  "summary": "<краткое резюме оценки на русском, 2-3 предложения>"
+  "summary": "<краткое резюме оценки на русском, 2-3 предложения>",
+  "coaching_tip": "<1 короткая подсказка продавцу на русском, 1 предложение, 10-18 слов>",
+  "ideal_reply": "<идеальная реплика продавца, которую он ДОЛЖЕН был сказать в ключевой момент, 1-2 предложения, с конкретикой 127-ФЗ>",
+  "key_articles": ["<статьи 127-ФЗ, которые стоило процитировать, в формате 'ст. 213.3' или 'ст. 71'; 1-3 элемента>"]
 }}"""
 
 JUDGE_USER_PROMPT = """## Контекст дуэли
@@ -264,6 +276,35 @@ async def judge_round(
     raw_acting = result.get("acting_score", 0)
     adjusted_acting = min(30.0, raw_acting * multiplier)
 
+    # Phase A — coaching payload (2026-04-20). Pulled straight from judge
+    # output; if LLM omitted them (older prompt / fallback), we derive a
+    # gentle fallback from legal_details + flags so the fronted isn't blank.
+    coaching_tip_raw = str(result.get("coaching_tip") or "").strip()
+    ideal_reply_raw = str(result.get("ideal_reply") or "").strip()
+    raw_articles = result.get("key_articles") or []
+    if not isinstance(raw_articles, list):
+        raw_articles = []
+    key_articles: list[str] = [
+        str(a).strip() for a in raw_articles if str(a).strip()
+    ][:3]
+
+    # Fallback: distil articles from legal_details if judge forgot
+    if not key_articles:
+        for detail in result.get("legal_details", []) or []:
+            claim = str(detail.get("claim") or "")
+            if "ст." in claim or "ФЗ" in claim:
+                key_articles.append(claim[:64])
+            if len(key_articles) >= 3:
+                break
+
+    # Fallback coaching: first flag or summary fragment
+    if not coaching_tip_raw:
+        flags_list = result.get("flags", []) or []
+        if flags_list:
+            coaching_tip_raw = str(flags_list[0])[:160]
+        else:
+            coaching_tip_raw = str(result.get("summary") or "")[:160]
+
     seller_score = JudgeRoundScore(
         selling_score=min(50.0, float(result.get("selling_score", 0))),
         acting_score=0.0,  # Seller doesn't get acting score
@@ -271,6 +312,9 @@ async def judge_round(
         breakdown=result.get("selling_breakdown", {}),
         flags=result.get("flags", []),
         legal_details=result.get("legal_details", []),
+        coaching_tip=coaching_tip_raw[:240],
+        ideal_reply=ideal_reply_raw[:400],
+        key_articles=key_articles,
     )
     seller_score.total = seller_score.selling_score + seller_score.legal_accuracy
 

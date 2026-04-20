@@ -61,7 +61,7 @@ export default function NotFound() {
 
         {/* Terminal label */}
         <motion.div
-          className="font-mono text-xs tracking-[0.3em] uppercase mt-4 mb-2"
+          className="font-mono text-xs tracking-widest uppercase mt-4 mb-2"
           style={{ color: "var(--text-muted)" }}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

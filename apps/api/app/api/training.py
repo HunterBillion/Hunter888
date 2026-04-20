@@ -388,11 +388,167 @@ async def start_session(
         db.add(new_scenario)
         await db.flush()
 
+    # ── FIND-001 (2026-04-19): Idempotency-Key replay BEFORE rate-limit.
+    # Retrying with the same key must NOT consume fresh quota — that would
+    # punish well-behaved clients that retry idempotently on flaky networks.
+    # So we check the idempotency cache first; only misses continue to the
+    # rate limiter + creation path below.
+    import json as _idem_json
+
+    idempotency_key = request.headers.get("Idempotency-Key")
+    if idempotency_key:
+        try:
+            from app.core.redis_pool import get_redis as _idem_get_redis_early
+            _r_early = _idem_get_redis_early()
+            _ik_key_early = f"idem:session:{user.id}:{idempotency_key}"
+            cached = await _r_early.get(_ik_key_early)
+            if cached:
+                payload = _idem_json.loads(cached)
+                logger.info(
+                    "idempotency replay user=%s key=%s session=%s",
+                    user.id, idempotency_key, payload.get("id"),
+                )
+                return SessionResponse(**payload)
+        except Exception:
+            logger.debug("idempotency read failed", exc_info=True)
+
     # Check rate limit before creating session
     try:
         await sm_check_rate_limit(user.id, db)
     except SmRateLimitError as e:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
+
+    # ── FIND-001 (2026-04-19): idempotency + active-session dedup ──────────
+    # Three layers of protection against duplicate session creation:
+    #
+    # (1) Idempotency-Key header replay. Standard HTTP pattern: client
+    #     sends the same ``Idempotency-Key`` on retries, server caches
+    #     the response for 5 minutes under ``idem:session:{user}:{key}``
+    #     and returns the same session on dup. Makes retries on flaky
+    #     networks safe. NOTE: reliable only for sequential retries — for
+    #     concurrent bursts the Redis SETNX below is what actually
+    #     serialises.
+    #
+    # (2) Redis SETNX per-user creation lock. Atomic claim under
+    #     ``lock:create_session:{user_id}`` with a 5-second TTL.  If we
+    #     can't grab it, another parallel request is creating right now
+    #     — we reject 409 instead of racing. Fail-open on Redis errors
+    #     (production nginx rate-limits already bound the blast radius).
+    #
+    # (3) Active-session deduplication. Even without a key or Redis, if
+    #     the same user already has an active session opened in the last
+    #     60 seconds (e.g. from a different client or after the lock
+    #     TTL), reject with 409 + existing session id. Frontend can
+    #     resume or explicitly close+retry.
+    # (Idempotency-Key read above before the rate-limit check — cache hit
+    # short-circuits the whole path. The Redis lock and active-session
+    # guards below still run for cache misses.)
+    _LOCK_TTL_S = 5
+
+    # SETNX per-user creation lock (atomic, protects against concurrent
+    # creation bursts that the DB-level duplicate check can't serialise).
+    _lock_acquired = False
+    try:
+        from app.core.redis_pool import get_redis as _get_redis
+
+        _lock_key = f"lock:create_session:{user.id}"
+        _r_lock = _get_redis()
+        # SET NX EX — atomic acquire with TTL. Returns True iff we got it.
+        _lock_acquired = bool(
+            await _r_lock.set(_lock_key, "1", nx=True, ex=_LOCK_TTL_S)
+        )
+        if not _lock_acquired:
+            logger.info(
+                "create_session lock busy user=%s — concurrent create", user.id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "session_create_in_progress",
+                    "message": (
+                        "Другой запрос на создание сессии обрабатывается "
+                        "прямо сейчас. Подожди секунду и попробуй снова."
+                    ),
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.debug("SETNX lock failed; falling through", exc_info=True)
+
+    try:
+        # Phase F (2026-04-20) — two-tier handling of existing active
+        # sessions. Owner feedback: «зашёл только что, а мне говорят
+        # у тебя уже сессия!». Forensics: в БД висели зомби-сессии
+        # возрастом 1-40 часов (abandoned без явного close).
+        #
+        # Tier 1: **auto-abandon stale** (> 5 min). Юзер явно ушёл,
+        # вернулся через какое-то время → его зомби-сессия больше не
+        # блокирует новую. Marked as `abandoned` (not `completed`)
+        # чтобы аналитика видела что сессия была брошена.
+        #
+        # Tier 2: **block recent** (< 15s). Это защита от реального
+        # double-click / race — юзер клинул дважды, не хотим создать
+        # две сессии под один клик. Окно уменьшено с 60 → 15 сек, т.к.
+        # 60 был слишком агрессивным (юзер успевал забыть и повторно
+        # кликал, застревал).
+        from datetime import datetime as _dt, timedelta as _td
+        _now = _dt.utcnow()
+        try:
+            _stale_q = await db.execute(
+                select(TrainingSession)
+                .where(TrainingSession.user_id == user.id)
+                .where(TrainingSession.status == SessionStatus.active)
+                .where(TrainingSession.started_at <= _now - _td(minutes=5))
+            )
+            _stale_rows = list(_stale_q.scalars())
+            if _stale_rows:
+                for _s in _stale_rows:
+                    _s.status = SessionStatus.abandoned
+                    _s.ended_at = _now
+                await db.flush()
+                logger.info(
+                    "Auto-abandoned %d stale active sessions for user=%s",
+                    len(_stale_rows), user.id,
+                )
+        except Exception:
+            logger.debug("stale session auto-abandon failed", exc_info=True)
+
+        # Tier 2 — block recent double-click (window 15s).
+        try:
+            _dup_q = await db.execute(
+                select(TrainingSession.id)
+                .where(TrainingSession.user_id == user.id)
+                .where(TrainingSession.status == SessionStatus.active)
+                .where(TrainingSession.started_at > _now - _td(seconds=15))
+                .order_by(TrainingSession.started_at.desc())
+                .limit(1)
+            )
+            _dup_id = _dup_q.scalar_one_or_none()
+        except Exception:
+            logger.debug("duplicate-active check failed", exc_info=True)
+            _dup_id = None
+
+        if _dup_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "session_already_active",
+                    "message": (
+                        "У пользователя уже есть активная тренировка, "
+                        "начатая несколько секунд назад. Открываю её."
+                    ),
+                    "existing_session_id": str(_dup_id),
+                },
+            )
+    except HTTPException:
+        # Release lock on known errors so next attempt isn't blocked for TTL.
+        if _lock_acquired:
+            try:
+                await _r_lock.delete(_lock_key)
+            except Exception:
+                pass
+        raise
 
     session = TrainingSession(
         user_id=user.id,
@@ -426,6 +582,31 @@ async def start_session(
         await r.set(state_key, _json.dumps(redis_state), ex=_KEY_TTL)
     except Exception:
         logger.warning("Failed to init Redis state for session %s via REST", session.id)
+
+    # FIND-001 (2026-04-19): cache the final response under the
+    # Idempotency-Key for 5 minutes so retries return the same session id
+    # instead of creating a new row. Best-effort — Redis hiccup doesn't
+    # break the request.
+    if idempotency_key:
+        try:
+            from app.core.redis_pool import get_redis as _idem_get_redis
+            _r2 = _idem_get_redis()
+            _ik_key = f"idem:session:{user.id}:{idempotency_key}"
+            _resp = SessionResponse.model_validate(session).model_dump(
+                mode="json"
+            )
+            await _r2.setex(_ik_key, 300, _idem_json.dumps(_resp, default=str))
+        except Exception:
+            logger.debug("idempotency write failed", exc_info=True)
+
+    # Release the create-session lock — a subsequent POST from the same
+    # user can proceed immediately (it still trips the active-session
+    # guard above until this one ends).
+    if _lock_acquired:
+        try:
+            await _r_lock.delete(_lock_key)
+        except Exception:
+            pass
 
     return session
 

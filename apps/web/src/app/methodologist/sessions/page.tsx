@@ -72,7 +72,7 @@ export default function MethodologistSessionsPage() {
             </div>
             <div className="flex items-center gap-2">
               <FileText size={20} style={{ color: "var(--accent)" }} />
-              <h1 className="font-display text-xl font-bold tracking-[0.15em]" style={{ color: "var(--text-primary)" }}>
+              <h1 className="font-display text-xl font-bold tracking-widest" style={{ color: "var(--text-primary)" }}>
                 ВСЕ СЕССИИ
               </h1>
             </div>
@@ -140,7 +140,7 @@ export default function MethodologistSessionsPage() {
                 <button
                   onClick={() => setPage(Math.max(1, page - 1))}
                   disabled={page <= 1}
-                  className="flex items-center gap-1 text-xs disabled:opacity-30"
+                  className="flex items-center gap-1 text-xs disabled:opacity-40"
                   style={{ color: "var(--accent)" }}
                 >
                   <ChevronLeft size={14} /> Назад
@@ -151,7 +151,7 @@ export default function MethodologistSessionsPage() {
                 <button
                   onClick={() => setPage(Math.min(totalPages, page + 1))}
                   disabled={page >= totalPages}
-                  className="flex items-center gap-1 text-xs disabled:opacity-30"
+                  className="flex items-center gap-1 text-xs disabled:opacity-40"
                   style={{ color: "var(--accent)" }}
                 >
                   Далее <ChevronRight size={14} />

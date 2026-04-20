@@ -13,6 +13,9 @@ interface CrystalMicProps {
   onRelease: () => void;
   onTextMode: () => void;
   disabled: boolean;
+  /** 2026-04-18 new: "toggle" = tap-to-start / tap-to-stop (default, user request).
+      "hold" = legacy hold-to-record. */
+  mode?: "toggle" | "hold";
 }
 
 export function CrystalMic({
@@ -23,6 +26,7 @@ export function CrystalMic({
   onRelease,
   onTextMode,
   disabled,
+  mode = "toggle",
 }: CrystalMicProps) {
   const normalizedLevel = Math.min(audioLevel / 100, 1);
   const reducedMotion = useReducedMotion();
@@ -47,7 +51,11 @@ export function CrystalMic({
   };
 
   return (
-    <div className="flex flex-col items-center gap-4">
+    // Phase F2.1 (2026-04-20): wrapper теперь `relative`, раньше был просто
+    // flex-col → tooltip с `absolute -top-16` позиционировался относительно
+    // дальнего ancestor'а и «прыгал» при скролле / reflow. Владелец писал:
+    // «подсказки то наверху то внизу». Теперь привязан к самому компоненту.
+    <div className="relative flex flex-col items-center gap-4">
       {/* P2-23: First-use tooltip */}
       <AnimatePresence>
         {showTooltip && (
@@ -123,15 +131,25 @@ export function CrystalMic({
           }}
         />
 
-        {/* Crystal hexagon */}
+        {/* Crystal hexagon
+            2026-04-18: default mode="toggle" — one tap to start, another to stop.
+            Legacy mode="hold" retained for components that still rely on hold-and-release. */}
         <motion.button
-          aria-label={isRecording ? "Запись голоса" : isProcessing ? "Обработка" : "Нажмите и удерживайте для записи"}
+          aria-label={
+            mode === "toggle"
+              ? (isRecording ? "Нажмите чтобы остановить запись" : isProcessing ? "Обработка…" : "Нажмите чтобы начать запись")
+              : (isRecording ? "Запись голоса" : isProcessing ? "Обработка" : "Нажмите и удерживайте для записи")
+          }
           role="button"
-          onMouseDown={!disabled ? onPress : undefined}
-          onMouseUp={!disabled ? onRelease : undefined}
-          onMouseLeave={!disabled ? onRelease : undefined}
-          onTouchStart={!disabled ? onPress : undefined}
-          onTouchEnd={!disabled ? onRelease : undefined}
+          onClick={!disabled && mode === "toggle"
+            ? () => { if (isRecording) onRelease(); else onPress(); }
+            : undefined
+          }
+          onMouseDown={!disabled && mode === "hold" ? onPress : undefined}
+          onMouseUp={!disabled && mode === "hold" ? onRelease : undefined}
+          onMouseLeave={!disabled && mode === "hold" ? onRelease : undefined}
+          onTouchStart={!disabled && mode === "hold" ? onPress : undefined}
+          onTouchEnd={!disabled && mode === "hold" ? onRelease : undefined}
           disabled={disabled}
           className="crystal-shape relative z-10 flex items-center justify-center"
           style={{

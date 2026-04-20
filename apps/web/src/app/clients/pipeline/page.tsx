@@ -255,7 +255,7 @@ export default function PipelinePage() {
                 <BackButton href="/clients" label="К клиентам" />
                 <Kanban size={20} style={{ color: "var(--accent)" }} />
                 <h1
-                  className="font-display text-2xl font-bold tracking-[0.15em]"
+                  className="font-display text-2xl font-bold tracking-widest"
                   style={{ color: "var(--text-primary)" }}
                 >
                   ВОРОНКА

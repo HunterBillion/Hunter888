@@ -12,6 +12,7 @@ export interface QuizMessage {
   isCorrect?: boolean;
   articleRef?: string;
   explanation?: string;
+  correctAnswer?: string;   // 2026-04-18: expected answer, shown separately when answer is wrong
   category?: string;
   timestamp: number;
   userId?: string;
@@ -157,6 +158,12 @@ interface KnowledgeState {
   pvpCurrentDifficulty: number;
   pvpDisconnectedPlayers: string[];
   pvpActiveChallenges: ArenaChallenge[];
+  /**
+   * 2026-04-19 Phase 2.8: arcade TTS narration for the current round,
+   * populated by the `pvp.audio_ready` WS event. Reset on new round start.
+   */
+  pvpArenaAudioUrl: string | null;
+  setPvpArenaAudio(url: string | null): void;
 
   // Actions
   init(mode: QuizMode, category?: string): void;
@@ -164,6 +171,7 @@ interface KnowledgeState {
   setSessionId(id: string): void;
   nextMsgId(): string;
   addMessage(msg: Omit<QuizMessage, "id" | "timestamp">): void;
+  appendToLastMessage(text: string): void;
   updateProgress(p: {
     correct: number;
     incorrect: number;
@@ -267,6 +275,7 @@ const INITIAL_STATE = {
   pvpCurrentDifficulty: 3,
   pvpDisconnectedPlayers: [] as string[],
   pvpActiveChallenges: [] as ArenaChallenge[],
+  pvpArenaAudioUrl: null as string | null,
 };
 
 export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
@@ -293,6 +302,21 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
     const id = get().nextMsgId();
     const fullMsg: QuizMessage = { ...msg, id, timestamp: Date.now() };
     set((s) => ({ messages: [...s.messages, fullMsg] }));
+  },
+
+  // 2026-04-18: streaming feedback support — append tokens to last message.
+  appendToLastMessage: (text: string) => {
+    set((s) => {
+      if (!s.messages.length) return s;
+      const idx = s.messages.length - 1;
+      const last = s.messages[idx];
+      const updated: QuizMessage = {
+        ...last,
+        content: (last.content || "") + text,
+        explanation: (last.explanation || "") + text,
+      };
+      return { messages: [...s.messages.slice(0, idx), updated] };
+    });
   },
 
   updateProgress: (p) =>
@@ -379,7 +403,12 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
       pvpMyAnswer: "",
       pvpMyAnswerSubmitted: false,
       pvpOpponentsAnswered: {},
+      // 2026-04-19 Phase 2.8: reset arena audio on new round — the server
+      // will re-emit `pvp.audio_ready` when its TTS task completes.
+      pvpArenaAudioUrl: null,
     }),
+
+  setPvpArenaAudio: (url) => set({ pvpArenaAudioUrl: url }),
 
   submitPvPAnswer: (text) =>
     set({ pvpMyAnswer: text, pvpMyAnswerSubmitted: true }),

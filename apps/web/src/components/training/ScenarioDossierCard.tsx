@@ -1,21 +1,26 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Clock, ArrowRight, Loader2, BookOpen, User } from "lucide-react";
+import { Clock, ArrowRight, Loader2, BookOpen, User, Phone, MessageCircle } from "lucide-react";
 import { findArchetype, findArchetypeFromTitle, ARCHETYPE_GROUPS, getDifficultyColor } from "@/lib/archetypes";
 import { getScenarioTypeConfig } from "@/lib/scenario-utils";
 import type { Scenario } from "@/types";
 
+// Phase F (2026-04-20): owner writes «в CRM карточке должен быть выбор
+// чат или звонок». Card теперь несёт три действия: Чат / Звонок / Сюжет.
+// onStartCall — optional (для обратной совместимости), если не передан
+// кнопка «Позвонить» скрывается.
 interface ScenarioDossierCardProps {
   scenario: Scenario;
   index: number;
   isStarting: boolean;
   onStart: (id: string) => void;
   onStartStory: (id: string, calls?: number) => void;
+  onStartCall?: (id: string) => void;
   storyCalls: number;
 }
 
-export function ScenarioDossierCard({ scenario, index, isStarting, onStart, onStartStory, storyCalls }: ScenarioDossierCardProps) {
+export function ScenarioDossierCard({ scenario, index, isStarting, onStart, onStartStory, onStartCall, storyCalls }: ScenarioDossierCardProps) {
   const archetype = findArchetype(scenario.character_name) ?? findArchetypeFromTitle(scenario.title);
   const group = archetype ? ARCHETYPE_GROUPS[archetype.group] : null;
   const accentColor = getDifficultyColor(scenario.difficulty);
@@ -97,21 +102,52 @@ export function ScenarioDossierCard({ scenario, index, isStarting, onStart, onSt
           </span>
         </div>
 
-        {/* Row 5: Buttons — ALWAYS at bottom, same level */}
-        <div className="grid grid-cols-[1.2fr_0.8fr] gap-2 pt-1">
+        {/* Row 5: Buttons — Phase F (2026-04-20). Три действия: Чат / Звонок /
+            Сюжет. Звонок показывается только если передан `onStartCall` —
+            для обратной совместимости со старыми местами использования. */}
+        <div className={onStartCall ? "grid grid-cols-3 gap-2 pt-1" : "grid grid-cols-[1.2fr_0.8fr] gap-2 pt-1"}>
           <motion.button
             onClick={() => onStart(scenario.id)}
             disabled={isStarting}
-            className="flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold text-white transition-all"
+            className="flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-semibold text-white transition-all"
             style={{
               background: accentColor,
               opacity: isStarting ? 0.6 : 1,
             }}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
+            title="Начать текстовый чат"
           >
-            {isStarting ? <Loader2 size={16} className="animate-spin" /> : <><span>Начать</span><ArrowRight size={14} /></>}
+            {isStarting ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : onStartCall ? (
+              <><MessageCircle size={14} /><span>Чат</span></>
+            ) : (
+              <><span>Начать</span><ArrowRight size={14} /></>
+            )}
           </motion.button>
+          {onStartCall && (
+            <motion.button
+              onClick={() => onStartCall(scenario.id)}
+              disabled={isStarting}
+              className="flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-semibold transition-all"
+              style={{
+                background: "transparent",
+                border: `2px solid ${accentColor}`,
+                color: accentColor,
+                opacity: isStarting ? 0.4 : 1,
+              }}
+              whileHover={{
+                scale: 1.02,
+                backgroundColor: `color-mix(in srgb, ${accentColor} 12%, transparent)`,
+              }}
+              whileTap={{ scale: 0.97 }}
+              title="Позвонить клиенту голосом"
+            >
+              <Phone size={14} />
+              <span>Звонок</span>
+            </motion.button>
+          )}
           <motion.button
             onClick={() => onStartStory(scenario.id, storyCalls)}
             disabled={isStarting}

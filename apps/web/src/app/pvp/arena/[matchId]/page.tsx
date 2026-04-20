@@ -36,6 +36,13 @@ export default function ArenaMatchPage() {
           );
           break;
 
+        // 2026-04-19 Phase 2.8: arcade TTS narration. Backend pushes this
+        // asynchronously after the round starts — we just stash the URL
+        // and <ArenaAudioPlayer> autoplays it.
+        case "pvp.audio_ready":
+          s.setPvpArenaAudio((data.audio_url as string) || null);
+          break;
+
         case "pvp.player_answered":
           if (data.user_id !== userId) {
             s.setOpponentAnswered(data.user_id as string);
