@@ -21,15 +21,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 # ── Helper: safely add index (skip if already exists) ──
+# Uses PostgreSQL native IF NOT EXISTS to avoid poisoning the alembic
+# transaction with a duplicate-index error.
 def _create_index_safe(name: str, table: str, columns: list[str]) -> None:
     """Create index if it doesn't already exist."""
-    try:
-        op.create_index(name, table, columns)
-    except Exception:
-        pass  # Index already exists
+    cols = ", ".join(f'"{c}"' for c in columns)
+    op.execute(f'CREATE INDEX IF NOT EXISTS "{name}" ON "{table}" ({cols})')
 
 
 # ── Helper: alter FK ondelete (PostgreSQL) ──
+# Raw SQL with IF EXISTS so missing/renamed constraints are a no-op.
+# Previous version wrapped op.drop_constraint in try/except, but the
+# SQL-level error still poisoned the transaction → aborted state on next op.
 def _alter_fk_ondelete(
     table: str,
     constraint_name: str,
@@ -39,15 +42,14 @@ def _alter_fk_ondelete(
     ondelete: str,
     nullable: bool = False,
 ) -> None:
-    """Drop old FK and recreate with ondelete policy."""
-    try:
-        op.drop_constraint(constraint_name, table, type_="foreignkey")
-    except Exception:
-        pass  # Constraint might not exist with this name
-    op.create_foreign_key(
-        constraint_name, table, remote_table,
-        [local_col], [remote_col],
-        ondelete=ondelete,
+    """Drop old FK (if present) and recreate with ondelete policy."""
+    op.execute(
+        f'ALTER TABLE "{table}" DROP CONSTRAINT IF EXISTS "{constraint_name}"'
+    )
+    op.execute(
+        f'ALTER TABLE "{table}" ADD CONSTRAINT "{constraint_name}" '
+        f'FOREIGN KEY ("{local_col}") REFERENCES "{remote_table}" ("{remote_col}") '
+        f"ON DELETE {ondelete}"
     )
 
 
