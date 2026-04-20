@@ -1,7 +1,7 @@
 """add btree indexes on 32 foreign-key columns that lacked them
 
 Revision ID: 20260418_001
-Revises: 20260417_005
+Revises: 20260410_001
 Create Date: 2026-04-18
 
 Addresses FIND-009 from production-readiness audit (2026-04-18).
@@ -28,7 +28,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "20260418_001"
-down_revision = "20260417_005"
+down_revision = "20260410_001"
 branch_labels = None
 depends_on = None
 
