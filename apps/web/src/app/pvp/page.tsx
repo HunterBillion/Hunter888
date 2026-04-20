@@ -366,11 +366,12 @@ function PvPLobbyContent() {
                     Это займёт ~3 минуты.
                   </p>
                   <button
-                    className="px-6 py-3 bg-accent rounded-lg text-white font-medium hover:opacity-90"
-                    style={{ background: "var(--accent)" }}
+                    type="button"
+                    className="pvp-btn-primary"
+                    style={{ maxWidth: 320 }}
                     onClick={handleFindMatch}
                   >
-                    Начать калибровку
+                    <Sword weight="duotone" size={18} /> Начать калибровку
                   </button>
                 </div>
               ) : (
@@ -405,11 +406,14 @@ function PvPLobbyContent() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
               >
+                {/* 2026-04-20: единый класс pvp-btn-primary для hero-CTA.
+                    Это главная кнопка страницы — большая, с glow, один
+                    источник стиля вместо inline btn-neon + разных py/text. */}
                 <motion.button
                   onClick={handleFindMatch}
                   disabled={store.queueStatus !== "idle"}
-                  className="btn-neon w-full flex items-center justify-center gap-3 text-lg py-5"
-                  whileHover={{ scale: 1.01 }}
+                  className="pvp-btn-primary"
+                  style={{ fontSize: "1.05rem", padding: "1.1rem 1.5rem" }}
                   whileTap={{ scale: 0.98 }}
                 >
                   {store.queueStatus !== "idle" ? (
@@ -455,26 +459,57 @@ function PvPLobbyContent() {
                         <p className="text-sm font-semibold tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>Режимы PvP</p>
                         <div className="grid grid-cols-2 gap-2">
                           {([
-                            { code: "classic", name: "Классическая дуэль", desc: "2 раунда, смена ролей", icon: "\u2694\uFE0F", level: 1 },
-                            { code: "rapid", name: "Скоростной бой", desc: "5 мини-раундов по 2 мин", icon: "\u26A1", level: 5 },
-                            { code: "gauntlet", name: "Испытание", desc: "3-5 дуэлей подряд", icon: "\uD83C\uDFF0", level: 8 },
-                            { code: "team2v2", name: "Командный 2v2", desc: "Команда из 2 продавцов", icon: "\uD83D\uDC65", level: 12 },
+                            { code: "classic", name: "Классическая дуэль", desc: "2 раунда, смена ролей", icon: "\u2694\uFE0F", level: 1, featured: true, badge: "СТАРТ" },
+                            { code: "rapid", name: "Скоростной бой", desc: "5 мини-раундов по 2 мин", icon: "\u26A1", level: 5, featured: false, badge: null },
+                            { code: "gauntlet", name: "Испытание", desc: "3-5 дуэлей подряд", icon: "\uD83C\uDFF0", level: 8, featured: false, badge: null },
+                            { code: "team2v2", name: "Командный 2v2", desc: "Команда из 2 продавцов", icon: "\uD83D\uDC65", level: 12, featured: false, badge: null },
                           ] as const).map((mode) => {
                             const userLevel = store.rating ? Math.max(1, Math.floor(store.rating.total_duels / 2) + 1) : 1;
                             const locked = userLevel < mode.level;
+                            // Featured — только если плитка ещё и unlocked.
+                            const isFeatured = mode.featured && !locked;
+                            // 2026-04-20: плитки были `<motion.div>` без onClick —
+                            // выглядели интерактивно, но не реагировали. Теперь
+                            // `<motion.button>` + unlocked запускает общий
+                            // matchmaking с toast "Ищем в режиме X"; locked —
+                            // toast "Откроется на ур. N". Отдельный mode в
+                            // queue.join — next iteration (нужен bkend-пар-р).
+                            const handleTileClick = () => {
+                              if (locked) {
+                                useNotificationStore.getState().addToast({
+                                  title: "Режим заблокирован",
+                                  body: `«${mode.name}» откроется на ур. ${mode.level}. Сейчас у вас ур. ${userLevel}.`,
+                                  type: "info",
+                                });
+                                return;
+                              }
+                              useNotificationStore.getState().addToast({
+                                title: "Ищем соперника",
+                                body: `Режим: ${mode.name}`,
+                                type: "success",
+                              });
+                              handleFindMatch();
+                            };
                             return (
-                              <motion.div
+                              <motion.button
+                                type="button"
                                 key={mode.code}
-                                whileHover={locked ? {} : { scale: 1.02 }}
-                                className="glass-panel rounded-xl p-3 text-left relative"
-                                style={{ opacity: locked ? 0.5 : 1, cursor: locked ? "not-allowed" : "default" }}
+                                onClick={handleTileClick}
+                                whileTap={locked ? {} : { scale: 0.98 }}
+                                aria-label={locked ? `${mode.name} — откроется на уровне ${mode.level}` : `Начать режим: ${mode.name}`}
+                                className={`pvp-btn-tile ${isFeatured ? "pvp-btn-featured" : ""}`}
+                                data-locked={locked ? "true" : "false"}
+                                style={{ "--tile-accent": "var(--accent)" } as React.CSSProperties}
                               >
+                                {isFeatured && mode.badge && (
+                                  <span className="pvp-btn-badge">{mode.badge}</span>
+                                )}
                                 {locked && <Lock size={14} className="absolute top-2 right-2" style={{ color: "var(--text-muted)" }} />}
                                 <AppIcon emoji={mode.icon} size={20} />
                                 <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-primary)" }}>{mode.name}</p>
                                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
                                 {locked && <p className="text-xs font-medium mt-1" style={{ color: "var(--warning)" }}>Ур. {mode.level}</p>}
-                              </motion.div>
+                              </motion.button>
                             );
                           })}
                         </div>
@@ -485,26 +520,78 @@ function PvPLobbyContent() {
                         <p className="text-sm font-semibold tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>Режимы PvE</p>
                         <div className="grid grid-cols-2 gap-2">
                           {([
-                            { code: "standard", name: "Стандартный бот", desc: "Обычная PvE дуэль", icon: "\uD83E\uDD16", level: 1 },
-                            { code: "ladder", name: "Лестница ботов", desc: "5 ботов, рост сложности", icon: "\uD83D\uDCF6", level: 5 },
-                            { code: "boss", name: "Штурм боссов", desc: "3 уникальных босса", icon: "\uD83D\uDC80", level: 8 },
-                            { code: "mirror", name: "Зеркальный матч", desc: "Играй против себя", icon: "\uD83E\uDE9E", level: 12 },
+                            { code: "standard", name: "Стандартный бот", desc: "Обычная PvE дуэль", icon: "\uD83E\uDD16", level: 1, featured: true, badge: "ПРОБА" },
+                            { code: "ladder", name: "Лестница ботов", desc: "5 ботов, рост сложности", icon: "\uD83D\uDCF6", level: 5, featured: false, badge: null },
+                            { code: "boss", name: "Штурм боссов", desc: "3 уникальных босса", icon: "\uD83D\uDC80", level: 8, featured: false, badge: null },
+                            { code: "mirror", name: "Зеркальный матч", desc: "Играй против себя", icon: "\uD83E\uDE9E", level: 12, featured: false, badge: null },
                           ] as const).map((mode) => {
                             const userLevel = store.rating ? Math.max(1, Math.floor(store.rating.total_duels / 2) + 1) : 1;
                             const locked = userLevel < mode.level;
+                            const isFeatured = mode.featured && !locked;
+                            const handleTileClick = async () => {
+                              if (locked) {
+                                useNotificationStore.getState().addToast({
+                                  title: "Режим заблокирован",
+                                  body: `«${mode.name}» откроется на ур. ${mode.level}. Сейчас у вас ур. ${userLevel}.`,
+                                  type: "info",
+                                });
+                                return;
+                              }
+                              if (pveAccepting) return;
+                              setPveAccepting(true);
+                              try {
+                                const data = await api.post("/pvp/accept-pve", {}) as { duel_id?: string };
+                                if (data?.duel_id) {
+                                  store.resetQueue();
+                                  store.setQueueStatus("matched");
+                                  router.push(`/pvp/duel/${data.duel_id}`);
+                                } else {
+                                  useNotificationStore.getState().addToast({
+                                    title: "Ошибка",
+                                    body: "Не удалось запустить PvE. Попробуйте ещё раз.",
+                                    type: "error",
+                                  });
+                                }
+                              } catch (err) {
+                                logger.error("PvE start failed:", err);
+                                useNotificationStore.getState().addToast({
+                                  title: "Ошибка",
+                                  body: "Не удалось подключиться к PvE.",
+                                  type: "error",
+                                });
+                              } finally {
+                                setPveAccepting(false);
+                              }
+                            };
                             return (
-                              <motion.div
+                              <motion.button
+                                type="button"
                                 key={mode.code}
-                                whileHover={locked ? {} : { scale: 1.02 }}
-                                className="glass-panel rounded-xl p-3 text-left relative"
-                                style={{ opacity: locked ? 0.5 : 1, cursor: locked ? "not-allowed" : "default" }}
+                                onClick={handleTileClick}
+                                disabled={pveAccepting && !locked}
+                                whileTap={locked ? {} : { scale: 0.98 }}
+                                aria-label={locked ? `${mode.name} — откроется на уровне ${mode.level}` : `Запустить PvE: ${mode.name}`}
+                                className={`pvp-btn-tile ${isFeatured ? "pvp-btn-featured" : ""}`}
+                                data-locked={locked ? "true" : "false"}
+                                style={{ "--tile-accent": "var(--success)" } as React.CSSProperties}
                               >
+                                {isFeatured && mode.badge && (
+                                  <span
+                                    className="pvp-btn-badge"
+                                    style={{
+                                      background: "var(--success)",
+                                      boxShadow: "0 2px 8px color-mix(in srgb, var(--success) 50%, transparent)",
+                                    }}
+                                  >
+                                    {mode.badge}
+                                  </span>
+                                )}
                                 {locked && <Lock size={14} className="absolute top-2 right-2" style={{ color: "var(--text-muted)" }} />}
                                 <AppIcon emoji={mode.icon} size={20} />
                                 <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-primary)" }}>{mode.name}</p>
                                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
                                 {locked && <p className="text-xs font-medium mt-1" style={{ color: "var(--warning)" }}>Ур. {mode.level}</p>}
-                              </motion.div>
+                              </motion.button>
                             );
                           })}
                         </div>
@@ -682,14 +769,16 @@ function PvPLobbyContent() {
                         </p>
                       )}
 
-                      {/* Start quiz button */}
+                      {/* Start quiz button — hero-CTA для квиза.
+                          2026-04-20: единый pvp-btn-primary (см. globals.css). */}
                       {quizMode && (quizMode !== "themed" || quizCategory) && (
                         <motion.button
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ duration: 0.18 }}
                           whileTap={{ scale: 0.98 }}
                           disabled={quizStarting}
-                          className="btn-neon w-full flex items-center justify-center gap-2 py-3"
+                          className="pvp-btn-primary"
                           onClick={async () => {
                             setQuizStarting(true);
                             try {

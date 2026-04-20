@@ -166,6 +166,16 @@ export default function TrainingSessionPage() {
     memoriesCreated: number;
   } | null>(null);
   const [activeConsequence, setActiveConsequence] = useState<import("@/types/story").ConsequenceEvent | null>(null);
+  // 2026-04-20: visible feedback for "silent drop" cases in handleSend —
+  // before, if you hit Send while WS was reconnecting or between story
+  // calls, the message vanished with zero UI feedback. Now we flash a
+  // small banner next to the input for 3 seconds explaining why.
+  const [sendBlockedReason, setSendBlockedReason] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sendBlockedReason) return;
+    const t = setTimeout(() => setSendBlockedReason(null), 3000);
+    return () => clearTimeout(t);
+  }, [sendBlockedReason]);
   const [scoreHint, setScoreHint] = useState<{
     script_adherence: number;
     objection_handling: number;
@@ -630,6 +640,13 @@ export default function TrainingSessionPage() {
         case "story.call_ready":
           s.setCallNumber(data.data.call_number as number);
           setStoryTransitionText(`ЗАПУСК ЗВОНКА #${String(data.data.call_number || "")}...`);
+          // 2026-04-20: resetCallState() sets sessionState="connecting" when
+          // transitioning between calls, but nothing in the old story.call_ready
+          // handler flipped it back. The result: user finishes call N, sees
+          // the "between calls" overlay, then lands on call N+1 with the
+          // input permanently disabled. Restore "ready" here so the manager
+          // can actually talk to the next client.
+          s.setSessionState("ready");
           break;
 
         case "story.state_delta":
@@ -677,6 +694,12 @@ export default function TrainingSessionPage() {
           // Clear local messages before replay to prevent duplicates —
           // locally-added messages lack sequenceNumber so replay dedup misses them.
           s.clearMessages();
+          // 2026-04-20: also reset isTyping on resume. If the socket dropped
+          // between `avatar.typing: true` and `avatar.typing: false`, the
+          // store was left in "client is typing" forever after reconnect
+          // until the next message arrived. A fresh session slate means a
+          // fresh typing state too.
+          s.setIsTyping(false);
           s.setEmotion(data.data.emotion as EmotionState);
           s.setElapsed(Math.floor(data.data.elapsed_seconds as number));
           // C2 fix: restore full session state on reconnect
@@ -826,10 +849,26 @@ export default function TrainingSessionPage() {
 
   const handleSend = () => {
     const text = s.input.trim();
-    if (!text || s.sessionState !== "ready" || s.isTyping) return;
-    // Block sending when WS is not connected — messages would be buffered silently
+    if (!text) return;
+    // 2026-04-20: expose blocked-send reason to the user instead of
+    // silently dropping the message. These three conditions each need
+    // their own copy — "waiting for the next call" feels very different
+    // from "no connection".
+    if (s.sessionState !== "ready") {
+      setSendBlockedReason(
+        s.sessionState === "connecting"
+          ? "Подождите — загружается следующий звонок…"
+          : "Сессия завершена, отправка недоступна.",
+      );
+      return;
+    }
+    if (s.isTyping) {
+      setSendBlockedReason("Клиент ещё отвечает — дождитесь реплики.");
+      return;
+    }
     if (connectionState !== "connected") {
       logger.warn("[Training] Send blocked: WS not connected (state=%s)", connectionState);
+      setSendBlockedReason("Нет соединения с сервером. Переподключаемся…");
       return;
     }
     s.addMessage({ id: s.nextMsgId(), role: "user", content: text, timestamp: new Date().toISOString() });
@@ -1231,6 +1270,26 @@ export default function TrainingSessionPage() {
           {/* Text input — always visible at bottom */}
           {s.sessionState === "ready" && (
             <div className="shrink-0 px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.2)" }}>
+              {/* 2026-04-20: inline warning for blocked sends. Shows for 3s
+                  then auto-clears (see sendBlockedReason useEffect above). */}
+              <AnimatePresence>
+                {sendBlockedReason && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: "auto" }}
+                    exit={{ opacity: 0, y: 4, height: 0 }}
+                    className="mb-2 text-xs px-2.5 py-1.5 rounded-md"
+                    style={{
+                      color: "var(--warning)",
+                      background: "rgba(245,158,11,0.08)",
+                      border: "1px solid rgba(245,158,11,0.25)",
+                    }}
+                    role="status"
+                  >
+                    {sendBlockedReason}
+                  </motion.div>
+                )}
+              </AnimatePresence>
               <div className="flex items-end gap-2">
                 <textarea
                   ref={textareaRef}

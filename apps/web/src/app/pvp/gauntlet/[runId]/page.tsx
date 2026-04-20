@@ -6,7 +6,8 @@ import { motion } from "framer-motion";
 import { Loader2, Shield, ArrowRight, Heart, HeartCrack } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { Confetti } from "@/components/ui/Confetti";
-import { PageAuthGate } from "@/components/layout/PageAuthGate";
+// 2026-04-20: PageAuthGate удалён из кодовой базы — auth проверяется в
+// middleware.ts на уровне всей /pvp/* секции. Обёртка стала no-op.
 // Sprint 4 (2026-04-20): shared sfx pack across all 5 Arena modes
 import { useSFX } from "@/components/arena/sfx/useSFX";
 // Phase A (2026-04-20) — Arena visual parity
@@ -27,11 +28,7 @@ interface DuelScore {
 }
 
 export default function GauntletPageWrapper() {
-  return (
-    <PageAuthGate>
-      <GauntletPage />
-    </PageAuthGate>
-  );
+  return <GauntletPage />;
 }
 
 function GauntletPage() {

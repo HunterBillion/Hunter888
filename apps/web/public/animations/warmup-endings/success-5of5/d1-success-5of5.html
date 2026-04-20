@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>D1 — Тебя не остановить</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    min-height: 100vh; font-family: system-ui; color: #fff;
+  }
+  #display {
+    width: 512px; height: 512px;
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    border: 3px solid #1a1a2e;
+  }
+  .crt-overlay {
+    position: absolute; top: 0; left: 0;
+    width: 512px; height: 512px; pointer-events: none; z-index: 2;
+    background: repeating-linear-gradient(0deg,
+      rgba(0,0,0,0.12) 0px, rgba(0,0,0,0.12) 1px,
+      transparent 1px, transparent 4px);
+  }
+  .wrap { position: relative; }
+  .controls { margin-top: 16px; display: flex; gap: 12px; align-items: center; }
+  button {
+    padding: 8px 20px; border-radius: 6px; border: 1px solid #333;
+    background: #1a1a2e; color: #fff; cursor: pointer;
+    font-family: 'Press Start 2P', monospace; font-size: 9px;
+  }
+  button:hover { background: #311573; }
+  .info { font-size: 11px; color: #555; font-family: 'Press Start 2P', monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="display" width="256" height="256"></canvas>
+  <div class="crt-overlay"></div>
+</div>
+<div class="controls">
+  <button onclick="restart()">REPLAY</button>
+  <button onclick="togglePause()">PAUSE</button>
+  <span class="info" id="ti">0.00s</span>
+</div>
+
+<script>
+const cv = document.getElementById('display');
+const cx = cv.getContext('2d');
+cx.imageSmoothingEnabled = false;
+const S = 256;
+
+const C = {
+  sky1: '#0f0e2a', sky2: '#1a1640', sky3: '#2d1b69',
+  star1: '#ffffff', star2: '#aaaacc', star3: '#FFD700',
+  grass1: '#1a3a1a', grass2: '#2d5a1e', grass3: '#3d7a2e',
+  hill1: '#162e16', hill2: '#1e4420',
+  skin: '#e8b87a', skinS: '#c4935a', hair: '#1a1a2e',
+  coat: '#311573', coatL: '#4a2a9e', coatD: '#1e0d47',
+  pants: '#1a1a2e', boots: '#111122',
+  eyeW: '#ffffff', eyeP: '#311573',
+  gold: '#FFD700', goldD: '#cc9900', goldL: '#ffe566',
+  white: '#ffffff', brand: '#311573',
+  check: '#22c55e', checkD: '#1a9e4a', bg: '#0a0a0a',
+};
+
+function px(x, y, c) { cx.fillStyle = c; cx.fillRect(x|0, y|0, 1, 1); }
+function rect(x, y, w, h, c) { cx.fillStyle = c; cx.fillRect(x|0, y|0, w, h); }
+
+// ========== HUNTER SPRITE (scaled 2x → 28×44 on 256 grid) ==========
+const HUNTER = [
+  '........hhhhhhhhhh..........',
+  '......hhhhhhhhhhhhhh........',
+  '....hhhhhhhhhhhhhhhhhh......',
+  '....hhhhhhhhhhhhhhhhhh......',
+  '....hhSSSSSSSSSSSSSShh......',
+  '....hhSwwEESwwSwwEESShh.....',
+  '....hhSSSSSssSSSSSSSShh.....',
+  '....hhSSSSSSSSSSSSSSShh.....',
+  '......SSSSmmmmmSSSSS........',
+  '......SSSSSSSSSSSSss........',
+  '..........SSSSSS............',
+  '..........SSSSSS............',
+  '........ccCCCCCCcc..........',
+  '......ccCCCCCCCCCCcc........',
+  '....ccCCCCCCCCCCCCCCcc......',
+  '..ccccCCCCCCCCCCCCCCcccc....',
+  '..ccCC..CCCCCCCCCC..CCcc....',
+  '..ccCC..CCCCCCCCCC..CCcc....',
+  '....cc....CCCCCC....cc......',
+  '..........CCCCCC............',
+  '..........CCCCCC............',
+  '..........gggggg............',
+  '..........PPPPPP............',
+  '........PPPP..PPPP..........',
+  '........PPPP..PPPP..........',
+  '........PPPP..PPPP..........',
+  '......bbbbbb..bbbbbb........',
+  '....bbbbbbbb..bbbbbbbb......',
+  '....bbbbbbbb..bbbbbbbb......',
+];
+const H_MAP = {
+  'h': C.hair, 'S': C.skin, 's': C.skinS, 'E': C.eyeW, 'w': C.eyeW,
+  'm': C.skinS, 'C': C.coat, 'c': C.coatL, 'P': C.pants, 'b': C.boots, 'g': C.goldD,
+};
+
+function drawSprite(data, cmap, ox, oy, overrides) {
+  data.forEach((row, ry) => {
+    for (let rx = 0; rx < row.length; rx++) {
+      const ch = row[rx];
+      if (ch !== '.') {
+        const color = (overrides && overrides[ch]) || cmap[ch];
+        if (color) px(ox + rx, oy + ry, color);
+      }
+    }
+  });
+}
+
+// Check 10×10
+const CHECK = [
+  '.........G',
+  '........GG',
+  '.......GGG',
+  'G.....GGG.',
+  'GG...GGG..',
+  'GGG.GGG...',
+  '.GGGGG....',
+  '..GGG.....',
+  '...G......',
+  '..........',
+];
+const CHECK_MAP = { 'G': C.check };
+
+// Crown 14×8
+const CROWN = [
+  '..G....G....G.',
+  '..GG..GGG..GG.',
+  '.GgGGGGgGGGGgG',
+  '.GGGGGGGGGGGG.',
+  'GGdGGGdGGGdGGG',
+  'GGGGGGGGGGGGGGG',
+  '.GGGGGGGGGGGGG.',
+  '.GGGGGGGGGGGGG.',
+];
+const CROWN_MAP = { 'G': C.gold, 'g': C.goldL, 'd': C.goldD };
+
+// ========== BACKGROUND ==========
+const stars = [];
+for (let i = 0; i < 60; i++) {
+  stars.push({ x: Math.random()*S|0, y: Math.random()*140|0,
+    b: Math.random(), sp: 1+Math.random()*3, sz: Math.random()>0.85?2:1 });
+}
+
+function hillY(x, seed, base, amp, freq) {
+  return base + Math.sin((x+seed)*freq)*amp + Math.sin((x+seed*1.7)*freq*2.3)*amp*0.3;
+}
+
+function drawBackground(t) {
+  const groundY = 155;
+  // Sky
+  for (let y = 0; y < groundY; y++) {
+    const r = y / groundY;
+    let color;
+    if (r < 0.35) color = C.sky1;
+    else if (r < 0.65) color = C.sky2;
+    else color = C.sky3;
+    rect(0, y, S, 1, color);
+  }
+  // Stars
+  stars.forEach(s => {
+    const tw = Math.sin(t*s.sp + s.b*10);
+    if (tw > -0.3) {
+      cx.globalAlpha = 0.4 + 0.6*((tw+0.3)/1.3);
+      const c = s.b>0.7 ? C.star3 : (s.b>0.4 ? C.star1 : C.star2);
+      px(s.x, s.y, c); if (s.sz>1) px(s.x+1, s.y, c);
+      cx.globalAlpha = 1;
+    }
+  });
+  // Hills
+  for (let x = 0; x < S; x++) {
+    const y1 = hillY(x, 42, groundY-12, 10, 0.015)|0;
+    for (let y = y1; y < groundY; y++) px(x, y, C.hill1);
+  }
+  for (let x = 0; x < S; x++) {
+    const y2 = hillY(x, 17, groundY-5, 6, 0.025)|0;
+    for (let y = y2; y < groundY+3; y++) px(x, y, C.hill2);
+  }
+  // Grass
+  rect(0, groundY, S, S-groundY, C.grass1);
+  for (let x = 0; x < S; x++) {
+    const g = Math.sin(x*3.7+11)*0.5+0.5;
+    if (g>0.35) px(x, groundY, C.grass2);
+    if (g>0.65) px(x, groundY-1, C.grass3);
+  }
+  [20,50,80,110,140,180,210,240].forEach((fx,i) => {
+    px(fx, groundY+1+(i%2), ['#ff6b6b','#ffd93d','#6bcb77','#4d96ff'][i%4]);
+    px(fx, groundY, C.grass3);
+  });
+}
+
+// ========== PARTICLES ==========
+let particles = [];
+function spawnP(cx2,cy2,count,colors,spread) {
+  for (let i=0;i<count;i++) {
+    const a=(Math.PI*2/count)*i+(Math.random()-0.5)*0.8;
+    const sp=spread*(0.5+Math.random()*0.8);
+    particles.push({x:cx2,y:cy2,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-1.2,
+      life:1,decay:0.006+Math.random()*0.006,
+      color:colors[Math.floor(Math.random()*colors.length)]});
+  }
+}
+function drawP() {
+  particles=particles.filter(p=>p.life>0);
+  particles.forEach(p=>{
+    p.x+=p.vx;p.y+=p.vy;p.vy+=0.025;p.life-=p.decay;
+    cx.globalAlpha=Math.max(0,p.life);
+    px(p.x|0,p.y|0,p.color); px((p.x+1)|0,p.y|0,p.color);
+    cx.globalAlpha=1;
+  });
+}
+
+function drawText(text,x,y,color,size) {
+  cx.fillStyle=color;
+  cx.font=`${size}px "Press Start 2P",monospace`;
+  cx.textAlign='center'; cx.textBaseline='middle';
+  cx.fillText(text,x,y);
+}
+
+// ========== STATE ==========
+let startTime=0, paused=false, pauseTime=0;
+let crownDone=false, checkDone=[false,false,false,false,false];
+
+function restart() {
+  startTime=performance.now(); paused=false;
+  particles=[]; crownDone=false; checkDone=[false,false,false,false,false];
+  requestAnimationFrame(loop);
+}
+function togglePause() {
+  if(paused){startTime+=performance.now()-pauseTime;paused=false;requestAnimationFrame(loop);}
+  else{paused=true;pauseTime=performance.now();}
+}
+
+function loop(now) {
+  if(paused)return;
+  let t=(now-startTime)/1000;
+  if(t>6){restart();return;}
+  t=Math.min(t,5);
+  document.getElementById('ti').textContent=t.toFixed(2)+'s';
+  render(t);
+  requestAnimationFrame(loop);
+}
+
+function render(t) {
+  rect(0,0,S,S,C.bg);
+  drawBackground(t);
+
+  // Hunter at center-left
+  const hx = 108; const hy = 108;
+  const breathY = Math.sin(t*2.5)*1.2;
+
+  // Eye glow
+  const eyeGlow = t>=2.0;
+  const ov = {};
+  if (eyeGlow) {
+    ov['E']=C.eyeP; ov['w']=C.eyeP;
+    const gp = 0.7+0.3*Math.sin(t*6);
+    cx.globalAlpha = 0.25*gp;
+    rect(hx+6, hy+breathY+4, 16, 4, C.brand);
+    cx.globalAlpha = 1;
+  }
+  drawSprite(HUNTER, H_MAP, hx, hy+breathY, eyeGlow?ov:null);
+
+  // ========= CHECKS — right top, horizontal row =========
+  if (t>=0.8) {
+    const checkGap = 14;
+    const rowW = 5*(10+4);
+    const cStartX = S-rowW-8;
+    const cY = 10;
+    const rowCX = cStartX + rowW/2;
+
+    for (let i=0;i<5;i++) {
+      const ct = 0.8+i*0.18;
+      if (t>=ct) {
+        const age=t-ct;
+        let offY = age<0.12 ? -8*(1-age/0.12) : age<0.2 ? 2*Math.sin((age-0.12)/0.08*Math.PI) : 0;
+        cx.globalAlpha = Math.min(age/0.08,1);
+        drawSprite(CHECK,CHECK_MAP,cStartX+i*checkGap, cY+offY, null);
+        cx.globalAlpha=1;
+        if(!checkDone[i]&&age>0.05){
+          spawnP(cStartX+i*checkGap+5,cY+5,4,[C.check,C.checkD,C.white],0.7);
+          checkDone[i]=true;
+        }
+      }
+    }
+    if (t>=1.7) {
+      cx.globalAlpha=Math.min((t-1.7)/0.2,1);
+      drawText('5/5', rowCX, cY+20, C.check, 10);
+      cx.globalAlpha=1;
+    }
+  }
+
+  // ========= FLASH =========
+  if (t>=1.8 && t<2.4) {
+    const fp=(t-1.8)/0.6;
+    const fa = fp<0.2 ? fp/0.2*0.6 : Math.max(0,0.6*(1-(fp-0.2)/0.8));
+    cx.globalAlpha=fa; rect(0,0,S,S,C.white); cx.globalAlpha=1;
+  }
+
+  // ========= CROWN =========
+  if (t>=2.5) {
+    const ct=t-2.5;
+    const crownTY = hy+breathY-9;
+    const crownCX = hx+7;
+    let crY;
+    if (ct<0.4) {
+      const p=ct/0.4;
+      const b=p<0.6?p/0.6:1-Math.sin((p-0.6)/0.4*Math.PI*2)*0.15*(1-p);
+      crY=crownTY-16+16*Math.min(b,1.1);
+    } else {
+      crY=crownTY+Math.sin((t-2.9)*2)*0.4;
+    }
+    cx.globalAlpha=Math.min(ct/0.15,1);
+    drawSprite(CROWN,CROWN_MAP,crownCX,crY|0,null);
+    cx.globalAlpha=1;
+    if(ct>0.3){
+      cx.globalAlpha=0.1+0.08*Math.sin(t*5);
+      rect(crownCX+1,(crY|0)-1,12,1,C.goldL);
+      cx.globalAlpha=1;
+    }
+    if(!crownDone&&ct>0.35){
+      spawnP(crownCX+7,crownTY+3,14,[C.gold,C.goldL,C.goldD,C.white],1.4);
+      crownDone=true;
+    }
+  }
+
+  drawP();
+
+  // ========= XP PANEL — 256px quality =========
+  if (t>=3.8) {
+    const tt=t-3.8;
+    const pa=Math.min(tt/0.25,1);
+
+    const pX=16, pY=172, pW=224, pH=76;
+
+    // Fill
+    cx.globalAlpha=pa*0.92;
+    rect(pX+3,pY+2,pW-6,pH-4,'#0a0a14');
+    rect(pX+2,pY+3,pW-4,pH-6,'#0a0a14');
+
+    // Gold border
+    cx.globalAlpha=pa*0.75;
+    rect(pX+4,pY,pW-8,2,C.gold);
+    rect(pX+4,pY+pH-2,pW-8,2,C.gold);
+    rect(pX,pY+4,2,pH-8,C.gold);
+    rect(pX+pW-2,pY+4,2,pH-8,C.gold);
+    // Corners
+    rect(pX+2,pY+2,2,2,C.gold);
+    rect(pX+pW-4,pY+2,2,2,C.gold);
+    rect(pX+2,pY+pH-4,2,2,C.gold);
+    rect(pX+pW-4,pY+pH-4,2,2,C.gold);
+    // Inner highlight
+    cx.globalAlpha=pa*0.15;
+    rect(pX+6,pY+4,pW-12,1,C.goldL);
+
+    cx.globalAlpha=pa;
+    const pcx=pX+pW/2;
+
+    // +50 XP
+    const xpP=Math.min(tt/0.8,1);
+    const xpE=1-Math.pow(1-xpP,3);
+    const xpV=Math.round(xpE*50);
+    drawText(`+${xpV} XP`, pcx, pY+18, C.gold, 18);
+
+    // Divider
+    if(tt>0.2){
+      cx.globalAlpha=Math.min((tt-0.2)/0.15,1)*0.5;
+      rect(pX+20,pY+30,pW-40,1,C.goldD);
+    }
+
+    // STREAK x5
+    if(tt>0.3){
+      cx.globalAlpha=Math.min((tt-0.3)/0.2,1);
+      drawText('STREAK',pcx-20,pY+42,C.white,9);
+      drawText('x5',pcx+25,pY+42,C.gold,11);
+    }
+
+    // Divider 2
+    if(tt>0.4){
+      cx.globalAlpha=Math.min((tt-0.4)/0.15,1)*0.3;
+      rect(pX+20,pY+50,pW-40,1,C.goldD);
+    }
+
+    // НЕ ОСТАНОВИТЬ
+    if(tt>0.5){
+      const ta=Math.min((tt-0.5)/0.3,1);
+      const pulse=0.85+0.15*Math.sin(t*4);
+      cx.globalAlpha=ta*pulse;
+      drawText('НЕ ОСТАНОВИТЬ!',pcx,pY+63,C.goldL,8);
+    }
+
+    cx.globalAlpha=1;
+  }
+
+  // Vignette
+  const vg=cx.createRadialGradient(S/2,S/2,S*0.25,S/2,S/2,S*0.65);
+  vg.addColorStop(0,'rgba(0,0,0,0)');
+  vg.addColorStop(1,'rgba(0,0,0,0.3)');
+  cx.fillStyle=vg;
+  cx.fillRect(0,0,S,S);
+}
+
+document.fonts.ready.then(()=>setTimeout(restart,200));
+</script>
+</body>
+</html>

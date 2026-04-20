@@ -360,6 +360,203 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
    ═══════════════════════════════════════════════════════════════════════════ */
 @layer components {
 
+  /* ─────────────────────────────────────────────────────────────
+   * TYPOGRAPHY PRIMITIVES (2026-04-20)
+   * Единый набор для всех UI-панелей, чтобы избежать хаоса
+   * letter-spacing / font-family / размеров.
+   * ────────────────────────────────────────────────────────── */
+  .t-kicker {
+    font-family: var(--font-vt323), 'Press Start 2P', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    line-height: 1.1;
+  }
+  .t-title {
+    font-family: var(--font-vt323), 'Press Start 2P', monospace;
+    font-size: 15px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    line-height: 1.2;
+  }
+  .t-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: 0.01em;
+  }
+  .t-body {
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.4;
+    color: var(--text-secondary);
+  }
+  .t-label-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+   * BUTTON SYSTEM (2026-04-20)
+   * 4 уровня иерархии — чтобы пользователь не путался что главное.
+   * Владельцу важно: «выделяй те элементы, который важны».
+   *   pvp-btn-primary   — единственная hero-CTA страницы («Найти
+   *                        соперника», «Начать тест»). Accent-glow,
+   *                        large, pulse-ready.
+   *   pvp-btn-tile      — обычные плитки выбора режима. glass-panel
+   *                        border, hover lifts 2px, цвет бордера
+   *                        задаётся через --tile-accent inline.
+   *   pvp-btn-featured  — выделенная «рекомендуем-новичку» плитка.
+   *                        Ring-glow в accent-цвете, CTA-бейдж
+   *                        сверху («СТАРТ» / «ПОПУЛЯРНО»).
+   *   pvp-btn-chip      — мелкие чипы-теги (категории, личности,
+   *                        lifelines). Compact, pill-shape.
+   * ────────────────────────────────────────────────────────── */
+
+  .pvp-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 1rem 1.5rem;
+    background: var(--accent);
+    color: #fff;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-lg);
+    font-size: 1rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    box-shadow:
+      0 4px 16px var(--accent-glow),
+      0 0 0 1px color-mix(in srgb, #fff 10%, transparent) inset;
+    transition:
+      transform 180ms ease-out,
+      box-shadow 180ms ease-out,
+      filter 180ms ease-out;
+    cursor: pointer;
+  }
+  .pvp-btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    filter: brightness(1.07);
+    box-shadow:
+      0 6px 22px var(--accent-glow),
+      0 0 0 1px color-mix(in srgb, #fff 14%, transparent) inset;
+  }
+  .pvp-btn-primary:active:not(:disabled) {
+    transform: translateY(1px) scale(0.99);
+  }
+  .pvp-btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .pvp-btn-tile {
+    position: relative;
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: var(--surface-card);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    padding: 0.75rem;
+    transition:
+      transform 150ms ease-out,
+      border-color 150ms ease-out,
+      box-shadow 150ms ease-out;
+    cursor: pointer;
+  }
+  .pvp-btn-tile:hover:not(:disabled) {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--tile-accent, var(--accent)) 55%, transparent);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--tile-accent, var(--accent)) 20%, transparent);
+  }
+  .pvp-btn-tile:active:not(:disabled) {
+    transform: translateY(0) scale(0.98);
+  }
+  .pvp-btn-tile:disabled {
+    cursor: not-allowed;
+  }
+  .pvp-btn-tile[data-locked="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Featured — для самой важной плитки, которую юзер должен
+     заметить первой (напр. «Классическая дуэль» для нового игрока). */
+  .pvp-btn-featured {
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 8%, var(--surface-card)) 0%,
+      var(--surface-card) 70%
+    );
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
+      0 4px 18px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  .pvp-btn-featured:hover:not(:disabled) {
+    border-color: var(--accent);
+    box-shadow:
+      0 0 0 1px var(--accent),
+      0 6px 24px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+
+  /* Featured-badge — «СТАРТ» / «ПОПУЛЯРНО» pill, сверху-справа
+     плитки. Используется с .pvp-btn-featured. */
+  .pvp-btn-badge {
+    position: absolute;
+    top: -8px;
+    right: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.15rem 0.6rem;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    border-radius: var(--radius-full);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 50%, transparent);
+    white-space: nowrap;
+  }
+
+  .pvp-btn-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.7rem;
+    background: var(--input-bg);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      border-color 120ms ease-out,
+      color 120ms ease-out,
+      background 120ms ease-out;
+  }
+  .pvp-btn-chip:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .pvp-btn-chip[aria-pressed="true"],
+  .pvp-btn-chip[data-active="true"] {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
   /* ── Panel System (3 levels of hierarchy) ────────────── */
 
   /* Primary: main content panels — solid backgrounds for readability */

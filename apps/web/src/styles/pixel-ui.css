@@ -1,0 +1,224 @@
+/**
+ * Pixel UI — unified design tokens for arcade-style surfaces.
+ *
+ * Created 2026-04-18. Single source of truth for:
+ *   - pixel-border widths + colors + shadows
+ *   - button sizes tuned for middle-aged users (fat-finger safe, 48+ px tap targets)
+ *   - font scales that stay readable at arm's length
+ *   - box-shadow "stepped" shadow patterns (the "3D pressed" look)
+ *
+ * All components should consume these vars via `var(--ui-*)` rather than
+ * hard-coded `2px solid var(--accent)` / `3px 3px 0 0 var(--accent)` that
+ * drifted across pages. Change a value here → propagates everywhere.
+ *
+ * Import path: added to apps/web/src/app/globals.css via @import.
+ */
+
+:root {
+  /* ═══ Pixel border widths ═══ */
+  --ui-border-sm: 1px;      /* minor dividers */
+  --ui-border-md: 2px;      /* default pixel frame */
+  --ui-border-lg: 3px;      /* emphasis / CTA / focus */
+
+  /* ═══ Pixel shadow offsets ═══ */
+  --ui-shadow-xs: 2px 2px 0 0 rgba(0, 0, 0, 0.15);
+  --ui-shadow-sm: 2px 2px 0 0 var(--border-color);
+  --ui-shadow-md: 3px 3px 0 0 var(--accent);
+  --ui-shadow-lg: 4px 4px 0 0 #000;
+  --ui-shadow-cta: 4px 4px 0 0 #000, 0 0 12px var(--accent-glow);
+  --ui-shadow-danger: 3px 3px 0 0 var(--danger);
+  --ui-shadow-warning: 3px 3px 0 0 var(--warning);
+  --ui-shadow-success: 3px 3px 0 0 var(--success);
+
+  /* ═══ Surface dimensions (tuned for middle-aged users, fat-finger safe) ═══ */
+  --ui-btn-h-sm: 36px;      /* icon-only, secondary */
+  --ui-btn-h-md: 44px;      /* default */
+  --ui-btn-h-lg: 52px;      /* CTA, primary actions */
+  --ui-btn-h-xl: 64px;      /* hero CTA ("В БОЙ", "НАЧАТЬ") */
+
+  --ui-tap-min: 48px;       /* WCAG tap target minimum */
+  --ui-gap-sm: 8px;
+  --ui-gap-md: 12px;
+  --ui-gap-lg: 16px;
+
+  /* ═══ Font scale — adult-readable (base 16px, up from 14) ═══ */
+  --ui-text-xs: 12px;       /* labels, badges ONLY */
+  --ui-text-sm: 14px;       /* captions */
+  --ui-text-base: 16px;     /* body — was 13-14 in many places, now min 16 */
+  --ui-text-md: 18px;       /* prominent copy */
+  --ui-text-lg: 22px;       /* card titles */
+  --ui-text-xl: 28px;       /* page H1 */
+  --ui-text-2xl: 36px;      /* hero */
+
+  /* ═══ Pixel font sizes (font-pixel is a VT323-like display font — needs 2-4px bigger than body) ═══ */
+  --ui-pixel-xs: 11px;
+  --ui-pixel-sm: 13px;
+  --ui-pixel-md: 15px;
+  --ui-pixel-lg: 18px;
+  --ui-pixel-xl: 24px;
+
+  /* ═══ Borders radius \u2014 always 0 for pure pixel, but keeping var for escape hatch ═══ */
+  --ui-radius: 0;
+}
+
+/* 2026-04-18: classes at root level (not @layer components) —
+   @import'd file can't reference @tailwind layers declared in parent file. */
+
+.ui-pixel-card {
+  background: var(--bg-panel);
+  border: var(--ui-border-md) solid var(--border-color);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-xs);
+  transition: box-shadow 120ms ease-out, transform 120ms ease-out;
+}
+.ui-pixel-card--accent {
+  border-color: var(--accent);
+  box-shadow: var(--ui-shadow-md);
+}
+
+/* ═══ Pixel buttons ═══ */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-gap-sm);
+  padding: 0 var(--ui-gap-lg);
+  height: var(--ui-btn-h-md);
+  min-width: var(--ui-tap-min);
+  font-size: var(--ui-pixel-sm);
+  font-family: var(--font-pixel, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  border: var(--ui-border-md) solid var(--border-color);
+  border-radius: var(--ui-radius);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  box-shadow: var(--ui-shadow-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: box-shadow 120ms ease-out, transform 120ms ease-out;
+}
+.ui-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--border-color);
+}
+.ui-btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+.ui-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ui-btn--primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  box-shadow: var(--ui-shadow-cta);
+}
+.ui-btn--primary:hover:not(:disabled) {
+  box-shadow: 5px 5px 0 0 #000, 0 0 16px var(--accent-glow);
+}
+
+.ui-btn--danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+  box-shadow: var(--ui-shadow-danger);
+}
+
+.ui-btn--lg {
+  height: var(--ui-btn-h-lg);
+  font-size: var(--ui-pixel-md);
+  padding: 0 24px;
+}
+
+.ui-btn--xl {
+  height: var(--ui-btn-h-xl);
+  font-size: var(--ui-pixel-lg);
+  padding: 0 32px;
+  letter-spacing: 0.2em;
+}
+
+/* ═══ Pixel toggle/choice (selected state) ═══ */
+.ui-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: var(--ui-gap-md);
+  background: var(--bg-panel);
+  border: var(--ui-border-md) solid var(--border-color);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-xs);
+  cursor: pointer;
+  transition: box-shadow 120ms, transform 120ms, background 120ms;
+}
+.ui-choice:hover:not([data-disabled="true"]) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--border-color);
+}
+.ui-choice[data-active="true"] {
+  background: var(--accent-muted);
+  border-color: var(--accent);
+  box-shadow: var(--ui-shadow-md);
+}
+.ui-choice[data-active="true"]::before {
+  content: "▶";
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-family: var(--font-pixel, monospace);
+  font-size: 10px;
+  color: var(--accent);
+}
+
+/* ═══ Pixel input ═══ */
+.ui-input {
+  min-height: var(--ui-btn-h-md);
+  padding: 0 var(--ui-gap-md);
+  font-size: var(--ui-text-base);
+  font-family: var(--font-mono, monospace);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  border: var(--ui-border-md) solid var(--accent);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-xs);
+  outline: none;
+}
+.ui-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+/* ═══ Pixel badge/chip ═══ */
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: var(--ui-pixel-xs);
+  font-family: var(--font-pixel, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius);
+  background: var(--input-bg);
+  color: var(--text-muted);
+}
+.ui-badge--accent {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+/* ═══ Arcade background grid (shared with panel-grid-bg but stronger) ═══ */
+.ui-arcade-bg {
+  background-color: var(--bg-primary);
+  background-image:
+    radial-gradient(ellipse at top, var(--accent-muted) 0%, transparent 60%),
+    repeating-linear-gradient(0deg, transparent 0, transparent 23px, rgba(107, 77, 199, 0.04) 23px, rgba(107, 77, 199, 0.04) 24px),
+    repeating-linear-gradient(90deg, transparent 0, transparent 23px, rgba(107, 77, 199, 0.04) 23px, rgba(107, 77, 199, 0.04) 24px);
+}
+

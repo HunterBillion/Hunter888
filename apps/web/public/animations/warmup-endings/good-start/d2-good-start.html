@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>D2 — Хорошее начало дня</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: system-ui;
+    color: #fff;
+  }
+  #display {
+    width: 512px; height: 512px;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border: 3px solid #1a1a2e;
+  }
+  .crt-overlay {
+    position: absolute; top: 0; left: 0;
+    width: 512px; height: 512px;
+    pointer-events: none;
+    background: repeating-linear-gradient(0deg,
+      rgba(0,0,0,0.12) 0px, rgba(0,0,0,0.12) 1px,
+      transparent 1px, transparent 4px);
+    z-index: 2;
+  }
+  .wrap { position: relative; }
+  .controls { margin-top: 16px; display: flex; gap: 12px; align-items: center; }
+  button {
+    padding: 8px 20px; border-radius: 6px; border: 1px solid #333;
+    background: #1a1a2e; color: #fff; cursor: pointer;
+    font-family: 'Press Start 2P', monospace; font-size: 9px;
+  }
+  button:hover { background: #311573; }
+  .info { font-size: 11px; color: #555; font-family: 'Press Start 2P', monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="display" width="256" height="256"></canvas>
+  <div class="crt-overlay"></div>
+</div>
+<div class="controls">
+  <button onclick="restart()">REPLAY</button>
+  <button onclick="togglePause()">PAUSE</button>
+  <span class="info" id="ti">0.00s</span>
+</div>
+
+<script>
+const cv = document.getElementById('display');
+const cx = cv.getContext('2d');
+cx.imageSmoothingEnabled = false;
+const S = 256; // bigger virtual res = smaller pixels = more detail
+
+// ========== PALETTE ==========
+const C = {
+  skyNight: '#1a1640',
+  skyDawn1: '#264653',
+  skyDawn2: '#2a6f7a',
+  skyWarm:  '#F4A261',
+  skyHot:   '#E76F51',
+  sunCore:  '#FFD700',
+  sunGlow:  '#F4A261',
+  sunEdge:  '#E76F51',
+  // Ground
+  grass1: '#264653',
+  grass2: '#2d6a4f',
+  grass3: '#40916c',
+  hill1:  '#1b3a2a',
+  hill2:  '#264040',
+  // Birds
+  bird: '#264653',
+  birdL: '#3a5a6a',
+  // Coffee
+  cup1: '#e8e8e8',
+  cup2: '#cccccc',
+  cupD: '#999999',
+  coffee: '#6f4e37',
+  steam: '#dddddd',
+  // Text
+  white: '#ffffff',
+  gold: '#FFD700',
+  warm: '#F4A261',
+  brand: '#311573',
+};
+
+function px(x, y, c) { cx.fillStyle = c; cx.fillRect(x|0, y|0, 1, 1); }
+function rect(x, y, w, h, c) { cx.fillStyle = c; cx.fillRect(x|0, y|0, w, h); }
+
+// ========== BACKGROUND ==========
+function lerpColor(a, b, t) {
+  const pa = [parseInt(a.slice(1,3),16), parseInt(a.slice(3,5),16), parseInt(a.slice(5,7),16)];
+  const pb = [parseInt(b.slice(1,3),16), parseInt(b.slice(3,5),16), parseInt(b.slice(5,7),16)];
+  const r = Math.round(pa[0] + (pb[0]-pa[0]) * t);
+  const g = Math.round(pa[1] + (pb[1]-pa[1]) * t);
+  const bl = Math.round(pa[2] + (pb[2]-pa[2]) * t);
+  return `rgb(${r},${g},${bl})`;
+}
+
+// Stars
+const stars = [];
+for (let i = 0; i < 30; i++) {
+  stars.push({ x: Math.random()*S|0, y: Math.random()*50|0, b: Math.random(), sp: 1+Math.random()*2 });
+}
+
+function hillY(x, seed, base, amp, freq) {
+  return base + Math.sin((x+seed)*freq)*amp + Math.sin((x+seed*1.7)*freq*2.3)*amp*0.3;
+}
+
+function drawSky(t) {
+  const sunrise = Math.min(t / 4.5, 1); // sunrise continues through full animation
+  const horizonY = 155;
+
+  for (let y = 0; y < horizonY; y++) {
+    const yRatio = y / horizonY;
+    let topCol = lerpColor(C.skyNight, '#1a3355', sunrise);
+    let midCol = lerpColor(C.skyDawn1, C.skyDawn2, sunrise);
+    let botCol = lerpColor(C.skyDawn1, C.skyWarm, sunrise);
+
+    let color;
+    if (yRatio < 0.4) {
+      color = lerpColor(topCol, midCol, yRatio / 0.4);
+    } else if (yRatio < 0.75) {
+      color = lerpColor(midCol, botCol, (yRatio - 0.4) / 0.35);
+    } else {
+      // Horizon glow band — pink/orange dawn
+      const hRatio = (yRatio - 0.75) / 0.25;
+      const dawnGlow = lerpColor(C.skyWarm, '#ff7b54', hRatio);
+      color = lerpColor(botCol, dawnGlow, sunrise * hRatio);
+    }
+    rect(0, y, S, 1, color);
+  }
+
+  // Dawn glow — horizontal light band near horizon
+  if (sunrise > 0.2) {
+    const glowAlpha = Math.min((sunrise - 0.2) / 0.5, 1) * 0.25;
+    cx.globalAlpha = glowAlpha;
+    for (let y = horizonY - 35; y < horizonY; y++) {
+      const band = 1 - Math.abs(y - (horizonY - 15)) / 20;
+      if (band > 0) {
+        cx.globalAlpha = glowAlpha * band;
+        rect(0, y, S, 1, '#ffaa66');
+      }
+    }
+    cx.globalAlpha = 1;
+  }
+
+  // Stars fade
+  if (sunrise < 0.7) {
+    const starAlpha = 1 - sunrise / 0.7;
+    stars.forEach(s => {
+      const tw = Math.sin(t * s.sp + s.b * 10);
+      if (tw > -0.2) {
+        cx.globalAlpha = starAlpha * (0.3 + 0.7 * ((tw+0.2)/1.2));
+        px(s.x * 2, s.y * 2, s.b > 0.5 ? C.white : '#aaccdd');
+        cx.globalAlpha = 1;
+      }
+    });
+  }
+}
+
+function drawSun(t) {
+  if (t < 0.3) return;
+  const sunProgress = Math.min((t - 0.3) / 3.5, 1); // slow continuous rise
+  const eased = 1 - Math.pow(1 - sunProgress, 3);
+
+  const sunX = S / 2;
+  const sunStartY = 158; // starts at horizon
+  const sunEndY = 80;    // rises much higher
+  const sunY = sunStartY + (sunEndY - sunStartY) * eased;
+  const sunR = 10; // bigger sun for 256
+
+  // Wide dawn glow around sun
+  const bigGlow = sunR + 20;
+  for (let dy = -bigGlow; dy <= bigGlow; dy++) {
+    for (let dx = -bigGlow; dx <= bigGlow; dx++) {
+      const dist = Math.sqrt(dx*dx+dy*dy) / bigGlow;
+      if (dist < 1) {
+        cx.globalAlpha = Math.pow(1-dist, 2) * 0.15;
+        px(sunX+dx, sunY+dy, '#ffcc77');
+      }
+    }
+  }
+
+  // Inner glow
+  const glowR = sunR + 6 + Math.sin(t * 3) * 2;
+  for (let dy = -glowR; dy <= glowR; dy++) {
+    for (let dx = -glowR; dx <= glowR; dx++) {
+      if (dx*dx + dy*dy <= glowR*glowR) {
+        const dist = Math.sqrt(dx*dx+dy*dy) / glowR;
+        cx.globalAlpha = (1-dist) * 0.35;
+        px(sunX+dx, sunY+dy, C.sunGlow);
+      }
+    }
+  }
+  cx.globalAlpha = 1;
+
+  // Sun body
+  for (let dy = -sunR; dy <= sunR; dy++) {
+    for (let dx = -sunR; dx <= sunR; dx++) {
+      if (dx*dx + dy*dy <= sunR*sunR) {
+        const dist = Math.sqrt(dx*dx+dy*dy) / sunR;
+        const col = dist < 0.4 ? C.sunCore : (dist < 0.75 ? C.sunGlow : C.sunEdge);
+        px(sunX+dx, sunY+dy, col);
+      }
+    }
+  }
+
+  // Light rays
+  if (sunProgress > 0.4) {
+    const rayAlpha = (sunProgress - 0.4) * 1.5 * 0.12;
+    cx.globalAlpha = rayAlpha;
+    for (let r = 0; r < 12; r++) {
+      const angle = (Math.PI * 2 / 12) * r + t * 0.2;
+      const len = 14 + Math.sin(t*2 + r) * 5;
+      for (let d = sunR+3; d < sunR+len; d++) {
+        px(sunX + Math.cos(angle)*d, sunY + Math.sin(angle)*d, C.sunCore);
+      }
+    }
+    cx.globalAlpha = 1;
+  }
+}
+
+function drawLandscape(t) {
+  const groundY = 155;
+  // Far hills
+  for (let x = 0; x < S; x++) {
+    const y1 = hillY(x, 30, groundY - 12, 10, 0.018) | 0;
+    for (let y = y1; y < groundY; y++) px(x, y, C.hill1);
+  }
+  // Near hills
+  for (let x = 0; x < S; x++) {
+    const y2 = hillY(x, 10, groundY - 5, 6, 0.03) | 0;
+    for (let y = y2; y < groundY + 3; y++) px(x, y, C.hill2);
+  }
+  // Grass ground
+  rect(0, groundY, S, S - groundY, C.grass1);
+  for (let x = 0; x < S; x++) {
+    const g = Math.sin(x*3.7+11)*0.5+0.5;
+    if (g > 0.35) px(x, groundY, C.grass2);
+    if (g > 0.65) px(x, groundY - 1, C.grass3);
+    const g2 = Math.sin(x*7.1+5)*0.5+0.5;
+    if (g2 > 0.5) px(x, groundY + 2 + (x%3), C.grass2);
+  }
+  // Flowers
+  [20, 50, 80, 110, 140, 180, 210, 240].forEach((fx, i) => {
+    px(fx, groundY + 1 + (i%2), ['#ff6b6b','#ffd93d','#6bcb77','#ff9ff3'][i%4]);
+    px(fx, groundY, C.grass3);
+  });
+}
+
+// ========== BIRDS ==========
+function drawBird(bx, by, wingPhase) {
+  // Tiny 5×3 bird
+  const wing = Math.sin(wingPhase) > 0;
+  if (wing) {
+    // Wings up: V shape
+    px(bx-2, by-1, C.bird); px(bx-1, by, C.bird);
+    px(bx, by, C.bird);
+    px(bx+1, by, C.bird); px(bx+2, by-1, C.bird);
+  } else {
+    // Wings down
+    px(bx-2, by+1, C.bird); px(bx-1, by, C.bird);
+    px(bx, by, C.bird);
+    px(bx+1, by, C.bird); px(bx+2, by+1, C.bird);
+  }
+}
+
+// ========== COFFEE CUP SPRITE 24×20 (bigger!) ==========
+const CUP = [
+  '........................',
+  '........................',
+  '......WWWWWWWWWW........',
+  '.....WddddddddddW......',
+  '....WdcccccccccccdW.....',
+  '....WdcccccccccccdW.WW..',
+  '....WdcccccccccccdW.W.W.',
+  '....WdcccccccccccdW.W.W.',
+  '....WdcccccccccccdW.WW..',
+  '....WdcccccccccccdW.....',
+  '....WdcccccccccccdW.....',
+  '.....WccccccccccW.......',
+  '......WWWWWWWWWW........',
+  '.....dWWWWWWWWWWd.......',
+  '......dddddddddd........',
+  '........................',
+  '........................',
+  '........................',
+  '........................',
+  '........................',
+];
+const CUP_MAP = { 'W': C.cup1, 'c': C.coffee, 'd': C.cupD };
+
+function drawSprite(data, cmap, ox, oy) {
+  data.forEach((row, ry) => {
+    for (let rx = 0; rx < row.length; rx++) {
+      const ch = row[rx];
+      if (ch !== '.' && cmap[ch]) px(ox+rx, oy+ry, cmap[ch]);
+    }
+  });
+}
+
+// Steam particles
+function drawSteam(cx2, cy, t) {
+  for (let i = 0; i < 3; i++) {
+    const phase = t * 2 + i * 2.1;
+    const life = (phase % 3) / 3; // 0→1 loop
+    if (life < 0.8) {
+      const sx = cx2 + Math.sin(phase * 1.5 + i) * 2;
+      const sy = cy - life * 8;
+      cx.globalAlpha = (1 - life/0.8) * 0.5;
+      px(sx|0, sy|0, C.steam);
+      if (life < 0.5) px((sx+1)|0, sy|0, C.steam);
+      cx.globalAlpha = 1;
+    }
+  }
+}
+
+// ========== TEXT ==========
+function drawText(text, x, y, color, size) {
+  cx.fillStyle = color;
+  cx.font = `${size}px "Press Start 2P", monospace`;
+  cx.textAlign = 'center';
+  cx.textBaseline = 'middle';
+  cx.fillText(text, x, y);
+}
+
+// Typewriter: returns how many chars to show
+function typewriterCount(text, startT, t, msPerChar) {
+  if (t < startT) return 0;
+  return Math.min(text.length, Math.floor((t - startT) * 1000 / msPerChar));
+}
+
+// ========== PROGRESS BAR ==========
+function drawProgressBar(x, y, w, h, progress, color, bgColor) {
+  // BG
+  rect(x, y, w, h, bgColor);
+  // Fill
+  const fillW = Math.round(w * progress);
+  if (fillW > 0) rect(x, y, fillW, h, color);
+  // Pixel border
+  cx.globalAlpha = 0.4;
+  rect(x, y, w, 1, C.white);  // top highlight
+  rect(x, y+h-1, w, 1, '#000');  // bottom shadow
+  cx.globalAlpha = 1;
+}
+
+// ========== ANIMATION ==========
+let startTime = 0, paused = false, pauseTime = 0;
+
+function restart() {
+  startTime = performance.now();
+  paused = false;
+  requestAnimationFrame(loop);
+}
+function togglePause() {
+  if (paused) { startTime += performance.now()-pauseTime; paused=false; requestAnimationFrame(loop); }
+  else { paused=true; pauseTime=performance.now(); }
+}
+
+function loop(now) {
+  if (paused) return;
+  let t = (now-startTime)/1000;
+  if (t > 6) { restart(); return; }
+  t = Math.min(t, 5);
+  document.getElementById('ti').textContent = t.toFixed(2)+'s';
+  render(t);
+  requestAnimationFrame(loop);
+}
+
+function render(t) {
+  rect(0, 0, S, S, '#0a0a14');
+
+  // ========= [0–2.5] Sunrise sky + sun rising =========
+  drawSky(t);
+  drawSun(t);
+  drawLandscape(t);
+
+  // ========= [1.0–∞] Birds flying — never stop =========
+  if (t >= 1.0) {
+    const bt = t - 1.0;
+    const birds = [
+      { startX: -15, y: 55, speed: 28, wingSpeed: 8, delay: 0 },
+      { startX: -15, y: 48, speed: 24, wingSpeed: 9, delay: 0.3 },
+      { startX: -15, y: 62, speed: 30, wingSpeed: 7, delay: 0.15 },
+      { startX: -15, y: 42, speed: 22, wingSpeed: 10, delay: 0.8 },
+      { startX: -15, y: 70, speed: 26, wingSpeed: 7.5, delay: 1.2 },
+    ];
+    birds.forEach(b => {
+      const localT = bt - b.delay;
+      if (localT > 0) {
+        // Loop: when bird exits right, it wraps back from left
+        const totalDist = localT * b.speed;
+        const bx = ((totalDist + 15) % (S + 40)) - 20;
+        const by = b.y + Math.sin(localT * 1.2) * 4;
+        drawBird(bx|0, by|0, localT * b.wingSpeed);
+      }
+    });
+  }
+
+  // ========= [2.5–3.5] Coffee cup appears center =========
+  if (t >= 2.5) {
+    const ct = t - 2.5;
+    const cupX = 120; // center of 256
+    const cupY = 140; // above panel, visible
+
+    // Slide up
+    let offsetY = 0;
+    if (ct < 0.3) {
+      offsetY = 10 * (1 - ct/0.3);
+    } else if (ct < 0.45) {
+      offsetY = -2 * Math.sin((ct-0.3)/0.15 * Math.PI);
+    }
+
+    const alpha = Math.min(ct / 0.15, 1);
+    cx.globalAlpha = alpha;
+    drawSprite(CUP, CUP_MAP, cupX, cupY + offsetY);
+    cx.globalAlpha = 1;
+
+    // Steam
+    if (ct > 0.3) {
+      drawSteam(cupX + 7, cupY + offsetY + 2, t);
+    }
+  }
+
+  // ========= [3.5–5.0] Text panel + progress bar =========
+  if (t >= 3.5) {
+    const tt = t - 3.5;
+    const panelAlpha = Math.min(tt / 0.25, 1);
+
+    // Panel — big, readable
+    const pX = 16, pY = 170, pW = 224, pH = 78;
+
+    // Dark fill with warm border
+    cx.globalAlpha = panelAlpha * 0.92;
+    rect(pX+3, pY+2, pW-6, pH-4, '#0a0a14');
+    rect(pX+2, pY+3, pW-4, pH-6, '#0a0a14');
+
+    cx.globalAlpha = panelAlpha * 0.75;
+    // Border
+    rect(pX+4, pY, pW-8, 2, C.warm);
+    rect(pX+4, pY+pH-2, pW-8, 2, C.warm);
+    rect(pX, pY+4, 2, pH-8, C.warm);
+    rect(pX+pW-2, pY+4, 2, pH-8, C.warm);
+    // Corners
+    rect(pX+2, pY+2, 2, 2, C.warm);
+    rect(pX+pW-4, pY+2, 2, 2, C.warm);
+    rect(pX+2, pY+pH-4, 2, 2, C.warm);
+    rect(pX+pW-4, pY+pH-4, 2, 2, C.warm);
+    // Inner highlight
+    cx.globalAlpha = panelAlpha * 0.15;
+    rect(pX+6, pY+4, pW-12, 1, C.gold);
+
+    cx.globalAlpha = panelAlpha;
+
+    const panelCX = pX + pW / 2;
+
+    // Title — typewriter
+    const fullText = 'ХОРОШЕЕ НАЧАЛО';
+    const charCount = typewriterCount(fullText, 3.5, t, 45);
+    const visibleText = fullText.substring(0, charCount);
+    drawText(visibleText, panelCX, pY + 16, C.warm, 10);
+
+    // "+20 XP"
+    if (tt > 0.4) {
+      const xpAlpha = Math.min((tt-0.4)/0.2, 1);
+      cx.globalAlpha = xpAlpha;
+      const xpP = Math.min((tt-0.4)/0.6, 1);
+      const xpEased = 1-Math.pow(1-xpP,3);
+      const xpVal = Math.round(xpEased * 20);
+      drawText(`+${xpVal} XP`, panelCX, pY + 34, C.gold, 16);
+    }
+
+    // Divider
+    if (tt > 0.5) {
+      cx.globalAlpha = Math.min((tt-0.5)/0.15, 1) * 0.4;
+      rect(pX + 20, pY + 44, pW - 40, 1, C.warm);
+    }
+
+    // Progress bar
+    if (tt > 0.6) {
+      const barAlpha = Math.min((tt-0.6)/0.2, 1);
+      cx.globalAlpha = barAlpha;
+
+      const barX = pX + 20;
+      const barY2 = pY + 50;
+      const barW = pW - 40;
+      const barH = 6;
+
+      const barProgress = Math.min((tt-0.6)/0.8, 1);
+      const fillPct = 0.4 + 0.25 * (1-Math.pow(1-barProgress,2));
+
+      drawProgressBar(barX, barY2, barW, barH, fillPct, C.warm, '#1a1a2e');
+
+      drawText(`ЦЕЛЬ ДНЯ: ${Math.round(fillPct*100)}%`, panelCX, barY2 + barH + 10, C.white, 7);
+    }
+
+    cx.globalAlpha = 1;
+  }
+
+  // Vignette
+  const vg = cx.createRadialGradient(S/2, S/2-20, S*0.25, S/2, S/2, S*0.65);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.2)');
+  cx.fillStyle = vg;
+  cx.fillRect(0, 0, S, S);
+}
+
+document.fonts.ready.then(() => setTimeout(restart, 200));
+</script>
+</body>
+</html>

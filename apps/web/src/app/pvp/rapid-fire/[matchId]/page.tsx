@@ -8,7 +8,8 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import { DuelChat } from "@/components/pvp/DuelChat";
 import { Confetti } from "@/components/ui/Confetti";
 import { logger } from "@/lib/logger";
-import { PageAuthGate } from "@/components/layout/PageAuthGate";
+// 2026-04-20: PageAuthGate удалён из кодовой базы — auth проверяется
+// в middleware.ts на уровне всей /pvp/* секции. Обёртка-no-op убрана.
 // Sprint 4 (2026-04-20): shared sfx pack across all 5 Arena modes
 import { useSFX } from "@/components/arena/sfx/useSFX";
 // Phase A (2026-04-20) — Arena visual parity across 5 modes
@@ -27,11 +28,7 @@ interface RoundScore {
 }
 
 export default function RapidFirePageWrapper() {
-  return (
-    <PageAuthGate>
-      <RapidFirePage />
-    </PageAuthGate>
-  );
+  return <RapidFirePage />;
 }
 
 function RapidFirePage() {
