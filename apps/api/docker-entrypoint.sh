@@ -146,7 +146,7 @@ asyncio.run(setup())
 else
     CURRENT_REV=$(python -m alembic current 2>/dev/null | grep -oE '[a-f0-9]{12}' | head -1 || echo "")
     log "Running Alembic migrations (current: ${CURRENT_REV:-none})..."
-    if ! python -m alembic upgrade head; then
+    if ! python -m alembic upgrade heads; then
         log "ERROR: Migration failed!"
         if [ -n "$CURRENT_REV" ]; then
             log "Rolling back to previous revision: $CURRENT_REV"
