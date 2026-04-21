@@ -638,13 +638,41 @@ async def google_callback(request: Request, body: OAuthCallbackRequest, db: Asyn
                 "oauth.google.token_exchange_failed status=%s redirect_uri=%s body=%s",
                 token_resp.status_code, redirect_uri, _body_preview,
             )
+            # Parse Google's structured error body so the UI can show the
+            # real reason (redirect_uri_mismatch / invalid_client / etc.)
+            # instead of a generic message.
+            _provider_error: str | None = None
+            _provider_error_description: str | None = None
+            try:
+                _pj = token_resp.json()
+                _provider_error = _pj.get("error")
+                _provider_error_description = _pj.get("error_description")
+            except Exception:  # noqa: BLE001
+                pass
+            _hint_ru = {
+                "redirect_uri_mismatch": (
+                    f"redirect_uri, отправленный на Google ({redirect_uri!r}), не совпадает "
+                    "ни с одним из Authorized redirect URIs в Google OAuth Client. "
+                    "Добавь именно это значение в Console или обнови GOOGLE_REDIRECT_URI в .env."
+                ),
+                "invalid_client": "GOOGLE_CLIENT_ID или GOOGLE_CLIENT_SECRET не совпадают с Console.",
+                "invalid_grant": "Код авторизации устарел или уже использовался. Попробуй ещё раз.",
+                "unauthorized_client": "OAuth-клиенту запрещён grant_type=authorization_code.",
+            }.get(_provider_error or "", None)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
                     "code": "oauth_exchange_failed",
                     "provider": "google",
                     "provider_status": token_resp.status_code,
-                    "message": "Ошибка авторизации Google. Проверьте соответствие redirect_uri в настройках OAuth-клиента Google Console.",
+                    "provider_error": _provider_error,
+                    "provider_error_description": _provider_error_description,
+                    "redirect_uri_sent": redirect_uri,
+                    "message": (
+                        _hint_ru
+                        or _provider_error_description
+                        or "Google отклонил запрос. См. provider_error для деталей."
+                    ),
                 },
             )
         token_data = token_resp.json()

@@ -216,6 +216,35 @@ class Settings(BaseSettings):
     yandex_client_secret: str = ""
     yandex_redirect_uri: str = ""  # e.g. http://localhost:3000/auth/callback
 
+    @field_validator("google_redirect_uri", "yandex_redirect_uri")
+    @classmethod
+    def _validate_oauth_redirect_uri(cls, v: str) -> str:
+        """
+        OAuth redirect_uri must point to the FRONTEND callback route
+        (apps/web/src/app/auth/callback/page.tsx), not the backend API
+        endpoint. Google/Yandex redirect the browser back to this URL; the
+        page then POSTs the auth code to /api/auth/{provider}/callback.
+
+        Historical pain: prod ran with redirect_uri=.../api/auth/google/callback
+        for weeks, causing silent redirect_uri_mismatch 400s that looked like
+        random OAuth flakiness. This validator refuses to boot the API with
+        an obviously-broken value.
+        """
+        if not v:
+            return v  # empty is fine — code falls back to frontend_url + "/auth/callback"
+        if "/api/" in v:
+            raise ValueError(
+                f"OAuth redirect_uri must NOT contain '/api/' — Google redirects the "
+                f"browser to a FRONTEND page, not a backend endpoint. Got: {v!r}. "
+                f"Expected shape: https://<your-domain>/auth/callback"
+            )
+        if not v.rstrip("/").endswith("/auth/callback"):
+            raise ValueError(
+                f"OAuth redirect_uri must end with '/auth/callback' to match the "
+                f"frontend route apps/web/src/app/auth/callback/page.tsx. Got: {v!r}"
+            )
+        return v
+
     @property
     def google_oauth_configured(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret)

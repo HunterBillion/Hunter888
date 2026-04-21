@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Loader2, AlertCircle, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { api, resetAuthCircuitBreaker } from "@/lib/api";
+import { api, ApiError, resetAuthCircuitBreaker } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
 import { useAuthStore } from "@/stores/useAuthStore";
 
@@ -14,6 +14,10 @@ function OAuthCallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState("");
+  const [errorDiag, setErrorDiag] = useState<{
+    providerError?: string;
+    redirectUriSent?: string;
+  } | null>(null);
 
   useEffect(() => {
     const code = searchParams.get("code");
@@ -57,6 +61,14 @@ function OAuthCallbackContent() {
       .catch((err: unknown) => {
         setStatus("error");
         setErrorMsg(err instanceof Error ? err.message : "Ошибка авторизации");
+        // Surface backend diagnostics (provider_error, redirect_uri_sent) so
+        // ops can see the exact cause on screen without digging through logs.
+        if (err instanceof ApiError && err.detail) {
+          setErrorDiag({
+            providerError: (err.detail.provider_error as string | undefined) ?? undefined,
+            redirectUriSent: (err.detail.redirect_uri_sent as string | undefined) ?? undefined,
+          });
+        }
       });
   }, [searchParams, router]);
 
@@ -97,6 +109,25 @@ function OAuthCallbackContent() {
             <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
               {errorMsg}
             </p>
+            {errorDiag && (errorDiag.providerError || errorDiag.redirectUriSent) && (
+              <div
+                className="mt-4 rounded-md border p-3 text-left font-mono text-xs"
+                style={{ borderColor: "var(--border-color)", color: "var(--text-muted)" }}
+              >
+                {errorDiag.providerError && (
+                  <div>
+                    <span style={{ color: "var(--text-secondary)" }}>provider_error: </span>
+                    <span style={{ color: "var(--danger)" }}>{errorDiag.providerError}</span>
+                  </div>
+                )}
+                {errorDiag.redirectUriSent && (
+                  <div className="mt-1 break-all">
+                    <span style={{ color: "var(--text-secondary)" }}>redirect_uri_sent: </span>
+                    <span>{errorDiag.redirectUriSent}</span>
+                  </div>
+                )}
+              </div>
+            )}
             <Button onClick={() => router.replace("/login")} className="mt-6">
               Вернуться к входу
             </Button>
