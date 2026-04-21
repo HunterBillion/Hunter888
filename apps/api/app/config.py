@@ -131,6 +131,10 @@ class Settings(BaseSettings):
 
     # ElevenLabs TTS (natural AI voice for client character)
     elevenlabs_api_key: str = ""  # Get key: https://elevenlabs.io/app/settings/api-keys
+    # Optional: override ElevenLabs endpoint. Point at a proxy like navy.api
+    # (https://api.navy/v1/elevenlabs) to route TTS via an aggregator. Empty
+    # string → hit api.elevenlabs.io directly.
+    elevenlabs_base_url: str = ""
     elevenlabs_voice_ids: str = ""  # Comma-separated voice IDs (legacy, used as fallback)
     elevenlabs_voice_ids_male: str = ""  # Comma-separated MALE voice IDs (Russian)
     elevenlabs_voice_ids_female: str = ""  # Comma-separated FEMALE voice IDs (Russian)

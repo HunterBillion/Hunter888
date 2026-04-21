@@ -1154,8 +1154,10 @@ async def synthesize_speech(
                 active_factors=[f.factor for f in (active_factors or [])],
             )
 
-    # Call ElevenLabs API
-    url = f"{ELEVENLABS_TTS_URL}/{voice_id}"
+    # Call ElevenLabs API (or navy.api proxy if elevenlabs_base_url is set)
+    _base = (settings.elevenlabs_base_url or "").rstrip("/")
+    _tts_endpoint = f"{_base}/v1/text-to-speech" if _base else ELEVENLABS_TTS_URL
+    url = f"{_tts_endpoint}/{voice_id}"
     params_qs = {"output_format": DEFAULT_OUTPUT_FORMAT}
     headers = {
         "xi-api-key": settings.elevenlabs_api_key,

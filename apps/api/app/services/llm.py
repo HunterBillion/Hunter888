@@ -2424,6 +2424,7 @@ async def generate_response_stream(
     scenario_prompt: str = "",
     prefer_provider: str = "auto",
     task_type: str = "default",
+    session_mode: str = "chat",
 ) -> AsyncGenerator[str, None]:
     """Stream LLM response token-by-token. Falls back to blocking if streaming fails.
 
@@ -2508,8 +2509,25 @@ async def generate_response_stream(
             + full_system
         )
 
-    # ── S1-02 BUG5 fix: Filter user input before sending to LLM (parity with generate_response) ──
-    trimmed = _trim_history(messages)
+    # ── Call-mode modifier (parity with generate_response) ──
+    # Without this the stream path (90% of actual traffic) ignored the
+    # session_mode="call" and AI replied like chat mode.
+    if session_mode == "call":
+        _diff_s = 5
+        try:
+            import re as _re
+            m = _re.search(r"сложност[ьи][:\s]+(\d+)", scenario_prompt or "", _re.IGNORECASE)
+            if m:
+                _diff_s = int(m.group(1))
+        except Exception:
+            pass
+        full_system = full_system + build_call_mode_modifier(_diff_s)
+
+    # ── Trim history — wider window in call mode (short replies, more turns matter) ──
+    _history_cap = settings.llm_max_history_messages
+    if session_mode == "call":
+        _history_cap = max(_history_cap, 60)
+    trimmed = _trim_history(messages, _history_cap)
     for msg in trimmed:
         if msg.get("role") == "user" and msg.get("content"):
             filtered_input, input_violations = _cf_filter_user_input(msg["content"])

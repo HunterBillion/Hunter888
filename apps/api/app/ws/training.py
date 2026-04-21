@@ -1338,6 +1338,12 @@ async def _generate_character_reply(
                     logger.debug("Stream TTS synth error: %s", _te)
                     return None
 
+            # Thread session_mode into the stream so the call-mode prompt
+            # modifier (short replies, difficulty-aware, phone register) is
+            # actually applied. Without this the stream path silently reverted
+            # to chat register even when user clicked "Звонок".
+            _cp_s = state.get("custom_params") or {}
+            _session_mode_s = _cp_s.get("session_mode") or "chat"
             async for token in generate_response_stream(
                 system_prompt=extra_system,
                 messages=messages,
@@ -1345,6 +1351,7 @@ async def _generate_character_reply(
                 character_prompt_path=prompt_path,
                 task_type="roleplay",
                 prefer_provider=_prefer,
+                session_mode=_session_mode_s,
             ):
                 _streamed_text += token
                 _chunk_buffer += token
