@@ -21,7 +21,9 @@ import {
   Filter,
   AlertTriangle,
   Target,
+  Share2,
 } from "lucide-react";
+import { useNotificationStore } from "@/stores/useNotificationStore";
 import { PixelFaceIcon } from "@/components/pixel/PixelFaceIcon";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
@@ -820,6 +822,45 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
     }
   };
 
+  // 2026-04-21: the backend has had /characters/custom/{id}/share since
+  // constructor v2 but nothing in the UI exposed it — the share_code
+  // column sat empty for every user. Now a Share button next to each
+  // saved character calls that endpoint, appends the returned code to
+  // the current origin's /characters/shared/ URL, and drops it on the
+  // clipboard with a toast. No auth required to resolve a shared code,
+  // so teams can copy-paste a link without exposing credentials.
+  const handleShare = async (id: string, name: string) => {
+    try {
+      const res = await api.post<{ share_code: string }>(`/characters/custom/${id}/share`);
+      const code = res.share_code;
+      if (!code) throw new Error("No share code returned");
+      const url = `${window.location.origin}/characters/shared/${code}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        useNotificationStore.getState().addToast({
+          title: "Ссылка скопирована",
+          body: `«${name}» → ${url}`,
+          type: "success",
+        });
+      } catch {
+        // Clipboard denied — still show the URL so the user can copy manually.
+        useNotificationStore.getState().addToast({
+          title: "Ссылка на персонажа",
+          body: url,
+          type: "info",
+        });
+      }
+      fetchSavedCharacters();
+    } catch (e) {
+      logger.error("Share failed:", e);
+      useNotificationStore.getState().addToast({
+        title: "Не удалось поделиться",
+        body: e instanceof Error ? e.message : "Попробуйте ещё раз",
+        type: "error",
+      });
+    }
+  };
+
   if (savedLoading) {
     return (
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -887,6 +928,15 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
                 whileTap={{ scale: 0.97 }}
               >
                 AI x{storyCalls}
+              </motion.button>
+              <motion.button
+                onClick={() => handleShare(char.id, char.name)}
+                className="btn-neon px-3 text-xs"
+                style={{ color: "var(--text-secondary)", borderColor: "var(--border-color)" }}
+                whileTap={{ scale: 0.97 }}
+                title="Поделиться — создать ссылку для коллег"
+              >
+                <Share2 size={12} />
               </motion.button>
               <motion.button
                 onClick={() => {

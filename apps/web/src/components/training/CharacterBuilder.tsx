@@ -1,14 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { logger } from "@/lib/logger";
 import { AvatarPreview } from "./AvatarPreview";
 import { useNotificationStore } from "@/stores/useNotificationStore";
+import { useGamificationStore } from "@/stores/useGamificationStore";
+// 2026-04-21: dropped Save/CheckCircle2/SkipForward — autosave replaced the
+// standalone Save button and "Пропустить" duplicated "Далее" on optional
+// steps. The icons disappearing keeps the bundle honest.
 import {
-  ArrowRight, ChevronLeft, Loader2, Sparkles, RotateCcw, Check, Save, CheckCircle2,
-  Lock, SkipForward, MessageCircle, Phone,
+  ArrowRight, ChevronLeft, Loader2, Sparkles, RotateCcw, Check,
+  Lock, MessageCircle, Phone,
 } from "lucide-react";
 import {
   Brain, Briefcase, Broadcast, UsersThree, Heart, Gauge, Cloud, FileMagnifyingGlass,
@@ -16,7 +20,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { GROUP_ICONS } from "@/lib/groupIcons";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type {
   ArchetypeCode, ArchetypeGroup, ArchetypeTier, LeadSource, ProfessionCategory,
   FamilyPreset, CreditorsPreset, DebtStage, DebtRange, EmotionPreset,
@@ -134,8 +138,22 @@ const FATIGUES: { code: ClientFatigue; label: string }[] = [
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: CharacterBuilderProps) {
+export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelProp }: CharacterBuilderProps) {
   const router = useRouter();
+  // 2026-04-21: userLevel used to be hard-coded to 20 so every unlockLevel
+  // check passed vacuously — the step-lock system was dead code. Now we
+  // read the real level off useGamificationStore (fed by
+  // GET /gamification/me/progress). Explicit prop override is preserved
+  // for tests/storybook. Default 1 keeps the advanced steps locked for
+  // brand-new users so the flow starts at the 3 core steps only.
+  const storeLevel = useGamificationStore((s) => s.level);
+  const fetchGamification = useGamificationStore((s) => s.fetchProgress);
+  const userLevel = userLevelProp ?? storeLevel ?? 1;
+  useEffect(() => {
+    // Fire-and-forget: if progress hasn't been fetched this session, do it
+    // once so the constructor sees an accurate level. Cached 60s server-side.
+    fetchGamification().catch(() => {});
+  }, [fetchGamification]);
   const [step, setStep] = useState<Step>(0);
   // Step 0
   const [archetype, setArchetype] = useState<ArchetypeCode | null>(null);
@@ -166,6 +184,15 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
   const [starting, setStarting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // 2026-04-21: autosave flow. Old UI had a standalone "Сохранить" button
+  // right next to "Чат"/"Звонок" on the preview step — the user had to
+  // click save MANUALLY before starting, and forgetting meant the carefully
+  // configured client was lost forever. Now save is implicit: autoSave is
+  // on by default, one click on Чат/Звонок creates the custom_character
+  // row first, then starts the session with a proper custom_character_id
+  // link. Unchecking gives a one-shot throwaway client.
+  const [autoSave, setAutoSave] = useState(true);
+  const [customName, setCustomName] = useState("");
 
   const selectedArchetype = ARCHETYPES.find((a) => a.code === archetype);
   const selectedProfession = PROFESSIONS.find((p) => p.code === profession);
@@ -238,6 +265,39 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
 
       if (storyMode && scenarioId) { router.push(buildStoryQuery(scenarioId)); return; }
 
+      // 2026-04-21: autosave before starting. If the user hasn't unchecked
+      // the preview-step toggle, persist the current builder state as a
+      // CustomCharacter FIRST, remember its id, then link it to the new
+      // TrainingSession via custom_character_id. Failure to save must NOT
+      // block the session start — a saved-toast is nice-to-have, a running
+      // session is the actual goal. `saved` guards against double-save on
+      // repeated Start clicks.
+      let savedCharId: string | undefined;
+      if (autoSave && !saved) {
+        try {
+          const a = ARCHETYPES.find((x) => x.code === archetype);
+          const p = PROFESSIONS.find((x) => x.code === profession);
+          const defaultName = `${a?.name || archetype} \u00B7 ${p?.name || profession} \u00B7 ${difficulty}/10`;
+          const savedChar = await api.post("/characters/custom", {
+            name: (customName.trim() || defaultName),
+            archetype, profession, lead_source: leadSource, difficulty,
+            family_preset: familyPreset !== "random" ? familyPreset : null,
+            creditors_preset: creditorsPreset !== "random" ? creditorsPreset : null,
+            debt_stage: debtStage !== "random" ? debtStage : null,
+            debt_range: debtRange !== "random" ? debtRange : null,
+            emotion_preset: emotionPreset,
+            bg_noise: bgNoise,
+            time_of_day: timeOfDay,
+            client_fatigue: clientFatigue,
+            tone: tone !== "neutral" ? tone : null,
+          });
+          savedCharId = savedChar?.id;
+          setSaved(true);
+        } catch (saveErr) {
+          logger.warn("Autosave failed — starting session anyway", saveErr);
+        }
+      }
+
       // 2026-04-21: stopped dropping "neutral"/"afternoon"/"normal"/"none" as
       // if they were unset. Those are deliberate user choices — the previous
       // `!==` guards silently erased them so the backend never saw the
@@ -248,6 +308,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
       // keep filtering locally.
       const session = await api.post("/training/sessions", {
         ...(scenarioId ? { scenario_id: scenarioId } : {}),
+        ...(savedCharId ? { custom_character_id: savedCharId } : {}),
         custom_archetype: archetype,
         custom_profession: profession,
         custom_lead_source: leadSource,
@@ -269,7 +330,36 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
       router.push(targetPath);
     } catch (err) {
       logger.error("Failed to start:", err);
-      alert("Не удалось создать сессию.");
+      // 2026-04-21: replaces bare alert() with the shared toast store
+      // and mirrors the 409 "session_already_active" rescue that lives
+      // in app/training/page.tsx:performStart — otherwise the user
+      // hitting Chat/Call while a previous session is still open hit a
+      // dead-end alert with no way to resume the active session.
+      if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        err.detail &&
+        (err.detail as { code?: string }).code === "session_already_active"
+      ) {
+        const existingId = (err.detail as { existing_session_id?: string }).existing_session_id;
+        if (typeof existingId === "string" && existingId.length > 0) {
+          useNotificationStore.getState().addToast({
+            title: "Активная тренировка",
+            body: "У тебя уже идёт тренировка — открываю её.",
+            type: "info",
+          });
+          const target = sessionMode === "call"
+            ? `/training/${existingId}/call`
+            : `/training/${existingId}`;
+          setTimeout(() => router.push(target), 600);
+          return;
+        }
+      }
+      useNotificationStore.getState().addToast({
+        title: "Ошибка",
+        body: err instanceof Error ? err.message : "Не удалось создать сессию",
+        type: "error",
+      });
       setStarting(false);
     }
   };
@@ -280,8 +370,9 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
     try {
       const a = ARCHETYPES.find((x) => x.code === archetype);
       const p = PROFESSIONS.find((x) => x.code === profession);
+      const defaultName = `${a?.name || archetype} \u00B7 ${p?.name || profession} \u00B7 ${difficulty}/10`;
       await api.post("/characters/custom", {
-        name: `${a?.name || archetype} \u00B7 ${p?.name || profession} \u00B7 ${difficulty}/10`,
+        name: (customName.trim() || defaultName),
         archetype, profession, lead_source: leadSource, difficulty,
         family_preset: familyPreset !== "random" ? familyPreset : null,
         creditors_preset: creditorsPreset !== "random" ? creditorsPreset : null,
@@ -304,11 +395,20 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
   };
 
   const reset = () => {
+    // 2026-04-21: confirm before nuking N steps of user input. Previously
+    // one mis-click on "Сбросить" at the final step wiped everything —
+    // archetype, profession, 8 other picks, name — without a safety net.
+    // Only ask when there's actually something to lose.
+    if ((archetype || profession || customName) &&
+        !window.confirm("Сбросить всё, что собрали? Это нельзя отменить.")) {
+      return;
+    }
     setStep(0); setArchetype(null); setProfession(null); setLeadSource("cold_base");
     setFamilyPreset("random"); setCreditorsPreset("random"); setDebtStage("random"); setDebtRange("random");
     setEmotionPreset("neutral"); setTone("neutral"); setDifficulty(5);
     setBgNoise("none"); setTimeOfDay("afternoon"); setClientFatigue("normal");
     setGroupFilter(null); setTierFilter(null);
+    setCustomName(""); setAutoSave(true); setSaved(false);
   };
 
   const filteredArchetypes = ARCHETYPES.filter((a) => {
@@ -649,6 +749,49 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
               <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
                 AI создаст реалистичный портрет клиента на основе всех выбранных параметров.
               </p>
+
+              {/* ── Editable name + autosave (2026-04-21) ──
+                   Previously name was auto-generated from "архетип · профессия
+                   · сложность/10" with no way to override — two identical
+                   builds produced two identical names, making the saved list
+                   impossible to scan. Autosave replaces the old manual
+                   "Сохранить" button: saving is implicit unless the user
+                   opts out, so they can never lose a carefully configured
+                   client by forgetting to click. */}
+              <div className="mt-5 pt-5 border-t" style={{ borderColor: "var(--border-color)" }}>
+                <label className="block text-xs font-medium uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
+                  Имя в моих клиентах
+                </label>
+                <input
+                  type="text"
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  placeholder={
+                    selectedArchetype && selectedProfession
+                      ? `${selectedArchetype.name} \u00B7 ${selectedProfession.name} \u00B7 ${difficulty}/10`
+                      : "Название персонажа"
+                  }
+                  maxLength={100}
+                  className="w-full rounded-xl px-3 py-2 text-sm"
+                  style={{
+                    background: "var(--input-bg)",
+                    border: "1px solid var(--border-color)",
+                    color: "var(--text-primary)",
+                  }}
+                />
+                <label className="mt-3 flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--text-secondary)" }}>
+                  <input
+                    type="checkbox"
+                    checked={autoSave}
+                    onChange={(e) => setAutoSave(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <span>💾 Сохранить в «Мои клиенты» при запуске</span>
+                </label>
+                <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                  Можно будет запустить того же клиента ещё раз и смотреть прогресс: play_count, лучший балл, средний балл.
+                </p>
+              </div>
             </div>
           </>)}
 
@@ -667,17 +810,21 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
         </div>
 
         <div className="flex gap-2.5">
-          {step < 7 && !STEPS[step].required && (
-            <Button variant="ghost" onClick={nextStep} size="sm" icon={<SkipForward size={14} />}>Пропустить</Button>
-          )}
+          {/* 2026-04-21: "Пропустить" removed for optional steps 3/4/6.
+              On those steps canNext() is always true, so the dedicated
+              ghost button did exactly the same thing as "Далее" — a
+              duplicate control that confused first-time users about which
+              path was "correct". "Далее" handles both paths now. */}
 
           {step < 7 ? (
             <Button onClick={nextStep} disabled={!canNext()} size="sm" iconRight={<ArrowRight size={16} />}>Далее</Button>
           ) : (
+            /* 2026-04-21: preview action row. Standalone "Сохранить" is
+               gone — autosave checkbox + name input above handle it
+               implicitly. The three remaining buttons are the three ways
+               to ACTUALLY start the training; sharing the preview screen
+               no longer has a fourth button that doesn't start anything. */
             <div className="flex flex-wrap gap-2.5">
-              <Button onClick={handleSave} disabled={saving || saved || !archetype || !profession} size="sm" loading={saving} icon={saved ? <CheckCircle2 size={16} style={{ color: "var(--success)" }} /> : <Save size={16} />}>
-                {saved ? "Сохранён" : "Сохранить"}
-              </Button>
               <Button variant="primary" onClick={() => handleStart(false, "chat")} disabled={starting || !archetype || !profession} size="sm" loading={starting} icon={<MessageCircle size={16} />}>
                 Чат
               </Button>
