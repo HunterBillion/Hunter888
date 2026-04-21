@@ -287,7 +287,12 @@ async def _build_session_result(
 
 
 @router.post("/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/minute")
+# 60/minute = 1 per second. Legit users never hit this; protects against
+# runaway client loops and scripted abuse while staying out of the way
+# during normal flow (multiple scenario clicks, start/end cycles, etc.).
+# Bumped from 10/minute (2026-04-21) — old cap locked users out after a
+# handful of failed calls during the call-mode bug investigation.
+@limiter.limit("60/minute")
 async def start_session(
     request: Request,
     body: SessionStartRequest,
