@@ -123,7 +123,10 @@ function TrainingPageContent() {
     setStarting({ scenarioId });
     setStartError(null);
     try {
-      const session = await api.post("/training/sessions", { scenario_id: scenarioId });
+      const session = await api.post("/training/sessions", {
+        scenario_id: scenarioId,
+        custom_session_mode: mode,
+      });
       const target = mode === "call"
         ? `/training/${session.id}/call`
         : `/training/${session.id}`;

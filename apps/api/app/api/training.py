@@ -4,7 +4,7 @@ from collections import defaultdict
 
 from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.consent import check_consent_accepted
@@ -520,32 +520,61 @@ async def start_session(
             logger.debug("stale session auto-abandon failed", exc_info=True)
 
         # Tier 2 — block recent double-click (window 15s).
+        # Mode-aware: if the existing active session is in a DIFFERENT
+        # session_mode than the one being requested (chat ↔ call), the user
+        # is deliberately switching modes — auto-abandon the old one and let
+        # the new POST through. Otherwise a pending chat session would hijack
+        # a fresh call request (the user clicks "звонок" but lands in chat UI
+        # via existing_session_id redirect).
+        _requested_mode = None
+        if body.custom_session_mode in ("chat", "call"):
+            _requested_mode = body.custom_session_mode
         try:
             _dup_q = await db.execute(
-                select(TrainingSession.id)
+                select(TrainingSession.id, TrainingSession.custom_params)
                 .where(TrainingSession.user_id == user.id)
                 .where(TrainingSession.status == SessionStatus.active)
                 .where(TrainingSession.started_at > _now - _td(seconds=15))
                 .order_by(TrainingSession.started_at.desc())
                 .limit(1)
             )
-            _dup_id = _dup_q.scalar_one_or_none()
+            _dup_row = _dup_q.first()
+            _dup_id = _dup_row[0] if _dup_row else None
+            _dup_cp = _dup_row[1] if _dup_row else None
         except Exception:
             logger.debug("duplicate-active check failed", exc_info=True)
             _dup_id = None
+            _dup_cp = None
 
         if _dup_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "code": "session_already_active",
-                    "message": (
-                        "У пользователя уже есть активная тренировка, "
-                        "начатая несколько секунд назад. Открываю её."
-                    ),
-                    "existing_session_id": str(_dup_id),
-                },
-            )
+            _existing_mode = (_dup_cp or {}).get("session_mode") or "chat"
+            # Mode mismatch → user is switching modes. Abandon the stale one.
+            if _requested_mode and _requested_mode != _existing_mode:
+                try:
+                    await db.execute(
+                        update(TrainingSession)
+                        .where(TrainingSession.id == _dup_id)
+                        .values(status=SessionStatus.abandoned, ended_at=_now)
+                    )
+                    await db.flush()
+                    logger.info(
+                        "Mode switch abandon | user=%s | old=%s (%s) → new=%s",
+                        user.id, _dup_id, _existing_mode, _requested_mode,
+                    )
+                except Exception:
+                    logger.debug("mode-switch abandon failed", exc_info=True)
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "session_already_active",
+                        "message": (
+                            "У пользователя уже есть активная тренировка, "
+                            "начатая несколько секунд назад. Открываю её."
+                        ),
+                        "existing_session_id": str(_dup_id),
+                    },
+                )
     except HTTPException:
         # Release lock on known errors so next attempt isn't blocked for TTL.
         if _lock_acquired:
