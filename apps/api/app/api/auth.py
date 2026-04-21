@@ -23,6 +23,7 @@ from app.core.security import (
 )
 from app.database import get_db
 from app.models.user import User
+from app.models.subscription import UserSubscription, PlanType
 from fastapi.responses import JSONResponse
 
 from app.schemas.auth import (
@@ -157,9 +158,22 @@ async def register(request: Request, body: RegisterRequest, db: AsyncSession = D
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=err.EMAIL_ALREADY_REGISTERED)
 
+    # Auto-create free-tier subscription in the same transaction.
+    # Without this, entitlement checks find no active subscription and block
+    # access to training / RAG features for brand-new users.
+    subscription = UserSubscription(
+        user_id=user.id,
+        plan_type=PlanType.scout.value,  # free forever — scout tier
+        expires_at=None,  # no expiry for free tier
+    )
+    db.add(subscription)
+    await db.flush()
+    await db.commit()
+
     _logger.info(
-        "auth.register.success user_id=%s email=%s ip=%s",
-        user.id, body.email, request.client.host if request.client else "unknown",
+        "auth.register.success user_id=%s email=%s plan=%s ip=%s",
+        user.id, body.email, PlanType.scout.value,
+        request.client.host if request.client else "unknown",
     )
     tokens = await _create_tokens(str(user.id), user.role)
     response = JSONResponse(content=tokens.model_dump(), status_code=201)
