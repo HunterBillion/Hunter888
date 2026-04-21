@@ -393,6 +393,52 @@ class Settings(BaseSettings):
     @field_validator("csrf_secret")
     @classmethod
     def validate_csrf_secret(cls, v: str) -> str:
+        """
+        CSRF_SECRET must survive container restarts, otherwise every redeploy
+        invalidates all existing csrf_token cookies — every logged-in user gets
+        403 on the next POST/PUT/DELETE until they re-login.
+
+        Journal #5 (class A): previously empty CSRF_SECRET fell through to
+        `secrets.token_hex(32)` on every process start, producing a fresh
+        random value per container. In production this is a silent footgun:
+        the app works right after deploy (new secret signs new cookies), but
+        any session that predates the deploy breaks until reauth.
+
+        Policy: in production, CSRF_SECRET MUST be set in env and 32+ chars.
+        In development, auto-generate with a warning so local work isn't
+        blocked.
+        """
+        env = os.getenv("APP_ENV", "development").lower()
+        _placeholders = {
+            "",
+            "change-me-in-production",
+            "change-me-in-production-use-openssl-rand-hex-32",
+            "secret",
+            "csrf_secret",
+            "your-secret-here",
+        }
+        if env == "production":
+            if not v or v.lower().strip() in _placeholders:
+                raise ValueError(
+                    "CRITICAL: CSRF_SECRET is not set or is using a placeholder value. "
+                    "Generate a secure secret with: openssl rand -hex 32 — "
+                    "then set it permanently in .env.production (container restarts "
+                    "must not re-randomise it or all existing sessions 403 on next POST)."
+                )
+            if len(v) < 32:
+                raise ValueError(
+                    f"CSRF_SECRET must be at least 32 characters in production "
+                    f"(current: {len(v)} chars). Generate with: openssl rand -hex 32"
+                )
+            return v
+        # Development: warn about placeholder, auto-generate if empty.
+        if v and v.lower().strip() in _placeholders:
+            import logging
+            logging.getLogger(__name__).warning(
+                "CSRF_SECRET is a placeholder value — auto-generating. "
+                "Set CSRF_SECRET in .env before production deploy."
+            )
+            return secrets.token_hex(32)
         if not v:
             return secrets.token_hex(32)
         return v

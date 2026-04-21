@@ -45,7 +45,13 @@ services:
       redis-server
       --requirepass ${REDIS_PASSWORD:-redis_secret_pass}
       --maxmemory 384mb
-      --maxmemory-policy allkeys-lru
+      # Journal #88 (class A): `allkeys-lru` evicts ANY key under memory
+      # pressure, including security-critical ones with no TTL — rate-limit
+      # counters, SETNX session-create locks, idempotency cache, JWT
+      # blacklist. Losing those under load silently disables the guard.
+      # `volatile-lru` only evicts keys that have an explicit TTL set
+      # (caches, session state), leaving security invariants intact.
+      --maxmemory-policy volatile-lru
       --save 60 1000
       --appendonly yes
       --appendfsync everysec

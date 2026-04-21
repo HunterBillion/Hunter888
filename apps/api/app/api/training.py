@@ -502,8 +502,16 @@ async def start_session(
         # две сессии под один клик. Окно уменьшено с 60 → 15 сек, т.к.
         # 60 был слишком агрессивным (юзер успевал забыть и повторно
         # кликал, застревал).
-        from datetime import datetime as _dt, timedelta as _td
-        _now = _dt.utcnow()
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        # 2026-04-21 TZ FIX (journal #16): previously used _dt.utcnow() (naive).
+        # TrainingSession.started_at is TIMESTAMP WITH TIME ZONE, so comparing
+        # a naive utcnow() against a tz-aware column either raised in Postgres
+        # or silently coerced using server-local time — both wrong. The except
+        # block below swallowed the resulting exception at logger.debug, so
+        # stale sessions were NEVER abandoned in prod, users saw phantom 409s
+        # indefinitely. Now everything is tz-aware UTC end to end, and failures
+        # are escalated to warning so they are visible in production logs.
+        _now = _dt.now(_tz.utc)
         # 2026-04-21: tightened from 5 min to 1 min. A real training session
         # rarely sits idle >1 min without activity; old 5-min window left
         # users stuck in a 409 deadzone when they closed the tab and reopened
@@ -527,7 +535,9 @@ async def start_session(
                     len(_stale_rows), user.id,
                 )
         except Exception:
-            logger.debug("stale session auto-abandon failed", exc_info=True)
+            # Visible in prod. Stale-abandon failure means the user can't start
+            # a new session until manual DB cleanup — not acceptable to hide.
+            logger.warning("stale session auto-abandon failed", exc_info=True)
 
         # Tier 2 — block recent double-click (window 15s).
         # Mode-aware: if the existing active session is in a DIFFERENT
@@ -552,7 +562,9 @@ async def start_session(
             _dup_id = _dup_row[0] if _dup_row else None
             _dup_cp = _dup_row[1] if _dup_row else None
         except Exception:
-            logger.debug("duplicate-active check failed", exc_info=True)
+            # Raised to warning (journal #16 class C). This check is a state
+            # invariant — if it silently fails, users can race two sessions.
+            logger.warning("duplicate-active check failed", exc_info=True)
             _dup_id = None
             _dup_cp = None
 
@@ -572,7 +584,11 @@ async def start_session(
                         user.id, _dup_id, _existing_mode, _requested_mode,
                     )
                 except Exception:
-                    logger.debug("mode-switch abandon failed", exc_info=True)
+                    # journal #16 class C: user presses «Звонок» on existing
+                    # chat session, this should switch. Silent failure means
+                    # user gets bounced to old chat mode and never lands in
+                    # call UI — exactly the «выкинуло в чат» symptom.
+                    logger.warning("mode-switch abandon failed", exc_info=True)
             else:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,

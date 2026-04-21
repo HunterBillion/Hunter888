@@ -38,7 +38,11 @@ services:
       redis-server
       --requirepass ${REDIS_PASSWORD}
       --maxmemory 384mb
-      --maxmemory-policy allkeys-lru
+      # Journal #88 (class A): see docker-compose.yml for full rationale.
+      # Security-critical keys (rate-limits, SETNX locks, blacklist) must
+      # survive memory pressure — switch to volatile-lru so only TTL'd
+      # cache entries are evicted.
+      --maxmemory-policy volatile-lru
       --save 60 1000
       --appendonly yes
       --appendfsync everysec
