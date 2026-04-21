@@ -81,14 +81,18 @@ key = os.environ["NAVY_KEY"]
 # Every variable we touch. Comments → no effect; existing values get replaced
 # in-place. If a key is missing entirely, we append it at the end.
 targets = {
-    # LLM via navy
+    # LLM via navy — unified gpt-5.4 (primary) + claude-opus-4.7 (fallback)
     "LOCAL_LLM_URL":         "https://api.navy/v1",
     "LOCAL_LLM_API_KEY":     key,
-    "LOCAL_LLM_MODEL":       "claude-sonnet-4-20250514",
-    # TTS via navy (ElevenLabs v3 — best Russian quality, navy proxies it)
+    "LOCAL_LLM_MODEL":       "gpt-5.4",
+    "LLM_PRIMARY_MODEL":     "gpt-5.4",
+    "LLM_FALLBACK_MODEL":    "claude-opus-4.7",
+    "CLAUDE_MODEL":          "claude-opus-4.7",
+    # TTS via navy — OpenAI tts-1-hd (works out of the box on navy, best
+    # quality for Russian voice without needing ElevenLabs tier access).
     "NAVY_TTS_ENABLED":      "true",
-    "NAVY_TTS_MODEL":        "eleven_v3",
-    "NAVY_TTS_VOICE":        "alice",
+    "NAVY_TTS_MODEL":        "tts-1-hd",
+    "NAVY_TTS_VOICE":        "nova",
     # Turn off direct ElevenLabs: navy handles proxying
     "ELEVENLABS_ENABLED":    "false",
     # Embeddings via navy

@@ -39,10 +39,21 @@ class Settings(BaseSettings):
 
     # LLM
     claude_api_key: str = ""
-    claude_model: str = "claude-sonnet-4-6"
+    # 2026-04-21 unified LLM policy (owner directive):
+    #   primary   = gpt-5.4           (fast, reliable, default route)
+    #   secondary = claude-opus-4.7   (best fallback on navy.api — the
+    #                                  highest-tier 4.7 Anthropic model
+    #                                  reachable; sonnet-4.7 does NOT
+    #                                  exist on navy, only sonnet-4.6)
+    # All mini/nano/older models are banned ("остальное мусор").
+    # Both routed through navy.api proxy (LOCAL_LLM_URL); direct
+    # Anthropic/OpenAI/Gemini keys stay off.
+    # Note navy dot-notation: "claude-opus-4.7" not "claude-opus-4-7".
+    claude_model: str = "claude-opus-4.7"
     openai_api_key: str = ""
-    llm_primary_model: str = "gemini-2.5-flash"
-    llm_fallback_model: str = "gpt-4o-mini"
+    # 2026-04-21 unified LLM policy — see claude_model docstring.
+    llm_primary_model: str = "gpt-5.4"
+    llm_fallback_model: str = "claude-opus-4.7"
     llm_timeout_seconds: int = 60  # Gemma 4 on Ollama: first request ~30s (model swap), then ~10-15s
     llm_max_history_messages: int = 20
 
