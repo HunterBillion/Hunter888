@@ -461,96 +461,128 @@ export default function OnboardingPage() {
             {/* Step 1: Profile */}
             {step === 1 && (
               <>
-                <h2 className="font-display text-xl font-bold tracking-wider mb-1 text-center" style={{ color: "var(--text-primary)" }}>
+                <h2 className="font-display text-2xl font-bold tracking-wide mb-1 text-center" style={{ color: "var(--text-primary)" }}>
                   Расскажите о себе
                 </h2>
-                <p className="text-sm mb-6 text-center" style={{ color: "var(--text-muted)" }}>Подберём оптимальные сценарии</p>
+                <p className="text-sm mb-7 text-center" style={{ color: "var(--text-muted)" }}>
+                  Подберём оптимальные сценарии тренировок
+                </p>
 
-                <div className="space-y-5">
+                <div className="space-y-6">
                   <div>
                     <label className="vh-label">Ваша роль</label>
                     <div className="grid grid-cols-2 gap-3">
                       {[
                         { value: "manager" as const, label: "Менеджер", desc: "Тренировки, звонки, рейтинг", icon: "🎯" },
                         { value: "rop" as const, label: "Руководитель (РОП)", desc: "Аналитика, команда, контроль", icon: "📊" },
-                      ].map((r) => (
-                        <motion.button
-                          key={r.value}
-                          type="button"
-                          onClick={() => setRole(r.value)}
-                          className="rounded-xl px-4 py-4 text-left flex items-center gap-3"
-                          style={{
-                            background: role === r.value ? "var(--accent-muted)" : "var(--input-bg)",
-                            border: `1.5px solid ${role === r.value ? "var(--accent)" : "var(--border-color)"}`,
-                            boxShadow: role === r.value ? "0 0 16px var(--accent-glow)" : "none",
-                          }}
-                          whileTap={{ scale: 0.97 }}
-                        >
-                          <AppIcon emoji={r.icon} size={28} />
-                          <div>
-                            <div className="font-display font-bold text-sm" style={{ color: role === r.value ? "var(--accent)" : "var(--text-primary)" }}>{r.label}</div>
-                            <div className="text-xs" style={{ color: "var(--text-muted)" }}>{r.desc}</div>
-                          </div>
-                        </motion.button>
-                      ))}
+                      ].map((r, i) => {
+                        const active = role === r.value;
+                        return (
+                          <motion.button
+                            key={r.value}
+                            type="button"
+                            onClick={() => setRole(r.value)}
+                            className="rounded-xl px-4 py-4 text-left flex items-center gap-3 transition-colors"
+                            style={{
+                              background: active ? "var(--accent-muted)" : "var(--input-bg)",
+                              border: `1.5px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
+                              boxShadow: active ? "0 0 20px var(--accent-glow), inset 0 0 0 1px var(--accent)" : "none",
+                            }}
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.05 }}
+                            whileHover={{ y: -2, boxShadow: "0 8px 24px var(--accent-glow)" }}
+                            whileTap={{ scale: 0.97 }}
+                          >
+                            <AppIcon emoji={r.icon} size={28} />
+                            <div>
+                              <div className="font-display font-bold text-sm" style={{ color: active ? "var(--accent)" : "var(--text-primary)" }}>{r.label}</div>
+                              <div className="text-xs leading-snug" style={{ color: "var(--text-muted)" }}>{r.desc}</div>
+                            </div>
+                          </motion.button>
+                        );
+                      })}
                     </div>
                   </div>
                   <div>
                     <label className="vh-label">Команда</label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {TEAMS.map(t => (
-                        <motion.button key={t} type="button" onClick={() => setTeam(t)}
-                          className="rounded-xl px-3 py-2.5 text-sm text-left"
-                          style={{
-                            background: team === t ? "var(--accent-muted)" : "var(--input-bg)",
-                            border: `1px solid ${team === t ? "var(--accent)" : "var(--border-color)"}`,
-                            color: team === t ? "var(--accent)" : "var(--text-secondary)",
-                          }}
-                          whileTap={{ scale: 0.97 }}
-                        >{t}</motion.button>
-                      ))}
+                      {TEAMS.map((t, i) => {
+                        const active = team === t;
+                        return (
+                          <motion.button key={t} type="button" onClick={() => setTeam(t)}
+                            className="rounded-xl px-3 py-2.5 text-sm text-left transition-colors"
+                            style={{
+                              background: active ? "var(--accent-muted)" : "var(--input-bg)",
+                              border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
+                              color: active ? "var(--accent)" : "var(--text-secondary)",
+                            }}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.1 + i * 0.03 }}
+                            whileHover={{ y: -1, borderColor: "var(--accent)" }}
+                            whileTap={{ scale: 0.97 }}
+                          >{t}</motion.button>
+                        );
+                      })}
                     </div>
                   </div>
                   <div>
                     <label className="vh-label">Специализация</label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {SPECIALIZATIONS.map(s => (
-                        <motion.button key={s.value} type="button" onClick={() => setSpecialization(s.value)}
-                          className="rounded-xl px-3 py-2.5 text-left flex items-center gap-2"
-                          style={{
-                            background: specialization === s.value ? "var(--accent-muted)" : "var(--input-bg)",
-                            border: `1px solid ${specialization === s.value ? "var(--accent)" : "var(--border-color)"}`,
-                          }}
-                          whileTap={{ scale: 0.97 }}
-                        >
-                          <AppIcon emoji={s.icon} size={20} />
-                          <div>
-                            <div className="font-medium text-xs" style={{ color: specialization === s.value ? "var(--accent)" : "var(--text-primary)" }}>{s.label}</div>
-                            <div className="text-xs" style={{ color: "var(--text-muted)" }}>{s.desc}</div>
-                          </div>
-                        </motion.button>
-                      ))}
+                      {SPECIALIZATIONS.map((s, i) => {
+                        const active = specialization === s.value;
+                        return (
+                          <motion.button key={s.value} type="button" onClick={() => setSpecialization(s.value)}
+                            className="rounded-xl px-3 py-2.5 text-left flex items-center gap-2.5 transition-colors"
+                            style={{
+                              background: active ? "var(--accent-muted)" : "var(--input-bg)",
+                              border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
+                              boxShadow: active ? "0 0 12px var(--accent-glow)" : "none",
+                            }}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.2 + i * 0.03 }}
+                            whileHover={{ y: -1, borderColor: "var(--accent)" }}
+                            whileTap={{ scale: 0.97 }}
+                          >
+                            <AppIcon emoji={s.icon} size={22} />
+                            <div className="min-w-0">
+                              <div className="font-semibold text-[13px] leading-tight" style={{ color: active ? "var(--accent)" : "var(--text-primary)" }}>{s.label}</div>
+                              <div className="text-[11px] mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>{s.desc}</div>
+                            </div>
+                          </motion.button>
+                        );
+                      })}
                     </div>
                   </div>
                   <div>
                     <label className="vh-label">Опыт</label>
                     <div className="space-y-2">
-                      {EXP_LEVELS.map(e => (
-                        <motion.button key={e.value} type="button" onClick={() => setExperience(e.value)}
-                          className="w-full rounded-xl px-4 py-3 text-left flex items-center gap-3"
-                          style={{
-                            background: experience === e.value ? "var(--accent-muted)" : "var(--input-bg)",
-                            border: `1px solid ${experience === e.value ? "var(--accent)" : "var(--border-color)"}`,
-                          }}
-                          whileTap={{ scale: 0.97 }}
-                        >
-                          <AppIcon emoji={e.icon} size={24} />
-                          <div>
-                            <div className="font-medium text-sm" style={{ color: experience === e.value ? "var(--accent)" : "var(--text-primary)" }}>{e.label}</div>
-                            <div className="text-xs" style={{ color: "var(--text-muted)" }}>{e.desc}</div>
-                          </div>
-                        </motion.button>
-                      ))}
+                      {EXP_LEVELS.map((e, i) => {
+                        const active = experience === e.value;
+                        return (
+                          <motion.button key={e.value} type="button" onClick={() => setExperience(e.value)}
+                            className="w-full rounded-xl px-4 py-3 text-left flex items-center gap-3 transition-colors"
+                            style={{
+                              background: active ? "var(--accent-muted)" : "var(--input-bg)",
+                              border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
+                              boxShadow: active ? "0 0 14px var(--accent-glow)" : "none",
+                            }}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.3 + i * 0.04 }}
+                            whileHover={{ y: -1, borderColor: "var(--accent)" }}
+                            whileTap={{ scale: 0.97 }}
+                          >
+                            <AppIcon emoji={e.icon} size={26} />
+                            <div>
+                              <div className="font-semibold text-[14px]" style={{ color: active ? "var(--accent)" : "var(--text-primary)" }}>{e.label}</div>
+                              <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{e.desc}</div>
+                            </div>
+                          </motion.button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
