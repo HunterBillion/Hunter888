@@ -149,6 +149,19 @@ interface UseTTSReturn {
 
   /** Ref to current HTMLAudioElement for TalkingHead lip sync. */
   audioRef: React.RefObject<HTMLAudioElement | null>;
+
+  /**
+   * True when browser blocked autoplay (NotAllowedError). UI should render
+   * a user-gesture prompt; clicking it must call `unlock()` to replay the
+   * pending audio and resume normal flow.
+   */
+  needsAudioUnlock: boolean;
+
+  /**
+   * Replay the last audio that was blocked by autoplay policy. Must be
+   * invoked from within a user-gesture handler (onClick / onPointerDown).
+   */
+  unlock: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +191,15 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
   const [currentSpeaker, setCurrentSpeaker] = useState<"A" | "B" | "AB" | null>(null);
   const [remainingDurationMs, setRemainingDurationMs] = useState(0);
   const [activeFactors, setActiveFactors] = useState<HumanFactor[]>([]);
+
+  // Autoplay-unlock state. Set true when audio.play() rejects with
+  // NotAllowedError (browser autoplay policy). UI surfaces a user-gesture
+  // button which calls unlock() to retry playback within the click handler.
+  const [needsAudioUnlock, setNeedsAudioUnlock] = useState(false);
+  const pendingPlaybackRef = useRef<
+    | { audio: HTMLAudioElement; url: string; onEnded?: () => void }
+    | null
+  >(null);
 
   // --- Refs ---
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -435,6 +457,19 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
           );
         }).catch((err) => {
           logger.warn("[TTS] Audio play FAILED:", err.name, err.message);
+          // Autoplay blocked (NotAllowedError) — keep the prepared Audio
+          // element and blob URL alive so the user-gesture unlock() can
+          // replay the exact utterance they missed instead of skipping it.
+          // Any other error (decode failure, media format) is terminal.
+          if (err && (err.name === "NotAllowedError" || err.name === "AbortError")) {
+            pendingPlaybackRef.current = {
+              audio,
+              url,
+              onEnded: opts?.onEnded,
+            };
+            setNeedsAudioUnlock(true);
+            return;
+          }
           setSpeaking(false);
           stopAudioLevelSimulation();
           stopDurationCountdown();
@@ -652,6 +687,29 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Autoplay unlock (must be invoked from a user-gesture handler).
+  // ---------------------------------------------------------------------------
+  const unlock = useCallback(() => {
+    const pending = pendingPlaybackRef.current;
+    if (!pending) {
+      setNeedsAudioUnlock(false);
+      return;
+    }
+    audioRef.current = pending.audio;
+    pending.audio
+      .play()
+      .then(() => {
+        logger.log("[TTS] Audio unlocked via user gesture, playback resumed");
+        setNeedsAudioUnlock(false);
+        pendingPlaybackRef.current = null;
+      })
+      .catch((err) => {
+        logger.warn("[TTS] Unlock failed:", err?.name, err?.message);
+        // Keep the overlay up so the user can try again.
+      });
+  }, []);
+
+  // ---------------------------------------------------------------------------
   // Mode switching
   // ---------------------------------------------------------------------------
   const enableFallbackMode = useCallback(() => {
@@ -763,5 +821,8 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     currentSpeaker,
     remainingDurationMs,
     activeFactors,
+    // Autoplay unlock
+    needsAudioUnlock,
+    unlock,
   };
 }

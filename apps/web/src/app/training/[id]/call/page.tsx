@@ -218,9 +218,19 @@ export default function TrainingCallPage() {
 
         case "error": {
           const code = (data.data.code as string) || "";
+          // Hijack/conflict: do NOT auto-redirect to chat. The WS has
+          // reconnect logic, and most hijacks in production are spurious
+          // (React remount, fast-refresh, brief network blip). Kicking the
+          // user to chat on every such event is how call-mode sessions
+          // appeared to "vanish" for users. Log and rely on reconnect; if
+          // it truly stays broken, the server closes the socket and the
+          // user can leave manually via the hangup button.
           if (code === "session_hijacked" || code === "session_conflict") {
-            logger.warn("[call] session error", data.data);
-            router.replace(`/training/${id}`);
+            logger.warn("[call] session takeover event (non-fatal)", data.data);
+          } else {
+            // Other errors (missing_field, rate_limit, scenario issues):
+            // surface to console for diagnostics. Non-fatal; stay on call.
+            logger.warn("[call] ws error", data.data);
           }
           break;
         }
@@ -311,19 +321,51 @@ export default function TrainingCallPage() {
   }
 
   return (
-    <PhoneCallMode
-      characterName={s.characterName || "Клиент"}
-      emotion={s.emotion as EmotionState}
-      sessionState={s.sessionState}
-      audioLevel={tts.audioLevel}
-      elapsed={s.elapsed}
-      muted={muted}
-      speakerOn={speakerOn}
-      sceneId={sceneBg}
-      clientCard={s.clientCard}
-      onToggleMute={() => setMuted((m) => !m)}
-      onToggleSpeaker={() => setSpeakerOn((v) => !v)}
-      onHangup={onHangup}
-    />
+    <>
+      <PhoneCallMode
+        characterName={s.characterName || "Клиент"}
+        emotion={s.emotion as EmotionState}
+        sessionState={s.sessionState}
+        audioLevel={tts.audioLevel}
+        elapsed={s.elapsed}
+        muted={muted}
+        speakerOn={speakerOn}
+        sceneId={sceneBg}
+        clientCard={s.clientCard}
+        onToggleMute={() => setMuted((m) => !m)}
+        onToggleSpeaker={() => setSpeakerOn((v) => !v)}
+        onHangup={onHangup}
+      />
+      {/*
+        Autoplay-unlock overlay. Browsers (Chrome/Safari strict, iOS
+        Safari especially) block HTMLAudioElement.play() that isn't
+        directly inside a user-gesture callback. The click that routed
+        to this page counts, but by the time WS connects and the first
+        TTS chunk arrives, activation may have expired.
+        useTTS.needsAudioUnlock flips to true whenever audio.play()
+        rejects with NotAllowedError/AbortError. We then render a
+        full-screen button whose onClick calls tts.unlock() — that call
+        stack is a user gesture, so the queued audio replays cleanly.
+      */}
+      {tts.needsAudioUnlock && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={tts.unlock}
+          role="button"
+          tabIndex={0}
+        >
+          <div className="flex max-w-sm flex-col items-center gap-4 rounded-2xl bg-white/10 px-8 py-10 text-center shadow-2xl">
+            <div className="text-6xl">🔊</div>
+            <div className="text-xl font-semibold text-white">
+              Нажмите для включения звука
+            </div>
+            <div className="text-sm text-white/70">
+              Браузер заблокировал автовоспроизведение. Тапните где-угодно —
+              голос клиента зазвучит немедленно.
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
