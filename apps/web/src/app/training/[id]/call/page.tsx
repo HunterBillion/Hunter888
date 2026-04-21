@@ -142,6 +142,17 @@ export default function TrainingCallPage() {
     };
   }, [id]);
 
+  // --- Speaker volume wiring ----------------------------------------------
+  // PhoneCallMode has a speaker/loudspeaker toggle that previously only
+  // changed its own icon state without affecting audio. Now:
+  //   speakerOn=true  → normal earpiece volume (0.7)
+  //   speakerOn=false → loudspeaker boost (1.0 max)
+  // Default state is speakerOn=true (normal call). Tapping switches to
+  // louder "speakerphone" mode.
+  useEffect(() => {
+    tts.setVolume(speakerOn ? 0.7 : 1.0);
+  }, [speakerOn, tts]);
+
   // --- WebSocket ----------------------------------------------------------
   const lastSeqNum = s.messages.length > 0
     ? s.messages.reduce((max, m) => Math.max(max, m.sequenceNumber ?? 0), 0) || null
@@ -189,6 +200,31 @@ export default function TrainingCallPage() {
             data.data as unknown as Parameters<typeof tts.playAudioMessage>[0],
           );
           break;
+
+        case "tts.audio_chunk": {
+          // Sentence-level TTS streaming. Backend splits multi-sentence
+          // replies ("Алло... Кто это? Откуда у вас мой номер?") into one
+          // chunk per sentence for faster first-audio (~1.5s vs 5-13s).
+          // The chat page at /training/[id] handles this event AND renders
+          // subtitles; the call page only needs audio — PhoneCallMode has
+          // no chat-bubble UI. Queue chunks in sentence order and let
+          // useTTS play them sequentially.
+          //
+          // Before this handler existed the call-mode heard nothing on
+          // any multi-sentence reply — exact symptom of the 2026-04-21
+          // incident: character.response came through, tts.audio never
+          // did, user saw dead silence (journal #22 recurrence).
+          tts.cancelFallback();
+          const chunkAudio = data.data.audio_b64 as string | undefined;
+          if (chunkAudio) {
+            tts.queueAudioChunk({
+              audio: chunkAudio,
+              index: (data.data.sentence_index as number) ?? 0,
+              isLast: Boolean(data.data.is_last),
+            });
+          }
+          break;
+        }
 
         case "tts.couple_audio":
           tts.playCoupleAudio(

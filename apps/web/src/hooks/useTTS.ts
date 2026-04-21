@@ -162,6 +162,12 @@ interface UseTTSReturn {
    * invoked from within a user-gesture handler (onClick / onPointerDown).
    */
   unlock: () => void;
+
+  /** Current output volume (0-1). Applied to all subsequent audio plays. */
+  volume: number;
+
+  /** Set output volume (0=mute, 1=max). Affects current + future playbacks. */
+  setVolume: (v: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +206,20 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     | { audio: HTMLAudioElement; url: string; onEnded?: () => void }
     | null
   >(null);
+
+  // Volume control (0..1). Applied to every audio element we create and
+  // to the currently-playing element on setVolume(). Default 1.0 = max.
+  const [volume, setVolumeState] = useState<number>(1);
+  const volumeRef = useRef<number>(1);
+  const setVolume = useCallback((v: number) => {
+    const clamped = Math.max(0, Math.min(1, v));
+    volumeRef.current = clamped;
+    setVolumeState(clamped);
+    // Apply to currently-playing element so the change is heard instantly.
+    if (audioRef.current) {
+      audioRef.current.volume = clamped;
+    }
+  }, []);
 
   // --- Refs ---
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -415,6 +435,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
         objectUrlRef.current = url;
 
         const audio = new Audio(url);
+        audio.volume = volumeRef.current;
         audioRef.current = audio;
 
         // Set modulation state
@@ -760,6 +781,8 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     );
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
+    audio.volume = volumeRef.current;
+    audioRef.current = audio;
     const advance = () => {
       URL.revokeObjectURL(url);
       playingChunkRef.current = false;
@@ -775,7 +798,21 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     audio.onended = advance;
     audio.onerror = advance;
     setSpeaking(true);
-    audio.play().catch(advance);
+    audio.play().catch((err) => {
+      // Chunked path: on autoplay-block, route to the same unlock UX used
+      // by decodeAndPlay so the first sentence of a phone-call reply isn't
+      // silently dropped when the browser suppresses autoplay.
+      if (err && (err.name === "NotAllowedError" || err.name === "AbortError")) {
+        pendingPlaybackRef.current = {
+          audio,
+          url,
+          onEnded: advance,
+        };
+        setNeedsAudioUnlock(true);
+        return;
+      }
+      advance();
+    });
   }, []);
 
   const queueAudioChunk = useCallback(
@@ -824,5 +861,8 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     // Autoplay unlock
     needsAudioUnlock,
     unlock,
+    // Volume
+    volume,
+    setVolume,
   };
 }
