@@ -3174,20 +3174,33 @@ async def _handle_session_start(
     # session_hijacked on its first heartbeat (see function docstring).
     # Same-user takeover is allowed so reconnects & StrictMode remounts
     # don't spuriously close the session.
+    #
+    # If acquisition returns False we MUST NOT proceed with session.started —
+    # that would put two tabs of a different user into the same session
+    # (invariant violation). Send a clear error and bail. On exception
+    # (Redis hiccup) we also bail, but log full trace so ops can see why.
     try:
         _lock_ok = await _acquire_session_lock(
             session.id, ws_id, state.get("user_id")
         )
-        if not _lock_ok:
-            logger.warning(
-                "WS lock acquisition returned False on session.start | session=%s user=%s ws=%s",
-                session.id, state.get("user_id"), ws_id,
-            )
     except Exception:
         logger.warning(
             "WS lock acquisition raised on session.start | session=%s",
             session.id, exc_info=True,
         )
+        _lock_ok = False
+
+    if not _lock_ok:
+        logger.warning(
+            "session.start refused: lock busy | session=%s user=%s ws=%s",
+            session.id, state.get("user_id"), ws_id,
+        )
+        await _send_error(
+            ws,
+            "Сессия уже открыта в другой вкладке. Закрой её и попробуй снова.",
+            "session_lock_busy",
+        )
+        return
 
     await _send(ws, "session.started", started_data)
 

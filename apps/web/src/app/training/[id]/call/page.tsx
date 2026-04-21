@@ -24,6 +24,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Mic, MicOff } from "lucide-react";
 import { useSessionStore } from "@/stores/useSessionStore";
 import { PhoneCallMode } from "@/components/training/phone/PhoneCallMode";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -372,6 +373,40 @@ export default function TrainingCallPage() {
         onHangup={onHangup}
         volume={tts.volume}
         onVolumeChange={tts.setVolume}
+        micSlot={
+          <button
+            type="button"
+            aria-label={stt.status === "listening" ? "Остановить запись" : "Начать запись"}
+            onClick={() => {
+              if (stt.status === "listening") {
+                stt.stopListening();
+              } else {
+                // Pause TTS so we don't record our own output into STT.
+                try { tts.stop(); } catch { /* noop */ }
+                stt.startListening();
+              }
+            }}
+            className={[
+              "flex h-16 w-16 items-center justify-center rounded-full transition-all",
+              "ring-2 ring-white/10 backdrop-blur-sm",
+              stt.status === "listening"
+                ? "bg-red-500/90 hover:bg-red-500 scale-110"
+                : "bg-white/10 hover:bg-white/20",
+            ].join(" ")}
+            style={{
+              boxShadow:
+                stt.status === "listening"
+                  ? `0 0 ${20 + stt.audioLevel * 40}px rgba(239, 68, 68, ${0.5 + stt.audioLevel * 0.5})`
+                  : "none",
+            }}
+          >
+            {stt.status === "listening" ? (
+              <MicOff size={28} className="text-white" />
+            ) : (
+              <Mic size={28} className="text-white/90" />
+            )}
+          </button>
+        }
       />
       {/*
         Autoplay-unlock overlay. Browsers (Chrome/Safari strict, iOS
