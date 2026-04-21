@@ -630,10 +630,16 @@ async def start_session(
                 pass
         raise
 
+    # 2026-04-21: persist the CustomCharacter FK so end_session can
+    # increment play_count/best_score/avg_score/last_played_at later. The
+    # column has existed since migration 20260404_006 but nothing on the
+    # write side filled it — it stayed NULL for every session, making the
+    # saved-characters statistics permanently dead.
     session = TrainingSession(
         user_id=user.id,
         scenario_id=scenario_id,
         custom_params=custom_params,
+        custom_character_id=body.custom_character_id,
     )
     db.add(session)
     await db.flush()
@@ -975,6 +981,16 @@ async def end_session(
         # Fallback: set status manually if session_manager failed
         session.status = SessionStatus.completed
         await db.flush()
+
+    # 2026-04-21: reconcile CustomCharacter stats (play_count, best_score,
+    # avg_score, last_played_at) when the session was linked to a saved
+    # character. No-ops on sessions without a link. See
+    # app/services/custom_character_stats.py for the full rationale.
+    try:
+        from app.services.custom_character_stats import update_custom_character_stats
+        await update_custom_character_stats(session, db)
+    except Exception:
+        logger.warning("custom_character_stats update failed for %s", session_id, exc_info=True)
 
     # Emit event → EventBus handles achievements, goals, SRS seeding, notifications
     try:

@@ -4468,6 +4468,21 @@ async def _handle_session_end(
             except Exception as e:
                 logger.warning("Failed to create SessionHistory/update ManagerProgress in txn: %s", e)
 
+        # 2026-04-21: reconcile CustomCharacter stats for constructor-born
+        # sessions before we commit. update_custom_character_stats is a
+        # no-op on sessions without a custom_character_id link, so safe to
+        # call unconditionally. Its flush joins the same transaction as
+        # the session-end writes above, so either both land or neither.
+        if session is not None:
+            try:
+                from app.services.custom_character_stats import update_custom_character_stats
+                await update_custom_character_stats(session, db)
+            except Exception:
+                logger.warning(
+                    "custom_character_stats update failed (WS end) for %s",
+                    session_id, exc_info=True,
+                )
+
         await db.commit()
 
     # ── C4 fix: Send results to client NOW (critical path done) ──

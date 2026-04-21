@@ -752,7 +752,30 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
     fetchSavedCharacters();
   }, [fetchSavedCharacters]);
 
-  const buildStoryUrl = (scenarioId: string, char: { archetype: string; profession: string; lead_source: string; difficulty: number }) => {
+  // 2026-04-21: saved characters carry all 11 builder fields (+ tone).
+  // Previously buildStoryUrl forwarded only archetype/profession/lead/
+  // difficulty, so replaying a saved "Кидала · офис · shouty · night"
+  // client through AI-x mode silently dropped 7 of his defining traits.
+  // Now the URL mirrors the full CustomCharacter row so the session
+  // reproduces what the manager saved.
+  type SavedCharFull = {
+    id?: string;
+    archetype: string;
+    profession: string;
+    lead_source: string;
+    difficulty: number;
+    family_preset?: string | null;
+    creditors_preset?: string | null;
+    debt_stage?: string | null;
+    debt_range?: string | null;
+    emotion_preset?: string | null;
+    bg_noise?: string | null;
+    time_of_day?: string | null;
+    client_fatigue?: string | null;
+    tone?: string | null;
+  };
+
+  const buildStoryUrl = (scenarioId: string, char: SavedCharFull) => {
     const params = new URLSearchParams({
       mode: "story",
       calls: String(storyCalls),
@@ -761,11 +784,27 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
       custom_lead_source: char.lead_source,
       custom_difficulty: String(char.difficulty),
     });
+    // Null values stored on the server become missing query params — the
+    // server re-interprets those as "use archetype default".
+    const extra: Record<string, string | null | undefined> = {
+      custom_family_preset: char.family_preset,
+      custom_creditors_preset: char.creditors_preset,
+      custom_debt_stage: char.debt_stage,
+      custom_debt_range: char.debt_range,
+      custom_emotion_preset: char.emotion_preset,
+      custom_bg_noise: char.bg_noise,
+      custom_time_of_day: char.time_of_day,
+      custom_fatigue: char.client_fatigue,
+      custom_tone: char.tone,
+    };
+    for (const [key, val] of Object.entries(extra)) {
+      if (val) params.set(key, val);
+    }
     return `/training/${scenarioId}?${params.toString()}`;
   };
 
   const handleStart = async (
-    char: { id?: string; archetype: string; profession: string; lead_source: string; difficulty: number },
+    char: SavedCharFull,
     storyMode = false,
   ) => {
     const charKey = char.id || char.archetype;
@@ -784,12 +823,25 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
         router.push(buildStoryUrl(scenarioId, char));
         return;
       }
+      // 2026-04-21: send the full CustomCharacter payload + the FK so the
+      // session links to the saved row (and end_session can then update
+      // play_count/best_score/avg_score/last_played_at).
       const session = await api.post("/training/sessions", {
         ...(scenarioId ? { scenario_id: scenarioId } : {}),
+        ...(char.id ? { custom_character_id: char.id } : {}),
         custom_archetype: char.archetype,
         custom_profession: char.profession,
         custom_lead_source: char.lead_source,
         custom_difficulty: char.difficulty,
+        custom_family_preset: char.family_preset ?? undefined,
+        custom_creditors_preset: char.creditors_preset ?? undefined,
+        custom_debt_stage: char.debt_stage ?? undefined,
+        custom_debt_range: char.debt_range ?? undefined,
+        custom_emotion_preset: char.emotion_preset ?? undefined,
+        custom_bg_noise: char.bg_noise ?? undefined,
+        custom_time_of_day: char.time_of_day ?? undefined,
+        custom_fatigue: char.client_fatigue ?? undefined,
+        custom_tone: char.tone ?? undefined,
       });
       router.push(`/training/${session.id}`);
     } catch (err) {
