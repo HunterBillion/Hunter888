@@ -231,13 +231,32 @@ export default function TrainingCallPage() {
     },
   });
 
-  // Wire up STT.onResult → WS sendMessage
+  // Wire up STT.onResult → WS sendMessage (text.message is the
+  // canonical type; user.message is unknown to backend).
   useEffect(() => {
     sttSendRef.current = (text: string) => {
       if (!text || connectionState !== "connected") return;
-      sendMessage({ type: "user.message", data: { content: text } });
+      sendMessage({ type: "text.message", data: { text } });
     };
   }, [sendMessage, connectionState]);
+
+  // Kick-start the session on WS ready. The chat flow sends
+  // session.start with the REST-created session_id; backend resumes
+  // and emits session.started/character.response/tts.audio. Without
+  // this message the backend just idles after auth.success.
+  const sessionStartSentRef = useRef(false);
+  useEffect(() => {
+    if (connectionState !== "connected") {
+      sessionStartSentRef.current = false;
+      return;
+    }
+    if (sessionStartSentRef.current) return;
+    if (!id) return;
+    sessionStartSentRef.current = true;
+    // eslint-disable-next-line no-console
+    console.log("[CALL] sending session.start");
+    sendMessage({ type: "session.start", data: { session_id: id } });
+  }, [connectionState, id, sendMessage]);
 
   // --- STT start/stop bound to mute state + mode readiness ---------------
   useEffect(() => {
