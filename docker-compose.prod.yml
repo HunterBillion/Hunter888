@@ -55,6 +55,13 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
       target: production
+    # 2026-04-21 (journal #L8 — class A): override base env_file so prod
+    # actually loads production secrets. Before this, docker-compose's
+    # default `.env` in the compose dir was read, and edits to
+    # `.env.production` silently had no effect. With this override,
+    # .env.production is the single source of truth for prod runtime.
+    env_file:
+      - .env.production
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
