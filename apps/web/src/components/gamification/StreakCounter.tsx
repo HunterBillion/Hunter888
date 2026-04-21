@@ -17,36 +17,42 @@ export function StreakCounter({ streak, className = "" }: StreakCounterProps) {
 
   const dayLabel = streak === 1 ? "день" : streak < 5 ? "дня" : "дней";
 
+  // Match PlanChip style — same pill shape, padding, typography — so both
+  // header badges look like a visual pair. Typography: text-[11px] semibold
+  // uppercase with wide tracking, matching the SCOUT chip next to it.
+  const fg = isActive ? STREAK.color : "var(--text-muted)";
   return (
     <motion.div
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap shrink-0 ${className}`}
       style={{
-        background: isActive ? STREAK.rgba(0.1) : "var(--input-bg)",
-        border: `2px solid ${isActive ? STREAK.rgba(0.25) : "var(--border-color)"}`,
-        boxShadow: isMilestone ? `0 0 16px ${STREAK.rgba(0.2)}` : isActive ? `0 0 12px ${STREAK.rgba(0.08)}` : "none",
+        background: isActive ? STREAK.rgba(0.12) : "var(--input-bg)",
+        color: fg,
+        border: `1px solid ${isActive ? STREAK.rgba(0.4) : "var(--border-color)"}`,
+        boxShadow: isMilestone
+          ? `0 0 16px ${STREAK.rgba(0.25)}`
+          : isActive
+            ? `0 0 10px ${STREAK.rgba(0.12)}`
+            : "none",
       }}
-      whileHover={{ scale: 1.06 }}
+      whileHover={{ scale: 1.04 }}
       whileTap={{ scale: 0.97 }}
       title={isActive ? `Стрик: ${streak} ${dayLabel} подряд!` : "Начните стрик — тренируйтесь каждый день"}
     >
-      <motion.div
-        animate={isActive && !reducedMotion ? { scale: [1, 1.25, 1], rotate: [0, -8, 8, 0] } : {}}
+      <motion.span
+        className="inline-flex"
+        animate={isActive && !reducedMotion ? { scale: [1, 1.2, 1], rotate: [0, -6, 6, 0] } : {}}
         transition={reducedMotion ? {} : { duration: 0.8, repeat: Infinity, repeatDelay: isMilestone ? 1.0 : 2.5 }}
       >
-        <Flame size={16} style={{ color: isActive ? STREAK.color : "var(--text-muted)", opacity: isActive ? 1 : 0.5 }} />
-      </motion.div>
-      <span
-        className="font-pixel text-lg tabular-nums"
-        style={{ color: isActive ? STREAK.color : "var(--text-muted)" }}
-      >
-        {isActive ? streak : ""}
-      </span>
-      <span
-        className="font-pixel text-base uppercase tracking-wide"
-        style={{ color: isActive ? STREAK.rgba(0.6) : "var(--text-muted)" }}
-      >
-        {isActive ? dayLabel : "Начни серию"}
-      </span>
+        <Flame size={12} style={{ color: fg, opacity: isActive ? 1 : 0.5 }} />
+      </motion.span>
+      {isActive ? (
+        <>
+          <span className="tabular-nums" style={{ color: STREAK.color }}>{streak}</span>
+          <span style={{ color: STREAK.rgba(0.75) }}>{dayLabel}</span>
+        </>
+      ) : (
+        <span>Начни серию</span>
+      )}
     </motion.div>
   );
 }
