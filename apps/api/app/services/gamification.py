@@ -2097,7 +2097,7 @@ class AchievementValidator:
         result = await db.execute(
             select(SessionHistory.traps_dodged).where(
                 SessionHistory.user_id == user_id,
-            ).order_by(SessionHistory.completed_at.desc()).limit(20)
+            ).order_by(SessionHistory.created_at.desc()).limit(20)
         )
         for (dodged,) in result.all():
             if dodged is not None and dodged >= 5:

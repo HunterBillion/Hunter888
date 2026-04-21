@@ -1371,16 +1371,16 @@ async def calculate_scores(
     if len(user_messages) == 0:
         logger.warning("Session %s has 0 user messages — returning zero scores", session_id)
         return ScoreBreakdown(
-            score_script_adherence=0,
-            score_objection_handling=0,
-            score_communication=0,
-            score_anti_patterns=0,
-            score_result=0,
-            score_chain_traversal=0,
-            score_trap_handling=0,
-            score_human_factor=0,
-            score_narrative=0,
-            score_legal=0,
+            script_adherence=0,
+            objection_handling=0,
+            communication=0,
+            anti_patterns=0,
+            result=0,
+            chain_traversal=0,
+            trap_handling=0,
+            human_factor=0,
+            narrative_progression=0,
+            legal_accuracy=0,
             total=0,
             details={"_completeness": 0.0, "_empty_session": True},
         )

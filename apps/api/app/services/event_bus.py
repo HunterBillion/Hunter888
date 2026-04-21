@@ -477,23 +477,21 @@ async def _handle_notification(event: GameEvent) -> None:
     from app.ws.notifications import notification_manager
 
     # 1. WebSocket notification (immediate, if tab is open)
+    # send_to_user expects (user_id, event: dict) — wrap payload accordingly.
     if event.kind == EVENT_ACHIEVEMENT_EARNED:
         await notification_manager.send_to_user(
             str(event.user_id),
-            event_type="achievement.earned",
-            data=event.payload,
+            {"event_type": "achievement.earned", "data": event.payload},
         )
     elif event.kind == EVENT_GOAL_COMPLETED:
         await notification_manager.send_to_user(
             str(event.user_id),
-            event_type="goal.completed",
-            data=event.payload,
+            {"event_type": "goal.completed", "data": event.payload},
         )
     elif event.kind == EVENT_LEVEL_UP:
         await notification_manager.send_to_user(
             str(event.user_id),
-            event_type="level.up",
-            data=event.payload,
+            {"event_type": "level.up", "data": event.payload},
         )
 
     elif event.kind == EVENT_STREAK_UPDATED:
@@ -501,8 +499,7 @@ async def _handle_notification(event: GameEvent) -> None:
         if streak_days >= 3:  # Only notify on meaningful streaks
             await notification_manager.send_to_user(
                 str(event.user_id),
-                event_type="streak.updated",
-                data=event.payload,
+                {"event_type": "streak.updated", "data": event.payload},
             )
 
     # 2. Web Push notification (reaches users even when tab is closed)
