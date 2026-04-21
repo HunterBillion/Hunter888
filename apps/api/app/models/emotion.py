@@ -15,7 +15,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     String, Integer, Float, Boolean, Text, DateTime,
-    ForeignKey, CheckConstraint, UniqueConstraint, Index,
+    ForeignKey, CheckConstraint, UniqueConstraint, Index, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -371,7 +371,7 @@ class ArchetypeEmotionConfig(Base):
     )
     # Emotion system v6 (migration 20260404_011)
     graph_variant: Mapped[str | None] = mapped_column(
-        String(20), nullable=True, server_default="'standard'",
+        String(20), nullable=True, server_default=text("'standard'"),
     )
 
 
@@ -405,7 +405,7 @@ class FakeTransitionDef(Base):
         String(100), nullable=False,
     )
     reveal_triggers: Mapped[list] = mapped_column(
-        JSONB, nullable=False, default=list, server_default="'[]'::jsonb",
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"),
     )
     duration_sec: Mapped[int] = mapped_column(
         Integer, nullable=False, default=60,
