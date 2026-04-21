@@ -633,7 +633,20 @@ async def google_callback(request: Request, body: OAuthCallbackRequest, db: Asyn
             },
         )
         if token_resp.status_code != 200:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ошибка авторизации Google")
+            _body_preview = token_resp.text[:500]
+            _logger.warning(
+                "oauth.google.token_exchange_failed status=%s redirect_uri=%s body=%s",
+                token_resp.status_code, redirect_uri, _body_preview,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "oauth_exchange_failed",
+                    "provider": "google",
+                    "provider_status": token_resp.status_code,
+                    "message": "Ошибка авторизации Google. Проверьте соответствие redirect_uri в настройках OAuth-клиента Google Console.",
+                },
+            )
         token_data = token_resp.json()
 
         # Get user info
@@ -642,7 +655,19 @@ async def google_callback(request: Request, body: OAuthCallbackRequest, db: Asyn
             headers={"Authorization": f"Bearer {token_data['access_token']}"},
         )
         if userinfo_resp.status_code != 200:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось получить профиль Google")
+            _logger.warning(
+                "oauth.google.userinfo_failed status=%s body=%s",
+                userinfo_resp.status_code, userinfo_resp.text[:300],
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "oauth_userinfo_failed",
+                    "provider": "google",
+                    "provider_status": userinfo_resp.status_code,
+                    "message": "Не удалось получить профиль Google",
+                },
+            )
         userinfo = userinfo_resp.json()
 
     google_id = userinfo.get("id")
@@ -721,7 +746,20 @@ async def yandex_callback(request: Request, body: OAuthCallbackRequest, db: Asyn
             },
         )
         if token_resp.status_code != 200:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ошибка авторизации Yandex")
+            _body_preview = token_resp.text[:500]
+            _logger.warning(
+                "oauth.yandex.token_exchange_failed status=%s redirect_uri=%s body=%s",
+                token_resp.status_code, redirect_uri, _body_preview,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "oauth_exchange_failed",
+                    "provider": "yandex",
+                    "provider_status": token_resp.status_code,
+                    "message": "Ошибка авторизации Yandex. Проверьте redirect_uri в настройках OAuth-клиента.",
+                },
+            )
         token_data = token_resp.json()
 
         # Get user info
@@ -730,7 +768,19 @@ async def yandex_callback(request: Request, body: OAuthCallbackRequest, db: Asyn
             headers={"Authorization": f"OAuth {token_data['access_token']}"},
         )
         if userinfo_resp.status_code != 200:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось получить профиль Yandex")
+            _logger.warning(
+                "oauth.yandex.userinfo_failed status=%s body=%s",
+                userinfo_resp.status_code, userinfo_resp.text[:300],
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "oauth_userinfo_failed",
+                    "provider": "yandex",
+                    "provider_status": userinfo_resp.status_code,
+                    "message": "Не удалось получить профиль Yandex",
+                },
+            )
         userinfo = userinfo_resp.json()
 
     yandex_id = userinfo.get("id")
