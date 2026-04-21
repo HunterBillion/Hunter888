@@ -1540,13 +1540,21 @@ async def seed_levels_and_achievements() -> None:
                         },
                     )
 
-            # ── Достижения ──
-            existing_codes = (
-                await session.execute(select(AchievementDefinition.code))
-            ).scalars().all()
+            # ── Достижения (idempotent via ON CONFLICT) ──
+            # Race-safe: multiple gunicorn workers / lifespan events may
+            # seed in parallel. ON CONFLICT DO NOTHING avoids UNIQUE violation
+            # if another worker inserts between our SELECT and INSERT.
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+            import json as _json
             for ach in ACHIEVEMENTS:
-                if ach["code"] not in existing_codes:
-                    session.add(AchievementDefinition(**ach))
+                values = {**ach}
+                # JSONB condition needs explicit json encoding for asyncpg
+                if isinstance(values.get("condition"), dict):
+                    values["condition"] = _json.dumps(values["condition"])
+                stmt = pg_insert(AchievementDefinition).values(**values).on_conflict_do_nothing(
+                    index_elements=["code"]
+                )
+                await session.execute(stmt)
 
         await session.commit()
         print(f"✅ Seeded {len(LEVELS)} levels and {len(ACHIEVEMENTS)} achievements")
