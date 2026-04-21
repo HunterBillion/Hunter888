@@ -236,7 +236,7 @@ export default function TrainingCallPage() {
   useEffect(() => {
     sttSendRef.current = (text: string) => {
       if (!text || connectionState !== "connected") return;
-      sendMessage({ type: "text.message", data: { text } });
+      sendMessage({ type: "text.message", data: { content: text } });
     };
   }, [sendMessage, connectionState]);
 
