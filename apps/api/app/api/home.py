@@ -59,31 +59,25 @@ async def start_home_session(
     client_data = await consume_waiting_client(user.id)
 
     if not client_data:
-        # Fallback: pick an active scenario THAT HAS A CHARACTER.
-        # Scenarios without character_id produce role-reversal bugs (AI plays
-        # the manager instead of the client), so we filter them out.
-        result = await db.execute(
-            select(Scenario)
-            .where(Scenario.is_active.is_(True))
-            .where(Scenario.character_id.is_not(None))
-            .limit(1)
+        # Preview cache expired or was consumed by another tab. DO NOT fall
+        # back to a random scenario — the user saw Client A in the preview
+        # and clicking "Ответить" would silently start with Client B. That's
+        # the bug users reported: "увидел одни данные, после клика — другие".
+        #
+        # Instead: tell the client to refresh, which triggers a fresh
+        # /home/waiting-client call, re-generating a preview they'll see.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Клиент ушёл. Обнови страницу — новый клиент уже ждёт.",
         )
-        scenario = result.scalar_one_or_none()
-        if not scenario:
-            raise HTTPException(
-                status_code=503,
-                detail="Нет доступных сценариев с персонажем. Обратитесь к администратору.",
-            )
-        scenario_id = scenario.id
-        custom_params = {"source": "home"}
-    else:
-        scenario_id = uuid.UUID(client_data["scenario_id"])
-        custom_params = {
-            "source": "home",
-            "archetype": client_data.get("archetype_code"),
-            "difficulty": client_data.get("difficulty"),
-            "waiting_client_profile": client_data.get("profile"),
-        }
+
+    scenario_id = uuid.UUID(client_data["scenario_id"])
+    custom_params = {
+        "source": "home",
+        "archetype": client_data.get("archetype_code"),
+        "difficulty": client_data.get("difficulty"),
+        "waiting_client_profile": client_data.get("profile"),
+    }
 
     # Verify scenario exists AND has a character (role definition source)
     result = await db.execute(select(Scenario).where(Scenario.id == scenario_id))

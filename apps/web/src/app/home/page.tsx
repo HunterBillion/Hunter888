@@ -303,11 +303,29 @@ export default function HomePage() {
     try {
       // Prefer the waiting client (new /home/start flow)
       if (waitingClient) {
-        const session = await api.post("/home/start", {});
-        if (session?.id) {
-          router.push(`/training/${session.id}`);
-          setTimeout(() => setStarting(false), 1000);
-          return;
+        try {
+          const session = await api.post("/home/start", {});
+          if (session?.id) {
+            router.push(`/training/${session.id}`);
+            setTimeout(() => setStarting(false), 1000);
+            return;
+          }
+        } catch (err: unknown) {
+          // 409 = preview cache expired, client "left". Refetch the
+          // preview so the user sees the NEW waiting client before trying
+          // again. Without this refetch they'd silently start training with
+          // a different client than the one they saw in the card.
+          const status = (err as { status?: number })?.status;
+          if (status === 409) {
+            logger.info("Waiting client expired, refetching preview");
+            try {
+              const { client } = await api.get<{ client: typeof waitingClient }>("/home/waiting-client");
+              setWaitingClient(client);
+            } catch { /* preview refetch failed, leave as-is */ }
+            setStarting(false);
+            return;
+          }
+          throw err;
         }
       }
       // Fallback: old random scenario flow
