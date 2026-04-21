@@ -6,7 +6,8 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { BookOpen, Lock, ChevronRight, Star, Trophy, Map } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { BookOpen, ChevronRight, Star, Trophy, Map } from "lucide-react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import ChapterMap from "./ChapterMap";
@@ -107,21 +108,32 @@ export default function ChapterProgress() {
             {EPOCH_ICONS[data.current_epoch]}
           </span>
           <div className="min-w-0">
+            {/* Epoch line: monospace for "Эпоха", different weight for name.
+                Wider tracking + 9px makes it look like a chapter subtitle in
+                a book (small caps vibe). */}
             <div
-              className="text-[10px] font-pixel uppercase tracking-wider mb-0.5"
-              style={{ color: epochColor, letterSpacing: "0.14em" }}
+              className="text-[10px] font-mono uppercase mb-1 flex items-center gap-1.5"
+              style={{ color: epochColor, letterSpacing: "0.2em" }}
             >
-              Эпоха {EPOCH_ICONS[data.current_epoch]} · {data.epoch_name}
+              <span style={{ opacity: 0.7 }}>Эпоха</span>
+              <span className="font-bold">{EPOCH_ICONS[data.current_epoch]}</span>
+              <span style={{ opacity: 0.5 }}>·</span>
+              <span style={{ opacity: 0.85 }}>{data.epoch_name}</span>
             </div>
+            {/* Chapter title: display font (Geist), generous size, serif-y
+                feel for the book metaphor. letterSpacing slightly tighter for
+                a confident editorial title look. */}
             <div
-              className="font-bold truncate"
+              className="font-display font-bold truncate"
               style={{
                 color: "var(--text-primary)",
-                fontSize: "16px",
-                lineHeight: "1.2",
+                fontSize: "18px",
+                lineHeight: "1.15",
+                letterSpacing: "-0.01em",
               }}
             >
-              Глава {data.current_chapter}: {data.chapter_name}
+              <span style={{ color: epochColor, fontWeight: 500 }}>Глава {data.current_chapter}.</span>{" "}
+              {data.chapter_name}
             </div>
           </div>
         </div>
@@ -173,72 +185,174 @@ export default function ChapterProgress() {
         </div>
       )}
 
-      {/* Expanded details */}
-      {expanded && (
-        <div className="mt-3 pt-3 border-t border-[var(--border-color)] space-y-2">
-          <p className="text-xs text-[var(--text-secondary)] italic leading-relaxed">
-            {data.chapter_intro}
-          </p>
-
-          {/* Stats row */}
-          <div className="flex gap-3 text-xs">
-            <div className="flex items-center gap-1 text-[var(--text-muted)]">
-              <BookOpen size={12} />
-              <span>{data.chapter_sessions} сессий</span>
-            </div>
-            <div className="flex items-center gap-1 text-[var(--text-muted)]">
-              <Star size={12} />
-              <span>ср. {data.chapter_avg_score}</span>
-            </div>
-            {data.chapter_best_score > 0 && (
-              <div className="flex items-center gap-1 text-[var(--text-muted)]">
-                <Trophy size={12} />
-                <span>лучш. {data.chapter_best_score}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Unlock conditions */}
-          {!isMaxChapter && data.next_unlock_level && (
-            <div className="text-xs text-[var(--text-muted)] space-y-0.5">
-              <div className="font-medium text-[var(--text-secondary)]">Условия разблокировки:</div>
-              <div className="flex items-center gap-1">
-                {data.manager_level >= data.next_unlock_level ? "\u2705" : <Lock size={10} />}
-                <span>Уровень {data.next_unlock_level} (текущий: {data.manager_level})</span>
-              </div>
-              {data.next_unlock_sessions != null && (
-                <div className="flex items-center gap-1">
-                  {data.chapter_sessions >= data.next_unlock_sessions ? "\u2705" : <Lock size={10} />}
-                  <span>{data.next_unlock_sessions} сессий (выполнено: {data.chapter_sessions})</span>
+      {/* Expanded details — richer content when shutter raised */}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="expanded"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="mt-4 pt-4 border-t space-y-4"
+              style={{ borderColor: `color-mix(in srgb, ${epochColor} 25%, var(--border-color))` }}
+            >
+              {/* Epoch tagline — what this epoch is about (new — larger text) */}
+              {data.epoch_tagline && (
+                <div>
+                  <div className="text-[10px] font-mono uppercase mb-1.5" style={{ color: epochColor, letterSpacing: "0.2em", opacity: 0.75 }}>
+                    Об эпохе
+                  </div>
+                  <p className="text-sm leading-relaxed" style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+                    {data.epoch_tagline}
+                  </p>
                 </div>
               )}
-              {data.next_unlock_score != null && (
-                <div className="flex items-center gap-1">
-                  {data.chapter_avg_score >= data.next_unlock_score ? "\u2705" : <Lock size={10} />}
-                  <span>Средний балл {data.next_unlock_score}+ (текущий: {data.chapter_avg_score})</span>
+
+              {/* Chapter narrative — book-style pull-quote with accent border */}
+              {data.chapter_intro && (
+                <div className="relative pl-4" style={{ borderLeft: `3px solid ${epochColor}` }}>
+                  <div className="text-[10px] font-mono uppercase mb-1" style={{ color: epochColor, letterSpacing: "0.2em", opacity: 0.75 }}>
+                    Сюжет главы
+                  </div>
+                  <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)", fontStyle: "italic" }}>
+                    «{data.chapter_intro}»
+                  </p>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* Epoch progress */}
-          <div className="flex gap-1 pt-1">
-            {[1, 2, 3, 4].map((eid) => (
-              <div
-                key={eid}
-                className="flex-1 h-1 rounded-full"
-                style={{
-                  backgroundColor: data.epochs_completed.includes(eid)
-                    ? EPOCH_COLORS[eid]
-                    : eid === data.current_epoch
-                    ? `${EPOCH_COLORS[eid]}80`
-                    : "var(--bg-tertiary)",
+              {/* Specialization hint if set — "ты выбрал недвижимость" */}
+              {data.specialization && (
+                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Специализация: <span style={{ color: "var(--text-secondary)", fontWeight: 500 }}>{data.specialization}</span>
+                </div>
+              )}
+
+              {/* Stats — session count + avg score + best */}
+              <div>
+                <div className="text-[10px] font-mono uppercase mb-1.5" style={{ color: "var(--text-muted)", letterSpacing: "0.2em" }}>
+                  В этой главе
+                </div>
+                <div className="flex flex-wrap gap-3 text-xs">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>
+                    <BookOpen size={12} style={{ color: epochColor }} />
+                    <span style={{ color: "var(--text-secondary)" }}>{data.chapter_sessions}</span>
+                    <span style={{ color: "var(--text-muted)" }}>сессий</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>
+                    <Star size={12} style={{ color: epochColor }} />
+                    <span style={{ color: "var(--text-secondary)" }}>{data.chapter_avg_score.toFixed(1)}</span>
+                    <span style={{ color: "var(--text-muted)" }}>ср. балл</span>
+                  </div>
+                  {data.chapter_best_score > 0 && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>
+                      <Trophy size={12} style={{ color: epochColor }} />
+                      <span style={{ color: "var(--text-secondary)" }}>{data.chapter_best_score}</span>
+                      <span style={{ color: "var(--text-muted)" }}>рекорд</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Unlock conditions — presented as checklist */}
+              {!isMaxChapter && data.next_unlock_level && (
+                <div>
+                  <div className="text-[10px] font-mono uppercase mb-1.5" style={{ color: "var(--text-muted)", letterSpacing: "0.2em" }}>
+                    Чтобы открыть главу {data.next_chapter}
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span style={{ color: data.manager_level >= data.next_unlock_level ? "var(--success, #10b981)" : "var(--text-muted)" }}>
+                        {data.manager_level >= data.next_unlock_level ? "✓" : "○"}
+                      </span>
+                      <span style={{ color: "var(--text-secondary)" }}>
+                        Уровень <b style={{ color: "var(--text-primary)" }}>{data.next_unlock_level}</b>
+                        <span style={{ color: "var(--text-muted)" }}> (твой: {data.manager_level})</span>
+                      </span>
+                    </div>
+                    {data.next_unlock_sessions != null && (
+                      <div className="flex items-center gap-2">
+                        <span style={{ color: data.chapter_sessions >= data.next_unlock_sessions ? "var(--success, #10b981)" : "var(--text-muted)" }}>
+                          {data.chapter_sessions >= data.next_unlock_sessions ? "✓" : "○"}
+                        </span>
+                        <span style={{ color: "var(--text-secondary)" }}>
+                          <b style={{ color: "var(--text-primary)" }}>{data.next_unlock_sessions}</b> сессий в главе
+                          <span style={{ color: "var(--text-muted)" }}> (выполнено: {data.chapter_sessions})</span>
+                        </span>
+                      </div>
+                    )}
+                    {data.next_unlock_score != null && (
+                      <div className="flex items-center gap-2">
+                        <span style={{ color: data.chapter_avg_score >= data.next_unlock_score ? "var(--success, #10b981)" : "var(--text-muted)" }}>
+                          {data.chapter_avg_score >= data.next_unlock_score ? "✓" : "○"}
+                        </span>
+                        <span style={{ color: "var(--text-secondary)" }}>
+                          Средний балл <b style={{ color: "var(--text-primary)" }}>{data.next_unlock_score}+</b>
+                          <span style={{ color: "var(--text-muted)" }}> (твой: {data.chapter_avg_score.toFixed(1)})</span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Epoch progress timeline — all 4 epochs */}
+              <div>
+                <div className="text-[10px] font-mono uppercase mb-1.5" style={{ color: "var(--text-muted)", letterSpacing: "0.2em" }}>
+                  Путь охотника
+                </div>
+                <div className="flex gap-1.5 items-center">
+                  {[1, 2, 3, 4].map((eid) => {
+                    const done = data.epochs_completed.includes(eid);
+                    const current = eid === data.current_epoch;
+                    return (
+                      <div key={eid} className="flex-1 flex flex-col gap-1">
+                        <div
+                          className="h-1.5 rounded-full transition-all"
+                          style={{
+                            background: done ? EPOCH_COLORS[eid] : current ? `${EPOCH_COLORS[eid]}80` : "var(--bg-tertiary)",
+                            boxShadow: current ? `0 0 8px ${EPOCH_COLORS[eid]}66` : "none",
+                          }}
+                        />
+                        <div
+                          className="text-[9px] font-mono uppercase text-center"
+                          style={{
+                            color: current ? EPOCH_COLORS[eid] : done ? EPOCH_COLORS[eid] : "var(--text-muted)",
+                            opacity: done || current ? 1 : 0.5,
+                            letterSpacing: "0.1em",
+                          }}
+                        >
+                          {EPOCH_ICONS[eid]}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* CTA — open full chapter map */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMapOpen(true);
                 }}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all hover:scale-[1.01]"
+                style={{
+                  background: `color-mix(in srgb, ${epochColor} 12%, transparent)`,
+                  border: `1px solid color-mix(in srgb, ${epochColor} 35%, transparent)`,
+                  color: epochColor,
+                }}
+              >
+                <Map size={14} />
+                Открыть полную карту глав
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Full-viewport chapter map drawer (opens when the card itself is clicked) */}
       <ChapterMap open={mapOpen} onClose={() => setMapOpen(false)} />

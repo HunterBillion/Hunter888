@@ -35,17 +35,30 @@ async def list_chapters(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """All 12 chapters with unlock status relative to the user."""
-    progress = await get_story_progress(user.id, db)
+    """All 12 chapters with unlock status relative to the user.
+
+    Hardened: if get_story_progress raises (missing manager_progress, etc.),
+    we log and fall back to Chapter 1 so the map still renders for new users
+    instead of the frontend showing a generic "Request failed".
+    """
+    import logging
+    _logger = logging.getLogger(__name__)
+    try:
+        progress = await get_story_progress(user.id, db)
+        current_chapter = progress.current_chapter
+    except Exception:
+        _logger.exception("story/chapters: get_story_progress failed for user=%s; defaulting to Chapter 1", user.id)
+        current_chapter = 1
+
     result = []
     for cid in range(1, 13):
         ch = get_chapter(cid)
         if ch is None:
             continue
         ep = epoch_for_chapter(cid)
-        is_current = cid == progress.current_chapter
-        is_completed = cid < progress.current_chapter
-        is_locked = cid > progress.current_chapter
+        is_current = cid == current_chapter
+        is_completed = cid < current_chapter
+        is_locked = cid > current_chapter
         result.append({
             "id": ch.id,
             "epoch": ch.epoch,
