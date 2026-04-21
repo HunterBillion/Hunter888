@@ -2798,6 +2798,15 @@ async def _handle_session_start(
             custom_archetype = custom_params.get("archetype")
             custom_difficulty = custom_params.get("difficulty")
 
+            # 2026-04-21: story-mode difficulty ramp override. If
+            # _handle_story_next_call computed a per-call difficulty for
+            # this story step, it dominates both custom_params.difficulty
+            # and scenario.difficulty — the whole point of the ramp is to
+            # vary difficulty across calls of the same story.
+            _ramp_diff = state.get("current_call_difficulty")
+            if _ramp_diff:
+                custom_difficulty = _ramp_diff
+
             # If custom archetype provided, override character slug for profile generation
             effective_archetype = custom_archetype or (character.slug if character else None)
 
@@ -3008,6 +3017,13 @@ async def _handle_session_start(
         except ValueError:
             custom_difficulty = None
 
+    # 2026-04-21: story-mode difficulty ramp override — takes precedence
+    # over the authored base so the "easy first → hard finale" progression
+    # actually lands on the LLM. Only set when inside a story flow.
+    _ramp_diff = state.get("current_call_difficulty")
+    if _ramp_diff:
+        custom_difficulty = _ramp_diff
+
     async with async_session() as db:
         scenario = await _resolve_scenario(db, scenario_id)
         if scenario is None:
@@ -3042,6 +3058,14 @@ async def _handle_session_start(
             session.client_story_id = story_id
             session.call_number_in_story = state.get("call_number", 1)
         if custom_params:
+            # 2026-04-21: persist story-ramp difficulty into session.custom_params
+            # so downstream consumers (scoring, script-hints, coach) see the
+            # SAME effective difficulty the LLM ran under — not the authored
+            # base. If no ramp (single-call or story without ramp), leaves the
+            # dict untouched.
+            if state.get("current_call_difficulty"):
+                custom_params = dict(custom_params)
+                custom_params["difficulty"] = state["current_call_difficulty"]
             session.custom_params = custom_params
             await db.flush()
 
@@ -4820,6 +4844,34 @@ async def _handle_story_next_call(
 
     state["call_number"] = current_call
     archetype_code = state.get("archetype_code", "skeptic")
+
+    # 2026-04-21: story-mode difficulty ramp. Owner requested a "крутой"
+    # progression — easy first contact, hard final call — so the manager
+    # warms up on the easy end and the 5th call stress-tests them. Base
+    # comes from custom_params.difficulty (picked in the constructor) or
+    # the scenario's own difficulty as a legacy fallback. The ramp
+    # shifts the per-call difficulty only for story-mode; single chat/
+    # call sessions continue to use the authored value unchanged.
+    try:
+        from app.services.adaptive_difficulty import story_difficulty_ramp
+        _story_cp = state.get("story_custom_params") or {}
+        _base_diff = _story_cp.get("difficulty")
+        if _base_diff is None:
+            _scn = state.get("scenario")
+            _base_diff = getattr(_scn, "difficulty", None) if _scn else None
+        _base_diff = int(_base_diff) if _base_diff else 5
+        _ramp = story_difficulty_ramp(_base_diff, total_calls)
+        _call_idx = max(0, min(current_call - 1, len(_ramp) - 1))
+        _call_diff = _ramp[_call_idx]
+        state["current_call_difficulty"] = _call_diff
+        logger.info(
+            "Story ramp | story=%s | base=%d total=%d | ramp=%s | call=%d → diff=%d",
+            story_id, _base_diff, total_calls, _ramp, current_call, _call_diff,
+        )
+    except Exception:
+        # Never block a story call over a ramp glitch — fall back to base.
+        logger.warning("story_difficulty_ramp failed, using base difficulty", exc_info=True)
+        state.pop("current_call_difficulty", None)
 
     # NOTE: Stage tracker reset is deferred to session.start — at this point
     # the new session hasn't been created yet, so there's no valid session_id.

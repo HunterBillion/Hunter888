@@ -311,6 +311,54 @@ TONE_OCEAN_SHIFT: dict[str, OceanShift] = {
 }
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  Story-mode difficulty ramp (2026-04-21)
+# ──────────────────────────────────────────────────────────────────────
+# In story-mode (3/4/5 calls to the same client), every call used to run
+# at the same authored difficulty — first and last indistinguishable.
+# Owner decision (2026-04-21): run a "крутой" progression — easy first
+# contact, hard final call. For the canonical 5-call shape that means
+# offsets [-3,-2,0,+1,+2] off the base, so base=6 → [3,4,6,7,8].
+#
+# For other lengths (2/3/4) we fall back to a symmetric linear ramp around
+# the base so single-story experiments keep the "earlier easier" intent
+# without bespoke curves. ``intra_session_adapter`` still runs on top of
+# each individual call, so moment-to-moment mood swings are preserved.
+
+_STORY_OFFSETS_5 = (-3, -2, 0, +1, +2)
+
+
+def story_difficulty_ramp(base: int, n_calls: int) -> list[int]:
+    """Return per-call difficulty list for a multi-call story.
+
+    Args:
+        base: Authored scenario difficulty (1..10). Anything outside the
+            range is clamped.
+        n_calls: Planned total calls in the story (1..5 as used in UI).
+
+    Examples:
+        >>> story_difficulty_ramp(6, 5)
+        [3, 4, 6, 7, 8]
+        >>> story_difficulty_ramp(10, 5)
+        [7, 8, 10, 10, 10]   # clamp keeps top
+        >>> story_difficulty_ramp(1, 5)
+        [1, 1, 1, 2, 3]      # clamp keeps bottom
+        >>> story_difficulty_ramp(6, 3)
+        [5, 6, 7]
+    """
+    if n_calls <= 1:
+        return [max(1, min(10, int(base)))]
+    if n_calls == 5:
+        offsets = _STORY_OFFSETS_5
+    else:
+        # Symmetric linear ramp from −(n−1)·step/2 .. +(n−1)·step/2 with a
+        # fixed total spread of 1.5 difficulty units around the base.
+        step = 1.5 / (n_calls - 1)
+        start = -(n_calls - 1) * step / 2
+        offsets = tuple(start + i * step for i in range(n_calls))
+    return [max(1, min(10, int(round(base + o)))) for o in offsets]
+
+
 def apply_tone_ocean_shift(ocean: dict, tone: str | None) -> dict:
     """Apply a soft tone-based OCEAN shift on top of an already-computed vector.
 
