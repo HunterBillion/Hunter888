@@ -84,10 +84,14 @@ export default function TrainingCallPage() {
   // --- Mount guard: verify session_mode, hydrate store --------------------
   useEffect(() => {
     if (!id) return;
+    // eslint-disable-next-line no-console
+    console.log("[CALL] mount — id=", id);
     let cancelled = false;
     (async () => {
       try {
         const meta = await api.get<SessionMeta>(`/training/sessions/${id}`);
+        // eslint-disable-next-line no-console
+        console.log("[CALL] meta fetched", meta);
         // The endpoint returns SessionResultResponse with the real session
         // nested under `session.custom_params`. Some legacy paths inline
         // the same fields at top level — tolerate both.
@@ -143,12 +147,17 @@ export default function TrainingCallPage() {
     ? s.messages.reduce((max, m) => Math.max(max, m.sequenceNumber ?? 0), 0) || null
     : null;
 
+  // URL id wins over zustand store. Store can hold a stale id from a
+  // previous chat session — using it would connect WS to a dead session
+  // and silently produce no TTS/STT.
   const { sendMessage, connectionState } = useWebSocket({
-    sessionId: s.sessionId || id || null,
+    sessionId: id || s.sessionId || null,
     lastSequenceNumber: lastSeqNum,
     autoConnect: modeOk === true,
     onMessage: (data: WSMessage) => {
       if (!data.data || typeof data.data !== "object") data.data = {};
+      // eslint-disable-next-line no-console
+      console.log("[CALL]", data.type, data.data);
       switch (data.type) {
         case "auth.success":
         case "session.ready":
@@ -251,19 +260,26 @@ export default function TrainingCallPage() {
     tts.setEnabled(speakerOn);
   }, [speakerOn, tts]);
 
-  // --- Hangup: end session + navigate directly to results ---------------
-  const onHangup = useCallback(async () => {
+  // --- Hangup: navigate IMMEDIATELY, cleanup in background ---------------
+  // Navigate first so the button always responds even if TTS/STT/backend
+  // throw. Cleanup runs as fire-and-forget — the results page reloads
+  // session state from the server anyway, so late-arriving errors are safe.
+  const onHangup = useCallback(() => {
     if (endInFlightRef.current) return;
     endInFlightRef.current = true;
-    tts.stop();
-    stt.stopListening();
     const sid = currentSessionIdRef.current || id;
-    try {
-      await api.post(`/training/sessions/${sid}/end`, {});
-    } catch (err) {
-      logger.warn("[call] end POST failed (may already be ended)", err);
-    }
+    // Immediate navigation — guaranteed response to the click.
     router.push(`/results/${sid}`);
+    // Best-effort cleanup in the background.
+    (async () => {
+      try { tts.stop(); } catch { /* noop */ }
+      try { stt.stopListening(); } catch { /* noop */ }
+      try {
+        await api.post(`/training/sessions/${sid}/end`, {});
+      } catch (err) {
+        logger.warn("[call] end POST failed (may already be ended)", err);
+      }
+    })();
   }, [id, router, tts, stt]);
 
   // Still loading mode guard
