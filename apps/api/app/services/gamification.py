@@ -24,6 +24,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Callable, Optional
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.analytics import Achievement, UserAchievement
@@ -1861,12 +1862,26 @@ class AchievementValidator:
                 db.add(achievement)
                 await db.flush()
 
-            # Award
-            user_ach = UserAchievement(
-                user_id=user_id,
-                achievement_id=achievement.id,
+            # Award. ON CONFLICT DO NOTHING on the uq_user_achievement
+            # unique constraint protects against concurrent check_all runs
+            # which otherwise crash the entire transaction and cascade 500s
+            # to unrelated endpoints sharing the request-scoped db session.
+            ach_stmt = (
+                pg_insert(UserAchievement.__table__)
+                .values(user_id=user_id, achievement_id=achievement.id)
+                .on_conflict_do_nothing(
+                    index_elements=["user_id", "achievement_id"],
+                )
             )
-            db.add(user_ach)
+            try:
+                await db.execute(ach_stmt)
+            except Exception as _ach_err:
+                logger.warning(
+                    "UserAchievement insert failed for %s/%s: %s",
+                    user_id, achievement.id, _ach_err,
+                )
+                # Bail from this achievement — do not pollute outer tx.
+                continue
 
             award_info = {
                 "slug": defn.slug,

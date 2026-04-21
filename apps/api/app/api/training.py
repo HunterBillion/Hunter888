@@ -499,12 +499,17 @@ async def start_session(
         # кликал, застревал).
         from datetime import datetime as _dt, timedelta as _td
         _now = _dt.utcnow()
+        # 2026-04-21: tightened from 5 min to 1 min. A real training session
+        # rarely sits idle >1 min without activity; old 5-min window left
+        # users stuck in a 409 deadzone when they closed the tab and reopened
+        # shortly after. Mode-switch abandon (below) handles chat↔call swaps
+        # independently.
         try:
             _stale_q = await db.execute(
                 select(TrainingSession)
                 .where(TrainingSession.user_id == user.id)
                 .where(TrainingSession.status == SessionStatus.active)
-                .where(TrainingSession.started_at <= _now - _td(minutes=5))
+                .where(TrainingSession.started_at <= _now - _td(minutes=1))
             )
             _stale_rows = list(_stale_q.scalars())
             if _stale_rows:
