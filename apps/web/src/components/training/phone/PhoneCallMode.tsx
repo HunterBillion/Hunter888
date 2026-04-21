@@ -78,6 +78,10 @@ interface Props {
   onHangup: () => void;
   /** Optional render slot for the mic button (the existing CrystalMic). */
   micSlot?: React.ReactNode;
+  /** Current output volume (0..1). If undefined, slider is not rendered. */
+  volume?: number;
+  /** Called when the user drags the volume slider. */
+  onVolumeChange?: (v: number) => void;
 }
 
 function formatElapsed(sec: number): string {
@@ -100,6 +104,8 @@ export function PhoneCallMode({
   onToggleSpeaker,
   onHangup,
   micSlot,
+  volume,
+  onVolumeChange,
 }: Props) {
   const sceneKey = (sceneId || "none") in SCENE_GRADIENTS ? (sceneId || "none") : "none";
   const sceneGradient = SCENE_GRADIENTS[sceneKey];
@@ -222,6 +228,38 @@ export function PhoneCallMode({
 
       {/* Controls row. */}
       <div className="relative z-10 pb-10 pt-6">
+        {/*
+          Volume slider. Rendered only when the parent passes a concrete
+          `volume` — if the prop is undefined we stay backwards-compatible
+          with pre-2026-04-21 call views that only had the speaker toggle.
+          Ranges 0..1 mapped to a native <input type="range"> for maximum
+          a11y + touch support on iOS Safari.
+        */}
+        {typeof volume === "number" && onVolumeChange && (
+          <div className="mx-auto mb-5 flex max-w-md items-center gap-3 px-8">
+            <button
+              type="button"
+              onClick={() => onVolumeChange(volume > 0 ? 0 : 0.7)}
+              aria-label={volume > 0 ? "Выключить звук" : "Включить звук"}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-white/80 transition hover:bg-white/10"
+            >
+              {volume === 0 ? <Volume1 size={18} /> : <Volume2 size={18} />}
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={volume}
+              onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+              aria-label="Громкость"
+              className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/20 accent-white"
+            />
+            <span className="min-w-[3ch] text-right font-mono text-xs text-white/60">
+              {Math.round(volume * 100)}%
+            </span>
+          </div>
+        )}
         <div className="mx-auto flex max-w-md items-center justify-between px-10">
           <CallButton
             label={muted ? "Вкл микрофон" : "Выкл микрофон"}

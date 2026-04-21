@@ -142,13 +142,11 @@ export default function TrainingCallPage() {
     };
   }, [id]);
 
-  // --- Speaker volume wiring ----------------------------------------------
-  // PhoneCallMode has a speaker/loudspeaker toggle that previously only
-  // changed its own icon state without affecting audio. Now:
-  //   speakerOn=true  → normal earpiece volume (0.7)
-  //   speakerOn=false → loudspeaker boost (1.0 max)
-  // Default state is speakerOn=true (normal call). Tapping switches to
-  // louder "speakerphone" mode.
+  // --- Speaker preset wiring ----------------------------------------------
+  // PhoneCallMode now exposes a real 0..1 volume slider (see below).
+  // We keep the speaker/loudspeaker button as a quick-toggle that jumps
+  // the slider between earpiece (0.7) and loudspeaker (1.0) presets.
+  // User can still drag the slider freely to any value.
   useEffect(() => {
     tts.setVolume(speakerOn ? 0.7 : 1.0);
   }, [speakerOn, tts]);
@@ -371,6 +369,8 @@ export default function TrainingCallPage() {
         onToggleMute={() => setMuted((m) => !m)}
         onToggleSpeaker={() => setSpeakerOn((v) => !v)}
         onHangup={onHangup}
+        volume={tts.volume}
+        onVolumeChange={tts.setVolume}
       />
       {/*
         Autoplay-unlock overlay. Browsers (Chrome/Safari strict, iOS

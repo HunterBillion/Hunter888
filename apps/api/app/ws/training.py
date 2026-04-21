@@ -2007,13 +2007,29 @@ async def _generate_character_reply(
                         "duration_ms": tts_result.get("duration_ms"),
                         "text": clean_content,
                     })
+                else:
+                    # Journal #C: was silent — user heard nothing and wondered why.
+                    logger.warning(
+                        "TTS_RESULT_EMPTY session=%s path=single result=%s text_preview=%r",
+                        session_id,
+                        "None" if tts_result is None else f"dict(keys={list(tts_result.keys())})",
+                        clean_content[:60],
+                    )
             else:
                 # Multiple sentences — synthesize in parallel, send sequentially
                 async def _synth_sentence(_text: str, _idx: int) -> tuple[int, dict | None]:
                     try:
                         result = await get_tts_audio_b64(_text, str(session_id), emotion=new_emotion)
                         return (_idx, result)
-                    except Exception:
+                    except Exception as _e:
+                        # Journal #C: was `return (_idx, None)` without logging.
+                        # If every sentence fails, the whole reply was silent
+                        # and we had no idea why. Now at least one log per fail.
+                        logger.warning(
+                            "TTS_SYNTH_FAIL session=%s idx=%d err=%s",
+                            session_id, _idx, _e,
+                            exc_info=True,
+                        )
                         return (_idx, None)
 
                 _tasks = [
@@ -2023,6 +2039,7 @@ async def _generate_character_reply(
                 # Send audio chunks as they complete, but IN ORDER
                 _results: dict[int, dict | None] = {}
                 _next_to_send = 0
+                _sent_any = False
                 for coro in asyncio.as_completed(_tasks):
                     idx, result = await coro
                     _results[idx] = result
@@ -2037,7 +2054,14 @@ async def _generate_character_reply(
                                 "is_last": _next_to_send == len(_merged) - 1,
                                 "text": _merged[_next_to_send],
                             })
+                            _sent_any = True
                         _next_to_send += 1
+                if not _sent_any:
+                    # None of the N sentences produced audio — nothing reached UI.
+                    logger.warning(
+                        "TTS_ALL_EMPTY session=%s sentences=%d (user heard silence)",
+                        session_id, len(_merged),
+                    )
 
         except TTSQuotaExhausted:
             logger.warning("TTS quota exhausted for session %s, frontend fallback", session_id)
@@ -3082,7 +3106,27 @@ async def _handle_session_start(
     session_archetype = custom_archetype or (character.slug if character else None)
     tts_voice_id = None
     user_tts_pref = state.get("user_prefs", {}).get("tts_enabled", True)
-    if is_tts_available() and user_tts_pref:
+    _tts_avail = is_tts_available()
+    # Journal #C diagnostics: log exact state of TTS gates at session start.
+    # User reports silent call mode in prod. If tts_available=True but no
+    # audio events ever reach the client, the failure is inside synth
+    # path — the message below tells us which provider we expect.
+    try:
+        from app.config import settings as _s
+        _providers = []
+        if _s.navy_tts_enabled and _s.local_llm_url and _s.local_llm_api_key:
+            _providers.append(f"navy:{_s.local_llm_url}")
+        if _s.elevenlabs_api_key and _s.elevenlabs_enabled:
+            _providers.append(f"elevenlabs({_s.elevenlabs_voice_list and 'voices_ok' or 'voices_empty'})")
+        logger.warning(
+            "TTS_PROVIDERS session=%s available=%s user_pref=%s providers=%s",
+            session.id, _tts_avail, user_tts_pref,
+            ",".join(_providers) if _providers else "NONE_CONFIGURED",
+        )
+    except Exception:
+        logger.warning("TTS_PROVIDERS diagnostics failed", exc_info=True)
+
+    if _tts_avail and user_tts_pref:
         try:
             tts_voice_id = pick_voice_for_session(
                 str(session.id),
