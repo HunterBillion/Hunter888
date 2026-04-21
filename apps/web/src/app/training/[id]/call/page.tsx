@@ -244,6 +244,59 @@ export default function TrainingCallPage() {
             s.setEmotion(data.data.emotion as EmotionState);
           break;
 
+        // Script / coaching / scoring — previously only chat-view handled
+        // these. Call-view was missing this info which is why "скрипт в
+        // звонке" was entirely absent. Mirroring chat handlers (feature
+        // parity) using the same Zustand store, so the UI renders from
+        // the same source of truth.
+        case "stage.update": {
+          const d = data.data as Record<string, unknown>;
+          s.setStageUpdate({
+            stage_number: Number(d.stage_number ?? 1),
+            stage_name: String(d.stage_name ?? ""),
+            stage_label: String(d.stage_label ?? ""),
+            total_stages: Number(d.total_stages ?? 7),
+            stages_completed: (d.stages_completed as number[]) ?? [],
+            stage_scores: (d.stage_scores as Record<string, number>) ?? {},
+            confidence: typeof d.confidence === "number" ? d.confidence : 0,
+          });
+          break;
+        }
+
+        case "whisper.coaching": {
+          const d = data.data as Record<string, unknown>;
+          const msg = String(d.message ?? "");
+          if (msg) {
+            s.addWhisper({
+              type: (d.type as "legal" | "emotion" | "stage" | "objection" | "transition") ?? "stage",
+              message: msg,
+              stage: d.stage ? String(d.stage) : "",
+              priority: (d.priority as "low" | "medium" | "high") ?? "low",
+              icon: d.icon ? String(d.icon) : "zap",
+              timestamp: Date.now(),
+            });
+          }
+          break;
+        }
+
+        case "score.hint": {
+          const d = data.data as Record<string, unknown>;
+          const num = (k: string) => Number(d[k] ?? 0);
+          s.setRealtimeScores({
+            script_adherence: num("script_adherence"),
+            objection_handling: num("objection_handling"),
+            communication: num("communication"),
+            anti_patterns: num("anti_patterns"),
+            result: num("result"),
+            chain_traversal: num("chain_traversal"),
+            trap_handling: num("trap_handling"),
+            human_factor: num("human_factor"),
+            realtime_estimate: num("realtime_estimate"),
+            max_possible_realtime: num("max_possible_realtime"),
+          });
+          break;
+        }
+
         case "session.ended":
           // Navigate to results on clean backend close.
           tts.stop();
@@ -373,6 +426,22 @@ export default function TrainingCallPage() {
         onHangup={onHangup}
         volume={tts.volume}
         onVolumeChange={tts.setVolume}
+        stage={{
+          current: s.currentStage || 1,
+          label: s.stageLabel || undefined,
+          completed: s.stagesCompleted || [],
+          total: s.totalStages || 7,
+        }}
+        coachingHint={
+          s.whispers && s.whispers.length > 0
+            ? {
+                message: s.whispers[0].message,
+                priority: s.whispers[0].priority,
+                icon: s.whispers[0].icon,
+                type: s.whispers[0].type,
+              }
+            : null
+        }
         micSlot={
           <button
             type="button"

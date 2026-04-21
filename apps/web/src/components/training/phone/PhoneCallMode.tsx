@@ -82,6 +82,26 @@ interface Props {
   volume?: number;
   /** Called when the user drags the volume slider. */
   onVolumeChange?: (v: number) => void;
+
+  // --- Coaching overlays (NEW 2026-04-21): feature-parity with chat ---
+  /** 7-step BFL script — current stage number, label, completion list. */
+  stage?: {
+    current: number;          // 1..total
+    label?: string;           // "Приветствие" / "Контакт" / ...
+    completed: number[];      // completed stage numbers
+    total: number;            // usually 7
+  };
+  /**
+   * Most-recent coach whisper. Persists until a newer one arrives (no
+   * auto-dismiss on voice: user can't re-glance when they're speaking).
+   * Tap → expands full details panel.
+   */
+  coachingHint?: {
+    message: string;
+    priority?: "low" | "medium" | "high";
+    icon?: string;
+    type?: string;
+  } | null;
 }
 
 function formatElapsed(sec: number): string {
@@ -106,6 +126,8 @@ export function PhoneCallMode({
   micSlot,
   volume,
   onVolumeChange,
+  stage,
+  coachingHint,
 }: Props) {
   const sceneKey = (sceneId || "none") in SCENE_GRADIENTS ? (sceneId || "none") : "none";
   const sceneGradient = SCENE_GRADIENTS[sceneKey];
@@ -190,6 +212,52 @@ export function PhoneCallMode({
         </div>
       </div>
 
+      {/*
+        Stage teleprompter (2026-04-21 feature-parity with chat):
+        thin inline strip showing 7-dot progress + current stage label.
+        Reads tiny vertical space, does not overlap avatar, keeps the
+        "where am I in the sales script" context present at all times.
+      */}
+      {stage && stage.total > 0 && (
+        <div
+          role="progressbar"
+          aria-valuemin={1}
+          aria-valuemax={stage.total}
+          aria-valuenow={stage.current}
+          aria-valuetext={`Этап ${stage.current} из ${stage.total}${stage.label ? `: ${stage.label}` : ""}`}
+          className="relative z-10 mx-auto mt-3 flex w-[min(560px,calc(100vw-48px))] items-center gap-3 rounded-full bg-black/30 px-4 py-1.5 text-xs backdrop-blur-sm ring-1 ring-white/5"
+        >
+          <span className="font-mono tabular-nums text-white/70">
+            {stage.current}/{stage.total}
+          </span>
+          <div className="flex flex-1 items-center gap-1">
+            {Array.from({ length: stage.total }, (_, i) => i + 1).map((n) => {
+              const done = stage.completed.includes(n);
+              const isCur = n === stage.current;
+              return (
+                <span
+                  key={n}
+                  className="h-1.5 flex-1 rounded-full transition-colors"
+                  style={{
+                    background: done
+                      ? "rgba(61, 220, 132, 0.8)"
+                      : isCur
+                      ? "rgba(255, 255, 255, 0.6)"
+                      : "rgba(255, 255, 255, 0.12)",
+                    boxShadow: isCur ? "0 0 8px rgba(255,255,255,0.4)" : "none",
+                  }}
+                />
+              );
+            })}
+          </div>
+          {stage.label && (
+            <span className="truncate text-white/80" style={{ maxWidth: 140 }}>
+              {stage.label}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Central avatar + ring. */}
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center">
         <motion.div
@@ -242,6 +310,45 @@ export function PhoneCallMode({
           )}
         </div>
       </div>
+
+      {/*
+        Coach Pill (2026-04-21): floating rail over controls row that
+        shows the latest whisper.coaching message. Stays visible until
+        the next whisper replaces it (voice users can't re-glance mid-
+        sentence, auto-dismiss is wrong here). Priority dot colors
+        match the chat WhisperPanel conventions.
+      */}
+      {coachingHint && coachingHint.message && (
+        <div className="relative z-10 px-6 pb-2">
+          <div
+            className="mx-auto flex max-w-md items-center gap-2.5 rounded-full bg-black/45 px-4 py-2 text-left ring-1 ring-white/10 backdrop-blur-md"
+            aria-live="polite"
+          >
+            <span
+              aria-hidden
+              className="h-2 w-2 flex-shrink-0 rounded-full"
+              style={{
+                background:
+                  coachingHint.priority === "high"
+                    ? "#ef4444"
+                    : coachingHint.priority === "medium"
+                    ? "#f59e0b"
+                    : "#60a5fa",
+                boxShadow: `0 0 8px ${
+                  coachingHint.priority === "high"
+                    ? "rgba(239,68,68,0.6)"
+                    : coachingHint.priority === "medium"
+                    ? "rgba(245,158,11,0.6)"
+                    : "rgba(96,165,250,0.6)"
+                }`,
+              }}
+            />
+            <span className="flex-1 text-sm text-white/95 leading-snug">
+              {coachingHint.message}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Controls row. */}
       <div className="relative z-10 pb-10 pt-6">
