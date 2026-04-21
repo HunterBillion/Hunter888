@@ -2643,8 +2643,23 @@ async def _handle_session_start(
     ws: WebSocket,
     data: dict,
     state: dict,
+    ws_id: str,
 ) -> None:
-    """Handle session.start: resume existing or create new session."""
+    """Handle session.start: resume existing or create new session.
+
+    2026-04-21 CRITICAL FIX (journal #B/#G): ws_id parameter was missing,
+    so the WS lock was NEVER acquired on a fresh session.start. Only
+    _handle_session_resume called _acquire_session_lock. Consequence:
+      1. Client connects WS, sends session.start, backend creates session
+         without setting Redis keys ws:lock:{id} / ws:lock:{id}:owner.
+      2. 30s later the first heartbeat fires _refresh_session_lock.
+      3. Lua CAS checks get(key)==ws_id — key is missing → returns 0.
+      4. Backend reads owner_key → None → `None == user_id` → False
+         → falls into the ELSE branch → sends error {code: session_hijacked}
+         → closes WS with 4002.
+    That is EVERY call, like clockwork, ~30s in. Acquiring the lock at
+    the right spot after session creation resolves it.
+    """
     session_id_str = data.get("session_id")
 
     if session_id_str:
@@ -3153,6 +3168,26 @@ async def _handle_session_start(
         started_data["client_card"] = client_card
     if tts_voice_id:
         started_data["tts_enabled"] = True
+
+    # 2026-04-21 CRITICAL: acquire the WS lock now that we know the final
+    # session.id. Previously omitted, causing every fresh call to die with
+    # session_hijacked on its first heartbeat (see function docstring).
+    # Same-user takeover is allowed so reconnects & StrictMode remounts
+    # don't spuriously close the session.
+    try:
+        _lock_ok = await _acquire_session_lock(
+            session.id, ws_id, state.get("user_id")
+        )
+        if not _lock_ok:
+            logger.warning(
+                "WS lock acquisition returned False on session.start | session=%s user=%s ws=%s",
+                session.id, state.get("user_id"), ws_id,
+            )
+    except Exception:
+        logger.warning(
+            "WS lock acquisition raised on session.start | session=%s",
+            session.id, exc_info=True,
+        )
 
     await _send(ws, "session.started", started_data)
 
@@ -5512,7 +5547,7 @@ async def training_websocket(websocket: WebSocket) -> None:
             msg_data = message.get("data", {})
 
             if msg_type == "session.start":
-                await _handle_session_start(websocket, msg_data, state)
+                await _handle_session_start(websocket, msg_data, state, ws_id)
                 if state.get("session_id"):
                     # BUG-FIX: Cancel stale background tasks from previous call
                     # in story mode (calls 2-5). Without this, tasks monitor old
@@ -5649,6 +5684,23 @@ async def training_websocket(websocket: WebSocket) -> None:
                             # doesn't redirect to results or end the session.
                             await _send(websocket, "session.takeover_by_self", {
                                 "message": "Сессия продолжается в другой вкладке/окне",
+                            })
+                            await websocket.close(code=4000)
+                            return
+                        # 2026-04-21 safety net: owner_key is None (TTL lapsed,
+                        # or session.start path pre-fix-#B/G didn't set it).
+                        # "Lock gone" is NOT evidence of hijack — it just means
+                        # no one holds the lock right now. Don't alarm the user;
+                        # close with 4000 so the client treats it as a quiet
+                        # takeover and doesn't redirect / end the session.
+                        if not new_owner:
+                            logger.info(
+                                "WS lock missing on heartbeat for session=%s ws=%s "
+                                "(owner_key expired or never acquired) — silent close",
+                                state.get("session_id"), ws_id,
+                            )
+                            await _send(websocket, "session.takeover_by_self", {
+                                "message": "Сессия временно недоступна, переподключаемся.",
                             })
                             await websocket.close(code=4000)
                             return

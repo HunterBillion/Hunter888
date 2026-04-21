@@ -142,14 +142,15 @@ export default function TrainingCallPage() {
     };
   }, [id]);
 
-  // --- Speaker preset wiring ----------------------------------------------
-  // PhoneCallMode now exposes a real 0..1 volume slider (see below).
-  // We keep the speaker/loudspeaker button as a quick-toggle that jumps
-  // the slider between earpiece (0.7) and loudspeaker (1.0) presets.
-  // User can still drag the slider freely to any value.
+  // --- Speaker/volume wiring ----------------------------------------------
+  // 2026-04-21: Speaker button now opens a volume slider popover (inside
+  // PhoneCallMode). No longer maps speakerOn → presets — user controls
+  // volume precisely via the slider. Initialise to a comfortable default
+  // on first mount so the user hears TTS without pre-interacting.
   useEffect(() => {
-    tts.setVolume(speakerOn ? 0.7 : 1.0);
-  }, [speakerOn, tts]);
+    tts.setVolume(0.85);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- WebSocket ----------------------------------------------------------
   const lastSeqNum = s.messages.length > 0

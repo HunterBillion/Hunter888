@@ -112,6 +112,23 @@ export function PhoneCallMode({
   const sceneLabel = SCENE_LABEL[sceneKey];
   const ec = EMOTION_MAP[emotion] || EMOTION_MAP.cold;
 
+  // Volume popover state: the speaker/volume button acts as a disclosure
+  // trigger. First tap opens a slider popover above it; second tap hides.
+  // Auto-closes on outside tap (see effect below). Only enabled when the
+  // parent wired `volume` + `onVolumeChange` — otherwise speaker button
+  // retains its legacy preset-toggle behavior.
+  const [showVolumePopover, setShowVolumePopover] = useState(false);
+  useEffect(() => {
+    if (!showVolumePopover) return;
+    const close = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.closest("[data-volume-popover], [data-volume-button]")) return;
+      setShowVolumePopover(false);
+    };
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [showVolumePopover]);
+
   // Gentle ambient animation so the scene feels alive when the AI isn't
   // actively speaking. Intensity scales with audioLevel when present.
   const breathingScale = useMemo(() => 1 + Math.min(0.08, audioLevel * 0.12), [audioLevel]);
@@ -229,35 +246,37 @@ export function PhoneCallMode({
       {/* Controls row. */}
       <div className="relative z-10 pb-10 pt-6">
         {/*
-          Volume slider. Rendered only when the parent passes a concrete
-          `volume` — if the prop is undefined we stay backwards-compatible
-          with pre-2026-04-21 call views that only had the speaker toggle.
-          Ranges 0..1 mapped to a native <input type="range"> for maximum
-          a11y + touch support on iOS Safari.
+          Volume popover (2026-04-21): parent passes volume + onVolumeChange.
+          Tapping the speaker button now TOGGLES a slider popover anchored
+          above the button, instead of flipping between two hardcoded
+          levels. Backwards-compatible: if parent doesn't pass volume,
+          we fall back to onToggleSpeaker on click like before.
         */}
-        {typeof volume === "number" && onVolumeChange && (
-          <div className="mx-auto mb-5 flex max-w-md items-center gap-3 px-8">
-            <button
-              type="button"
-              onClick={() => onVolumeChange(volume > 0 ? 0 : 0.7)}
-              aria-label={volume > 0 ? "Выключить звук" : "Включить звук"}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-white/80 transition hover:bg-white/10"
-            >
-              {volume === 0 ? <Volume1 size={18} /> : <Volume2 size={18} />}
-            </button>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={volume}
-              onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-              aria-label="Громкость"
-              className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/20 accent-white"
-            />
-            <span className="min-w-[3ch] text-right font-mono text-xs text-white/60">
-              {Math.round(volume * 100)}%
-            </span>
+        {typeof volume === "number" && onVolumeChange && showVolumePopover && (
+          <div data-volume-popover className="mx-auto mb-4 max-w-md px-8">
+            <div className="relative flex items-center gap-3 rounded-2xl bg-black/40 px-4 py-3 backdrop-blur-md ring-1 ring-white/10">
+              <button
+                type="button"
+                onClick={() => onVolumeChange(volume > 0 ? 0 : 0.7)}
+                aria-label={volume > 0 ? "Выключить звук" : "Включить звук"}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-white/80 transition hover:bg-white/10"
+              >
+                {volume === 0 ? <Volume1 size={18} /> : <Volume2 size={18} />}
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={volume}
+                onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+                aria-label="Громкость"
+                className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/20 accent-white"
+              />
+              <span className="min-w-[3ch] text-right font-mono text-xs text-white/60">
+                {Math.round(volume * 100)}%
+              </span>
+            </div>
           </div>
         )}
         <div className="mx-auto flex max-w-md items-center justify-between px-10">
@@ -271,13 +290,21 @@ export function PhoneCallMode({
 
           <CallHangup onClick={onHangup} />
 
-          <CallButton
-            label={speakerOn ? "Обычный звук" : "Громкая связь"}
-            onClick={onToggleSpeaker}
-            active={speakerOn}
-          >
-            {speakerOn ? <Volume2 size={26} /> : <Volume1 size={26} />}
-          </CallButton>
+          <span data-volume-button>
+            <CallButton
+              label={typeof volume === "number" ? `Звук ${Math.round(volume * 100)}%` : (speakerOn ? "Обычный звук" : "Громкая связь")}
+              onClick={() => {
+                if (typeof volume === "number" && onVolumeChange) {
+                  setShowVolumePopover((v) => !v);
+                } else {
+                  onToggleSpeaker();
+                }
+              }}
+              active={typeof volume === "number" ? showVolumePopover : speakerOn}
+            >
+              {(typeof volume === "number" ? (volume > 0 ? true : false) : speakerOn) ? <Volume2 size={26} /> : <Volume1 size={26} />}
+            </CallButton>
+          </span>
         </div>
 
         {/* Keep an always-visible mic slot below primary controls when the
