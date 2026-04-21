@@ -177,16 +177,32 @@ async def _seed_teams(db: AsyncSession) -> dict[str, Team]:
 
 
 def _seed_password(env_key: str, dev_default: str) -> str:
-    """Return env var if set, dev default in development, or random in production."""
+    """Return env var if set, dev default in development, or fail in production.
+
+    2026-04-21 hardening (journal #14): in production/staging we now REFUSE
+    to silently generate random passwords. The old behaviour printed the
+    password to stdout, which:
+      (a) leaks the admin password into container logs forever,
+      (b) loses the password if nobody captures stdout on first boot,
+      (c) means the admin@trainer.local account exists with a password
+          NOBODY KNOWS — effectively DoS on admin access until a manual
+          DB reset.
+    Now: in production, the env var MUST be set. Seed script exits with
+    a clear instruction so ops knows exactly what to do.
+    """
     env_val = os.environ.get(env_key)
     if env_val:
         return env_val
     app_env = os.environ.get("APP_ENV", "development")
     if app_env in ("production", "staging"):
-        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-        pwd = "".join(secrets.choice(alphabet) for _ in range(16))
-        print(f"  !! Generated password for {env_key}: {pwd}")
-        return pwd
+        # Explicit refusal — do not create predictable-email seed accounts
+        # without the operator having set a known password.
+        raise RuntimeError(
+            f"SEED SECURITY: {env_key} must be set in APP_ENV={app_env}. "
+            "Generate one with `openssl rand -base64 16` and put it in "
+            ".env.production BEFORE first boot. Seed script refuses to "
+            "randomize it to avoid silent admin lockouts / log leaks."
+        )
     return dev_default
 
 

@@ -106,12 +106,21 @@ class EventBus:
         If the caller's transaction rolls back, the event is also rolled back
         — this is the core guarantee of the outbox pattern.
 
+        Idempotency: when ``idempotency_key`` is passed and the DB already has
+        an OutboxEvent with that key (UNIQUE on idempotency_key), we log and
+        silently skip. This lets two independent code paths (REST
+        `/training/sessions/{id}/end` and WS `session.end` handler) both
+        emit ``EVENT_TRAINING_COMPLETED`` for the same session without
+        doubling XP / achievements / notifications — only the first arrival
+        persists, the second is a safe no-op.
+
         Args:
             aggregate_id: Optional source entity ID (session_id, duel_id, etc.)
             idempotency_key: Optional dedup key. Auto-generated as
                 ``{kind}:{user_id}:{aggregate_id or random}`` when not provided.
         """
         from app.models.outbox import OutboxEvent, OutboxStatus
+        from sqlalchemy.exc import IntegrityError
 
         if idempotency_key is None:
             idempotency_key = (
@@ -133,7 +142,19 @@ class EventBus:
         event.db.add(outbox_event)
         # Do NOT commit — the caller's transaction will commit both
         # the business data and the outbox event atomically.
-        await event.db.flush()
+        try:
+            await event.db.flush()
+        except IntegrityError as exc:
+            # Duplicate idempotency_key — another code path already enqueued
+            # this event. Roll back the INSERT (otherwise the session is
+            # poisoned) and log at INFO so we can observe double-emit
+            # attempts without alarming.
+            await event.db.rollback()
+            logger.info(
+                "EventBus emit deduped kind=%s user=%s key=%s (already pending/processed)",
+                event.kind, event.user_id, idempotency_key,
+            )
+            _ = exc  # keep linters happy without noisy log line
 
     async def emit_immediate(self, event: GameEvent) -> None:
         """Dispatch event directly (legacy path for re-emissions within handlers).

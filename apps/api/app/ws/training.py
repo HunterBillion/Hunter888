@@ -3584,8 +3584,21 @@ async def _handle_audio_chunk(
     except Exception:
         logger.debug("Stage tracking failed for session %s (audio)", session_id, exc_info=True)
 
-    # Generate character response
-    await _generate_character_reply(ws, session_id, state)
+    # Generate character response (with fail-safe: ensure UI isn't stuck
+    # on "avatar typing" if the LLM path raises something other than the
+    # explicit LLMError it already handles).
+    try:
+        await _generate_character_reply(ws, session_id, state)
+    except Exception as _reply_err:
+        logger.exception(
+            "character_reply failed unexpectedly for session=%s: %s",
+            session_id, _reply_err,
+        )
+        state["llm_busy"] = False
+        try:
+            await _send(ws, "avatar.typing", {"is_typing": False})
+        except Exception:
+            pass  # WS may be closed; don't cascade
 
 
 async def _handle_audio_end(
@@ -4061,7 +4074,20 @@ async def _handle_text_message(
     except Exception:
         logger.debug("Stage tracking failed for session %s", session_id, exc_info=True)
 
-    await _generate_character_reply(ws, session_id, state)
+    try:
+        await _generate_character_reply(ws, session_id, state)
+    except Exception as _reply_err:
+        # Same fail-safe as in _handle_audio_chunk: don't let
+        # unhandled exceptions leave avatar.typing=True forever.
+        logger.exception(
+            "character_reply failed unexpectedly for session=%s: %s",
+            session_id, _reply_err,
+        )
+        state["llm_busy"] = False
+        try:
+            await _send(ws, "avatar.typing", {"is_typing": False})
+        except Exception:
+            pass
 
 
 async def _get_client_reveal_card(
@@ -4378,21 +4404,29 @@ async def _handle_session_end(
                 sh.xp_earned = mp_result.get("xp_breakdown", {}).get("grand_total", 0)
                 sh.xp_breakdown = mp_result.get("xp_breakdown", {})
 
-                # Emit EVENT_TRAINING_COMPLETED in SAME transaction as XP award (outbox pattern)
+                # Emit EVENT_TRAINING_COMPLETED in SAME transaction as XP award (outbox pattern).
+                # Journal: dedup by session_id so this emit and the parallel
+                # REST /training/sessions/{id}/end emit are collapsed into
+                # one. UNIQUE(OutboxEvent.idempotency_key) handles it and
+                # event_bus.emit silently skips on duplicate.
                 try:
                     from app.services.event_bus import event_bus, GameEvent, EVENT_TRAINING_COMPLETED
-                    await event_bus.emit(GameEvent(
-                        kind=EVENT_TRAINING_COMPLETED,
-                        user_id=_uid,
-                        db=db,
-                        payload={
-                            "session_id": str(session_id),
-                            "score": scores.total,
-                            "scenario_id": str(state.get("scenario_id", "")),
-                            "xp_earned": sh.xp_earned,
-                            "weak_legal_categories": (scores.details or {}).get("legal_accuracy", {}).get("weak_categories", []),
-                        },
-                    ))
+                    await event_bus.emit(
+                        GameEvent(
+                            kind=EVENT_TRAINING_COMPLETED,
+                            user_id=_uid,
+                            db=db,
+                            payload={
+                                "session_id": str(session_id),
+                                "score": scores.total,
+                                "scenario_id": str(state.get("scenario_id", "")),
+                                "xp_earned": sh.xp_earned,
+                                "weak_legal_categories": (scores.details or {}).get("legal_accuracy", {}).get("weak_categories", []),
+                            },
+                        ),
+                        aggregate_id=session_id,
+                        idempotency_key=f"training_completed:{session_id}",
+                    )
                 except Exception as emit_exc:
                     logger.warning("Failed to emit training_completed event in txn: %s", emit_exc)
 

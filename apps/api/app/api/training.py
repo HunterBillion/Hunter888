@@ -963,12 +963,20 @@ async def end_session(
             if weak_cats:
                 event_payload["weak_legal_categories"] = weak_cats[:5]
 
-        await event_bus.emit(GameEvent(
-            kind=EVENT_TRAINING_COMPLETED,
-            user_id=user.id,
-            db=db,
-            payload=event_payload,
-        ))
+        # Journal: dedup by session_id so that when BOTH REST /end AND the
+        # WS `session.end` handler complete the same training, we only emit
+        # the event once (UNIQUE(idempotency_key) on OutboxEvent, second
+        # INSERT is caught and skipped inside event_bus.emit).
+        await event_bus.emit(
+            GameEvent(
+                kind=EVENT_TRAINING_COMPLETED,
+                user_id=user.id,
+                db=db,
+                payload=event_payload,
+            ),
+            aggregate_id=session.id,
+            idempotency_key=f"training_completed:{session.id}",
+        )
     except Exception:
         logger.exception("EventBus failed for training_completed, user %s", user.id)
 
