@@ -62,18 +62,18 @@ export function PlanChip({ plan, isTrial, trialDaysRemaining, role }: Props) {
 
   return (
     <Link
-      href="/pricing"
+      href="/billing"
       className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider transition-all hover:scale-[1.02] whitespace-nowrap shrink-0"
       style={{
         background: `${meta.color}18`,
         color: meta.color,
         border: `1px solid ${meta.color}44`,
       }}
-      aria-label={`Текущий план: ${meta.label}. Открыть тарифы`}
+      aria-label={`Текущий план: ${meta.label}. Управлять подпиской`}
       title={
         isTrial
-          ? `Триал ${trialDaysRemaining ?? 0} дн. Открыть тарифы`
-          : `План ${meta.label}. Открыть тарифы`
+          ? `Триал ${trialDaysRemaining ?? 0} дн. Открыть подписку`
+          : `План ${meta.label}. Открыть подписку`
       }
     >
       <Icon size={12} />

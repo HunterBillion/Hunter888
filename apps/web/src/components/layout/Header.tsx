@@ -283,7 +283,7 @@ export default function Header() {
                         Профиль
                       </motion.button>
                       <motion.button
-                        onClick={() => { setOpenPanel("none"); router.push("/pricing"); }}
+                        onClick={() => { setOpenPanel("none"); router.push("/billing"); }}
                         className="mt-1 flex w-full items-center gap-3 rounded-[18px] px-4 py-3 text-sm"
                         style={{ color: "var(--rank-gold)" }}
                         whileHover={{ background: "var(--header-btn-bg)" }}
