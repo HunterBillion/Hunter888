@@ -455,25 +455,36 @@ export default function TrainingCallPage() {
                 stt.startListening();
               }
             }}
-            className={[
-              "flex h-16 w-16 items-center justify-center rounded-full transition-all",
-              "ring-2 ring-white/10 backdrop-blur-sm",
-              stt.status === "listening"
-                ? "bg-red-500/90 hover:bg-red-500 scale-110"
-                : "bg-white/10 hover:bg-white/20",
-            ].join(" ")}
-            style={{
-              boxShadow:
-                stt.status === "listening"
-                  ? `0 0 ${20 + stt.audioLevel * 40}px rgba(239, 68, 68, ${0.5 + stt.audioLevel * 0.5})`
-                  : "none",
-            }}
+            className="flex flex-col items-center gap-1.5"
           >
-            {stt.status === "listening" ? (
-              <MicOff size={28} className="text-white" />
-            ) : (
-              <Mic size={28} className="text-white/90" />
-            )}
+            <span
+              className={[
+                "flex h-16 w-16 items-center justify-center rounded-full transition-all duration-150 active:scale-95",
+                stt.status === "listening" ? "bg-red-500/90" : "",
+              ].join(" ")}
+              style={{
+                background:
+                  stt.status === "listening"
+                    ? "rgba(239,68,68,0.9)"
+                    : "rgba(255,255,255,0.12)",
+                color: "#fff",
+                border: "1px solid rgba(255,255,255,0.18)",
+                backdropFilter: "blur(8px)",
+                boxShadow:
+                  stt.status === "listening"
+                    ? `0 0 ${20 + stt.audioLevel * 40}px rgba(239, 68, 68, ${0.5 + stt.audioLevel * 0.5})`
+                    : "none",
+              }}
+            >
+              {stt.status === "listening" ? (
+                <MicOff size={26} />
+              ) : (
+                <Mic size={26} />
+              )}
+            </span>
+            <span className="text-[10px] uppercase tracking-wider opacity-70">
+              {stt.status === "listening" ? "Слушаю" : "Говорить"}
+            </span>
           </button>
         }
       />

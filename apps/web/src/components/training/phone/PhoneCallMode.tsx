@@ -387,13 +387,30 @@ export function PhoneCallMode({
           </div>
         )}
         <div className="mx-auto flex max-w-md items-center justify-between px-10">
-          <CallButton
-            label={muted ? "Вкл микрофон" : "Выкл микрофон"}
-            onClick={onToggleMute}
-            active={muted}
-          >
-            {muted ? <MicOff size={26} /> : <Mic size={26} />}
-          </CallButton>
+          {/*
+            2026-04-21 layout fix — was previously two separate mic buttons:
+            a mute-toggle here (which flipped a React state that nothing
+            else read, i.e. dead) AND a real push-to-talk mic rendered in
+            the micSlot below. That looked like duplicated UI to the user.
+            Now: if the parent supplies micSlot, THAT becomes the left-most
+            button — single source of truth for mic control. Parents that
+            don't wire micSlot get the legacy mute-toggle as a fallback
+            (backwards-compat for older callers).
+          */}
+          {micSlot ? (
+            // The provided slot is expected to own its own flex-col button
+            // layout (see call/page.tsx). Render it directly so the ring
+            // stays symmetrical with the other two CallButtons.
+            micSlot
+          ) : (
+            <CallButton
+              label={muted ? "Вкл микрофон" : "Выкл микрофон"}
+              onClick={onToggleMute}
+              active={muted}
+            >
+              {muted ? <MicOff size={26} /> : <Mic size={26} />}
+            </CallButton>
+          )}
 
           <CallHangup onClick={onHangup} />
 
@@ -413,15 +430,6 @@ export function PhoneCallMode({
             </CallButton>
           </span>
         </div>
-
-        {/* Keep an always-visible mic slot below primary controls when the
-            caller provided one — lets users push-to-talk without leaving
-            the call view. */}
-        {micSlot && (
-          <div className="mt-6 flex justify-center">
-            {micSlot}
-          </div>
-        )}
       </div>
     </div>
   );
