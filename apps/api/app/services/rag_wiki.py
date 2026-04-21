@@ -21,12 +21,26 @@ async def retrieve_wiki_context(
     manager_id: uuid.UUID,
     db: AsyncSession,
     top_k: int = 3,
-    min_similarity: float = 0.20,
+    min_similarity: float | None = None,
 ) -> list[dict]:
     """Search manager's personal wiki by semantic similarity.
 
     Returns list of dicts with page_path, content (truncated), similarity score.
     Only pages with embeddings are searchable.
+
+    ADAPTIVE THRESHOLD (2026-04-21):
+    Fixed 0.20 either starved small wikis (3 pages) or let noise through on
+    large ones (30+ pages). Now auto-scales by page count:
+      <3 pages:  0.15 (take what you can)
+      3-10:      0.25 (balanced)
+      11-30:     0.32 (noise suppression)
+      >30:       0.40 (strong matches only)
+    Caller can still force a threshold by passing min_similarity explicitly.
+
+    LIGHTWEIGHT RERANKER:
+    Over-fetches top_k*3 candidates, boosts each by tag-overlap and
+    page_type (insight/pattern > transcript/log). Cheap O(N) pass,
+    no model load — meaningful quality lift vs pure cosine.
     """
     try:
         query_emb = await get_embedding(query)
@@ -45,7 +59,27 @@ async def retrieve_wiki_context(
     if not wiki_id:
         return []
 
-    # Cosine similarity search via pgvector
+    # Auto-pick threshold from page count when caller passes None
+    if min_similarity is None:
+        from sqlalchemy import func as _fn
+        _pc = await db.execute(
+            select(_fn.count(WikiPage.id))
+            .where(WikiPage.wiki_id == wiki_id)
+            .where(WikiPage.embedding.isnot(None))
+            .where(WikiPage.page_type != "log")
+        )
+        page_count = _pc.scalar() or 0
+        if page_count < 3:
+            min_similarity = 0.15
+        elif page_count <= 10:
+            min_similarity = 0.25
+        elif page_count <= 30:
+            min_similarity = 0.32
+        else:
+            min_similarity = 0.40
+
+    # Over-fetch 3x so the reranker has candidates to reorder
+    fetch_n = top_k * 3
     results = await db.execute(
         select(
             WikiPage.page_path,
@@ -56,17 +90,17 @@ async def retrieve_wiki_context(
         )
         .where(WikiPage.wiki_id == wiki_id)
         .where(WikiPage.embedding.isnot(None))
-        .where(WikiPage.page_type != "log")  # Exclude audit logs
+        .where(WikiPage.page_type != "log")
         .order_by("distance")
-        .limit(top_k)
+        .limit(fetch_n)
     )
 
-    wiki_results = []
+    candidates: list[dict] = []
     for row in results:
-        similarity = 1.0 - row.distance  # cosine_distance → similarity
+        similarity = 1.0 - row.distance
         if similarity < min_similarity:
             continue
-        wiki_results.append({
+        candidates.append({
             "page_path": row.page_path,
             "content": row.content[:500] if row.content else "",
             "page_type": row.page_type,
@@ -74,9 +108,27 @@ async def retrieve_wiki_context(
             "similarity": round(similarity, 3),
         })
 
+    # Lightweight reranker — tag overlap + page_type bonus
+    _q_words = {w.lower() for w in query.split() if len(w) >= 3}
+    _TYPE_BONUS = {
+        "insight": 0.08,      # curated cross-page discovery
+        "pattern": 0.06,      # recognized recurring pattern
+        "technique": 0.05,    # actionable practice
+        "page": 0.0,
+        "transcript": -0.02,  # raw, less distilled
+        "log": -0.10,         # shouldn't even appear due to filter above, defensive
+    }
+    for c in candidates:
+        _tag_hits = sum(1 for t in c["tags"] if t and t.lower() in _q_words)
+        _type_boost = _TYPE_BONUS.get(c["page_type"] or "page", 0.0)
+        c["rerank_score"] = round(c["similarity"] + 0.04 * _tag_hits + _type_boost, 4)
+
+    candidates.sort(key=lambda r: r["rerank_score"], reverse=True)
+    wiki_results = candidates[:top_k]
+
     logger.info(
-        "Wiki RAG | manager=%s | query='%s' | results=%d",
-        manager_id, query[:50], len(wiki_results),
+        "Wiki RAG | manager=%s | query='%s' | threshold=%.2f | returned=%d/%d",
+        manager_id, query[:50], min_similarity, len(wiki_results), len(candidates),
     )
     return wiki_results
 

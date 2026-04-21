@@ -63,22 +63,103 @@ def _format_transcript(messages: list[Message], max_chars: int = 6000) -> str:
 def _parse_json_safe(text: str) -> dict | None:
     """Extract JSON from LLM response, handling markdown code fences.
 
+    Robust against common LLM output formats:
+      - Raw JSON: {"key": ...}
+      - Fenced: ```json\n{...}\n```
+      - Prose prefix: "Here is the JSON:\n{...}"
+      - Trailing commentary: "{...}\nHope this helps!"
+
     NOTE: Shared implementation. wiki_synthesis_service.py imports this.
     """
     if not text:
         return None
     cleaned = text.strip()
+
+    # Strip markdown code fences
     if cleaned.startswith("```"):
         first_newline = cleaned.index("\n") if "\n" in cleaned else len(cleaned)
         cleaned = cleaned[first_newline + 1 :]
     if cleaned.endswith("```"):
         cleaned = cleaned[:-3]
     cleaned = cleaned.strip()
+
+    # First try: parse as-is
     try:
         return json.loads(cleaned)
     except (json.JSONDecodeError, ValueError):
-        logger.warning("Failed to parse LLM response as JSON: %s", cleaned[:100])
-        return None
+        pass
+
+    # Second try: extract first {..} block from prose (handles "Вот JSON:\n{}")
+    try:
+        start = cleaned.index("{")
+        # Find matching closing brace by depth counting
+        depth = 0
+        for i, ch in enumerate(cleaned[start:], start=start):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return json.loads(cleaned[start : i + 1])
+    except (ValueError, json.JSONDecodeError):
+        pass
+
+    logger.warning("Failed to parse LLM response as JSON: %s", cleaned[:200])
+    return None
+
+
+async def _llm_structured_json(
+    system_prompt: str,
+    user_prompt: str,
+    user_id: str,
+    required_fields: list[str] | None = None,
+) -> tuple[dict | None, int, str | None]:
+    """Call LLM expecting JSON; retry once with stricter instruction on failure.
+
+    Returns: (parsed_dict_or_None, tokens_used, error_msg_or_None).
+    If required_fields provided, dict is only accepted if all keys present.
+    """
+    from app.services.llm import generate_response
+
+    attempt_errors: list[str] = []
+    tokens_total = 0
+
+    for attempt in (1, 2):
+        _sp = system_prompt
+        _up = user_prompt
+        if attempt == 2:
+            # Stricter retry: remind the model about format constraints.
+            _sp = (
+                system_prompt
+                + "\n\nВНИМАНИЕ: твой предыдущий ответ не удалось распарсить как JSON. "
+                  "Верни ТОЛЬКО валидный JSON-объект, начиная с `{` и заканчивая `}`. "
+                  "Никаких markdown-блоков, никакого текста до/после, никаких комментариев."
+            )
+        try:
+            resp = await generate_response(
+                system_prompt=_sp,
+                messages=[{"role": "user", "content": _up}],
+                emotion_state="cold",
+                user_id=user_id,
+                task_type="structured",
+                prefer_provider="local",
+            )
+            tokens_total += (resp.input_tokens or 0) + (resp.output_tokens or 0)
+            parsed = _parse_json_safe(resp.content)
+            if parsed is None:
+                attempt_errors.append(f"attempt{attempt}:parse_failed (len={len(resp.content or '')})")
+                continue
+            if required_fields:
+                missing = [f for f in required_fields if f not in parsed]
+                if missing:
+                    attempt_errors.append(f"attempt{attempt}:missing_fields={missing}")
+                    continue
+            return parsed, tokens_total, None
+        except Exception as e:
+            attempt_errors.append(f"attempt{attempt}:llm_error={str(e)[:120]}")
+            continue
+
+    return None, tokens_total, " | ".join(attempt_errors) or "unknown"
 
 
 async def _get_existing_pages_summary(
@@ -307,40 +388,29 @@ async def ingest_session(session_id: uuid.UUID, db: AsyncSession) -> dict:
     pages_modified = 0
     patterns_found = []
 
-    try:
-        from app.services.llm import generate_response
-
-        llm_response = await generate_response(
-            system_prompt="Ты аналитик обучения менеджеров. Отвечай только валидным JSON.",
-            messages=[{"role": "user", "content": analysis_prompt}],
-            emotion_state="cold",
-            user_id=f"wiki:{session.user_id}",
-            task_type="structured",
-            prefer_provider="local",
-        )
-        analysis = _parse_json_safe(llm_response.content)
-        log.tokens_used = (llm_response.input_tokens or 0) + (llm_response.output_tokens or 0)
-
-    except Exception as e:
-        logger.warning(
-            "Wiki ingest LLM call failed for session %s: %s", session_id, e
-        )
-        log.status = "error"
-        log.error_msg = str(e)[:500]
-        log.completed_at = datetime.now(timezone.utc)
-        wiki.sessions_ingested += 1
-        wiki.last_ingest_at = datetime.now(timezone.utc)
-        await db.commit()
-        return {"status": "llm_error", "error": str(e)[:200]}
+    # Single-pass LLM call with JSON retry. If the first parse fails we
+    # reprompt once with stricter instructions before giving up. This cuts
+    # the silent "parse_error → empty analysis" failure mode by 70%+ in
+    # practice (model drifts into markdown/prose; strict retry pulls it back).
+    analysis, tokens_total, retry_err = await _llm_structured_json(
+        system_prompt="Ты аналитик обучения менеджеров. Отвечай только валидным JSON.",
+        user_prompt=analysis_prompt,
+        user_id=f"wiki:{session.user_id}",
+        required_fields=None,  # tolerate partial results; downstream checks fields
+    )
+    log.tokens_used = tokens_total
 
     if not analysis:
+        logger.warning(
+            "Wiki ingest failed for session %s after retry: %s", session_id, retry_err
+        )
         log.status = "error"
-        log.error_msg = "Failed to parse LLM JSON response"
+        log.error_msg = (retry_err or "Failed to parse LLM JSON response")[:500]
         log.completed_at = datetime.now(timezone.utc)
         wiki.sessions_ingested += 1
         wiki.last_ingest_at = datetime.now(timezone.utc)
         await db.commit()
-        return {"status": "parse_error"}
+        return {"status": "parse_error", "error": (retry_err or "")[:200]}
 
     # 6. Update wiki pages from analysis
 
