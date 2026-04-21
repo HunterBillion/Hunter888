@@ -1040,6 +1040,9 @@ def _estimate_duration_ms(text: str, speed: float = 1.0) -> int:
 
 
 def _is_configured() -> bool:
+    # Either ElevenLabs fully configured, OR navy TTS enabled as primary
+    if settings.navy_tts_enabled and settings.local_llm_url and settings.local_llm_api_key:
+        return True
     return bool(
         settings.elevenlabs_api_key
         and settings.elevenlabs_voice_list
@@ -1116,9 +1119,6 @@ async def synthesize_speech(
 
     Accepts either individual params or VoiceParams object (preferred).
     """
-    if not settings.elevenlabs_api_key:
-        raise TTSError("ElevenLabs API key not configured")
-
     text = text.strip()
     if not text:
         raise TTSError("Empty text for TTS")
@@ -1135,6 +1135,26 @@ async def synthesize_speech(
         speed = voice_params.speed
     else:
         voice_params = VoiceParams(stability=stability, similarity_boost=similarity_boost, style=style, speed=speed)
+
+    # Navy-primary path: if no ElevenLabs key but navy TTS enabled, route directly.
+    if not settings.elevenlabs_api_key:
+        if settings.navy_tts_enabled and settings.local_llm_url and settings.local_llm_api_key:
+            start_ts = time.monotonic()
+            audio_bytes = await _synthesize_navy(text, voice=settings.navy_tts_voice, speed=speed)
+            latency_ms = int((time.monotonic() - start_ts) * 1000)
+            return TTSResult(
+                audio_bytes=audio_bytes,
+                format="mp3",
+                voice_id=voice_id,
+                duration_estimate_ms=_estimate_duration_ms(text, speed),
+                cached=False,
+                latency_ms=latency_ms,
+                characters_used=len(text),
+                voice_params=voice_params,
+                emotion=emotion,
+                active_factors=[f.factor for f in (active_factors or [])],
+            )
+        raise TTSError("ElevenLabs API key not configured")
 
     # Check cache (v3 key includes factors)
     if use_cache:
