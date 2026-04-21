@@ -1353,6 +1353,7 @@ async def _generate_character_reply(
             # to chat register even when user clicked "Звонок".
             _cp_s = state.get("custom_params") or {}
             _session_mode_s = _cp_s.get("session_mode") or "chat"
+            _tone_s = _cp_s.get("tone")  # constructor v2, 2026-04-21
             async for token in generate_response_stream(
                 system_prompt=extra_system,
                 messages=messages,
@@ -1361,6 +1362,7 @@ async def _generate_character_reply(
                 task_type="roleplay",
                 prefer_provider=_prefer,
                 session_mode=_session_mode_s,
+                tone=_tone_s,
             ):
                 _streamed_text += token
                 _chunk_buffer += token
@@ -1521,6 +1523,7 @@ async def _generate_character_reply(
                 # interrupting replies with edge-case handling).
                 _cp = state.get("custom_params") or {}
                 _session_mode = _cp.get("session_mode") or "chat"
+                _tone = _cp.get("tone")  # constructor v2, 2026-04-21
                 llm_result = await generate_response(
                     system_prompt=extra_system,
                     messages=messages,
@@ -1529,6 +1532,7 @@ async def _generate_character_reply(
                     task_type="roleplay",
                     prefer_provider=_prefer,
                     session_mode=_session_mode,
+                    tone=_tone,
                 )
     except LLMError as e:
         logger.error("LLM failed for session %s: %s", session_id, e)
@@ -2860,6 +2864,7 @@ async def _handle_session_start(
                         custom_family_preset=custom_params.get("family_preset"),
                         custom_creditors_preset=custom_params.get("creditors_preset"),
                         custom_debt_range=custom_params.get("debt_range"),
+                        custom_tone=custom_params.get("tone"),
                     )
                     client_card = get_crm_card(profile)
                     client_gender = getattr(profile, "gender", "") or ""
@@ -3060,6 +3065,7 @@ async def _handle_session_start(
                     custom_family_preset=custom_params.get("family_preset"),
                     custom_creditors_preset=custom_params.get("creditors_preset"),
                     custom_debt_range=custom_params.get("debt_range"),
+                    custom_tone=custom_params.get("tone"),
                 )
                 if story_id:
                     from app.models.roleplay import ClientStory
@@ -5805,23 +5811,43 @@ async def training_websocket(websocket: WebSocket) -> None:
                             })
                             await websocket.close(code=4000)
                             return
-                        # 2026-04-21 safety net: owner_key is None (TTL lapsed,
-                        # or session.start path pre-fix-#B/G didn't set it).
-                        # "Lock gone" is NOT evidence of hijack — it just means
-                        # no one holds the lock right now. Don't alarm the user;
-                        # close with 4000 so the client treats it as a quiet
-                        # takeover and doesn't redirect / end the session.
+                        # 2026-04-21 rev2 (journal: reconnect-loop): owner_key is
+                        # None means NO ONE currently holds the lock (TTL lapsed
+                        # between acquire and heartbeat, or Redis momentarily lost
+                        # the key). This is NOT a hijack and must NOT close the
+                        # WS — previously we closed with 4000, but client auto-
+                        # reconnects on 4000, new WS re-acquires, old ws_id is
+                        # stale, next heartbeat finds owner again None, loop.
+                        # Symptom: session.takeover_by_self burst immediately
+                        # followed by 2–3 session.start cascades.
+                        # Right action: silently re-acquire the lock with OUR
+                        # ws_id and carry on. No event to client, no close.
                         if not new_owner:
-                            logger.info(
-                                "WS lock missing on heartbeat for session=%s ws=%s "
-                                "(owner_key expired or never acquired) — silent close",
-                                state.get("session_id"), ws_id,
-                            )
-                            await _send(websocket, "session.takeover_by_self", {
-                                "message": "Сессия временно недоступна, переподключаемся.",
-                            })
-                            await websocket.close(code=4000)
-                            return
+                            try:
+                                from app.core.redis_pool import get_redis as _get_r
+                                _r = _get_r()
+                                _key = _WS_LOCK_KEY.format(session_id=state["session_id"])
+                                await _r.set(_key, ws_id, ex=_WS_LOCK_TTL)
+                                if state.get("user_id") is not None:
+                                    await _r.set(
+                                        _WS_LOCK_OWNER_KEY.format(session_id=state["session_id"]),
+                                        str(state["user_id"]),
+                                        ex=_WS_LOCK_TTL,
+                                    )
+                                logger.info(
+                                    "WS lock was gone on heartbeat for session=%s "
+                                    "ws=%s — silently re-acquired (no hijack)",
+                                    state.get("session_id"), ws_id,
+                                )
+                            except Exception as _reacq_exc:
+                                logger.warning(
+                                    "Failed to re-acquire expired WS lock for session=%s: %s",
+                                    state.get("session_id"), _reacq_exc,
+                                )
+                            # Fall through to pong so the client keeps its
+                            # WS. No close, no reconnect cascade.
+                            await _send(websocket, "pong", {})
+                            continue
                         # DEV ONLY: HMR/StrictMode creates race where owner_key gets wiped
                         # between WS instances. Silently re-acquire lock instead of killing session.
                         if settings.app_env == "development":

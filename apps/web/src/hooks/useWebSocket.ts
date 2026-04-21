@@ -266,10 +266,14 @@ export function useWebSocket({
         if (!mountedRef.current) return;
         clearTimers();
 
-        // 4001 = Superseded by newer connection — don't reconnect
-        // 4002 = Session hijacked by another connection — don't reconnect
-        // (Auto-reconnect caused lock-race cascade; user reloads page manually via F5 if needed.)
-        if (event.code === 4001 || event.code === 4002) {
+        // 4000 = server silently closed (same-user takeover by another tab,
+        //        or TTL-expired lock cleanup) — don't reconnect, would cause
+        //        lock-race cascade. User who actually wanted the session still
+        //        has the newer WS (from the other tab); this closed one is the
+        //        ghost.
+        // 4001 = Superseded by newer connection — don't reconnect.
+        // 4002 = Session hijacked by another connection — don't reconnect.
+        if (event.code === 4000 || event.code === 4001 || event.code === 4002) {
           setConnectionState("disconnected");
           return;
         }
