@@ -1267,9 +1267,10 @@ async def _generate_character_reply(
         _stream_ok = False
         _stream_tts_used = False  # if True, skip post-LLM sentence TTS block
         # Pre-compute TTS eligibility (same checks as post-LLM block)
+        # is_tts_available() returns True for either ElevenLabs OR navy TTS;
+        # redundant elevenlabs_enabled gate would block navy-only setups.
         _tts_stream_enabled = (
             is_tts_available()
-            and settings.elevenlabs_enabled
             and state.get("user_prefs", {}).get("tts_enabled", True)
         )
         try:
@@ -1758,7 +1759,7 @@ async def _generate_character_reply(
 
         # TTS for the hangup phrase (best-effort)
         _user_tts_pref = state.get("user_prefs", {}).get("tts_enabled", True)
-        if is_tts_available() and settings.elevenlabs_enabled and _user_tts_pref:
+        if is_tts_available() and _user_tts_pref:
             try:
                 _tts_res = await get_tts_audio_b64(hangup_phrase, str(session_id), emotion="hangup")
                 if _tts_res and _tts_res.get("audio"):
@@ -1961,9 +1962,12 @@ async def _generate_character_reply(
     # for faster first-audio (~1.5s instead of 5-13s)
     user_tts_pref = state.get("user_prefs", {}).get("tts_enabled", True)
     tts_available = is_tts_available()
-    tts_enabled = settings.elevenlabs_enabled and user_tts_pref
+    # tts_enabled = user has TTS turned on AND backend has at least one
+    # provider configured (ElevenLabs or navy). Don't require elevenlabs_enabled
+    # explicitly — navy-only setups would be blocked otherwise.
+    tts_enabled = tts_available and user_tts_pref
     logger.info(
-        "TTS_CHECK | session=%s | is_tts_available=%s | elevenlabs_enabled=%s",
+        "TTS_CHECK | session=%s | is_tts_available=%s | tts_enabled=%s",
         session_id, tts_available, tts_enabled,
     )
     # If streaming TTS already dispatched all sentences during LLM stream,
@@ -2295,7 +2299,7 @@ async def _silence_watchdog(
                 "is_silence_prompt": True,
             })
             # TTS for silence prompt
-            if is_tts_available() and settings.elevenlabs_enabled:
+            if is_tts_available():
                 try:
                     tts_result = await get_tts_audio_b64(phrase, str(session_id))
                     if tts_result and tts_result.get("audio"):
@@ -5387,7 +5391,7 @@ async def training_websocket(websocket: WebSocket) -> None:
         # H6 fix: include TTS/STT availability status so frontend can show banners
         await _send(websocket, "session.ready", {
             "message": err.WS_AUTHENTICATED,
-            "tts_available": settings.elevenlabs_enabled and is_tts_available(),
+            "tts_available": is_tts_available(),
             "stt_available": stt_ok,
             "llm_provider": "local" if settings.local_llm_enabled else "cloud",
         })
