@@ -138,8 +138,8 @@ asyncio.run(setup())
         exit 1
     fi
     log "Schema created. Stamping alembic to head..."
-    if ! python -m alembic stamp head; then
-        log "ERROR: alembic stamp head failed."
+    if ! python -m alembic stamp heads; then
+        log "ERROR: alembic stamp heads failed."
         exit 1
     fi
     log "DB ready (schema from models, alembic stamped at head)."
