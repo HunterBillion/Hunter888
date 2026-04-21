@@ -554,12 +554,6 @@ export default function MorningWarmupCard() {
                   disabled={state.submitting}
                   autoFocus
                 />
-                <div
-                  className="flex items-center justify-between text-[11px]"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  <span>Enter — отправить · Shift+Enter — новая строка</span>
-                </div>
               </>
             )}
             <button

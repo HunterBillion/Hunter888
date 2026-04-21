@@ -63,7 +63,7 @@ export function PlanChip({ plan, isTrial, trialDaysRemaining, role }: Props) {
   return (
     <Link
       href="/pricing"
-      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider transition-all hover:scale-[1.02]"
+      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider transition-all hover:scale-[1.02] whitespace-nowrap shrink-0"
       style={{
         background: `${meta.color}18`,
         color: meta.color,
