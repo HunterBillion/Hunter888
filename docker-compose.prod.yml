@@ -71,6 +71,13 @@ services:
       context: ./apps/web
       dockerfile: Dockerfile
       target: production
+      # IMPORTANT: prod override must re-declare args — otherwise Docker
+      # Compose merges but loses env-substitution, falling back to Dockerfile
+      # defaults (http://localhost:8000), which breaks HTTPS/prod domain and
+      # triggers browser "Not Secure" mixed-content warning.
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL must be set in .env.production}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:?NEXT_PUBLIC_WS_URL must be set in .env.production}
     # Don't expose web port directly — use nginx
     ports: !reset []
     read_only: true
