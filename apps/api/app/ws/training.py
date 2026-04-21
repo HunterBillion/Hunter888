@@ -1500,6 +1500,11 @@ async def _generate_character_reply(
                     _use_mcp = False
 
             if not _use_mcp:
+                # Pass session_mode so llm.py can append the call-mode
+                # prompt modifier for phone-call sessions (short, colloquial,
+                # interrupting replies with edge-case handling).
+                _cp = state.get("custom_params") or {}
+                _session_mode = _cp.get("session_mode") or "chat"
                 llm_result = await generate_response(
                     system_prompt=extra_system,
                     messages=messages,
@@ -1507,6 +1512,7 @@ async def _generate_character_reply(
                     character_prompt_path=prompt_path,
                     task_type="roleplay",
                     prefer_provider=_prefer,
+                    session_mode=_session_mode,
                 )
     except LLMError as e:
         logger.error("LLM failed for session %s: %s", session_id, e)
