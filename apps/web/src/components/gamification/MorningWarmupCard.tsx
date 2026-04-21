@@ -22,7 +22,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Flame, Snowflake, Coffee } from "lucide-react";
+import { Flame, Snowflake, Coffee, CheckCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import WarmupEndingAnimation, { pickAnimationVariant } from "./WarmupEndingAnimation";
 
@@ -259,7 +259,79 @@ export default function MorningWarmupCard() {
 
   // ── Render ──
 
+  // Bug fix 2026-04-21: idle state used to ALWAYS show "Start drill" even
+  // if user already completed today's warmup. That caused the confusing
+  // behavior where successful completion animation → page refresh → the
+  // card again invited the user to "start a drill" (already-done check
+  // was missing). Now we branch on streak.completed_today.
+  const alreadyDoneToday = Boolean(streak?.completed_today);
+
   if (state.status === "idle" || state.status === "error") {
+    // ── Completed-today state ─────────────────────────────────────
+    if (alreadyDoneToday && state.status === "idle") {
+      return (
+        <div
+          className="rounded-xl border p-5 flex flex-col gap-3 relative overflow-hidden"
+          style={{
+            background: "linear-gradient(135deg, color-mix(in srgb, var(--success, #10b981) 8%, var(--bg-panel)) 0%, var(--bg-panel) 100%)",
+            borderColor: "color-mix(in srgb, var(--success, #10b981) 35%, var(--border-color))",
+            minHeight: "220px",
+          }}
+        >
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-xs font-pixel uppercase tracking-wider" style={{ color: "var(--success, #10b981)" }}>
+                Разминка сегодня
+              </div>
+              <div className="text-lg font-semibold mt-1 flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+                <CheckCircle size={20} style={{ color: "var(--success, #10b981)" }} />
+                Уже прошёл
+              </div>
+              <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
+                Возвращайся завтра утром за следующим набором вопросов.
+              </p>
+            </div>
+            <Coffee
+              aria-hidden
+              size={28}
+              strokeWidth={1.75}
+              style={{ color: "var(--success, #10b981)", opacity: 0.6 }}
+            />
+          </div>
+          {streak && (streak.current_streak > 0 || streak.unused_freezes > 0) && (
+            <div className="flex items-center flex-wrap gap-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
+              {streak.current_streak > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5"
+                  style={{ background: "color-mix(in srgb, var(--warning) 12%, transparent)", color: "var(--warning)" }}
+                  title={`Лучшая серия: ${streak.longest_streak}`}
+                >
+                  <Flame size={12} /> {streak.current_streak}d streak
+                </span>
+              )}
+              {streak.unused_freezes > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5"
+                  style={{ background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent)" }}
+                >
+                  <Snowflake size={12} /> {streak.unused_freezes} freeze
+                </span>
+              )}
+              {streak.last_completed_on && (
+                <span className="inline-flex items-center gap-1 opacity-75">
+                  Последняя: {new Date(streak.last_completed_on).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
+                </span>
+              )}
+            </div>
+          )}
+          <div className="mt-auto text-xs text-center" style={{ color: "var(--text-muted)" }}>
+            Разминка обновляется в 00:00 по локальному времени
+          </div>
+        </div>
+      );
+    }
+
+    // ── Idle (not yet done today) or Error state ─────────────────
     return (
       <div
         className="rounded-xl border p-5 flex flex-col gap-3"
