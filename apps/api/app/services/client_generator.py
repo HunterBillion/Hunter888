@@ -1363,6 +1363,36 @@ async def generate_llm_backstory(
 #  Main Generation Function
 # ══════════════════════════════════════════════════════════════════════
 
+# ── Constructor override maps (2026-04-21) ────────────────────────────────
+# Translate enum-style preset codes from the character builder into concrete
+# numeric/categorical overrides used by the generators below. Anything not in
+# the map falls through to the default random generation (`random` preset).
+
+_CB_FAMILY_MAP: dict[str, str] = {
+    # "random" → no override (skipped by caller)
+    "single": "single",
+    "married": "married",
+    "married_kids": "married",  # flag to force children > 0
+    "divorced": "divorced",
+    "widow": "widowed",
+}
+
+_CB_CREDITORS_RANGE: dict[str, tuple[int, int]] = {
+    "1": (1, 1),
+    "2_3": (2, 3),
+    "4_5": (4, 5),
+    "6_plus": (6, 10),
+}
+
+_CB_DEBT_RANGE: dict[str, tuple[int, int]] = {
+    "under_500k": (100_000, 500_000),
+    "500k_1m": (500_000, 1_000_000),
+    "1m_3m": (1_000_000, 3_000_000),
+    "3m_10m": (3_000_000, 10_000_000),
+    "over_10m": (10_000_000, 30_000_000),
+}
+
+
 async def generate_client(
     archetype_code: str,
     difficulty: int,
@@ -1373,6 +1403,12 @@ async def generate_client(
     lead_source: str = "cold_base",
     redis_client: Any = None,
     llm_fn: Any = None,
+    # ── Constructor v2 overrides (2026-04-21) ─────────────────────────
+    # Coming from CharacterBuilder steps 3 and 6. "random" preset is the
+    # default — callers pass None or "random" to get standard generation.
+    custom_family_preset: str | None = None,
+    custom_creditors_preset: str | None = None,
+    custom_debt_range: str | None = None,
 ) -> GeneratedProfile:
     """Generate a complete client profile.
 
@@ -1385,10 +1421,22 @@ async def generate_client(
         lead_source: Lead source code.
         redis_client: Optional Redis for uniqueness checking.
         llm_fn: Optional async callable for backstory generation.
+        custom_family_preset: Override family status (single/married/
+            married_kids/divorced/widow). "random"/None = default.
+        custom_creditors_preset: Override creditor count bucket
+            ("1", "2_3", "4_5", "6_plus"). "random"/None = default.
+        custom_debt_range: Override debt bounds
+            ("under_500k", "500k_1m", "1m_3m", "3m_10m", "over_10m").
+            Overrides profession's debt_min/debt_max when set.
 
     Returns:
         GeneratedProfile with all fields populated.
     """
+    # Apply debt_range override BEFORE generating debt so the DTI check uses
+    # the constructor's range, not the profession's default. Profession-based
+    # range is only a fallback when the user didn't pick one.
+    if custom_debt_range and custom_debt_range in _CB_DEBT_RANGE:
+        debt_min, debt_max = _CB_DEBT_RANGE[custom_debt_range]
 
     # Validate archetype against manager level
     available = get_available_archetypes(manager_level)
@@ -1406,6 +1454,22 @@ async def generate_client(
     # 2) Family
     family_status, children_count, children_ages = _generate_family(age, archetype_code)
 
+    # 2a) Family preset override — if user picked a specific family state in
+    # the constructor, force it. "married_kids" also guarantees children > 0.
+    if custom_family_preset and custom_family_preset in _CB_FAMILY_MAP:
+        family_status = _CB_FAMILY_MAP[custom_family_preset]
+        if custom_family_preset == "married_kids" and children_count == 0:
+            children_count = random.choices([1, 2, 3], weights=[40, 40, 20], k=1)[0]
+            children_ages = sorted(
+                [random.randint(1, max(1, age - 20)) for _ in range(children_count)],
+                reverse=True,
+            )
+        elif custom_family_preset == "single":
+            # Widows/divorced sometimes retain kids; "single" specifically means
+            # no kids in the constructor's mental model (young unmarried).
+            children_count = 0
+            children_ages = []
+
     # 3) Income (with regional multiplier)
     income, income_type = _generate_income(
         profession_category, age, city_data["income_mult"]
@@ -1417,6 +1481,32 @@ async def generate_client(
         archetype_code=archetype_code,
     )
     creditors = _generate_creditors(total_debt)
+
+    # 4a) Creditors count override — truncate or extend the list to match the
+    # preset bucket (1 / 2-3 / 4-5 / 6+). We keep the rouble distribution
+    # proportional: when truncating, redistribute the removed amounts across
+    # remaining creditors; when extending, split the smallest creditor.
+    if custom_creditors_preset and custom_creditors_preset in _CB_CREDITORS_RANGE:
+        lo, hi = _CB_CREDITORS_RANGE[custom_creditors_preset]
+        target = random.randint(lo, hi)
+        current = len(creditors)
+        if target < current and current > 0:
+            # Truncate: fold removed creditors' amounts into the first one.
+            removed = creditors[target:]
+            creditors = creditors[:target]
+            if creditors:
+                creditors[0]["amount"] += sum(c["amount"] for c in removed)
+        elif target > current:
+            # Extend by splitting the largest creditor into N pieces.
+            if creditors:
+                biggest_idx = max(range(len(creditors)), key=lambda i: creditors[i]["amount"])
+                biggest = creditors[biggest_idx]
+                extras_needed = target - current
+                per_slice = max(10_000, biggest["amount"] // (extras_needed + 1))
+                biggest["amount"] -= per_slice * extras_needed
+                pool = [n for n in (CREDITOR_BANKS + MFO_NAMES) if n not in {c["name"] for c in creditors}]
+                for extra_name in random.sample(pool, min(extras_needed, len(pool))):
+                    creditors.append({"name": extra_name, "amount": per_slice})
 
     # 5) DTI ratio
     dti = 0.0
@@ -1530,6 +1620,15 @@ async def generate_client_profile(
     custom_archetype: str | None = None,
     custom_profession: str | None = None,
     custom_lead_source: str | None = None,
+    # ── Constructor v2 overrides (2026-04-21) ─────────────────────────
+    # Only the 3 fields that shape the stored ClientProfile are passed
+    # into generate_client. The 4 remaining ambient fields (emotion_preset,
+    # bg_noise, time_of_day, client_fatigue) plus debt_stage ride on
+    # session.custom_params and are appended to the system prompt by
+    # _build_client_profile_prompt, not persisted onto ClientProfile.
+    custom_family_preset: str | None = None,
+    custom_creditors_preset: str | None = None,
+    custom_debt_range: str | None = None,
 ):
     """Generate a full client profile and persist it to the database.
 
@@ -1546,11 +1645,21 @@ async def generate_client_profile(
     profession_category = custom_profession or "worker"
     lead_source = custom_lead_source or "cold_base"
 
+    # "random" is a frontend sentinel meaning "don't override, use defaults".
+    # Convert to None before passing — generate_client treats None as unset.
+    def _unwrap(val: str | None) -> str | None:
+        if val is None or (isinstance(val, str) and val.strip().lower() in ("", "random", "null")):
+            return None
+        return val
+
     gen = await generate_client(
         archetype_code=archetype_code,
         difficulty=difficulty,
         profession_category=profession_category,
         lead_source=lead_source,
+        custom_family_preset=_unwrap(custom_family_preset),
+        custom_creditors_preset=_unwrap(custom_creditors_preset),
+        custom_debt_range=_unwrap(custom_debt_range),
     )
 
     profile = ClientProfile(

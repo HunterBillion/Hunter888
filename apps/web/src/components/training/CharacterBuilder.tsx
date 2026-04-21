@@ -173,10 +173,25 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
   };
 
   const buildStoryQuery = (scenarioId: string) => {
+    // 2026-04-21: now passes all 11 builder fields. Previously only 4 were
+    // sent → story-mode silently dropped family/creditors/debt/emotion/noise/
+    // time/fatigue. The /training/[id] page reads these off the URL and
+    // forwards them to the WS session.start handler in custom_params.
     const params = new URLSearchParams({
-      mode: "story", calls: String(storyCalls),
-      custom_archetype: archetype || "", custom_profession: profession || "",
-      custom_lead_source: leadSource, custom_difficulty: String(difficulty),
+      mode: "story",
+      calls: String(storyCalls),
+      custom_archetype: archetype || "",
+      custom_profession: profession || "",
+      custom_lead_source: leadSource,
+      custom_difficulty: String(difficulty),
+      custom_family_preset: familyPreset,
+      custom_creditors_preset: creditorsPreset,
+      custom_debt_stage: debtStage,
+      custom_debt_range: debtRange,
+      custom_emotion_preset: emotionPreset,
+      custom_bg_noise: bgNoise,
+      custom_time_of_day: timeOfDay,
+      custom_fatigue: clientFatigue,
     });
     return `/training/${scenarioId}?${params.toString()}`;
   };
@@ -203,18 +218,28 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
 
       if (storyMode && scenarioId) { router.push(buildStoryQuery(scenarioId)); return; }
 
+      // 2026-04-21: stopped dropping "neutral"/"afternoon"/"normal"/"none" as
+      // if they were unset. Those are deliberate user choices — the previous
+      // `!==` guards silently erased them so the backend never saw the
+      // picked value. Now all 11 fields are sent as-is; the backend filters
+      // only real emptiness (None / "" / "null"). "random" IS still a
+      // sentinel for the 4 context/environment presets (step 3 options
+      // literally include a "Случайно" radio), so it's the only one we
+      // keep filtering locally.
       const session = await api.post("/training/sessions", {
         ...(scenarioId ? { scenario_id: scenarioId } : {}),
-        custom_archetype: archetype, custom_profession: profession,
-        custom_lead_source: leadSource, custom_difficulty: difficulty,
+        custom_archetype: archetype,
+        custom_profession: profession,
+        custom_lead_source: leadSource,
+        custom_difficulty: difficulty,
         custom_family_preset: familyPreset !== "random" ? familyPreset : undefined,
         custom_creditors_preset: creditorsPreset !== "random" ? creditorsPreset : undefined,
         custom_debt_stage: debtStage !== "random" ? debtStage : undefined,
         custom_debt_range: debtRange !== "random" ? debtRange : undefined,
-        custom_emotion_preset: emotionPreset !== "neutral" ? emotionPreset : undefined,
-        custom_bg_noise: bgNoise !== "none" ? bgNoise : undefined,
-        custom_time_of_day: timeOfDay !== "afternoon" ? timeOfDay : undefined,
-        custom_fatigue: clientFatigue !== "normal" ? clientFatigue : undefined,
+        custom_emotion_preset: emotionPreset,
+        custom_bg_noise: bgNoise,
+        custom_time_of_day: timeOfDay,
+        custom_fatigue: clientFatigue,
         custom_session_mode: sessionMode,
       });
       const targetPath = sessionMode === "call"

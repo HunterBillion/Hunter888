@@ -146,12 +146,37 @@ export default function TrainingSessionPage() {
   const storyProfession = searchParams.get("custom_profession") || undefined;
   const storyLeadSource = searchParams.get("custom_lead_source") || undefined;
   const storyDifficulty = searchParams.get("custom_difficulty") ? Number(searchParams.get("custom_difficulty")) : undefined;
+  // 2026-04-21: forward the 7 extended builder fields that the old
+  // buildStoryQuery was dropping. Keys match what the backend reads off
+  // session.custom_params (see app/api/training.py:~325 and
+  // app/services/client_generator.generate_client_profile). "random" is a
+  // valid sentinel for the 4 context presets — the server unwraps it.
+  const storyFamilyPreset = searchParams.get("custom_family_preset") || undefined;
+  const storyCreditorsPreset = searchParams.get("custom_creditors_preset") || undefined;
+  const storyDebtStage = searchParams.get("custom_debt_stage") || undefined;
+  const storyDebtRange = searchParams.get("custom_debt_range") || undefined;
+  const storyEmotionPreset = searchParams.get("custom_emotion_preset") || undefined;
+  const storyBgNoise = searchParams.get("custom_bg_noise") || undefined;
+  const storyTimeOfDay = searchParams.get("custom_time_of_day") || undefined;
+  const storyFatigue = searchParams.get("custom_fatigue") || undefined;
   const storyCustomParams = useMemo(() => ({
     archetype: storyArchetype,
     profession: storyProfession,
     lead_source: storyLeadSource,
     difficulty: storyDifficulty,
-  }), [storyArchetype, storyProfession, storyLeadSource, storyDifficulty]);
+    family_preset: storyFamilyPreset,
+    creditors_preset: storyCreditorsPreset,
+    debt_stage: storyDebtStage,
+    debt_range: storyDebtRange,
+    emotion_preset: storyEmotionPreset,
+    bg_noise: storyBgNoise,
+    time_of_day: storyTimeOfDay,
+    client_fatigue: storyFatigue,
+  }), [
+    storyArchetype, storyProfession, storyLeadSource, storyDifficulty,
+    storyFamilyPreset, storyCreditorsPreset, storyDebtStage, storyDebtRange,
+    storyEmotionPreset, storyBgNoise, storyTimeOfDay, storyFatigue,
+  ]);
 
   // ── Zustand store (replaces 30+ useState) ──
   // Full subscription for render — but NEVER put `s` in useEffect deps!

@@ -321,6 +321,15 @@ async def start_session(
         )
 
     # Build custom_params dict if any custom fields provided (skip JSON null sent as string)
+    # 2026-04-21: expanded from 4 fields to 11. Previously only archetype /
+    # profession / lead_source / difficulty were persisted — the 7 extended
+    # fields from the constructor (emotion_preset, family/creditors/debt,
+    # bg_noise, time_of_day, fatigue) were accepted by the schema but never
+    # actually stored, so Steps 3/4/6 of the constructor silently did
+    # nothing. Now all 11 fields reach custom_params and downstream
+    # generators. Sentinel values like "neutral", "afternoon", "normal" are
+    # NOT filtered out — those are valid user choices, not pseudo-defaults.
+    # Only real emptiness (None / "" / "null") is dropped.
     custom_params = None
     arch = body.custom_archetype
     if arch and (not isinstance(arch, str) or arch.strip().lower() not in ("", "null")):
@@ -329,6 +338,17 @@ async def start_session(
             "profession": body.custom_profession,
             "lead_source": body.custom_lead_source,
             "difficulty": body.custom_difficulty,
+            # Step 3: client context
+            "family_preset": body.custom_family_preset,
+            "creditors_preset": body.custom_creditors_preset,
+            "debt_stage": body.custom_debt_stage,
+            "debt_range": body.custom_debt_range,
+            # Step 4: emotional preset
+            "emotion_preset": body.custom_emotion_preset,
+            # Step 6: environment
+            "bg_noise": body.custom_bg_noise,
+            "time_of_day": body.custom_time_of_day,
+            "client_fatigue": body.custom_fatigue,
         }
         custom_params = {
             k: v

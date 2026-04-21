@@ -691,7 +691,7 @@ async def _handle_session_resume(
                 client_card = get_crm_card(profile)
                 client_name = client_card.get("full_name", "") if client_card else ""
                 client_gender = getattr(profile, "gender", "") or ""
-                client_profile_prompt = _build_client_profile_prompt(profile)
+                client_profile_prompt = _build_client_profile_prompt(profile, ambient_ctx=custom_params)
 
                 # Reload active traps
                 if profile.trap_ids:
@@ -2530,12 +2530,18 @@ async def _soft_skills_tracker(
             logger.debug("Failed to send soft_skills.update for session %s", session_id)
 
 
-def _build_client_profile_prompt(profile) -> str:
+def _build_client_profile_prompt(profile, ambient_ctx: dict | None = None) -> str:
     """Build extra system prompt context from generated client profile.
 
     This text gets appended to the character prompt + guardrails,
     giving the LLM specific details about WHO the client is.
     The manager doesn't see this — only the LLM does.
+
+    2026-04-21: ``ambient_ctx`` carries the 5 atmospheric parameters from
+    the character builder that do NOT live on ClientProfile (emotion_preset,
+    bg_noise, time_of_day, client_fatigue, debt_stage). They are injected
+    as a separate "Атмосфера" block so the LLM adapts the *moment* of the
+    call, not the client's permanent identity.
     """
     parts = [
         "\n## Контекст клиента (скрыт от менеджера)",
@@ -2570,6 +2576,65 @@ def _build_client_profile_prompt(profile) -> str:
         parts.append(
             f"\nСкрытые возражения (НЕ озвучивай их сразу, раскрывай постепенно по ходу диалога): {objections_text}."
         )
+
+    # ── Атмосфера: текущее состояние клиента и среды ─────────────────
+    # Constructor v2 parameters (2026-04-21). These shape the *moment*
+    # of the call, not the client's identity — mood, tiredness, background
+    # noise, time of day, stage of the debt process. None of them live on
+    # ClientProfile; they ride on TrainingSession.custom_params and are
+    # resolved into human-readable Russian labels here.
+    if ambient_ctx:
+        _EMOTION_LABEL = {
+            "neutral": "нейтральное", "anxious": "тревожное", "angry": "злое",
+            "hopeful": "надеющееся", "tired": "уставшее", "rushed": "спешит",
+            "trusting": "доверчивое",
+        }
+        _NOISE_LABEL = {
+            "none": "тишина", "office": "офисный шум (коллеги, клавиатура)",
+            "street": "шум улицы (машины, люди)", "children": "дети играют/плачут рядом",
+            "tv": "работает телевизор",
+        }
+        _TIME_LABEL = {
+            "morning": "утро, 7–11 ч.", "afternoon": "день, 12–17 ч.",
+            "evening": "вечер, 18–21 ч.", "night": "ночь, позже 22 ч. — клиент удивлён звонку",
+        }
+        _FATIGUE_LABEL = {
+            "fresh": "бодр, полон сил", "normal": "в обычном тонусе",
+            "tired": "уставший, реакции замедлены", "exhausted": "вымотан, раздражается от мелочей",
+        }
+        _DEBT_STAGE_LABEL = {
+            "pre_court": "долг пока не дошёл до суда",
+            "court_started": "по долгу идёт судебный процесс",
+            "execution": "исполнительное производство: приставы уже работают",
+            "arrest": "наложен арест на имущество и счета",
+        }
+
+        ambient_parts = []
+        e = ambient_ctx.get("emotion_preset")
+        if e and e in _EMOTION_LABEL:
+            ambient_parts.append(f"- Настроение на момент звонка: {_EMOTION_LABEL[e]}.")
+        n = ambient_ctx.get("bg_noise")
+        if n and n in _NOISE_LABEL and n != "none":
+            ambient_parts.append(f"- Фоновый шум: {_NOISE_LABEL[n]}. Иногда это отвлекает клиента.")
+        t = ambient_ctx.get("time_of_day")
+        if t and t in _TIME_LABEL:
+            ambient_parts.append(f"- Время суток: {_TIME_LABEL[t]}.")
+        f = ambient_ctx.get("client_fatigue")
+        if f and f in _FATIGUE_LABEL and f != "normal":
+            ambient_parts.append(f"- Физическое состояние: {_FATIGUE_LABEL[f]}.")
+        ds = ambient_ctx.get("debt_stage")
+        if ds and ds in _DEBT_STAGE_LABEL:
+            ambient_parts.append(f"- Стадия долга: {_DEBT_STAGE_LABEL[ds]}.")
+
+        if ambient_parts:
+            parts.append("\n## Атмосфера (состояние клиента и среды)")
+            parts.extend(ambient_parts)
+            parts.append(
+                "Эти условия должны читаться в поведении клиента: длина реплик, "
+                "паузы, готовность слушать, отвлечения, общий тон — всё подстраивается "
+                "под текущий момент. НЕ проговаривай их напрямую ('я устал', 'у меня дети кричат') "
+                "— это должно чувствоваться в манере речи."
+            )
 
     parts.append(
         "\nИспользуй эти данные для реалистичных ответов. "
@@ -2792,10 +2857,13 @@ async def _handle_session_start(
                         custom_archetype=custom_archetype,
                         custom_profession=custom_params.get("profession"),
                         custom_lead_source=custom_params.get("lead_source"),
+                        custom_family_preset=custom_params.get("family_preset"),
+                        custom_creditors_preset=custom_params.get("creditors_preset"),
+                        custom_debt_range=custom_params.get("debt_range"),
                     )
                     client_card = get_crm_card(profile)
                     client_gender = getattr(profile, "gender", "") or ""
-                    state["client_profile_prompt"] = _build_client_profile_prompt(profile)
+                    state["client_profile_prompt"] = _build_client_profile_prompt(profile, ambient_ctx=custom_params)
                     await db.commit()
             except Exception:
                 logger.warning("Failed to load/generate client profile for session %s", session.id, exc_info=True)
@@ -2989,6 +3057,9 @@ async def _handle_session_start(
                     custom_archetype=custom_archetype,
                     custom_profession=custom_params.get("profession"),
                     custom_lead_source=custom_params.get("lead_source"),
+                    custom_family_preset=custom_params.get("family_preset"),
+                    custom_creditors_preset=custom_params.get("creditors_preset"),
+                    custom_debt_range=custom_params.get("debt_range"),
                 )
                 if story_id:
                     from app.models.roleplay import ClientStory
@@ -3004,7 +3075,7 @@ async def _handle_session_start(
 
             # Build extra system prompt context from profile
             # This gets injected into the LLM system prompt alongside character prompt
-            client_profile_prompt = _build_client_profile_prompt(profile)
+            client_profile_prompt = _build_client_profile_prompt(profile, ambient_ctx=custom_params)
 
             # Load traps assigned to this client profile
             active_traps = []
