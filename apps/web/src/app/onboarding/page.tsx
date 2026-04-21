@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { logger } from "@/lib/logger";
+import { PixelGridBackground } from "@/components/landing/PixelGridBackground";
 
 // ── Steps config (3 steps per XHUNTER_PLAN_v2 §3.4) ──────
 // Old: 5 steps (Профиль, Настройки, Микрофон, Тренировка, Демо)
@@ -374,7 +375,22 @@ export default function OnboardingPage() {
 
   return (
     <div className="relative min-h-screen flex items-center justify-center px-4 py-8 overflow-hidden" style={{ background: "var(--bg-primary)" }}>
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full opacity-10 pointer-events-none" style={{ background: "radial-gradient(circle, var(--accent) 0%, transparent 60%)" }} />
+      {/* Living pixel field — CRT-style grid with ~15% cells in decay cycle.
+          Fixed positioning via component's own className; pixelAlpha=0.22
+          keeps it subtle so content cards stay readable. */}
+      <div className="absolute inset-0 pointer-events-none">
+        <PixelGridBackground cellSize={28} pixelSize={3} pixelAlpha={0.22} />
+      </div>
+
+      {/* Radial purple glow — sits above pixel field, adds depth */}
+      <div
+        className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] rounded-full opacity-[0.18] pointer-events-none"
+        style={{ background: "radial-gradient(circle, var(--accent) 0%, transparent 60%)" }}
+      />
+
+      {/* Subtle top/bottom vignette — makes content cards pop */}
+      <div className="absolute inset-x-0 top-0 h-40 pointer-events-none" style={{ background: "linear-gradient(to bottom, var(--bg-primary) 0%, transparent 100%)" }} />
+      <div className="absolute inset-x-0 bottom-0 h-40 pointer-events-none" style={{ background: "linear-gradient(to top, var(--bg-primary) 0%, transparent 100%)" }} />
 
       {/* Theme toggle */}
       <div className="fixed right-4 top-4 z-50">
