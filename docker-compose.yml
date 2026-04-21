@@ -41,16 +41,16 @@ services:
   redis:
     image: redis:7-alpine
     # FIX: tune Redis for ~1000 users/day — session state + TTS cache + emotion buffers
+    # Journal #88 (class A): maxmemory-policy=volatile-lru — evict only
+    # TTL'd entries under memory pressure, preserving security-critical
+    # keys without TTL (rate limits, SETNX locks, idempotency, JWT blacklist).
+    # NB: comments MUST stay OUTSIDE the `command: >` block — inside a
+    # YAML folded scalar, `#` is part of the string, not a comment, and
+    # the Redis CLI then fails with "invalid command line string".
     command: >
       redis-server
       --requirepass ${REDIS_PASSWORD:-redis_secret_pass}
       --maxmemory 384mb
-      # Journal #88 (class A): `allkeys-lru` evicts ANY key under memory
-      # pressure, including security-critical ones with no TTL — rate-limit
-      # counters, SETNX session-create locks, idempotency cache, JWT
-      # blacklist. Losing those under load silently disables the guard.
-      # `volatile-lru` only evicts keys that have an explicit TTL set
-      # (caches, session state), leaving security invariants intact.
       --maxmemory-policy volatile-lru
       --save 60 1000
       --appendonly yes
