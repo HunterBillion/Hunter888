@@ -34,7 +34,15 @@ import { logger } from "@/lib/logger";
 import type { EmotionState, WSMessage } from "@/types";
 import type { ClientCardData } from "@/components/training/ClientCard";
 
+interface SessionMetaInner {
+  custom_params?: { bg_noise?: string | null; session_mode?: string } | null;
+  client_story_id?: string | null;
+}
 interface SessionMeta {
+  // Primary shape: wrapped SessionResultResponse
+  session?: SessionMetaInner;
+  client_card?: { name?: string } | null;
+  // Legacy fields that some callers expect at top level — accept either.
   character_name?: string;
   scenario_title?: string;
   custom_bg_noise?: string | null;
@@ -80,12 +88,19 @@ export default function TrainingCallPage() {
     (async () => {
       try {
         const meta = await api.get<SessionMeta>(`/training/sessions/${id}`);
-        const sessionMode =
-          meta?.custom_params?.session_mode || "chat";
-        if (sessionMode !== "call") {
-          // Session created as chat — call UI would be broken. Redirect.
+        // The endpoint returns SessionResultResponse with the real session
+        // nested under `session.custom_params`. Some legacy paths inline
+        // the same fields at top level — tolerate both.
+        const cp =
+          meta?.session?.custom_params || meta?.custom_params || null;
+        const sessionMode = cp?.session_mode;
+        // Fail-OPEN: only redirect when we have an EXPLICIT "chat" signal.
+        // If session_mode is missing/undefined we render the call UI —
+        // previous fail-closed logic broke freshly-created call sessions
+        // whose response shape didn't include session_mode at top level.
+        if (sessionMode === "chat") {
           logger.warn(
-            `[call] session ${id} is mode="${sessionMode}", redirecting to chat view`,
+            `[call] session ${id} is mode="chat", redirecting to chat view`,
           );
           if (!cancelled) router.replace(`/training/${id}`);
           return;
@@ -94,7 +109,10 @@ export default function TrainingCallPage() {
         if (meta?.character_name) s.setCharacterName(meta.character_name);
         if (meta?.scenario_title) s.setScenarioTitle(meta.scenario_title);
         const bg =
-          meta?.custom_bg_noise || meta?.custom_params?.bg_noise || null;
+          meta?.custom_bg_noise ||
+          meta?.custom_params?.bg_noise ||
+          meta?.session?.custom_params?.bg_noise ||
+          null;
         if (bg) setSceneBg(bg);
         setModeOk(true);
       } catch (err) {
