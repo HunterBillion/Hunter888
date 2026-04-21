@@ -244,8 +244,38 @@ function MicTest({ onResult }: { onResult: (ok: boolean) => void }) {
 }
 
 // ── D2: Trial dialog ───────────────────────────────────────
+// ── Typewriter text: reveals character by character ────────────
+function Typewriter({ text, speed = 28, onDone }: { text: string; speed?: number; onDone?: () => void }) {
+  const [shown, setShown] = useState("");
+  useEffect(() => {
+    let i = 0;
+    const id = setInterval(() => {
+      i++;
+      setShown(text.slice(0, i));
+      if (i >= text.length) {
+        clearInterval(id);
+        onDone?.();
+      }
+    }, speed);
+    return () => clearInterval(id);
+  }, [text, speed, onDone]);
+  return (
+    <>
+      {shown}
+      {shown.length < text.length && (
+        <motion.span
+          className="inline-block w-[2px] h-[14px] align-middle ml-[1px]"
+          style={{ background: "var(--accent)" }}
+          animate={{ opacity: [1, 0, 1] }}
+          transition={{ duration: 0.7, repeat: Infinity }}
+        />
+      )}
+    </>
+  );
+}
+
 function TrialDialog() {
-  const [messages, setMessages] = useState<{ role: "system" | "bot" | "user"; text: string }[]>(DEMO_MESSAGES);
+  const [messages, setMessages] = useState<{ role: "system" | "bot" | "user"; text: string; typing?: boolean }[]>(DEMO_MESSAGES);
   const [input, setInput] = useState("");
   const [responded, setResponded] = useState(false);
   const [botTyping, setBotTyping] = useState(false);
@@ -257,44 +287,112 @@ function TrialDialog() {
     setBotTyping(true);
     setTimeout(() => {
       setBotTyping(false);
+      // Bot response with typewriter flag — will animate character-by-character
       setMessages(prev => [...prev, {
         role: "bot" as const,
         text: "Хм, ладно, слушаю. У вас 30 секунд. Что за компания и зачем звоните?",
+        typing: true,
       }]);
       setResponded(true);
-    }, 2000);
+    }, 1200);
   };
 
   return (
     <div className="space-y-3">
-      <div className="rounded-xl p-4 space-y-3 max-h-[200px] overflow-y-auto" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>
-        {messages.map((msg, i) => (
+      <div
+        className="rounded-xl p-4 space-y-3 max-h-[260px] overflow-y-auto"
+        style={{
+          background: "var(--input-bg)",
+          border: "1px solid var(--border-color)",
+          backgroundImage: "linear-gradient(180deg, var(--input-bg) 0%, color-mix(in oklab, var(--input-bg) 85%, var(--accent) 15%) 100%)",
+        }}
+      >
+        {messages.map((msg, i) => {
+          const isUser = msg.role === "user";
+          const isSystem = msg.role === "system";
+          const isBot = msg.role === "bot";
+          return (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 10, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ delay: i * 0.08, type: "spring", stiffness: 200, damping: 20 }}
+              className={`flex ${isUser ? "justify-end" : "justify-start"} gap-2 items-end`}
+            >
+              {/* Bot avatar */}
+              {isBot && (
+                <div
+                  className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 text-sm"
+                  style={{
+                    background: "var(--accent-muted)",
+                    border: "1px solid var(--accent)",
+                    boxShadow: "0 0 10px var(--accent-glow)",
+                  }}
+                >
+                  🤨
+                </div>
+              )}
+              <div
+                className="rounded-2xl px-3.5 py-2.5 text-sm max-w-[78%] relative"
+                style={{
+                  background: isUser ? "var(--accent)" : isSystem ? "var(--accent-muted)" : "var(--glass-bg)",
+                  color: isUser ? "white" : isSystem ? "var(--accent)" : "var(--text-primary)",
+                  border: isBot ? "1px solid var(--border-color)" : "none",
+                  borderBottomRightRadius: isUser ? "4px" : undefined,
+                  borderBottomLeftRadius: isBot ? "4px" : undefined,
+                }}
+              >
+                {isSystem && (
+                  <span
+                    className="font-mono text-[10px] block mb-1 tracking-wider uppercase"
+                    style={{ color: "var(--accent)", opacity: 0.7 }}
+                  >
+                    СИСТЕМА
+                  </span>
+                )}
+                {isBot && msg.typing ? (
+                  <Typewriter text={msg.text} speed={25} />
+                ) : (
+                  msg.text
+                )}
+              </div>
+            </motion.div>
+          );
+        })}
+        {botTyping && (
           <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            className="flex items-end gap-2"
           >
             <div
-              className="rounded-lg px-3 py-2 text-sm max-w-[80%]"
+              className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 text-sm"
               style={{
-                background: msg.role === "user" ? "var(--accent)" : msg.role === "system" ? "var(--accent-muted)" : "var(--glass-bg)",
-                color: msg.role === "user" ? "white" : msg.role === "system" ? "var(--accent)" : "var(--text-primary)",
-                border: msg.role === "bot" ? "1px solid var(--border-color)" : "none",
+                background: "var(--accent-muted)",
+                border: "1px solid var(--accent)",
+                boxShadow: "0 0 10px var(--accent-glow)",
               }}
             >
-              {msg.role === "system" && <span className="font-mono text-xs block mb-1" style={{ color: "var(--text-muted)" }}>СИСТЕМА</span>}
-              {msg.text}
+              🤨
             </div>
-          </motion.div>
-        ))}
-        {botTyping && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-1 px-3">
-            {[0, 1, 2].map(i => (
-              <motion.span key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--accent)" }}
-                animate={{ y: [0, -4, 0] }} transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.15 }} />
-            ))}
+            <div
+              className="rounded-2xl px-4 py-3 flex gap-1.5 items-center"
+              style={{
+                background: "var(--glass-bg)",
+                border: "1px solid var(--border-color)",
+                borderBottomLeftRadius: "4px",
+              }}
+            >
+              {[0, 1, 2].map(i => (
+                <motion.span
+                  key={i}
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: "var(--accent)" }}
+                  animate={{ y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
+                  transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }}
+                />
+              ))}
+            </div>
           </motion.div>
         )}
       </div>
@@ -308,19 +406,32 @@ function TrialDialog() {
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
             className="vh-input flex-1"
             placeholder="Ваш ответ..."
+            autoFocus
           />
           <Button size="sm" onClick={sendMessage} disabled={!input.trim()} icon={<ArrowRight size={16} />} />
         </div>
       )}
 
       {!responded && (
-        <p className="text-xs text-center" style={{ color: "var(--text-muted)" }}>
-          <Lightbulb size={14} className="inline" /> {DEMO_HINTS[0]}
-        </p>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-xs text-center flex items-center justify-center gap-1.5"
+          style={{ color: "var(--text-muted)" }}
+        >
+          <Lightbulb size={14} className="inline" style={{ color: "var(--accent)" }} />
+          {DEMO_HINTS[0]}
+        </motion.p>
       )}
 
       {responded && (
-        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-center" style={{ color: "var(--success)" }}>
+        <motion.p
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.8 }}
+          className="text-xs text-center flex items-center justify-center gap-1.5"
+          style={{ color: "var(--success)" }}
+        >
           <CheckCircle size={16} className="inline" /> Отлично! Вы готовы к настоящим тренировкам
         </motion.p>
       )}
@@ -592,30 +703,58 @@ export default function OnboardingPage() {
             {/* Step 2: Archetype choice — 'Кто твой первый клиент?' */}
             {step === 2 && (
               <>
-                <h2 className="font-display text-xl font-bold tracking-wider mb-1 text-center" style={{ color: "var(--text-primary)" }}>Кто твой первый клиент?</h2>
-                <p className="text-sm mb-6 text-center" style={{ color: "var(--text-muted)" }}>Выбери архетип для первого звонка</p>
+                <h2 className="font-display text-2xl font-bold tracking-wide mb-1 text-center" style={{ color: "var(--text-primary)" }}>Кто твой первый клиент?</h2>
+                <p className="text-sm mb-7 text-center" style={{ color: "var(--text-muted)" }}>Выбери архетип для первого звонка</p>
                 <div className="space-y-3">
                   {[
-                    { value: "structured", label: "Скептик", desc: "Не верит, сомневается, задаёт неудобные вопросы", icon: "🤨" },
-                    { value: "freestyle", label: "Занятой", desc: "Торопится, перебивает, хочет быстро", icon: "⏰" },
-                    { value: "challenge", label: "Агрессор", desc: "Давит, угрожает, требует невозможного", icon: "😤" },
-                  ].map(m => (
-                    <motion.button key={m.value} type="button" onClick={() => setTrainingMode(m.value)}
-                      className="w-full rounded-xl px-5 py-4 text-left flex items-center gap-3"
-                      style={{
-                        background: trainingMode === m.value ? "var(--accent-muted)" : "var(--input-bg)",
-                        border: `1px solid ${trainingMode === m.value ? "var(--accent)" : "var(--border-color)"}`,
-                        boxShadow: trainingMode === m.value ? "0 0 15px var(--accent-glow)" : "none",
-                      }}
-                      whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
-                    >
-                      <AppIcon emoji={m.icon} size={28} />
-                      <div>
-                        <div className="font-medium text-sm" style={{ color: trainingMode === m.value ? "var(--accent)" : "var(--text-primary)" }}>{m.label}</div>
-                        <div className="text-xs" style={{ color: "var(--text-muted)" }}>{m.desc}</div>
-                      </div>
-                    </motion.button>
-                  ))}
+                    { value: "structured", label: "Скептик", desc: "Не верит, сомневается, задаёт неудобные вопросы", icon: "🤨", hue: "#a78bfa" },
+                    { value: "freestyle", label: "Занятой", desc: "Торопится, перебивает, хочет быстро", icon: "⏰", hue: "#fbbf24" },
+                    { value: "challenge", label: "Агрессор", desc: "Давит, угрожает, требует невозможного", icon: "😤", hue: "#f87171" },
+                  ].map((m, i) => {
+                    const active = trainingMode === m.value;
+                    return (
+                      <motion.button
+                        key={m.value}
+                        type="button"
+                        onClick={() => setTrainingMode(m.value)}
+                        className="w-full rounded-xl px-5 py-4 text-left flex items-center gap-4 transition-colors relative overflow-hidden"
+                        style={{
+                          background: active ? "var(--accent-muted)" : "var(--input-bg)",
+                          border: `1.5px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
+                          boxShadow: active ? "0 0 22px var(--accent-glow), inset 0 0 0 1px var(--accent)" : "none",
+                        }}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.08 }}
+                        whileHover={{ y: -2, boxShadow: "0 10px 28px var(--accent-glow)" }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        {/* Subtle color accent dot (per-archetype hue) */}
+                        <div
+                          className="flex items-center justify-center w-12 h-12 rounded-lg shrink-0"
+                          style={{
+                            background: `${m.hue}22`,
+                            boxShadow: active ? `0 0 14px ${m.hue}55` : "none",
+                          }}
+                        >
+                          <AppIcon emoji={m.icon} size={28} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-display font-bold text-base" style={{ color: active ? "var(--accent)" : "var(--text-primary)" }}>{m.label}</div>
+                          <div className="text-[13px] mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>{m.desc}</div>
+                        </div>
+                        {active && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="shrink-0"
+                          >
+                            <Check size={20} style={{ color: "var(--accent)" }} />
+                          </motion.div>
+                        )}
+                      </motion.button>
+                    );
+                  })}
                 </div>
               </>
             )}

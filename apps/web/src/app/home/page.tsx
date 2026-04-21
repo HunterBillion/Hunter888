@@ -35,6 +35,7 @@ import WeeklyLeague from "@/components/gamification/WeeklyLeague";
 import OfficeShelf from "@/components/gamification/OfficeShelf";
 import SeasonBanner from "@/components/gamification/SeasonBanner";
 import ChapterProgress from "@/components/gamification/ChapterProgress";
+import { PixelGridBackground } from "@/components/landing/PixelGridBackground";
 // useTiltEffect kept in hooks/ for future use on non-motion elements
 
 
@@ -346,6 +347,11 @@ export default function HomePage() {
   return (
     <AuthLayout>
       <div className="relative panel-grid-bg min-h-screen">
+        {/* Ambient pixel field — subtle animated backdrop (lower opacity
+            than onboarding since home has dense dashboard content). */}
+        <div className="absolute inset-0 pointer-events-none" style={{ opacity: 0.35 }}>
+          <PixelGridBackground cellSize={32} pixelSize={3} pixelAlpha={0.14} />
+        </div>
 
         <div className="app-page">
 
