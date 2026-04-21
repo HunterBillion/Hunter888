@@ -333,6 +333,13 @@ async def start_session(
         if not custom_params:
             custom_params = None
 
+    # Session mode — "chat" (default) or "call". Persist so WS handlers +
+    # LLM prompt builder can adapt behavior (call mode → phone-like short
+    # replies, chat mode → normal text conversation).
+    if body.custom_session_mode in ("chat", "call"):
+        custom_params = custom_params or {}
+        custom_params["session_mode"] = body.custom_session_mode
+
     # Validate that scenario exists and is active.
     # Check both legacy `scenarios` table and new `scenario_templates` table
     # because list_scenarios now returns template IDs.

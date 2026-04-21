@@ -26,7 +26,10 @@ interface Props {
 
 export function CallButton({ sessionId, difficulty, disabled }: Props) {
   const router = useRouter();
-  if (difficulty < 4) return null;
+  // 2026-04-21: removed `difficulty < 4` gate. User reported "звонок не
+  // работает вообще" — the gate was hiding the button on easier scenarios.
+  // Call mode should be always reachable.
+  void difficulty; // kept in props for backward-compat
 
   return (
     <button

@@ -8,7 +8,7 @@ import { AvatarPreview } from "./AvatarPreview";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import {
   ArrowRight, ChevronLeft, Loader2, Sparkles, RotateCcw, Check, Save, CheckCircle2,
-  Lock, SkipForward,
+  Lock, SkipForward, MessageCircle, Phone,
 } from "lucide-react";
 import {
   Brain, Briefcase, Broadcast, UsersThree, Heart, Gauge, Cloud, FileMagnifyingGlass,
@@ -181,7 +181,11 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
     return `/training/${scenarioId}?${params.toString()}`;
   };
 
-  const handleStart = async (storyMode = false) => {
+  // sessionMode=call routes to the phone-call UI; chat is the default text-chat.
+  // Both use the same backend session — the backend receives session_mode
+  // via custom_params so prompts can adapt (shorter sentences, interruptions,
+  // etc.) in call mode even though the REST endpoint is the same.
+  const handleStart = async (storyMode = false, sessionMode: "chat" | "call" = "chat") => {
     if (!archetype || !profession) return;
     setStarting(true);
     try {
@@ -211,8 +215,12 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
         custom_bg_noise: bgNoise !== "none" ? bgNoise : undefined,
         custom_time_of_day: timeOfDay !== "afternoon" ? timeOfDay : undefined,
         custom_fatigue: clientFatigue !== "normal" ? clientFatigue : undefined,
+        custom_session_mode: sessionMode,
       });
-      router.push(`/training/${session.id}`);
+      const targetPath = sessionMode === "call"
+        ? `/training/${session.id}/call`
+        : `/training/${session.id}`;
+      router.push(targetPath);
     } catch (err) {
       logger.error("Failed to start:", err);
       alert("Не удалось создать сессию.");
@@ -591,12 +599,15 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
           {step < 7 ? (
             <Button onClick={nextStep} disabled={!canNext()} size="sm" iconRight={<ArrowRight size={16} />}>Далее</Button>
           ) : (
-            <div className="flex gap-2.5">
+            <div className="flex flex-wrap gap-2.5">
               <Button onClick={handleSave} disabled={saving || saved || !archetype || !profession} size="sm" loading={saving} icon={saved ? <CheckCircle2 size={16} style={{ color: "var(--success)" }} /> : <Save size={16} />}>
                 {saved ? "Сохранён" : "Сохранить"}
               </Button>
-              <Button variant="primary" onClick={() => handleStart(false)} disabled={starting || !archetype || !profession} size="sm" loading={starting} icon={<Sparkles size={16} />}>
-                Начать
+              <Button variant="primary" onClick={() => handleStart(false, "chat")} disabled={starting || !archetype || !profession} size="sm" loading={starting} icon={<MessageCircle size={16} />}>
+                Чат
+              </Button>
+              <Button onClick={() => handleStart(false, "call")} disabled={starting || !archetype || !profession} size="sm" loading={starting} icon={<Phone size={16} />} style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "var(--accent-muted)" }}>
+                Звонок
               </Button>
               <Button onClick={() => handleStart(true)} disabled={starting || !archetype || !profession} size="sm" loading={starting} icon={<Sparkles size={16} />} style={{ borderColor: "var(--accent-glow)", color: "var(--accent)" }}>
                 AI x{storyCalls}

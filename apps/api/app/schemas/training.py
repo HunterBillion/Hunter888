@@ -35,6 +35,11 @@ class SessionStartRequest(BaseModel):
     custom_bg_noise: str | None = None            # "none", "office", "street" etc.
     custom_time_of_day: str | None = None         # "morning", "afternoon" etc.
     custom_fatigue: str | None = None             # "fresh", "normal", "tired" etc.
+    # Session mode — "chat" (default text) or "call" (phone-call voice mode).
+    # Backend uses this to adapt LLM system prompt: call mode gets shorter,
+    # more colloquial, interrupt-prone replies that feel like a real phone
+    # conversation, not a drafted email.
+    custom_session_mode: str | None = None        # "chat" | "call"
     # Custom character link
     custom_character_id: uuid.UUID | None = None  # link to saved CustomCharacter
 
