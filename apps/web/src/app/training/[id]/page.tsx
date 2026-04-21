@@ -936,28 +936,20 @@ export default function TrainingSessionPage() {
           }
 
           // Session was taken over by another tab/connection.
-          // In dev (Next.js HMR / React StrictMode double-mount) this fires spuriously
-          // on every code edit — ignore it and let the auto-reconnect handle it.
-          // In production we still finalize and redirect to results.
+          //
+          // 2026-04-21: dropped the auto-end + redirect to /results.
+          // In prod this fires spuriously on reconnect / fast-refresh /
+          // brief network blips, and every time it happened the user got
+          // their session ended and shoved into /results — losing their
+          // in-progress dialogue. useWebSocket already auto-reconnects;
+          // if a second tab is truly driving the session the user will
+          // notice and close one manually.
+          //
+          // Keep the observability — just no destructive side effect.
+          // Dev guard kept in case the chat page is ever re-extended to
+          // react to legitimate hijacks.
           if (errCode === "session_hijacked") {
-            if (process.env.NODE_ENV === "development") {
-              logger.warn("[dev] Ignoring session_hijacked (likely HMR). WS will reconnect.");
-              break;
-            }
-            s.setSessionState("completed");
-            // 2026-04-18 audit fix: end the LIVE session (may have been
-            // rotated in story mode), and redirect to the appropriate
-            // summary (story vs single-call).
-            const _sid = currentSessionIdRef.current || routeId;
-            api.post(`/training/sessions/${_sid}/end`, {})
-              .catch(() => logger.warn("REST end-session after hijack failed (may already be ended)"))
-              .finally(() => {
-                if (s.storyMode && s.storyId) {
-                  setTimeout(() => router.push(`/stories/${s.storyId}`), 1500);
-                } else {
-                  setTimeout(() => router.push(`/results/${_sid}`), 1500);
-                }
-              });
+            logger.warn("[training] session_hijacked (non-fatal, letting WS reconnect)", data.data);
           }
           break;
         }

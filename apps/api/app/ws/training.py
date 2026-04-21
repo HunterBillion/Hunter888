@@ -1301,7 +1301,15 @@ async def _generate_character_reply(
                         _tts_next_to_send += 1
                         continue
                     except Exception as _tts_err:
-                        logger.debug("Stream TTS task %d failed: %s", _tts_next_to_send, _tts_err)
+                        # Journal #C (silent swallow on critical UX path).
+                        # TTS failure here = user hears silence on a call or
+                        # chat session. Has to be VISIBLE in prod logs so we
+                        # can trace back from user complaints.
+                        logger.warning(
+                            "Stream TTS task %d failed (sentence dropped, user will miss audio): %s",
+                            _tts_next_to_send, _tts_err,
+                            exc_info=True,
+                        )
                         _tts_next_to_send += 1
                         continue
                     if result and result.get("audio"):
