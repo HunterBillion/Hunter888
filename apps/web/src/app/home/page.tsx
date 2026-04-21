@@ -317,7 +317,7 @@ export default function HomePage() {
           // a different client than the one they saw in the card.
           const status = (err as { status?: number })?.status;
           if (status === 409) {
-            logger.info("Waiting client expired, refetching preview");
+            logger.log("Waiting client expired, refetching preview");
             try {
               const { client } = await api.get<{ client: typeof waitingClient }>("/home/waiting-client");
               setWaitingClient(client);
