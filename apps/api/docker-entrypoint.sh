@@ -164,12 +164,21 @@ else
 fi
 
 # ── Seed database ─────────────────────────────────────────────────────
-# Idempotent: seed_db.py checks if data exists before inserting.
+# Both seed scripts are idempotent — check existing data before inserting.
 log "Running database seed (idempotent)..."
 if python -m scripts.seed_db; then
-    log "Seed complete."
+    log "Seed [seed_db] complete."
 else
-    log "WARNING: Seed script failed (non-critical, continuing startup)."
+    log "WARNING: seed_db failed (non-critical, continuing startup)."
+fi
+
+# Phase 3 schema (level_definitions, achievement_definitions) —
+# seed_db.py only touches legacy tables, so we run seed_levels.py too.
+log "Running seed_levels (LevelDefinition + AchievementDefinition)..."
+if python -m scripts.seed_levels; then
+    log "Seed [seed_levels] complete."
+else
+    log "WARNING: seed_levels failed (non-critical, continuing startup)."
 fi
 
 log "Starting API..."
