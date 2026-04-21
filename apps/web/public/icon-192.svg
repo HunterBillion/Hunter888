@@ -1,4 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="32" fill="#8A2BE2"/>
-  <text x="96" y="120" text-anchor="middle" font-family="sans-serif" font-weight="bold" font-size="100" fill="white">V</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0C0118"/>
+      <stop offset="100%" stop-color="#06000D"/>
+    </linearGradient>
+    <linearGradient id="xLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E9D5FF"/>
+      <stop offset="100%" stop-color="#A855F7"/>
+    </linearGradient>
+    <linearGradient id="xRight" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E9D5FF"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+    <filter id="gBig"><feGaussianBlur stdDeviation="18"/></filter>
+    <filter id="gMed"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="gSm"><feGaussianBlur stdDeviation="2" result="b"/><feComposite in="SourceGraphic" in2="b" operator="over"/></filter>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+  <g opacity="0.12" filter="url(#gBig)">
+    <line x1="140" y1="128" x2="372" y2="384" stroke="#A855F7" stroke-width="70" stroke-linecap="round"/>
+    <line x1="372" y1="128" x2="140" y2="384" stroke="#8B5CF6" stroke-width="70" stroke-linecap="round"/>
+  </g>
+  <g filter="url(#gSm)">
+    <line x1="152" y1="140" x2="360" y2="372" stroke="url(#xLeft)" stroke-width="42" stroke-linecap="round"/>
+    <line x1="360" y1="140" x2="152" y2="372" stroke="url(#xRight)" stroke-width="42" stroke-linecap="round"/>
+  </g>
+  <g opacity="0.6" filter="url(#gMed)">
+    <circle cx="256" cy="256" r="16" fill="#E9D5FF"/>
+  </g>
+  <circle cx="256" cy="256" r="6" fill="white"/>
 </svg>

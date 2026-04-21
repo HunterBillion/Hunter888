@@ -107,7 +107,7 @@ export function CountdownIntro({ onDone }: CountdownIntroProps) {
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          backgroundImage: `radial-gradient(circle, var(--grid-dot-color, rgba(124,106,232,0.22)) 1px, transparent 1px)`,
+          backgroundImage: `radial-gradient(circle, var(--grid-dot-color, var(--accent-glow)) 1px, transparent 1px)`,
           backgroundSize: "24px 24px",
           maskImage: "radial-gradient(ellipse at center, black 20%, rgba(0,0,0,0.3) 70%, transparent 100%)",
           WebkitMaskImage: "radial-gradient(ellipse at center, black 20%, rgba(0,0,0,0.3) 70%, transparent 100%)",
@@ -120,7 +120,7 @@ export function CountdownIntro({ onDone }: CountdownIntroProps) {
         animate={{ opacity: [0.6, 1, 0.6] }}
         transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
         style={{
-          background: "radial-gradient(ellipse at 50% 50%, rgba(124,106,232,0.18) 0%, transparent 60%)",
+          background: "radial-gradient(ellipse at 50% 50%, var(--accent-muted) 0%, transparent 60%)",
         }}
       />
 
@@ -131,7 +131,7 @@ export function CountdownIntro({ onDone }: CountdownIntroProps) {
             <circle
               cx="60" cy="60" r="52"
               fill="none"
-              stroke="rgba(124,106,232,0.1)"
+              stroke="var(--accent-muted)"
               strokeWidth="2"
             />
             <circle
@@ -165,7 +165,7 @@ export function CountdownIntro({ onDone }: CountdownIntroProps) {
               top: "calc(50% - clamp(5rem, 14vw, 10rem) - 2.5rem)",
               color: "var(--text-muted)",
               letterSpacing: "0.32em",
-              fontSize: "clamp(0.6rem, 1.5vw, 0.85rem)",
+              fontSize: "clamp(0.875rem, 1.5vw, 1rem)",
               textTransform: "uppercase",
             }}
           >

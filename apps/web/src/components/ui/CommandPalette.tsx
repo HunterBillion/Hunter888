@@ -62,7 +62,7 @@ const COMMANDS: CommandItem[] = [
   { id: "leaderboard", label: "Рейтинг", description: "Таблица лидеров", icon: Trophy, href: "/leaderboard", keywords: ["рейтинг", "leaderboard", "лидеры", "топ"] },
   { id: "clients", label: "CRM Клиенты", description: "Управление клиентами", icon: Users, href: "/clients", keywords: ["клиенты", "clients", "crm", "контакты"] },
   { id: "knowledge", label: "База знаний", description: "Квизы и материалы", icon: BookOpen, href: "/pvp?tab=knowledge", keywords: ["знания", "knowledge", "квиз", "тест", "обучение"] },
-  { id: "reports", label: "Отчёты", description: "Командные отчёты", icon: FileBarChart, href: "/reports", keywords: ["отчёты", "reports", "команда"], roles: ["rop", "admin"] },
+  { id: "reports", label: "Отчёты", description: "Командные отчёты (в Панели РОП)", icon: FileBarChart, href: "/dashboard?tab=reports", keywords: ["отчёты", "reports", "команда"], roles: ["rop", "admin"] },
   { id: "notifications", label: "Уведомления", icon: Bell, href: "/notifications", keywords: ["уведомления", "notifications", "оповещения"] },
   { id: "settings", label: "Настройки", description: "Тема, звук, профиль", icon: Settings, href: "/settings", keywords: ["настройки", "settings", "тема", "профиль"] },
   { id: "dashboard", label: "Панель управления", description: "Обзор команды (РОП)", icon: Shield, href: "/dashboard", keywords: ["панель", "dashboard", "управление", "роп"], roles: ["rop", "admin"] },
@@ -162,7 +162,7 @@ export function CommandPalette() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[300] flex items-start justify-center pt-[15vh]"
-          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+          style={{ background: "var(--overlay-bg)", backdropFilter: "blur(4px)" }}
           onClick={() => setOpen(false)}
         >
           <motion.div
@@ -221,7 +221,7 @@ export function CommandPalette() {
               ) : (
                 <>
                   {hasRecent && (
-                    <div className="px-4 pt-1 pb-1.5 font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                    <div className="px-4 pt-1 pb-1.5 font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                       Недавние
                     </div>
                   )}
@@ -232,7 +232,7 @@ export function CommandPalette() {
                     return (
                       <div key={cmd.id}>
                         {showSeparator && (
-                          <div className="px-4 pt-2.5 pb-1.5 font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)", borderTop: "1px solid var(--border-color)" }}>
+                          <div className="px-4 pt-2.5 pb-1.5 font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)", borderTop: "1px solid var(--border-color)" }}>
                             Все
                           </div>
                         )}

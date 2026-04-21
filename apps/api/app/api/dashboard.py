@@ -11,8 +11,10 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
+
+from app.core.rate_limit import limiter
 from sqlalchemy import Integer, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -54,7 +56,9 @@ async def _cache_set(key: str, data: dict) -> None:
 
 
 @router.get("/manager")
+@limiter.limit("30/minute")
 async def manager_dashboard(
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -138,7 +142,7 @@ async def manager_dashboard(
             "streak_days": streak,
         }
     except Exception:
-        logger.debug("Dashboard sub-query failed", exc_info=True)
+        logger.warning("Dashboard sub-query failed", exc_info=True)
 
     # ── Recommendations (top 3) ──
     recommendations = []
@@ -158,7 +162,7 @@ async def manager_dashboard(
             for r in recs
         ]
     except Exception:
-        logger.debug("Dashboard sub-query failed", exc_info=True)
+        logger.warning("Dashboard sub-query failed", exc_info=True)
 
     # ── Assignments ──
     assignments = []
@@ -184,7 +188,7 @@ async def manager_dashboard(
             for row in assign_result.all()
         ]
     except Exception:
-        logger.debug("Dashboard sub-query failed", exc_info=True)
+        logger.warning("Dashboard sub-query failed", exc_info=True)
 
     # ── Active tournament ──
     tournament = None
@@ -201,7 +205,39 @@ async def manager_dashboard(
                 "leaderboard": lb,
             }
     except Exception:
-        logger.debug("Dashboard sub-query failed", exc_info=True)
+        logger.warning("Dashboard sub-query failed", exc_info=True)
+
+    # ── Daily Hook data (weak skills, failed traps) for personalized greeting ──
+    daily_hook: dict = {}
+    try:
+        from app.models.progress import ManagerProgress, SessionHistory
+        mp_result = await db.execute(
+            select(ManagerProgress).where(ManagerProgress.user_id == user.id)
+        )
+        mp = mp_result.scalar_one_or_none()
+        if mp:
+            daily_hook["weak_points"] = mp.weak_points or []
+            daily_hook["focus_recommendation"] = mp.focus_recommendation
+
+        # Most failed trap (from recent sessions)
+        sh_result = await db.execute(
+            select(SessionHistory).where(
+                SessionHistory.user_id == user.id,
+            ).order_by(SessionHistory.created_at.desc()).limit(10)
+        )
+        recent_history = sh_result.scalars().all()
+        trap_fails: dict[str, int] = {}
+        for sh in recent_history:
+            bd = sh.score_breakdown or {}
+            trap_name = bd.get("worst_trap_name") or bd.get("_trap_name")
+            if trap_name and sh.traps_fell and sh.traps_fell > 0:
+                trap_fails[trap_name] = trap_fails.get(trap_name, 0) + sh.traps_fell
+        if trap_fails:
+            worst_trap = max(trap_fails, key=trap_fails.get)  # type: ignore[arg-type]
+            daily_hook["worst_trap"] = worst_trap
+            daily_hook["worst_trap_count"] = trap_fails[worst_trap]
+    except Exception:
+        logger.warning("Daily hook data failed", exc_info=True)
 
     data = {
         "stats": {
@@ -217,6 +253,7 @@ async def manager_dashboard(
         "recommendations": recommendations,
         "assignments": assignments,
         "tournament": tournament,
+        "daily_hook": daily_hook,
     }
 
     await _cache_set(cache_key, data)
@@ -224,7 +261,9 @@ async def manager_dashboard(
 
 
 @router.get("/rop")
+@limiter.limit("30/minute")
 async def rop_dashboard(
+    request: Request,
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -328,7 +367,7 @@ async def rop_dashboard(
                 "leaderboard": lb,
             }
     except Exception:
-        logger.debug("Dashboard sub-query failed", exc_info=True)
+        logger.warning("Dashboard sub-query failed", exc_info=True)
 
     data = {
         "team": {
@@ -369,7 +408,9 @@ CATEGORY_DISPLAY_NAMES: dict[str, str] = {
 
 
 @router.get("/knowledge-stats")
+@limiter.limit("30/minute")
 async def knowledge_dashboard_stats(
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID | None = Query(None, description="View another user (ROP/admin)"),
@@ -421,7 +462,7 @@ async def knowledge_dashboard_stats(
 
         pvp_stats = await get_arena_rating_for_user(target_id, db)
     except Exception:
-        logger.debug("PvP rating unavailable", exc_info=True)
+        logger.warning("PvP rating unavailable", exc_info=True)
         pvp_stats = {
             "rating": 1500, "rank_tier": "unranked",
             "wins": 0, "losses": 0, "current_streak": 0,
@@ -471,7 +512,7 @@ async def knowledge_dashboard_stats(
             for r in recs[:3]
         ]
     except Exception:
-        logger.debug("Cross-module recommendations unavailable", exc_info=True)
+        logger.warning("Cross-module recommendations unavailable", exc_info=True)
 
     data = {
         "overall_accuracy": overall_accuracy,
@@ -497,7 +538,9 @@ async def knowledge_dashboard_stats(
 
 
 @router.get("/team-knowledge-stats")
+@limiter.limit("30/minute")
 async def team_knowledge_stats(
+    request: Request,
     user: User = Depends(require_role("rop", "admin", "methodologist")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -526,31 +569,45 @@ async def team_knowledge_stats(
 
     week_ago = datetime.now(timezone.utc) - timedelta(days=7)
 
+    member_ids = [m.id for m in members]
+
+    # Batch: answer accuracy per user
+    ans_batch = await db.execute(
+        select(
+            KnowledgeAnswer.user_id,
+            func.count(KnowledgeAnswer.id).label("total"),
+            func.sum(
+                case((KnowledgeAnswer.is_correct == True, 1), else_=0)  # noqa: E712
+            ).label("correct"),
+        )
+        .where(KnowledgeAnswer.user_id.in_(member_ids))
+        .group_by(KnowledgeAnswer.user_id)
+    )
+    ans_map = {r.user_id: {"total": r.total, "correct": r.correct or 0} for r in ans_batch}
+
+    # Batch: weekly session count per user
+    week_batch = await db.execute(
+        select(
+            KnowledgeQuizSession.user_id,
+            func.count().label("cnt"),
+        )
+        .where(
+            KnowledgeQuizSession.user_id.in_(member_ids),
+            KnowledgeQuizSession.started_at >= week_ago,
+            KnowledgeQuizSession.status == QuizSessionStatus.completed,
+        )
+        .group_by(KnowledgeQuizSession.user_id)
+    )
+    week_map = {r.user_id: r.cnt for r in week_batch}
+
     team_stats = []
     for member in members:
-        # Per-member accuracy
-        ans_result = await db.execute(
-            select(
-                func.count(KnowledgeAnswer.id).label("total"),
-                func.sum(
-                    case((KnowledgeAnswer.is_correct == True, 1), else_=0)  # noqa: E712
-                ).label("correct"),
-            )
-            .where(KnowledgeAnswer.user_id == member.id)
-        )
-        ans_row = ans_result.one()
-        total_a = ans_row.total or 0
-        correct_a = ans_row.correct or 0
+        ans_data = ans_map.get(member.id, {"total": 0, "correct": 0})
+        total_a = ans_data["total"]
+        correct_a = ans_data["correct"]
         accuracy = round((correct_a / total_a * 100), 1) if total_a > 0 else 0
 
-        # Sessions this week
-        week_count = (await db.execute(
-            select(func.count()).where(
-                KnowledgeQuizSession.user_id == member.id,
-                KnowledgeQuizSession.started_at >= week_ago,
-                KnowledgeQuizSession.status == QuizSessionStatus.completed,
-            )
-        )).scalar() or 0
+        week_count = week_map.get(member.id, 0)
 
         team_stats.append({
             "user_id": str(member.id),
@@ -578,7 +635,9 @@ async def team_knowledge_stats(
 # ═══════════════════════════════════════════════════════════════════════════
 
 @router.get("/rop/heatmap")
+@limiter.limit("30/minute")
 async def rop_heatmap(
+    request: Request,
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -598,7 +657,9 @@ async def rop_heatmap(
 
 
 @router.get("/rop/weak-links")
+@limiter.limit("30/minute")
 async def rop_weak_links(
+    request: Request,
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -618,7 +679,9 @@ async def rop_weak_links(
 
 
 @router.get("/rop/benchmark")
+@limiter.limit("30/minute")
 async def rop_benchmark(
+    request: Request,
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -638,7 +701,9 @@ async def rop_benchmark(
 
 
 @router.get("/rop/roi")
+@limiter.limit("30/minute")
 async def rop_roi(
+    request: Request,
     weeks: int = Query(8, ge=4, le=26),
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
@@ -653,7 +718,9 @@ async def rop_roi(
 
 
 @router.get("/benchmark")
+@limiter.limit("30/minute")
 async def platform_benchmark(
+    request: Request,
     user: User = Depends(require_role("rop", "admin", "methodologist")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -677,7 +744,9 @@ async def platform_benchmark(
 # ═══════════════════════════════════════════════════════════════════════════
 
 @router.get("/weekly-report")
+@limiter.limit("30/minute")
 async def get_weekly_report(
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -733,7 +802,9 @@ async def get_weekly_report(
 
 
 @router.get("/weekly-report/history")
+@limiter.limit("30/minute")
 async def get_weekly_report_history(
+    request: Request,
     weeks: int = Query(12, ge=1, le=52),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -767,7 +838,9 @@ async def get_weekly_report_history(
 
 
 @router.get("/weekly-report/export")
+@limiter.limit("5/minute")
 async def export_weekly_report(
+    request: Request,
     report_id: uuid.UUID = Query(...),
     format: str = Query("csv", regex="^(csv|json)$"),
     user: User = Depends(get_current_user),
@@ -814,7 +887,9 @@ async def export_weekly_report(
 
 
 @router.get("/rop/weekly-digest")
+@limiter.limit("30/minute")
 async def rop_weekly_digest(
+    request: Request,
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -832,7 +907,9 @@ async def rop_weekly_digest(
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/rop/trends")
+@limiter.limit("30/minute")
 async def rop_trends(
+    request: Request,
     period: str = Query("month", pattern="^(week|month|all)$"),
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
@@ -853,7 +930,9 @@ async def rop_trends(
 
 
 @router.get("/rop/activity")
+@limiter.limit("30/minute")
 async def rop_activity(
+    request: Request,
     days: int = Query(14, ge=7, le=30),
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
@@ -874,7 +953,9 @@ async def rop_activity(
 
 
 @router.get("/rop/alerts")
+@limiter.limit("30/minute")
 async def rop_alerts(
+    request: Request,
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -894,7 +975,9 @@ async def rop_alerts(
 
 
 @router.get("/rop/sessions")
+@limiter.limit("30/minute")
 async def rop_member_sessions(
+    request: Request,
     manager_id: str = Query(..., description="Manager UUID"),
     limit: int = Query(20, ge=1, le=50),
     user: User = Depends(require_role("rop", "admin")),
@@ -939,7 +1022,9 @@ async def rop_member_sessions(
 
 
 @router.get("/rop/export")
+@limiter.limit("5/minute")
 async def rop_export_pdf(
+    request: Request,
     period: str = Query("week", pattern="^(week|month)$"),
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
@@ -967,7 +1052,9 @@ async def rop_export_pdf(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/rag/feedback-summary")
+@limiter.limit("30/minute")
 async def rag_feedback_summary(
+    request: Request,
     days: int = Query(30, ge=1, le=365),
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
@@ -978,7 +1065,9 @@ async def rag_feedback_summary(
 
 
 @router.get("/rag/category-errors")
+@limiter.limit("30/minute")
 async def rag_category_errors(
+    request: Request,
     days: int = Query(30, ge=1, le=365),
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
@@ -989,7 +1078,9 @@ async def rag_category_errors(
 
 
 @router.get("/rag/weak-chunks")
+@limiter.limit("30/minute")
 async def rag_weak_chunks(
+    request: Request,
     limit: int = Query(20, ge=1, le=100),
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
@@ -1000,7 +1091,9 @@ async def rag_weak_chunks(
 
 
 @router.get("/rag/unused-chunks")
+@limiter.limit("30/minute")
 async def rag_unused_chunks(
+    request: Request,
     limit: int = Query(20, ge=1, le=100),
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
@@ -1011,7 +1104,9 @@ async def rag_unused_chunks(
 
 
 @router.get("/rag/user-weak-areas/{user_id}")
+@limiter.limit("30/minute")
 async def rag_user_weak_areas(
+    request: Request,
     user_id: uuid.UUID,
     days: int = Query(30, ge=1, le=365),
     user: User = Depends(require_role("rop", "admin")),

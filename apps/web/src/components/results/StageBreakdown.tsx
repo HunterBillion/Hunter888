@@ -170,15 +170,15 @@ export default function StageBreakdown({
               className="flex items-center gap-3 rounded-xl px-4 py-3"
               style={{
                 background: isHangupStage
-                  ? "rgba(229,72,77,0.08)"
+                  ? "var(--danger-muted)"
                   : isSkipped
                     ? "rgba(255,165,0,0.05)"
                     : isCompleted
-                      ? "rgba(61,220,132,0.04)"
+                      ? "var(--success-muted)"
                       : "rgba(255,255,255,0.02)",
                 border: `1px solid ${
                   isHangupStage
-                    ? "rgba(229,72,77,0.2)"
+                    ? "var(--danger-muted)"
                     : isSkipped
                       ? "rgba(255,165,0,0.15)"
                       : "rgba(255,255,255,0.06)"
@@ -189,9 +189,9 @@ export default function StageBreakdown({
               <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center"
                 style={{
                   background: isHangupStage
-                    ? "rgba(229,72,77,0.15)"
+                    ? "var(--danger-muted)"
                     : isCompleted
-                      ? "rgba(61,220,132,0.12)"
+                      ? "var(--success-muted)"
                       : isSkipped
                         ? "rgba(255,165,0,0.12)"
                         : "rgba(255,255,255,0.05)",
@@ -225,7 +225,7 @@ export default function StageBreakdown({
                     </span>
                   )}
                   {isHangupStage && (
-                    <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(229,72,77,0.12)", color: "var(--danger)" }}>
+                    <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "var(--danger-muted)", color: "var(--danger)" }}>
                       HANGUP
                     </span>
                   )}
@@ -280,15 +280,15 @@ export default function StageBreakdown({
                 className="flex items-start gap-2.5 rounded-lg px-3 py-2 text-xs"
                 style={{
                   background: rec.type === "success"
-                    ? "rgba(61,220,132,0.05)"
+                    ? "var(--success-muted)"
                     : rec.type === "warning"
-                      ? "rgba(229,72,77,0.05)"
+                      ? "var(--danger-muted)"
                       : "rgba(212,168,75,0.05)",
                   border: `1px solid ${
                     rec.type === "success"
-                      ? "rgba(61,220,132,0.15)"
+                      ? "var(--success-muted)"
                       : rec.type === "warning"
-                        ? "rgba(229,72,77,0.15)"
+                        ? "var(--danger-muted)"
                         : "rgba(212,168,75,0.15)"
                   }`,
                 }}

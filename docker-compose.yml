@@ -125,8 +125,15 @@ services:
     volumes:
       # Persist uploaded avatars across container restarts
       - api_uploads:/app/uploads
+    # P1 fix (2026-04-18): python -c urllib can hang on DNS on some
+    # networks; switched to urllib with explicit timeout. Base image is
+    # python:3.12-slim so python IS available, but we cap exec at 3s.
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3) or sys.exit(0)"
       interval: 10s
       timeout: 5s
       retries: 3
@@ -145,12 +152,13 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
-    # FIX: 512MB too low for 4 workers + WebSocket sessions + TTS cache
-    # Each worker ~100-150MB + in-memory caches
+    # P1 fix (2026-04-18): 1G → 1.5G (4 workers × ~200MB + TTS/RAG caches
+    # + embedding query workloads при 50 DAU). OOM-killer риск при burst
+    # в 50+ concurrent training sessions. См. audit FIND-006.
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 1536M
 
   web:
     build:
@@ -165,12 +173,19 @@ services:
     environment:
       # Keep runtime env for reference (used by standalone server.js hostname binding)
       HOSTNAME: "0.0.0.0"
+    # P1 fix (2026-04-18): node:20-alpine имеет wget busybox-applet, но
+    # --spider может выдавать ложный non-zero на некоторых версиях. Node
+    # есть гарантированно — используем node -e с http.get.
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://0.0.0.0:3000/"]
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "require('http').get('http://0.0.0.0:3000/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 20s
     depends_on:
       api:
         condition: service_healthy

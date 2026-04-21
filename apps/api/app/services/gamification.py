@@ -79,15 +79,30 @@ def level_from_xp(total_xp: int) -> int:
     return get_level_for_xp(total_xp)
 
 
+MIN_SCORE_FOR_XP = 10  # Minimum score to earn any XP (anti-exploit)
+
+
 def calculate_session_xp(score_total: float | None, streak_days: int) -> int:
-    """Calculate XP earned from a single completed session."""
-    xp = BASE_XP_PER_SESSION
+    """Calculate XP earned from a single completed session.
 
-    if score_total is not None:
-        xp += int(score_total * XP_PER_SCORE_POINT)
-        if score_total >= 90:
-            xp += PERFECT_SCORE_BONUS
+    Anti-exploit: sessions with score < MIN_SCORE_FOR_XP earn 0 XP.
+    Base XP is now proportional to score (not flat 50).
+    """
+    # No score or too low → 0 XP (prevents farming empty sessions)
+    if score_total is None or score_total < MIN_SCORE_FOR_XP:
+        return 0
 
+    # Base XP proportional to score: 50 * (score/100)
+    xp = int(BASE_XP_PER_SESSION * min(score_total, 100) / 100)
+
+    # Score-based bonus
+    xp += int(score_total * XP_PER_SCORE_POINT)
+
+    # Perfect score bonus
+    if score_total >= 90:
+        xp += PERFECT_SCORE_BONUS
+
+    # Streak bonus
     streak_bonus = min(streak_days * STREAK_BONUS_XP, STREAK_BONUS_CAP)
     xp += streak_bonus
 
@@ -115,22 +130,71 @@ def calculate_achievement_xp(rarity: str, is_first_earn: bool = True) -> int:
 # ═════════════════════════════════════════════════════════════════════════════
 
 async def calculate_streak(user_id: uuid.UUID, db: AsyncSession) -> int:
-    """Calculate current consecutive-day streak for a user."""
+    """Calculate current consecutive-day streak for a user.
+
+    A day is counted when the user completes at least one daily goal
+    (e.g. "complete 1 session", "score 70+", "morning warm-up"). Pure
+    login doesn't count. Falls back to completed sessions if no goal
+    completions exist yet.
+
+    2026-04-20: date bucketing uses the local business timezone
+    (settings.app_tz, default Europe/Moscow). Previously `func.date(...)`
+    bucketed in UTC, so a session completed at 02:00 MSK landed on
+    yesterday's UTC date and the streak visually broke overnight.
+    """
+    from app.config import settings
+    tz_name = settings.app_tz or "Europe/Moscow"
+
+    # Primary: count days with goal completions (active engagement).
+    # AT TIME ZONE 'UTC' interprets the timestamp as UTC, then converts to
+    # the business tz before taking ::date. This works for aware columns
+    # stored as TIMESTAMPTZ — Postgres keeps them in UTC internally.
+    try:
+        from app.models.progress import GoalCompletionLog
+        local_date_expr = func.date(
+            func.timezone(tz_name, GoalCompletionLog.completed_at)
+        )
+        goal_result = await db.execute(
+            select(local_date_expr)
+            .where(GoalCompletionLog.user_id == user_id)
+            .distinct()
+            .order_by(local_date_expr.desc())
+        )
+        goal_dates = [row[0] for row in goal_result.all()]
+        if goal_dates:
+            return _count_consecutive_days(goal_dates)
+    except Exception:
+        pass  # Table may not exist yet; fall back to sessions
+
+    # Fallback: count days with completed training sessions.
+    local_date_sess = func.date(
+        func.timezone(tz_name, TrainingSession.started_at)
+    )
     result = await db.execute(
-        select(func.date(TrainingSession.started_at))
+        select(local_date_sess)
         .where(
             TrainingSession.user_id == user_id,
             TrainingSession.status == SessionStatus.completed,
         )
         .distinct()
-        .order_by(func.date(TrainingSession.started_at).desc())
+        .order_by(local_date_sess.desc())
     )
     dates = [row[0] for row in result.all()]
+    return _count_consecutive_days(dates)
 
+
+def _count_consecutive_days(dates: list) -> int:
+    """Count consecutive calendar days from today backwards (local tz)."""
     if not dates:
         return 0
 
-    today = date.today()
+    # 2026-04-20: local-tz "today" matches the bucketing done by the query.
+    try:
+        from app.utils.local_time import local_today
+        today = local_today()
+    except Exception:
+        today = datetime.now(timezone.utc).date()
+    # Allow today or yesterday as the last active day
     if dates[0] != today and dates[0] != today - timedelta(days=1):
         return 0
 
@@ -149,51 +213,17 @@ async def calculate_streak(user_id: uuid.UUID, db: AsyncSession) -> int:
 # ═════════════════════════════════════════════════════════════════════════════
 
 async def get_user_total_xp(user_id: uuid.UUID, db: AsyncSession) -> int:
-    """Calculate total XP from all completed sessions (training + arena)."""
-    # Training XP
+    """Read cached total XP from ManagerProgress (O(1) indexed lookup).
+
+    XP is incrementally maintained by manager_progress.update_after_session()
+    and daily_drill.complete_drill(). This replaces the previous O(N) approach
+    that recomputed XP from all sessions on every call.
+    """
+    from app.models.progress import ManagerProgress
     result = await db.execute(
-        select(TrainingSession.score_total)
-        .where(
-            TrainingSession.user_id == user_id,
-            TrainingSession.status == SessionStatus.completed,
-        )
-        .order_by(TrainingSession.started_at)
+        select(ManagerProgress.total_xp).where(ManagerProgress.user_id == user_id)
     )
-    scores = [row[0] for row in result.all()]
-
-    total_xp = 0
-    for i, score in enumerate(scores):
-        streak_at_time = min(i, 5)
-        total_xp += calculate_session_xp(score, streak_at_time)
-
-    # Arena XP — estimated from completed quiz sessions
-    from app.models.knowledge import KnowledgeQuizSession, QuizSessionStatus
-    from app.services.arena_xp import calculate_arena_xp
-
-    arena_result = await db.execute(
-        select(KnowledgeQuizSession)
-        .where(
-            KnowledgeQuizSession.user_id == user_id,
-            KnowledgeQuizSession.status == QuizSessionStatus.completed,
-        )
-        .order_by(KnowledgeQuizSession.started_at)
-    )
-    arena_sessions = arena_result.scalars().all()
-
-    for i, session in enumerate(arena_sessions):
-        mode = session.mode.value if hasattr(session.mode, 'value') else str(session.mode)
-        is_pvp = mode == "pvp"
-        xp_info = calculate_arena_xp(
-            mode=mode if not is_pvp else "pvp",
-            score=session.score or 0,
-            correct=session.correct_answers or 0,
-            total=session.total_questions or 1,
-            streak_days=min(i, 6),
-            is_pvp_win=False,  # Approximation — exact data requires participant lookup
-        )
-        total_xp += xp_info["total"]
-
-    return total_xp
+    return result.scalar_one_or_none() or 0
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -2034,8 +2064,8 @@ class AchievementValidator:
         for (details,) in result.all():
             if not details or not isinstance(details, dict):
                 continue
-            call_number = details.get("call_number") or details.get("story_call_number", 0)
-            total_calls = details.get("total_calls") or details.get("story_total_calls", 0)
+            call_number = details.get("call_number_in_story", 0)
+            total_calls = details.get("total_calls_planned", 0)
             if call_number >= 5 and call_number >= total_calls:
                 return True
         return False
@@ -2140,7 +2170,7 @@ class AchievementValidator:
         if not team_id:
             return False
 
-        week_ago = datetime.utcnow() - timedelta(days=7)
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
 
         # Get all teams' average scores this week
         team_scores = await db.execute(
@@ -3054,7 +3084,7 @@ class AchievementValidator:
 # ═════════════════════════════════════════════════════════════════════════════
 
 async def check_and_award_achievements(
-    user_id: uuid.UUID, db: AsyncSession
+    user_id: uuid.UUID, db: AsyncSession, *, _precomputed_streak: int | None = None,
 ) -> list[dict]:
     """Check all achievement conditions and award any newly earned ones.
 
@@ -3065,8 +3095,8 @@ async def check_and_award_achievements(
 
     Returns list of newly awarded achievements.
     """
-    # Gather stats
-    streak = await calculate_streak(user_id, db)
+    # Gather stats (reuse streak if pre-computed to avoid double DB query)
+    streak = _precomputed_streak if _precomputed_streak is not None else await calculate_streak(user_id, db)
 
     stats_result = await db.execute(
         select(
@@ -3154,6 +3184,19 @@ async def check_and_award_achievements(
     return await validator.check_all(user_id, db, stats)
 
 
+async def check_and_award_achievements_with_streak(
+    user_id: uuid.UUID, db: AsyncSession
+) -> tuple[list[dict], int]:
+    """Same as check_and_award_achievements but also returns the streak.
+
+    Computes streak ONCE, passes it to achievement check, returns both.
+    Eliminates the double calculate_streak() DB query.
+    """
+    streak = await calculate_streak(user_id, db)
+    newly_earned = await check_and_award_achievements(user_id, db, _precomputed_streak=streak)
+    return newly_earned, streak
+
+
 def create_validator(
     scoring_service=None,
     trap_service=None,
@@ -3185,7 +3228,10 @@ async def get_leaderboard(
     team_id: uuid.UUID | None = None,
     limit: int = 20,
 ) -> list[dict]:
-    """Generate leaderboard from actual session data."""
+    """Generate leaderboard from actual session data.
+
+    Ghost filter: "all" period still limits to last 30 days to exclude inactive users.
+    """
     from app.models.user import User
 
     if period == "week":
@@ -3193,7 +3239,8 @@ async def get_leaderboard(
     elif period == "month":
         since = datetime.now(timezone.utc) - timedelta(days=30)
     else:
-        since = datetime.min.replace(tzinfo=timezone.utc)
+        # "all" — filter out ghosts (inactive >30 days) per audit fix
+        since = datetime.now(timezone.utc) - timedelta(days=30)
 
     query = (
         select(
@@ -3291,6 +3338,34 @@ async def get_leaderboard_extended(
     result = await db.execute(base_query)
     rows = result.all()
 
+    # Collect all user_ids for batch queries
+    user_ids = [row[0] for row in rows]
+
+    # Batch query: ManagerProgress for all users at once
+    progress_result = await db.execute(
+        select(ManagerProgress.user_id, ManagerProgress.total_xp, ManagerProgress.level).where(
+            ManagerProgress.user_id.in_(user_ids)
+        )
+    )
+    progress_lookup = {row[0]: (row[1], row[2]) for row in progress_result.all()}
+
+    # Batch query: KnowledgeQuizSession aggregates grouped by user_id
+    from app.models.knowledge import KnowledgeQuizSession, QuizSessionStatus
+    arena_result = await db.execute(
+        select(
+            KnowledgeQuizSession.user_id,
+            func.count(KnowledgeQuizSession.id),
+            func.coalesce(func.avg(KnowledgeQuizSession.score), 0),
+        )
+        .where(
+            KnowledgeQuizSession.user_id.in_(user_ids),
+            KnowledgeQuizSession.status == QuizSessionStatus.completed,
+            KnowledgeQuizSession.started_at >= since,
+        )
+        .group_by(KnowledgeQuizSession.user_id)
+    )
+    arena_lookup = {row[0]: (row[1], float(row[2])) for row in arena_result.all()}
+
     entries = []
     for row in rows:
         user_id_val = row[0]
@@ -3304,31 +3379,15 @@ async def get_leaderboard_extended(
             "avg_score": round(float(row[5]), 1),
         }
 
-        # Get XP and streak from ManagerProgress
-        progress_result = await db.execute(
-            select(ManagerProgress.total_xp, ManagerProgress.level).where(
-                ManagerProgress.user_id == user_id_val
-            )
-        )
-        progress_row = progress_result.one_or_none()
-        entry["total_xp"] = progress_row[0] if progress_row else 0
-        entry["level"] = progress_row[1] if progress_row else 1
+        # Get XP and level from batch lookup
+        progress_data = progress_lookup.get(user_id_val)
+        entry["total_xp"] = progress_data[0] if progress_data else 0
+        entry["level"] = progress_data[1] if progress_data else 1
 
-        # Include Knowledge Arena quiz sessions in composite scores
-        from app.models.knowledge import KnowledgeQuizSession, QuizSessionStatus
-        arena_result = await db.execute(
-            select(
-                func.count(KnowledgeQuizSession.id),
-                func.coalesce(func.avg(KnowledgeQuizSession.score), 0),
-            ).where(
-                KnowledgeQuizSession.user_id == user_id_val,
-                KnowledgeQuizSession.status == QuizSessionStatus.completed,
-                KnowledgeQuizSession.started_at >= since,
-            )
-        )
-        arena_row = arena_result.one_or_none()
-        arena_sessions = arena_row[0] if arena_row else 0
-        arena_avg_score = float(arena_row[1]) if arena_row else 0.0
+        # Get arena data from batch lookup
+        arena_data = arena_lookup.get(user_id_val)
+        arena_sessions = arena_data[0] if arena_data else 0
+        arena_avg_score = arena_data[1] if arena_data else 0.0
 
         # Merge arena data: add sessions count and blend avg_score
         if arena_sessions > 0:

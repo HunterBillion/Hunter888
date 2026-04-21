@@ -3,10 +3,9 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors as err
@@ -15,7 +14,6 @@ from app.database import get_db
 from app.models.tournament import TournamentFormat
 from app.models.user import User
 
-limiter = Limiter(key_func=get_remote_address)
 from app.services.bracket import (
     broadcast_bracket_event,
     check_and_process_timeouts,

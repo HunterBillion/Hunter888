@@ -17,6 +17,7 @@ import {
 import { BackButton } from "@/components/ui/BackButton";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { api } from "@/lib/api";
+import AuthLayout from "@/components/layout/AuthLayout";
 
 interface WikiPage {
   page_path: string;
@@ -68,10 +69,10 @@ export default function MyWikiPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Redirect admin/rop to admin wiki
+  // Redirect admin/rop to dashboard wiki tab (consolidated in Панель РОП)
   useEffect(() => {
     if (role === "admin" || role === "rop") {
-      router.replace("/admin/wiki");
+      router.replace("/dashboard?tab=wiki");
       return;
     }
     if (!userId) return;
@@ -111,31 +112,36 @@ export default function MyWikiPage() {
 
   if (loading) {
     return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[var(--accent)]" />
-      </div>
+      <AuthLayout>
+        <div className="flex h-[60vh] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[var(--accent)]" />
+        </div>
+      </AuthLayout>
     );
   }
 
   if (error) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-12 text-center">
-        <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-[var(--warning)]" />
-        <h2 className="mb-2 text-lg font-semibold text-[var(--text-primary)]">Wiki ещё не создана</h2>
-        <p className="text-sm text-[var(--text-secondary)]">
-          Завершите несколько тренировочных сессий — система автоматически создаст вашу персональную базу знаний.
-        </p>
-        <button
-          onClick={() => router.push("/training")}
-          className="mt-6 rounded-xl bg-[var(--accent)] px-6 py-2.5 text-sm font-medium text-white"
-        >
-          Начать тренировку
-        </button>
-      </div>
+      <AuthLayout>
+        <div className="mx-auto max-w-2xl px-4 py-12 text-center">
+          <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-[var(--warning)]" />
+          <h2 className="mb-2 text-lg font-semibold text-[var(--text-primary)]">Wiki ещё не создана</h2>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Завершите несколько тренировочных сессий — система автоматически создаст вашу персональную базу знаний.
+          </p>
+          <button
+            onClick={() => router.push("/training")}
+            className="mt-6 rounded-xl bg-[var(--accent)] px-6 py-2.5 text-sm font-medium text-white"
+          >
+            Начать тренировку
+          </button>
+        </div>
+      </AuthLayout>
     );
   }
 
   return (
+    <AuthLayout>
     <div className="mx-auto max-w-5xl px-4 py-6">
       {/* Header */}
       <div className="mb-6 flex items-center gap-3">
@@ -203,7 +209,7 @@ export default function MyWikiPage() {
                 {page.tags.length > 0 && (
                   <div className="mt-2 flex gap-1">
                     {page.tags.map((tag) => (
-                      <span key={tag} className="rounded bg-[var(--accent)]/10 px-2 py-0.5 text-xs text-[var(--accent)]">
+                      <span key={tag} className="rounded bg-[var(--accent-muted)] px-2 py-0.5 text-xs text-[var(--accent)]">
                         {tag}
                       </span>
                     ))}
@@ -318,5 +324,6 @@ export default function MyWikiPage() {
         </div>
       )}
     </div>
+    </AuthLayout>
   );
 }

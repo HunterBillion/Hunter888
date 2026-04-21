@@ -11,7 +11,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -426,5 +426,5 @@ class TrapSessionLog(Base):
         JSONB, nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow,
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
     )

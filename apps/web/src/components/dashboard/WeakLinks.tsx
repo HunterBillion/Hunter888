@@ -44,7 +44,7 @@ export function WeakLinks() {
 
   if (!data || data.needs_attention.length === 0) {
     return (
-      <div className="rounded-xl p-4 text-center" style={{ background: "rgba(34, 197, 94, 0.06)", border: "1px solid rgba(34, 197, 94, 0.2)" }}>
+      <div className="rounded-xl p-4 text-center" style={{ background: "var(--success-muted)", border: "1px solid var(--success-muted)" }}>
         <span className="text-sm" style={{ color: "var(--success)" }}>
           Все менеджеры в норме
         </span>
@@ -70,8 +70,8 @@ export function WeakLinks() {
             transition={{ delay: i * 0.05 }}
             className="rounded-xl p-3"
             style={{
-              background: "rgba(239, 68, 68, 0.04)",
-              border: "1px solid rgba(239, 68, 68, 0.15)",
+              background: "var(--danger-muted)",
+              border: "1px solid var(--danger-muted)",
             }}
           >
             <div className="flex items-center justify-between mb-1">
@@ -88,7 +88,7 @@ export function WeakLinks() {
                   key={j}
                   className="rounded-md px-2 py-0.5 text-xs"
                   style={{
-                    background: "rgba(239, 68, 68, 0.1)",
+                    background: "var(--danger-muted)",
                     color: "var(--danger)",
                   }}
                 >

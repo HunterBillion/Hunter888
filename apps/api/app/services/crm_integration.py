@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import logging
 import secrets
 import uuid
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import select
@@ -23,6 +25,32 @@ from app.models.user import Team, User
 logger = logging.getLogger(__name__)
 
 WEBHOOK_TIMEOUT = 10  # seconds
+
+_BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "postgres", "redis", "api", "web", "embeddings"}
+
+
+def _validate_webhook_url(url: str) -> str:
+    """Validate webhook URL to prevent SSRF attacks."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Invalid URL scheme: {parsed.scheme}. Only http/https allowed.")
+
+    hostname = parsed.hostname or ""
+    if hostname.lower() in _BLOCKED_HOSTS:
+        raise ValueError(f"Blocked hostname: {hostname}")
+
+    # Check for private IP ranges
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            raise ValueError(f"Private/internal IP not allowed: {hostname}")
+    except ValueError as exc:
+        # If the ValueError came from our own raise, re-raise it
+        if "not allowed" in str(exc) or "Blocked" in str(exc):
+            raise
+        # Otherwise hostname is not an IP address — that's fine (it's a domain name)
+
+    return url
 
 
 def generate_api_key() -> str:
@@ -85,6 +113,13 @@ async def send_training_webhook(
     Returns True if webhook was successfully delivered.
     """
     if not webhook_url:
+        return False
+
+    # SSRF protection: validate URL before making the request
+    try:
+        _validate_webhook_url(webhook_url)
+    except ValueError as e:
+        logger.warning("Webhook URL rejected (SSRF protection): %s — %s", webhook_url, e)
         return False
 
     # Fetch user and progress

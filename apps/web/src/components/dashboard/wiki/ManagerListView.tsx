@@ -90,7 +90,7 @@ export function ManagerListView({
           <h1 style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
             Wiki менеджеров
           </h1>
-          <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "0.85rem" }}>
+          <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "0.875rem" }}>
             Панель администратора — персональные базы знаний всех менеджеров
           </p>
         </div>
@@ -112,12 +112,12 @@ export function ManagerListView({
           onClick={onToggleCompareMode}
           style={{
             padding: "0.5rem 0.75rem",
-            background: compareMode ? "rgba(124,106,232,0.15)" : "rgba(255,255,255,0.04)",
-            border: `1px solid ${compareMode ? "rgba(124,106,232,0.3)" : "rgba(255,255,255,0.08)"}`,
+            background: compareMode ? "var(--accent-muted)" : "rgba(255,255,255,0.04)",
+            border: `1px solid ${compareMode ? "var(--accent-glow)" : "rgba(255,255,255,0.08)"}`,
             borderRadius: 8,
             color: compareMode ? "var(--accent)" : "var(--text-muted)",
             cursor: "pointer",
-            fontSize: "0.8rem",
+            fontSize: "0.875rem",
             display: "flex",
             alignItems: "center",
             gap: "0.3rem",
@@ -151,13 +151,13 @@ export function ManagerListView({
           gap: "0.75rem",
           padding: "0.75rem 1rem",
           marginBottom: "1rem",
-          background: "rgba(124,106,232,0.08)",
-          border: "1px solid rgba(124,106,232,0.2)",
+          background: "var(--accent-muted)",
+          border: "1px solid var(--accent-glow)",
           borderRadius: 10,
           flexWrap: "wrap",
         }}>
           <UsersThree size={18} weight="duotone" style={{ color: "var(--accent)" }} />
-          <span style={{ color: "var(--accent-hover)", fontSize: "0.85rem" }}>
+          <span style={{ color: "var(--accent-hover)", fontSize: "0.875rem" }}>
             Выберите 2–5 менеджеров для сравнения ({compareSelected.length} выбрано)
           </span>
           <div style={{ flex: 1 }} />
@@ -166,12 +166,12 @@ export function ManagerListView({
             disabled={compareSelected.length < 2 || compareLoading}
             style={{
               padding: "0.4rem 1rem",
-              background: compareSelected.length >= 2 ? "rgba(124,106,232,0.2)" : "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(124,106,232,0.3)",
+              background: compareSelected.length >= 2 ? "var(--accent-glow)" : "rgba(255,255,255,0.04)",
+              border: "1px solid var(--accent-glow)",
               borderRadius: 8,
               color: compareSelected.length >= 2 ? "var(--accent-hover)" : "var(--text-muted)",
               cursor: compareSelected.length >= 2 ? "pointer" : "not-allowed",
-              fontSize: "0.85rem",
+              fontSize: "0.875rem",
               fontWeight: 600,
               display: "flex",
               alignItems: "center",
@@ -203,7 +203,7 @@ export function ManagerListView({
             <h3 style={{ color: "var(--warning)", fontSize: "1rem", fontWeight: 600, margin: "0 0 0.75rem" }}>
               Как работает Wiki менеджеров
             </h3>
-            <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", lineHeight: 1.7 }}>
+            <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", lineHeight: 1.7 }}>
               <p style={{ margin: "0 0 0.5rem" }}>
                 <strong style={{ color: "var(--text-primary)" }}>Wiki</strong> — это персональная база знаний каждого менеджера,
                 которая автоматически строится из тренировочных сессий.
@@ -222,7 +222,7 @@ export function ManagerListView({
                 <strong style={{ color: "var(--text-primary)" }}>Действия:</strong> Вы можете редактировать страницы, экспортировать данные в PDF/CSV,
                 запускать синтез вручную и инжестить пропущенные сессии.
               </p>
-              <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--text-muted)" }}>
+              <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--text-muted)" }}>
                 Эта панель доступна только администраторам.
               </p>
             </div>
@@ -259,7 +259,7 @@ export function ManagerListView({
             >
               <s.icon size={18} weight="duotone" style={{ color: s.color, marginBottom: "0.25rem" }} />
               <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "var(--text-primary)" }}>{s.value}</div>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{s.label}</div>
+              <div style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -282,10 +282,10 @@ export function ManagerListView({
               alignItems: "center",
               gap: "0.5rem",
               padding: "0.4rem 0.75rem",
-              background: schedulerStatus.running ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)",
-              border: `1px solid ${schedulerStatus.running ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`,
+              background: schedulerStatus.running ? "var(--success-muted)" : "var(--danger-muted)",
+              border: `1px solid ${schedulerStatus.running ? "var(--success-muted)" : "var(--danger-muted)"}`,
               borderRadius: 8,
-              fontSize: "0.8rem",
+              fontSize: "0.875rem",
               color: schedulerStatus.running ? "var(--success)" : "var(--danger)",
             }}
           >
@@ -365,7 +365,7 @@ export function ManagerListView({
         <div style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
           <Brain size={40} weight="duotone" style={{ margin: "0 auto 1rem", opacity: 0.4 }} />
           <p>Wiki ещё не созданы.</p>
-          <p style={{ fontSize: "0.85rem" }}>
+          <p style={{ fontSize: "0.875rem" }}>
             Менеджеры должны пройти хотя бы одну тренировочную сессию.
           </p>
         </div>
@@ -382,12 +382,12 @@ export function ManagerListView({
                 gridTemplateColumns: compareMode ? "auto 1fr auto auto auto auto" : "1fr auto auto auto auto",
                 alignItems: "center",
                 gap: "1rem",
-                padding: "0.85rem 1.25rem",
+                padding: "0.875rem 1.25rem",
                 background: compareMode && compareSelected.includes(w.manager_id)
-                  ? "rgba(124,106,232,0.08)"
+                  ? "var(--accent-muted)"
                   : "rgba(255,255,255,0.03)",
                 border: compareMode && compareSelected.includes(w.manager_id)
-                  ? "1px solid rgba(124,106,232,0.3)"
+                  ? "1px solid var(--accent-glow)"
                   : "1px solid rgba(255,255,255,0.06)",
                 borderRadius: 10,
                 cursor: "pointer",
@@ -402,10 +402,10 @@ export function ManagerListView({
                   height: 20,
                   borderRadius: 4,
                   border: compareSelected.includes(w.manager_id)
-                    ? "2px solid #6366f1"
+                    ? "2px solid var(--accent)"
                     : "2px solid rgba(255,255,255,0.15)",
                   background: compareSelected.includes(w.manager_id)
-                    ? "rgba(124,106,232,0.3)"
+                    ? "var(--accent-glow)"
                     : "transparent",
                   display: "flex",
                   alignItems: "center",
@@ -422,7 +422,7 @@ export function ManagerListView({
                       fontSize: "0.65rem",
                       padding: "1px 6px",
                       borderRadius: 6,
-                      background: w.status === "paused" ? "rgba(245,158,11,0.12)" : "rgba(107,114,128,0.15)",
+                      background: w.status === "paused" ? "var(--warning-muted)" : "rgba(107,114,128,0.15)",
                       color: w.status === "paused" ? "var(--warning)" : "var(--text-muted)",
                       fontWeight: 600,
                     }}>
@@ -430,20 +430,20 @@ export function ManagerListView({
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                <div style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>
                   {w.manager_role === "admin" ? "Админ" : w.manager_role === "rop" ? "РОП" : "Менеджер"}
                 </div>
               </div>
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--warning)" }}>{w.sessions_ingested}</div>
-                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>сессий</div>
+                <div style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>сессий</div>
               </div>
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--danger)" }}>{w.patterns_discovered}</div>
-                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>паттернов</div>
+                <div style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>паттернов</div>
               </div>
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{timeAgo(w.last_ingest_at)}</div>
+                <div style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>{timeAgo(w.last_ingest_at)}</div>
               </div>
               <ChevronRight size={16} style={{ color: "var(--text-muted)" }} />
             </motion.button>

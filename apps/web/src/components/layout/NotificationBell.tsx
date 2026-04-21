@@ -79,7 +79,7 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
     success: { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.25)", color: "var(--success)" },
     consent: { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.25)", color: "var(--success)" },
     warning: { bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)", color: "var(--warning)" },
-    reminder: { bg: "rgba(124,106,232,0.1)", border: "rgba(124,106,232,0.25)", color: "var(--accent)" },
+    reminder: { bg: "var(--accent-muted)", border: "var(--accent-glow)", color: "var(--accent)" },
     achievement: { bg: "rgba(212,168,75,0.1)", border: "rgba(212,168,75,0.25)", color: "var(--gf-xp)" },
     pvp_invitation: { bg: "rgba(212,168,75,0.12)", border: "rgba(212,168,75,0.3)", color: "var(--gf-xp)" },
   };
@@ -228,7 +228,7 @@ export function NotificationBell({ open: controlledOpen, onOpenChange }: Notific
                 </div>
                 {unread > 0 && (
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded-full"
-                    style={{ background: "rgba(229,72,77,0.1)", color: "var(--danger)" }}
+                    style={{ background: "var(--danger-muted)", color: "var(--danger)" }}
                   >
                     {unread} новых
                   </span>

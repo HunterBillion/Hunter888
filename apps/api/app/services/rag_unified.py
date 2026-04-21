@@ -5,6 +5,15 @@ Calls Legal, Personality, and Wiki RAG in parallel.
 Merges results with context-dependent token budgets.
 Respects 8K model constraint: total RAG budget = 1500 tokens.
 
+Post-2026-04-17 upgrade — when env RAG_LEGAL_USE_V2=true:
+  - Legal retrieval goes through `rag_legal_v2.retrieve_legal_context_v2`
+    which queries BOTH legal_knowledge_chunks AND legal_document via
+    gemini-embedding-001@768 + optional LLM reranker + confidence gate.
+  - Otherwise falls back to legacy `rag_legal.retrieve_legal_context`
+    (text-embedding-3-small → legal_knowledge_chunks.embedding only).
+  - The flag is OFF by default so nothing breaks until embedding_v2 is
+    100% populated on both tables.
+
 Usage:
     result = await retrieve_all_context(
         query="Как обработать возражение про цену?",
@@ -21,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -28,13 +38,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
+
+def _use_legal_v2() -> bool:
+    """Env feature flag for the new dual-table legal RAG path."""
+    return os.environ.get("RAG_LEGAL_USE_V2", "").lower() in {"1", "true", "yes", "on"}
+
 # ─── Token budgets per context type ─────────────────────────────────────────
-# Total: 1500 tokens (conservative for 8K Gemma context)
+# Total: ~1700 tokens for training (safe for 8K Gemma context with ~4K system prompt)
 # CHARS_PER_TOKEN ≈ 2 for Russian text
 
 BUDGET = {
-    "training": {"legal": 800, "personality": 400, "wiki": 300},
-    "coach":    {"legal": 600, "personality": 200, "wiki": 500},
+    "training": {"legal": 800, "personality": 600, "wiki": 300},
+    "coach":    {"legal": 600, "personality": 300, "wiki": 500},
     "quiz":     {"legal": 1000, "personality": 0, "wiki": 200},
 }
 
@@ -66,6 +81,7 @@ class UnifiedRAGResult:
     legal_chunks_count: int = 0
     personality_entries_count: int = 0
     wiki_pages_count: int = 0
+    wiki_pages: list[dict] = field(default_factory=list)  # raw wiki results for knowledge compounding
     total_tokens_estimate: int = 0
     retrieval_ms: float = 0.0
     errors: list[str] = field(default_factory=list)
@@ -142,12 +158,29 @@ async def retrieve_all_context(
 
         async def _legal():
             from app.database import async_session as _make_session
-            from app.services.rag_legal import retrieve_legal_context, RetrievalConfig
-
             top_k = 3 if budgets["legal"] <= 600 else 5
-            config = RetrievalConfig(top_k=top_k, mode="free_dialog")
             async with _make_session() as rag_db:
-                return await retrieve_legal_context(query, rag_db, config=config)
+                if _use_legal_v2():
+                    # Dual-table path: legal_knowledge_chunks + legal_document
+                    # via gemini-embedding-001@768 with reranker + confidence gate.
+                    from app.services.rag_legal_v2 import (
+                        retrieve_legal_context_v2, RetrieveV2Options,
+                    )
+                    opts = RetrieveV2Options(
+                        top_k=top_k,
+                        candidate_pool=max(20, top_k * 4),
+                        use_reranker=True,
+                        confidence_threshold=0.55,
+                    )
+                    return await retrieve_legal_context_v2(query, rag_db, opts)
+                else:
+                    # Legacy single-table path — until embedding_v2 backfill
+                    # is 100% complete, this is the source of truth.
+                    from app.services.rag_legal import (
+                        retrieve_legal_context, RetrievalConfig,
+                    )
+                    config = RetrievalConfig(top_k=top_k, mode="free_dialog")
+                    return await retrieve_legal_context(query, rag_db, config=config)
 
         tasks["legal"] = asyncio.create_task(_legal())
 
@@ -205,6 +238,7 @@ async def retrieve_all_context(
                         text = "\n".join(lines)
                         result.wiki_context = _trim(text, budgets["wiki"])
                         result.wiki_pages_count = len(lines)
+                        result.wiki_pages = raw  # preserve for knowledge compounding
 
             elif name == "personality":
                 if hasattr(raw, "entries") and raw.entries:

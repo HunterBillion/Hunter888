@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Loader2, MessageSquarePlus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -92,7 +93,9 @@ export function InteractionCreateModal({
     }
   };
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -103,7 +106,7 @@ export function InteractionCreateModal({
         >
           <motion.div
             className="absolute inset-0"
-            style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+            style={{ background: "var(--overlay-bg, rgba(0,0,0,0.6))", backdropFilter: "blur(4px)" }}
             onClick={handleClose}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -119,7 +122,7 @@ export function InteractionCreateModal({
             style={{
               background: "var(--bg-secondary, var(--bg-primary))",
               border: "1px solid var(--border-color)",
-              boxShadow: "0 24px 80px rgba(0,0,0,0.4)",
+              boxShadow: "var(--shadow-lg)",
             }}
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -214,6 +217,7 @@ export function InteractionCreateModal({
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

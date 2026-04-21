@@ -25,6 +25,20 @@ class TournamentType(str, enum.Enum):
     team = "team"
 
 
+class TournamentScoreSource(str, enum.Enum):
+    """Which activities can contribute TP to this tournament.
+
+    `mixed` is the default for unified weekly/monthly leaderboards — every
+    training session, PvP duel, knowledge quiz, and story counts. Specific
+    values restrict to one activity type.
+    """
+    training = "training"
+    pvp = "pvp"
+    knowledge = "knowledge"
+    story = "story"
+    mixed = "mixed"
+
+
 class BracketMatchFormat(str, enum.Enum):
     """Match format within bracket tournaments."""
     bo1 = "bo1"
@@ -46,8 +60,10 @@ class Tournament(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    scenario_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("scenarios.id", ondelete="SET NULL"), nullable=False, index=True
+    # Nullable — unified tournaments (score_source="mixed") don't pin to one scenario.
+    # Legacy single-scenario tournaments keep a scenario_id.
+    scenario_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scenarios.id", ondelete="CASCADE"), nullable=True, index=True
     )
     # Fixed client profile seed — all participants get identical client
     client_seed: Mapped[dict | None] = mapped_column(JSONB)
@@ -70,9 +86,22 @@ class Tournament(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # DOC_12: Tournament type + themed/team extensions
     tournament_type: Mapped[str] = mapped_column(String(30), default="weekly_sprint", server_default="weekly_sprint")
-    theme_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    theme_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tournament_themes.id", ondelete="SET NULL"), nullable=True
+    )
     archetype_filter: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     difficulty_filter: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # Unified tournament economy — what sources of TP contribute.
+    score_source: Mapped[str] = mapped_column(
+        String(16), default=TournamentScoreSource.mixed.value,
+        server_default="mixed", nullable=False,
+    )
+    # Distinguishes cron-created weekly_sprint from admin-created ones
+    # (so the weekly closer only touches its own jobs).
+    auto_created: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False,
+    )
 
 
 class TournamentEntry(Base):
@@ -85,8 +114,10 @@ class TournamentEntry(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="SET NULL"), nullable=False, index=True
+    # Nullable — unified TP entries (aggregated from rating_contributions)
+    # don't pin to a single session. Legacy submissions still carry session_id.
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="CASCADE"), nullable=True, index=True
     )
     score: Mapped[float] = mapped_column(Float, default=0.0)
     attempt_number: Mapped[int] = mapped_column(Integer, default=1)

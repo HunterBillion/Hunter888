@@ -13,14 +13,104 @@ import hashlib
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 # Allow running from apps/api/
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from pydantic import BaseModel, field_validator, model_validator
 from sqlalchemy import select, func, text, update
 
 from app.database import async_session, engine
 from app.models.rag import LegalCategory, LegalKnowledgeChunk
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# S1-01.6: Pydantic seed validation model
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class LegalFactSeed(BaseModel):
+    """Pydantic model for validating seed data before DB insertion.
+
+    Ensures structural integrity and detects injection patterns in text fields.
+    """
+    category: LegalCategory
+    fact_text: str
+    law_article: str
+    common_errors: list[str]
+    match_keywords: list[str]
+    correct_response_hint: Optional[str] = None
+    error_frequency: int = 5
+    difficulty_level: Optional[int] = None
+    is_court_practice: Optional[bool] = None
+    court_case_reference: Optional[str] = None
+    question_templates: Optional[list[dict]] = None
+    follow_up_questions: Optional[list[str]] = None
+    blitz_question: Optional[str] = None
+    blitz_answer: Optional[str] = None
+    tags: Optional[list[str]] = None
+
+    @field_validator("fact_text")
+    @classmethod
+    def fact_text_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("fact_text must not be empty")
+        if len(v) > 2000:
+            raise ValueError(f"fact_text exceeds 2000 chars ({len(v)})")
+        return v
+
+    @field_validator("law_article")
+    @classmethod
+    def law_article_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("law_article must not be empty")
+        return v
+
+    @field_validator("error_frequency")
+    @classmethod
+    def error_frequency_range(cls, v: int) -> int:
+        if v < 1 or v > 10:
+            raise ValueError(f"error_frequency must be 1-10, got {v}")
+        return v
+
+
+def validate_seed_with_pydantic(facts: list[dict]) -> list[str]:
+    """Validate seed facts using Pydantic model + injection detection.
+
+    Returns list of error strings. Empty list = all facts are clean.
+    """
+    from app.services.content_filter import detect_jailbreak
+
+    errors: list[str] = []
+
+    TEXT_FIELDS = [
+        "fact_text", "law_article", "correct_response_hint",
+        "court_case_reference", "blitz_question", "blitz_answer",
+    ]
+    LIST_FIELDS = ["common_errors", "match_keywords", "follow_up_questions"]
+
+    for idx, fact in enumerate(facts):
+        # 1. Pydantic structural validation
+        try:
+            LegalFactSeed(**fact)
+        except Exception as e:
+            errors.append(f"Fact #{idx}: Pydantic validation failed: {e}")
+
+        # 2. Injection check on text fields
+        for field in TEXT_FIELDS:
+            val = fact.get(field)
+            if val and isinstance(val, str) and detect_jailbreak(val):
+                errors.append(f"Fact #{idx}: injection detected in '{field}': {val[:80]}")
+
+        # 3. Injection check on list fields
+        for field in LIST_FIELDS:
+            vals = fact.get(field)
+            if vals and isinstance(vals, list):
+                for i, item in enumerate(vals):
+                    if isinstance(item, str) and detect_jailbreak(item):
+                        errors.append(f"Fact #{idx}: injection in '{field}[{i}]': {item[:80]}")
+
+    return errors
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -2642,12 +2732,63 @@ LEGAL_FACTS: list[dict] = [
 # SEED FUNCTION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def validate_seed_facts(facts: list[dict]) -> list[str]:
+    """Validate seed facts for injection patterns and schema issues.
+
+    Returns list of error strings. Empty list = all facts are clean.
+    Can be used as CI test: assert validate_seed_facts(LEGAL_FACTS) == []
+    """
+    from app.services.content_filter import detect_jailbreak
+
+    errors: list[str] = []
+    TEXT_FIELDS = ["fact_text", "law_article", "correct_response_hint", "court_case_reference",
+                   "blitz_question", "blitz_answer"]
+    LIST_FIELDS = ["common_errors", "match_keywords", "follow_up_questions"]
+
+    for idx, fact in enumerate(facts):
+        # Schema: required fields
+        for required in ("fact_text", "law_article", "category", "common_errors",
+                         "match_keywords", "error_frequency"):
+            if required not in fact:
+                errors.append(f"Fact #{idx}: missing required field '{required}'")
+
+        # Injection check on text fields
+        for field in TEXT_FIELDS:
+            val = fact.get(field)
+            if val and isinstance(val, str) and detect_jailbreak(val):
+                errors.append(f"Fact #{idx}: injection detected in '{field}': {val[:80]}")
+
+        # Injection check on list fields
+        for field in LIST_FIELDS:
+            vals = fact.get(field)
+            if vals and isinstance(vals, list):
+                for i, item in enumerate(vals):
+                    if isinstance(item, str) and detect_jailbreak(item):
+                        errors.append(f"Fact #{idx}: injection in '{field}[{i}]': {item[:80]}")
+
+        # Length limits
+        if fact.get("fact_text") and len(fact["fact_text"]) > 2000:
+            errors.append(f"Fact #{idx}: fact_text exceeds 2000 chars ({len(fact['fact_text'])})")
+
+    return errors
+
+
 async def seed_legal_knowledge() -> None:
     """Populate legal_knowledge_chunks with verified 127-ФЗ legal facts."""
 
     logger.info("=" * 70)
     logger.info("  Seeding 127-ФЗ legal knowledge base")
     logger.info("=" * 70)
+
+    # ── Validate all facts before insertion (Pydantic + injection) ──
+    validation_errors = validate_seed_with_pydantic(LEGAL_FACTS)
+    if validation_errors:
+        for err in validation_errors[:20]:
+            logger.error("  SEED VALIDATION: %s", err)
+        raise ValueError(
+            f"Seed validation failed: {len(validation_errors)} error(s). "
+            "Fix data before seeding. See log for details."
+        )
 
     async with async_session() as session:
         # ── Check for existing data ────────────────────────────────────────
@@ -3174,11 +3315,29 @@ async def seed_expanded_data() -> None:
     except ImportError as e:
         logger.warning("  ⚠ Could not import myths_and_errors: %s", e)
 
+    try:
+        from app.seeds.data.extrajudicial_bankruptcy import EXTRAJUDICIAL_BANKRUPTCY_FACTS
+        all_facts.extend({**f, "_content_version": 3} for f in EXTRAJUDICIAL_BANKRUPTCY_FACTS)
+        logger.info("  → Loaded extrajudicial bankruptcy (%d) [v3]", len(EXTRAJUDICIAL_BANKRUPTCY_FACTS))
+    except ImportError as e:
+        logger.warning("  ⚠ Could not import extrajudicial_bankruptcy: %s", e)
+
     if not all_facts:
         logger.warning("  No expanded data to seed.")
         return
 
     logger.info("  Total expanded chunks to process: %d", len(all_facts))
+
+    # S1-01.6: Pydantic + injection validation before insertion
+    validation_errors = validate_seed_with_pydantic(all_facts)
+    if validation_errors:
+        for err in validation_errors[:20]:
+            logger.error("  EXPANDED SEED VALIDATION: %s", err)
+        logger.warning(
+            "  Expanded seed: %d validation error(s) found. "
+            "Skipping invalid entries, proceeding with clean data.",
+            len(validation_errors),
+        )
 
     async with async_session() as session:
         # Get existing content hashes to avoid duplicates

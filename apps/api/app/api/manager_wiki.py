@@ -10,6 +10,10 @@ Phase 1 additions:
   POST   /wiki/synthesis/daily                      -- trigger daily synthesis
   POST   /wiki/synthesis/weekly                     -- trigger weekly synthesis
   GET    /wiki/scheduler/status                     -- wiki scheduler status
+
+Phase 2 additions (Karpathy LLM Wiki pattern):
+  POST   /wiki/{manager_id}/lint                    -- run lint health check
+  GET    /wiki/{manager_id}/lint                    -- get latest lint report
 """
 
 import logging
@@ -17,10 +21,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from app.core.rate_limit import limiter
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,7 +42,6 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/wiki", tags=["wiki"])
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -292,53 +294,63 @@ async def compare_managers(
     if len(manager_ids) < 2 or len(manager_ids) > 5:
         raise HTTPException(status_code=400, detail="Provide 2-5 manager IDs")
 
+    from collections import defaultdict
+
+    # Batch 1: All users
+    users_r = await db.execute(select(User).where(User.id.in_(manager_ids)))
+    user_map = {u.id: u for u in users_r.scalars()}
+
+    # Batch 2: All wikis
+    wikis_r = await db.execute(select(ManagerWiki).where(ManagerWiki.manager_id.in_(manager_ids)))
+    wiki_map = {w.manager_id: w for w in wikis_r.scalars()}
+
+    # Batch 3: All patterns
+    patterns_r = await db.execute(select(ManagerPattern).where(ManagerPattern.manager_id.in_(manager_ids)))
+    pattern_map: dict = defaultdict(list)
+    for p in patterns_r.scalars():
+        pattern_map[p.manager_id].append(p)
+
+    # Batch 4: All techniques
+    techs_r = await db.execute(select(ManagerTechnique).where(ManagerTechnique.manager_id.in_(manager_ids)))
+    tech_map: dict = defaultdict(list)
+    for t in techs_r.scalars():
+        tech_map[t.manager_id].append(t)
+
+    # Batch 5: Training stats (GROUP BY)
+    stats_r = await db.execute(
+        select(
+            TrainingSession.user_id,
+            func.count(TrainingSession.id).label("total"),
+            func.avg(TrainingSession.score_total).label("avg_score"),
+            func.max(TrainingSession.score_total).label("best_score"),
+            func.min(TrainingSession.score_total).label("worst_score"),
+            func.avg(TrainingSession.score_script_adherence).label("avg_script"),
+            func.avg(TrainingSession.score_objection_handling).label("avg_objection"),
+            func.avg(TrainingSession.score_communication).label("avg_communication"),
+            func.avg(TrainingSession.score_anti_patterns).label("avg_anti_patterns"),
+            func.avg(TrainingSession.score_result).label("avg_result"),
+        ).where(
+            TrainingSession.user_id.in_(manager_ids),
+            TrainingSession.status == SessionStatus.completed,
+        ).group_by(TrainingSession.user_id)
+    )
+    stats_map = {r.user_id: r for r in stats_r}
+
+    # Batch 6: Progress
+    progress_r = await db.execute(select(ManagerProgress).where(ManagerProgress.user_id.in_(manager_ids)))
+    progress_map = {p.user_id: p for p in progress_r.scalars()}
+
     managers_data = []
     for mid in manager_ids:
-        # Basic info
-        mgr = await db.get(User, mid)
+        mgr = user_map.get(mid)
         if not mgr:
             continue
 
-        # Wiki stats
-        wiki_r = await db.execute(select(ManagerWiki).where(ManagerWiki.manager_id == mid))
-        wiki = wiki_r.scalar_one_or_none()
-
-        # Patterns
-        patterns_r = await db.execute(
-            select(ManagerPattern).where(ManagerPattern.manager_id == mid)
-        )
-        patterns = patterns_r.scalars().all()
-
-        # Techniques
-        techs_r = await db.execute(
-            select(ManagerTechnique).where(ManagerTechnique.manager_id == mid)
-        )
-        techniques = techs_r.scalars().all()
-
-        # Training stats
-        sessions_r = await db.execute(
-            select(
-                func.count(TrainingSession.id).label("total"),
-                func.avg(TrainingSession.score_total).label("avg_score"),
-                func.max(TrainingSession.score_total).label("best_score"),
-                func.min(TrainingSession.score_total).label("worst_score"),
-                func.avg(TrainingSession.score_script_adherence).label("avg_script"),
-                func.avg(TrainingSession.score_objection_handling).label("avg_objection"),
-                func.avg(TrainingSession.score_communication).label("avg_communication"),
-                func.avg(TrainingSession.score_anti_patterns).label("avg_anti_patterns"),
-                func.avg(TrainingSession.score_result).label("avg_result"),
-            ).where(
-                TrainingSession.user_id == mid,
-                TrainingSession.status == SessionStatus.completed,
-            )
-        )
-        stats = sessions_r.one()
-
-        # Skills from progress
-        progress_r = await db.execute(
-            select(ManagerProgress).where(ManagerProgress.user_id == mid)
-        )
-        progress = progress_r.scalar_one_or_none()
+        wiki = wiki_map.get(mid)
+        patterns = pattern_map.get(mid, [])
+        techniques = tech_map.get(mid, [])
+        stats = stats_map.get(mid)
+        progress = progress_map.get(mid)
 
         skills = {}
         if progress:
@@ -360,16 +372,16 @@ async def compare_managers(
         managers_data.append({
             "manager_id": str(mid),
             "name": mgr.full_name or mgr.email or "—",
-            "sessions_total": stats.total or 0,
-            "avg_score": round(float(stats.avg_score or 0), 1),
-            "best_score": round(float(stats.best_score or 0), 1),
-            "worst_score": round(float(stats.worst_score or 0), 1),
+            "sessions_total": (stats.total or 0) if stats else 0,
+            "avg_score": round(float(stats.avg_score or 0), 1) if stats else 0,
+            "best_score": round(float(stats.best_score or 0), 1) if stats else 0,
+            "worst_score": round(float(stats.worst_score or 0), 1) if stats else 0,
             "score_layers": {
-                "script_adherence": round(float(stats.avg_script or 0), 1),
-                "objection_handling": round(float(stats.avg_objection or 0), 1),
-                "communication": round(float(stats.avg_communication or 0), 1),
-                "anti_patterns": round(float(stats.avg_anti_patterns or 0), 1),
-                "result": round(float(stats.avg_result or 0), 1),
+                "script_adherence": round(float(stats.avg_script or 0), 1) if stats else 0,
+                "objection_handling": round(float(stats.avg_objection or 0), 1) if stats else 0,
+                "communication": round(float(stats.avg_communication or 0), 1) if stats else 0,
+                "anti_patterns": round(float(stats.avg_anti_patterns or 0), 1) if stats else 0,
+                "result": round(float(stats.avg_result or 0), 1) if stats else 0,
             },
             "skills": skills,
             "patterns_total": len(patterns),
@@ -619,6 +631,7 @@ async def update_wiki_status(
 async def reanalyze_wiki(
     request: Request,
     manager_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     admin: User = Depends(require_role("admin", "rop")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -656,9 +669,8 @@ async def reanalyze_wiki(
     db.add(log_entry)
     await db.commit()
 
-    # Now ingest all sessions
+    # Collect session IDs for background processing
     from app.models.training import TrainingSession, SessionStatus
-    from app.services.wiki_ingest_service import ingest_session
 
     sessions_r = await db.execute(
         select(TrainingSession.id).where(
@@ -668,20 +680,25 @@ async def reanalyze_wiki(
     )
     session_ids = [row[0] for row in sessions_r.all()]
 
-    results = []
-    for sid in session_ids[:20]:  # Cap at 20
-        try:
-            r = await ingest_session(sid, db)
-            results.append({"session_id": str(sid), **r})
-        except Exception as e:
-            results.append({"session_id": str(sid), "status": "error", "error": str(e)[:200]})
+    async def _bg_reanalyze(session_ids: list):
+        from app.database import async_session
+        from app.services.wiki_ingest_service import ingest_session
+
+        async with async_session() as bg_db:
+            for sid in session_ids[:20]:
+                try:
+                    await ingest_session(sid, bg_db)
+                except Exception:
+                    pass
+            await bg_db.commit()
+
+    background_tasks.add_task(_bg_reanalyze, session_ids)
 
     return {
-        "message": f"Re-analysis started: {len(old_pages)} old pages deleted, {len(session_ids)} sessions to process",
+        "status": "accepted",
+        "message": f"Re-analysis of {len(session_ids[:20])} sessions started in background",
         "old_pages_deleted": len(old_pages),
         "sessions_total": len(session_ids),
-        "processed": len(results),
-        "results": results,
     }
 
 
@@ -1183,6 +1200,7 @@ async def update_wiki_page(
 async def ingest_all_sessions(
     request: Request,
     manager_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     admin: User = Depends(require_role("admin", "rop")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1225,23 +1243,32 @@ async def ingest_all_sessions(
     if not to_ingest:
         return {"message": "All sessions already ingested", "ingested": 0, "total": len(all_session_ids)}
 
-    from app.services.wiki_ingest_service import ingest_session
+    capped = to_ingest[:20]
 
-    results = []
-    for sid in to_ingest[:20]:  # Cap at 20 per request to avoid timeout
-        try:
-            r = await ingest_session(sid, db)
-            results.append({"session_id": str(sid), **r})
-        except Exception as e:
-            results.append({"session_id": str(sid), "status": "error", "error": str(e)[:200]})
+    async def _bg_ingest_all(session_ids: list):
+        from app.database import async_session
+        from app.services.wiki_ingest_service import ingest_session
 
-    return {
-        "message": f"Ingested {len(results)} sessions",
-        "ingested": len([r for r in results if r.get("status") == "ingested"]),
-        "total_pending": len(to_ingest),
-        "capped_at": 20,
-        "results": results,
-    }
+        async with async_session() as bg_db:
+            for sid in session_ids:
+                try:
+                    await ingest_session(sid, bg_db)
+                except Exception:
+                    pass
+            await bg_db.commit()
+
+    background_tasks.add_task(_bg_ingest_all, capped)
+
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "accepted",
+            "message": f"Ingestion of {len(capped)} sessions started in background",
+            "total_pending": len(to_ingest),
+            "capped_at": 20,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1288,5 +1315,72 @@ async def export_wiki(
             media_type="text/csv",
             headers={"Content-Disposition": f'attachment; filename="wiki_{safe_name}.csv"'},
         )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/wiki/{manager_id}/lint — run lint health check
+# ---------------------------------------------------------------------------
+
+@router.post("/{manager_id}/lint")
+async def run_lint(
+    manager_id: uuid.UUID,
+    user: User = Depends(require_role(["admin", "rop"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Run Karpathy-inspired lint pass: contradictions, stale pages, orphans, cross-refs."""
+    from app.services.wiki_lint_service import run_lint_pass
+    report = await run_lint_pass(manager_id, db)
+    return report
+
+
+# ---------------------------------------------------------------------------
+# GET /api/wiki/{manager_id}/lint — get latest lint report
+# ---------------------------------------------------------------------------
+
+@router.get("/{manager_id}/lint")
+async def get_lint_report(
+    manager_id: uuid.UUID,
+    user: User = Depends(require_role(["admin", "rop"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get latest lint report for a manager's wiki."""
+    wiki_result = await db.execute(
+        select(ManagerWiki).where(ManagerWiki.manager_id == manager_id)
+    )
+    wiki = wiki_result.scalar_one_or_none()
+    if not wiki:
+        raise HTTPException(status_code=404, detail="Wiki not found")
+
+    page_result = await db.execute(
+        select(WikiPage).where(
+            WikiPage.wiki_id == wiki.id,
+            WikiPage.page_path == "lint/latest",
+        )
+    )
+    lint_page = page_result.scalar_one_or_none()
+    if not lint_page:
+        return {"status": "no_lint_report", "message": "Lint ещё не запускался. Нажмите 'Run Lint'."}
+
+    # Try to parse structured data from the log entry
+    log_result = await db.execute(
+        select(WikiUpdateLog)
+        .where(
+            WikiUpdateLog.wiki_id == wiki.id,
+            WikiUpdateLog.action == "lint_pass",
+        )
+        .order_by(WikiUpdateLog.completed_at.desc())
+        .limit(1)
+    )
+    last_log = log_result.scalar_one_or_none()
+
+    return {
+        "status": "ok",
+        "page_path": lint_page.page_path,
+        "content": lint_page.content,
+        "version": lint_page.version,
+        "updated_at": lint_page.updated_at.isoformat() if lint_page.updated_at else None,
+        "last_run": last_log.completed_at.isoformat() if last_log and last_log.completed_at else None,
+        "last_description": last_log.description if last_log else None,
+    }
 
 

@@ -276,15 +276,16 @@ async def retrieve_lorebook_context(
     # 1. Character card (always)
     card = await get_character_card(archetype_code, db)
 
-    # 2. Always load high-priority entries (priority >= 8) as baseline context
-    #    These provide essential character knowledge regardless of conversation topic
+    # 2. Always load critical entries (priority >= 9) as baseline context
+    #    Only the most essential entries (e.g. financial_situation) load unconditionally.
+    #    Entries at p=7-8 are left for keyword + embedding retrieval to find contextually.
     baseline_result = await db.execute(
         select(PersonalityChunk).where(
             and_(
                 PersonalityChunk.archetype_code == archetype_code,
                 PersonalityChunk.is_active.is_(True),
                 PersonalityChunk.trait_category != TraitCategory.core_identity,
-                PersonalityChunk.priority >= 8,
+                PersonalityChunk.priority >= 9,
             )
         ).order_by(PersonalityChunk.priority.desc())
     )
@@ -296,18 +297,17 @@ async def retrieve_lorebook_context(
         for c in baseline_result.scalars().all()
     ]
 
-    # 3. Keyword-triggered entries (lower priority, topic-specific)
+    # 3. Keyword-triggered entries (topic-specific)
     keyword_entries = await retrieve_by_keywords(archetype_code, user_message, db, max_tokens=max_entry_tokens)
 
-    # 4. Fallback to embedding if keywords missed (requires pre-computed embeddings)
-    if not keyword_entries:
-        keyword_entries = await retrieve_by_embedding(archetype_code, user_message, db, top_k=3)
+    # 4. Embedding entries (always run in parallel with keywords for hybrid retrieval)
+    embedding_entries = await retrieve_by_embedding(archetype_code, user_message, db, top_k=3)
 
-    # 5. Merge: baseline + keyword, deduplicate, cap by budget
+    # 5. Merge: baseline + keyword + embedding, deduplicate, cap by budget
     seen_ids = set()
     entries = []
     budget_used = 0
-    for e in baseline_entries + keyword_entries:
+    for e in baseline_entries + keyword_entries + embedding_entries:
         if e.chunk_id in seen_ids:
             continue
         t = len(e.content) // 2
@@ -316,7 +316,70 @@ async def retrieve_lorebook_context(
             seen_ids.add(e.chunk_id)
             budget_used += t
 
-    # 6. Few-shot examples (keyword-based, no embeddings needed)
+    # 6. Speech examples by emotion_state (always loaded, ~30 tokens)
+    #    These entries have no keywords and low priority, so they'd never be retrieved
+    #    by keyword or baseline. Instead we extract the line matching current emotion.
+    speech_result = await db.execute(
+        select(PersonalityChunk.id, PersonalityChunk.content).where(
+            and_(
+                PersonalityChunk.archetype_code == archetype_code,
+                PersonalityChunk.is_active.is_(True),
+                PersonalityChunk.trait_category == TraitCategory.speech_examples,
+            )
+        ).limit(1)
+    )
+    speech_row = speech_result.first()
+    if speech_row:
+        # Extract only the line for current emotion_state (e.g. "Cold: ...")
+        state_key = emotion_state.capitalize()
+        for line in speech_row.content.split("\n"):
+            if line.strip().startswith(state_key + ":"):
+                speech_text = f"Пример фразы ({emotion_state}): {line.strip()}"
+                speech_tokens = len(speech_text) // 2
+                if budget_used + speech_tokens <= max_entry_tokens + 50:  # Small grace
+                    entries.append(LorebookEntry(
+                        chunk_id=str(speech_row.id),
+                        trait_category="speech_examples",
+                        content=speech_text,
+                        priority=5,
+                        trigger_method="emotion_state",
+                    ))
+                    budget_used += speech_tokens
+                break
+
+    # 7. Human quirks: inject archetype-specific reactions for "human moments"
+    #    These entries have no keywords (loaded by category) and moderate priority.
+    #    Always loaded so the AI knows how this character reacts to off-topic/gibberish.
+    try:
+        from app.services.emotion_v6 import detect_human_moment
+        human_trigger = detect_human_moment(user_message) if user_message else None
+        if human_trigger is not None:
+            quirks_result = await db.execute(
+                select(PersonalityChunk).where(
+                    and_(
+                        PersonalityChunk.archetype_code == archetype_code,
+                        PersonalityChunk.is_active.is_(True),
+                        PersonalityChunk.trait_category == TraitCategory.human_quirks,
+                    )
+                ).limit(1)
+            )
+            quirks_row = quirks_result.scalar_one_or_none()
+            if quirks_row and str(quirks_row.id) not in seen_ids:
+                quirks_tokens = len(quirks_row.content) // 2
+                if budget_used + quirks_tokens <= max_entry_tokens + 100:  # Grace for human moments
+                    entries.append(LorebookEntry(
+                        chunk_id=str(quirks_row.id),
+                        trait_category="human_quirks",
+                        content=quirks_row.content,
+                        priority=quirks_row.priority,
+                        trigger_method="human_moment",
+                    ))
+                    seen_ids.add(str(quirks_row.id))
+                    budget_used += quirks_tokens
+    except Exception:
+        pass  # Graceful degradation
+
+    # 8. Few-shot examples (keyword-based, no embeddings needed)
     examples = []
     if user_message:
         # Simple keyword match for examples too

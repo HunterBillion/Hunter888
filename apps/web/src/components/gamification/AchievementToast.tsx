@@ -50,8 +50,8 @@ export function AchievementToast({ achievement, onClose }: AchievementToastProps
           transition={{ type: "spring", stiffness: 400, damping: 25 }}
           className="fixed top-6 left-1/2 z-[200] glass-panel overflow-hidden flex items-center gap-4"
           style={{
-            borderColor: "rgba(124,106,232,0.35)",
-            boxShadow: "0 0 40px rgba(124,106,232,0.25), 0 0 80px rgba(124,106,232,0.08)",
+            borderColor: "var(--accent-glow)",
+            boxShadow: "0 0 40px var(--accent-glow), 0 0 80px var(--accent-muted)",
             minWidth: "340px",
             padding: "0",
           }}
@@ -74,7 +74,7 @@ export function AchievementToast({ achievement, onClose }: AchievementToastProps
           <motion.div
             className="flex h-full items-center justify-center px-5 py-5 self-stretch"
             style={{
-              background: "linear-gradient(135deg, var(--accent), rgba(124,106,232,0.7))",
+              background: "linear-gradient(135deg, var(--accent), var(--accent-glow))",
             }}
             animate={reducedMotion ? {} : { rotate: [0, -10, 10, -5, 5, 0] }}
             transition={reducedMotion ? {} : { duration: 0.6, delay: 0.3 }}

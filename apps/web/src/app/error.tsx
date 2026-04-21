@@ -67,9 +67,9 @@ export default function Error({
         <motion.div
           className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full"
           style={{
-            background: "rgba(229,72,77,0.08)",
-            border: "2px solid rgba(229,72,77,0.2)",
-            boxShadow: "0 0 40px rgba(229,72,77,0.1)",
+            background: "var(--danger-muted)",
+            border: "2px solid var(--danger-muted)",
+            boxShadow: "0 0 40px var(--danger-muted)",
           }}
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}

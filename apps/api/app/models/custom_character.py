@@ -1,7 +1,7 @@
 """Custom character presets saved by users from CharacterBuilder (v2: 8-step)."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -21,7 +21,7 @@ class CustomCharacter(Base):
     lead_source = Column(String(50), nullable=False)
     difficulty = Column(Integer, nullable=False, default=5)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # ── Step 3: Client context (all nullable for backward compat) ──
     family_preset = Column(String(30), nullable=True)       # "single", "married_kids" etc.
@@ -47,6 +47,6 @@ class CustomCharacter(Base):
     last_played_at = Column(DateTime, nullable=True)
 
     # ── Metadata ──
-    updated_at = Column(DateTime, nullable=True, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=True, onupdate=lambda: datetime.now(timezone.utc))
     is_shared = Column(Boolean, nullable=False, default=False, server_default="false")
     share_code = Column(String(20), nullable=True, unique=True)

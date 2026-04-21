@@ -9,14 +9,14 @@ export interface ScenarioTypeConfig {
 }
 
 const GROUP_CONFIGS: Record<ScenarioGroup, Omit<ScenarioTypeConfig, "group"> & { group: ScenarioGroup }> = {
-  cold:       { label: "Холодный",    color: "var(--info)", bg: "rgba(59,130,246,0.1)",  border: "rgba(59,130,246,0.25)", group: "cold" },
-  warm:       { label: "Тёплый",      color: "var(--warning)", bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.25)", group: "warm" },
-  inbound:    { label: "Входящий",    color: "var(--success)", bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.25)",  group: "inbound" },
-  special:    { label: "Особый",      color: "var(--magenta)", bg: "rgba(191,85,236,0.1)",  border: "rgba(191,85,236,0.25)", group: "special" },
-  follow_up:  { label: "Follow-up",   color: "var(--accent)", bg: "rgba(124,106,232,0.1)",  border: "rgba(124,106,232,0.25)", group: "follow_up" },
-  crisis:     { label: "Кризис",      color: "var(--danger)", bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.25)",  group: "crisis" },
-  compliance: { label: "Комплаенс",   color: "var(--text-muted)", bg: "rgba(100,116,139,0.1)", border: "rgba(100,116,139,0.25)", group: "compliance" },
-  multi_party:{ label: "Мультипарти", color: "var(--magenta)", bg: "rgba(236,72,153,0.1)",  border: "rgba(236,72,153,0.25)", group: "multi_party" },
+  cold:       { label: "Холодный",    color: "var(--info)", bg: "var(--info-muted)",  border: "color-mix(in srgb, var(--info) 25%, transparent)", group: "cold" },
+  warm:       { label: "Тёплый",      color: "var(--warning)", bg: "var(--warning-muted)",  border: "color-mix(in srgb, var(--warning) 25%, transparent)", group: "warm" },
+  inbound:    { label: "Входящий",    color: "var(--success)", bg: "var(--success-muted)",   border: "color-mix(in srgb, var(--success) 25%, transparent)",  group: "inbound" },
+  special:    { label: "Особый",      color: "var(--magenta)", bg: "color-mix(in srgb, var(--magenta) 10%, transparent)",  border: "color-mix(in srgb, var(--magenta) 25%, transparent)", group: "special" },
+  follow_up:  { label: "Follow-up",   color: "var(--accent)", bg: "var(--accent-muted)",  border: "var(--accent-glow)", group: "follow_up" },
+  crisis:     { label: "Кризис",      color: "var(--danger)", bg: "var(--danger-muted)",   border: "color-mix(in srgb, var(--danger) 25%, transparent)",  group: "crisis" },
+  compliance: { label: "Комплаенс",   color: "var(--text-muted)", bg: "color-mix(in srgb, var(--text-muted) 10%, transparent)", border: "color-mix(in srgb, var(--text-muted) 25%, transparent)", group: "compliance" },
+  multi_party:{ label: "Мультипарти", color: "var(--magenta)", bg: "color-mix(in srgb, var(--magenta) 10%, transparent)",  border: "color-mix(in srgb, var(--magenta) 25%, transparent)", group: "multi_party" },
 };
 
 export function getScenarioTypeConfig(scenarioType: string): ScenarioTypeConfig {

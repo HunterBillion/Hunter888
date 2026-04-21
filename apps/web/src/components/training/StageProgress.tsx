@@ -61,6 +61,18 @@ export default function StageProgressBar({
           // Connector line before this circle (not before first)
           const prevCompleted = idx > 0 && completedSet.has(stages[idx - 1]);
 
+          // Tooltip position: align to left/right for edge stages to avoid
+          // being clipped by parent `overflow-x: hidden` on `.training-session-panel`.
+          // Stages 1-2 → align left (tooltip extends rightward).
+          // Stages 6-7 → align right (tooltip extends leftward).
+          // Middle stages (3-5) → centered as before.
+          let tooltipAlign = "left-1/2 -translate-x-1/2";
+          if (idx < 2) {
+            tooltipAlign = "left-0 translate-x-0";
+          } else if (idx >= totalStages - 2) {
+            tooltipAlign = "right-0 translate-x-0";
+          }
+
           return (
             <div key={num} className="contents">
               {/* Connector line */}
@@ -86,7 +98,7 @@ export default function StageProgressBar({
                       transition={{ type: "spring", stiffness: 500, damping: 20 }}
                       className="flex items-center justify-center w-6 h-6 rounded-full"
                       style={{
-                        background: "rgba(61,220,132,0.15)",
+                        background: "var(--success-muted)",
                         border: "1.5px solid var(--success, #00FF94)",
                       }}
                     >
@@ -97,15 +109,15 @@ export default function StageProgressBar({
                       key="current"
                       animate={{
                         boxShadow: [
-                          "0 0 0px rgba(124,106,232,0.3)",
-                          "0 0 10px rgba(124,106,232,0.6)",
-                          "0 0 0px rgba(124,106,232,0.3)",
+                          "0 0 0px rgba(107,77,199,0.3)",
+                          "0 0 10px rgba(107,77,199,0.6)",
+                          "0 0 0px rgba(107,77,199,0.3)",
                         ],
                       }}
                       transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                       className="flex items-center justify-center w-6 h-6 rounded-full"
                       style={{
-                        background: "rgba(124,106,232,0.15)",
+                        background: "var(--accent-muted)",
                         border: "1.5px solid var(--accent)",
                       }}
                     >
@@ -135,14 +147,15 @@ export default function StageProgressBar({
                   )}
                 </AnimatePresence>
 
-                {/* Tooltip */}
+                {/* Tooltip — edge-aware alignment */}
                 <div
-                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 w-40 text-center"
+                  className={`absolute bottom-full ${tooltipAlign} mb-2 px-2.5 py-1.5 rounded-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30 w-40`}
                   style={{
                     background: "var(--surface, #1a1a2e)",
                     border: "1px solid var(--border-color)",
                     color: "var(--text-secondary)",
                     boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+                    textAlign: idx < 2 ? "left" : idx >= totalStages - 2 ? "right" : "center",
                   }}
                 >
                   <div className="font-semibold mb-0.5" style={{ color: "var(--text-primary)" }}>

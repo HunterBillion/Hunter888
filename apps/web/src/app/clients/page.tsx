@@ -2,11 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Filter, Plus, Loader2, ChevronDown, Check, UserCheck, Download, X, Copy } from "lucide-react";
+import { Search, Filter, Plus, Loader2, ChevronDown, Check, UserCheck, Download, X } from "lucide-react";
 import { UsersThree } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
-import { getApiBaseUrl } from "@/lib/public-origin";
-import { getToken } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { CRMClientCard } from "@/components/clients/CRMClientCard";
@@ -20,11 +18,27 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ClientListSkeleton } from "@/components/ui/Skeleton";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 
 interface ManagerOption {
   id: string;
   full_name: string;
+}
+
+/** Serialize rows to CSV — RFC 4180 compliant, UTF-8 BOM is prepended by caller. */
+function toCsv(rows: Record<string, unknown>[]): string {
+  if (!rows.length) return "";
+  const headers = Object.keys(rows[0]);
+  const escape = (v: unknown) => {
+    if (v == null) return "";
+    const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+    return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [headers.join(",")];
+  for (const row of rows) {
+    lines.push(headers.map((h) => escape(row[h])).join(","));
+  }
+  return lines.join("\n");
 }
 
 export default function ClientsPage() {
@@ -45,28 +59,56 @@ export default function ClientsPage() {
             ? "Методолог: read-only по реальным данным и статистике."
             : "";
 
-  const [createOpen, setCreateOpen] = useState(false);
+  // URL-backed filters — survive F5 and can be shared via link
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
   const [clients, setClients] = useState<CRMClient[]>([]);
   const [stats, setStats] = useState<PipelineStats[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ClientStatus | "">("");
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  const [statusFilter, setStatusFilter] = useState<ClientStatus | "">(
+    () => (searchParams.get("status") as ClientStatus | null) ?? ""
+  );
   const [statusOpen, setStatusOpen] = useState(false);
   const statusRef = useRef<HTMLDivElement>(null);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => {
+    const p = parseInt(searchParams.get("page") ?? "1", 10);
+    return Number.isFinite(p) && p > 0 ? p : 1;
+  });
   const limit = 20;
+
+  // Debounce search input — don't hit API on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
 
   // F6.3: Bulk operations for admin/rop
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showReassign, setShowReassign] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   // F4.2: Manager filter for admin/rop
   const [managers, setManagers] = useState<ManagerOption[]>([]);
-  const [managerFilter, setManagerFilter] = useState("");
+  const [managerFilter, setManagerFilter] = useState(() => searchParams.get("manager") ?? "");
   const [managerOpen, setManagerOpen] = useState(false);
   const managerRef = useRef<HTMLDivElement>(null);
+
+  // Sync filters → URL (replace so back-button doesn't go through every keystroke)
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set("q", debouncedSearch);
+    if (statusFilter) params.set("status", statusFilter);
+    if (managerFilter) params.set("manager", managerFilter);
+    if (page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    const url = qs ? `${pathname}?${qs}` : pathname;
+    router.replace(url, { scroll: false });
+  }, [debouncedSearch, statusFilter, managerFilter, page, pathname, router]);
 
   // Load managers list for admin/rop
   useEffect(() => {
@@ -94,7 +136,7 @@ export default function ClientsPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (search) params.set("search", search);
+      if (debouncedSearch) params.set("search", debouncedSearch);
       if (statusFilter) params.set("status", statusFilter);
       if (managerFilter) params.set("manager_id", managerFilter);
       params.set("page", String(page));
@@ -105,7 +147,7 @@ export default function ClientsPage() {
       setTotal(data.total);
     } catch (err) { logger.error("Failed to fetch clients:", err); }
     setLoading(false);
-  }, [search, statusFilter, managerFilter, page]);
+  }, [debouncedSearch, statusFilter, managerFilter, page]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -141,31 +183,27 @@ export default function ClientsPage() {
 
   const handleExport = async () => {
     setExporting(true);
+    setExportError(null);
     try {
-      const resp = await fetch(
-        `${getApiBaseUrl()}/api/clients/bulk/export`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${getToken() || ""}`,
-          },
-          body: JSON.stringify({ client_ids: Array.from(selected) }),
-        },
+      // Use the standard api client (handles auth refresh, CSRF, retries)
+      const payload = await api.post<{ items?: Record<string, unknown>[] }>(
+        "/clients/bulk/export",
+        { client_ids: Array.from(selected) },
       );
-      if (resp.ok) {
-        const payload = await resp.json();
-        const blob = new Blob([JSON.stringify(payload, null, 2)], {
-          type: "application/json",
-        });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `clients_export_${new Date().toISOString().slice(0, 10)}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-    } catch { /* ignore */ }
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      const csv = toCsv(items);
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `clients_export_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Не удалось выполнить экспорт";
+      setExportError(msg);
+      logger.error("Export error:", err);
+    }
     setExporting(false);
   };
 
@@ -200,17 +238,7 @@ export default function ClientsPage() {
                   <UsersThree size={12} weight="duotone" /> Граф
                 </motion.button>
               </Link>
-              {isAdminOrRop && (
-                <Link href="/clients/duplicates" prefetch={true}>
-                  <motion.button
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
-                    style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" }}
-                    whileTap={{ scale: 0.97 }}
-                  >
-                    <Copy size={12} /> Дубли
-                  </motion.button>
-                </Link>
-              )}
+              {/* Duplicates page removed — auto-detection planned */}
               <Link href="/clients/pipeline" prefetch={true}>
                 <motion.button
                   className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
@@ -446,6 +474,9 @@ export default function ClientsPage() {
             >
               <X size={14} />
             </motion.button>
+            {exportError && (
+              <span className="text-xs ml-2" style={{ color: "var(--danger)" }}>{exportError}</span>
+            )}
           </motion.div>
         )}
 

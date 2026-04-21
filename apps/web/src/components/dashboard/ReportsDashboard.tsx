@@ -71,6 +71,10 @@ const SKILL_LABELS: Record<string, string> = {
   stress_resistance: "Стрессоустойчивость",
   closing: "Закрытие",
   qualification: "Квалификация",
+  time_management: "Тайм-менеджмент",
+  adaptation: "Адаптация",
+  legal_knowledge: "Юр. знания",
+  rapport_building: "Раппорт",
 };
 
 const OUTCOME_LABELS: Record<string, string> = {
@@ -102,12 +106,12 @@ function SkillBar({ name, value, change }: { name: string; value: number; change
   const barColor = value >= 70 ? "var(--success)" : value >= 40 ? "var(--warning)" : "var(--danger)";
   return (
     <div style={{ marginBottom: "0.6rem" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.75rem" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.875rem" }}>
         <span style={{ color: "var(--text-muted)" }}>{label}</span>
         <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
           <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>{value}</span>
           {change !== 0 && (
-            <span style={{ display: "flex", alignItems: "center", gap: "2px", fontSize: "0.7rem", color: change > 0 ? "var(--success)" : "var(--danger)" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "2px", fontSize: "0.875rem", color: change > 0 ? "var(--success)" : "var(--danger)" }}>
               {change > 0 ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
               {Math.abs(change)}
             </span>
@@ -138,7 +142,7 @@ function StatCard({ icon: Icon, label, value, color }: { icon: typeof Target; la
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.2rem" }}>
         <Icon size={12} weight="duotone" style={{ color }} />
-        <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{label}</span>
+        <span style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>{label}</span>
       </div>
       <span style={{ fontSize: "1.1rem", fontWeight: 700, fontFamily: "monospace", color }}>
         {value}
@@ -171,7 +175,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0.85rem 1.25rem",
+          padding: "0.875rem 1.25rem",
           cursor: "pointer",
         }}
         onClick={() => setExpanded(!expanded)}
@@ -196,7 +200,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               </span>
               {trendIcon(report.score_trend)}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", color: "var(--text-muted)" }}>
               <span>{report.sessions_completed} сессий</span>
               <span>·</span>
               <span>{report.total_time_minutes} мин</span>
@@ -214,7 +218,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                   <span style={{ display: "flex", alignItems: "center", gap: "2px" }}>
                     #{report.weekly_rank}
                     {report.rank_change !== null && report.rank_change !== 0 && (
-                      <span style={{ fontSize: "0.7rem", color: report.rank_change > 0 ? "var(--success)" : "var(--danger)" }}>
+                      <span style={{ fontSize: "0.875rem", color: report.rank_change > 0 ? "var(--success)" : "var(--danger)" }}>
                         {report.rank_change > 0 ? `+${report.rank_change}` : report.rank_change}
                       </span>
                     )}
@@ -242,7 +246,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
             <div style={{ padding: "0 20px 20px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
               {/* Report text */}
               {report.report_text && (
-                <p style={{ fontSize: "0.85rem", margin: "1rem 0", lineHeight: 1.6, color: "var(--text-muted)" }}>
+                <p style={{ fontSize: "0.875rem", margin: "1rem 0", lineHeight: 1.6, color: "var(--text-muted)" }}>
                   {report.report_text}
                 </p>
               )}
@@ -265,7 +269,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {/* Outcomes */}
               {Object.keys(report.outcomes).length > 0 && (
                 <div style={{ marginBottom: "1rem" }}>
-                  <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Исходы</div>
+                  <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Исходы</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
                     {Object.entries(report.outcomes)
                       .filter(([, v]) => typeof v === "number")
@@ -273,7 +277,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                         <span key={key} style={{
                           borderRadius: 20,
                           padding: "3px 10px",
-                          fontSize: "0.75rem",
+                          fontSize: "0.875rem",
                           fontWeight: 500,
                           background: key === "deal" ? "rgba(52,211,153,0.1)" : "rgba(255,255,255,0.04)",
                           color: key === "deal" ? "var(--success)" : "var(--text-muted)",
@@ -289,7 +293,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {/* Skills */}
               {Object.keys(report.skills_snapshot).length > 0 && (
                 <div style={{ marginBottom: "1rem" }}>
-                  <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Навыки</div>
+                  <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Навыки</div>
                   <div style={{ display: "grid", gap: "0 1.5rem", gridTemplateColumns: "1fr 1fr" }}>
                     {Object.entries(report.skills_snapshot).map(([skill, value]) => (
                       <SkillBar key={skill} name={skill} value={value as number} change={(report.skills_change[skill] as number) || 0} />
@@ -301,7 +305,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {/* Achievements */}
               {report.new_achievements.length > 0 && (
                 <div style={{ marginBottom: "1rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.875rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
                     <Medal size={13} weight="duotone" /> Достижения недели
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
@@ -309,7 +313,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                       <span key={a.code} style={{
                         borderRadius: 20,
                         padding: "3px 10px",
-                        fontSize: "0.75rem",
+                        fontSize: "0.875rem",
                         fontWeight: 500,
                         background: "rgba(212,168,75,0.1)",
                         color: "var(--rank-gold)",
@@ -325,7 +329,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {/* Weak points */}
               {report.weak_points.length > 0 && (
                 <div style={{ marginBottom: "1rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.875rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
                     <Warning size={13} weight="duotone" /> Слабые места
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
@@ -333,10 +337,10 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                       <span key={wp.skill} style={{
                         borderRadius: 20,
                         padding: "3px 10px",
-                        fontSize: "0.75rem",
-                        background: wp.priority === "critical" ? "rgba(248,113,113,0.1)" : "rgba(251,191,36,0.1)",
+                        fontSize: "0.875rem",
+                        background: wp.priority === "critical" ? "var(--danger-muted)" : "var(--warning-muted)",
                         color: wp.priority === "critical" ? "var(--danger)" : "var(--warning)",
-                        border: `1px solid ${wp.priority === "critical" ? "rgba(248,113,113,0.25)" : "rgba(251,191,36,0.25)"}`,
+                        border: `1px solid ${wp.priority === "critical" ? "var(--danger-muted)" : "var(--warning-muted)"}`,
                       }}>
                         {SKILL_LABELS[wp.skill] || wp.skill}: {wp.value}
                       </span>
@@ -348,7 +352,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               {/* Recommendations */}
               {report.recommendations.length > 0 && (
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.875rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
                     <Lightbulb size={13} weight="duotone" /> Рекомендации
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
@@ -356,7 +360,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
                       <div key={`rec-${i}`} style={{
                         borderRadius: 8,
                         padding: "0.4rem 0.75rem",
-                        fontSize: "0.75rem",
+                        fontSize: "0.875rem",
                         background: "rgba(255,255,255,0.03)",
                         color: "var(--text-muted)",
                         lineHeight: 1.5,
@@ -444,7 +448,7 @@ export function ReportsDashboard({
           <h2 style={{ fontSize: "1.3rem", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
             {teamMode ? "Отчёты команды" : "Еженедельные отчёты"}
           </h2>
-          <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", margin: 0 }}>
+          <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", margin: 0 }}>
             {teamMode ? "Прогресс, навыки, рекомендации по каждому менеджеру" : "Прогресс, навыки, рекомендации"}
           </p>
         </div>
@@ -464,7 +468,7 @@ export function ReportsDashboard({
             color: "var(--warning)",
             cursor: generating ? "wait" : "pointer",
             opacity: generating ? 0.7 : 1,
-            fontSize: "0.85rem",
+            fontSize: "0.875rem",
             fontWeight: 600,
           }}
         >
@@ -481,13 +485,13 @@ export function ReportsDashboard({
           gap: "0.75rem",
           padding: "0.75rem 1rem",
           marginBottom: "1rem",
-          background: "rgba(124,106,232,0.06)",
-          border: "1px solid rgba(124,106,232,0.15)",
+          background: "var(--accent-muted)",
+          border: "1px solid var(--accent-muted)",
           borderRadius: 10,
           flexWrap: "wrap",
         }}>
           <UsersThree size={16} weight="duotone" style={{ color: "var(--accent)" }} />
-          <span style={{ color: "var(--accent-hover)", fontSize: "0.85rem" }}>Менеджер:</span>
+          <span style={{ color: "var(--accent-hover)", fontSize: "0.875rem" }}>Менеджер:</span>
           <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
             {teamMembers.map((m) => (
               <button
@@ -496,11 +500,11 @@ export function ReportsDashboard({
                 style={{
                   padding: "0.3rem 0.75rem",
                   borderRadius: 8,
-                  border: activeUserId === m.id ? "1px solid rgba(124,106,232,0.4)" : "1px solid rgba(255,255,255,0.08)",
-                  background: activeUserId === m.id ? "rgba(124,106,232,0.15)" : "rgba(255,255,255,0.03)",
+                  border: activeUserId === m.id ? "1px solid var(--accent-glow)" : "1px solid rgba(255,255,255,0.08)",
+                  background: activeUserId === m.id ? "var(--accent-muted)" : "rgba(255,255,255,0.03)",
                   color: activeUserId === m.id ? "var(--accent-hover)" : "var(--text-muted)",
                   cursor: "pointer",
-                  fontSize: "0.8rem",
+                  fontSize: "0.875rem",
                   fontWeight: activeUserId === m.id ? 600 : 400,
                   transition: "all 0.2s",
                 }}
@@ -514,7 +518,7 @@ export function ReportsDashboard({
 
       {/* Current user label in team mode */}
       {teamMode && (
-        <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+        <div style={{ fontSize: "0.875rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
           Отчёты: <span style={{ color: "var(--warning)", fontWeight: 600 }}>{activeName}</span>
         </div>
       )}
@@ -525,11 +529,11 @@ export function ReportsDashboard({
           padding: "0.75rem 1rem",
           borderRadius: 10,
           marginBottom: "1rem",
-          background: "rgba(239,68,68,0.1)",
-          border: "1px solid rgba(239,68,68,0.2)",
+          background: "var(--danger-muted)",
+          border: "1px solid var(--danger-muted)",
           color: "var(--danger)",
           textAlign: "center",
-          fontSize: "0.85rem",
+          fontSize: "0.875rem",
         }}>
           {error}
         </div>

@@ -7,7 +7,7 @@ Monthly reset. Spent in AP Shop for cosmetics.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -69,7 +69,9 @@ async def award_arena_points(
 ) -> int:
     """Award AP to a user. Returns new balance."""
     result = await db.execute(
-        select(ManagerProgress).where(ManagerProgress.user_id == user_id)
+        select(ManagerProgress)
+        .where(ManagerProgress.user_id == user_id)
+        .with_for_update()
     )
     profile = result.scalar_one_or_none()
     if not profile:
@@ -98,7 +100,9 @@ async def purchase_item(
         return {"success": False, "error": "Item not found"}
 
     result = await db.execute(
-        select(ManagerProgress).where(ManagerProgress.user_id == user_id)
+        select(ManagerProgress)
+        .where(ManagerProgress.user_id == user_id)
+        .with_for_update()
     )
     profile = result.scalar_one_or_none()
     if not profile:
@@ -114,7 +118,7 @@ async def purchase_item(
     if not item.get("permanent", True):
         from datetime import timedelta
         hours = item.get("duration_hours", 24)
-        expires_at = datetime.utcnow() + timedelta(hours=hours)
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=hours)
 
     purchase = APPurchase(
         user_id=user_id,

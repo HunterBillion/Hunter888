@@ -218,10 +218,13 @@ class ManagerProgressService:
 
     # ── Получение / создание профиля ──
 
-    async def get_or_create_profile(self, user_id: uuid.UUID) -> ManagerProgress:
-        result = await self._db.execute(
-            select(ManagerProgress).where(ManagerProgress.user_id == user_id),
-        )
+    async def get_or_create_profile(
+        self, user_id: uuid.UUID, *, lock: bool = False,
+    ) -> ManagerProgress:
+        query = select(ManagerProgress).where(ManagerProgress.user_id == user_id)
+        if lock:
+            query = query.with_for_update()
+        result = await self._db.execute(query)
         profile = result.scalar_one_or_none()
         if profile is None:
             profile = ManagerProgress(user_id=user_id)
@@ -243,7 +246,8 @@ class ManagerProgressService:
         Returns:
             dict с ключами: xp_breakdown, level_up, new_level, new_achievements, skills_update
         """
-        profile = await self.get_or_create_profile(user_id)
+        # Diag v9: FOR UPDATE prevents lost-update race on concurrent session completions
+        profile = await self.get_or_create_profile(user_id, lock=True)
 
         # 1. Рассчитать XP
         xp_breakdown = self.calculate_xp(session_result, adaptive_data)
@@ -259,7 +263,43 @@ class ManagerProgressService:
         xp_breakdown.achievements = achievement_xp
         xp_breakdown.grand_total = xp_breakdown.session_total + achievement_xp
 
-        # 4. Обновить профиль
+        # 3b. Write XPLog entry for audit trail
+        try:
+            from app.models.xp_log import XPLog, SP_RATES
+            xp_log = XPLog(
+                user_id=user_id,
+                source="training_session",
+                amount=xp_breakdown.session_total,
+                multiplier=1.0,
+                season_points=SP_RATES.get("training_session", 10),
+            )
+            self._db.add(xp_log)
+            if achievement_xp > 0:
+                ach_xp_log = XPLog(
+                    user_id=user_id,
+                    source="achievement",
+                    amount=achievement_xp,
+                    multiplier=1.0,
+                    season_points=SP_RATES.get("achievement", 10),
+                )
+                self._db.add(ach_xp_log)
+        except Exception:
+            logger.warning("Failed to write XPLog for user %s", user_id, exc_info=True)
+
+        # 4. Apply daily soft cap (S3-02) then update profile
+        try:
+            from app.services.xp_daily_cap import apply_daily_cap
+            # Session XP goes through cap; achievement XP is exempt
+            capped_session_xp = await apply_daily_cap(
+                user_id, xp_breakdown.session_total, source="training_session",
+            )
+            capped_achievement_xp = await apply_daily_cap(
+                user_id, achievement_xp, source="achievement",
+            )
+            xp_breakdown.grand_total = capped_session_xp + capped_achievement_xp
+        except Exception:
+            logger.warning("Daily XP cap unavailable, using full XP", exc_info=True)
+
         profile.total_xp += xp_breakdown.grand_total
         profile.current_xp += xp_breakdown.grand_total
         profile.total_sessions += 1
@@ -271,6 +311,13 @@ class ManagerProgressService:
             profile.best_deal_streak = max(profile.best_deal_streak, profile.current_deal_streak)
         else:
             profile.current_deal_streak = 0
+
+        # 5b. Обновить perfect streak (sessions with score >80)
+        if session_result.score_total and session_result.score_total >= 80:
+            profile.perfect_streak += 1
+            profile.best_perfect_streak = max(profile.best_perfect_streak, profile.perfect_streak)
+        else:
+            profile.perfect_streak = 0
 
         # 6. Обновить калибровку
         if not profile.calibration_complete:
@@ -480,7 +527,7 @@ class ManagerProgressService:
         # Взвешенный средний score
         weights = [0.5 + 0.5 * (i / len(sessions)) for i in range(len(sessions))]
         total_weight = sum(weights)
-        w_avg_score = sum(s.score_total * w for s, w in zip(sessions, weights)) / total_weight
+        w_avg_score = sum((s.score_total or 0) * w for s, w in zip(sessions, weights)) / total_weight
 
         avg_diff = mean(s.difficulty for s in sessions)
 
@@ -615,7 +662,7 @@ class ManagerProgressService:
             score += max(0, 10 - anti * 0.67)
 
             scores.append(min(100, round(score)))
-        return round(mean(scores)) if scores else 50
+        return round(mean(scores)) if scores else None
 
     @staticmethod
     def _calc_knowledge(sessions: list[SessionHistory]) -> int:
@@ -647,7 +694,7 @@ class ManagerProgressService:
                 score += 5
 
             scores.append(min(100, round(score)))
-        return round(mean(scores)) if scores else 50
+        return round(mean(scores)) if scores else None
 
     @staticmethod
     def _calc_objection_handling(sessions: list[SessionHistory]) -> int:
@@ -669,7 +716,7 @@ class ManagerProgressService:
             score += min(10, s.difficulty)
 
             scores.append(min(100, round(score)))
-        return round(mean(scores)) if scores else 50
+        return round(mean(scores)) if scores else None
 
     @staticmethod
     def _calc_stress_resistance(sessions: list[SessionHistory]) -> int:
@@ -700,7 +747,7 @@ class ManagerProgressService:
             score += min(15, s.difficulty * 1.5)
 
             scores.append(min(100, round(score)))
-        return round(mean(scores)) if scores else 50
+        return round(mean(scores)) if scores else None
 
     @staticmethod
     def _calc_closing(sessions: list[SessionHistory]) -> int:
@@ -729,7 +776,7 @@ class ManagerProgressService:
                 score += min(5, s.difficulty * 0.5)
 
             scores.append(min(100, round(score)))
-        return round(mean(scores)) if scores else 50
+        return round(mean(scores)) if scores else None
 
     @staticmethod
     def _calc_qualification(sessions: list[SessionHistory]) -> int:
@@ -764,7 +811,26 @@ class ManagerProgressService:
                 score += 3
 
             scores.append(min(100, round(score)))
-        return round(mean(scores)) if scores else 50
+        return round(mean(scores)) if scores else None
+
+    @staticmethod
+    def _calc_from_radar(sessions: list[SessionHistory], radar_key: str) -> int | None:
+        """Average a per-session skill-radar axis across recent sessions.
+
+        Used for skills that v5 scoring computes per session but the legacy
+        aggregator doesn't have a dedicated _calc_* for:
+        time_management, adaptation, legal_knowledge, rapport_building.
+        """
+        vals = []
+        for s in sessions:
+            bd = s.score_breakdown or {}
+            radar = bd.get("_skill_radar") or {}
+            v = radar.get(radar_key)
+            if v is not None:
+                vals.append(float(v))
+        if not vals:
+            return None
+        return round(mean(vals))
 
     # ──────────────────────────────────────────────────────────────────
     #  Обновление навыков с экспоненциальным сглаживанием
@@ -781,6 +847,11 @@ class ManagerProgressService:
             "stress_resistance": self._calc_stress_resistance(sessions),
             "closing": self._calc_closing(sessions),
             "qualification": self._calc_qualification(sessions),
+            # 4 additional v5 skills — derived from per-session skill_radar
+            "time_management": self._calc_from_radar(sessions, "time_management"),
+            "adaptation": self._calc_from_radar(sessions, "adaptation"),
+            "legal_knowledge": self._calc_from_radar(sessions, "legal_knowledge"),
+            "rapport_building": self._calc_from_radar(sessions, "rapport_building"),
         }
 
         old_skills = profile.skills_dict()
@@ -791,7 +862,12 @@ class ManagerProgressService:
         new_skills = {}
         for name in SKILL_NAMES:
             old_val = old_skills[name]
-            new_val = new_raw[name]
+            new_val = new_raw.get(name)
+            if new_val is None:
+                # No real session data for this skill yet — keep current (default=50) value.
+                # Real skills with data will still be updated via EMA.
+                new_skills[name] = old_val
+                continue
             smoothed = round(alpha * new_val + (1 - alpha) * old_val)
             new_skills[name] = max(0, min(100, smoothed))
 
@@ -893,6 +969,33 @@ class ManagerProgressService:
         )
         existing_codes = set(existing.scalars().all())
 
+        # Pre-compute aggregate stats for condition types that need DB queries
+        _extra_stats: dict[str, Any] = {}
+        try:
+            _ua = await self._db.execute(
+                select(func.count(func.distinct(SessionHistory.archetype_code)))
+                .where(SessionHistory.user_id == profile.user_id)
+            )
+            _extra_stats["unique_archetypes"] = _ua.scalar() or 0
+
+            _us = await self._db.execute(
+                select(func.count(func.distinct(SessionHistory.scenario_code)))
+                .where(SessionHistory.user_id == profile.user_id)
+            )
+            _extra_stats["unique_scenarios"] = _us.scalar() or 0
+
+            _week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+            _ws = await self._db.execute(
+                select(func.count(SessionHistory.id))
+                .where(SessionHistory.user_id == profile.user_id, SessionHistory.created_at >= _week_ago)
+            )
+            _extra_stats["weekly_sessions"] = _ws.scalar() or 0
+
+            from app.services.gamification import calculate_streak
+            _extra_stats["daily_streak"] = await calculate_streak(profile.user_id, self._db)
+        except Exception:
+            pass
+
         new_achievements: list[Achievement] = []
 
         for ach_def in ACHIEVEMENT_DEFS:
@@ -901,7 +1004,7 @@ class ManagerProgressService:
                 continue
 
             cond = ach_def["condition"]
-            earned = self._evaluate_achievement(cond, profile, session, adaptive_data)
+            earned = self._evaluate_achievement(cond, profile, session, adaptive_data, _extra_stats)
 
             if earned:
                 achievement = Achievement(
@@ -926,9 +1029,11 @@ class ManagerProgressService:
         profile: ManagerProgress,
         session: SessionHistory,
         adaptive_data: dict[str, Any] | None,
+        extra_stats: dict[str, Any] | None = None,
     ) -> bool:
         """Проверяет, выполнено ли условие достижения."""
         ctype = condition.get("type", "")
+        _stats = extra_stats or {}
 
         if ctype == "outcome_count":
             if condition["outcome"] == session.outcome:
@@ -1004,17 +1109,16 @@ class ManagerProgressService:
             return profile.current_level >= condition["level"]
 
         elif ctype == "unique_archetypes_played":
-            # Нужна выборка из БД — делается отдельно
-            pass
+            return _stats.get("unique_archetypes", 0) >= condition.get("count", 1)
 
         elif ctype == "unique_scenarios_played":
-            pass
+            return _stats.get("unique_scenarios", 0) >= condition.get("count", 1)
 
         elif ctype == "weekly_sessions":
-            pass
+            return _stats.get("weekly_sessions", 0) >= condition.get("count", 1)
 
         elif ctype == "daily_streak":
-            pass
+            return _stats.get("daily_streak", 0) >= condition.get("count", 1)
 
         return False
 

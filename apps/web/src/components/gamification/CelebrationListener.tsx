@@ -164,7 +164,7 @@ export function CelebrationListener() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3 }}
                 className="fixed inset-0 z-[200] flex items-center justify-center"
-                style={{ background: "rgba(0, 0, 0, 0.85)" }}
+                style={{ background: "var(--overlay-bg)" }}
                 onClick={() => setCelebration(null)}
               >
                 <motion.div
@@ -236,7 +236,7 @@ export function CelebrationListener() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3 }}
                 className="fixed inset-0 z-[200] flex items-center justify-center"
-                style={{ background: "rgba(0, 0, 0, 0.85)" }}
+                style={{ background: "var(--overlay-bg)" }}
                 onClick={() => setCelebration(null)}
               >
                 <motion.div
@@ -251,7 +251,7 @@ export function CelebrationListener() {
                     style={{
                       width: 100,
                       height: 100,
-                      background: "linear-gradient(135deg, rgba(255, 215, 0, 0.3), rgba(124, 106, 232, 0.2))",
+                      background: "linear-gradient(135deg, rgba(255, 215, 0, 0.3), var(--accent-glow))",
                       boxShadow: "0 0 60px rgba(255, 215, 0, 0.3)",
                     }}
                     animate={{ scale: [1, 1.08, 1] }}
@@ -304,7 +304,7 @@ export function CelebrationListener() {
                   style={{
                     background: "color-mix(in srgb, var(--accent) 20%, transparent)",
                     border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
-                    boxShadow: "0 4px 20px rgba(124, 106, 232, 0.3)",
+                    boxShadow: "0 4px 20px var(--accent-glow)",
                   }}
                 >
                   <TrendingUp size={18} style={{ color: "var(--accent)" }} />
@@ -404,9 +404,9 @@ export function CelebrationListener() {
                 <div
                   className="relative flex items-center gap-3 rounded-2xl px-6 py-4 backdrop-blur-xl"
                   style={{
-                    background: "linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(124, 106, 232, 0.15))",
+                    background: "linear-gradient(135deg, rgba(255, 215, 0, 0.2), var(--accent-muted))",
                     border: "2px solid rgba(255, 215, 0, 0.5)",
-                    boxShadow: "0 8px 40px rgba(255, 215, 0, 0.3), 0 0 60px rgba(124, 106, 232, 0.15)",
+                    boxShadow: "0 8px 40px rgba(255, 215, 0, 0.3), 0 0 60px var(--accent-muted)",
                   }}
                 >
                   {/* Rotating stars */}

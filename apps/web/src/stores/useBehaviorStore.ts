@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import { getApiBaseUrl } from "@/lib/public-origin";
-import { getToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { useNotificationStore } from "@/stores/useNotificationStore";
 
 interface CompositeScores {
   confidence: number;
@@ -95,22 +95,6 @@ interface BehaviorState {
   markAlertSeen: (alertId: string) => Promise<void>;
 }
 
-const API_BASE = getApiBaseUrl();
-
-async function apiFetch(path: string, options?: RequestInit) {
-  const token = getToken();
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options?.headers,
-    },
-  });
-  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-  return res.json();
-}
-
 export const useBehaviorStore = create<BehaviorState>((set) => ({
   profile: null,
   profileLoading: false,
@@ -125,7 +109,7 @@ export const useBehaviorStore = create<BehaviorState>((set) => ({
     set({ profileLoading: true });
     try {
       const params = userId ? `?user_id=${userId}` : "";
-      const data = await apiFetch(`/api/behavior/profile${params}`);
+      const data = await api.get(`/behavior/profile${params}`);
       set({ profile: data, profileLoading: false });
     } catch {
       set({ profileLoading: false });
@@ -137,7 +121,7 @@ export const useBehaviorStore = create<BehaviorState>((set) => ({
     try {
       const params = new URLSearchParams({ limit: String(limit) });
       if (userId) params.set("user_id", userId);
-      const data = await apiFetch(`/api/behavior/trends?${params}`);
+      const data = await api.get(`/behavior/trends?${params}`);
       set({ trends: data.trends || [], trendsLoading: false });
     } catch {
       set({ trendsLoading: false });
@@ -147,7 +131,7 @@ export const useBehaviorStore = create<BehaviorState>((set) => ({
   fetchDailyAdvice: async () => {
     set({ adviceLoading: true });
     try {
-      const data = await apiFetch("/api/behavior/daily-advice");
+      const data = await api.get("/behavior/daily-advice");
       set({ dailyAdvice: data.advice || null, adviceLoading: false });
     } catch {
       set({ adviceLoading: false });
@@ -156,19 +140,22 @@ export const useBehaviorStore = create<BehaviorState>((set) => ({
 
   markAdviceActed: async (adviceId: string) => {
     try {
-      await apiFetch(`/api/behavior/daily-advice/${adviceId}/acted`, {
-        method: "POST",
+      await api.post(`/behavior/daily-advice/${adviceId}/acted`, {});
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Не удалось сохранить отметку";
+      useNotificationStore.getState().addToast({
+        title: "Не сохранено",
+        body: msg,
+        type: "error",
       });
-    } catch {
-      /* ignore */
     }
   },
 
   fetchTeamAlerts: async (unseenOnly = true) => {
     set({ alertsLoading: true });
     try {
-      const data = await apiFetch(
-        `/api/behavior/team-alerts?unseen_only=${unseenOnly}`,
+      const data = await api.get(
+        `/behavior/team-alerts?unseen_only=${unseenOnly}`,
       );
       set({ teamAlerts: data.alerts || [], alertsLoading: false });
     } catch {
@@ -178,19 +165,19 @@ export const useBehaviorStore = create<BehaviorState>((set) => ({
 
   markAlertSeen: async (alertId: string) => {
     try {
-      await apiFetch(`/api/behavior/team-alerts/${alertId}/seen`, {
-        method: "POST",
-      });
-      // Mark alert as seen in-place rather than filtering by wrong field.
-      // alertId corresponds to a composite key (user_id + direction),
-      // so we set the `seen` flag instead of removing.
+      await api.post(`/behavior/team-alerts/${alertId}/seen`, {});
       set((state) => ({
         teamAlerts: state.teamAlerts.map((a) =>
           a.user_id === alertId ? { ...a, seen: true } : a,
         ),
       }));
-    } catch {
-      /* ignore */
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Не удалось отметить прочитанным";
+      useNotificationStore.getState().addToast({
+        title: "Не сохранено",
+        body: msg,
+        type: "error",
+      });
     }
   },
 }));

@@ -21,6 +21,12 @@ import { PageTransition } from "@/components/layout/PageTransition";
 import { ScreenShakeProvider } from "@/components/ui/ScreenShake";
 import { LLMDegradationBanner } from "@/components/ui/LLMDegradationBanner";
 import { CelebrationListener } from "@/components/gamification/CelebrationListener";
+import dynamic from "next/dynamic";
+
+const PixelGridBackground = dynamic(
+  () => import("@/components/pixel/PixelGridBackground").then((m) => m.PixelGridBackground),
+  { ssr: false },
+);
 
 /** Check if vh_authenticated marker cookie exists (survives page reload). */
 function hasAuthMarkerCookie(): boolean {
@@ -56,7 +62,7 @@ class AuthErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState
       return (
         <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg-primary)" }}>
           <div className="glass-panel max-w-md px-8 py-6 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full mb-4" style={{ background: "rgba(229,72,77,0.1)" }}>
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full mb-4" style={{ background: "var(--danger-muted)" }}>
               <AlertTriangle size={24} />
             </div>
             <h2 className="font-display text-lg font-bold mb-2" style={{ color: "var(--text-primary)" }}>
@@ -115,6 +121,23 @@ export default function AuthLayout({
   const [errorMessage, setErrorMessage] = useState("");
   const retryCount = useRef(0);
   const didRun = useRef(false);
+
+  // Animated background toggle (localStorage, dark-mode only on platform)
+  const [showAnimBg, setShowAnimBg] = useState(false);
+  useEffect(() => {
+    try {
+      const disabled = localStorage.getItem("vh-animated-bg") === "0";
+      const isDark = document.documentElement.classList.contains("dark");
+      setShowAnimBg(!disabled && isDark);
+    } catch {}
+    const obs = new MutationObserver(() => {
+      const isDark = document.documentElement.classList.contains("dark");
+      const disabled = localStorage.getItem("vh-animated-bg") === "0";
+      setShowAnimBg(!disabled && isDark);
+    });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
 
   useEffect(() => {
     if (didRun.current) return;
@@ -197,7 +220,7 @@ export default function AuthLayout({
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg-primary)" }}>
         <div className="glass-panel max-w-md px-8 py-6 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full mb-4" style={{ background: "rgba(229,72,77,0.1)" }}>
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full mb-4" style={{ background: "var(--danger-muted)" }}>
             <AlertTriangle size={24} />
           </div>
           <h2 className="font-display text-lg font-bold mb-2" style={{ color: "var(--text-primary)" }}>
@@ -298,10 +321,9 @@ export default function AuthLayout({
         {/* Root background — body-level solid color, no stacking context */}
         <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-primary)" }}>
 
-          {/* ── Single global dot-grid — rendered ONCE for ALL pages ── */}
-          {/* Positioned at z-index: 0, below content (z-index: 1+)       */}
-          {/* No duplication on page transitions since it's in this layout */}
+          {/* ── Grid background — static fallback + animated canvas ── */}
           <div className="app-grid-layer" aria-hidden="true" />
+          {showAnimBg && <PixelGridBackground variant="platform" />}
 
 
           <Header />

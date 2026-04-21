@@ -18,6 +18,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, and_, cast, Numeric
@@ -40,10 +41,7 @@ from scripts.seed_levels import get_level_name, LEVEL_XP_THRESHOLDS
 from app.database import get_db
 from app.models.user import User
 from app.core.deps import get_current_user
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
-limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(tags=["progress"])
 

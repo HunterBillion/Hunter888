@@ -2,9 +2,8 @@ import logging
 import uuid
 from collections import defaultdict
 
+from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,7 +41,6 @@ from app.services.emotion import init_emotion as sm_init_emotion
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 
 def _session_to_response(session: TrainingSession) -> SessionResponse:
@@ -611,6 +609,100 @@ async def start_session(
     return session
 
 
+@router.post("/sessions/{session_id}/script-hints")
+@limiter.limit("30/minute")
+async def generate_script_hints(
+    session_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate 3 LLM-powered reply suggestions tailored to the current call state.
+
+    Called by the client whenever it wants hints (start of call, after each
+    client message, or on demand via the coaching-panel toggle).
+
+    Returns: { hints: [{text: str, label: str}] }
+    """
+    from app.services.llm import generate_response
+    from app.models.training import TrainingSession, Message, MessageRole
+    from sqlalchemy import select as _select
+
+    # Verify ownership
+    ses_q = await db.execute(
+        _select(TrainingSession).where(
+            TrainingSession.id == session_id,
+            TrainingSession.user_id == user.id,
+        )
+    )
+    session = ses_q.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.SESSION_NOT_FOUND)
+
+    # Fetch the last 6 messages for context
+    msg_q = await db.execute(
+        _select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.sequence_number.desc())
+        .limit(6)
+    )
+    recent = list(reversed(msg_q.scalars().all()))
+    history_text = "\n".join(
+        f"{'Менеджер' if m.role == MessageRole.user else 'Клиент'}: {m.content}"
+        for m in recent
+    ) or "(звонок ещё не начался)"
+
+    # Load scenario title for context
+    from app.models.scenario import Scenario
+    scen_q = await db.execute(_select(Scenario).where(Scenario.id == session.scenario_id))
+    scenario = scen_q.scalar_one_or_none()
+    scenario_ctx = scenario.title if scenario else "Звонок клиенту-должнику"
+
+    system_prompt = (
+        "Ты — AI-коуч по продажам. Предложи 3 варианта следующей реплики менеджера. "
+        "Каждая реплика должна быть РАЗНОЙ по стилю: "
+        "(1) эмпатичная/рапортная, "
+        "(2) деловая/структурная, "
+        "(3) вопрос для раскрытия ситуации. "
+        "КАЖДАЯ реплика — максимум 2 предложения, разговорная, готовая к отправке. "
+        "НЕ используй плейсхолдеры типа {имя}, напиши конкретно. "
+        "Ответ СТРОГО в JSON формате: "
+        '{"hints":[{"text":"...","label":"Эмпатия"},{"text":"...","label":"Структура"},{"text":"...","label":"Вопрос"}]}'
+    )
+    user_prompt = f"Сценарий: {scenario_ctx}\n\nИстория:\n{history_text}\n\nДай 3 варианта следующей реплики менеджера."
+
+    try:
+        result = await generate_response(
+            system_prompt=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+            emotion_state="cold",
+            task_type="coach",
+            prefer_provider="auto",
+        )
+        import json
+        raw = result.content.strip()
+        # Strip markdown code fences if present
+        if raw.startswith("```"):
+            raw = raw.strip("`").lstrip("json").strip()
+        parsed = json.loads(raw)
+        hints = parsed.get("hints", [])
+        # Sanity filter
+        hints = [h for h in hints if isinstance(h, dict) and h.get("text")]
+        if not hints:
+            raise ValueError("empty hints")
+        return {"hints": hints[:4]}
+    except Exception as e:
+        logger.warning("Script hints LLM failed: %s", e)
+        # Safe fallback — generic but better than nothing
+        return {
+            "hints": [
+                {"text": "Понимаю, что ситуация непростая. Можете рассказать подробнее, с чего всё началось?", "label": "Эмпатия"},
+                {"text": "Давайте разберём по порядку — какие у вас сейчас основные долги и перед кем?", "label": "Структура"},
+                {"text": "А что для вас сейчас важнее — снизить ежемесячный платёж или вообще закрыть долги?", "label": "Вопрос"},
+            ]
+        }
+
+
 @router.get("/sessions/{session_id}", response_model=SessionResultResponse)
 async def get_session(
     session_id: uuid.UUID,
@@ -1109,6 +1201,49 @@ async def get_team_assignments(
             "overdue": overdue,
         },
     }
+
+
+# ── Recent home sessions (for /training Assigned tab) ─────────────────────
+
+
+@router.get("/recent-home")
+async def get_recent_home_sessions(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    days: int = 7,
+):
+    """Recent completed sessions started from /home (last N days).
+
+    Used by the /training Assigned tab to show "Недавние" section.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    result = await db.execute(
+        select(TrainingSession, Scenario.title)
+        .join(Scenario, Scenario.id == TrainingSession.scenario_id)
+        .where(
+            TrainingSession.user_id == user.id,
+            TrainingSession.source == "home",
+            TrainingSession.status == SessionStatus.completed,
+            TrainingSession.ended_at >= cutoff,
+        )
+        .order_by(TrainingSession.ended_at.desc())
+        .limit(20)
+    )
+    rows = result.all()
+    return [
+        {
+            "id": str(session.id),
+            "scenario_id": str(session.scenario_id),
+            "scenario_title": title,
+            "score_total": session.score_total,
+            "duration_seconds": session.duration_seconds,
+            "ended_at": session.ended_at.isoformat() if session.ended_at else None,
+            "source": "home",
+        }
+        for session, title in rows
+    ]
 
 
 # ── AI-Coach: interactive post-session coaching chat ───────────────────────

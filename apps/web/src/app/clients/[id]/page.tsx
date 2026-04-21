@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   Phone, Mail, MapPin, DollarSign,
   Calendar, ShieldCheck, Loader2, Plus, Bell, Send,
+  MessageSquare, PhoneCall, ArrowRight,
 } from "lucide-react";
 import { BackButton } from "@/components/ui/BackButton";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
@@ -26,6 +28,7 @@ import { logger } from "@/lib/logger";
 export default function ClientDetailPage() {
   const { user } = useAuth();
   const params = useParams();
+  const router = useRouter();
   const id = typeof params.id === "string" ? params.id : String(params.id ?? "");
 
   const isReadOnly = user?.role === "methodologist";
@@ -37,13 +40,74 @@ export default function ClientDetailPage() {
   const [showReminderModal, setShowReminderModal] = useState(false);
   const [smsLoading, setSmsLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // 2026-04-20: "Тренировка с этим клиентом" — отделяет два входа
+  // (чат / звонок), раньше выбор жил внутри самой страницы тренировки,
+  // что путало пользователей ("зачем звонок в чате?").
+  const [startingMode, setStartingMode] = useState<null | "chat" | "voice">(null);
+
+  const fetchClient = async () => {
+    try {
+      const data: CRMClientDetail = await api.get(`/clients/${id}`);
+      setClient(data);
+    } catch (err) {
+      logger.error("Failed to load client details:", err);
+    }
+  };
 
   useEffect(() => {
-    api.get(`/clients/${id}`)
-      .then((data: CRMClientDetail) => setClient(data))
-      .catch((err) => { logger.error("Failed to load client details:", err); })
-      .finally(() => setLoading(false));
+    setLoading(true);
+    fetchClient().finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const handleStartTraining = async (mode: "chat" | "voice") => {
+    if (!client || startingMode) return;
+    setStartingMode(mode);
+    setActionError(null);
+    try {
+      // Pick a fallback scenario — for v1 we don't persist a per-client
+      // scenario mapping yet, we just need an active one to anchor the
+      // session. The CharacterBuilder / archetype_code flow then drives
+      // the roleplay personality via real_client_id.
+      const scenariosRaw = await api.get("/scenarios/");
+      const scenarios = Array.isArray(scenariosRaw)
+        ? (scenariosRaw as Array<{ id: string; is_active?: boolean }>)
+        : [];
+      const active = scenarios.filter((s) => s.is_active !== false);
+      if (!active.length) {
+        throw new Error("Нет активных сценариев — попросите методолога создать.");
+      }
+      const scenario_id = active[0].id;
+
+      const session = await api.post<{ id: string }>(
+        "/training/sessions",
+        {
+          scenario_id,
+          real_client_id: client.id,
+          // `source` — диагностический штамп: видно в аналитике, какие
+          // сессии запущены из CRM-карточки и в каком режиме.
+          source: mode === "voice" ? "crm_voice" : "crm_chat",
+        },
+      );
+      if (!session?.id) throw new Error("Не удалось создать сессию");
+
+      // Voice-mode lives at /training/[id]/call; chat-mode is the default
+      // route. Split entry points = no more "зачем звонок в чате".
+      if (mode === "voice") {
+        router.push(`/training/${session.id}/call`);
+      } else {
+        router.push(`/training/${session.id}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Не удалось начать тренировку";
+      setActionError(msg);
+      logger.error("[ClientDetail] Start training failed:", err);
+    } finally {
+      // Keep mode set on success — page will redirect, so this only
+      // matters if an error is surfaced and the user stays on the page.
+      setStartingMode(null);
+    }
+  };
 
   const handleStatusChange = async (newStatus: ClientStatus, reason?: string) => {
     setActionError(null);
@@ -109,8 +173,34 @@ export default function ClientDetailPage() {
   if (!client) {
     return (
       <AuthLayout>
-        <div className="text-center py-16">
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Клиент не найден</p>
+        <div className="flex min-h-[60vh] items-center justify-center p-6">
+          <div className="glass-panel p-8 max-w-md text-center">
+            <div className="flex justify-center mb-4">
+              <div
+                className="flex h-12 w-12 items-center justify-center rounded-full"
+                style={{ background: "var(--accent-muted)" }}
+              >
+                <span className="font-mono text-lg" style={{ color: "var(--accent)" }}>404</span>
+              </div>
+            </div>
+            <h2 className="font-display text-lg font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
+              Клиент не найден
+            </h2>
+            <p className="text-sm mb-5" style={{ color: "var(--text-muted)" }}>
+              Клиент удалён или у вас нет доступа к карточке.
+            </p>
+            <Link
+              href="/clients"
+              className="inline-flex items-center gap-2 font-bold tracking-wide uppercase rounded-xl px-5 py-2.5 text-sm transition-all"
+              style={{
+                background: "var(--accent)",
+                color: "#fff",
+                boxShadow: "0 2px 12px var(--accent-glow)",
+              }}
+            >
+              ← Вернуться к списку
+            </Link>
+          </div>
         </div>
       </AuthLayout>
     );
@@ -176,8 +266,8 @@ export default function ClientDetailPage() {
             animate={{ opacity: 1, y: 0 }}
             className="mt-4 rounded-xl px-4 py-3 text-sm flex items-center justify-between"
             style={{
-              background: "rgba(239,68,68,0.12)",
-              border: "1px solid rgba(239,68,68,0.2)",
+              background: "var(--danger-muted)",
+              border: "1px solid var(--danger-muted)",
               color: "#FCA5A5",
             }}
           >
@@ -186,8 +276,77 @@ export default function ClientDetailPage() {
           </motion.div>
         )}
 
+        {/* Hero stats row — high-value metrics at a glance */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6"
+        >
+          {/* Debt */}
+          <div className="glass-panel p-3.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+              Долг
+            </div>
+            <div className="font-display text-xl font-bold" style={{ color: "var(--text-primary)" }}>
+              {formatDebt(client.debt_amount ?? 0)} <span className="text-xs font-normal" style={{ color: "var(--text-muted)" }}>₽</span>
+            </div>
+          </div>
+
+          {/* Days since last contact */}
+          <div className="glass-panel p-3.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+              Последний контакт
+            </div>
+            <div className="font-display text-xl font-bold" style={{
+              color: (() => {
+                const last = (client.interactions ?? [])[0]?.created_at;
+                if (!last) return "var(--text-muted)";
+                const days = Math.floor((Date.now() - new Date(last).getTime()) / 86_400_000);
+                if (days > 14) return "var(--danger, #ef4444)";
+                if (days > 7) return "var(--warning, #f59e0b)";
+                return "var(--text-primary)";
+              })(),
+            }}>
+              {(() => {
+                const last = (client.interactions ?? [])[0]?.created_at;
+                if (!last) return "—";
+                const days = Math.floor((Date.now() - new Date(last).getTime()) / 86_400_000);
+                if (days === 0) return "Сегодня";
+                if (days === 1) return "Вчера";
+                return `${days} дн.`;
+              })()}
+            </div>
+          </div>
+
+          {/* Total interactions */}
+          <div className="glass-panel p-3.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+              Взаимодействий
+            </div>
+            <div className="font-display text-xl font-bold" style={{ color: "var(--text-primary)" }}>
+              {client.interactions?.length ?? 0}
+            </div>
+          </div>
+
+          {/* Active consents */}
+          <div className="glass-panel p-3.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+              Согласия
+            </div>
+            <div className="font-display text-xl font-bold" style={{
+              color: (client.active_consents?.length ?? 0) > 0 ? "var(--success, #22c55e)" : "var(--text-muted)",
+            }}>
+              {client.active_consents?.length ?? 0}
+              <span className="text-xs font-normal ml-1" style={{ color: "var(--text-muted)" }}>
+                / {client.consents?.length ?? 0}
+              </span>
+            </div>
+          </div>
+        </motion.div>
+
         {/* Main grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
           {/* Left: Info + Consents */}
           <div className="md:col-span-1 space-y-4">
             {/* Financial */}
@@ -208,7 +367,7 @@ export default function ClientDetailPage() {
                     <span className="text-sm" style={{ color: "var(--text-primary)" }}>{formatDebt(client.income)}</span>
                   </div>
                 )}
-                {client.creditors.length > 0 && (
+                {(client.creditors?.length ?? 0) > 0 && (
                   <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--border-color)" }}>
                     <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>КРЕДИТОРЫ</span>
                     {client.creditors.map((cr, i) => (
@@ -276,13 +435,15 @@ export default function ClientDetailPage() {
 
               {!isReadOnly && showConsentForm && (
                 <div className="mb-3 pb-3 border-b" style={{ borderColor: "var(--border-color)" }}>
-                  <ConsentForm clientId={id} onSubmit={handleConsentSubmit} />
+                  <ConsentForm onSubmit={handleConsentSubmit} />
                 </div>
               )}
 
               <div className="flex flex-wrap gap-2">
-                {client.consents.length > 0 ? (
-                  client.consents.map((c) => <ConsentBadge key={c.id} consent={c} />)
+                {(client.consents?.length ?? 0) > 0 ? (
+                  client.consents!.map((c) => (
+                    <ConsentBadge key={c.id} consent={c} onRevoked={fetchClient} />
+                  ))
                 ) : (
                   <span className="text-xs" style={{ color: "var(--text-muted)" }}>Нет согласий</span>
                 )}
@@ -307,14 +468,138 @@ export default function ClientDetailPage() {
               )}
             </motion.div>
 
+            {/* 2026-04-20: Train with this client — two explicit entry
+                points (chat / voice) живут ЗДЕСЬ на CRM-карточке, а не
+                внутри training-страницы. Раньше пользователи не понимали
+                зачем "живой звонок" показывается внутри чата — теперь
+                выбор mode происходит ДО входа в сессию, как на реальном
+                телефоне: «написать» или «позвонить». */}
+            {!isReadOnly && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.24 }}
+                className="glass-panel p-4"
+                style={{
+                  borderLeft: "3px solid var(--accent)",
+                }}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span
+                    className="text-xs font-semibold uppercase tracking-wide"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    ТРЕНИРОВКА С КЛИЕНТОМ
+                  </span>
+                </div>
+                <p
+                  className="text-xs leading-relaxed mb-3"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Разыграйте диалог с <b style={{ color: "var(--text-primary)" }}>{client.full_name}</b> в двух режимах — как с реальным клиентом: написать в мессенджер или позвонить.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <motion.button
+                    onClick={() => handleStartTraining("chat")}
+                    disabled={!!startingMode}
+                    className="group relative flex flex-col items-start gap-1 rounded-lg p-3 text-left transition disabled:opacity-40"
+                    style={{
+                      background: "var(--input-bg)",
+                      border: "1px solid var(--border-color)",
+                    }}
+                    whileHover={{ y: -2, borderColor: "var(--accent)" } as any}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <div className="flex items-center gap-2 w-full">
+                      {startingMode === "chat" ? (
+                        <Loader2 size={16} className="animate-spin" style={{ color: "var(--accent)" }} />
+                      ) : (
+                        <MessageSquare size={16} style={{ color: "var(--accent)" }} />
+                      )}
+                      <span
+                        className="text-sm font-semibold"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        Написать
+                      </span>
+                      <ArrowRight
+                        size={12}
+                        className="ml-auto opacity-50 group-hover:opacity-100 transition"
+                        style={{ color: "var(--accent)" }}
+                      />
+                    </div>
+                    <span
+                      className="text-[11px] leading-snug"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      Чат-тренировка: текст + подсказки
+                    </span>
+                  </motion.button>
+
+                  <motion.button
+                    onClick={() => handleStartTraining("voice")}
+                    disabled={!!startingMode}
+                    className="group relative flex flex-col items-start gap-1 rounded-lg p-3 text-left transition disabled:opacity-40"
+                    style={{
+                      background:
+                        "color-mix(in srgb, var(--success) 10%, var(--input-bg))",
+                      border:
+                        "1px solid color-mix(in srgb, var(--success) 35%, transparent)",
+                    }}
+                    whileHover={{ y: -2, borderColor: "var(--success)" } as any}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <div className="flex items-center gap-2 w-full">
+                      {startingMode === "voice" ? (
+                        <Loader2 size={16} className="animate-spin" style={{ color: "var(--success)" }} />
+                      ) : (
+                        <PhoneCall size={16} style={{ color: "var(--success)" }} />
+                      )}
+                      <span
+                        className="text-sm font-semibold"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        Позвонить
+                      </span>
+                      <ArrowRight
+                        size={12}
+                        className="ml-auto opacity-50 group-hover:opacity-100 transition"
+                        style={{ color: "var(--success)" }}
+                      />
+                    </div>
+                    <span
+                      className="text-[11px] leading-snug"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      Голосовой звонок: микрофон + AI-голос
+                    </span>
+                  </motion.button>
+                </div>
+
+                {actionError && (
+                  <div
+                    className="mt-2 text-xs rounded-md px-2 py-1.5"
+                    style={{
+                      background:
+                        "color-mix(in srgb, var(--danger) 12%, transparent)",
+                      color: "var(--danger)",
+                    }}
+                  >
+                    {actionError}
+                  </div>
+                )}
+              </motion.div>
+            )}
+
             {/* Tags */}
-            {client.tags.length > 0 && (
+            {(client.tags?.length ?? 0) > 0 && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
                 className="glass-panel p-4"
               >
                 <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>ТЕГИ</span>
                 <div className="flex flex-wrap gap-1.5 mt-2">
-                  {client.tags.map((tag) => (
+                  {client.tags!.map((tag) => (
                     <span
                       key={tag}
                       className="text-xs font-medium px-2 py-0.5 rounded-full"
@@ -350,7 +635,7 @@ export default function ClientDetailPage() {
                 </motion.button>
               )}
             </div>
-            <ClientTimeline interactions={client.interactions} />
+            <ClientTimeline interactions={client.interactions ?? []} />
           </motion.div>
         </div>
       </div>

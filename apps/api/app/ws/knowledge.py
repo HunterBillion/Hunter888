@@ -191,8 +191,14 @@ async def _auth_websocket(ws: WebSocket) -> tuple[uuid.UUID, str] | None:
         username = user.full_name or user.email or str(user_id)[:8]
 
     # Check if user was logged out (token blacklisted)
-    from app.core.deps import _is_user_blacklisted
+    from app.core.deps import _is_user_blacklisted, _is_token_revoked
     if await _is_user_blacklisted(str(user_id)):
+        await _send(ws, "auth.error", {"message": "Token has been revoked"})
+        return None
+
+    # Per-token JTI revocation
+    jti = payload.get("jti")
+    if jti and await _is_token_revoked(jti):
         await _send(ws, "auth.error", {"message": "Token has been revoked"})
         return None
 
@@ -434,6 +440,65 @@ async def _start_solo_quiz(
             "instruction": "Прочитайте описание дела. Далее последуют вопросы по нему.",
         })
 
+    # ── quiz_v2: start case-driven session (2026-04-18) ──────────────────────
+    # Feature-flagged. When enabled and mode supports cases (not blitz/srs),
+    # we pick a case, store session state in Redis, emit case.intro BEFORE
+    # the first question so the UI can show the case card.
+    try:
+        from app.services.quiz_v2.integration import start_session_v2, _is_enabled
+        if _is_enabled() and mode.value not in ("blitz", "srs_review", "pvp", "debate", "mock_court"):
+            # 2026-04-18: derive user_level from user progress (best-effort)
+            _user_level = 1
+            try:
+                from app.models.progress import UserProgress as _UP
+                async with async_session() as _lvl_db:
+                    _up_res = await _lvl_db.execute(
+                        select(_UP).where(_UP.user_id == user_id)
+                    )
+                    _up = _up_res.scalar_one_or_none()
+                    if _up and _up.current_level:
+                        _user_level = int(_up.current_level)
+            except Exception as _lvl_exc:
+                logger.debug("quiz_v2: user_level lookup failed (using 1): %s", _lvl_exc)
+
+            v2_res = await start_session_v2(
+                session_id=session_id,
+                mode=mode.value,
+                user_level=_user_level,
+                user_id=str(user_id),
+                personality="detective" if (personality.name == "detective" or "detect" in (personality.name or "").lower()) else "professor",
+                difficulty=3,
+                category=state.category,
+            )
+            if v2_res is not None:
+                # Override session length to match case complexity
+                state.total_questions = v2_res.total_questions
+                # ── TTS intro audio (2026-04-18 Этап 2) ───────────────────
+                # Best-effort: synth via navy.api; fires a follow-up
+                # case.intro.audio event so the card can render
+                # immediately and audio streams in when ready.
+                await _send(ws, "case.intro", {
+                    "case_id": v2_res.case.case_id,
+                    "complexity": v2_res.case.complexity,
+                    "intro_text": v2_res.intro_text,
+                    "total_questions": v2_res.total_questions,
+                    "personality": v2_res.personality,
+                })
+                try:
+                    from app.services.quiz_v2.voice import synth_case_intro_audio
+                    audio_data_url = await synth_case_intro_audio(
+                        v2_res.intro_text, v2_res.personality,
+                    )
+                    if audio_data_url:
+                        await _send(ws, "case.intro.audio", {
+                            "case_id": v2_res.case.case_id,
+                            "audio_url": audio_data_url,
+                        })
+                except Exception as _tts_exc:
+                    logger.warning("quiz_v2.ws.tts_intro failed: %s", _tts_exc)
+    except Exception as _v2_exc:
+        logger.warning("quiz_v2.ws.start hook failed: %s", _v2_exc)
+
     # Generate and send first question
     await _next_question(ws, state)
     return state
@@ -595,6 +660,26 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
         "hint_available": hint_available,
         "current_difficulty": state.current_difficulty,
     }
+
+    # ── quiz_v2: wrap question with narrative frame (2026-04-18) ─────────
+    # Non-fatal: on any error we ship the bare text as before.
+    try:
+        from app.services.quiz_v2.integration import shape_next_question_v2, _is_enabled
+        if _is_enabled():
+            v2_shape = await shape_next_question_v2(
+                session_id=state.session_id,
+                question_number=state.current_question,
+                bare_question_text=question.question_text,
+            )
+            if v2_shape is not None:
+                question_msg["text"] = v2_shape.wrapped_text
+                question_msg["bare_text"] = v2_shape.bare_text  # for logs / debug
+                question_msg["beat"] = v2_shape.beat.value
+                question_msg["beat_label"] = v2_shape.beat.ru_label
+                question_msg["rung"] = v2_shape.rung.value
+    except Exception as _v2_exc:
+        logger.warning("quiz_v2.ws.shape_question failed: %s", _v2_exc)
+
     # SRS mode: include Leitner box and review metadata
     if state.mode == QuizMode.srs_review and state.srs_current_item:
         question_msg["srs_meta"] = {
@@ -645,34 +730,68 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
         logger.warning("Jailbreak attempt in knowledge quiz from user")
     text, _input_violations = filter_user_input(text)
 
+    # 2026-04-18: removed legacy "human_moment retry" path.
+    # Reason: it intercepted off-topic / typo replies BEFORE the garbage
+    # detector and returned a generic "Это не совсем по теме" without the
+    # correct answer and without counting as wrong. User feedback:
+    # "нет объяснения! и очень медленно работает!"
+    # New behavior: every off-topic/garbage answer falls through to
+    # evaluate_answer() which ALWAYS surfaces the correct answer via
+    # question.blitz_answer or expected_article + no silent retries.
+
     # Cancel blitz timer
     if state.timer_task and not state.timer_task.done():
         state.timer_task.cancel()
 
     response_time_ms = int((time.time() - state.question_start_time) * 1000)
 
-    # V2: Use evaluate_answer_v2 with personality prompt
+    # 2026-04-18: STREAMING EVALUATION
+    # Replaced awaited full-JSON call with generator that yields:
+    #   verdict event → ✓/✖ visible in <1-2s (fast paths are instant)
+    #   chunk events  → text appears token-by-token for slow LLM path
+    #   final event   → structured feedback when done
+    # Client sees immediate ✓/✖ + streaming explanation instead of 5-8s silence.
     personality_prompt = state.personality.system_prompt if state.personality else None
+    _ = personality_prompt  # reserved for future streaming prompt flavor
+    result = None
+    stream_question_id = state.current_question
     async with async_session() as db:
         try:
-            async with asyncio.timeout(15):
-                result = await evaluate_answer_v2(
+            from app.services.knowledge_quiz import evaluate_answer_streaming
+            async with asyncio.timeout(30):
+                async for event in evaluate_answer_streaming(
                     db,
                     question=state.current_q,
                     user_answer=text,
                     mode=state.mode,
-                    personality_prompt=personality_prompt,
-                )
+                ):
+                    etype = event.get("type")
+                    if etype == "verdict":
+                        await _send(ws, "quiz.feedback.verdict", {
+                            "question_number": stream_question_id,
+                            "is_correct": event.get("is_correct", False),
+                            "correct_answer": event.get("correct_answer"),
+                            "article_reference": event.get("article_reference"),
+                            "fast_path": event.get("fast_path"),
+                        })
+                    elif etype == "chunk":
+                        await _send(ws, "quiz.feedback.chunk", {
+                            "question_number": stream_question_id,
+                            "text": event.get("text", ""),
+                        })
+                    elif etype == "final":
+                        result = event.get("feedback")
         except (TimeoutError, Exception) as exc:
-            logger.warning("evaluate_answer_v2 timeout/error: %s", exc)
-            # Fallback: mark as incorrect with generic feedback
-            from app.services.knowledge_quiz import QuizFeedback
-            result = QuizFeedback(
-                is_correct=False,
-                explanation="Не удалось оценить ответ из-за таймаута. Попробуйте ответить более развёрнуто.",
-                article_reference="",
-                score_delta=0.0,
-            )
+            logger.warning("evaluate_answer_streaming timeout/error: %s", exc)
+
+    if result is None:
+        from app.services.knowledge_quiz import QuizFeedback
+        result = QuizFeedback(
+            is_correct=False,
+            explanation="Не удалось оценить ответ из-за таймаута. Попробуйте ответить развёрнуто.",
+            article_reference="",
+            score_delta=0.0,
+        )
 
     # Calculate score delta
     speed_bonus = 0.0
@@ -690,6 +809,22 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
 
     # V2: Update adaptive difficulty
     new_difficulty = state.update_adaptive_difficulty(result.is_correct)
+
+    # ── quiz_v2: record answer in session memory (2026-04-18) ────────────
+    try:
+        from app.services.quiz_v2.integration import record_answer_v2, _is_enabled
+        from app.services.quiz_v2.ramp import DifficultyRamp
+        if _is_enabled():
+            rung_v2 = DifficultyRamp.rung_for_question(state.current_question, state.total_questions)
+            await record_answer_v2(
+                session_id=state.session_id,
+                q_idx=state.current_question,
+                correct=bool(result.is_correct),
+                rung=rung_v2,
+                chunk_id=str(state.current_q.chunk_id) if state.current_q.chunk_id else None,
+            )
+    except Exception as _v2_exc:
+        logger.warning("quiz_v2.ws.record_answer failed: %s", _v2_exc)
 
     # V2: Get personality reaction
     personality_comment = ""
@@ -919,6 +1054,14 @@ async def _finish_solo_quiz(ws: WebSocket, state: _SoloQuizState) -> None:
 
     if state.timer_task and not state.timer_task.done():
         state.timer_task.cancel()
+
+    # ── quiz_v2: clear session state (2026-04-18) ─────────────────────────
+    try:
+        from app.services.quiz_v2.integration import end_session_v2, _is_enabled
+        if _is_enabled():
+            await end_session_v2(state.session_id)
+    except Exception as _v2_exc:
+        logger.warning("quiz_v2.ws.end_session failed: %s", _v2_exc)
 
     # Update DB session and calculate results
     async with async_session() as db:
@@ -1795,7 +1938,34 @@ async def _pvp_game_loop_redis(session_id: str) -> None:
                 bonus = speed_bonuses.get(pid, 0)
                 total_score = score + bonus
 
-                await arena.update_player_score(session_id, pid, total_score, is_correct)
+                # Phase C (2026-04-20): power-up multiplier.
+                # If the player armed a ×2 usage before this round, apply
+                # it to the combined (answer + speed) score and consume
+                # the arm. Only real players; bots have no session with
+                # lifeline/powerup Redis state.
+                powerup_multiplier = 1.0
+                powerup_kind: str | None = None
+                if not pid.startswith("bot_"):
+                    try:
+                        from app.services.arena.powerups import (
+                            peek_active as _pu_peek,
+                            pop_active_multiplier as _pu_pop,
+                        )
+                        powerup_kind = await _pu_peek(
+                            session_id=session_id, user_id=pid,
+                        )
+                        if powerup_kind:
+                            powerup_multiplier = await _pu_pop(
+                                session_id=session_id, user_id=pid,
+                            )
+                    except Exception:  # noqa: BLE001 — powerup is best-effort
+                        logger.debug(
+                            "powerup apply failed session=%s user=%s",
+                            session_id, pid, exc_info=True,
+                        )
+                scored_total = total_score * powerup_multiplier
+
+                await arena.update_player_score(session_id, pid, scored_total, is_correct)
 
                 player_data = await arena.get_player(session_id, pid)
                 player_results.append({
@@ -1806,6 +1976,10 @@ async def _pvp_game_loop_redis(session_id: str) -> None:
                     "speed_bonus": bonus,
                     "is_correct": is_correct,
                     "comment": ep.get("comment", ""),
+                    # Expose power-up application to the UI so the client
+                    # can render a "×2 применено!" flash over the result.
+                    "powerup_applied": powerup_kind if powerup_multiplier != 1.0 else None,
+                    "powerup_multiplier": powerup_multiplier,
                 })
 
             # Save answers to DB + SRS tracking
@@ -1992,19 +2166,21 @@ async def _finalize_match(
         except ImportError:
             logger.warning("Anti-cheat module not available")
 
-    # ── Update ratings (only real players, not flagged, no bots) ──
-    if not contains_bot:
-        try:
-            from app.services.arena_rating import update_arena_rating_after_pvp
+    # ── FIX-5 (v13): Single transaction for ratings + session + participants ──
+    # Previously used 3 separate async_session() contexts. If rating commit
+    # succeeded but session update failed, state was inconsistent.
+    async with async_session() as db:
+        # Update ratings (only real players, not flagged, no bots)
+        if not contains_bot:
+            try:
+                from app.services.arena_rating import update_arena_rating_after_pvp
 
-            # Filter out flagged users from rankings
-            eligible_rankings = [
-                r for r in rankings
-                if not r["is_bot"] and r["user_id"] not in flagged_users
-            ]
+                eligible_rankings = [
+                    r for r in rankings
+                    if not r["is_bot"] and r["user_id"] not in flagged_users
+                ]
 
-            if len(eligible_rankings) >= 2:
-                async with async_session() as db:
+                if len(eligible_rankings) >= 2:
                     deltas = await update_arena_rating_after_pvp(
                         session_id=uuid.UUID(session_id),
                         rankings=eligible_rankings,
@@ -2012,12 +2188,10 @@ async def _finalize_match(
                     )
                     for r in rankings:
                         r["rating_delta"] = deltas.get(r["user_id"], 0.0)
-                    await db.commit()
-        except Exception as e:
-            logger.error("Failed to update arena ratings: %s", e)
+            except Exception as e:
+                logger.error("Failed to update arena ratings: %s", e)
 
-    # ── Update DB ──
-    async with async_session() as db:
+        # Update session status
         db_session = await db.get(KnowledgeQuizSession, uuid.UUID(session_id))
         if db_session:
             db_session.status = QuizSessionStatus.completed
@@ -2030,7 +2204,6 @@ async def _finalize_match(
                 db_session.duration_seconds = int(
                     (datetime.now(timezone.utc) - started).total_seconds()
                 )
-            await db.commit()
 
         # Update participant scores and ranks
         for ranking in rankings:
@@ -2048,6 +2221,7 @@ async def _finalize_match(
                 participant.score = ranking["score"]
                 participant.final_rank = ranking["rank"]
                 participant.correct_answers = ranking["correct"]
+
         await db.commit()
 
     # ── Gamification: XP, streaks, achievements for each human player ──
@@ -2684,10 +2858,47 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
 
         # ── Step 2: Message loop ──
         _rate_limiter = knowledge_limiter()
+        # Phase D (2026-04-20): idle heartbeat + hang kill (mirror of
+        # /ws/pvp). Hung clients (mobile goes to background, broken WiFi)
+        # previously stayed connected indefinitely; now 30s of silence
+        # triggers a server ping, 120s triggers a hard close.
+        _KN_IDLE_PING_SEC = 30
+        _KN_IDLE_KILL_SEC = 120
+        _kn_last_msg_at = time.time()
         while True:
-            raw = await websocket.receive_text()
+            try:
+                raw = await asyncio.wait_for(
+                    websocket.receive_text(), timeout=_KN_IDLE_PING_SEC,
+                )
+                _kn_last_msg_at = time.time()
+            except asyncio.TimeoutError:
+                if time.time() - _kn_last_msg_at > _KN_IDLE_KILL_SEC:
+                    logger.info(
+                        "Knowledge WS idle-kill user=%s (no msg for %.0fs)",
+                        user_id, time.time() - _kn_last_msg_at,
+                    )
+                    try:
+                        await websocket.close(code=1001)
+                    except Exception:
+                        pass
+                    break
+                try:
+                    await _send(websocket, "ping", {})
+                except Exception:
+                    break
+                continue
             if not _rate_limiter.is_allowed():
                 await _send_error(websocket, "Too many messages", "rate_limited")
+                continue
+
+            # L6c fix: per-user rate limit across all connections (Redis).
+            from app.core.ws_rate_limiter import check_user_rate_limit
+            if not await check_user_rate_limit(str(user_id), scope="knowledge"):
+                await _send_error(
+                    websocket,
+                    "Слишком много сообщений со всех ваших сессий.",
+                    "rate_limited_user",
+                )
                 continue
             try:
                 msg = json.loads(raw)
@@ -2711,7 +2922,17 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
 
             # ── Answer (solo mode) — supports both "text.message" and "answer" from frontend ──
             elif msg_type in ("text.message", "answer"):
-                text = (data.get("text") or msg.get("content") or "").strip()
+                # T2 fix: bound WS text input at 10KB. Quiz answers are
+                # typically short, but unbounded input could stuff the LLM
+                # eval prompt and cause OOM / timeout.
+                _WS_MAX_TEXT_CHARS = 10_000
+                raw_text = (data.get("text") or msg.get("content") or "").strip()
+                if len(raw_text) > _WS_MAX_TEXT_CHARS:
+                    logger.warning(
+                        "WS knowledge answer truncated from %d to %d chars",
+                        len(raw_text), _WS_MAX_TEXT_CHARS,
+                    )
+                text = raw_text[:_WS_MAX_TEXT_CHARS]
                 if not text:
                     await _send_error(websocket, "Empty answer", "empty_text")
                     continue

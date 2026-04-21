@@ -4,9 +4,13 @@ Provides access to behavioral profiles, trends, daily advice,
 and team alerts for ROP.
 """
 
+import logging
 import uuid
 from datetime import date
 
+from app.core.rate_limit import limiter
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,10 +22,7 @@ from app.services.behavior_tracker import get_user_behavior_history
 from app.services.manager_emotion_profiler import get_or_create_profile
 from app.services.progress_detector import detect_trends, get_user_trend_history, get_team_alerts
 from app.services.daily_advice import get_today_advice
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
-limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/behavior", tags=["behavior"])
 
@@ -118,14 +119,18 @@ async def get_daily_advice(
     Generates automatically if not yet created for today.
     """
     advice = await get_today_advice(user.id, db)
-    await db.commit()
 
     if advice is None:
+        await db.commit()  # flush any pending state from get_today_advice
         return {"advice": None, "message": "Нет данных для формирования совета. Пройдите первую тренировку!"}
 
-    # Mark as viewed
+    # Mark as viewed + commit all pending changes in one transaction
     advice.was_viewed = True
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        logger.exception("Failed to commit daily advice for user %s", user.id)
+        await db.rollback()
 
     return {
         "advice": {
@@ -158,7 +163,12 @@ async def mark_advice_acted(
     if advice is None:
         raise HTTPException(404, "Advice not found")
     advice.was_acted_on = True
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        logger.exception("Failed to commit advice acted status for advice %s", advice_id)
+        await db.rollback()
+        raise HTTPException(500, "Не удалось сохранить")
     return {"status": "ok"}
 
 

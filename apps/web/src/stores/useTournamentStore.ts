@@ -125,12 +125,10 @@ export const useTournamentStore = create<TournamentState>((set) => ({
   },
 
   registerForBracket: async (tournamentId: string) => {
-    try {
-      await api.post(`/tournament/bracket/${tournamentId}/register`, {});
-      return true;
-    } catch {
-      return false;
-    }
+    // Propagates ApiError so UI can show the actual reason (already registered,
+    // registration closed, rate limited, etc.). Callers should try/catch and toast.
+    await api.post(`/tournament/bracket/${tournamentId}/register`, {});
+    return true;
   },
 
   reset: () => set({

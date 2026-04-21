@@ -89,7 +89,7 @@ export default function SeasonPassWidget({
               key={tier.tier}
               className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${
                 unlocked
-                  ? "bg-[var(--success)]/10 text-[var(--text-primary)]"
+                  ? "bg-[var(--success-muted)] text-[var(--text-primary)]"
                   : "bg-[var(--bg-tertiary)] text-[var(--text-muted)]"
               }`}
             >

@@ -67,5 +67,6 @@ class UserResponse(BaseModel):
     onboarding_completed: bool = False
     google_id: str | None = None
     yandex_id: str | None = None
+    team_id: str | None = None
 
     model_config = {"from_attributes": True}

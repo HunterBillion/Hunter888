@@ -3,9 +3,8 @@
 import secrets
 from uuid import UUID
 
+from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +18,6 @@ from app.schemas.training import (
 )
 
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 MAX_CHARACTERS_PER_USER = 50  # FIX-14: increased from 20
 

@@ -14,6 +14,11 @@
 
 const _SS_REFRESH_KEY = "vh_rt";
 
+// In production behind a reverse proxy (same origin), the httpOnly refresh_token
+// cookie works natively. In development (cross-origin ports 3000 → 8000),
+// sessionStorage is used as a reload-safe fallback for the refresh token.
+const _persistRefreshToken = process.env.NODE_ENV !== "production";
+
 // In-memory token cache — lives only for the current tab session.
 let _accessToken: string | null = null;
 let _refreshToken: string | null = null;
@@ -27,7 +32,7 @@ export function getToken(): string | null {
 export function getRefreshToken(): string | null {
   if (_refreshToken) return _refreshToken;
   // Fallback: sessionStorage survives page reloads within the same tab.
-  if (typeof sessionStorage !== "undefined") {
+  if (_persistRefreshToken && typeof sessionStorage !== "undefined") {
     try {
       return sessionStorage.getItem(_SS_REFRESH_KEY);
     } catch { /* SSR or blocked */ }
@@ -38,8 +43,8 @@ export function getRefreshToken(): string | null {
 export function setTokens(accessToken: string, refreshToken: string, csrfToken?: string): void {
   _accessToken = accessToken;
   _refreshToken = refreshToken;
-  // Persist refresh token to sessionStorage for page-reload recovery.
-  if (typeof sessionStorage !== "undefined") {
+  // Persist refresh token to sessionStorage for page-reload recovery (dev only).
+  if (_persistRefreshToken && typeof sessionStorage !== "undefined") {
     try {
       sessionStorage.setItem(_SS_REFRESH_KEY, refreshToken);
     } catch { /* SSR or blocked */ }
@@ -63,7 +68,7 @@ export function setTokens(accessToken: string, refreshToken: string, csrfToken?:
 export function clearTokens(): void {
   _accessToken = null;
   _refreshToken = null;
-  if (typeof sessionStorage !== "undefined") {
+  if (_persistRefreshToken && typeof sessionStorage !== "undefined") {
     try { sessionStorage.removeItem(_SS_REFRESH_KEY); } catch {}
   }
   // Clear the JS-readable marker cookie to prevent redirect loops.
@@ -74,6 +79,10 @@ export function clearTokens(): void {
       document.cookie = "vh_authenticated=; path=/; max-age=0; samesite=lax";
     } catch {}
   }
+  // Reset notification WS module flags so next login re-fetches and re-connects
+  import("@/providers/NotificationWSProvider")
+    .then(({ resetNotificationWSFlags }) => resetNotificationWSFlags())
+    .catch(() => { /* provider not loaded yet — safe to skip */ });
 }
 
 /**

@@ -5,12 +5,14 @@ import { logger } from "@/lib/logger";
 import { getRefreshToken, getToken, setTokens } from "@/lib/auth";
 import { getApiBaseUrl } from "@/lib/public-origin";
 import { createWebSocket } from "@/lib/ws";
+import { tryRefreshToken } from "@/lib/api";
 import type { WSConnectionState, WSMessage } from "@/types";
 
 interface UseWebSocketOptions {
   path?: string;
   onMessage?: (data: WSMessage) => void;
   onError?: (error: Event) => void;
+  onReconnectFailed?: () => void;
   autoConnect?: boolean;
   /** Session ID for resume after reconnect (from useSessionStore) */
   sessionId?: string | null;
@@ -22,11 +24,13 @@ const HEARTBEAT_INTERVAL = 30_000; // 30 seconds
 const MAX_RECONNECT_DELAY = 30_000; // 30 seconds max
 const INITIAL_RECONNECT_DELAY = 1_000; // 1 second
 const TOKEN_REFRESH_INTERVAL = 25 * 60 * 1000; // 25 minutes (token TTL = 30 min)
+const MAX_RECONNECT_ATTEMPTS = 15;
 
 export function useWebSocket({
   path = "/ws/training",
   onMessage,
   onError,
+  onReconnectFailed,
   autoConnect = true,
   sessionId = null,
   lastSequenceNumber = null,
@@ -37,7 +41,9 @@ export function useWebSocket({
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef(onMessage);
   const onErrorRef = useRef(onError);
+  const onReconnectFailedRef = useRef(onReconnectFailed);
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY);
+  const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tokenRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -55,9 +61,12 @@ export function useWebSocket({
   // Keep refs up to date
   onMessageRef.current = onMessage;
   onErrorRef.current = onError;
+  onReconnectFailedRef.current = onReconnectFailed;
   pathRef.current = path;
   sessionIdRef.current = sessionId;
   lastSeqRef.current = lastSequenceNumber;
+
+  const wsRefreshFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimers = useCallback(() => {
     if (reconnectTimerRef.current) {
@@ -71,6 +80,10 @@ export function useWebSocket({
     if (tokenRefreshTimerRef.current) {
       clearInterval(tokenRefreshTimerRef.current);
       tokenRefreshTimerRef.current = null;
+    }
+    if (wsRefreshFallbackRef.current) {
+      clearTimeout(wsRefreshFallbackRef.current);
+      wsRefreshFallbackRef.current = null;
     }
   }, []);
 
@@ -100,6 +113,16 @@ export function useWebSocket({
             }),
           );
           logger.log("[WS] Proactive token refresh sent");
+
+          // Timeout: if no auth.refreshed response within 5s, fallback to REST
+          if (wsRefreshFallbackRef.current) clearTimeout(wsRefreshFallbackRef.current);
+          wsRefreshFallbackRef.current = setTimeout(() => {
+            logger.log("[WS] Token refresh via WS timed out, falling back to REST");
+            tryRefreshToken().catch(() => {
+              logger.error("[WS] REST token refresh fallback also failed");
+            });
+            wsRefreshFallbackRef.current = null;
+          }, 5_000);
         }
       }
     }, TOKEN_REFRESH_INTERVAL);
@@ -176,6 +199,7 @@ export function useWebSocket({
         if (!mountedRef.current) return;
         setConnectionState("connected");
         reconnectDelayRef.current = INITIAL_RECONNECT_DELAY;
+        reconnectAttemptsRef.current = 0;
         hasConnectedRef.current = true;
         startHeartbeat();
         startTokenRefresh();
@@ -206,11 +230,19 @@ export function useWebSocket({
 
           // Handle token refresh responses internally
           if (data.type === "auth.refreshed") {
+            if (wsRefreshFallbackRef.current) {
+              clearTimeout(wsRefreshFallbackRef.current);
+              wsRefreshFallbackRef.current = null;
+            }
             setTokens(data.data.access_token, data.data.refresh_token, data.data.csrf_token);
             logger.log("[WS] Token refreshed via WS");
             return;
           }
           if (data.type === "auth.refresh_error") {
+            if (wsRefreshFallbackRef.current) {
+              clearTimeout(wsRefreshFallbackRef.current);
+              wsRefreshFallbackRef.current = null;
+            }
             if (data.data.reason === "refresh_expired") {
               logger.error("[WS] Refresh token expired, redirecting to login");
               window.location.href = "/login";
@@ -235,8 +267,17 @@ export function useWebSocket({
         clearTimers();
 
         // 4001 = Superseded by newer connection — don't reconnect
-        if (event.code === 4001) {
+        // 4002 = Session hijacked by another connection — don't reconnect
+        // (Auto-reconnect caused lock-race cascade; user reloads page manually via F5 if needed.)
+        if (event.code === 4001 || event.code === 4002) {
           setConnectionState("disconnected");
+          return;
+        }
+
+        // 4003 = Token revoked — redirect to login, don't reconnect
+        if (event.code === 4003) {
+          setConnectionState("disconnected");
+          window.location.href = "/login";
           return;
         }
 
@@ -260,8 +301,18 @@ export function useWebSocket({
 
         // Auto-reconnect with exponential backoff unless manually closed
         if (!manualCloseRef.current) {
+          reconnectAttemptsRef.current++;
+
+          if (reconnectAttemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
+            logger.warn(`[WS] Reconnect failed after ${MAX_RECONNECT_ATTEMPTS} attempts`);
+            setConnectionState("disconnected");
+            onReconnectFailedRef.current?.();
+            return;
+          }
+
           setConnectionState("reconnecting");
           const delay = reconnectDelayRef.current;
+          logger.log(`[WS] Reconnecting in ${Math.round(delay)}ms (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`);
           // BUG-9 fix: use connectRef to avoid stale closure
           reconnectTimerRef.current = setTimeout(() => {
             if (mountedRef.current && !manualCloseRef.current) {

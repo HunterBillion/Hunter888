@@ -8,11 +8,12 @@ and gates level-up on required checkpoints.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select, and_
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.checkpoint import CheckpointDefinition, UserCheckpoint
@@ -148,13 +149,13 @@ class CheckpointValidator:
                 user_id=user_id,
                 checkpoint_id=cp_def.id,
                 is_completed=True,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
                 xp_awarded=True,
             )
             self.db.add(ucp)
         else:
             ucp.is_completed = True
-            ucp.completed_at = datetime.utcnow()
+            ucp.completed_at = datetime.now(timezone.utc)
             ucp.xp_awarded = True
 
         return True, cp_def.xp_reward
@@ -173,23 +174,23 @@ class CheckpointValidator:
         )
         definitions = defs_result.scalars().all()
 
+        # Use INSERT ON CONFLICT DO NOTHING to avoid TOCTOU race and unique violation
+        now = datetime.now(timezone.utc)
         completed = 0
         for cp_def in definitions:
-            # Check if already exists
-            existing = await self.db.execute(
-                select(UserCheckpoint).where(
-                    UserCheckpoint.user_id == user_id,
-                    UserCheckpoint.checkpoint_id == cp_def.id,
-                )
-            )
-            if not existing.scalar_one_or_none():
-                self.db.add(UserCheckpoint(
+            stmt = (
+                pg_insert(UserCheckpoint.__table__)
+                .values(
                     user_id=user_id,
                     checkpoint_id=cp_def.id,
                     is_completed=True,
-                    completed_at=datetime.utcnow(),
+                    completed_at=now,
                     xp_awarded=False,  # Don't double-award XP
-                ))
+                )
+                .on_conflict_do_nothing(constraint="uq_user_checkpoint")
+            )
+            result = await self.db.execute(stmt)
+            if result.rowcount:
                 completed += 1
 
         return completed

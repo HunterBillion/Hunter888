@@ -20,48 +20,90 @@ branch_labels = None
 depends_on = None
 
 
+def _table_exists(table: str) -> bool:
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = :t)"
+    ), {"t": table})
+    return result.scalar()
+
+
+def _col_exists(table: str, column: str) -> bool:
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND table_name = :t AND column_name = :c)"
+    ), {"t": table, "c": column})
+    return result.scalar()
+
+
+def _add_column_safe(table: str, col: sa.Column) -> None:
+    if not _table_exists(table):
+        return
+    if _col_exists(table, col.name):
+        return
+    op.add_column(table, col)
+
+
 def upgrade() -> None:
+    if not _table_exists("custom_characters"):
+        # Table doesn't exist yet — skip all custom_characters alterations
+        # Only add column to training_sessions if it exists
+        if _table_exists("training_sessions") and not _col_exists("training_sessions", "custom_character_id"):
+            op.add_column("training_sessions", sa.Column("custom_character_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=True))
+        return
+
     # Step 3: Client context
-    op.add_column("custom_characters", sa.Column("family_preset", sa.String(30), nullable=True))
-    op.add_column("custom_characters", sa.Column("creditors_preset", sa.String(20), nullable=True))
-    op.add_column("custom_characters", sa.Column("debt_stage", sa.String(30), nullable=True))
-    op.add_column("custom_characters", sa.Column("debt_range", sa.String(30), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("family_preset", sa.String(30), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("creditors_preset", sa.String(20), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("debt_stage", sa.String(30), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("debt_range", sa.String(30), nullable=True))
 
     # Step 4: Emotional preset
-    op.add_column("custom_characters", sa.Column("emotion_preset", sa.String(30), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("emotion_preset", sa.String(30), nullable=True))
 
     # Step 6: Environment modifiers
-    op.add_column("custom_characters", sa.Column("bg_noise", sa.String(20), nullable=True))
-    op.add_column("custom_characters", sa.Column("time_of_day", sa.String(20), nullable=True))
-    op.add_column("custom_characters", sa.Column("client_fatigue", sa.String(20), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("bg_noise", sa.String(20), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("time_of_day", sa.String(20), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("client_fatigue", sa.String(20), nullable=True))
 
     # Step 7: Cached preview
-    op.add_column("custom_characters", sa.Column("cached_dossier", sa.Text(), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("cached_dossier", sa.Text(), nullable=True))
 
     # Statistics
-    op.add_column("custom_characters", sa.Column("play_count", sa.Integer(), server_default="0", nullable=False))
-    op.add_column("custom_characters", sa.Column("best_score", sa.Integer(), nullable=True))
-    op.add_column("custom_characters", sa.Column("avg_score", sa.Integer(), nullable=True))
-    op.add_column("custom_characters", sa.Column("last_played_at", sa.DateTime(), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("play_count", sa.Integer(), server_default="0", nullable=False))
+    _add_column_safe("custom_characters", sa.Column("best_score", sa.Integer(), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("avg_score", sa.Integer(), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("last_played_at", sa.DateTime(), nullable=True))
 
     # Metadata
-    op.add_column("custom_characters", sa.Column("updated_at", sa.DateTime(), nullable=True))
-    op.add_column("custom_characters", sa.Column("is_shared", sa.Boolean(), server_default="false", nullable=False))
-    op.add_column("custom_characters", sa.Column("share_code", sa.String(20), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("updated_at", sa.DateTime(), nullable=True))
+    _add_column_safe("custom_characters", sa.Column("is_shared", sa.Boolean(), server_default="false", nullable=False))
+    _add_column_safe("custom_characters", sa.Column("share_code", sa.String(20), nullable=True))
 
     # Index for share_code lookups
-    op.create_index("ix_custom_characters_share_code", "custom_characters", ["share_code"], unique=True)
+    op.get_bind().execute(sa.text(
+        'CREATE UNIQUE INDEX IF NOT EXISTS "ix_custom_characters_share_code" ON "custom_characters" ("share_code")'
+    ))
 
     # Link training sessions to custom characters
-    op.add_column("training_sessions", sa.Column("custom_character_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=True))
-    op.create_foreign_key(
-        "fk_training_sessions_custom_character_id",
-        "training_sessions",
-        "custom_characters",
-        ["custom_character_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    _add_column_safe("training_sessions", sa.Column("custom_character_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=True))
+    if _table_exists("training_sessions") and _col_exists("training_sessions", "custom_character_id"):
+        conn = op.get_bind()
+        conn.execute(sa.text("SAVEPOINT _fk_cc"))
+        try:
+            op.create_foreign_key(
+                "fk_training_sessions_custom_character_id",
+                "training_sessions",
+                "custom_characters",
+                ["custom_character_id"],
+                ["id"],
+                ondelete="SET NULL",
+            )
+            conn.execute(sa.text("RELEASE SAVEPOINT _fk_cc"))
+        except Exception:
+            conn.execute(sa.text("ROLLBACK TO SAVEPOINT _fk_cc"))
 
 
 def downgrade() -> None:

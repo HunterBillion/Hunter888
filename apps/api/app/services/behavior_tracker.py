@@ -23,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.behavior import BehaviorSnapshot
+from app.services.content_filter import strip_pii
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +153,7 @@ def extract_message_signal(
 
     return MessageSignal(
         sequence=sequence,
-        text=text[:200],  # Truncate for storage
+        text=strip_pii(text[:200]),  # S1-06: Strip PII before storage, truncate to 200
         length=len(text),
         response_time_ms=response_time_ms,
         confidence=confidence,
@@ -281,7 +282,7 @@ def analyze_session_behavior(
         "confidence_per_message": [round(s.confidence, 2) for s in signals],
         "legal_terms_used": list(all_legal),
         "hesitation_phrases": [
-            {"msg": s.sequence, "phrase": p}
+            {"msg": s.sequence, "phrase": strip_pii(p)}
             for s in signals for p in s.hesitation_phrases_found
         ],
     }
@@ -361,3 +362,29 @@ async def get_user_behavior_history(
         .limit(limit)
     )
     return list(result.scalars().all())
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# S1-06: TTL cleanup for behavior logs (90 days)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+BEHAVIOR_TTL_DAYS = 90
+
+
+async def cleanup_old_behavior_snapshots(db: AsyncSession) -> int:
+    """Delete behavior snapshots older than BEHAVIOR_TTL_DAYS.
+
+    Should be called periodically (e.g. daily cron / celery beat).
+    Returns count of deleted rows.
+    """
+    from sqlalchemy import delete
+    from datetime import timedelta
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=BEHAVIOR_TTL_DAYS)
+    result = await db.execute(
+        delete(BehaviorSnapshot).where(BehaviorSnapshot.created_at < cutoff)
+    )
+    deleted = result.rowcount or 0
+    if deleted:
+        logger.info("Cleaned up %d behavior snapshots older than %d days", deleted, BEHAVIOR_TTL_DAYS)
+    return deleted

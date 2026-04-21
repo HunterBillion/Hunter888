@@ -3,6 +3,10 @@
 import { useRef, useMemo, useEffect, useCallback, useState } from "react";
 import { Canvas, useFrame, useThree, ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 
 // ═══════════════════════════════════════════════════════════
 //  Gerstner Wave Ocean — Dual-layer Points + mouse raycasting
@@ -35,7 +39,7 @@ const vertexShader = /* glsl */ `
   void main() {
     vec3 pos = position;
     float t = uTime + uTimeOffset;
-    float zRange = 60.0;
+    float zRange = 100.0;
     vDepth = clamp((pos.z + zRange * 0.5) / zRange, 0.0, 1.0);
 
     vec3 wave = vec3(0.0);
@@ -45,15 +49,22 @@ const vertexShader = /* glsl */ `
     wave += gerstner(pos.xz, 0.05, 8.0,  vec2(-0.3, 0.6), 1.6, t);
     wave += gerstner(pos.xz, 0.03, 5.0,  vec2(0.9, 0.1),  2.0, t);
     wave += gerstner(pos.xz, 0.025, 3.5, vec2(-0.6,-0.7), 2.5, t);
+    wave += gerstner(pos.xz, 0.015, 2.0, vec2(0.4, 0.9),  3.0, t);
+    wave += gerstner(pos.xz, 0.015, 2.0, vec2(-0.8, 0.3), 3.2, t);
 
     float depthScale = 0.3 + vDepth * 0.7;
     wave *= depthScale * uAmplitude;
     pos += wave;
     pos.y += uLayerOffset;
 
+    // World-space XZ — учитываем OceanDrift (parent group сдвигается по X),
+    // иначе uMouse (world) не совпадает с pos.xz (local) и курсор отстаёт
+    // на величину drift.position.x. Раньше это давало "shadow 4-5 см справа".
+    vec2 worldXZ = (modelMatrix * vec4(pos, 1.0)).xz;
+
     // Mouse
-    float mouseDist = length(pos.xz - uMouse);
-    float mR = 14.0;
+    float mouseDist = length(worldXZ - uMouse);
+    float mR = 18.0;
     vMouseDist = mouseDist;
 
     if (uMouseActive > 0.01 && mouseDist < mR) {
@@ -71,6 +82,7 @@ const vertexShader = /* glsl */ `
       pos.y += sin(mouseDist * 0.7 - uTime * 4.5) * 0.4 * s1 * uMouseActive;
       pos.y += sin(mouseDist * 1.3 - uTime * 7.0) * 0.2 * s1 * s1 * uMouseActive;
       pos.y += sin(mouseDist * 2.2 - uTime * 10.0) * 0.08 * s2 * uMouseActive;
+      pos.y += sin(mouseDist * 3.5 - uTime * 14.0) * 0.04 * s2 * uMouseActive;
     }
 
     // Clicks
@@ -80,7 +92,7 @@ const vertexShader = /* glsl */ `
       float cz = uClickRipple[i * 3 + 1];
       float age = uClickRipple[i * 3 + 2];
       if (age > 4.0) continue;
-      float cd = length(pos.xz - vec2(cx, cz));
+      float cd = length(worldXZ - vec2(cx, cz));
       float wR = age * 20.0;
       float rW = 5.0 + age * 3.0;
       float rD = abs(cd - wR);
@@ -92,8 +104,8 @@ const vertexShader = /* glsl */ `
 
     vHeight = pos.y - uLayerOffset;
     // Soft edge fade — points near boundaries fade out smoothly
-    float xEdge = 1.0 - smoothstep(0.85, 1.0, abs(position.x) / (uAmplitude > 0.5 ? 85.0 : 75.0));
-    float zEdge = 1.0 - smoothstep(0.82, 1.0, abs(position.z) / (uAmplitude > 0.5 ? 55.0 : 45.0));
+    float xEdge = 1.0 - smoothstep(0.93, 1.0, abs(position.x) / (uAmplitude > 0.5 ? 85.0 : 75.0));
+    float zEdge = 1.0 - smoothstep(0.90, 1.0, abs(position.z) / (uAmplitude > 0.5 ? 85.0 : 75.0));
     vEdgeFade = xEdge * zEdge;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
     float dist = length((modelViewMatrix * vec4(pos, 1.0)).xyz);
@@ -130,7 +142,7 @@ const fragmentShader = /* glsl */ `
     alpha *= smoothstep(0.0, 0.12, vDepth);
 
     // Mouse glow
-    float mR = 14.0;
+    float mR = 18.0;
     if (uMouseActive > 0.01 && vMouseDist < mR) {
       float f = 1.0 - vMouseDist / mR;
       float s = f * f * (3.0 - 2.0 * f);
@@ -284,6 +296,10 @@ function MouseCatcher({
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
       position={[0, 0, 0]}
+      // 2026-04-18: onPointerEnter отдельно проецирует первую позицию —
+      // иначе Tick дожидается первого onPointerMove, и юзер видит пустой
+      // кадр перед "выстрелом" волны. Теперь волна живёт от первого пикселя.
+      onPointerEnter={project}
       onPointerMove={project}
       onPointerLeave={() => mouseWorld.current.set(-999, -999)}
       onClick={click}
@@ -303,14 +319,34 @@ function Tick({
   mouseActive: React.MutableRefObject<number>;
   clicksRef: React.MutableRefObject<{ x: number; z: number; age: number }[]>;
 }) {
+  // Track previous active state to detect "just entered" transitions so we
+  // can snap instantly on first entry (instead of the user moving and seeing
+  // no compression until the 2nd frame due to lerp lag).
+  const wasActive = useRef(false);
+
   useFrame((_, dt) => {
     const isActive = mouseWorld.current.x > -500;
-    // Snap instantly when mouse enters (coming from -999), then smooth-track
-    const dist = mouseSmooth.current.distanceTo(mouseWorld.current);
-    const lerpFactor = dist > 50 ? 1.0 : 0.18;
-    mouseSmooth.current.lerp(mouseWorld.current, lerpFactor);
-    const tgt = isActive ? 1 : 0;
-    mouseActive.current += (tgt - mouseActive.current) * 0.12;
+
+    // 2026-04-18 fix: "волна появляется со второго раза" — при первом
+    // pointer-enter устанавливаем mouseSmooth = mouseWorld без lerp и
+    // mouseActive = 1 сразу. Далее — обычный smooth-track.
+    const justEntered = isActive && !wasActive.current;
+    if (justEntered) {
+      mouseSmooth.current.copy(mouseWorld.current);
+      mouseActive.current = 1.0;
+    } else {
+      // Фактор lerp увеличен 0.18 → 0.28 (быстрее следует за курсором,
+      // меньше "shadow 4-5cm behind the cursor").
+      const dist = mouseSmooth.current.distanceTo(mouseWorld.current);
+      const lerpFactor = dist > 50 ? 1.0 : 0.28;
+      mouseSmooth.current.lerp(mouseWorld.current, lerpFactor);
+      const tgt = isActive ? 1 : 0;
+      // Также быстрее гасим/разгоняем активность: 0.12 → 0.22
+      mouseActive.current += (tgt - mouseActive.current) * 0.22;
+    }
+
+    wasActive.current = isActive;
+
     for (const c of clicksRef.current) c.age += dt;
     clicksRef.current = clicksRef.current.filter(c => c.age < 4);
   });
@@ -343,7 +379,7 @@ function getLayerConfigs(): { main: LayerCfg; sub: LayerCfg } {
       cols: Math.round(400 * q),
       rows: Math.round(130 * q),
       xSpan: 160,
-      zSpan: 100,
+      zSpan: 160,
       colorsDark:  { deep: 0x1a0840, mid: 0x6b2dc4, crest: 0x9a3bef, foam: 0xd282ff },
       colorsLight: { deep: 0x7b68ae, mid: 0x8b6cc2, crest: 0x905ced, foam: 0xc4a8f0 },
     },
@@ -365,7 +401,7 @@ function getLayerConfigs(): { main: LayerCfg; sub: LayerCfg } {
 
 // ── Floating Particles ─────────────────────────────────────
 function FloatingParticles({ isDark }: { isDark: boolean }) {
-  const count = 60;
+  const count = 80;
   const ref = useRef<THREE.Points>(null);
 
   const [positions, speeds] = useMemo(() => {
@@ -374,7 +410,7 @@ function FloatingParticles({ isDark }: { isDark: boolean }) {
     for (let i = 0; i < count; i++) {
       pos[i * 3] = (Math.random() - 0.5) * 150;
       pos[i * 3 + 1] = Math.random() * 25 - 5;
-      pos[i * 3 + 2] = (Math.random() - 0.5) * 90;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 140;
       spd[i] = 0.3 + Math.random() * 0.8;
     }
     return [pos, spd];
@@ -389,7 +425,7 @@ function FloatingParticles({ isDark }: { isDark: boolean }) {
       if (posArr[i * 3 + 1] > 25) {
         posArr[i * 3 + 1] = -5;
         posArr[i * 3] = (Math.random() - 0.5) * 150;
-        posArr[i * 3 + 2] = (Math.random() - 0.5) * 90;
+        posArr[i * 3 + 2] = (Math.random() - 0.5) * 140;
       }
     }
     ref.current.geometry.attributes.position.needsUpdate = true;
@@ -402,7 +438,7 @@ function FloatingParticles({ isDark }: { isDark: boolean }) {
       </bufferGeometry>
       <pointsMaterial
         size={0.15}
-        color={isDark ? "var(--accent)" : "var(--accent)"}
+        color={isDark ? "#6B4DC7" : "#5A3DB5"}
         transparent
         opacity={0.5}
         sizeAttenuation
@@ -411,6 +447,156 @@ function FloatingParticles({ isDark }: { isDark: boolean }) {
       />
     </points>
   );
+}
+
+// ── Pixel Post-Processing ─────────────────────────────────
+// Combined pixelation + color quantization in a single pass (lightweight)
+const pixelQuantizeShaderDef = {
+  uniforms: {
+    tDiffuse: { value: null },
+    resolution: { value: new THREE.Vector2(1, 1) },
+    pixelSize: { value: 6.0 },
+    levels: { value: 8.0 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform vec2 resolution;
+    uniform float pixelSize;
+    uniform float levels;
+    varying vec2 vUv;
+    void main() {
+      vec2 dxy = pixelSize / resolution;
+      vec2 coord = dxy * floor(vUv / dxy + 0.5);
+      vec4 c = texture2D(tDiffuse, coord);
+      c.rgb = floor(c.rgb * levels + 0.5) / levels;
+      gl_FragColor = c;
+    }
+  `,
+};
+
+function PixelPostProcessing() {
+  const { gl, scene, camera, size } = useThree();
+
+  const composer = useMemo(() => {
+    const c = new EffectComposer(gl);
+    c.addPass(new RenderPass(scene, camera));
+    c.addPass(new ShaderPass(pixelQuantizeShaderDef));
+    c.addPass(new OutputPass());
+    return c;
+  }, [gl, scene, camera]);
+
+  useEffect(() => {
+    composer.setSize(size.width, size.height);
+    for (const pass of composer.passes) {
+      if ((pass as ShaderPass).uniforms?.resolution) {
+        (pass as ShaderPass).uniforms.resolution.value.set(size.width, size.height);
+      }
+    }
+  }, [composer, size]);
+
+  useFrame(() => {
+    composer.render();
+  }, 1);
+
+  return null;
+}
+
+// ── Pixel Splash Overlay (2D Canvas) ──────────────────────
+const SPLASH_COLORS = ["#d282ff", "#9a3bef", "#6b2dc4", "#FFD700"];
+
+interface SplashParticle {
+  x: number; y: number; vx: number; vy: number;
+  color: string; size: number; life: number;
+}
+
+function PixelSplash() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const particlesRef = useRef<SplashParticle[]>([]);
+
+  // Resize + click + animation — all in one effect using parent element
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const parent = canvas.parentElement;
+    if (!parent) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Sync size
+    const sync = () => { canvas.width = parent.clientWidth; canvas.height = parent.clientHeight; };
+    sync();
+    window.addEventListener("resize", sync);
+
+    // Click → spawn particles
+    const handleClick = (e: MouseEvent) => {
+      const rect = parent.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      for (let i = 0; i < 40; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1.5 + Math.random() * 4;
+        particlesRef.current.push({
+          x, y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 2,
+          color: SPLASH_COLORS[Math.floor(Math.random() * SPLASH_COLORS.length)],
+          size: Math.random() > 0.6 ? 8 : 5,
+          life: 1,
+        });
+      }
+    };
+    parent.addEventListener("click", handleClick);
+
+    // Animate
+    let raf: number;
+    const animate = () => {
+      const particles = particlesRef.current;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.12;
+        p.life -= 0.015;
+        if (p.life <= 0) { particles.splice(i, 1); continue; }
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
+      }
+      ctx.globalAlpha = 1;
+      raf = requestAnimationFrame(animate);
+    };
+    raf = requestAnimationFrame(animate);
+
+    return () => {
+      window.removeEventListener("resize", sync);
+      parent.removeEventListener("click", handleClick);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1 }}
+    />
+  );
+}
+
+// ── Ocean Drift — subtle horizontal movement ──────────────
+function OceanDrift({ children }: { children: React.ReactNode }) {
+  const groupRef = useRef<THREE.Group>(null);
+  useFrame((_, dt) => {
+    if (!groupRef.current) return;
+    groupRef.current.position.x += 0.5 * dt;
+    // Wrap to avoid float precision loss over time
+    if (groupRef.current.position.x > 40) groupRef.current.position.x -= 80;
+  });
+  return <group ref={groupRef}>{children}</group>;
 }
 
 // ── Main Export ────────────────────────────────────────────
@@ -450,24 +636,31 @@ export function WaveScene() {
   }
 
   return (
-    <Canvas
-      camera={{ position: [0, 20, 35], fov: 60, near: 0.1, far: 300 }}
-      style={{ position: "absolute", inset: 0 }}
-      gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
-      dpr={[1, 1.5]}
-      eventPrefix="client"
-      onCreated={({ gl }) => {
-        gl.domElement.addEventListener("webglcontextlost", (e) => {
-          e.preventDefault();
-          setContextLost(true);
-        });
-      }}
-    >
-      <Tick mouseWorld={mouseWorld} {...shared} />
-      <OceanLayer cfg={layers.sub} isDark={isDark} {...shared} />
-      <OceanLayer cfg={layers.main} isDark={isDark} {...shared} />
-      <MouseCatcher mouseWorld={mouseWorld} clicksRef={clicksRef} />
-      <FloatingParticles isDark={isDark} />
-    </Canvas>
+    <div style={{ position: "absolute", inset: 0 }}>
+      <Canvas
+        camera={{ position: [0, 16, 42], fov: 60, near: 0.1, far: 300 }}
+        style={{ position: "absolute", inset: 0 }}
+        gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
+        dpr={[1, 1.5]}
+        eventPrefix="client"
+        onCreated={({ gl }) => {
+          gl.domElement.addEventListener("webglcontextlost", (e) => {
+            e.preventDefault();
+            setContextLost(true);
+          });
+        }}
+      >
+        <fog attach="fog" args={[isDark ? "#100F1A" : "#E8E4F0", 80, 160]} />
+        <Tick mouseWorld={mouseWorld} {...shared} />
+        <OceanDrift>
+          <OceanLayer cfg={layers.sub} isDark={isDark} {...shared} />
+          <OceanLayer cfg={layers.main} isDark={isDark} {...shared} />
+        </OceanDrift>
+        <MouseCatcher mouseWorld={mouseWorld} clicksRef={clicksRef} />
+        <FloatingParticles isDark={isDark} />
+        <PixelPostProcessing />
+      </Canvas>
+      <PixelSplash key="splash" />
+    </div>
   );
 }

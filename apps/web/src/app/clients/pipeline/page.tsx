@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Kanban,
@@ -12,8 +13,11 @@ import {
   LayoutGrid,
   Plus,
   SlidersHorizontal,
+  Network,
 } from "lucide-react";
+import Link from "next/link";
 import { BackButton } from "@/components/ui/BackButton";
+import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useKanbanDrag } from "@/hooks/useKanbanDrag";
@@ -25,7 +29,8 @@ import { PipelineColumn } from "@/components/clients/PipelineColumn";
 import { PipelineCard, type PipelineCardField } from "@/components/clients/PipelineCard";
 import { ReminderCreateModal } from "@/components/clients/ReminderCreateModal";
 import type { CRMClient, ClientStatus, PipelineStats, UserRole } from "@/types";
-import { PIPELINE_STATUSES, CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
+import { PIPELINE_STATUSES, CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, ALLOWED_TRANSITIONS } from "@/types";
+import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 
 const DEFAULT_CARD_FIELDS: PipelineCardField[] = ["debt", "phone", "next_contact", "updated"];
@@ -52,11 +57,13 @@ export default function PipelinePage() {
   const [noteClient, setNoteClient] = useState<CRMClient | null>(null);
   const [reminderClient, setReminderClient] = useState<CRMClient | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createInitialStatus, setCreateInitialStatus] = useState<ClientStatus>("new");
   const [showCustomize, setShowCustomize] = useState(false);
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [layoutMode, setLayoutMode] = useState<"grid" | "board">("grid");
   const [cardFields, setCardFields] = useState<PipelineCardField[]>(DEFAULT_CARD_FIELDS);
   const [pipelineColumns, setPipelineColumns] = useState<ClientStatus[]>([...PIPELINE_STATUSES]);
+  const [reasonTarget, setReasonTarget] = useState<{ clientId: string; targetStatus: ClientStatus } | null>(null);
 
   // ── Column refs for touch hit-testing ──
   const columnRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -116,21 +123,57 @@ export default function PipelinePage() {
     await fetchClients();
   }, [fetchClients]);
 
+  // ── Inline edit handler (PUT /clients/{id}) ──
+  const handleInlineEdit = useCallback(
+    async (clientId: string, patch: Partial<CRMClient>) => {
+      // Optimistic update
+      setClients((prev) =>
+        prev.map((c) => (c.id === clientId ? { ...c, ...patch } : c)),
+      );
+      try {
+        setError(null);
+        await api.put(`/clients/${clientId}`, patch);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Не удалось обновить клиента");
+        // Revert on failure
+        fetchClients();
+      }
+    },
+    [fetchClients],
+  );
+
+  // ── Add client to specific column ──
+  const handleAddClient = useCallback(
+    (status: ClientStatus) => {
+      if (isReadOnly) return;
+      setCreateInitialStatus(status);
+      setCreateOpen(true);
+    },
+    [isReadOnly],
+  );
+
   // ── Drop handler with optimistic update ──
   const handleDrop = useCallback(
     async (clientId: string, newStatus: string) => {
       if (isReadOnly) return;
       const client = clients.find((c) => c.id === clientId);
       if (!client || client.status === newStatus) return;
-      let reason: string | undefined;
-      if (newStatus === "lost" || newStatus === "consent_revoked") {
-        const promptLabel =
-          newStatus === "lost"
-            ? "Укажите причину потери клиента"
-            : "Укажите причину отзыва согласия";
-        const value = window.prompt(promptLabel)?.trim();
-        if (!value) return;
-        reason = value;
+
+      // ── Transition validation (must match backend ALLOWED_TRANSITIONS) ──
+      const currentStatus = client.status as ClientStatus;
+      const targetStatus = newStatus as ClientStatus;
+      const allowed = ALLOWED_TRANSITIONS[currentStatus];
+      if (!allowed || !allowed.includes(targetStatus)) {
+        toast.error(
+          `Переход «${CLIENT_STATUS_LABELS[currentStatus]}» → «${CLIENT_STATUS_LABELS[targetStatus]}» не разрешён`,
+        );
+        return;
+      }
+
+      if (targetStatus === "lost" || targetStatus === "consent_revoked") {
+        // Reason modal is handled via state — see LostReasonModal below
+        setReasonTarget({ clientId, targetStatus });
+        return;
       }
 
       // Optimistic update
@@ -142,7 +185,7 @@ export default function PipelinePage() {
 
       try {
         setError(null);
-        await api.patch(`/clients/${clientId}/status`, { new_status: newStatus, reason });
+        await api.patch(`/clients/${clientId}/status`, { new_status: newStatus });
         // Refresh stats after successful status change
         fetchStats();
       } catch (err) {
@@ -152,6 +195,32 @@ export default function PipelinePage() {
       }
     },
     [clients, fetchClients, fetchStats, isReadOnly],
+  );
+
+  // ── Confirm drop with reason (for lost/consent_revoked modal) ──
+  const handleReasonConfirm = useCallback(
+    async (reason: string) => {
+      if (!reasonTarget) return;
+      const { clientId, targetStatus } = reasonTarget;
+      setReasonTarget(null);
+
+      // Optimistic update
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === clientId ? { ...c, status: targetStatus } : c,
+        ),
+      );
+
+      try {
+        setError(null);
+        await api.patch(`/clients/${clientId}/status`, { new_status: targetStatus, reason });
+        fetchStats();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Не удалось сменить статус");
+        fetchClients();
+      }
+    },
+    [reasonTarget, fetchClients, fetchStats],
   );
 
   // ── Kanban drag hook ──
@@ -263,6 +332,22 @@ export default function PipelinePage() {
               </div>
 
               <div className="flex items-center gap-2">
+                {/* Graph link */}
+                <Link href="/clients/graph" prefetch={true}>
+                  <motion.button
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
+                    style={{
+                      background: "var(--input-bg)",
+                      border: "1px solid var(--border-color)",
+                      color: "var(--text-secondary)",
+                    }}
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    <Network size={11} />
+                    Граф
+                  </motion.button>
+                </Link>
+
                 {/* Stats pills */}
                 <div className="hidden sm:flex items-center gap-2 mr-3">
                   <span
@@ -295,8 +380,8 @@ export default function PipelinePage() {
                   onClick={() => setShowLost((v) => !v)}
                   className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
                   style={{
-                    background: showLost ? "rgba(229,72,77,0.1)" : "var(--input-bg)",
-                    border: `1px solid ${showLost ? "rgba(229,72,77,0.3)" : "var(--border-color)"}`,
+                    background: showLost ? "var(--danger-muted)" : "var(--input-bg)",
+                    border: `1px solid ${showLost ? "var(--danger)" : "var(--border-color)"}`,
                     color: showLost ? "var(--danger)" : "var(--text-muted)",
                   }}
                   whileTap={{ scale: 0.97 }}
@@ -322,19 +407,14 @@ export default function PipelinePage() {
                   />
                 </motion.button>
                 {!isReadOnly && (
-                  <motion.button
-                    onClick={() => setCreateOpen(true)}
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
-                    style={{
-                      background: "var(--accent)",
-                      border: "1px solid var(--accent)",
-                      color: "var(--bg-primary)",
-                    }}
-                    whileTap={{ scale: 0.97 }}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={<Plus size={14} />}
+                    onClick={() => handleAddClient("new" as ClientStatus)}
                   >
-                    <Plus size={11} />
                     Новая карточка
-                  </motion.button>
+                  </Button>
                 )}
                 <motion.button
                   onClick={() => setShowCustomize((prev) => !prev)}
@@ -562,6 +642,17 @@ export default function PipelinePage() {
               style={{ color: "var(--accent)" }}
             />
           </div>
+        ) : totalClients === 0 ? (
+          <div className="flex flex-1 items-center justify-center p-8">
+            <div className="glass-panel max-w-md p-6 text-center">
+              <h3 className="font-display text-lg font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
+                Пока нет клиентов
+              </h3>
+              <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
+                Клиенты добавляются автоматически после завершения тренировочных сессий или вручную через кнопку «Добавить».
+              </p>
+            </div>
+          </div>
         ) : (
           <div
             ref={(el) => {
@@ -617,6 +708,8 @@ export default function PipelinePage() {
                     onQuickNote={isReadOnly ? undefined : setNoteClient}
                     onReminder={isReadOnly ? undefined : setReminderClient}
                     onInlineNoteSubmit={isReadOnly ? undefined : handleInlineNoteSubmit}
+                    onInlineEdit={isReadOnly ? undefined : handleInlineEdit}
+                    onAddClient={isReadOnly ? undefined : handleAddClient}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleColumnDrop}
@@ -664,6 +757,7 @@ export default function PipelinePage() {
               fetchClients();
               fetchStats();
             }}
+            initialStatus={createInitialStatus}
           />
         )}
 
@@ -692,7 +786,146 @@ export default function PipelinePage() {
             }}
           />
         )}
+
+        {/* Lost / Consent Revoked reason modal */}
+        <LostReasonModal
+          open={Boolean(reasonTarget)}
+          targetStatus={reasonTarget?.targetStatus ?? "lost"}
+          onConfirm={handleReasonConfirm}
+          onClose={() => setReasonTarget(null)}
+        />
       </div>
     </AuthLayout>
+  );
+}
+
+// ── Lost / Consent Revoked Reason Modal ─────────────────────────────────
+function LostReasonModal({
+  open,
+  targetStatus,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  targetStatus: ClientStatus;
+  onConfirm: (reason: string) => void;
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  // Reset reason when modal opens
+  useEffect(() => {
+    if (open) setReason("");
+  }, [open]);
+
+  const label =
+    targetStatus === "lost"
+      ? "Причина потери клиента"
+      : "Причина отзыва согласия";
+
+  const handleSubmit = () => {
+    const trimmed = reason.trim();
+    if (!trimmed) return;
+    onConfirm(trimmed);
+  };
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 z-[100] flex items-center justify-center"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <motion.div
+            className="absolute inset-0"
+            style={{ background: "var(--overlay-bg, rgba(0,0,0,0.4))" }}
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          />
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label={label}
+            className="relative z-10 w-full max-w-md rounded-2xl p-6"
+            style={{
+              background: "var(--surface-card, var(--bg-secondary))",
+              border: "1px solid var(--border-color)",
+              boxShadow: "0 8px 30px rgba(0,0,0,0.3)",
+            }}
+            initial={{ scale: 0.95, y: 16 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.95, y: 16 }}
+            transition={{ duration: 0.2 }}
+          >
+            <h3
+              className="text-sm font-semibold uppercase tracking-wide mb-4"
+              style={{ color: "var(--text-primary)" }}
+            >
+              {label}
+            </h3>
+            <textarea
+              autoFocus
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              placeholder="Опишите причину..."
+              rows={4}
+              maxLength={500}
+              className="w-full text-sm font-mono rounded-lg px-3 py-2 outline-none"
+              style={{
+                background: "var(--input-bg)",
+                border: "1px solid var(--border-color)",
+                color: "var(--text-primary)",
+                resize: "vertical",
+              }}
+            />
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg px-4 py-2 text-sm font-medium"
+                style={{
+                  background: "var(--input-bg)",
+                  border: "1px solid var(--border-color)",
+                  color: "var(--text-muted)",
+                }}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!reason.trim()}
+                className="rounded-lg px-4 py-2 text-sm font-semibold"
+                style={{
+                  background: reason.trim() ? "var(--danger)" : "var(--input-bg)",
+                  color: reason.trim() ? "#fff" : "var(--text-muted)",
+                  border: `1px solid ${reason.trim() ? "var(--danger)" : "var(--border-color)"}`,
+                  opacity: reason.trim() ? 1 : 0.6,
+                }}
+              >
+                Подтвердить
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body,
   );
 }

@@ -59,6 +59,16 @@ BASE_MATCH_RANGE = 200.0
 DUEL_STATE_TTL = 3600               # 1 hour TTL for duel state in Redis
 RECONNECT_GRACE_SECONDS = 60        # Grace period for reconnection
 
+# S3-11: Maximum rating gap to prevent newbie-vs-master matches.
+# Gap widens gradually: 400 (0-30s) → 600 (30-60s) → 800 (60-90s) → uncapped.
+MAX_RATING_GAP = 400
+GAP_EXPANSION_SCHEDULE: list[tuple[float, float]] = [
+    (30.0, 400.0),   # 0-30s: max 400 gap
+    (60.0, 600.0),   # 30-60s: max 600 gap
+    (90.0, 800.0),   # 60-90s: max 800 gap
+    # After 90s: no gap limit (prefer any match over timeout)
+]
+
 
 # ---------------------------------------------------------------------------
 # Difficulty assignment
@@ -116,13 +126,14 @@ async def join_queue(
     finally:
         await r.delete(lock_key)
 
-    # Store metadata
+    # Store metadata (S3-05: include placement flag for priority matching)
     meta_key = QUEUE_META_KEY.format(user_id=user_id)
     await r.hset(meta_key, mapping={
         "rating": str(rating.rating),
         "rd": str(rating.rd),
         "queued_at": str(time.time()),
         "status": MatchQueueStatus.waiting.value,
+        "placement": "true" if not rating.placement_done else "false",
     })
     await r.expire(meta_key, MATCH_TIMEOUT_SECONDS + 30)
 
@@ -245,6 +256,17 @@ async def accept_invitation(
     }
 
 
+def _get_max_gap(seconds_waited: float) -> float | None:
+    """S3-11: Get maximum allowed rating gap for the current wait time.
+
+    Returns None after all schedule tiers are exhausted (no limit).
+    """
+    for threshold, gap in GAP_EXPANSION_SCHEDULE:
+        if seconds_waited < threshold:
+            return gap
+    return None  # No limit after final tier
+
+
 async def find_match(
     user_id: uuid.UUID,
     db: AsyncSession,
@@ -300,74 +322,90 @@ async def find_match(
         QUEUE_KEY, min_rating, max_rating, withscores=True
     )
 
+    # S3-05: Placement-priority matching — sort candidates so placement
+    # players prefer other placement players (better calibration).
+    player_is_placement = meta.get("placement") == "true"
+
+    # First pass: collect eligible candidates with metadata
+    eligible: list[tuple[str, float, dict]] = []
     for candidate_id_str, candidate_rating in candidates:
         candidate_id = uuid.UUID(candidate_id_str)
-
-        # Skip self
         if candidate_id == user_id:
             continue
 
-        # Check candidate's RD for refined match range
         c_meta_key = QUEUE_META_KEY.format(user_id=candidate_id)
         c_meta = await r.hgetall(c_meta_key)
         if not c_meta or c_meta.get("status") != MatchQueueStatus.waiting.value:
             continue
 
-        c_rd = float(c_meta.get("rd", 350))
-        refined_range = BASE_MATCH_RANGE + (player_rd + c_rd) / 2
+        # S3-11: Enforce MAX_RATING_GAP with gradual expansion.
+        # The initial zrangebyscore already filters by expanded_range + RD,
+        # so only the hard gap limit provides additional protection here.
+        rating_gap = abs(player_rating - candidate_rating)
+        current_max_gap = _get_max_gap(seconds_waited)
+        if current_max_gap is not None and rating_gap > current_max_gap:
+            continue  # Gap too large for current wait time
 
-        # Check if within refined range
-        if abs(player_rating - candidate_rating) <= refined_range + seconds_waited * RANGE_EXPANSION_RATE:
-            # MATCH FOUND — create duel
-            difficulty = determine_difficulty(player_rating, candidate_rating)
+        eligible.append((candidate_id_str, candidate_rating, c_meta))
 
-            duel = PvPDuel(
-                player1_id=user_id,
-                player2_id=candidate_id,
-                status=DuelStatus.pending,
-                difficulty=difficulty,
-            )
+    # Sort: placement players first when current player is in placement
+    if player_is_placement:
+        eligible.sort(key=lambda x: (0 if x[2].get("placement") == "true" else 1))
 
-            # BUG-6 fix: execute Redis pipeline BEFORE db.flush() to prevent
-            # race where duel exists in DB but Redis state is not yet ready.
-            # duel.id is available pre-flush because PvPDuel uses default=uuid.uuid4.
-            duel_state_key = DUEL_STATE_KEY.format(duel_id=duel.id)
-            pipe = r.pipeline(transaction=True)
-            pipe.zrem(QUEUE_KEY, str(user_id), candidate_id_str)
-            for uid in [str(user_id), candidate_id_str]:
-                mk = QUEUE_META_KEY.format(user_id=uid)
-                pipe.hset(mk, "status", MatchQueueStatus.matched.value)
-            pipe.hset(duel_state_key, mapping={
-                "player1_id": str(user_id),
-                "player2_id": str(candidate_id),
-                "status": DuelStatus.pending.value,
-                "difficulty": difficulty.value,
-                "round": "1",
-                "created_at": str(time.time()),
-            })
-            pipe.expire(duel_state_key, DUEL_STATE_TTL)
-            await pipe.execute()
+    for candidate_id_str, candidate_rating, c_meta in eligible:
+        candidate_id = uuid.UUID(candidate_id_str)
 
-            # Now persist to DB — Redis state is already ready for reconnecting clients
-            db.add(duel)
-            await db.flush()
+        # MATCH FOUND — create duel
+        difficulty = determine_difficulty(player_rating, candidate_rating)
 
-            logger.info(
-                "PvP match: %s (%.0f) vs %s (%.0f), difficulty=%s, duel=%s",
-                user_id, player_rating,
-                candidate_id, candidate_rating,
-                difficulty.value, duel.id,
-            )
+        duel = PvPDuel(
+            player1_id=user_id,
+            player2_id=candidate_id,
+            status=DuelStatus.pending,
+            difficulty=difficulty,
+        )
 
-            return {
-                "opponent_id": candidate_id,
-                "duel_id": duel.id,
-                "player1_id": user_id,
-                "player2_id": candidate_id,
-                "player1_rating": player_rating,
-                "player2_rating": candidate_rating,
-                "difficulty": difficulty.value,
-            }
+        # BUG-6 fix: execute Redis pipeline BEFORE db.flush() to prevent
+        # race where duel exists in DB but Redis state is not yet ready.
+        # duel.id is available pre-flush because PvPDuel uses default=uuid.uuid4.
+        duel_state_key = DUEL_STATE_KEY.format(duel_id=duel.id)
+        pipe = r.pipeline(transaction=True)
+        pipe.zrem(QUEUE_KEY, str(user_id), candidate_id_str)
+        for uid in [str(user_id), candidate_id_str]:
+            mk = QUEUE_META_KEY.format(user_id=uid)
+            pipe.hset(mk, "status", MatchQueueStatus.matched.value)
+        pipe.hset(duel_state_key, mapping={
+            "player1_id": str(user_id),
+            "player2_id": str(candidate_id),
+            "status": DuelStatus.pending.value,
+            "difficulty": difficulty.value,
+            "round": "1",
+            "created_at": str(time.time()),
+        })
+        pipe.expire(duel_state_key, DUEL_STATE_TTL)
+        await pipe.execute()
+
+        # Now persist to DB — Redis state is already ready for reconnecting clients
+        db.add(duel)
+        await db.flush()
+
+        logger.info(
+            "PvP match: %s (%.0f) vs %s (%.0f), difficulty=%s, duel=%s%s",
+            user_id, player_rating,
+            candidate_id, candidate_rating,
+            difficulty.value, duel.id,
+            " [placement-priority]" if player_is_placement else "",
+        )
+
+        return {
+            "opponent_id": candidate_id,
+            "duel_id": duel.id,
+            "player1_id": user_id,
+            "player2_id": candidate_id,
+            "player1_rating": player_rating,
+            "player2_rating": candidate_rating,
+            "difficulty": difficulty.value,
+        }
 
     # No match found
     if seconds_waited >= MATCH_TIMEOUT_SECONDS:

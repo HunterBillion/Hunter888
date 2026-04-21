@@ -72,7 +72,7 @@ export function KeyboardShortcutsOverlay() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[300] flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+          style={{ background: "var(--overlay-bg)", backdropFilter: "blur(4px)" }}
           onClick={() => setOpen(false)}
         >
           <motion.div

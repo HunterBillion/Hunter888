@@ -14,7 +14,7 @@ import { LeaderboardSkeleton } from "@/components/ui/Skeleton";
 import { hasRole } from "@/lib/guards";
 import { api } from "@/lib/api";
 import type { PvPRankTier } from "@/types";
-import { PVP_RANK_LABELS, PVP_RANK_COLORS } from "@/types";
+import { PVP_RANK_LABELS, PVP_RANK_COLORS, normalizeRankTier } from "@/types";
 
 const ARENA_PERIODS = [
   { key: "all" as const, label: "Все время" },
@@ -173,7 +173,7 @@ export default function PvPLeaderboardPage() {
           ) : (
             <div className="mt-6 space-y-3">
               {store.leaderboard.map((entry, i) => {
-                const color = PVP_RANK_COLORS[entry.rank_tier as PvPRankTier] || "var(--text-muted)";
+                const color = PVP_RANK_COLORS[normalizeRankTier(entry.rank_tier as string)] || "var(--text-muted)";
                 const isTopThree = entry.rank <= 3;
                 return (
                   <motion.div
@@ -204,7 +204,7 @@ export default function PvPLeaderboardPage() {
                         <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                           {entry.username}
                         </span>
-                        <RankBadge tier={entry.rank_tier as PvPRankTier} size="sm" />
+                        <RankBadge tier={entry.rank_tier} size="sm" />
                       </div>
                       <div className="mt-0.5 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                         {entry.wins}W / {entry.losses}L · streak {entry.current_streak > 0 ? "+" : ""}{entry.current_streak}
@@ -281,7 +281,7 @@ function ArenaLeaderboardSection() {
           description="Начните изучение 127-ФЗ и займите место в рейтинге"
           illustration={<img src="/pixel/empty/knight-waiting.png" alt="" className="w-24 h-24 mx-auto mb-2 opacity-80" />}
           actionLabel="К Арене"
-          onAction={() => window.location.href = "/knowledge"}
+          onAction={() => window.location.href = "/pvp?tab=knowledge"}
         />
       ) : (
         <div className="mt-4 space-y-3">

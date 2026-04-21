@@ -86,7 +86,7 @@ export function ActivityFeed({ items, loading = false, className = "" }: Activit
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.04 }}
-                  className="flex items-center gap-4 px-5 py-4 transition-colors duration-200 hover:bg-[rgba(124,106,232,0.04)]"
+                  className="flex items-center gap-4 px-5 py-4 transition-colors duration-200 hover:bg-[var(--accent-muted)]"
                   style={{ borderColor: "var(--border-color)" }}
                 >
                   {/* Avatar */}

@@ -200,8 +200,12 @@ async def get_category_difficulty(
         )
     )
     avg_ef = result.scalar()
-    if avg_ef is None:
-        return 1.0  # No data — standard difficulty
+    if avg_ef is None or avg_ef == 0:
+        return 1.0  # No data or corrupted zeros — standard difficulty (S4-03)
+
+    # S4-03: Clamp avg_ef to valid SM-2 range — values below MIN_EASE_FACTOR
+    # indicate data corruption and would produce a negative multiplier.
+    avg_ef = max(float(avg_ef), MIN_EASE_FACTOR)
 
     # Map avg_ef (typically 1.3-3.0) to multiplier (0.6-1.4)
     # avg_ef 1.3 → 0.6 (hardest), avg_ef 2.5 → 1.0 (standard), avg_ef 3.0+ → 1.4

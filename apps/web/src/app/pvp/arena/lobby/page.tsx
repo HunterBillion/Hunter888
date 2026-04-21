@@ -251,8 +251,8 @@ function ArenaLobbyPage() {
           <div className="mb-6">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full mb-4"
               style={{
-                background: maxPlayers === 4 ? "rgba(245,158,11,0.1)" : "rgba(239,68,68,0.1)",
-                border: `2px solid ${maxPlayers === 4 ? "rgba(245,158,11,0.2)" : "rgba(239,68,68,0.2)"}`,
+                background: maxPlayers === 4 ? "var(--warning-muted)" : "var(--danger-muted)",
+                border: `2px solid ${maxPlayers === 4 ? "var(--warning-muted)" : "var(--danger-muted)"}`,
               }}
             >
               {maxPlayers === 4 ? (
@@ -318,7 +318,7 @@ function ArenaLobbyPage() {
                   />
                   <motion.div
                     className="absolute inset-3 rounded-full border"
-                    style={{ borderColor: "rgba(124,106,232,0.25)" }}
+                    style={{ borderColor: "var(--accent-glow)" }}
                     animate={reducedMotion ? {} : { rotate: -360, opacity: [0.3, 0.6, 0.3] }}
                     transition={
                       reducedMotion
@@ -428,8 +428,8 @@ function ArenaLobbyPage() {
                       key={p.user_id}
                       className="flex items-center gap-3 px-4 py-2 rounded-lg text-left"
                       style={{
-                        background: p.user_id === userId ? "rgba(124,106,232,0.1)" : "rgba(255,255,255,0.03)",
-                        border: `1px solid ${p.user_id === userId ? "rgba(124,106,232,0.2)" : "var(--glass-border)"}`,
+                        background: p.user_id === userId ? "var(--accent-muted)" : "rgba(255,255,255,0.03)",
+                        border: `1px solid ${p.user_id === userId ? "var(--accent-glow)" : "var(--glass-border)"}`,
                       }}
                     >
                       <div
@@ -523,7 +523,7 @@ function ArenaLobbyPage() {
               >
                 <div
                   className="mx-auto flex h-16 w-16 items-center justify-center rounded-full mb-4"
-                  style={{ background: "rgba(239,68,68,0.1)", border: "2px solid rgba(239,68,68,0.2)" }}
+                  style={{ background: "var(--danger-muted)", border: "2px solid var(--danger-muted)" }}
                 >
                   <X size={28} style={{ color: "var(--danger)" }} />
                 </div>

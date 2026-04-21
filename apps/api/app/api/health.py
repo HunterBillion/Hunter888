@@ -28,9 +28,16 @@ async def health_check_public():
     try:
         async with async_session() as db:
             await db.execute(text("SELECT 1"))
-        return {"status": "ok"}
     except Exception:
         return {"status": "degraded"}
+
+    try:
+        if not await redis_health_check():
+            return {"status": "degraded"}
+    except Exception:
+        return {"status": "degraded"}
+
+    return {"status": "ok"}
 
 
 @router.get("/health")

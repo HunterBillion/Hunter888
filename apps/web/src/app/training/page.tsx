@@ -4,6 +4,11 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { logger } from "@/lib/logger";
+// 2026-04-20: cleaned unused imports left over from the 2026-04-18
+// "Рекомендуемые" tab removal. AppIcon, ScenarioDossierCard, getTierColor,
+// Lock, Info, ARCHETYPE_GROUPS, ArchetypeInfo, GROUP_ICONS, Sparkles,
+// TrendingUp were all only referenced by the dead RecommendedTab function
+// (also removed below).
 import {
   Clock,
   Loader2,
@@ -16,32 +21,30 @@ import {
   Filter,
   AlertTriangle,
   Target,
-  Sparkles,
-  TrendingUp,
-  Lock,
-  Info,
 } from "lucide-react";
+import { PixelFaceIcon } from "@/components/pixel/PixelFaceIcon";
 import Link from "next/link";
-import { AppIcon } from "@/components/ui/AppIcon";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import AuthLayout from "@/components/layout/AuthLayout";
 import CharacterBuilder from "@/components/training/CharacterBuilder";
-import { ScenarioDossierCard } from "@/components/training/ScenarioDossierCard";
 import { useTrainingStore } from "@/stores/useTrainingStore";
-import { ARCHETYPES, ARCHETYPE_GROUPS, getTierColor, getDifficultyColor } from "@/lib/archetypes";
+import { ARCHETYPES, getDifficultyColor } from "@/lib/archetypes";
 import { ArchetypeCard } from "@/components/training/ArchetypeCard";
-import { GROUP_ICONS } from "@/lib/groupIcons";
-import type { ArchetypeInfo } from "@/lib/archetypes";
+import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import type { Scenario } from "@/types";
 
-type Tab = "recommended" | "scenarios" | "assigned" | "builder" | "saved";
+// 2026-04-18: вкладка "Рекомендуемые" убрана из /training — она сбивала
+// пользователя с главного flow. Из /home кнопка "Рекомендуемые" теперь
+// ведёт в /training?tab=scenarios (та же логика подбора работает там же).
+type Tab = "scenarios" | "assigned" | "builder" | "saved";
 
-const TABS: { id: Tab; label: string; icon: React.ComponentType<{ size: number; style?: React.CSSProperties }> }[] = [
-  { id: "recommended", label: "Рекомендуемые", icon: Target },
-  { id: "scenarios", label: "Сценарии", icon: BookOpen },
-  { id: "assigned", label: "Назначенные", icon: ClipboardList },
-  { id: "builder", label: "Конструктор", icon: Puzzle },
-  { id: "saved", label: "Мои клиенты", icon: Users },
+type PixelFace = "mask" | "check" | "gear" | "briefcase";
+
+const TABS: { id: Tab; label: string; icon: React.ComponentType<{ size: number; style?: React.CSSProperties }>; pixelFace: PixelFace }[] = [
+  { id: "scenarios", label: "Сценарии", icon: BookOpen, pixelFace: "mask" },
+  { id: "assigned", label: "Назначенные", icon: ClipboardList, pixelFace: "check" },
+  { id: "builder", label: "Конструктор", icon: Puzzle, pixelFace: "gear" },
+  { id: "saved", label: "Мои клиенты", icon: Users, pixelFace: "briefcase" },
 ];
 
 const TYPE_FILTERS = [
@@ -50,7 +53,7 @@ const TYPE_FILTERS = [
   { key: "warm", label: "Тёплые" },
   { key: "in", label: "Входящие" },
   { key: "special", label: "Особые" },
-  { key: "follow_up", label: "Follow-up" },
+  { key: "follow_up", label: "Повторный звонок" },
   { key: "crisis", label: "Кризис" },
   { key: "compliance", label: "Комплаенс" },
   { key: "multi_party", label: "Мультипарти" },
@@ -66,7 +69,7 @@ const DIFF_FILTERS = [
 function getDifficultyConfig(d: number) {
   if (d <= 3) return { label: "Легко", emoji: "🟢", color: "var(--success)", bg: "rgba(61,220,132,0.08)", border: "rgba(61,220,132,0.2)", desc: "Клиент лояльный, мало возражений" };
   if (d <= 6) return { label: "Средне", emoji: "🟡", color: "var(--warning)", bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.2)", desc: "Стандартные возражения и ловушки" };
-  if (d <= 8) return { label: "Сложно", emoji: "🔴", color: "var(--danger)", bg: "rgba(229,72,77,0.08)", border: "rgba(229,72,77,0.2)", desc: "Агрессивный клиент, каскад ловушек" };
+  if (d <= 8) return { label: "Сложно", emoji: "🔴", color: "var(--danger)", bg: "var(--danger-muted)", border: "rgba(229,72,77,0.2)", desc: "Агрессивный клиент, каскад ловушек" };
   return { label: "Босс", emoji: "💀", color: "var(--danger)", bg: "rgba(255,0,85,0.1)", border: "rgba(255,0,85,0.3)", desc: "Максимальная сложность, все ловушки" };
 }
 
@@ -75,11 +78,14 @@ function TrainingPageContent() {
   const searchParams = useSearchParams();
   // Extract tab param as string to avoid unstable searchParams object reference
   const tabParam = searchParams.get("tab");
-  const [tab, setTab] = useState<Tab>("recommended");
-  const [starting, setStarting] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("scenarios");
+  // Track both scenario id and optional archetype code so RecommendedTab
+  // (where multiple cards can share the same matched scenario) lights up
+  // the spinner ONLY on the specific card the user clicked.
+  const [starting, setStarting] = useState<{ scenarioId: string; archCode?: string } | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [storyCalls, setStoryCalls] = useState<number>(3);
-  const [showInfoModal, setShowInfoModal] = useState(false);
+  // showInfoModal state removed 2026-04-18 \u2014 replaced by PixelInfoButton component.
 
   const fetchScenarios = useTrainingStore((s) => s.fetchScenarios);
   const fetchAssigned = useTrainingStore((s) => s.fetchAssigned);
@@ -91,7 +97,10 @@ function TrainingPageContent() {
   }, [fetchScenarios, fetchAssigned]);
 
   useEffect(() => {
-    if (tabParam === "recommended" || tabParam === "assigned" || tabParam === "builder" || tabParam === "saved" || tabParam === "scenarios") {
+    // Legacy ?tab=recommended (из /home или старых ссылок) маршрутизирует на scenarios.
+    if (tabParam === "recommended") {
+      setTab("scenarios");
+    } else if (tabParam === "assigned" || tabParam === "builder" || tabParam === "saved" || tabParam === "scenarios") {
       setTab(tabParam);
     }
   }, [tabParam]);
@@ -104,16 +113,40 @@ function TrainingPageContent() {
     }
   }, [startError]);
 
-  const startTraining = async (scenarioId: string) => {
-    setStarting(scenarioId);
+  // Phase F (2026-04-20) — unified start handler. Owner feedback:
+  // «в СРМ карточке должен быть выбор чат или звонок» → кнопки теперь
+  // прямо в ScenarioDossierCard. startTraining = chat; startTrainingCall
+  // = voice. Оба POST'ят на /training/sessions одинаково, расходятся
+  // только на шаге router.push — chat → /training/[id], call →
+  // /training/[id]/call.
+  const performStart = async (scenarioId: string, mode: "chat" | "call") => {
+    setStarting({ scenarioId });
     setStartError(null);
     try {
       const session = await api.post("/training/sessions", { scenario_id: scenarioId });
-      router.push(`/training/${session.id}`);
+      const target = mode === "call"
+        ? `/training/${session.id}/call`
+        : `/training/${session.id}`;
+      router.push(target);
     } catch (err) {
       logger.error("Failed to start training:", err);
+      if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        err.detail &&
+        err.detail.code === "session_already_active"
+      ) {
+        const existingId = err.detail.existing_session_id;
+        if (typeof existingId === "string" && existingId.length > 0) {
+          setStartError("У тебя уже есть активная тренировка — открываю её.");
+          const target = mode === "call"
+            ? `/training/${existingId}/call`
+            : `/training/${existingId}`;
+          setTimeout(() => router.push(target), 600);
+          return;
+        }
+      }
       const message = err instanceof Error ? err.message : "Не удалось начать тренировку";
-      // Handle consent redirect hint from backend
       if (message.includes("consent") || message.includes("согласи")) {
         router.push("/consent");
         return;
@@ -122,6 +155,9 @@ function TrainingPageContent() {
       setStarting(null);
     }
   };
+
+  const startTraining = (scenarioId: string) => void performStart(scenarioId, "chat");
+  const startTrainingCall = (scenarioId: string) => void performStart(scenarioId, "call");
 
   const startStoryTraining = (scenarioId: string, calls = 3) => {
     router.push(`/training/${scenarioId}?mode=story&calls=${calls}`);
@@ -175,92 +211,20 @@ function TrainingPageContent() {
                     <BookOpen size={12} /> Каталог архетипов
                   </motion.button>
                 </Link>
-                <motion.button
-                  onClick={() => setShowInfoModal(true)}
-                  className="rounded-full p-2 transition-colors"
-                  style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}
-                  whileTap={{ scale: 0.95 }}
-                  title="Справка"
-                >
-                  <Info size={16} style={{ color: "var(--text-muted)" }} />
-                </motion.button>
+                <PixelInfoButton
+                  title="Тренировки"
+                  sections={[
+                    { icon: Target, label: "Рекомендуемые", text: "AI подобрал сценарии под ваш уровень и слабые места" },
+                    { icon: BookOpen, label: "Сценарии", text: "60 готовых сценариев в 8 группах — от холодных звонков до кризисных" },
+                    { icon: ClipboardList, label: "Назначенные", text: "Задания от руководителя с дедлайнами" },
+                    { icon: Puzzle, label: "Конструктор", text: "Соберите клиента из 100 архетипов, 25 профессий и 20 источников" },
+                    { icon: Users, label: "Мои клиенты", text: "Сохранённые конфигурации для повторного использования" },
+                  ]}
+                  footer="Выберите сценарий → Начать → Общайтесь с AI голосом/текстом → разбор"
+                />
               </div>
             </div>
           </motion.div>
-
-          {/* Info modal */}
-          <AnimatePresence>
-            {showInfoModal && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-                style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
-                onClick={() => setShowInfoModal(false)}
-              >
-                <motion.div
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.9, opacity: 0 }}
-                  className="glass-panel rounded-2xl p-6 max-w-md w-full"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <h3 className="text-lg font-bold mb-4" style={{ color: "var(--text-primary)" }}>Панель тренировки</h3>
-                  <div className="space-y-3 text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                    <div className="space-y-2">
-                      <div className="flex gap-2">
-                        <Target size={16} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
-                        <div><strong style={{ color: "var(--text-primary)" }}>Рекомендуемые</strong> — AI подобрал сценарии под ваш уровень и слабые места</div>
-                      </div>
-                      <div className="flex gap-2">
-                        <BookOpen size={16} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
-                        <div><strong style={{ color: "var(--text-primary)" }}>Сценарии</strong> — 60 готовых сценариев в 8 группах (от холодных звонков до кризисных)</div>
-                      </div>
-                      <div className="flex gap-2">
-                        <ClipboardList size={16} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
-                        <div><strong style={{ color: "var(--text-primary)" }}>Назначенные</strong> — задания от руководителя с дедлайнами</div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Puzzle size={16} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
-                        <div><strong style={{ color: "var(--text-primary)" }}>Конструктор</strong> — соберите клиента из 100 архетипов, 25 профессий и 20 источников</div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Users size={16} className="shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
-                        <div><strong style={{ color: "var(--text-primary)" }}>Мои клиенты</strong> — сохранённые конфигурации для повторного использования</div>
-                      </div>
-                    </div>
-
-                    <div className="pt-2" style={{ borderTop: "1px solid var(--border-color)" }}>
-                      <p className="font-bold mb-1.5" style={{ color: "var(--text-primary)" }}>Как начать:</p>
-                      <ol className="list-decimal list-inside space-y-1">
-                        <li>Выберите сценарий или создайте клиента в конструкторе</li>
-                        <li>Нажмите &laquo;Начать&raquo; или &laquo;История Nx&raquo;</li>
-                        <li>Общайтесь с AI-клиентом голосом или текстом</li>
-                        <li>После завершения получите разбор и рекомендации</li>
-                      </ol>
-                    </div>
-
-                    <Link
-                      href="/training/archetypes"
-                      className="block text-center mt-2 py-2 rounded-lg text-sm font-medium"
-                      style={{ background: "var(--accent-muted)", color: "var(--accent)", border: "1px solid rgba(124,106,232,0.25)" }}
-                      onClick={() => setShowInfoModal(false)}
-                    >
-                      Каталог архетипов — 100 типов клиентов
-                    </Link>
-                  </div>
-                  <button
-                    className="mt-3 w-full py-2 rounded-lg text-sm font-medium"
-                    style={{ background: "var(--input-bg)", color: "var(--text-primary)", border: "1px solid var(--border-color)" }}
-                    onClick={() => setShowInfoModal(false)}
-                  >
-                    Понятно
-                  </button>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
 
           <div className="mt-5 flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 rounded-2xl px-4 py-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-color)" }}>
             <div>
@@ -278,8 +242,8 @@ function TrainingPageContent() {
                   onClick={() => setStoryCalls(calls)}
                   className="rounded-xl px-4 py-2 text-sm font-medium uppercase tracking-wide transition-all"
                   style={{
-                    background: storyCalls === calls ? "rgba(124,106,232,0.14)" : "var(--input-bg)",
-                    border: `1px solid ${storyCalls === calls ? "rgba(124,106,232,0.42)" : "var(--border-color)"}`,
+                    background: storyCalls === calls ? "var(--accent-muted)" : "var(--input-bg)",
+                    border: `1px solid ${storyCalls === calls ? "rgba(107,77,199,0.42)" : "var(--border-color)"}`,
                     color: storyCalls === calls ? "var(--accent)" : "var(--text-muted)",
                   }}
                 >
@@ -298,7 +262,7 @@ function TrainingPageContent() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className="relative flex-1 flex items-center justify-center gap-1.5 sm:gap-2 rounded-lg px-2 sm:px-4 py-2.5 text-sm font-medium tracking-wide transition-colors whitespace-nowrap min-w-0"
+                  className="relative flex-1 flex items-center justify-center gap-2 sm:gap-2.5 rounded-lg px-2 sm:px-4 py-2.5 text-sm font-medium tracking-wide transition-colors whitespace-nowrap min-w-0"
                   style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
                 >
                   {active && (
@@ -306,12 +270,12 @@ function TrainingPageContent() {
                       layoutId="activeTab"
                       className="absolute inset-0 rounded-lg"
                       style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)" }}
-                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                      transition={{ type: "spring", stiffness: 380, damping: 32, layout: { duration: 0.25 } }}
                     />
                   )}
                   <span className="relative z-10 flex items-center gap-2">
-                    <Icon size={14} style={{ color: active ? "var(--accent)" : "var(--text-muted)" }} />
-                    {t.label}
+                    <PixelFaceIcon face={t.pixelFace} size={28} style={{ opacity: active ? 1 : 0.6 }} />
+                    <span className="font-pixel text-[15px] uppercase leading-none tracking-wide">{t.label}</span>
                     {/* Badge for assigned tab */}
                     {t.id === "assigned" && assignedCount > 0 && (
                       <span
@@ -328,48 +292,44 @@ function TrainingPageContent() {
           </div>
 
           {/* Tab content */}
-          <AnimatePresence mode="wait">
-            {tab === "recommended" && (
-              <motion.div key="recommended" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
-                <RecommendedTab
-                  onStart={startTraining}
-                  onStartStory={startStoryTraining}
-                  starting={starting}
-                  storyCalls={storyCalls}
-                />
-              </motion.div>
-            )}
+          <div style={{ overflow: "hidden" }}>
+          <AnimatePresence mode="wait" initial={false}>
+            {/* Вкладка "Рекомендуемые" убрана 2026-04-18 — логика AI-подбора
+                перенесена в ScenariosTab через параметр. RecommendedTab-функция
+                ниже оставлена в коде для истории; не используется. */}
 
             {tab === "scenarios" && (
-              <motion.div key="scenarios" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+              <motion.div key="scenarios" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
                 <ScenariosTab
                   starting={starting}
                   storyCalls={storyCalls}
                   onStoryCallsChange={setStoryCalls}
                   onStart={startTraining}
+                  onStartCall={startTrainingCall}
                   onStartStory={startStoryTraining}
                 />
               </motion.div>
             )}
 
             {tab === "assigned" && (
-              <motion.div key="assigned" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
-                <AssignedTab onStart={startTraining} onStartStory={startStoryTraining} starting={starting} storyCalls={storyCalls} />
+              <motion.div key="assigned" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
+                <AssignedTab onStart={startTraining} onStartCall={startTrainingCall} onStartStory={startStoryTraining} starting={starting} storyCalls={storyCalls} />
               </motion.div>
             )}
 
             {tab === "builder" && (
-              <motion.div key="builder" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+              <motion.div key="builder" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
                 <CharacterBuilder storyCalls={storyCalls} />
               </motion.div>
             )}
 
             {tab === "saved" && (
-              <motion.div key="saved" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+              <motion.div key="saved" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
                 <SavedTab storyCalls={storyCalls} />
               </motion.div>
             )}
           </AnimatePresence>
+          </div>
         </div>
       </div>
     </AuthLayout>
@@ -384,147 +344,28 @@ export default function TrainingPage() {
   );
 }
 
-/* ─── Recommended Tab ────────────────────────────────────────────────────── */
-
-function RecommendedTab({
-  onStart,
-  onStartStory,
-  starting,
-  storyCalls,
-}: {
-  onStart: (id: string) => void;
-  onStartStory: (id: string, calls?: number) => void;
-  starting: string | null;
-  storyCalls: number;
-}) {
-  const scenarios = useTrainingStore((s) => s.scenarios);
-  const scenariosLoading = useTrainingStore((s) => s.scenariosLoading);
-
-  // Build recommendations: pick archetypes from different groups/tiers
-  // In production this would come from backend /training/recommended
-  const recommendations = (() => {
-    // Simple client-side recommendation engine
-    // Groups recommendations into: main, skill-gap, challenge, new-group
-    const groups: { title: string; icon?: string; subtitle: string; color: string; archetypes: ArchetypeInfo[] }[] = [];
-
-    // 1. Main recommendation — moderate difficulty, varied groups
-    const t1t2 = ARCHETYPES.filter((a) => a.tier <= 2 && a.difficulty <= 6);
-    const mainPick = t1t2.slice(0, 3);
-    if (mainPick.length) {
-      groups.push({
-        title: "Рекомендуемые сегодня",
-        subtitle: "На основе сложности и разнообразия",
-        color: "var(--accent)",
-        archetypes: mainPick,
-      });
-    }
-
-    // 2. New groups — COGNITIVE, SOCIAL, TEMPORAL, PROFESSIONAL, COMPOUND
-    const newGroups: Array<{ key: string; archetypes: ArchetypeInfo[] }> = [
-      { key: "cognitive", archetypes: ARCHETYPES.filter((a) => a.group === "cognitive" && a.tier <= 2) },
-      { key: "social", archetypes: ARCHETYPES.filter((a) => a.group === "social" && a.tier <= 2) },
-      { key: "temporal", archetypes: ARCHETYPES.filter((a) => a.group === "temporal" && a.tier <= 2) },
-      { key: "professional", archetypes: ARCHETYPES.filter((a) => a.group === "professional" && a.tier <= 2) },
-    ];
-    for (const ng of newGroups) {
-      const g = ARCHETYPE_GROUPS[ng.key as keyof typeof ARCHETYPE_GROUPS];
-      if (g && ng.archetypes.length > 0) {
-        groups.push({
-          title: g.label,
-          icon: g.icon,
-          subtitle: g.description,
-          color: g.color,
-          archetypes: ng.archetypes.slice(0, 3),
-        });
-      }
-    }
-
-    // 3. Challenge — high tier
-    const challenges = ARCHETYPES.filter((a) => a.tier >= 3 && a.difficulty >= 7).slice(0, 3);
-    if (challenges.length) {
-      groups.push({
-        title: "Вызов",
-        subtitle: "Для опытных менеджеров",
-        color: "var(--danger)",
-        archetypes: challenges,
-      });
-    }
-
-    return groups;
-  })();
-
-  if (scenariosLoading) {
-    return (
-      <div className="grid grid-cols-1 gap-4 mt-6">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="glass-panel rounded-2xl h-32 animate-pulse" />
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-6 space-y-8">
-      {recommendations.map((group, gi) => (
-        <div key={gi}>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex items-center gap-2">
-              {(() => {
-                const GroupIcon = group.icon ? GROUP_ICONS[group.icon] : null;
-                if (GroupIcon) return <GroupIcon size={20} weight="duotone" style={{ color: group.color }} />;
-                if (gi === 0) return <Sparkles size={18} style={{ color: group.color }} />;
-                if (gi === recommendations.length - 1) return <TrendingUp size={18} style={{ color: group.color }} />;
-                return null;
-              })()}
-              <h3 className="font-display text-base font-bold tracking-wide" style={{ color: "var(--text-primary)" }}>
-                {group.title}
-              </h3>
-            </div>
-            <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-              {group.subtitle}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-            {group.archetypes.map((arch) => {
-              // Find a matching scenario by difficulty
-              const matchScenario = scenarios.length
-                ? [...scenarios].sort((a, b) => Math.abs(a.difficulty - arch.difficulty) - Math.abs(b.difficulty - arch.difficulty))[0]
-                : null;
-
-              return (
-                <ArchetypeCard
-                  key={arch.code}
-                  arch={arch}
-                  size="full"
-                  scenario={matchScenario}
-                  isStarting={starting === matchScenario?.id}
-                  onStart={onStart}
-                  onStartStory={onStartStory}
-                  storyCalls={storyCalls}
-                />
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /* ─── Scenarios Tab with Filters ──────────────────────────────────────────── */
+/*
+ * 2026-04-20: the `RecommendedTab` function that used to live here was dead
+ * code — it had been dropped from the render tree in the 2026-04-18 refactor
+ * and the accompanying comment said "оставлена в коде для истории".
+ * Removed entirely along with its exclusive imports. Recommendation logic
+ * now lives inside `ScenariosTab` (see `?tab=scenarios` entry flow).
+ */
 
 function ScenariosTab({
   starting,
   storyCalls,
   onStoryCallsChange,
   onStart,
+  onStartCall,
   onStartStory,
 }: {
-  starting: string | null;
+  starting: { scenarioId: string; archCode?: string } | null;
   storyCalls: number;
   onStoryCallsChange: (calls: number) => void;
-  onStart: (id: string) => void;
+  onStart: (id: string, archCode?: string) => void;
+  onStartCall?: (id: string) => void;
   onStartStory: (id: string, calls?: number) => void;
 }) {
   const { scenariosLoading, typeFilter, difficultyFilter, setTypeFilter, setDifficultyFilter, filteredScenarios } = useTrainingStore();
@@ -569,7 +410,7 @@ function ScenariosTab({
         className="mt-6 overflow-hidden rounded-2xl"
         style={{
           background: "linear-gradient(135deg, rgba(5,5,6,0.95), rgba(18,18,22,0.94))",
-          border: "1px solid rgba(124,106,232,0.18)",
+          border: "1px solid var(--accent-muted)",
           boxShadow: "0 18px 45px rgba(0,0,0,0.28)",
         }}
       >
@@ -578,7 +419,7 @@ function ScenariosTab({
             <div className="text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
               AI Story Mode
             </div>
-            <h2 className="mt-3 font-display text-2xl font-bold tracking-[0.08em]" style={{ color: "var(--text-primary)" }}>
+            <h2 className="mt-3 font-display text-2xl font-bold tracking-widest" style={{ color: "var(--text-primary)" }}>
               История клиента на несколько звонков
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
@@ -596,9 +437,9 @@ function ScenariosTab({
                 onClick={() => onStoryCallsChange(item.calls)}
                 className="rounded-xl px-4 py-3 text-left transition-all"
                 style={{
-                  background: storyCalls === item.calls ? "rgba(124,106,232,0.14)" : "rgba(255,255,255,0.03)",
-                  border: storyCalls === item.calls ? "1px solid rgba(124,106,232,0.42)" : "1px solid rgba(255,255,255,0.08)",
-                  boxShadow: storyCalls === item.calls ? "0 0 0 1px rgba(124,106,232,0.12) inset" : "none",
+                  background: storyCalls === item.calls ? "var(--accent-muted)" : "rgba(255,255,255,0.03)",
+                  border: storyCalls === item.calls ? "1px solid rgba(107,77,199,0.42)" : "1px solid rgba(255,255,255,0.08)",
+                  boxShadow: storyCalls === item.calls ? "0 0 0 1px var(--accent-muted) inset" : "none",
                 }}
               >
                 <div className="text-sm font-semibold" style={{ color: storyCalls === item.calls ? "var(--accent)" : "var(--text-primary)" }}>
@@ -657,29 +498,65 @@ function ScenariosTab({
         </div>
       </div>
 
-      {/* ── Scenario Grid ────────────────────────────── */}
+      {/* ── Scenario Grid ──────────────────────────────
+          2026-04-18: ScenarioDossierCard был вторым разнящимся дизайном —
+          заменён на унифицированный ArchetypeCard size="full". Для каждого
+          сценария ищем связанный архетип по archetype_code (если нет —
+          берём первый архетип с подходящей сложностью). Теперь /training
+          (сценарии), /training (конструктор превью) и /training/archetypes
+          используют ОДИН компонент и один визуальный язык. */}
       {filtered.length === 0 ? (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-16 flex flex-col items-center">
           <Inbox size={40} style={{ color: "var(--text-muted)" }} />
-          <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
+          {/* 2026-04-20: the previous copy claimed "Сценарии загружаются"
+              in this branch, but the `scenariosLoading` gate above already
+              returns the skeleton grid while loading — so by the time we
+              hit this branch, loading is definitively done. The three real
+              states are: filters too narrow, filters clear but catalog is
+              empty, or filters clear and user hit an edge (no scenarios at
+              all). The copy now distinguishes them honestly. */}
+          <p className="mt-3 text-sm text-center max-w-sm" style={{ color: "var(--text-muted)" }}>
             {typeFilter !== "all" || difficultyFilter !== "all"
-              ? "Ничего не найдено. Попробуйте другие фильтры."
-              : "Сценарии загружаются. Попробуйте обновить страницу."}
+              ? "Ничего не найдено по выбранным фильтрам. Попробуйте сбросить их или выбрать другие."
+              : "Пока нет доступных сценариев. Загляните позже или напишите руководителю."}
           </p>
+          {(typeFilter !== "all" || difficultyFilter !== "all") && (
+            <button
+              onClick={() => {
+                setTypeFilter("all");
+                setDifficultyFilter("all");
+              }}
+              className="mt-4 text-sm underline decoration-dotted underline-offset-4"
+              style={{ color: "var(--accent)" }}
+            >
+              Сбросить фильтры
+            </button>
+          )}
         </motion.div>
       ) : (
         <div className="mt-6 grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 items-stretch">
-          {filtered.map((scenario, i) => (
-            <ScenarioDossierCard
-              key={scenario.id}
-              scenario={scenario}
-              index={i}
-              isStarting={starting === scenario.id}
-              onStart={onStart}
-              onStartStory={onStartStory}
-              storyCalls={storyCalls}
-            />
-          ))}
+          {filtered.map((scenario) => {
+            const scenarioArch = (scenario as { archetype_code?: string }).archetype_code;
+            const arch =
+              (scenarioArch && ARCHETYPES.find((a) => a.code === scenarioArch)) ||
+              [...ARCHETYPES].sort(
+                (a, b) => Math.abs(a.difficulty - scenario.difficulty) - Math.abs(b.difficulty - scenario.difficulty)
+              )[0];
+            if (!arch) return null;
+            return (
+              <ArchetypeCard
+                key={scenario.id}
+                arch={arch}
+                size="full"
+                scenario={scenario}
+                isStarting={starting?.scenarioId === scenario.id}
+                onStart={onStart}
+                onStartCall={onStartCall ? (sid) => onStartCall(sid) : undefined}
+                onStartStory={onStartStory}
+                storyCalls={storyCalls}
+              />
+            );
+          })}
         </div>
       )}
     </>
@@ -690,13 +567,15 @@ function ScenariosTab({
 
 function AssignedTab({
   onStart,
+  onStartCall,
   onStartStory,
   starting,
   storyCalls,
 }: {
-  onStart: (id: string) => void;
+  onStart: (id: string, archCode?: string) => void;
+  onStartCall?: (id: string) => void;
   onStartStory: (id: string, calls?: number) => void;
-  starting: string | null;
+  starting: { scenarioId: string; archCode?: string } | null;
   storyCalls: number;
 }) {
   const { assigned, assignedLoading } = useTrainingStore();
@@ -714,7 +593,18 @@ function AssignedTab({
     );
   }
 
-  if (assigned.length === 0) {
+  const [recentHome, setRecentHome] = useState<Array<{
+    id: string; scenario_title: string; score_total: number | null;
+    duration_seconds: number | null; ended_at: string | null;
+  }>>([]);
+
+  useEffect(() => {
+    api.get<Array<{ id: string; scenario_title: string; score_total: number | null; duration_seconds: number | null; ended_at: string | null }>>("/training/recent-home?days=7")
+      .then(setRecentHome)
+      .catch(() => {});
+  }, []);
+
+  if (assigned.length === 0 && recentHome.length === 0) {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-16 flex flex-col items-center">
         <ClipboardList size={40} style={{ color: "var(--text-muted)" }} />
@@ -736,7 +626,7 @@ function AssignedTab({
         const deadline = new Date(item.deadline);
         const isOverdue = deadline < now;
         const daysLeft = Math.ceil((deadline.getTime() - now.getTime()) / 86_400_000);
-        const isStarting = starting === item.scenario_id;
+        const isStarting = starting?.scenarioId === item.scenario_id;
 
         return (
           <motion.div
@@ -794,7 +684,7 @@ function AssignedTab({
               <motion.button
                 onClick={() => onStartStory(item.scenario_id, storyCalls)}
                 className="btn-neon flex items-center gap-2"
-                style={{ borderColor: "rgba(124,106,232,0.24)", color: "var(--accent)" }}
+                style={{ borderColor: "var(--accent-glow)", color: "var(--accent)" }}
                 whileTap={{ scale: 0.97 }}
               >
                 AI x{storyCalls}
@@ -803,6 +693,44 @@ function AssignedTab({
           </motion.div>
         );
       })}
+
+      {/* ── Recent home sessions ─────────────────────────────────────── */}
+      {recentHome.length > 0 && (
+        <>
+          <div className="mt-8 mb-3 flex items-center gap-2">
+            <Clock size={14} style={{ color: "var(--text-muted)" }} />
+            <span className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+              Недавние звонки с главной
+            </span>
+          </div>
+          {recentHome.map((s, i) => (
+            <motion.div
+              key={s.id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: i * 0.05 }}
+              className="glass-panel p-4 mb-2 flex items-center justify-between cursor-pointer hover:opacity-80 transition-opacity"
+              style={{ borderLeft: "3px solid var(--text-muted)" }}
+              onClick={() => window.location.href = `/results/${s.id}`}
+            >
+              <div className="min-w-0">
+                <h4 className="font-display text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                  {s.scenario_title}
+                </h4>
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  {s.ended_at ? new Date(s.ended_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
+                  {s.duration_seconds ? ` · ${Math.round(s.duration_seconds / 60)} мин` : ""}
+                </span>
+              </div>
+              {s.score_total != null && (
+                <span className="font-mono font-bold text-sm shrink-0 ml-3" style={{ color: s.score_total >= 70 ? "var(--color-green, #22c55e)" : s.score_total >= 40 ? "var(--warning)" : "var(--danger)" }}>
+                  {Math.round(s.score_total)}%
+                </span>
+              )}
+            </motion.div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -859,7 +787,20 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
         custom_difficulty: char.difficulty,
       });
       router.push(`/training/${session.id}`);
-    } catch {
+    } catch (err) {
+      // Phase F (2026-04-20) — same 409 rescue as startTraining.
+      if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        err.detail &&
+        err.detail.code === "session_already_active"
+      ) {
+        const existingId = err.detail.existing_session_id;
+        if (typeof existingId === "string" && existingId.length > 0) {
+          router.push(`/training/${existingId}`);
+          return;
+        }
+      }
       setStarting(null);
     }
   };
@@ -939,7 +880,7 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
                 onClick={() => handleStart(char, true)}
                 disabled={starting === (char.id || char.archetype)}
                 className="btn-neon flex items-center justify-center gap-2 px-3 text-xs"
-                style={{ borderColor: "rgba(124,106,232,0.24)", color: "var(--accent)" }}
+                style={{ borderColor: "var(--accent-glow)", color: "var(--accent)" }}
                 whileTap={{ scale: 0.97 }}
               >
                 AI x{storyCalls}

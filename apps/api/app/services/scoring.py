@@ -97,26 +97,24 @@ class ScoreBreakdown:
     def skill_radar(self) -> dict[str, float]:
         """Compute 10-skill radar from 12 layer scores (DOC_06). Returns 0-100 per skill.
 
-        IMPORTANT: L3 sub-scores and L2.check_score are stored AFTER V3_RESCALE
-        (×0.75), so their effective max is 5×0.75=3.75, NOT 5.0.
-        L8 sub-scores are stored raw (max 5.0).
-        L1.discovery_score is stored raw (max 10.0).
+        S3-07: All L3 and L8 sub-scores are now stored normalized to [0, 1].
+        This eliminates the V3_RESCALE bias where L3 (max 3.75) was artificially
+        33% lower than L8 (max 5.0) on skill radar visualization.
         """
         details = self.details
 
-        # Max values for normalization
-        _L3_SUB_MAX = 5 * V3_RESCALE    # 3.75 — L3 sub-scores stored after rescale
-        _L8_SUB_MAX = 5.0               # L8 sub-scores stored raw
-        _L2_CHECK_MAX = 5 * V3_RESCALE  # 3.75 — L2.check_score stored after rescale
+        # L2.check_score is still stored after V3_RESCALE (0-3.75)
+        _L2_CHECK_MAX = 5 * V3_RESCALE  # 3.75
 
         # ── empathy (L3 empathy + L8 patience + L8 empathy_check) ──
+        # S3-07: sub-scores are already [0,1] — use directly as weights
         empathy_l3 = details.get("communication", {}).get("empathy_score", 0)
         empathy_l8_patience = details.get("human_factor", {}).get("patience_score", 0)
         empathy_l8_empathy = details.get("human_factor", {}).get("empathy_check_score", 0)
         empathy = (
-            _normalize(empathy_l3, _L3_SUB_MAX) * 0.4
-            + _normalize(empathy_l8_patience, _L8_SUB_MAX) * 0.3
-            + _normalize(empathy_l8_empathy, _L8_SUB_MAX) * 0.3
+            empathy_l3 * 0.4
+            + empathy_l8_patience * 0.3
+            + empathy_l8_empathy * 0.3
         ) * 100
 
         # ── knowledge (L1 + L10 + L7) ──
@@ -133,12 +131,8 @@ class ScoreBreakdown:
 
         # ── stress_resistance (L4 + L8 composure + L3 pace) ──
         sr_l4 = _normalize(self.anti_patterns + 11.25, 11.25) * 0.4
-        sr_l8_composure = _normalize(
-            details.get("human_factor", {}).get("composure_score", 0), _L8_SUB_MAX
-        ) * 0.3
-        sr_l3_pace = _normalize(
-            details.get("communication", {}).get("pace_score", 0), _L3_SUB_MAX
-        ) * 0.3
+        sr_l8_composure = details.get("human_factor", {}).get("composure_score", 0) * 0.3
+        sr_l3_pace = details.get("communication", {}).get("pace_score", 0) * 0.3
         stress_resistance = (sr_l4 + sr_l8_composure + sr_l3_pace) * 100
 
         # ── closing (L5 + L9 + L2 check) ──
@@ -153,12 +147,8 @@ class ScoreBreakdown:
         qual_l1_disc = _normalize(
             details.get("script_adherence", {}).get("discovery_score", 0), 10
         ) * 0.4
-        qual_l3_ctrl = _normalize(
-            details.get("communication", {}).get("control_score", 0), _L3_SUB_MAX
-        ) * 0.3
-        qual_l3_listen = _normalize(
-            details.get("communication", {}).get("listening_score", 0), _L3_SUB_MAX
-        ) * 0.3
+        qual_l3_ctrl = details.get("communication", {}).get("control_score", 0) * 0.3
+        qual_l3_listen = details.get("communication", {}).get("listening_score", 0) * 0.3
         qualification = (qual_l1_disc + qual_l3_ctrl + qual_l3_listen) * 100
 
         # ── NEW: time_management (100% from L12) ──
@@ -179,9 +169,9 @@ class ScoreBreakdown:
         # ── NEW: rapport_building (40% L3 empathy + 30% L8 warmth + 30% L8 patience) ──
         warmth_l8 = details.get("human_factor", {}).get("warmth_score", 0)
         rapport = (
-            _normalize(empathy_l3, _L3_SUB_MAX) * 0.4
-            + _normalize(warmth_l8, _L8_SUB_MAX) * 0.3
-            + _normalize(empathy_l8_patience, _L8_SUB_MAX) * 0.3
+            empathy_l3 * 0.4
+            + warmth_l8 * 0.3
+            + empathy_l8_patience * 0.3
         ) * 100
 
         def _clamp(v: float) -> float:
@@ -279,6 +269,57 @@ def _has_pattern(text: str, patterns: list[str]) -> bool:
     return any(re.search(p, text_lower) for p in patterns)
 
 
+def count_human_moment_messages(user_messages: list[str]) -> int:
+    """Count how many user messages are "human moments" (off-topic, typos, gibberish).
+
+    Used to reduce scoring penalties: these messages should not be counted against
+    the manager's script adherence, communication, or anti-pattern scores because
+    the AI client is expected to react naturally, not continue the sales script.
+
+    Returns count of messages that are human moments (0 = no adjustment needed).
+    """
+    from app.services.emotion_v6 import detect_human_moment
+
+    count = 0
+    for msg in user_messages:
+        trigger = detect_human_moment(msg)
+        if trigger is not None:
+            count += 1
+    return count
+
+
+def apply_human_moment_adjustment(
+    raw_score: float,
+    max_score: float,
+    human_moment_count: int,
+    total_messages: int,
+) -> float:
+    """Adjust a layer score to compensate for human-moment messages.
+
+    Logic: if 2 out of 20 messages were off-topic, don't penalize the manager
+    for those 2 messages. Scale the score as if those messages didn't exist.
+
+    The adjustment is capped at 20% of total messages to prevent abuse.
+    """
+    if human_moment_count == 0 or total_messages == 0:
+        return raw_score
+
+    # Cap: at most 20% of messages can be "forgiven"
+    forgiven = min(human_moment_count, int(total_messages * 0.2))
+    if forgiven == 0:
+        return raw_score
+
+    effective_messages = total_messages - forgiven
+    if effective_messages <= 0:
+        return raw_score
+
+    # Scale score proportionally: if 18 of 20 messages were "real",
+    # the score should be evaluated as if there were only 18 messages
+    ratio = total_messages / effective_messages
+    adjusted = raw_score * min(ratio, 1.15)  # Cap boost at 15%
+    return min(adjusted, max_score)
+
+
 # ---------------------------------------------------------------------------
 # Layer scoring functions
 # ---------------------------------------------------------------------------
@@ -298,9 +339,14 @@ def _score_objection_handling(
             objections_found += 1
 
     if objections_found == 0:
+        # If no user messages at all, award 0 (empty session exploit)
+        if not user_messages:
+            return 0.0, {
+                "objections_found": 0,
+                "note": "empty session — no user messages",
+                "check_score": 0.0,
+            }
         # No objections means easy conversation — award HALF credit, not full.
-        # Full 18.75 for zero objections was an exploit: users chose easy archetypes
-        # to guarantee max L2 score without demonstrating any handling skill.
         _half_score = 9.375  # 50% of max L2
         return _half_score, {
             "objections_found": 0,
@@ -376,7 +422,8 @@ def _score_communication(user_messages: list[str]) -> tuple[float, dict]:
     empathy_found = any(_has_pattern(msg, empathy_patterns) for msg in user_messages)
     empathy_raw = 5.0 if empathy_found else 1.0
     details["empathy_detected"] = empathy_found
-    details["empathy_score"] = empathy_raw * V3_RESCALE
+    # S3-07: Store normalized [0,1] sub-scores (not rescaled raw)
+    details["empathy_score"] = round(empathy_raw / 5.0, 3)
     score += empathy_raw
 
     # 2. Active listening (5 pts raw)
@@ -386,7 +433,7 @@ def _score_communication(user_messages: list[str]) -> tuple[float, dict]:
     if long_messages > len(user_messages) * 0.5:
         listening_raw = 2.0
     details["avg_message_length"] = round(avg_len, 1)
-    details["listening_score"] = listening_raw * V3_RESCALE
+    details["listening_score"] = round(listening_raw / 5.0, 3)
     score += listening_raw
 
     # 3. Pace (5 pts raw)
@@ -398,7 +445,7 @@ def _score_communication(user_messages: list[str]) -> tuple[float, dict]:
         pace_raw = 5.0 if cv < 1.5 else max(0, 5.0 - (cv - 1.5) * 2)
     else:
         pace_raw = 4.0
-    details["pace_score"] = pace_raw * V3_RESCALE
+    details["pace_score"] = round(pace_raw / 5.0, 3)
     score += pace_raw
 
     # 4. Conversation control (5 pts raw)
@@ -416,7 +463,7 @@ def _score_communication(user_messages: list[str]) -> tuple[float, dict]:
     )
     control_raw = min(5.0, 2.0 + polite_count * 1.0)
     details["polite_markers"] = polite_count
-    details["control_score"] = control_raw * V3_RESCALE
+    details["control_score"] = round(control_raw / 5.0, 3)
     score += control_raw
 
     return min(20.0, score) * V3_RESCALE, details
@@ -586,7 +633,8 @@ def _score_human_factor(
     if custom_params and custom_params.get("fake_transitions_detected"):
         fake_detected = True
         patience_score = min(5.0, patience_score + 1.0)
-    details["patience_score"] = round(patience_score, 1)
+    # S3-07: Store normalized [0,1] sub-scores (unified scale with L3)
+    details["patience_score"] = round(patience_score / 5.0, 3)
     details["fake_detected"] = fake_detected
     score += patience_score
 
@@ -618,7 +666,7 @@ def _score_human_factor(
             empathy_check_score = 3.0
         else:
             empathy_check_score = 1.0
-    details["empathy_check_score"] = round(empathy_check_score, 1)
+    details["empathy_check_score"] = round(empathy_check_score / 5.0, 3)
     score += empathy_check_score
 
     # ── Composure (0-5) ──
@@ -633,10 +681,16 @@ def _score_human_factor(
         composure_score = max(0, composure_score - aggressive_responses * 2.0)
     if panic_count > 0:
         composure_score = max(0, composure_score - panic_count * 1.0)
-    details["composure_score"] = round(composure_score, 1)
+    details["composure_score"] = round(composure_score / 5.0, 3)
     details["aggressive_responses"] = aggressive_responses
     details["panic_count"] = panic_count
     score += composure_score
+
+    # ── Warmth (derived, not scored separately) ──
+    # S3-07: warmth_score was referenced in skill_radar but never stored.
+    # Derive from empathy_check + composure as a soft proxy.
+    warmth_score = (empathy_check_score + composure_score) / 2.0
+    details["warmth_score"] = round(warmth_score / 5.0, 3)
 
     return min(15.0, score), details
 
@@ -1053,11 +1107,31 @@ def _score_adaptation(
         elif any(s in ("hostile", "hangup") for s in final_states):
             counter_score = 0.0
 
-    total = min(7.5, recognition_score + style_shift_score + counter_score)
+    # v6 bonus: emotion awareness (0-1.25 extra)
+    emotion_awareness_bonus = 0.0
+    try:
+        from app.services.emotion_v6 import score_emotion_awareness, IntensityLevel
+        if emotion_timeline and len(emotion_timeline) >= 3:
+            _last_state = emotion_timeline[-1].get("state", "cold")
+            _last_intensity = IntensityLevel.MEDIUM  # default
+            _manager_triggers = list(actual_triggers.keys())
+            emotion_awareness_bonus = score_emotion_awareness(
+                current_state=_last_state,
+                intensity=_last_intensity,
+                compound=None,
+                micro=None,
+                manager_triggers=_manager_triggers,
+                archetype_group=_arch_group,
+            )
+    except Exception:
+        pass
+
+    total = min(7.5, recognition_score + style_shift_score + counter_score + emotion_awareness_bonus)
     adapt_details = {
         "recognition_score": round(recognition_score, 2),
         "style_shift_score": round(style_shift_score, 2),
         "counter_score": round(counter_score, 2),
+        "emotion_awareness_bonus": round(emotion_awareness_bonus, 2),
     }
     return total, adapt_details
 
@@ -1185,7 +1259,7 @@ async def calculate_realtime_scores(
             progress = await get_session_checkpoint_progress(scenario.script_id, message_history)
             l1_score = progress["total_score"] * 0.225
     except Exception:
-        pass
+        logger.warning("Scoring layer L1 failed", exc_info=True)
 
     # L2: Objection handling (0-18.75)
     l2_score, _ = _score_objection_handling(user_messages, assistant_messages)
@@ -1198,7 +1272,7 @@ async def calculate_realtime_scores(
     try:
         l4_penalty, _ = await _score_anti_patterns(user_messages)
     except Exception:
-        pass
+        logger.warning("Scoring layer L4 failed", exc_info=True)
 
     # L5: Result (0-7.5)
     l5_score, _ = _score_result(assistant_messages, emotion_timeline)
@@ -1210,7 +1284,7 @@ async def calculate_realtime_scores(
         chain_data = await calculate_chain_score(session_id)
         l6_score = float(chain_data.get("chain_score", 0)) * V3_RESCALE
     except Exception:
-        pass
+        logger.warning("Scoring layer L6 failed", exc_info=True)
 
     # L7: Trap handling (-7.5 to +7.5)
     l7_score = 0.0
@@ -1219,13 +1293,24 @@ async def calculate_realtime_scores(
         trap_state = await get_session_trap_state(session_id)
         l7_score = float(trap_state.net_score) * V3_RESCALE
     except Exception:
-        pass
+        logger.warning("Scoring layer L7 failed", exc_info=True)
 
     # L8: Human Factor (0-15)
     l8_score, _ = _score_human_factor(
         user_messages, assistant_messages, emotion_timeline,
         session.custom_params,
     )
+
+    # v6.1: Human moment adjustment — don't penalize for off-topic/typo messages
+    hm_count = count_human_moment_messages(user_messages)
+    if hm_count > 0:
+        total_user = len(user_messages)
+        l1_score = apply_human_moment_adjustment(l1_score, 22.5, hm_count, total_user)
+        l3_score = apply_human_moment_adjustment(l3_score, 15.0, hm_count, total_user)
+        # Reduce anti-pattern penalty (human moments shouldn't count as anti-patterns)
+        if l4_penalty < 0:
+            forgiven = min(hm_count, int(total_user * 0.2))
+            l4_penalty = l4_penalty * (1.0 - forgiven / max(total_user, 1) * 0.5)
 
     # Total (L1-L8, excluding L9/L10 which are post-session)
     realtime_total = l1_score + l2_score + l3_score + l4_penalty + l5_score + l6_score + l7_score + l8_score
@@ -1281,6 +1366,24 @@ async def calculate_scores(
 
     user_messages = [m.content for m in messages if m.role == MessageRole.user]
     assistant_messages = [m.content for m in messages if m.role == MessageRole.assistant]
+
+    # Guard: empty session (0 user messages) → all zeros, skip all LLM calls
+    if len(user_messages) == 0:
+        logger.warning("Session %s has 0 user messages — returning zero scores", session_id)
+        return ScoreBreakdown(
+            score_script_adherence=0,
+            score_objection_handling=0,
+            score_communication=0,
+            score_anti_patterns=0,
+            score_result=0,
+            score_chain_traversal=0,
+            score_trap_handling=0,
+            score_human_factor=0,
+            score_narrative=0,
+            score_legal=0,
+            total=0,
+            details={"_completeness": 0.0, "_empty_session": True},
+        )
 
     emotion_timeline = session.emotion_timeline or []
     all_details: dict = {}
@@ -1440,6 +1543,18 @@ async def calculate_scores(
     except Exception as e:
         logger.warning("RAG feedback from L10 failed (non-critical): %s", e)
 
+    # ── v6.1: Human moment adjustment (full scoring) ──
+    hm_count = count_human_moment_messages(user_messages)
+    if hm_count > 0:
+        total_user = len(user_messages)
+        script_score = apply_human_moment_adjustment(script_score, 22.5, hm_count, total_user)
+        comm_score = apply_human_moment_adjustment(comm_score, 15.0, hm_count, total_user)
+        if anti_penalty < 0:
+            forgiven = min(hm_count, int(total_user * 0.2))
+            anti_penalty = anti_penalty * (1.0 - forgiven / max(total_user, 1) * 0.5)
+        all_details["_human_moment_count"] = hm_count
+        all_details["_human_moment_adjustment"] = True
+
     # ── Completeness factor: scale scores by conversation depth ──
     # Short conversations (2-3 messages) shouldn't get inflated scores.
     # Factor: 3msg=0.3, 6msg=0.6, 10+=1.0
@@ -1587,8 +1702,9 @@ async def generate_recommendations(
             # Too short for LLM — use rule-based only
             return rule_based
 
+        from app.services.scenario_engine import _sanitize_db_prompt
         dialog_summary = "\n".join(
-            f"{'Менеджер' if m.role == MessageRole.user else 'Клиент'}: {m.content}"
+            f"{'Менеджер' if m.role == MessageRole.user else 'Клиент'}: {_sanitize_db_prompt(m.content or '', 'dialog_msg')}"
             for m in messages[:30]
             if m.role in (MessageRole.user, MessageRole.assistant)
         )
@@ -1836,8 +1952,9 @@ def generate_layer_explanations(
         l8_notes.append(f"{panic_cnt} паник-фраз")
     if l8.get("fake_detected"):
         l8_notes.append("обнаружена фейковая смена настроения (+бонус)")
+    # S3-07: sub-scores are now [0,1] — display as ×5 for human-readable /5 scale
     l8_summary = (
-        f"Терпение: {patience:.0f}/5, Эмпатия: {empathy_check:.0f}/5, Самообладание: {composure:.0f}/5."
+        f"Терпение: {patience * 5:.0f}/5, Эмпатия: {empathy_check * 5:.0f}/5, Самообладание: {composure * 5:.0f}/5."
     )
     if l8_notes:
         l8_summary += " " + "; ".join(l8_notes) + "."

@@ -29,8 +29,8 @@ export function getChartTheme() {
   const bar4 = cssVar("--chart-bar-4", "#FF7EB3");
 
   // Semantic colors resolved for canvas
-  const accent = cssVar("--accent", "#7C6AE8");
-  const accentMuted = cssVar("--accent-muted", "rgba(124,106,232,0.14)");
+  const accent = cssVar("--accent", "#6B4DC7");
+  const accentMuted = cssVar("--accent-muted", "rgba(107,77,199,0.14)");
   const danger = cssVar("--danger", "#E5484D");
   const warning = cssVar("--warning", "#E8A630");
   const success = cssVar("--success", "#3DDC84");

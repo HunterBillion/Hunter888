@@ -148,9 +148,9 @@ export function DuelResult({
           transition={{ delay: 0.8 }}
           className={`mt-4 inline-flex items-center gap-2 font-mono text-lg font-bold px-4 py-2 rounded-xl stat-chip ${ratingChangeApplied && myRatingDelta >= 0 ? "neon-pulse" : ""}`}
           style={{
-            background: ratingChangeApplied ? (myRatingDelta >= 0 ? "rgba(61,220,132,0.1)" : "rgba(229,72,77,0.1)") : "rgba(212,168,75,0.1)",
+            background: ratingChangeApplied ? (myRatingDelta >= 0 ? "var(--success-muted)" : "var(--danger-muted)") : "rgba(212,168,75,0.1)",
             color: ratingChangeApplied ? (myRatingDelta >= 0 ? "var(--success)" : "var(--danger)") : "var(--warning)",
-            border: `1px solid ${ratingChangeApplied ? (myRatingDelta >= 0 ? "rgba(61,220,132,0.2)" : "rgba(229,72,77,0.2)") : "rgba(212,168,75,0.2)"}`,
+            border: `1px solid ${ratingChangeApplied ? (myRatingDelta >= 0 ? "var(--success-muted)" : "var(--danger-muted)") : "rgba(212,168,75,0.2)"}`,
           }}
         >
           {ratingChangeApplied ? (

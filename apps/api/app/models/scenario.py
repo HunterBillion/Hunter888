@@ -292,8 +292,8 @@ class Scenario(Base):
     scenario_type: Mapped[ScenarioType] = mapped_column(
         Enum(ScenarioType), nullable=False
     )
-    character_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("characters.id", ondelete="SET NULL"), nullable=False, index=True
+    character_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("characters.id", ondelete="SET NULL"), nullable=True, index=True
     )
     script_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("scripts.id", ondelete="SET NULL"), nullable=True, index=True

@@ -153,8 +153,32 @@ export interface CompareManager {
   wiki_sessions_ingested: number;
 }
 
+export interface LintReport {
+  status: string;
+  page_path?: string;
+  content?: string;
+  version?: number;
+  updated_at?: string | null;
+  last_run?: string | null;
+  last_description?: string | null;
+  // Structured data from POST /lint
+  summary?: {
+    total_issues: number;
+    total_suggestions: number;
+    contradictions: number;
+    stale_pages: number;
+    orphan_pages: number;
+    low_confidence: number;
+    cross_references: number;
+    missing_concepts: number;
+  };
+  health_score?: number;
+  issues?: { type: string; severity: string; title: string; detail: string; affected_pages?: string[]; recommendation: string }[];
+  suggestions?: { type: string; severity: string; title: string; detail: string; recommendation: string }[];
+}
+
 export type View = "list" | "detail";
-export type DetailTab = "pages" | "patterns" | "techniques" | "log" | "charts" | "profile";
+export type DetailTab = "pages" | "patterns" | "techniques" | "log" | "charts" | "profile" | "health";
 
 /* ─── Category config ─── */
 
@@ -170,7 +194,7 @@ export const ACTION_LABELS: Record<string, string> = {
   daily_synthesis: "Дневной синтез",
   weekly_synthesis: "Недельный синтез",
   monthly_review: "Месячный обзор",
-  lint_pass: "Lint pass",
+  lint_pass: "Проверка здоровья Wiki",
   manual_edit: "Ручная правка",
   rebuild_page: "Перестроение страницы",
   pattern_discovered: "Новый паттерн",

@@ -83,57 +83,85 @@ export default function ArchetypesPage() {
                   {unlocked} / {ARCHETYPES.length} разблокировано (уровень {level})
                 </p>
               </div>
-
-              {/* Search */}
-              <div className="relative w-full sm:w-64">
-                <Search
-                  size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2"
-                  style={{ color: "var(--text-muted)" }}
-                />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Поиск..."
-                  className="vh-input pl-9 w-full"
-                />
-              </div>
             </div>
           </motion.div>
 
-          {/* Group tabs */}
-          <div className="mt-6 flex gap-1.5 flex-wrap">
-            <button
-              onClick={() => setSelectedGroup("all")}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
-              style={{
-                background: selectedGroup === "all" ? "var(--accent)" : "var(--input-bg)",
-                color: selectedGroup === "all" ? "white" : "var(--text-muted)",
-                border: `1px solid ${selectedGroup === "all" ? "var(--accent)" : "var(--border-color)"}`,
-              }}
-            >
-              Все ({ARCHETYPES.length})
-            </button>
-            {GROUP_KEYS.map((gk) => {
-              const g = ARCHETYPE_GROUPS[gk];
-              const count = ARCHETYPES.filter((a) => a.group === gk).length;
-              const active = selectedGroup === gk;
-              return (
+          {/* 2026-04-17 redesign: search + category chips в одной большой панели.
+              Поиск широкий (full-width), чипы под ним в горизонтальной полосе
+              с горизонтальным скроллом на узких экранах — чтобы 10 категорий
+              + "Все" помещались в 1 ряд без неряшливого wrap. */}
+          <div
+            className="mt-6 rounded-xl border p-3 sm:p-4 space-y-3"
+            style={{
+              background: "var(--input-bg)",
+              borderColor: "var(--border-color)",
+            }}
+          >
+            {/* Big search bar */}
+            <div className="relative">
+              <Search
+                size={18}
+                className="absolute left-4 top-1/2 -translate-y-1/2"
+                style={{ color: "var(--text-muted)" }}
+              />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Поиск по имени, коду или описанию архетипа…"
+                className="vh-input w-full pl-12 pr-4 py-3 text-base"
+                style={{ minHeight: "48px" }}
+              />
+              {search && (
                 <button
-                  key={gk}
-                  onClick={() => setSelectedGroup(gk)}
-                  className="rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
+                  onClick={() => setSearch("")}
+                  aria-label="Очистить поиск"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-1 text-xs"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Category row — horizontal scroll on narrow screens so chips
+                never wrap into multiple messy rows. */}
+            <div className="overflow-x-auto -mx-1 px-1 pb-1 [scrollbar-width:thin]">
+              <div className="flex gap-1.5 items-center">
+                <button
+                  onClick={() => setSelectedGroup("all")}
+                  className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap"
                   style={{
-                    background: active ? `${g.color}20` : "var(--input-bg)",
-                    color: active ? g.color : "var(--text-muted)",
-                    border: `1px solid ${active ? `${g.color}50` : "var(--border-color)"}`,
+                    background: selectedGroup === "all" ? "var(--accent)" : "transparent",
+                    color: selectedGroup === "all" ? "white" : "var(--text-muted)",
+                    border: `1px solid ${selectedGroup === "all" ? "var(--accent)" : "var(--border-color)"}`,
                   }}
                 >
-                  {(() => { const I = GROUP_ICONS[g.icon]; return I ? <I size={14} weight="duotone" style={{ color: active ? g.color : "var(--text-muted)" }} /> : null; })()} {g.label} ({count})
+                  Все ({ARCHETYPES.length})
                 </button>
-              );
-            })}
+                {GROUP_KEYS.map((gk) => {
+                  const g = ARCHETYPE_GROUPS[gk];
+                  const count = ARCHETYPES.filter((a) => a.group === gk).length;
+                  const active = selectedGroup === gk;
+                  const I = GROUP_ICONS[g.icon];
+                  return (
+                    <button
+                      key={gk}
+                      onClick={() => setSelectedGroup(gk)}
+                      className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap flex items-center gap-1.5"
+                      style={{
+                        background: active ? `${g.color}20` : "transparent",
+                        color: active ? g.color : "var(--text-muted)",
+                        border: `1px solid ${active ? `${g.color}50` : "var(--border-color)"}`,
+                      }}
+                    >
+                      {I ? <I size={14} weight="duotone" style={{ color: active ? g.color : "var(--text-muted)" }} /> : null}
+                      {g.label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           {/* Grid */}

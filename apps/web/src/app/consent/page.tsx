@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Shield, AlertTriangle, Check, X, ArrowRight } from "lucide-react";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { clearTokens } from "@/lib/auth";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { toast } from "sonner";
 
 export default function ConsentPage() {
   const router = useRouter();
@@ -15,6 +16,36 @@ export default function ConsentPage() {
   const [declined, setDeclined] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [checking, setChecking] = useState(true);
+  // 2026-04-18: отдельное состояние "уже принято" — вместо мгновенного
+  // router.replace("/home") показываем экран-подтверждение с кнопкой
+  // "На главную". Раньше редирект был похож на "выбивает", плюс при
+  // 401 на /consent/status api.ts иногда стартовал refresh-флоу, который
+  // при неудаче чистил токены → middleware отправлял на /login. Теперь
+  // страница НЕ делает никаких автоматических редиректов — решает юзер.
+  const [alreadyAccepted, setAlreadyAccepted] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get<{ all_accepted: boolean }>("/consent/status")
+      .then((data) => {
+        if (cancelled) return;
+        if (data.all_accepted) {
+          setAlreadyAccepted(true);
+        }
+        setChecking(false);
+      })
+      .catch(() => {
+        // API error (401, 500 etc.) — показываем форму, пусть юзер попробует.
+        // Если действительно нет сессии — middleware сам отправит на /login
+        // при первом state-changing запросе. Но для GET /consent/status не
+        // стоит делать никаких редиректов.
+        if (!cancelled) setChecking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleAccept = async () => {
     if (!accepted) return;
@@ -27,12 +58,25 @@ export default function ConsentPage() {
         version: "1.0",
       });
       router.replace("/home");
+      toast.success("Согласие принято");
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : "";
+      const status = (err as { status?: number }).status;
+      // 409 = consent already accepted — treat as success
+      if (status === 409 || raw.toLowerCase().includes("already")) {
+        toast.info("Согласие уже было принято");
+        router.replace("/home");
+        return;
+      }
       // CSRF 403 — session expired, re-login needed
-      if (raw.toLowerCase().includes("csrf") || raw.includes("403")) {
+      if (raw.toLowerCase().includes("csrf") || status === 403) {
+        toast.error("Сессия истекла. Пожалуйста, войдите заново.");
         setError("Сессия истекла. Пожалуйста, войдите заново.");
+      } else if (status === 429) {
+        toast.warning("Подождите перед повторной попыткой");
+        setError("Слишком много запросов. Подождите.");
       } else {
+        toast.error(raw || "Не удалось сохранить согласие");
         setError(raw || "Не удалось сохранить согласие");
       }
     } finally {
@@ -47,6 +91,49 @@ export default function ConsentPage() {
     router.replace("/");
   };
 
+  // Show nothing while checking consent status (prevents flash before redirect)
+  if (checking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg-primary)" }}>
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-transparent" style={{ borderTopColor: "var(--accent)" }} />
+      </div>
+    );
+  }
+
+  // 2026-04-18: явная view если согласие уже принято — не редиректим
+  // автоматически. Юзер сам решает вернуться на /home или выйти. Это
+  // убирает "feels like kicked out" UX при повторном визите админа.
+  if (alreadyAccepted) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4" style={{ background: "var(--bg-primary)" }}>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-panel w-full max-w-lg p-8 text-center"
+        >
+          <div
+            className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
+            style={{ background: "color-mix(in srgb, var(--success) 12%, transparent)" }}
+          >
+            <Check size={28} style={{ color: "var(--success)" }} />
+          </div>
+          <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
+            Согласие уже принято
+          </h1>
+          <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
+            Вы уже подтвердили согласие на обработку персональных данных.
+            Дополнительных действий не требуется.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Button onClick={() => router.push("/home")}>
+              <ArrowRight size={16} className="mr-1.5" /> На главную
+            </Button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   if (declined) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4" style={{ background: "var(--bg-primary)" }}>
@@ -57,7 +144,7 @@ export default function ConsentPage() {
         >
           <div
             className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
-            style={{ background: "rgba(239, 68, 68, 0.1)" }}
+            style={{ background: "var(--danger-muted, rgba(239, 68, 68, 0.1))" }}
           >
             <AlertTriangle size={28} style={{ color: "var(--danger)" }} />
           </div>
@@ -76,8 +163,8 @@ export default function ConsentPage() {
               onClick={handleLogout}
               className="rounded-xl px-6 py-3 text-sm font-semibold transition-colors"
               style={{
-                background: "rgba(239, 68, 68, 0.1)",
-                border: "1px solid rgba(239, 68, 68, 0.3)",
+                background: "var(--danger-muted, rgba(239, 68, 68, 0.1))",
+                border: "1px solid var(--danger)",
                 color: "var(--danger)",
               }}
               whileTap={{ scale: 0.97 }}
@@ -189,8 +276,8 @@ export default function ConsentPage() {
               exit={{ opacity: 0, y: -8 }}
               className="mt-4 flex items-center gap-2 rounded-xl p-3 text-sm"
               style={{
-                background: "rgba(239, 68, 68, 0.08)",
-                border: "1px solid rgba(239, 68, 68, 0.2)",
+                background: "var(--danger-muted, rgba(239, 68, 68, 0.08))",
+                border: "1px solid var(--danger)",
                 color: "var(--danger)",
               }}
             >

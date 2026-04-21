@@ -15,11 +15,17 @@ import {
   History,
   Home,
   Settings,
+  Crown,
   ChevronDown,
   Swords,
   FileBarChart,
   BookOpen,
   Brain,
+  Gavel,
+  Sliders,
+  FlaskConical,
+  ShieldAlert,
+  FileText,
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { sanitizeText } from "@/lib/sanitize";
@@ -28,6 +34,8 @@ import { useGamificationStore } from "@/stores/useGamificationStore";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { XPBar } from "@/components/gamification/XPBar";
 import { StreakCounter } from "@/components/gamification/StreakCounter";
+import { PlanChip } from "@/components/billing/PlanChip";
+import { useSubscription } from "@/hooks/useSubscription";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { XHunterLogo } from "@/components/ui/XHunterLogo";
@@ -37,21 +45,81 @@ type OpenPanel = "none" | "user" | "notifications" | "mobile";
 
 type NavGroup = "main" | "manage";
 
-type NavItem = { href: string; label: string; icon: typeof Home; roles?: UserRole[]; group: NavGroup };
+type NavItem = { href: string; label: string; icon: typeof Home; group: NavGroup };
 
-const NAV_ITEMS: NavItem[] = [
-  /* ── Main: доступны всем ── */
-  { href: "/home", label: "Центр", icon: Home, group: "main" },
-  { href: "/training", label: "Тренировка", icon: Crosshair, group: "main" },
-  { href: "/history", label: "История", icon: History, group: "main" },
-  { href: "/leaderboard", label: "Лидерборд", icon: Trophy, group: "main" },
-  { href: "/pvp", label: "Арена", icon: Swords, group: "main" },
-  /* ── Manage: по ролям ── */
-  { href: "/wiki", label: "База знаний", icon: BookOpen, roles: ["manager"], group: "manage" },
-  { href: "/clients", label: "Клиенты", icon: Users, roles: ["admin", "rop", "manager", "methodologist"], group: "manage" },
-  { href: "/reports", label: "Отчёты", icon: FileBarChart, roles: ["manager", "methodologist"], group: "manage" },
-  { href: "/dashboard", label: "Панель РОП", icon: LayoutDashboard, roles: ["rop", "admin"], group: "manage" },
-];
+/**
+ * Phase C (2026-04-20) — role-aware navigation.
+ *
+ * Replaces the flat ``NAV_ITEMS`` with a factory keyed by role so each
+ * persona sees the menu that fits their job, not a superset. This is the
+ * owner's feedback distilled: "а главная панель навигации остаётся такая
+ * как есть для всех ролей? Это только для админа и РОП!"
+ *
+ * Product decisions locked by owner (2026-04-20):
+ *   • manager  — Центр / Тренировка / Арена / История / Лидерборд / Клиенты
+ *   • rop      — + «Команда» (≡ /dashboard) left of Тренировка
+ *   • methodologist — свой набор: Сценарии / Контент Арены / Скоринг /
+ *                      Сессии / Wiki (без Арены/Истории/Лидерборда — не
+ *                      его персона)
+ *   • admin    — всё от ROP + Аудит / Промпты / Система
+ *
+ * Leaderboard остаётся глобальной страницей в top-nav (не ныряет в /pvp).
+ * Mistake Book живёт внутри /pvp как карточка (Phase C: moved out of nav).
+ */
+function buildNavForRole(role: UserRole | undefined): NavItem[] {
+  // All roles land on /home as the common ground. From there the menu
+  // diverges per persona.
+  const HOME: NavItem = { href: "/home", label: "Центр", icon: Home, group: "main" };
+
+  if (role === "methodologist") {
+    return [
+      HOME,
+      { href: "/methodologist/scenarios", label: "Сценарии", icon: FileText, group: "main" },
+      { href: "/methodologist/arena-content", label: "Контент Арены", icon: FlaskConical, group: "main" },
+      { href: "/methodologist/scoring", label: "Скоринг", icon: Sliders, group: "main" },
+      { href: "/methodologist/sessions", label: "Сессии", icon: History, group: "main" },
+      { href: "/wiki", label: "Wiki", icon: BookOpen, group: "main" },
+    ];
+  }
+
+  if (role === "admin") {
+    return [
+      HOME,
+      { href: "/dashboard", label: "Команда", icon: LayoutDashboard, group: "main" },
+      { href: "/training", label: "Тренировка", icon: Crosshair, group: "main" },
+      { href: "/pvp", label: "Арена", icon: Swords, group: "main" },
+      { href: "/leaderboard", label: "Лидерборд", icon: Trophy, group: "main" },
+      { href: "/clients", label: "Клиенты", icon: Users, group: "main" },
+      // Phase F (2026-04-20) — владелец: «почему два пункта в nav и ещё
+      // карточка Аудит внутри Админки?». Убрано дублирование. Теперь
+      // ОДИН вход в систему — «Админка» (`/admin`), внутри tabs:
+      // Аудит / Здоровье / Промпты.
+      { href: "/admin", label: "Админка", icon: ShieldAlert, group: "manage" },
+    ];
+  }
+
+  if (role === "rop") {
+    return [
+      HOME,
+      { href: "/dashboard", label: "Команда", icon: LayoutDashboard, group: "main" },
+      { href: "/training", label: "Тренировка", icon: Crosshair, group: "main" },
+      { href: "/pvp", label: "Арена", icon: Swords, group: "main" },
+      { href: "/leaderboard", label: "Лидерборд", icon: Trophy, group: "main" },
+      { href: "/clients", label: "Клиенты", icon: Users, group: "main" },
+      { href: "/history", label: "История", icon: History, group: "manage" },
+    ];
+  }
+
+  // Default — manager (most common persona)
+  return [
+    HOME,
+    { href: "/training", label: "Тренировка", icon: Crosshair, group: "main" },
+    { href: "/pvp", label: "Арена", icon: Swords, group: "main" },
+    { href: "/history", label: "История", icon: History, group: "main" },
+    { href: "/leaderboard", label: "Лидерборд", icon: Trophy, group: "main" },
+    { href: "/clients", label: "Мои клиенты", icon: Users, group: "main" },
+  ];
+}
 
 export default function Header() {
   const pathname = usePathname();
@@ -62,8 +130,11 @@ export default function Header() {
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
   const userRole = user?.role as UserRole | undefined;
-  const navItems = NAV_ITEMS.filter((item) => !item.roles || (userRole && item.roles.includes(userRole)));
+  const navItems = buildNavForRole(userRole);
   const { level, currentXP, nextLevelXP, streak, fetchProgress } = useGamificationStore();
+  // Phase C (2026-04-20) — subscription chip visibility. Hidden for
+  // elevated roles inside PlanChip itself.
+  const { data: subscription } = useSubscription();
 
   useEffect(() => {
     if (user) fetchProgress();
@@ -130,8 +201,7 @@ export default function Header() {
     <header
       className="sticky top-0 z-30"
       style={{
-        padding: "0.75rem 0",
-        transform: scrolled ? "translateY(-4px)" : "translateY(0)",
+        padding: "0.5rem 0",
         transition: "transform 0.25s ease",
       }}
     >
@@ -144,8 +214,9 @@ export default function Header() {
           boxShadow: scrolled ? "var(--header-shadow)" : "none",
           backdropFilter: "blur(28px) saturate(1.4)",
           WebkitBackdropFilter: "blur(28px) saturate(1.4)",
-          padding: scrolled ? "0.5rem" : "0.75rem",
-          transition: "padding 0.25s ease, box-shadow 0.25s ease",
+          padding: "0.5rem",
+          minHeight: "56px",
+          transition: "box-shadow 0.25s ease",
         }}
       >
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 lg:grid-cols-[minmax(260px,1fr)_auto_minmax(260px,1fr)]">
@@ -153,25 +224,25 @@ export default function Header() {
             <div className="relative">
               <motion.button
                 onClick={() => setOpenPanel(userMenuOpen ? "none" : "user")}
-                className="flex max-w-full items-center gap-2 rounded-[20px] border px-3 py-2 transition-colors duration-200"
+                className="flex h-11 max-w-full items-center gap-2 rounded-[20px] border px-3 transition-colors duration-200"
                 style={{
-                  borderColor: userMenuOpen ? "var(--border-hover)" : "var(--header-btn-border)",
-                  background: userMenuOpen ? "var(--header-btn-bg)" : "var(--header-btn-bg)",
+                  borderColor: userMenuOpen ? "var(--accent)" : "var(--header-btn-border)",
+                  background: userMenuOpen ? "var(--accent-muted)" : "var(--header-btn-bg)",
                   boxShadow: userMenuOpen ? "0 0 0 1px var(--accent-muted)" : undefined,
                 }}
                 whileTap={{ scale: 0.98 }}
                 aria-label="Меню пользователя"
                 aria-expanded={userMenuOpen}
               >
-                <UserAvatar avatarUrl={user?.avatar_url} fullName={displayName} size={34} />
+                <UserAvatar avatarUrl={user?.avatar_url} fullName={displayName} size={30} />
                 <div className="hidden min-w-0 text-left sm:block">
-                  <div className="truncate text-sm font-medium" style={{ color: "var(--header-text)" }}>{displayName}</div>
-                  <div className="text-xs uppercase tracking-wide" style={{ color: "var(--header-text-muted)" }}>
+                  <div className="truncate text-sm font-semibold leading-tight" style={{ color: "var(--header-text)" }}>{displayName}</div>
+                  <div className="font-pixel text-[12px] uppercase leading-none tracking-widest" style={{ color: "var(--header-text-muted)" }}>
                     {roleLabel}
                   </div>
                 </div>
                 <motion.span animate={{ rotate: userMenuOpen ? 180 : 0 }} className="hidden sm:block">
-                  <ChevronDown size={14} style={{ color: "var(--header-text-muted)" }} />
+                  <ChevronDown size={16} style={{ color: "var(--header-text-muted)" }} />
                 </motion.span>
               </motion.button>
 
@@ -208,8 +279,17 @@ export default function Header() {
                         style={{ color: "var(--header-text)" }}
                         whileHover={{ background: "var(--header-btn-bg)" }}
                       >
-                        <User size={15} />
+                        <User size={16} />
                         Профиль
+                      </motion.button>
+                      <motion.button
+                        onClick={() => { setOpenPanel("none"); router.push("/pricing"); }}
+                        className="mt-1 flex w-full items-center gap-3 rounded-[18px] px-4 py-3 text-sm"
+                        style={{ color: "var(--rank-gold)" }}
+                        whileHover={{ background: "var(--header-btn-bg)" }}
+                      >
+                        <Crown size={16} />
+                        Подписка
                       </motion.button>
                       <motion.button
                         onClick={() => { setOpenPanel("none"); router.push("/settings"); }}
@@ -217,7 +297,7 @@ export default function Header() {
                         style={{ color: "var(--header-text)" }}
                         whileHover={{ background: "var(--header-btn-bg)" }}
                       >
-                        <Settings size={15} />
+                        <Settings size={16} />
                         Настройки
                       </motion.button>
                     </div>
@@ -229,7 +309,7 @@ export default function Header() {
                         style={{ color: "var(--danger)", background: "color-mix(in srgb, var(--danger) 8%, transparent)" }}
                         whileHover={{ background: "color-mix(in srgb, var(--danger) 14%, transparent)" }}
                       >
-                        <LogOut size={15} />
+                        <LogOut size={16} />
                         Выйти
                       </motion.button>
                     </div>
@@ -259,8 +339,18 @@ export default function Header() {
               <StreakCounter streak={streak} />
             </div>
 
+            {/* Phase C — plan indicator (hidden for elevated roles inside PlanChip). */}
+            <div className="hidden sm:block">
+              <PlanChip
+                plan={subscription?.plan}
+                isTrial={subscription?.is_trial}
+                trialDaysRemaining={subscription?.trial_days_remaining}
+                role={userRole}
+              />
+            </div>
+
             <div
-              className="flex items-center gap-1 rounded-[20px] border px-2 py-1.5"
+              className="flex h-11 items-center gap-1 rounded-[20px] border px-2"
               style={{ borderColor: "var(--header-btn-border)", background: "var(--header-btn-bg)" }}
             >
               <ThemeToggle />
@@ -271,7 +361,7 @@ export default function Header() {
             </div>
 
             <motion.button
-              className="lg:hidden flex h-11 w-11 items-center justify-center rounded-[18px] border"
+              className="lg:hidden flex h-11 w-11 items-center justify-center rounded-[20px] border"
               onClick={() => setOpenPanel(mobileOpen ? "none" : "mobile")}
               style={{ borderColor: "var(--header-btn-border)", color: "var(--header-text)", background: "var(--header-btn-bg)" }}
               whileTap={{ scale: 0.94 }}
@@ -293,9 +383,9 @@ export default function Header() {
           </div>
         </div>
 
-        <div className="mt-3 hidden lg:flex items-center justify-center">
+        <div className="mt-2 hidden lg:flex items-center justify-center">
           <nav
-            className="flex max-w-full items-center justify-center gap-1 rounded-[22px] border px-2 py-1.5 overflow-visible"
+            className="flex max-w-full items-center justify-center gap-1 rounded-[20px] border p-1 overflow-visible"
             style={{
               borderColor: "var(--header-btn-border)",
               background: "var(--header-btn-bg)",
@@ -309,11 +399,11 @@ export default function Header() {
               return (
                 <React.Fragment key={item.href}>
                   {showDivider && (
-                    <div className="mx-1 h-5 w-px" style={{ background: "var(--border-color)" }} />
+                    <div role="separator" className="mx-2 h-6 w-px" style={{ background: "var(--border-color)" }} />
                   )}
                 <Link href={item.href} prefetch aria-current={active ? "page" : undefined}>
                   <div
-                    className="relative flex items-center gap-2 rounded-[16px] px-4 xl:px-5 py-2.5 text-sm font-medium whitespace-nowrap transition-colors duration-200"
+                    className="relative flex h-9 items-center gap-2 rounded-[14px] px-4 whitespace-nowrap transition-colors duration-200"
                     style={{
                       color: active ? "var(--header-text-active)" : "var(--header-text-muted)",
                     }}
@@ -327,28 +417,28 @@ export default function Header() {
                     {active && (
                       <>
                         <div
-                          className="absolute inset-0 rounded-[16px]"
+                          className="absolute inset-0 rounded-[14px]"
                           style={{
                             background: "var(--header-nav-active-bg)",
                             boxShadow: "var(--header-nav-active-shadow)",
                           }}
                         />
                         <div
-                          className="absolute rounded-full"
+                          className="absolute left-1/2 -translate-x-1/2"
                           style={{
-                            bottom: -4,
-                            left: "25%",
-                            right: "25%",
+                            bottom: -3,
+                            width: "60%",
                             height: 2,
-                            background: "var(--accent)",
+                            background: "repeating-linear-gradient(to right, var(--accent) 0px, var(--accent) 4px, transparent 4px, transparent 6px)",
                             boxShadow: "0 2px 12px var(--accent-glow)",
-                            borderRadius: 1,
                           }}
                         />
                       </>
                     )}
-                    <span className="relative z-10 opacity-70 flex items-center"><Icon size={15} /></span>
-                    <span className="relative z-10 leading-none">{item.label}</span>
+                    <span className="relative z-10 flex items-center opacity-80"><Icon size={16} /></span>
+                    <span className="relative z-10 font-pixel text-[17px] uppercase leading-none tracking-[0.04em]" style={{ paddingTop: 2 }}>
+                      {item.label}
+                    </span>
                   </div>
                 </Link>
                 </React.Fragment>
@@ -367,7 +457,7 @@ export default function Header() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 z-[28] lg:hidden"
-              style={{ background: "rgba(0,0,0,0.3)", backdropFilter: "blur(4px)" }}
+              style={{ background: "var(--overlay-bg)", backdropFilter: "blur(4px)" }}
               onClick={() => setOpenPanel("none")}
             />
             <motion.nav
@@ -405,7 +495,7 @@ export default function Header() {
                           prefetch={true}
                           onClick={() => setOpenPanel("none")}
                           aria-current={active ? "page" : undefined}
-                          className="flex items-center gap-2.5 rounded-[16px] px-3.5 py-3 text-sm font-medium transition-all duration-200"
+                          className="flex h-11 items-center gap-2.5 rounded-[14px] px-4 text-sm font-medium transition-all duration-200"
                           style={{
                             color: active ? "var(--header-text-active)" : "var(--header-text-muted)",
                             background: active ? "var(--accent-muted)" : "transparent",
@@ -443,7 +533,7 @@ export default function Header() {
                                 prefetch={true}
                                 onClick={() => setOpenPanel("none")}
                                 aria-current={active ? "page" : undefined}
-                                className="flex items-center gap-2.5 rounded-[16px] px-3.5 py-3 text-sm font-medium transition-all duration-200"
+                                className="flex h-11 items-center gap-2.5 rounded-[14px] px-4 text-sm font-medium transition-all duration-200"
                                 style={{
                                   color: active ? "var(--header-text-active)" : "var(--header-text-muted)",
                                   background: active ? "var(--accent-muted)" : "transparent",

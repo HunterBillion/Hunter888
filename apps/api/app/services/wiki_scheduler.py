@@ -1,4 +1,4 @@
-"""Wiki background scheduler — auto-ingest + daily/weekly synthesis.
+"""Wiki background scheduler — auto-ingest + daily/weekly synthesis + lint.
 
 Runs as an asyncio background task, similar to ReminderScheduler.
 Registered in main.py lifespan.
@@ -7,6 +7,7 @@ Schedule:
 - Every 12h: auto-ingest any un-ingested completed sessions
 - Every 24h (at ~03:00 UTC): daily synthesis for all active wikis
 - Every 7 days (Monday ~04:00 UTC): weekly synthesis for all active wikis
+- Every 7 days (Wednesday ~05:00 UTC): lint pass for all active wikis
 """
 
 import asyncio
@@ -38,10 +39,12 @@ class WikiScheduler:
         self._last_ingest_run: datetime | None = None
         self._last_daily_run: datetime | None = None
         self._last_weekly_run: datetime | None = None
+        self._last_lint_run: datetime | None = None
         self._stats = {
             "total_ingests": 0,
             "total_daily_syntheses": 0,
             "total_weekly_syntheses": 0,
+            "total_lint_passes": 0,
             "errors": 0,
         }
 
@@ -69,6 +72,7 @@ class WikiScheduler:
             "last_ingest_run": self._last_ingest_run.isoformat() if self._last_ingest_run else None,
             "last_daily_run": self._last_daily_run.isoformat() if self._last_daily_run else None,
             "last_weekly_run": self._last_weekly_run.isoformat() if self._last_weekly_run else None,
+            "last_lint_run": self._last_lint_run.isoformat() if self._last_lint_run else None,
             "stats": self._stats,
             "config": {
                 "ingest_interval_hours": INGEST_INTERVAL_HOURS,
@@ -103,6 +107,11 @@ class WikiScheduler:
                     await self._run_weekly_synthesis()
                     self._last_weekly_run = now
 
+                # Check: weekly lint pass (Wednesday 05:00 UTC)
+                if self._should_run_lint(now):
+                    await self._run_lint_pass()
+                    self._last_lint_run = now
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -134,6 +143,36 @@ class WikiScheduler:
         if days_since < 6:
             return False
         return now.weekday() == WEEKLY_SYNTHESIS_DAY and now.hour >= WEEKLY_SYNTHESIS_HOUR
+
+    def _should_run_lint(self, now: datetime) -> bool:
+        """Run lint on Wednesdays at 05:00 UTC."""
+        if not self._last_lint_run:
+            return now.weekday() == 2 and now.hour == 5  # Wednesday
+        days_since = (now - self._last_lint_run).days
+        if days_since < 6:
+            return False
+        return now.weekday() == 2 and now.hour >= 5
+
+    async def _run_lint_pass(self) -> None:
+        """Run lint health check for all active wikis."""
+        logger.info("WikiScheduler: starting lint pass")
+        try:
+            async with async_session() as db:
+                from app.services.wiki_lint_service import run_lint_pass
+                wikis_r = await db.execute(select(ManagerWiki))
+                wikis = wikis_r.scalars().all()
+                completed = 0
+                for wiki in wikis:
+                    try:
+                        await run_lint_pass(wiki.manager_id, db)
+                        completed += 1
+                    except Exception as e:
+                        logger.warning("Lint failed for manager %s: %s", wiki.manager_id, e)
+                self._stats["total_lint_passes"] += completed
+                logger.info("WikiScheduler: lint pass complete, %d wikis checked", completed)
+        except Exception as e:
+            logger.error("WikiScheduler: lint pass failed: %s", e)
+            self._stats["errors"] += 1
 
     async def _run_auto_ingest(self) -> None:
         """Auto-ingest un-ingested sessions for all managers."""

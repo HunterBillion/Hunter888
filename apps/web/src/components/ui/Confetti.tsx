@@ -15,7 +15,7 @@ interface Particle {
 
 const COLORS = [
   "var(--accent)", // violet
-  "#FFD700", // gold
+  "var(--rank-gold)", // gold
   "var(--success)", // green
   "#FF6B6B", // red
   "var(--info)", // blue
@@ -37,7 +37,7 @@ export function Confetti({ trigger }: { trigger: number }) {
 
     if (reducedMotion) {
       // Simple flash for reduced motion
-      setParticles([{ id: ++idRef.current, x: 50, color: "#FFD700", size: 100, rotation: 0, delay: 0 }]);
+      setParticles([{ id: ++idRef.current, x: 50, color: "var(--rank-gold)", size: 100, rotation: 0, delay: 0 }]);
       const timer = setTimeout(() => setParticles([]), 600);
       return () => clearTimeout(timer);
     }

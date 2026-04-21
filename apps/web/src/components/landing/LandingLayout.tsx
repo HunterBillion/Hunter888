@@ -13,7 +13,7 @@ import {
 import { FishermanError } from "@/components/errors/FishermanError";
 import { Button } from "@/components/ui/Button";
 import { getToken, setTokens } from "@/lib/auth";
-import { api } from "@/lib/api";
+import { api, resetAuthCircuitBreaker } from "@/lib/api";
 import { getApiBaseUrl } from "@/lib/public-origin";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { PasswordChecklist, isPasswordValid } from "@/components/ui/PasswordChecklist";
@@ -21,6 +21,12 @@ import { XHunterLogo } from "@/components/ui/XHunterLogo";
 import { LandingNavbar } from "./LandingNavbar";
 import { LandingFooter } from "./LandingFooter";
 import { LandingAuthContext, type Panel } from "./LandingAuthContext";
+import dynamic from "next/dynamic";
+
+const PixelGridBackground = dynamic(
+  () => import("@/components/pixel/PixelGridBackground").then((m) => m.PixelGridBackground),
+  { ssr: false },
+);
 
 type ForgotMode = "idle" | "form" | "sent";
 
@@ -114,13 +120,24 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
       if (activePanel === "login") {
         const data = await api.post("/auth/login", { email: email.trim(), password });
         setTokens(data.access_token, data.refresh_token, data.csrf_token);
+        resetAuthCircuitBreaker();
         try { sessionStorage.removeItem("vh-auth-email"); sessionStorage.removeItem("vh-auth-name"); } catch {}
-        router.push(data.must_change_password ? "/change-password" : "/home");
+        if (data.must_change_password) {
+          router.push("/change-password");
+        } else {
+          let target = "/home";
+          try {
+            const consentStatus = await api.get<{ all_accepted: boolean }>("/consent/status");
+            if (!consentStatus.all_accepted) target = "/consent";
+          } catch { /* proceed to /home */ }
+          router.push(target);
+        }
       } else {
         const data = await api.post("/auth/register", {
           email: email.trim(), password, full_name: fullName.trim(),
         });
         setTokens(data.access_token, data.refresh_token, data.csrf_token);
+        resetAuthCircuitBreaker();
         router.push("/onboarding");
       }
     } catch (err: unknown) {
@@ -194,6 +211,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
   return (
     <LandingAuthContext.Provider value={contextValue}>
       <div style={{ background: "var(--bg-primary)" }}>
+        <PixelGridBackground variant="landing" />
         <LandingNavbar
           onLogin={() => openPanel("login")}
           onRegister={() => openPanel("register")}
@@ -213,7 +231,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
                 className="fixed inset-0 z-[200] cursor-pointer"
-                style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)" }}
+                style={{ background: "var(--overlay-bg)", backdropFilter: "blur(8px)" }}
                 onClick={closePanel}
               />
 
@@ -234,21 +252,17 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
               >
                 {/* Drawer header */}
                 <div
-                  className="sticky top-0 z-10 flex items-center justify-between px-5 sm:px-8 py-5"
+                  className="sticky top-0 z-10 flex items-center justify-center relative px-5 sm:px-8 py-5"
                   style={{ background: "var(--bg-primary)", borderBottom: "1px solid var(--border-color)" }}
                 >
-                  <div className="flex items-center gap-3">
-                    <XHunterLogo size="sm" />
-                    <div className="h-6 w-px" style={{ background: "var(--border-color)" }} />
-                    <h2 className="font-display font-bold text-base" style={{ color: "var(--text-secondary)" }}>
-                      {forgotMode !== "idle"
-                        ? "Восстановление"
-                        : activePanel === "login" ? "Вход" : "Регистрация"}
-                    </h2>
-                  </div>
+                  <h2 className="font-display font-bold text-lg tracking-wide text-center" style={{ color: "var(--text-primary)" }}>
+                    {forgotMode !== "idle"
+                      ? "Восстановление пароля"
+                      : activePanel === "login" ? "Вход" : "Регистрация"}
+                  </h2>
                   <button
                     onClick={closePanel}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    className="absolute right-5 sm:right-8 w-8 h-8 rounded-lg flex items-center justify-center"
                     style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)" }}
                     aria-label="Закрыть"
                   >
@@ -273,7 +287,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                               initial={{ scale: 0 }} animate={{ scale: 1 }}
                               transition={{ type: "spring", stiffness: 300, delay: 0.1 }}
                               className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5"
-                              style={{ background: "rgba(61,220,132,0.1)", border: "1px solid rgba(61,220,132,0.25)" }}
+                              style={{ background: "var(--success-muted)", border: "1px solid var(--success-muted)" }}
                             >
                               <Mail size={22} style={{ color: "var(--success)" }} />
                             </motion.div>
@@ -308,7 +322,7 @@ export function LandingLayout({ children }: { children: React.ReactNode }) {
                     ) : (
                       <motion.div key="main" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25 }}>
                         {error && (
-                          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 rounded-xl p-3 text-sm mb-5" style={{ background: "rgba(229,72,77,0.08)", border: "1px solid rgba(229,72,77,0.2)", color: "var(--danger)" }}>
+                          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 rounded-xl p-3 text-sm mb-5" style={{ background: "var(--danger-muted)", border: "1px solid var(--danger-muted)", color: "var(--danger)" }}>
                             <AlertCircle size={16} />{error}
                           </motion.div>
                         )}

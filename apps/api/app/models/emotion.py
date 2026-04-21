@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -369,6 +369,10 @@ class ArchetypeEmotionConfig(Base):
         JSONB, nullable=False, default=dict,
         comment='{ "from_state:trigger_code": {"to": str, "energy": float} }',
     )
+    # Emotion system v6 (migration 20260404_011)
+    graph_variant: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, server_default="'standard'",
+    )
 
 
 class FakeTransitionDef(Base):
@@ -401,7 +405,7 @@ class FakeTransitionDef(Base):
         String(100), nullable=False,
     )
     reveal_triggers: Mapped[list] = mapped_column(
-        JSONB, nullable=False,
+        JSONB, nullable=False, default=list, server_default="'[]'::jsonb",
     )
     duration_sec: Mapped[int] = mapped_column(
         Integer, nullable=False, default=60,
@@ -448,7 +452,7 @@ class EmotionSessionLog(Base):
         JSONB, nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow,
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
     )
     # DOC_08: Emotion v6 extensions (all nullable for backward compat)
     intensity_level: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)

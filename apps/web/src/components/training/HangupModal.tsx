@@ -22,7 +22,7 @@ export function HangupModal({ open, data, onRedial, onResults }: HangupModalProp
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+          style={{ background: "var(--overlay-bg)", backdropFilter: "blur(8px)" }}
         >
           <motion.div
             role="dialog"
@@ -36,7 +36,7 @@ export function HangupModal({ open, data, onRedial, onResults }: HangupModalProp
             style={{
               background: "var(--glass-bg)",
               border: "1px solid rgba(229,72,77,0.3)",
-              boxShadow: "0 0 40px rgba(229,72,77,0.15), 0 25px 50px rgba(0,0,0,0.4)",
+              boxShadow: "0 0 40px var(--danger-muted), 0 25px 50px rgba(0,0,0,0.4)",
               backdropFilter: "blur(24px)",
             }}
           >
@@ -44,7 +44,7 @@ export function HangupModal({ open, data, onRedial, onResults }: HangupModalProp
             <div
               className="absolute inset-0 pointer-events-none"
               style={{
-                background: "radial-gradient(circle at 50% 0%, rgba(229,72,77,0.08) 0%, transparent 60%)",
+                background: "radial-gradient(circle at 50% 0%, var(--danger-muted) 0%, transparent 60%)",
               }}
             />
 
@@ -57,7 +57,7 @@ export function HangupModal({ open, data, onRedial, onResults }: HangupModalProp
                 transition={{ duration: 0.6, delay: 0.3 }}
                 className="flex items-center justify-center w-16 h-16 rounded-full"
                 style={{
-                  background: "rgba(229,72,77,0.12)",
+                  background: "var(--danger-muted)",
                   border: "2px solid rgba(229,72,77,0.4)",
                 }}
               >
@@ -77,7 +77,7 @@ export function HangupModal({ open, data, onRedial, onResults }: HangupModalProp
             <div
               className="relative rounded-xl p-4 mb-4"
               style={{
-                background: "rgba(229,72,77,0.06)",
+                background: "var(--danger-muted)",
                 border: "1px solid rgba(229,72,77,0.15)",
               }}
             >
@@ -105,8 +105,8 @@ export function HangupModal({ open, data, onRedial, onResults }: HangupModalProp
                     onClick={onRedial}
                     className="flex-1 flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
                     style={{
-                      background: "rgba(124,106,232,0.15)",
-                      border: "1px solid rgba(124,106,232,0.4)",
+                      background: "var(--accent-muted)",
+                      border: "1px solid rgba(107,77,199,0.4)",
                       color: "var(--accent)",
                     }}
                   >

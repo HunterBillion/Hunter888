@@ -47,14 +47,25 @@ class MessageRole(str, enum.Enum):
 
 
 class TrainingSession(Base):
+    """Completed training session (roleplay + scoring).
+
+    HISTORY PRESERVATION CONTRACT (Phase C, 2026-04-20, owner-locked):
+    User history — including every ``TrainingSession`` row and its
+    child ``messages`` — MUST persist regardless of subscription status.
+    Even if a user's Hunter plan lapses and they drop to Scout, every
+    past session stays visible in ``/history`` and reachable via the
+    `/results/[id]` deep-link. The only hard-delete path is full account
+    termination (``users`` row CASCADE). Do NOT add ``expires_at``,
+    retention cron, or plan-gated SELECT filters on this table.
+    """
     __tablename__ = "training_sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     scenario_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("scenarios.id", ondelete="SET NULL"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("scenarios.id", ondelete="CASCADE"), nullable=False, index=True
     )
     status: Mapped[SessionStatus] = mapped_column(
         Enum(SessionStatus), default=SessionStatus.active
@@ -99,6 +110,19 @@ class TrainingSession(Base):
         UUID(as_uuid=True), ForeignKey("real_clients.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
+    # Constructor v2 (migration 20260404_006): link to saved custom character
+    custom_character_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("custom_characters.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # Session origin: "home", "training", "story", None (legacy)
+    source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # Phase A (2026-04-20): frozen DifficultyParams snapshot so replays are
+    # deterministic even when the params table is retuned later. Shape:
+    # {"temperature": 0.55, "script_threshold": 0.58, "ocean_shift": {...}, ...}.
+    difficulty_params_snapshot: Mapped[dict | None] = mapped_column(NormalizedJSONB, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -120,6 +144,19 @@ class Message(Base):
     sequence_number: Mapped[int] = mapped_column(Integer, nullable=False)
     llm_model: Mapped[str | None] = mapped_column(String(100))
     llm_latency_ms: Mapped[int | None] = mapped_column(Integer)
+    # Phase 1.4 (2026-04-18): fields populated by Phase 2 features.
+    # - media_url: /uploads/ai/<uuid>.png when the AI character sent an image
+    #   via the generate_image MCP tool. NULL for text-only messages.
+    # - quoted_message_id: message this turn is quoting (self-FK); resolved
+    #   server-side and injected into the LLM prompt so the character knows
+    #   exactly which past line is being addressed.
+    media_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    quoted_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -133,8 +170,8 @@ class AssignedTraining(Base):
     scenario_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("scenarios.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    assigned_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False, index=True
+    assigned_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

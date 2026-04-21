@@ -25,7 +25,8 @@ _DIFFICULTY_SWEET_SPOT = {
 }
 
 
-@router.get("/", response_model=list[ScenarioResponse])
+@router.get("", response_model=list[ScenarioResponse])
+@router.get("/", response_model=list[ScenarioResponse], include_in_schema=False)
 async def list_scenarios(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

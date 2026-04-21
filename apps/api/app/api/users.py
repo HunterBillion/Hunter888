@@ -7,9 +7,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Query, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +29,6 @@ MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_VIDEO_SIZE = 15 * 1024 * 1024  # 15MB
 
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -49,6 +47,19 @@ class UserProfileResponse(BaseModel):
     avg_score: float | None = None
 
     model_config = {"from_attributes": True}
+
+
+class UpdateProfileRequest(BaseModel):
+    """Fields a user can edit in their own profile via PATCH /me/profile."""
+    full_name: str = Field(..., min_length=2, max_length=100)
+
+    @field_validator("full_name")
+    @classmethod
+    def _strip_full_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Имя не может быть пустым")
+        return v
 
 
 class ChangePasswordRequest(BaseModel):
@@ -107,11 +118,11 @@ class UserListItem(BaseModel):
 class UserStatsResponse(BaseModel):
     total_sessions: int
     completed_sessions: int
-    avg_score: float | None
-    best_score: float | None
-    sessions_this_week: int
-    total_duration_minutes: int
-    achievements_count: int
+    avg_score: float | None = None
+    best_score: float | None = None
+    sessions_this_week: int = 0
+    total_duration_minutes: int = 0
+    achievements_count: int = 0
 
 
 class FriendItemResponse(BaseModel):
@@ -189,6 +200,55 @@ async def get_my_profile(
         is_active=user_with_team.is_active,
         avatar_url=user_with_team.avatar_url,
         created_at=user_with_team.created_at,
+        total_sessions=total_sessions,
+        avg_score=avg_score,
+    )
+
+
+@router.patch("/me/profile", response_model=UserProfileResponse)
+async def update_my_profile(
+    payload: UpdateProfileRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update editable fields of the current user's profile. Currently: full_name only."""
+    # Reload with team relationship to build response
+    result = await db.execute(
+        select(User).options(selectinload(User.team)).where(User.id == user.id)
+    )
+    user_with_team = result.scalar_one_or_none()
+    if not user_with_team:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.USER_NOT_FOUND)
+
+    user_with_team.full_name = payload.full_name
+    await db.commit()
+
+    # Re-query with eager load (refresh drops the team relationship).
+    reload = await db.execute(
+        select(User).options(selectinload(User.team)).where(User.id == user.id)
+    )
+    fresh = reload.scalar_one()
+
+    # Return fresh stats too (same shape as GET /me/profile)
+    stats_result = await db.execute(
+        select(
+            func.count(TrainingSession.id),
+            func.avg(TrainingSession.score_total),
+        ).where(TrainingSession.user_id == user.id)
+    )
+    row = stats_result.one()
+    total_sessions = row[0] or 0
+    avg_score = round(float(row[1]), 1) if row[1] else None
+
+    return UserProfileResponse(
+        id=fresh.id,
+        email=fresh.email,
+        full_name=fresh.full_name,
+        role=fresh.role.value,
+        team_name=fresh.team.name if fresh.team else None,
+        is_active=fresh.is_active,
+        avatar_url=fresh.avatar_url,
+        created_at=fresh.created_at,
         total_sessions=total_sessions,
         avg_score=avg_score,
     )
@@ -417,6 +477,11 @@ async def change_password(
     user.must_change_password = False
     db.add(user)
     await db.commit()  # Explicit commit — password change is critical, don't rely on implicit
+
+    # Blacklist all existing tokens so user must re-login with new password
+    from app.core.redis_pool import get_redis
+    r = get_redis()
+    await r.setex(f"blacklist:user:{user.id}", 7 * 24 * 3600, "password_changed")
 
 
 @router.get("/", response_model=list[UserListItem])
@@ -706,6 +771,9 @@ async def update_preferences(
         allowed_roles = {"manager", "rop"}
         if body.role in allowed_roles:
             user.role = UserRole(body.role)
+            # S4-01: Invalidate tokens with old role claim
+            from app.core.security import bump_role_version
+            await bump_role_version(str(user.id))
 
     # Handle team assignment
     if body.team:

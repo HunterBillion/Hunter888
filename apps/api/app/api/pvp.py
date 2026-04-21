@@ -11,9 +11,8 @@ Provides:
 import uuid
 from datetime import datetime, timezone
 
+from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import select, func, desc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +36,7 @@ from app.models.pvp import (
     RapidFireMatch,
     RANK_DISPLAY_NAMES,
 )
+from app.models.progress import ManagerProgress
 from app.models.user import User, UserFriendship
 from app.schemas.pvp import (
     AntiCheatFlagResponse,
@@ -67,7 +67,6 @@ from app.services.pvp_matchmaker import (
 from app.ws.notifications import notification_manager
 
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 
 # ---------------------------------------------------------------------------
@@ -147,17 +146,29 @@ async def get_user_rating(
 @router.get("/leaderboard", response_model=LeaderboardResponse)
 async def get_leaderboard(
     tier: PvPRankTier | None = None,
+    scope: str = Query(default="active", pattern="^(active|all_time)$"),
     limit: int = Query(default=50, le=100),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Get PvP leaderboard, optionally filtered by rank tier."""
+    """Get PvP leaderboard, optionally filtered by rank tier.
+
+    scope=active: only players active in last 30 days (default).
+    scope=all_time: all placed players regardless of activity.
+    """
+    from datetime import timedelta
+
     stmt = (
         select(PvPRating, User)
         .join(User, User.id == PvPRating.user_id)
         .where(PvPRating.placement_done.is_(True))
     )
+
+    # S3-04: Filter inactive players (no game in 30 days)
+    if scope == "active":
+        active_cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        stmt = stmt.where(PvPRating.last_played > active_cutoff)
 
     if tier:
         stmt = stmt.where(PvPRating.rank_tier == tier)
@@ -166,10 +177,13 @@ async def get_leaderboard(
     result = await db.execute(stmt)
     rows = result.all()
 
-    # Total count
+    # Total count (same filters)
     count_stmt = select(func.count(PvPRating.id)).where(
         PvPRating.placement_done.is_(True)
     )
+    if scope == "active":
+        active_cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        count_stmt = count_stmt.where(PvPRating.last_played > active_cutoff)
     if tier:
         count_stmt = count_stmt.where(PvPRating.rank_tier == tier)
     total = (await db.execute(count_stmt)).scalar() or 0
@@ -277,6 +291,9 @@ async def get_duel(
         if not hasattr(user, 'role') or user.role.value != 'admin':
             raise HTTPException(status_code=403, detail=err.NOT_A_PARTICIPANT)
 
+    # Hide anti-cheat flags from non-admin users
+    ac_flags = duel.anti_cheat_flags if (hasattr(user, 'role') and user.role.value == 'admin') else None
+
     return DuelResponse(
         id=duel.id,
         player1_id=duel.player1_id,
@@ -292,7 +309,7 @@ async def get_duel(
         duration_seconds=duel.duration_seconds,
         round_1_data=duel.round_1_data,
         round_2_data=duel.round_2_data,
-        anti_cheat_flags=duel.anti_cheat_flags,
+        anti_cheat_flags=ac_flags,
         replay_url=duel.replay_url,
         player1_rating_delta=duel.player1_rating_delta,
         player2_rating_delta=duel.player2_rating_delta,
@@ -584,7 +601,11 @@ async def create_pve_ladder(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a PvE Bot Ladder run (Level 9+). 5 sequential bots."""
-    if user.level < 9:
+    mp = (await db.execute(
+        select(ManagerProgress).where(ManagerProgress.user_id == user.id)
+    )).scalar_one_or_none()
+    user_level = mp.current_level if mp else 1
+    if user_level < 9:
         raise HTTPException(status_code=403, detail="Доступно с уровня 9")
 
     active_run = (await db.execute(
@@ -647,7 +668,11 @@ async def create_pve_boss(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a PvE Boss Rush run (Level 10+). 3 unique boss bots."""
-    if user.level < 10:
+    mp = (await db.execute(
+        select(ManagerProgress).where(ManagerProgress.user_id == user.id)
+    )).scalar_one_or_none()
+    user_level = mp.current_level if mp else 1
+    if user_level < 10:
         raise HTTPException(status_code=403, detail="Доступно с уровня 10")
 
     boss_cfg = _BOSS_CONFIGS[boss_index]
@@ -694,7 +719,11 @@ async def create_pve_mirror(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a PvE Mirror Match (Level 15+). AI mimics your style."""
-    if user.level < 15:
+    mp = (await db.execute(
+        select(ManagerProgress).where(ManagerProgress.user_id == user.id)
+    )).scalar_one_or_none()
+    user_level = mp.current_level if mp else 1
+    if user_level < 15:
         raise HTTPException(status_code=403, detail="Доступно с уровня 15")
 
     style_summary: dict = {"sessions_analyzed": 0, "avg_messages": 0, "sample_messages": []}
@@ -764,7 +793,11 @@ async def create_rapid_fire(
     Returns match_id. Client should then connect via WS and send
     {type: "rapid_fire.start", match_id: "<id>"}.
     """
-    if not can_access_feature(user.level, "pvp_rapid_fire"):
+    mp = (await db.execute(
+        select(ManagerProgress).where(ManagerProgress.user_id == user.id)
+    )).scalar_one_or_none()
+    user_level = mp.current_level if mp else 1
+    if not can_access_feature(user_level, "pvp_rapid_fire"):
         raise HTTPException(
             status_code=403,
             detail=f"Rapid Fire доступен с уровня {FEATURE_LEVEL_GATES['pvp_rapid_fire']}",
@@ -812,7 +845,11 @@ async def create_gauntlet(
     Returns run_id. Client should then connect via WS and send
     {type: "gauntlet.start", run_id: "<id>"}.
     """
-    if not can_access_feature(user.level, "pvp_gauntlet"):
+    mp = (await db.execute(
+        select(ManagerProgress).where(ManagerProgress.user_id == user.id)
+    )).scalar_one_or_none()
+    user_level = mp.current_level if mp else 1
+    if not can_access_feature(user_level, "pvp_gauntlet"):
         raise HTTPException(
             status_code=403,
             detail=f"Gauntlet доступен с уровня {FEATURE_LEVEL_GATES['pvp_gauntlet']}",
@@ -864,7 +901,11 @@ async def create_team_battle(
     Returns team_id. Both players should connect via WS and send
     {type: "team.start", team_id: "<id>"}.
     """
-    if not can_access_feature(user.level, "team_battle_2v2"):
+    mp = (await db.execute(
+        select(ManagerProgress).where(ManagerProgress.user_id == user.id)
+    )).scalar_one_or_none()
+    user_level = mp.current_level if mp else 1
+    if not can_access_feature(user_level, "team_battle_2v2"):
         raise HTTPException(
             status_code=403,
             detail=f"Командный бой 2v2 доступен с уровня {FEATURE_LEVEL_GATES['team_battle_2v2']}",

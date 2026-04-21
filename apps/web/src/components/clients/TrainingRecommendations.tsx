@@ -6,6 +6,7 @@ import { Crosshair, TrendingDown, ArrowRight, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { useNotificationStore } from "@/stores/useNotificationStore";
 
 interface LossPattern {
   pattern: string;
@@ -69,11 +70,19 @@ export function TrainingRecommendations({ managerId }: TrainingRecommendationsPr
             onClick={async () => {
               try {
                 const session = await api.post("/training/sessions", { scenario_id: item.scenario_id });
+                if (!session?.id) throw new Error("Некорректный ответ сервера");
                 router.push(`/training/${session.id}`);
-              } catch { /* ignore */ }
+              } catch (err) {
+                logger.error("Start training from recommendation failed:", err);
+                useNotificationStore.getState().addToast({
+                  title: "Не удалось запустить тренировку",
+                  body: err instanceof Error ? err.message : "Попробуйте ещё раз",
+                  type: "error",
+                });
+              }
             }}
           >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: "rgba(229,72,77,0.08)" }}>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: "var(--danger-muted)" }}>
               <TrendingDown size={14} style={{ color: "var(--danger)" }} />
             </div>
             <div className="flex-1 min-w-0">

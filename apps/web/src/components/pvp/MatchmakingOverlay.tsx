@@ -101,14 +101,14 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
               {/* Inner ring */}
               <motion.div
                 className="absolute inset-3 rounded-full border"
-                style={{ borderColor: isLate ? "rgba(212,168,75,0.2)" : "rgba(124,106,232,0.2)" }}
+                style={{ borderColor: isLate ? "rgba(212,168,75,0.2)" : "var(--accent-glow)" }}
                 animate={reducedMotion ? {} : { rotate: -360 }}
                 transition={reducedMotion ? {} : { duration: 5, repeat: Infinity, ease: "linear" }}
               />
               {/* Pulse ring expanding */}
               <motion.div
                 className="absolute inset-0 rounded-full"
-                style={{ border: `1px solid ${isLate ? "rgba(212,168,75,0.3)" : "rgba(124,106,232,0.3)"}` }}
+                style={{ border: `1px solid ${isLate ? "rgba(212,168,75,0.3)" : "var(--accent-glow)"}` }}
                 animate={reducedMotion ? {} : { scale: [1, 1.3], opacity: [0.6, 0] }}
                 transition={reducedMotion ? {} : { duration: 2, repeat: Infinity, ease: "easeOut" }}
               />
@@ -197,33 +197,32 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
               initial={{ opacity: 0.5 }}
               animate={{ opacity: 0 }}
               transition={{ duration: 0.4 }}
-              style={{ background: "rgba(124,106,232,0.15)" }}
+              style={{ background: "var(--accent-muted)" }}
             />
 
-            {/* VS badge */}
+            {/* VS badge — pixel arcade style */}
             <motion.div
               initial={{ scale: 0, rotate: -45 }}
               animate={{ scale: [0, 1.3, 1], rotate: [-45, 5, 0] }}
               transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
-              className="mx-auto w-20 h-20 rounded-2xl flex items-center justify-center mb-5"
+              className="mx-auto w-20 h-20 rounded-none pixel-border-stepped flex items-center justify-center mb-5"
               style={{
-                background: "linear-gradient(135deg, rgba(61,220,132,0.12), rgba(124,106,232,0.12))",
-                border: "2px solid rgba(61,220,132,0.35)",
-                boxShadow: "0 0 30px rgba(61,220,132,0.15)",
+                background: "linear-gradient(135deg, rgba(40,200,64,0.15), rgba(107,77,199,0.10))",
+                boxShadow: "0 0 30px rgba(40,200,64,0.2)",
               }}
             >
-              <Sword weight="duotone" size={36} style={{ color: "var(--success)" }} />
+              <span className="text-4xl">⚔️</span>
             </motion.div>
 
             <motion.h2
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="font-display text-2xl font-black tracking-wider"
-              style={{ color: "var(--success)", textShadow: "0 0 20px rgba(61,220,132,0.25)" }}
+              className="font-pixel text-xl uppercase tracking-wider pixel-glow"
+              style={{ color: "var(--success)", textShadow: "0 0 20px rgba(40,200,64,0.3)" }}
               aria-live="assertive"
             >
-              {opponentRating ? `Охотник ${Math.round(opponentRating)} бросает вызов` : "АРЕНА ГОТОВА"}
+              {opponentRating ? `HUNTER ${Math.round(opponentRating)} БРОСАЕТ ВЫЗОВ` : "ARENA READY"}
             </motion.h2>
 
             {/* VS layout */}
@@ -235,38 +234,34 @@ export function MatchmakingOverlay({ status, position, estimatedWait, opponentRa
             >
               {/* You */}
               <div className="text-center">
-                <div className="w-14 h-14 rounded-xl mx-auto flex items-center justify-center"
-                  style={{ background: "rgba(124,106,232,0.15)", border: "1px solid rgba(124,106,232,0.3)" }}
+                <div className="w-14 h-14 rounded-none pixel-border mx-auto flex items-center justify-center"
+                  style={{ "--pixel-border-color": "var(--accent)", background: "var(--accent-muted)" } as React.CSSProperties}
                 >
-                  <Shield weight="duotone" size={24} style={{ color: "var(--accent)" }} />
+                  <span className="text-2xl">🛡️</span>
                 </div>
-                <p className="mt-2 text-xs font-mono font-bold" style={{ color: "var(--text-primary)" }}>ВЫ</p>
+                <p className="mt-2 font-pixel text-xs uppercase" style={{ color: "var(--accent)" }}>YOU</p>
               </div>
 
-              {/* VS text */}
+              {/* VS text — pixel flash */}
               <motion.span
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ delay: 0.6, type: "spring", stiffness: 400, damping: 15 }}
-                className="font-display text-lg font-black"
-                style={{ color: "var(--text-muted)" }}
+                className="font-pixel text-2xl font-black pixel-glow"
+                style={{ color: "var(--warning, #d4a84b)" }}
               >
                 VS
               </motion.span>
 
               {/* Opponent */}
               <div className="text-center">
-                <div className="w-14 h-14 rounded-xl mx-auto flex items-center justify-center"
-                  style={{ background: "rgba(229,72,77,0.1)", border: "1px solid rgba(229,72,77,0.25)" }}
+                <div className="w-14 h-14 rounded-none pixel-border mx-auto flex items-center justify-center"
+                  style={{ "--pixel-border-color": "var(--danger)", background: "var(--danger-muted)" } as React.CSSProperties}
                 >
-                  {opponentRating ? (
-                    <Shield weight="duotone" size={24} style={{ color: "var(--danger)" }} />
-                  ) : (
-                    <span className="text-2xl">&#x1F916;</span>
-                  )}
+                  <span className="text-2xl">{opponentRating ? "⚔️" : "🤖"}</span>
                 </div>
-                <p className="mt-2 text-xs font-mono font-bold" style={{ color: "var(--text-primary)" }}>
-                  {opponentRating ? `${Math.round(opponentRating)}` : "AI"}
+                <p className="mt-2 font-pixel text-xs uppercase" style={{ color: "var(--danger)" }}>
+                  {opponentRating ? `${Math.round(opponentRating)}` : "BOT"}
                 </p>
               </div>
             </motion.div>

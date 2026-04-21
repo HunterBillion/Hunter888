@@ -88,7 +88,7 @@ export function PagesTab({
               <FileText size={16} weight="duotone" style={{ color: "var(--warning)" }} />
               <div>
                 <div style={{ fontWeight: 500 }}>{p.page_path}</div>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                <div style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>
                   {p.page_type} | v{p.version}
                   {p.updated_at && ` | ${formatDate(p.updated_at)}`}
                 </div>
@@ -120,7 +120,7 @@ export function PagesTab({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
             <h3 style={{ color: "var(--warning)", margin: 0 }}>{selectedPage.page_path}</h3>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>v{selectedPage.version}</span>
+              <span style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>v{selectedPage.version}</span>
               {!editing ? (
                 <button
                   onClick={startEdit}
@@ -129,12 +129,12 @@ export function PagesTab({
                     alignItems: "center",
                     gap: "0.3rem",
                     padding: "0.3rem 0.6rem",
-                    background: "rgba(124,106,232,0.1)",
-                    border: "1px solid rgba(124,106,232,0.25)",
+                    background: "var(--accent-muted)",
+                    border: "1px solid var(--accent-glow)",
                     borderRadius: 6,
                     color: "var(--accent)",
                     cursor: "pointer",
-                    fontSize: "0.8rem",
+                    fontSize: "0.875rem",
                   }}
                 >
                   <Edit3 size={13} />
@@ -150,12 +150,12 @@ export function PagesTab({
                       alignItems: "center",
                       gap: "0.3rem",
                       padding: "0.3rem 0.6rem",
-                      background: "rgba(34,197,94,0.1)",
-                      border: "1px solid rgba(34,197,94,0.25)",
+                      background: "var(--success-muted)",
+                      border: "1px solid var(--success-muted)",
                       borderRadius: 6,
                       color: "var(--success)",
                       cursor: actionLoading === "save-page" ? "not-allowed" : "pointer",
-                      fontSize: "0.8rem",
+                      fontSize: "0.875rem",
                     }}
                   >
                     {actionLoading === "save-page" ? (
@@ -172,12 +172,12 @@ export function PagesTab({
                       alignItems: "center",
                       gap: "0.3rem",
                       padding: "0.3rem 0.6rem",
-                      background: "rgba(239,68,68,0.1)",
-                      border: "1px solid rgba(239,68,68,0.25)",
+                      background: "var(--danger-muted)",
+                      border: "1px solid var(--danger-muted)",
                       borderRadius: 6,
                       color: "var(--danger)",
                       cursor: "pointer",
-                      fontSize: "0.8rem",
+                      fontSize: "0.875rem",
                     }}
                   >
                     <X size={13} />
@@ -196,9 +196,9 @@ export function PagesTab({
                   style={{
                     padding: "2px 8px",
                     borderRadius: 6,
-                    background: "rgba(124,106,232,0.1)",
+                    background: "var(--accent-muted)",
                     color: "var(--accent)",
-                    fontSize: "0.7rem",
+                    fontSize: "0.875rem",
                   }}
                 >
                   {tag}
@@ -216,7 +216,7 @@ export function PagesTab({
                 minHeight: 300,
                 padding: "1rem",
                 background: "rgba(0,0,0,0.3)",
-                border: "1px solid rgba(124,106,232,0.3)",
+                border: "1px solid var(--accent-glow)",
                 borderRadius: 8,
                 color: "var(--text-secondary)",
                 fontSize: "0.9rem",

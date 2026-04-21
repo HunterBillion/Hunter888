@@ -10,6 +10,8 @@ import {
   ChevronUp,
   ChevronDown,
   FileBarChart,
+  Star,
+  ShieldAlert,
 } from "lucide-react";
 import {
   UsersThree,
@@ -27,6 +29,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { BackButton } from "@/components/ui/BackButton";
+import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
 import { AnimatedCounter } from "@/components/ui/AnimatedCounter";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
@@ -62,17 +65,23 @@ const ReportsDashboard = dynamic(
   { loading: () => <WikiFallback />, ssr: false }
 );
 
+const ReviewsAdmin = dynamic(
+  () => import("@/components/dashboard/ReviewsAdmin").then((m) => m.ReviewsAdmin),
+  { loading: () => <WikiFallback />, ssr: false }
+);
+
 /* ─── Constants ──────────────────────────────────────────────────────────── */
 
-type TabId = "overview" | "analytics" | "team" | "tournament" | "wiki" | "reports";
+type TabId = "overview" | "analytics" | "team" | "tournament" | "wiki" | "reports" | "reviews";
 
-const TABS: { id: TabId; label: string; icon: any }[] = [
+const TABS: { id: TabId; label: string; icon: any; adminOnly?: boolean }[] = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
   { id: "analytics", label: "Аналитика", icon: ChartBar },
   { id: "team", label: "Команда", icon: UsersThree },
   { id: "tournament", label: "Турнир", icon: Trophy },
   { id: "wiki", label: "Wiki", icon: BookOpen },
   { id: "reports", label: "Отчёты", icon: FileBarChart },
+  { id: "reviews", label: "Отзывы", icon: Star, adminOnly: true },
 ];
 
 const AVATAR_COLORS = [
@@ -226,7 +235,18 @@ export default function DashboardPage() {
                   ПАНЕЛЬ РОП
                 </h1>
               </div>
-              {/* PDF export moved to Reports tab */}
+              <PixelInfoButton
+                title="Панель РОП"
+                sections={[
+                  { icon: ChartBar, label: "Обзор", text: "Ключевые метрики команды: активность, средний балл, TP за неделю, вовлечённость" },
+                  { icon: UsersThree, label: "Команда", text: "Список менеджеров с рейтингами, сравнение между собой, выявление отстающих" },
+                  { icon: Target, label: "Heatmap", text: "Тепловая карта ошибок: где команда слабее всего (возражения, техники, знания)" },
+                  { icon: Trophy, label: "Benchmark", text: "Сравнение вашей команды с другими командами/компаниями (анонимно)" },
+                  { icon: TrendUp, label: "ROI", text: "Сколько тренировок → сколько закрытых сделок. Reports tab — PDF экспорт" },
+                  { icon: BookOpen, label: "Wiki", text: "Корпоративные знания: скрипты возражений, регламенты. Автосинтез из успешных диалогов" },
+                ]}
+                footer="Быстрые действия: Export PDF (Reports tab), массовая рассылка заданий (Team tab)"
+              />
             </div>
             <p className="mt-2 font-medium text-sm tracking-wide" style={{ color: "var(--text-muted)" }}>
               {data?.team.name ? `КОМАНДА: ${data.team.name.toUpperCase()}` : "АНАЛИТИКА КОМАНДЫ"}
@@ -245,13 +265,13 @@ export default function DashboardPage() {
             <>
               {/* ─── Sticky Tab Bar ──────────────────────────────────────── */}
               <div
-                className="sticky top-[60px] z-20 mt-6"
+                className="sticky top-[60px] z-20 mt-6 flex items-stretch gap-2"
               >
                 <div
-                  className="flex items-center justify-center gap-1 rounded-xl p-1.5 overflow-x-auto"
+                  className="flex-1 flex items-center justify-center gap-1 rounded-xl p-1.5 overflow-x-auto"
                   style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(20px)" }}
                 >
-                  {TABS.map((tab) => {
+                  {TABS.filter((tab) => !tab.adminOnly || user?.role === "admin").map((tab) => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
                     return (
@@ -271,7 +291,7 @@ export default function DashboardPage() {
                             layoutId="dashboard-tab-indicator"
                             className="absolute inset-0 rounded-xl"
                             style={{
-                              background: "linear-gradient(135deg, var(--accent-muted), rgba(124,106,232,0.05))",
+                              background: "linear-gradient(135deg, var(--accent-muted), rgba(107,77,199,0.05))",
                               border: "1px solid var(--accent)",
                               boxShadow: "0 0 16px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.06)",
                             }}
@@ -282,6 +302,25 @@ export default function DashboardPage() {
                     );
                   })}
                 </div>
+                {/* 2026-04-20: admin-only shortcut to /admin section.
+                    Sits next to the tab bar (not inside it) because admin
+                    pages live on a separate route with their own layout. */}
+                {user?.role === "admin" && (
+                  <Link
+                    href="/admin"
+                    className="hidden md:inline-flex items-center gap-2 px-4 rounded-xl font-medium text-sm uppercase tracking-wide whitespace-nowrap transition hover:brightness-110"
+                    style={{
+                      background: "color-mix(in srgb, #fbbf24 14%, var(--glass-bg))",
+                      border: "1px solid color-mix(in srgb, #fbbf24 40%, transparent)",
+                      color: "#fbbf24",
+                      backdropFilter: "blur(20px)",
+                    }}
+                    title="Панель администратора"
+                  >
+                    <ShieldAlert size={16} />
+                    <span>Админка</span>
+                  </Link>
+                )}
               </div>
 
               {/* ─── Tab Content ──────────────────────────────────────────── */}
@@ -305,14 +344,14 @@ export default function DashboardPage() {
                         animate={{ opacity: 1 }}
                         className="relative overflow-hidden rounded-2xl p-8"
                         style={{
-                          background: "linear-gradient(135deg, var(--glass-bg), rgba(124,106,232,0.04))",
-                          border: "1px solid rgba(124,106,232,0.2)",
+                          background: "linear-gradient(135deg, var(--glass-bg), var(--accent-muted))",
+                          border: "1px solid var(--accent-glow)",
                           backdropFilter: "blur(24px) saturate(1.5)",
-                          boxShadow: "0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)",
+                          boxShadow: "0 8px 32px var(--overlay-bg), inset 0 1px 0 rgba(255,255,255,0.05)",
                         }}
                       >
                         {/* Corner glow */}
-                        <div className="absolute -top-16 -left-16 w-48 h-48 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(124,106,232,0.15) 0%, transparent 70%)" }} />
+                        <div className="absolute -top-16 -left-16 w-48 h-48 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, var(--accent-muted) 0%, transparent 70%)" }} />
                         <div className="flex flex-col sm:flex-row sm:items-center gap-6">
                           {/* Main score */}
                           <div className="flex-shrink-0">
@@ -346,7 +385,7 @@ export default function DashboardPage() {
                           {/* Secondary stats */}
                           <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                             {[
-                              { label: "Менеджеров", value: data.team.total_members, icon: UsersThree, color: "var(--accent)" },
+                              { label: "Охотников", value: data.team.total_members, icon: UsersThree, color: "var(--accent)" },
                               { label: "Всего сессий", value: data.stats.total_sessions, icon: Target, color: "var(--success)" },
                               { label: "Активных", value: data.stats.active_this_week, icon: Clock, color: "var(--magenta)" },
                               { label: "В команде", value: data.team.active_members, icon: TrendUp, color: "var(--warning)" },
@@ -393,7 +432,7 @@ export default function DashboardPage() {
                         <div className="p-5 border-b flex items-center gap-2" style={{ borderColor: "var(--border-color)", background: "var(--input-bg)" }}>
                           <UsersThree size={18} weight="duotone" style={{ color: "var(--accent)" }} />
                           <h2 className="font-display text-base tracking-widest" style={{ color: "var(--text-secondary)" }}>
-                            МЕНЕДЖЕРЫ
+                            ОХОТНИКИ
                           </h2>
                           <span className="ml-auto font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                             {data.team.active_members}/{data.team.total_members} активных
@@ -669,6 +708,13 @@ export default function DashboardPage() {
                           name: m.full_name || m.email,
                         }))}
                       />
+                    </div>
+                  )}
+
+                  {/* ═══════════ TAB: REVIEWS (admin only) ═════════════════ */}
+                  {activeTab === "reviews" && user?.role === "admin" && (
+                    <div>
+                      <ReviewsAdmin />
                     </div>
                   )}
 

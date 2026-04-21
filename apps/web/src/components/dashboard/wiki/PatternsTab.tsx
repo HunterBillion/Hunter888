@@ -27,7 +27,7 @@ export function PatternsTab({ patterns }: { patterns: PatternItem[] }) {
               <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>{p.pattern_code}</span>
               <span
                 style={{
-                  fontSize: "0.7rem",
+                  fontSize: "0.875rem",
                   padding: "2px 8px",
                   borderRadius: 10,
                   background: `${config.color}22`,
@@ -39,7 +39,7 @@ export function PatternsTab({ patterns }: { patterns: PatternItem[] }) {
               {p.is_confirmed && (
                 <span
                   style={{
-                    fontSize: "0.7rem",
+                    fontSize: "0.875rem",
                     padding: "2px 8px",
                     borderRadius: 10,
                     background: "rgba(34,197,94,0.15)",
@@ -53,7 +53,7 @@ export function PatternsTab({ patterns }: { patterns: PatternItem[] }) {
                 <span
                   style={{
                     marginLeft: "auto",
-                    fontSize: "0.75rem",
+                    fontSize: "0.875rem",
                     color: p.impact_on_score_delta < 0 ? "var(--danger)" : "var(--success)",
                     fontWeight: 600,
                   }}
@@ -65,7 +65,7 @@ export function PatternsTab({ patterns }: { patterns: PatternItem[] }) {
             <p style={{ color: "var(--text-muted)", margin: "0.25rem 0", fontSize: "0.9rem" }}>
               {p.description}
             </p>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            <div style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>
               Замечен в {p.sessions_in_pattern} сессиях
               {p.mitigation_technique && ` | Рекомендация: ${p.mitigation_technique}`}
             </div>

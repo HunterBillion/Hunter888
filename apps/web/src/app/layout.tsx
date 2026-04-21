@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, VT323 } from "next/font/google";
 import { ViewTransitions } from "next-view-transitions";
 import { Providers } from "@/components/providers/Providers";
 import "./globals.css";
@@ -14,6 +14,13 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   subsets: ["latin", "cyrillic"],
   variable: "--font-geist-mono",
+  display: "swap",
+});
+
+const vt323 = VT323({
+  weight: "400",
+  subsets: ["latin", "latin-ext", "vietnamese"],
+  variable: "--font-vt323",
   display: "swap",
 });
 
@@ -67,7 +74,7 @@ export default async function RootLayout({
   const nonce = (await headers()).get("x-nonce") ?? "";
 
   return (
-    <html lang="ru" suppressHydrationWarning>
+    <html lang="ru" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
         {/* CSP nonce — available to client scripts via document.querySelector */}
         <meta property="csp-nonce" content={nonce} />
@@ -84,7 +91,7 @@ export default async function RootLayout({
           @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
         `}</style>
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${vt323.variable} min-h-screen antialiased`}>
         <ViewTransitions>
           <Providers>
             {children}

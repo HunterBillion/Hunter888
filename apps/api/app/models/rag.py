@@ -2,13 +2,18 @@
 
 Legal: Stores validation results per session for audit and scoring (Layer 10).
 Personality: Lorebook entries for character archetypes — keyword-triggered context injection.
+
+S2-08: Includes before_flush hook that detects changes to fact_text/law_article
+and invalidates the embedding (sets to NULL + recomputes content_hash).
+The existing backfill service picks up NULL embeddings on next run.
 """
 
 import enum
+import hashlib
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, event, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
@@ -113,6 +118,11 @@ class LegalKnowledgeChunk(Base):
 
     # ── Embedding (pgvector) ──────────────────────────────────────────────────
     embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+    # Shadow column (migration 20260417_005): new embeddings go here under
+    # gemini-embedding-001@768. RAG code COALESCEs embedding_v2, embedding
+    # during the transition until 100% populated.
+    embedding_v2: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+    embedding_v2_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # ── Feedback loop stats (auto-updated from user performance) ──────────────
     retrieval_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -144,8 +154,8 @@ class ChunkUsageLog(Base):
     __tablename__ = "chunk_usage_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    chunk_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("legal_knowledge_chunks.id", ondelete="CASCADE"), nullable=False, index=True
+    chunk_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_knowledge_chunks.id", ondelete="SET NULL"), nullable=True, index=True
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
@@ -178,6 +188,10 @@ class ChunkUsageLog(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    # S4-09: Soft delete — preserve analytics when parent chunk is deleted
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 
 class LegalValidationResult(Base):
     """Result of validating a manager's legal statement during a session.
@@ -189,7 +203,7 @@ class LegalValidationResult(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="SET NULL"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="CASCADE"), nullable=False, index=True
     )
     message_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     # Which message in the conversation contained the legal claim
@@ -238,6 +252,7 @@ class TraitCategory(str, enum.Enum):
     speech_examples = "speech_examples"
     emotional_triggers = "emotional_triggers"
     decision_drivers = "decision_drivers"
+    human_quirks = "human_quirks"  # v6.1: off-topic reactions, tangents, self-corrections per archetype
 
 
 class PersonalityChunkSource(str, enum.Enum):
@@ -268,6 +283,8 @@ class PersonalityChunk(Base):
     )
 
     embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+    embedding_v2: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+    embedding_v2_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     retrieval_count: Mapped[int] = mapped_column(Integer, default=0)
     hit_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -309,8 +326,54 @@ class PersonalityExample(Base):
     )
 
     embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+    embedding_v2: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+    embedding_v2_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
     retrieval_count: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     chunk: Mapped["PersonalityChunk | None"] = relationship(back_populates="examples")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# S2-08: Re-embedding hook — invalidate embedding when content changes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _compute_content_hash(fact_text: str, law_article: str) -> str:
+    """Compute content_hash for LegalKnowledgeChunk (md5 of fact_text::law_article)."""
+    return hashlib.md5(f"{fact_text}::{law_article}".encode()).hexdigest()
+
+
+@event.listens_for(LegalKnowledgeChunk, "before_update", propagate=True)
+def _legal_chunk_before_update(mapper, connection, target):
+    """Detect changes to fact_text or law_article and invalidate embedding.
+
+    When content changes:
+    1. Recompute content_hash to maintain dedup integrity
+    2. Set embedding = None so the backfill picks it up on next run
+    3. Clear embedding_model to indicate stale state
+    """
+    from sqlalchemy.orm import object_session
+    from sqlalchemy import inspect as sa_inspect
+
+    state = sa_inspect(target)
+    fact_changed = state.attrs.fact_text.history.has_changes()
+    article_changed = state.attrs.law_article.history.has_changes()
+
+    if fact_changed or article_changed:
+        target.content_hash = _compute_content_hash(target.fact_text, target.law_article)
+        target.embedding = None
+        target.embedding_model = None
+
+
+@event.listens_for(PersonalityChunk, "before_update", propagate=True)
+def _personality_chunk_before_update(mapper, connection, target):
+    """Invalidate embedding when PersonalityChunk.content changes."""
+    from sqlalchemy import inspect as sa_inspect
+
+    state = sa_inspect(target)
+    if state.attrs.content.history.has_changes():
+        target.embedding = None
+        if hasattr(target, "content_hash") and target.content_hash:
+            target.content_hash = hashlib.md5(target.content.encode()).hexdigest()

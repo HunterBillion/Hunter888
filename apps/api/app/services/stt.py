@@ -16,6 +16,16 @@ from app.config import settings
 
 _MIN_AUDIO_SIZE = 500  # Increased: 100 bytes is too small for any valid audio
 
+# S4-07: Known audio format magic bytes for validation
+_VALID_MAGIC_BYTES: list[tuple[bytes, int, str]] = [
+    (b"RIFF", 0, "WAV"),            # WAV header at offset 0
+    (b"OggS", 0, "OGG/Opus"),       # OGG container
+    (b"\x1a\x45\xdf\xa3", 0, "WebM"),  # WebM/Matroska EBML header
+    (b"ID3", 0, "MP3"),             # MP3 with ID3 tag
+    (b"fLaC", 0, "FLAC"),           # FLAC header
+]
+_MP3_SYNC_BYTES = {0xFB, 0xF3, 0xF2, 0xE3}  # MP3 frame sync second byte
+
 
 def _detect_mime_type(audio_bytes: bytes) -> tuple[str, str]:
     """Detect audio MIME type and file extension from magic bytes.
@@ -74,8 +84,24 @@ class STTError(Exception):
 
 
 def _validate_audio(audio_bytes: bytes) -> None:
+    """Validate audio size and magic bytes before sending to Whisper (S4-07)."""
     if len(audio_bytes) < _MIN_AUDIO_SIZE:
         raise STTError(f"Audio too short ({len(audio_bytes)} bytes)")
+
+    # S4-07: Validate magic bytes — reject non-audio files early
+    if len(audio_bytes) >= 4:
+        # Check known headers
+        for magic, offset, fmt in _VALID_MAGIC_BYTES:
+            end = offset + len(magic)
+            if audio_bytes[offset:end] == magic:
+                return  # Valid format
+        # Check MP3 sync word (0xFF + sync byte)
+        if audio_bytes[0] == 0xFF and audio_bytes[1] in _MP3_SYNC_BYTES:
+            return  # Valid MP3 frame sync
+        # Unknown format — reject
+        header_hex = audio_bytes[:8].hex()
+        logger.warning("stt: rejected audio with unknown header: %s", header_hex)
+        raise STTError(f"Invalid audio format (header: {header_hex})")
 
 
 def _postprocess_bfl_terms(text: str) -> str:
@@ -141,7 +167,11 @@ async def _transcribe_whisper(
     Raises:
         STTError: If Whisper is unreachable or returns an error.
     """
-    url = f"{settings.whisper_url.rstrip('/')}/v1/audio/transcriptions"
+    # Normalize: strip trailing /v1 if present (navy: https://api.navy vs https://api.navy/v1)
+    _whisper_base = settings.whisper_url.rstrip("/")
+    if _whisper_base.endswith("/v1"):
+        _whisper_base = _whisper_base[:-3]
+    url = f"{_whisper_base}/v1/audio/transcriptions"
     lang = language or settings.whisper_language
     mdl = model or settings.whisper_model
 
@@ -159,9 +189,14 @@ async def _transcribe_whisper(
     _validate_audio(audio_bytes)
 
     start_ts = time.monotonic()
+    # Add Authorization header when calling a cloud Whisper proxy (e.g. navy.api, OpenAI).
+    # Self-hosted fedirz/faster-whisper ignores it — safe no-op.
+    _headers = {}
+    if settings.whisper_api_key:
+        _headers["Authorization"] = f"Bearer {settings.whisper_api_key}"
     try:
         async with httpx.AsyncClient(timeout=float(settings.whisper_timeout_seconds)) as client:
-            response = await client.post(url, files=files, data=data)
+            response = await client.post(url, files=files, data=data, headers=_headers)
     except httpx.ConnectError:
         logger.error("STT service unavailable at %s", url)
         raise STTError(f"Whisper service unavailable at {settings.whisper_url}")

@@ -7,9 +7,8 @@ REST API — Модуль «Связь с клиентом» (Agent 7).
 import uuid
 from datetime import datetime, timezone
 
+from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -83,7 +82,6 @@ from app.services.client_service import (
 from app.ws.notifications import send_ws_notification
 
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 
 def _consent_verify_url(token: str) -> str:
@@ -225,6 +223,168 @@ async def api_get_stats_anonymized(
         avg_cycle_days=stats.get("avg_cycle_days"),
         lost_reasons_distribution={},
     )
+
+
+@router.get("/pipeline/analytics")
+async def api_get_pipeline_analytics(
+    user: User = Depends(require_role("rop", "admin", "methodologist")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Per-stage analytics: counts, conversion rates, avg dwell time, bottleneck.
+    Uses SQL aggregation on ClientInteraction (status_change entries).
+    """
+    from app.models.client import ClientInteraction, InteractionType
+
+    # ── 1. Per-stage counts (active clients) ──
+    count_query = (
+        select(
+            RealClient.status,
+            func.count().label("cnt"),
+        )
+        .where(RealClient.is_active == True)  # noqa: E712
+    )
+    if user.role == UserRole.rop:
+        if not user.team_id:
+            count_query = count_query.where(False)
+        else:
+            team_members = select(User.id).where(User.team_id == user.team_id)
+            count_query = count_query.where(RealClient.manager_id.in_(team_members))
+    elif user.role == UserRole.manager:
+        count_query = count_query.where(RealClient.manager_id == user.id)
+    count_query = count_query.group_by(RealClient.status)
+    count_result = await db.execute(count_query)
+    stage_counts: dict[str, int] = {
+        row.status.value: row.cnt for row in count_result.all()
+    }
+
+    # ── 2. Average dwell time per stage (from status_change interactions) ──
+    # For each transition OUT of a stage, measure time spent in that stage
+    # by looking at consecutive status_change interactions per client.
+    dwell_query = (
+        select(
+            ClientInteraction.old_status,
+            func.avg(
+                func.extract(
+                    "epoch",
+                    ClientInteraction.created_at
+                ) - func.extract(
+                    "epoch",
+                    func.lag(ClientInteraction.created_at).over(
+                        partition_by=ClientInteraction.client_id,
+                        order_by=ClientInteraction.created_at,
+                    ),
+                )
+            ).label("avg_dwell_seconds"),
+        )
+        .where(
+            ClientInteraction.interaction_type == InteractionType.status_change,
+            ClientInteraction.old_status.isnot(None),
+        )
+        .group_by(ClientInteraction.old_status)
+    )
+    # Fallback: simpler approach using last_status_change_at on RealClient
+    # and created_at of status_change interaction as transition timestamp.
+    # Use a simpler query: avg time between entering and leaving each stage.
+    dwell_query_simple = (
+        select(
+            ClientInteraction.old_status,
+            func.count().label("transitions"),
+        )
+        .where(
+            ClientInteraction.interaction_type == InteractionType.status_change,
+            ClientInteraction.old_status.isnot(None),
+        )
+        .group_by(ClientInteraction.old_status)
+    )
+    transition_result = await db.execute(dwell_query_simple)
+    transitions_out: dict[str, int] = {
+        row.old_status: row.transitions for row in transition_result.all()
+    }
+
+    # Avg dwell per stage: use actual timestamps from interactions
+    # Group by old_status, compute avg time between the status_change
+    # that SET the status and the one that CHANGED it away
+    avg_dwell_query = (
+        select(
+            ClientInteraction.old_status.label("stage"),
+            (
+                func.avg(
+                    func.extract("epoch", ClientInteraction.created_at)
+                    - func.extract("epoch", RealClient.created_at)
+                ) / 86400
+            ).label("avg_dwell_days"),
+        )
+        .join(RealClient, RealClient.id == ClientInteraction.client_id)
+        .where(
+            ClientInteraction.interaction_type == InteractionType.status_change,
+            ClientInteraction.old_status.isnot(None),
+        )
+        .group_by(ClientInteraction.old_status)
+    )
+    # Better approach: use the time difference between consecutive status changes
+    # Since window functions in group_by can be tricky, use a subquery approach
+    from sqlalchemy import text as sa_text
+    dwell_raw = await db.execute(sa_text("""
+        WITH status_transitions AS (
+            SELECT
+                client_id,
+                old_status,
+                created_at,
+                LAG(created_at) OVER (
+                    PARTITION BY client_id ORDER BY created_at
+                ) AS prev_transition_at
+            FROM client_interactions
+            WHERE interaction_type = 'status_change'
+              AND old_status IS NOT NULL
+        )
+        SELECT
+            old_status AS stage,
+            COUNT(*) AS transition_count,
+            AVG(EXTRACT(EPOCH FROM (created_at - COALESCE(prev_transition_at, created_at))) / 86400) AS avg_dwell_days
+        FROM status_transitions
+        WHERE prev_transition_at IS NOT NULL
+        GROUP BY old_status
+        ORDER BY avg_dwell_days DESC
+    """))
+    dwell_rows = dwell_raw.all()
+
+    avg_dwell_per_stage: dict[str, float] = {}
+    bottleneck_stage = None
+    bottleneck_days = 0.0
+    for row in dwell_rows:
+        days = round(float(row.avg_dwell_days or 0), 1)
+        avg_dwell_per_stage[row.stage] = days
+        if days > bottleneck_days:
+            bottleneck_days = days
+            bottleneck_stage = row.stage
+
+    # ── 3. Conversion rates between consecutive stages ──
+    pipeline_order = [
+        "new", "contacted", "interested", "thinking",
+        "consent_given", "documents", "contract_signed",
+        "in_process", "completed",
+    ]
+    conversion_rates: dict[str, float | None] = {}
+    for i in range(len(pipeline_order) - 1):
+        current = pipeline_order[i]
+        next_stage = pipeline_order[i + 1]
+        current_count = stage_counts.get(current, 0) + transitions_out.get(current, 0)
+        next_count = stage_counts.get(next_stage, 0) + transitions_out.get(next_stage, 0)
+        if current_count > 0:
+            conversion_rates[f"{current}_to_{next_stage}"] = round(
+                next_count / current_count * 100, 1
+            )
+        else:
+            conversion_rates[f"{current}_to_{next_stage}"] = None
+
+    return {
+        "stage_counts": stage_counts,
+        "conversion_rates": conversion_rates,
+        "avg_dwell_days_per_stage": avg_dwell_per_stage,
+        "bottleneck_stage": bottleneck_stage,
+        "bottleneck_avg_days": bottleneck_days,
+    }
 
 
 @router.get("/duplicates")
@@ -431,7 +591,7 @@ async def api_change_status(
     user: User = Depends(require_role("manager", "rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Сменить статус клиента (с валидацией перехода)."""
+    """Сменить статус клиента (с валидацией перехода). Returns full details."""
     client = await change_client_status(
         db,
         client_id=client_id,
@@ -440,7 +600,18 @@ async def api_change_status(
         reason=body.reason,
         request=request,
     )
-    return _client_to_response(client)
+    # Eagerly load interactions and consents for full detail response
+    consents_result = await db.execute(
+        select(ClientConsent).where(ClientConsent.client_id == client.id)
+    )
+    interactions_result = await db.execute(
+        select(ClientInteraction)
+        .where(ClientInteraction.client_id == client.id)
+        .order_by(ClientInteraction.created_at.desc())
+    )
+    client.consents = list(consents_result.scalars().all())
+    client.interactions = list(interactions_result.scalars().all())
+    return _client_to_response(client, include_details=True)
 
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -636,7 +807,9 @@ async def api_send_consent_link(
 
 
 @router.get("/consents/verify/{token}", response_model=ConsentVerifyResponse)
+@limiter.limit("10/minute")
 async def api_verify_consent_get(
+    request: Request,
     token: str,
     db: AsyncSession = Depends(get_db),
 ):
@@ -983,6 +1156,7 @@ async def api_push_subscribe(
         p256dh=p256dh,
         auth=auth,
         user_agent=request.headers.get("User-Agent"),
+        current_user_id=user.id,
     )
     await db.commit()
 
@@ -1023,6 +1197,7 @@ async def api_push_test(
         title="Hunter888 — Тест",
         body="Push-уведомления работают!",
         tag="test",
+        current_user_id=user.id,
     )
     await db.commit()
 
@@ -1164,14 +1339,17 @@ def _client_to_response(client: RealClient, include_details: bool = False) -> Cl
         creditors=creditors if isinstance(creditors, list) else [],
         tags=tags if isinstance(tags, list) else [],
     )
-    if include_details and getattr(client, "consents", None):
+    if include_details:
+        # Always return arrays (never None) for include_details responses —
+        # frontend calls .length on these fields and would crash on null.
+        consents_list = getattr(client, "consents", None) or []
+        interactions_list = getattr(client, "interactions", None) or []
         resp.active_consents = [
-            _consent_to_response(c) for c in client.consents if c.revoked_at is None
+            _consent_to_response(c) for c in consents_list if c.revoked_at is None
         ]
-        resp.consents = [_consent_to_response(c) for c in client.consents]
-    if include_details and getattr(client, "interactions", None):
-        resp.recent_interactions = [_interaction_to_response(i) for i in client.interactions[:10]]
-        resp.interactions = [_interaction_to_response(i) for i in client.interactions]
+        resp.consents = [_consent_to_response(c) for c in consents_list]
+        resp.recent_interactions = [_interaction_to_response(i) for i in interactions_list[:10]]
+        resp.interactions = [_interaction_to_response(i) for i in interactions_list]
     return resp
 
 

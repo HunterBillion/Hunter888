@@ -6,7 +6,6 @@ import { ShieldPlus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
 interface ConsentFormProps {
-  clientId: string;
   onSubmit: (data: { consent_type: string; channel: string }) => Promise<void>;
 }
 

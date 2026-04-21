@@ -24,6 +24,7 @@ import asyncio
 import logging
 import random
 import re
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -546,6 +547,20 @@ _SCRIPTED_SELLER_FALLBACKS = [
 
 # In-memory emotion state per duel (duel_id -> round_number -> BotEmotionState)
 _bot_states: dict[str, dict[int, BotEmotionState]] = {}
+_bot_timestamps: dict[str, float] = {}  # duel_id -> last_activity
+_BOT_STATES_MAX = 5000
+_BOT_STALE_SECONDS = 1800  # 30 minutes
+
+
+def _sweep_bot_states() -> None:
+    """Remove bot state for duels inactive > 30 minutes."""
+    if len(_bot_timestamps) < _BOT_STATES_MAX:
+        return
+    now = time.time()
+    stale = [k for k, t in _bot_timestamps.items() if now - t > _BOT_STALE_SECONDS]
+    for k in stale:
+        _bot_states.pop(k, None)
+        _bot_timestamps.pop(k, None)
 
 
 def _get_scripted_fallback(ai_role: str, mood: BotMood) -> str:
@@ -558,7 +573,9 @@ def _get_scripted_fallback(ai_role: str, mood: BotMood) -> str:
 
 def _get_or_create_emotion(duel_id: str, round_number: int, difficulty: DuelDifficulty) -> BotEmotionState:
     """Get or initialize bot emotion state for a specific duel round."""
+    _sweep_bot_states()
     key = duel_id
+    _bot_timestamps[key] = time.time()
     if key not in _bot_states:
         _bot_states[key] = {}
 

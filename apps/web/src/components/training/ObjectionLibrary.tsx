@@ -98,7 +98,7 @@ export default function ObjectionLibrary({ chains, onViewWiki }: ObjectionLibrar
                             onClick={() => setExpandedStep(isStepExpanded ? null : step.order)}
                             className="flex w-full items-center gap-2 px-3 py-2 text-left"
                           >
-                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/20 text-xs font-bold text-[var(--accent)]">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--accent-glow)] text-xs font-bold text-[var(--accent)]">
                               {step.order}
                             </span>
                             <p className="flex-1 text-sm text-[var(--text-primary)]">

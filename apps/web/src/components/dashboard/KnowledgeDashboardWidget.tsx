@@ -77,22 +77,33 @@ interface KnowledgeStats {
 // Rank display helpers
 // ---------------------------------------------------------------------------
 
+/** Normalize backend rank_tier (e.g. "gold_2") to base tier ("gold") for lookups */
+function normalizeRankTierLocal(raw: string): string {
+  return raw.replace(/_[123]$/, "");
+}
+
 const RANK_COLORS: Record<string, string> = {
   unranked: "var(--text-muted)",
+  iron: "var(--text-muted)",
   bronze: "var(--rank-bronze)",
   silver: "var(--rank-silver)",
   gold: "var(--rank-gold)",
   platinum: "var(--rank-platinum)",
   diamond: "var(--rank-diamond)",
+  master: "var(--rank-master, var(--danger))",
+  grandmaster: "var(--rank-grandmaster, var(--warning))",
 };
 
 const RANK_NAMES: Record<string, string> = {
   unranked: "Без ранга",
+  iron: "Железо",
   bronze: "Бронза",
   silver: "Серебро",
   gold: "Золото",
   platinum: "Платина",
   diamond: "Алмаз",
+  master: "Мастер",
+  grandmaster: "Грандмастер",
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -167,7 +178,8 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
   if (!data) return null;
 
   const pvp = data.pvp_stats;
-  const rankColor = RANK_COLORS[pvp?.rank_tier || "unranked"] || "var(--text-muted)";
+  const normalizedTier = normalizeRankTierLocal(pvp?.rank_tier || "unranked");
+  const rankColor = RANK_COLORS[normalizedTier] || "var(--text-muted)";
 
   return (
     <motion.div
@@ -259,7 +271,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
                 {Math.round(pvp.rating)} ELO
               </span>
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                {RANK_NAMES[pvp.rank_tier] || pvp.rank_tier}
+                {RANK_NAMES[normalizedTier] || pvp.rank_tier}
               </span>
               <span className="text-xs font-mono" style={{ color: "var(--text-secondary)" }}>
                 {pvp.wins}W {pvp.losses}L
@@ -300,8 +312,8 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
                 </div>
               </div>
               {srs.overdue > 0 && (
-                <Link href="/knowledge">
-                  <span className="status-badge status-badge--danger" style={{ fontSize: "12px", cursor: "pointer" }}>
+                <Link href="/pvp?tab=knowledge">
+                  <span className="status-badge status-badge--danger" style={{ fontSize: "14px", cursor: "pointer" }}>
                     <Clock size={8} weight="duotone" /> {srs.overdue} просрочено
                   </span>
                 </Link>
@@ -377,7 +389,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
 
       {/* Action buttons */}
       <div className="flex gap-2">
-        <Link href="/knowledge" className="flex-1">
+        <Link href="/pvp?tab=knowledge" className="flex-1">
           <button
             className="w-full flex items-center justify-center gap-1.5 py-2 rounded text-xs font-medium transition-colors"
             style={{
@@ -389,7 +401,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
             <ArrowRight size={12} />
           </button>
         </Link>
-        <Link href="/knowledge">
+        <Link href="/pvp?tab=knowledge">
           <button
             className="flex items-center justify-center gap-1.5 px-3 py-2 rounded text-xs font-medium transition-colors"
             style={{

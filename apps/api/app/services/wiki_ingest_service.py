@@ -32,26 +32,43 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _format_transcript(messages: list[Message], max_chars: int = 3000) -> str:
-    """Format message list into a readable transcript, truncated to max_chars."""
+def _format_transcript(messages: list[Message], max_chars: int = 6000) -> str:
+    """Format message list into a readable transcript.
+
+    Uses smart truncation: keeps the first 40% and last 40% of the conversation,
+    cutting the middle. This preserves the opening (rapport, needs discovery) and
+    the closing (objection handling, deal closure) — the two most analytically
+    valuable parts of a sales call.
+    """
     parts = []
     for msg in messages:
         role_label = "Менеджер" if msg.role.value == "user" else "Клиент"
         parts.append(f"{role_label}: {msg.content}")
     transcript = "\n".join(parts)
-    if len(transcript) > max_chars:
-        transcript = transcript[:max_chars] + "\n[...транскрипт сокращён]"
-    return transcript
+    if len(transcript) <= max_chars:
+        return transcript
+    # Smart truncation: keep start + end, cut middle
+    head_budget = int(max_chars * 0.4)
+    tail_budget = int(max_chars * 0.4)
+    head = transcript[:head_budget]
+    tail = transcript[-tail_budget:]
+    omitted = len(transcript) - head_budget - tail_budget
+    return (
+        head
+        + f"\n\n[...пропущено ~{omitted} символов середины диалога...]\n\n"
+        + tail
+    )
 
 
 def _parse_json_safe(text: str) -> dict | None:
-    """Extract JSON from LLM response, handling markdown code fences."""
+    """Extract JSON from LLM response, handling markdown code fences.
+
+    NOTE: Shared implementation. wiki_synthesis_service.py imports this.
+    """
     if not text:
         return None
-    # Strip markdown code fences if present
     cleaned = text.strip()
     if cleaned.startswith("```"):
-        # Remove opening fence (```json or ```)
         first_newline = cleaned.index("\n") if "\n" in cleaned else len(cleaned)
         cleaned = cleaned[first_newline + 1 :]
     if cleaned.endswith("```"):
@@ -60,7 +77,7 @@ def _parse_json_safe(text: str) -> dict | None:
     try:
         return json.loads(cleaned)
     except (json.JSONDecodeError, ValueError):
-        logger.warning("Failed to parse wiki ingest LLM response as JSON")
+        logger.warning("Failed to parse LLM response as JSON: %s", cleaned[:100])
         return None
 
 
@@ -302,7 +319,7 @@ async def ingest_session(session_id: uuid.UUID, db: AsyncSession) -> dict:
             prefer_provider="local",
         )
         analysis = _parse_json_safe(llm_response.content)
-        log.tokens_used = llm_response.latency_ms or 0  # approximate tracking
+        log.tokens_used = (llm_response.input_tokens or 0) + (llm_response.output_tokens or 0)
 
     except Exception as e:
         logger.warning(
@@ -464,6 +481,13 @@ async def ingest_session(session_id: uuid.UUID, db: AsyncSession) -> dict:
         existing_log_page.content = (
             existing_log_page.content + "\n\n" + session_log_content
         )
+        # Rotate: keep only the last 50 session entries to prevent unbounded growth
+        _LOG_MAX_ENTRIES = 50
+        _entries = existing_log_page.content.split("\n\n### Сессия ")
+        if len(_entries) > _LOG_MAX_ENTRIES + 1:  # +1 for the header before first entry
+            _header = _entries[0]  # "## Журнал сессий" header
+            _kept = _entries[-_LOG_MAX_ENTRIES:]
+            existing_log_page.content = _header + "\n\n### Сессия " + "\n\n### Сессия ".join(_kept)
         existing_log_page.version += 1
         existing_log_page.updated_at = datetime.now(timezone.utc)
         pages_modified += 1
@@ -477,6 +501,9 @@ async def ingest_session(session_id: uuid.UUID, db: AsyncSession) -> dict:
         )
         db.add(log_page)
         pages_created += 1
+
+    # 6b. Rebuild index page (auto-generated table of contents)
+    await _rebuild_index_page(wiki, db)
 
     # 7. Finalize log entry
     log.pages_created = pages_created
@@ -507,3 +534,106 @@ async def ingest_session(session_id: uuid.UUID, db: AsyncSession) -> dict:
         "pages_modified": pages_modified,
         "patterns_found": len(patterns_found),
     }
+
+
+# ---------------------------------------------------------------------------
+# Auto-generated index page
+# ---------------------------------------------------------------------------
+
+
+async def _rebuild_index_page(wiki: ManagerWiki, db: AsyncSession) -> None:
+    """Rebuild the wiki index page — a table of contents for the AI Coach.
+
+    Inspired by Karpathy's LLM Wiki pattern: the index gives the AI a fast
+    map of available knowledge before deciding what to load.
+    """
+    pages_result = await db.execute(
+        select(WikiPage)
+        .where(WikiPage.wiki_id == wiki.id)
+        .order_by(WikiPage.page_type, WikiPage.page_path)
+    )
+    all_pages = list(pages_result.scalars().all())
+
+    # Group by type
+    by_type: dict[str, list] = {}
+    for p in all_pages:
+        if p.page_path.startswith("lint/") or p.page_path == "index":
+            continue
+        ptype = p.page_type or "other"
+        by_type.setdefault(ptype, []).append(p)
+
+    # Build cross-reference map (pages sharing source sessions)
+    cross_refs: dict[str, list[str]] = {}
+    for p in all_pages:
+        if not p.source_sessions:
+            continue
+        sessions_set = set(p.source_sessions)
+        for q in all_pages:
+            if q.id == p.id or not q.source_sessions:
+                continue
+            if sessions_set & set(q.source_sessions):
+                cross_refs.setdefault(p.page_path, [])
+                if q.page_path not in cross_refs[p.page_path]:
+                    cross_refs[p.page_path].append(q.page_path)
+
+    # Build markdown
+    lines = [
+        "# Wiki Index",
+        "",
+        f"**Всего страниц:** {len(all_pages)}  ",
+        f"**Последнее обновление:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        "",
+    ]
+
+    type_labels = {
+        "overview": "Обзор",
+        "pattern": "Паттерны",
+        "insight": "Инсайты и лучшие практики",
+        "recommendation": "Рекомендации",
+        "benchmark": "Бенчмарки и отчёты",
+        "log": "Журналы",
+    }
+
+    for ptype, pages_list in sorted(by_type.items()):
+        label = type_labels.get(ptype, ptype.capitalize())
+        lines.append(f"## {label} ({len(pages_list)})")
+        lines.append("")
+        for p in pages_list:
+            updated = p.updated_at.strftime("%d.%m") if p.updated_at else "?"
+            sources = len(p.source_sessions or [])
+            refs = cross_refs.get(p.page_path, [])
+            ref_str = f" | ссылки: {', '.join(refs[:3])}" if refs else ""
+            lines.append(f"- **{p.page_path}** (v{p.version}, {updated}, {sources} сессий{ref_str})")
+        lines.append("")
+
+    if cross_refs:
+        lines.append("## Перекрёстные ссылки")
+        lines.append("")
+        for page_path, refs in sorted(cross_refs.items()):
+            if len(refs) > 0:
+                lines.append(f"- {page_path} → {', '.join(refs[:5])}")
+        lines.append("")
+
+    content = "\n".join(lines)
+
+    # Upsert
+    existing = await db.execute(
+        select(WikiPage).where(
+            WikiPage.wiki_id == wiki.id,
+            WikiPage.page_path == "index",
+        )
+    )
+    index_page = existing.scalar_one_or_none()
+    if index_page:
+        index_page.content = content
+        index_page.version += 1
+        index_page.updated_at = datetime.now(timezone.utc)
+    else:
+        index_page = WikiPage(
+            wiki_id=wiki.id,
+            page_path="index",
+            content=content,
+            page_type=WikiPageType.overview.value,
+            tags=["index", "auto-generated"],
+        )
+        db.add(index_page)

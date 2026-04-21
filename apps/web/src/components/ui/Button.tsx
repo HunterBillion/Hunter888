@@ -57,8 +57,8 @@ function variantStyles(variant: Variant) {
         color: "var(--danger)",
         border: "1px solid var(--danger)",
         backdropFilter: "blur(12px)",
-        "--btn-hover-bg": "rgba(229, 72, 77, 0.12)",
-        "--btn-hover-shadow": "0 0 20px rgba(229, 72, 77, 0.25)",
+        "--btn-hover-bg": "var(--danger-muted)",
+        "--btn-hover-shadow": "0 0 20px var(--danger-muted)",
       } as React.CSSProperties;
     case "success":
       return {
@@ -66,8 +66,8 @@ function variantStyles(variant: Variant) {
         color: "var(--success)",
         border: "1px solid var(--success)",
         backdropFilter: "blur(12px)",
-        "--btn-hover-bg": "rgba(61, 220, 132, 0.12)",
-        "--btn-hover-shadow": "0 0 20px rgba(61, 220, 132, 0.25)",
+        "--btn-hover-bg": "var(--success-muted)",
+        "--btn-hover-shadow": "0 0 20px var(--success-muted)",
       } as React.CSSProperties;
     case "ghost":
       return {

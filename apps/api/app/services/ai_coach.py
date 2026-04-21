@@ -85,6 +85,54 @@ async def coach_chat(
         user_id=str(user_id),
     )
 
+    # 4a. Citation enforcement: check whether the coach answer cites articles
+    # from the retrieved legal RAG set. If the model hallucinated an article
+    # not in the retrieved context, annotate the answer with a warning so the
+    # manager knows to double-check. Fail-open: if rag_legal results are empty
+    # (e.g. wiki-only question), no check runs.
+    try:
+        if rag_result and hasattr(rag_result, "legal_context") and rag_result.legal_context:
+            from app.services.rag_grounding import check_citations, annotate_answer
+            # Reconstruct a minimal RAGResult list from the legal_context text
+            # by parsing article references. The true list lives upstream of
+            # this function; we reconstruct a compat shim.
+            from app.services.rag_grounding import extract_article_numbers
+            allowed = extract_article_numbers(rag_result.legal_context)
+            if allowed:
+                from app.services.rag_legal import RAGResult
+                _mock_retrieved = [RAGResult(
+                    chunk_id=uuid.uuid4(),
+                    category="law",
+                    fact_text=rag_result.legal_context[:200],
+                    law_article=f"ст. {n} 127-ФЗ",
+                    relevance_score=0.8,
+                ) for n in allowed]
+                check = check_citations(result.content, _mock_retrieved)
+                if check.status == "hallucinated":
+                    logger.warning(
+                        "Coach hallucinated citations for user=%s: cited=%s allowed=%s",
+                        user_id, check.cited_articles, check.allowed_articles,
+                    )
+                    result.content = annotate_answer(result.content, check)
+    except Exception as _e:
+        logger.debug("Citation check failed (non-blocking): %s", _e)
+
+    # 4b. Knowledge compounding: save novel cross-page insights back to wiki
+    try:
+        if rag_ctx and rag_result and hasattr(rag_result, "wiki_pages") and len(rag_result.wiki_pages or []) >= 2:
+            from app.services.rag_wiki import compound_knowledge
+            import asyncio
+            _source_pages = [p.get("page_path", "") for p in (rag_result.wiki_pages or [])]
+            asyncio.create_task(compound_knowledge(
+                manager_id=user_id,
+                query=message,
+                synthesis=result.content,
+                source_pages=_source_pages,
+                db=db,
+            ))
+    except Exception:
+        pass  # compounding is non-critical fire-and-forget
+
     # 5. Detect action suggestions
     action = None
     action_data = None

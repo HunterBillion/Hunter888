@@ -124,8 +124,12 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
             CRM-КАРТОЧКА КЛИЕНТА
           </div>
           <h1 className="font-display text-2xl md:text-3xl font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
-            {scenarioTitle}
+            {sanitizeText(clientCard.full_name) || "Клиент"}
           </h1>
+          <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
+            {scenarioTitle}
+            {clientCard.city ? ` · ${clientCard.city}` : ""}
+          </div>
         </motion.div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -140,8 +144,8 @@ export function ClientCard({ clientCard, scenarioTitle, onStart, onBack, loading
                 { icon: User, label: "Имя", value: `${sanitizeText(clientCard.full_name)}, ${clientCard.age} лет` },
                 { icon: MapPin, label: "Город", value: clientCard.city },
                 { icon: Briefcase, label: "Профессия", value: clientCard.profession },
-                { icon: Globe, label: "Источник", value: clientCard.lead_source_label },
-              ].map((row) => {
+                { icon: Globe, label: "Источник", value: clientCard.lead_source_label || clientCard.lead_source },
+              ].filter((row) => row.value && String(row.value).trim()).map((row) => {
                 const Icon = row.icon;
                 return (
                   <div key={row.label} className="flex items-center gap-3">

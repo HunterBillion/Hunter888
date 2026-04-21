@@ -270,6 +270,8 @@ async def update_client(
     old_values = model_to_audit_dict(client, CLIENT_AUDIT_FIELDS)
 
     for field, value in updates.items():
+        if field == "status":
+            continue  # Status changes must go through change_client_status()
         if value is not None and hasattr(client, field):
             setattr(client, field, value)
 
@@ -837,20 +839,53 @@ async def get_client_stats(
     consent = by_status.get("consent_given", 0) + by_status.get("contract_signed", 0)
     conversion = round(consent / contacted * 100, 1) if contacted > 0 else 0
 
+    # ── Aggregate lost_reasons from RealClient.lost_reason ──
+    lost_query = (
+        select(
+            RealClient.lost_reason,
+            func.count().label("cnt"),
+        )
+        .where(
+            RealClient.is_active == True,  # noqa: E712
+            RealClient.status == ClientStatus.lost,
+            RealClient.lost_reason.isnot(None),
+            RealClient.lost_reason != "",
+        )
+    )
+    if user.role == UserRole.rop:
+        if not user.team_id:
+            lost_query = lost_query.where(False)
+        else:
+            team_members_lr = select(User.id).where(User.team_id == user.team_id)
+            lost_query = lost_query.where(RealClient.manager_id.in_(team_members_lr))
+    elif user.role == UserRole.manager:
+        lost_query = lost_query.where(RealClient.manager_id == user.id)
+
+    lost_query = lost_query.group_by(RealClient.lost_reason).order_by(func.count().desc())
+    lost_result = await db.execute(lost_query)
+    lost_reasons = {row.lost_reason: row.cnt for row in lost_result.all()}
+
     stats = {
         "total_clients": total,
         "by_status": by_status,
         "conversion_rates": {"contacted_to_consent": conversion},
         "avg_cycle_days": None,
-        "lost_reasons": {},
+        "lost_reasons": lost_reasons,
         "avg_debt_amount": None,
     }
 
     if not anonymized:
-        # Средний цикл сделки (от created_at до completed)
+        # Средний цикл сделки (от created_at до момента перехода в completed).
+        # Используем last_status_change_at — это timestamp последней смены статуса.
+        # Для клиентов в status=completed это момент, когда они стали completed.
+        # Если last_status_change_at пуст, fallback на updated_at.
         avg_query = select(
             func.avg(
-                func.extract("epoch", RealClient.updated_at - RealClient.created_at) / 86400
+                func.extract(
+                    "epoch",
+                    func.coalesce(RealClient.last_status_change_at, RealClient.updated_at)
+                    - RealClient.created_at,
+                ) / 86400
             )
         ).where(
             RealClient.status == ClientStatus.completed,

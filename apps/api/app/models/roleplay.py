@@ -563,7 +563,7 @@ class ClientStory(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     client_profile_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("client_profiles.id", ondelete="SET NULL"), nullable=True, index=True
@@ -624,6 +624,12 @@ class ClientStory(Base):
     # Format: {"promises": [...], "key_moments": [...]}
     # Total completed calls counter (incremented by game_director.advance_story)
     total_calls: Mapped[int] = mapped_column(Integer, default=0)
+
+    # --- VRM avatar model (persistent across calls) ---
+    vrm_model_id: Mapped[str | None] = mapped_column(
+        String(100), nullable=True,
+        comment="VRM model key from avatar_assignment, assigned at story creation"
+    )
 
     # --- Voice assignment (persistent across calls, ТЗ-04 v2) ---
     voice_id: Mapped[str | None] = mapped_column(

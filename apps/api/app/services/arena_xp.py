@@ -100,8 +100,11 @@ async def update_arena_streak(
 
     Returns the updated ManagerProgress.
     """
+    # S2-07d: FOR UPDATE prevents concurrent double-counting of streak updates
     result = await db.execute(
-        select(ManagerProgress).where(ManagerProgress.user_id == user_id)
+        select(ManagerProgress)
+        .where(ManagerProgress.user_id == user_id)
+        .with_for_update()
     )
     progress = result.scalar_one_or_none()
 
@@ -112,7 +115,7 @@ async def update_arena_streak(
         await db.flush()
 
     # Daily streak
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     if progress.arena_last_quiz_date:
         last_date = progress.arena_last_quiz_date
         if hasattr(last_date, 'date'):
@@ -145,8 +148,11 @@ async def apply_arena_xp_to_progress(
     """Add Arena XP to the user's total XP in ManagerProgress."""
     from app.services.gamification import xp_for_level
 
+    # S2-07d: FOR UPDATE prevents concurrent XP double-counting
     result = await db.execute(
-        select(ManagerProgress).where(ManagerProgress.user_id == user_id)
+        select(ManagerProgress)
+        .where(ManagerProgress.user_id == user_id)
+        .with_for_update()
     )
     progress = result.scalar_one_or_none()
 
@@ -154,6 +160,13 @@ async def apply_arena_xp_to_progress(
         progress = ManagerProgress(user_id=user_id)
         db.add(progress)
         await db.flush()
+
+    # S3-02: Apply daily soft cap
+    try:
+        from app.services.xp_daily_cap import apply_daily_cap
+        xp_earned = await apply_daily_cap(user_id, xp_earned, source="arena_session")
+    except Exception:
+        logger.warning("Daily XP cap unavailable for arena, using full XP", exc_info=True)
 
     progress.total_xp += xp_earned
     progress.current_xp += xp_earned

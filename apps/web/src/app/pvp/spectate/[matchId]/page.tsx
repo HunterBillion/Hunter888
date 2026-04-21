@@ -5,6 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Eye, Users, Loader2 } from "lucide-react";
 import { BackButton } from "@/components/ui/BackButton";
+import { getWsBaseUrl } from "@/lib/public-origin";
+import { getToken } from "@/lib/auth";
+import AuthLayout from "@/components/layout/AuthLayout";
 
 interface SpectatorMessage {
   role: string;
@@ -35,15 +38,25 @@ export default function SpectatorPage() {
   useEffect(() => {
     if (!matchId) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const host = process.env.NEXT_PUBLIC_API_URL?.replace(/^https?:\/\//, "") || "localhost:8000";
-    const url = `${protocol}://${host}/ws/pvp?mode=spectator&match_id=${matchId}`;
+    const url = `${getWsBaseUrl()}/ws/pvp?mode=spectator&match_id=${matchId}`;
 
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
+    ws.onopen = () => {
+      // Send auth token as first message (same pattern as other WS endpoints)
+      const token = getToken();
+      if (token) {
+        ws.send(JSON.stringify({ type: "auth", data: { token } }));
+      }
+      setConnected(true);
+    };
+    ws.onclose = (event) => {
+      setConnected(false);
+      if (event.code === 4001 || event.code === 1008) {
+        setError("Сессия истекла. Авторизуйтесь заново.");
+      }
+    };
     ws.onerror = () => setError("Не удалось подключиться к дуэли");
 
     ws.onmessage = (event) => {
@@ -87,24 +100,28 @@ export default function SpectatorPage() {
 
   if (error) {
     return (
-      <div className="flex h-[60vh] flex-col items-center justify-center gap-4">
-        <Eye size={48} className="text-[var(--text-muted)] opacity-30" />
-        <p className="text-sm text-[var(--text-secondary)]">{error}</p>
-        <button
-          onClick={() => router.push("/pvp")}
-          className="rounded-xl bg-[var(--accent)] px-6 py-2 text-sm text-white"
-        >
-          Назад в Арену
-        </button>
-      </div>
+      <AuthLayout>
+        <div className="flex h-[60vh] flex-col items-center justify-center gap-4">
+          <Eye size={48} className="text-[var(--text-muted)] opacity-30" />
+          <p className="text-sm text-[var(--text-secondary)]">{error}</p>
+          <button
+            onClick={() => router.push("/pvp")}
+            className="rounded-xl bg-[var(--accent)] px-6 py-2 text-sm text-white"
+          >
+            Назад в Арену
+          </button>
+        </div>
+      </AuthLayout>
     );
   }
 
   if (!connected || !state) {
     return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[var(--accent)]" />
-      </div>
+      <AuthLayout>
+        <div className="flex h-[60vh] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[var(--accent)]" />
+        </div>
+      </AuthLayout>
     );
   }
 
@@ -112,6 +129,7 @@ export default function SpectatorPage() {
   const clientMessages = messages.filter((m) => m.role === "client");
 
   return (
+    <AuthLayout>
     <div className="mx-auto max-w-6xl px-4 py-6">
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
@@ -130,11 +148,11 @@ export default function SpectatorPage() {
 
       {/* Players header */}
       <div className="mb-4 grid grid-cols-2 gap-4">
-        <div className="rounded-xl bg-[var(--accent)]/10 p-3 text-center">
+        <div className="rounded-xl bg-[var(--accent-muted)] p-3 text-center">
           <p className="text-xs text-[var(--text-muted)]">Продавец</p>
           <p className="font-semibold text-[var(--text-primary)]">{state.player1_name}</p>
         </div>
-        <div className="rounded-xl bg-[var(--danger)]/10 p-3 text-center">
+        <div className="rounded-xl bg-[var(--danger-muted)] p-3 text-center">
           <p className="text-xs text-[var(--text-muted)]">Клиент</p>
           <p className="font-semibold text-[var(--text-primary)]">{state.player2_name}</p>
         </div>
@@ -151,7 +169,7 @@ export default function SpectatorPage() {
                 key={i}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="rounded-lg bg-[var(--accent)]/10 px-3 py-2 text-sm text-[var(--text-primary)]"
+                className="rounded-lg bg-[var(--accent-muted)] px-3 py-2 text-sm text-[var(--text-primary)]"
               >
                 {msg.content}
               </motion.div>
@@ -178,5 +196,6 @@ export default function SpectatorPage() {
       </div>
       <div ref={chatEndRef} />
     </div>
+    </AuthLayout>
   );
 }

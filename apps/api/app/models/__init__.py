@@ -36,7 +36,11 @@ from app.models.progress import (
     EarnedAchievement,
     WeeklyReport,
     ProgressLeaderboardSnapshot,
+    GoalCompletionLog,
+    StreakFreeze,
 )
+from app.models.season_content import ContentSeason, SeasonChapter
+from app.models.league import WeeklyLeagueGroup, WeeklyLeagueMembership
 from app.models.checkpoint import CheckpointDefinition, UserCheckpoint
 from app.models.voice import (
     VoiceProfile,
@@ -145,6 +149,12 @@ from app.models.tournament import (
     TeamMatch,
 )
 from app.models.xp_log import XPLog
+from app.models.xp_event import XPEvent
+# FIND-002 fix (2026-04-19): register LegalDocument in Base.metadata so
+# Alembic autogenerate doesn't mistake it for an orphan and propose a DROP.
+# The table holds ~4400 RAG documents — dropping would be catastrophic.
+from app.models.legal_document import LegalDocument  # noqa: F401
+from app.models.rating_contribution import RatingContribution, RatingSource
 from app.models.prompt_version import PromptVersion
 from app.models.cross_recommendation import CrossRecommendationCache
 from app.models.manager_wiki import (
@@ -158,6 +168,17 @@ from app.models.manager_wiki import (
     WikiPageType,
     PatternCategory,
 )
+from app.models.review import Review
+from app.models.outbox import OutboxEvent, OutboxStatus
+from app.models.team_challenge import (
+    TeamChallenge,
+    TeamChallengeProgress,
+    ChallengeStatus as TeamChallengeStatus,
+    ChallengeType as TeamChallengeType,
+)
+from app.models.subscription import UserSubscription, PlanType as SubscriptionPlanType
+from app.models.story_state import UserStoryState
+from app.models.morning_drill import MorningDrillSession
 from app.services.web_push import PushSubscription
 
 __all__ = [
@@ -293,6 +314,9 @@ __all__ = [
     "TeamMatch",
     # DOC_15-16: Progression + Prompts
     "XPLog",
+    "XPEvent",
+    "RatingContribution",
+    "RatingSource",
     "PromptVersion",
     "CrossRecommendationCache",
     # Previously missing exports (GAP-2 fix)
@@ -322,4 +346,26 @@ __all__ = [
     "WikiAction",
     "WikiPageType",
     "PatternCategory",
+    # Reviews (landing testimonials)
+    "Review",
+    # Season Content & Leagues (diagnostic fix)
+    "ContentSeason",
+    "SeasonChapter",
+    "WeeklyLeagueGroup",
+    "WeeklyLeagueMembership",
+    "GoalCompletionLog",
+    "StreakFreeze",
+    # S3-01: Team Challenge persistence
+    "TeamChallenge",
+    "TeamChallengeProgress",
+    "TeamChallengeStatus",
+    "TeamChallengeType",
+    # S3-03: Subscription / Entitlement
+    "UserSubscription",
+    "SubscriptionPlanType",
+    "UserStoryState",
+    # Morning warm-up persistence (2026-04-20)
+    "MorningDrillSession",
+    # RAG v2 (Phase 3.10): legal_document was missing from Base.metadata
+    "LegalDocument",
 ]

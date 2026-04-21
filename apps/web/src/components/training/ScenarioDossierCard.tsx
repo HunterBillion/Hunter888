@@ -156,8 +156,9 @@ export function ScenarioDossierCard({ scenario, index, isStarting, onStart, onSt
               border: `1px solid color-mix(in srgb, ${accentColor} 30%, transparent)`,
               color: accentColor,
               opacity: isStarting ? 0.4 : 1,
+              backgroundColor: "rgba(0,0,0,0)",
             }}
-            whileHover={{ background: `color-mix(in srgb, ${accentColor} 8%, transparent)` }}
+            whileHover={{ backgroundColor: `color-mix(in srgb, ${accentColor} 8%, rgba(0,0,0,0))` }}
             whileTap={{ scale: 0.97 }}
           >
             <BookOpen size={13} />

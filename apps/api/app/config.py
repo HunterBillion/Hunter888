@@ -27,7 +27,11 @@ class Settings(BaseSettings):
     # JWT
     jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
-    jwt_access_token_expire_minutes: int = 30
+    # 2026-04-18 (FIND-016): 5 → 15 min. At 5-min TTL, 50 active users each
+    # generate ~24 refresh/hour → 20 req/s on /auth/refresh, straining
+    # Redis SETNX atomic revocation. 15 min cuts that to ~7 req/s while
+    # keeping the security window within OWASP recommendation (<30 min).
+    jwt_access_token_expire_minutes: int = 15
     jwt_refresh_token_expire_days: int = 7
 
     # CSRF
@@ -35,6 +39,7 @@ class Settings(BaseSettings):
 
     # LLM
     claude_api_key: str = ""
+    claude_model: str = "claude-sonnet-4-6"
     openai_api_key: str = ""
     llm_primary_model: str = "gemini-2.5-flash"
     llm_fallback_model: str = "gpt-4o-mini"
@@ -50,7 +55,16 @@ class Settings(BaseSettings):
     local_llm_model: str = "gemma4:e2b"
     local_llm_enabled: bool = False  # Disabled by default; enable for local dev
     local_llm_api_key: str = "ollama"  # Ollama doesn't require key; LM Studio may
+    # Context window of the local LLM — controls when auto-router pushes to cloud.
+    # 128K fits Claude/GPT-4/Gemini Pro via navy.api. Set to 6000 for local Gemma 4 (limited).
+    local_llm_context_window: int = 128000
     local_embedding_model: str = ""  # Embedding model on local LLM (e.g. "text-embedding-nomic-embed-text-v1.5")
+    # Optional separate URL ONLY for embeddings. If empty, embeddings fall back to local_llm_url when local_llm_enabled.
+    # Use this to run embeddings on a different Ollama instance (e.g. localhost) while keeping LLM chat on another host (e.g. Mac Mini).
+    local_embedding_url: str = ""
+    # Optional separate API key for embedding endpoint (e.g. navy.api Bearer key).
+    # If empty, falls back to local_llm_api_key (Ollama legacy).
+    local_embedding_api_key: str = ""
 
     # Concurrency control (prevents API rate limit hits)
     max_concurrent_llm_calls: int = 15
@@ -63,10 +77,52 @@ class Settings(BaseSettings):
     gemini_rpm_limit: int = 15  # Free tier limit, used by RPM counter to avoid 429
 
     # Lorebook (personality RAG — replaces monolithic character prompts)
-    use_lorebook: bool = False  # Feature flag: False=old 25K prompts, True=lorebook+RAG
-    lorebook_max_entry_tokens: int = 400  # Max tokens for keyword-triggered entries per turn
+    use_lorebook: bool = True  # Feature flag: True=lorebook+RAG (dynamic context), False=old 25K prompts
+
+    # 2026-04-18: Knowledge quiz v2 — case-driven narrative. Off by default,
+    # turn on with USE_QUIZ_V2=true in .env. Legacy path stays intact as
+    # rollback. See apps/api/app/services/quiz_v2/ + docs/RAG_ARENA_REDESIGN_TZ.md.
+    use_quiz_v2: bool = False
+
+    # Tier B (template+LLM fill) and Tier C (full LLM gen) flags — allow
+    # disabling individually if LLM billing needs to be capped. When False
+    # the router falls back to Tier A seed pool exclusively.
+    use_quiz_v2_tier_b: bool = True
+    use_quiz_v2_tier_c: bool = True
+
+    # ── Phase 1.5-1.8 (2026-04-18) MCP tool-calling ────────────────────────
+    # Off by default: Phase 1 only registers the infrastructure (@tool decorator,
+    # ToolRegistry, executor, WS events). Phase 2 flips this to True after
+    # ``generate_image`` / ``get_geolocation_context`` / ``fetch_archetype_profile``
+    # are implemented and the pilot run smokes clean.
+    mcp_enabled: bool = False
+    # Hard ceiling on handler execution, independent of per-tool timeouts.
+    mcp_tool_timeout_s: int = 30
+    # Navy.api settings for the first real MCP tool (image generation).
+    # Token kept separate from other LLM keys because navy.api has its own
+    # per-key quotas and we want to rotate them independently.
+    navy_api_key: str = ""
+    navy_base_url: str = "https://api.navy/v1"
+    navy_image_model: str = "nano-banana-2"
+
+    # ── Phase 3.5-3.10 (2026-04-19) quality upgrades ───────────────────────
+    # Answer-validation second-opinion. When True, knowledge-quiz runs
+    # ``knowledge_quiz_validator_v2.validate_semantic`` after the primary
+    # judge and upgrades false→partial/equivalent where appropriate.
+    rollout_relaxed_validation: bool = False
+    # RAG: fetch user-supplied URLs (legalacts.ru/consultant.ru/sudact.ru)
+    # into the retrieval pool at query time.
+    rag_url_fetch_enabled: bool = True
+    # Maximum chars per retrieval chunk (bumped from 3000 → 8000 in Phase 3).
+    rag_chunk_max_chars: int = 8000
+
+    lorebook_max_entry_tokens: int = 700  # Max tokens for lorebook entries per turn (baseline+keyword)
     lorebook_max_examples: int = 3  # Max few-shot RAG examples per turn
     lorebook_history_messages: int = 10  # Sliding window size for local LLM
+
+    # RAG retrieval
+    rag_min_similarity: float = 0.40  # Min cosine similarity for RAG retrieval (standard mode)
+    rag_min_similarity_blitz: float = 0.35  # Min cosine similarity for blitz mode
 
     # Embeddings
     embeddings_service_url: str = "http://localhost:8002"  # Legacy local service
@@ -81,6 +137,11 @@ class Settings(BaseSettings):
     elevenlabs_model: str = "eleven_v3"  # eleven_v3 = best quality, Russian support
     elevenlabs_timeout_seconds: int = 10
     elevenlabs_enabled: bool = False  # Enable when API key is set
+    # Navy/OpenAI-compat TTS (fallback when ElevenLabs is down/exhausted)
+    # Base URL uses local_llm_url if empty. Example: https://api.navy/v1, key = local_llm_api_key.
+    navy_tts_enabled: bool = False
+    navy_tts_model: str = "tts-1"
+    navy_tts_voice: str = "alloy"  # alloy, echo, fable, onyx, nova, shimmer
     elevenlabs_proxy: str = ""  # HTTP/SOCKS5 proxy for geo-blocked regions, e.g. socks5://127.0.0.1:1080
 
     @property
@@ -131,6 +192,7 @@ class Settings(BaseSettings):
     whisper_model: str = "large-v3"
     whisper_language: str = "ru"
     whisper_timeout_seconds: int = 30
+    whisper_api_key: str = ""  # Bearer token for cloud Whisper proxy (navy.api, OpenAI). Empty = self-hosted.
 
     # STT Provider: "whisper" (batch, self-hosted) | "deepgram" (streaming, cloud)
     stt_provider: str = "whisper"
@@ -165,10 +227,20 @@ class Settings(BaseSettings):
     app_port: int = 8000
     frontend_url: str = "http://localhost:3000"
     cors_origins: str = "http://localhost:3000"
+    # 2026-04-20: local timezone for daily streak / daily-goal windows.
+    # The B2B audience is Russian lawyers — UTC would flip "today" at
+    # 03:00 MSK and break streak counting for anyone who does the warm-up
+    # after 00:00 MSK. Override via APP_TZ env if needed.
+    app_tz: str = "Europe/Moscow"
 
     # Logging
     log_level: str = "info"
     log_format: str = "text"  # "text" for dev, "json" for production (docker logs)
+
+    # Metrics — 2026-04-18 (FIND-012): gate /metrics behind flag. In production,
+    # additionally restrict via nginx IP allowlist (VPN/internal only) so
+    # Prometheus-format request-latency and session data does not leak.
+    metrics_enabled: bool = False
 
     @field_validator("cors_origins")
     @classmethod
@@ -195,6 +267,20 @@ class Settings(BaseSettings):
     @property
     def web_push_configured(self) -> bool:
         return bool(self.vapid_public_key and self.vapid_private_key and self.vapid_subject)
+
+    # Payment (YooKassa / Stripe)
+    payment_provider: str = "yookassa"  # "yookassa" | "stripe"
+    yookassa_shop_id: str = ""
+    yookassa_secret_key: str = ""
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    payment_return_url: str = "http://localhost:3000/subscription/success"
+
+    @property
+    def payment_configured(self) -> bool:
+        if self.payment_provider == "stripe":
+            return bool(self.stripe_secret_key)
+        return bool(self.yookassa_shop_id and self.yookassa_secret_key)
 
     # Pagination — default/max limits for list endpoints; overridden in .env
     pagination_default_limit: int = 50
@@ -293,6 +379,14 @@ class Settings(BaseSettings):
             # Database credentials
             if "trainer_pass" in self.database_url or "localhost" in self.database_url:
                 issues.append("CRITICAL: database_url contains default/localhost credentials")
+            # Database URL must contain password
+            from urllib.parse import urlparse
+            _db_parsed = urlparse(self.database_url.replace("+asyncpg", ""))
+            if not _db_parsed.password:
+                issues.append(
+                    "CRITICAL: database_url has no password in production. "
+                    "Use format: postgresql+asyncpg://user:PASSWORD@host:5432/db"
+                )
 
             # Redis credentials
             if "localhost" in self.redis_url:
@@ -326,8 +420,15 @@ class Settings(BaseSettings):
                 "configure uvicorn --forwarded-allow-ips and nginx X-Real-IP header"
             )
 
-        # Always warn about missing LLM keys
-        if not self.gemini_api_key and not self.claude_api_key and not self.openai_api_key:
+        # Always warn about missing LLM keys — accept navy.api (local_llm_api_key) as valid
+        # since platform routes all LLM/embedding/STT/TTS through navy by default.
+        _has_any_llm = any([
+            self.gemini_api_key,
+            self.claude_api_key,
+            self.openai_api_key,
+            self.local_llm_api_key and self.local_llm_enabled,
+        ])
+        if not _has_any_llm:
             issues.append("WARNING: No LLM API key configured — AI features will not work")
 
         for issue in issues:

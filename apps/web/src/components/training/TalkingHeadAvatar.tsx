@@ -351,7 +351,7 @@ export function TalkingHeadAvatar({
               Аватар недоступен
             </span>
             {process.env.NODE_ENV === "development" && (
-              <span className="text-[10px] text-red-400/50 mt-1 block break-all">
+              <span className="text-xs text-red-400/50 mt-1 block break-all">
                 {loadError}
               </span>
             )}

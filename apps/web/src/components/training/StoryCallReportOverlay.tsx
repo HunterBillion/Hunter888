@@ -54,7 +54,7 @@ export function StoryCallReportOverlay({
             </div>
           </div>
 
-          <div className="rounded-xl px-4 py-2 text-right" style={{ background: "rgba(124,106,232,0.12)", border: "1px solid rgba(124,106,232,0.22)" }}>
+          <div className="rounded-xl px-4 py-2 text-right" style={{ background: "var(--accent-muted)", border: "1px solid var(--accent-glow)" }}>
             <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
               SCORE
             </div>
@@ -100,7 +100,7 @@ export function StoryCallReportOverlay({
                       key={`${index}-${item.type}-${item.detail}`}
                       className="rounded-xl px-3 py-2 text-sm"
                       style={{
-                        background: item.severity >= 0.7 ? "rgba(229,72,77,0.08)" : "rgba(245,158,11,0.08)",
+                        background: item.severity >= 0.7 ? "var(--danger-muted)" : "var(--warning-muted)",
                         border: `1px solid ${item.severity >= 0.7 ? "rgba(229,72,77,0.2)" : "rgba(245,158,11,0.2)"}`,
                         color: "var(--text-secondary)",
                       }}
@@ -126,7 +126,7 @@ export function StoryCallReportOverlay({
               </div>
             </div>
 
-            <div className="rounded-2xl p-4" style={{ background: "rgba(124,106,232,0.06)", border: "1px solid rgba(124,106,232,0.18)" }}>
+            <div className="rounded-2xl p-4" style={{ background: "var(--accent-muted)", border: "1px solid var(--accent-muted)" }}>
               <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
                 следующий шаг
               </div>

@@ -61,12 +61,17 @@ def blend_pad(
     pad_b: dict[str, float],
     weight_a: float = 0.5,
     weight_b: float = 0.5,
+    session_id: Optional[str] = None,
 ) -> dict[str, float]:
-    """PAD blending — linear interpolation + noise."""
+    """PAD blending — linear interpolation + noise.
+
+    S4-05: When session_id is provided, noise is deterministic (reproducible).
+    """
+    rng = random.Random(hash(session_id)) if session_id else random
     return {
-        "P": round(pad_a.get("P", 0) * weight_a + pad_b.get("P", 0) * weight_b + random.uniform(-0.1, 0.1), 2),
-        "A": round(pad_a.get("A", 0) * weight_a + pad_b.get("A", 0) * weight_b + random.uniform(-0.1, 0.1), 2),
-        "D": round(pad_a.get("D", 0) * weight_a + pad_b.get("D", 0) * weight_b + random.uniform(-0.1, 0.1), 2),
+        "P": round(pad_a.get("P", 0) * weight_a + pad_b.get("P", 0) * weight_b + rng.uniform(-0.1, 0.1), 2),
+        "A": round(pad_a.get("A", 0) * weight_a + pad_b.get("A", 0) * weight_b + rng.uniform(-0.1, 0.1), 2),
+        "D": round(pad_a.get("D", 0) * weight_a + pad_b.get("D", 0) * weight_b + rng.uniform(-0.1, 0.1), 2),
     }
 
 
@@ -167,17 +172,19 @@ class ShiftingArchetype:
         "salesperson": "professional", "psychologist": "professional",
     }
 
-    def __init__(self, difficulty: int = 10):
+    def __init__(self, difficulty: int = 10, session_id: Optional[str] = None):
+        # S4-05: Local RNG seeded by session_id for deterministic replay
+        self._rng = random.Random(hash(session_id)) if session_id else random.Random()
         self.pool = self._generate_pool(difficulty)
         self.current_idx = 0
         self.replies_since_shift = 0
-        self.shift_interval = random.randint(3, 4)
+        self.shift_interval = self._rng.randint(3, 4)
         self.accumulated_traps: list[str] = []
 
     def _generate_pool(self, difficulty: int) -> list[str]:
         """5-8 archetypes, difficulty ±2, from different groups."""
         candidates = list(self.ARCHETYPE_GROUPS_MAP.keys())
-        random.shuffle(candidates)
+        self._rng.shuffle(candidates)
 
         pool: list[str] = []
         group_counts: dict[str, int] = {}
@@ -188,7 +195,7 @@ class ShiftingArchetype:
                 continue
             pool.append(code)
             group_counts[group] = group_counts.get(group, 0) + 1
-            if len(pool) >= random.randint(5, 8):
+            if len(pool) >= self._rng.randint(5, 8):
                 break
 
         return pool or ["skeptic", "anxious", "manipulator", "passive", "overthinker"]
@@ -202,7 +209,7 @@ class ShiftingArchetype:
         self.replies_since_shift += 1
         if self.replies_since_shift >= self.shift_interval:
             self.replies_since_shift = 0
-            self.shift_interval = random.randint(3, 4)
+            self.shift_interval = self._rng.randint(3, 4)
             self.current_idx = (self.current_idx + 1) % len(self.pool)
             return self.pool[self.current_idx]
         return None

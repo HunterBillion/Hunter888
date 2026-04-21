@@ -58,6 +58,18 @@ _INJECTION_PATTERNS = re.compile(
     r"|DAN\s+mode"
     r"|ignore\s+safety"
     r"|ignore\s+guardrails"
+    # ── Extended patterns (Unicode variants, Russian, token manipulation) ──
+    r"|забудь\s+(все|предыдущ|систем)\w*\s*(инструкц|правил|промпт)"
+    r"|проигнорируй\s+(все|предыдущ|систем)\w*\s*(инструкц|правил)"
+    r"|ты\s+теперь\s+(друг|нов|свободн)"
+    r"|новые\s+инструкц\w*\s*:"
+    r"|выйди\s+из\s+роли"
+    r"|перестань\s+(?:играть|притвор)"
+    r"|режим\s+разработчика"
+    r"|включи\s+без\s+ограничений"
+    r"|\[/?(?:INST|SYS)\]"
+    r"|<\|(?:im_start|im_end|endoftext)\|>"
+    r"|```(?:system|instruction)"
     r")",
     re.IGNORECASE,
 )
@@ -171,6 +183,7 @@ async def select_scenario(
     manager_level: int = 5,
     preferences: Optional[dict] = None,
     reputation_score: Optional[float] = None,
+    user_id: Optional[uuid.UUID] = None,
 ) -> ScenarioTemplate:
     """Select a scenario template based on manager level, reputation, and preferences.
 
@@ -215,7 +228,25 @@ async def select_scenario(
     level_clamped = max(1, min(10, manager_level))
     group_key = _LEVEL_TO_GROUP[level_clamped]
     allowed_codes = _LEVEL_SCENARIO_GROUPS[group_key]
+
+    # Story-aware filtering: restrict to chapter-unlocked scenarios + difficulty ceiling
+    _chapter_max_diff = 10
+    if user_id:
+        try:
+            from app.services.story_progression import get_chapter_context
+            _ch_ctx = await get_chapter_context(user_id, db)
+            _chapter_scenarios = _ch_ctx.unlocked_scenarios
+            if _chapter_scenarios:
+                # Intersect level-based + chapter-based allowed scenarios
+                allowed_codes = list(set(allowed_codes) & set(_chapter_scenarios))
+                if not allowed_codes:
+                    allowed_codes = _chapter_scenarios  # fallback to chapter-only
+            _chapter_max_diff = _ch_ctx.max_difficulty
+        except Exception:
+            pass  # graceful degradation — use level-based only
+
     query = query.where(ScenarioTemplate.code.in_(allowed_codes))
+    query = query.where(ScenarioTemplate.difficulty <= _chapter_max_diff)
 
     # ── Reputation-based minimum difficulty ──
     if reputation_score is not None:
@@ -291,6 +322,13 @@ def generate_session_config(
     """
     # ── Select archetype (weighted random) ──
     weights_dict: dict = template.archetype_weights or {}
+    if not weights_dict:
+        # Fallback: generate weights via rule-based system (DOC_05 §12)
+        from app.services.scenario_weights import generate_archetype_weights
+        weights_dict = generate_archetype_weights(
+            scenario_code=template.code,
+            difficulty=template.difficulty_base or 5,
+        )
     archetypes = [k for k, v in weights_dict.items() if v > 0]
     arch_weights = [weights_dict[k] for k in archetypes]
 
@@ -375,9 +413,11 @@ def build_scenario_prompt(config: SessionConfig, current_stage_order: int = 1) -
     parts = []
 
     # ── Section 1: Scenario overview ──
+    safe_name = _sanitize_db_prompt(config.scenario_name, "scenario_name")
+    safe_code = _sanitize_db_prompt(config.scenario_code, "scenario_code")
     parts.append(
-        f"## Сценарий: {config.scenario_name}\n"
-        f"Код сценария: {config.scenario_code}\n"
+        f"## Сценарий: {safe_name}\n"
+        f"Код сценария: {safe_code}\n"
         f"Целевой результат: {_outcome_label(config.target_outcome)}\n"
         f"Сложность: {config.difficulty}/10\n"
         f"Максимальная длительность: {config.max_duration_minutes} мин."
@@ -386,17 +426,24 @@ def build_scenario_prompt(config: SessionConfig, current_stage_order: int = 1) -
     # ── Section 2: Current stage ──
     stage = _find_stage(config.stages, current_stage_order)
     if stage:
-        goals_text = "\n".join(f"  • {g}" for g in stage.get("manager_goals", []))
-        mistakes_text = "\n".join(f"  ✗ {m}" for m in stage.get("manager_mistakes", []))
-        emotions = ", ".join(stage.get("expected_emotion_range", []))
+        safe_stage_name = _sanitize_db_prompt(stage.get("name", ""), "stage.name")
+        safe_description = _sanitize_db_prompt(stage.get("description", ""), "stage.description")
+        safe_goals = [_sanitize_db_prompt(g, "manager_goals") for g in stage.get("manager_goals", [])]
+        safe_mistakes = [_sanitize_db_prompt(m, "manager_mistakes") for m in stage.get("manager_mistakes", [])]
+        safe_emotions = [_sanitize_db_prompt(e, "expected_emotion_range") for e in stage.get("expected_emotion_range", [])]
+        safe_red_flag = _sanitize_db_prompt(stage.get("emotion_red_flag", "hangup"), "emotion_red_flag")
+
+        goals_text = "\n".join(f"  • {g}" for g in safe_goals)
+        mistakes_text = "\n".join(f"  ✗ {m}" for m in safe_mistakes)
+        emotions = ", ".join(safe_emotions)
 
         parts.append(
-            f"## Текущий этап разговора: {stage['name']} (этап {current_stage_order})\n"
-            f"{stage.get('description', '')}\n\n"
+            f"## Текущий этап разговора: {safe_stage_name} (этап {current_stage_order})\n"
+            f"{safe_description}\n\n"
             f"Цели менеджера на этом этапе:\n{goals_text}\n\n"
             f"Типичные ошибки менеджера:\n{mistakes_text}\n\n"
             f"Ожидаемый диапазон эмоций клиента: {emotions}\n"
-            f"Красный флаг (критическая эмоция): {stage.get('emotion_red_flag', 'hangup')}"
+            f"Красный флаг (критическая эмоция): {safe_red_flag}"
         )
     else:
         parts.append(
@@ -405,9 +452,10 @@ def build_scenario_prompt(config: SessionConfig, current_stage_order: int = 1) -
         )
 
     # ── Section 3: Client awareness ──
-    awareness_text = _awareness_description(config.client_awareness)
+    safe_awareness_level = _sanitize_db_prompt(config.client_awareness, "client_awareness")
+    awareness_text = _awareness_description(safe_awareness_level)
     parts.append(
-        f"## Осведомлённость клиента: {config.client_awareness}\n"
+        f"## Осведомлённость клиента: {safe_awareness_level}\n"
         f"{awareness_text}"
     )
 
@@ -545,7 +593,7 @@ def _outcome_label(outcome: str) -> str:
         "retention": "Удержать клиента",
         "upsell": "Продать доп. услугу",
     }
-    return labels.get(outcome, outcome)
+    return labels.get(outcome, _sanitize_db_prompt(outcome, "target_outcome"))
 
 
 def _awareness_description(level: str) -> str:

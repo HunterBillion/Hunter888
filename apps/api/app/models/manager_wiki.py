@@ -141,6 +141,9 @@ class WikiPage(Base):
     tags: Mapped[dict] = mapped_column(JSONB, default=list)  # list of strings
     # Phase 2: pgvector embedding for semantic wiki search
     embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+    # Shadow column (migration 20260417_005) — gemini-embedding-001@768
+    embedding_v2: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+    embedding_v2_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -7,6 +7,10 @@ import { CheckCircle2, ChevronRight, ArrowRight } from "lucide-react";
 import dynamic from "next/dynamic";
 import { EASE_SNAP } from "@/lib/constants";
 import { useLandingAuth } from "@/components/landing/LandingAuthContext";
+import { PixelTextReveal } from "@/components/pixel/PixelTextReveal";
+import { PixelReviewButton } from "@/components/pixel/PixelReviewButton";
+import { PixelGridBackground } from "@/components/landing/PixelGridBackground";
+import { getApiBaseUrl } from "@/lib/public-origin";
 
 const WaveScene = dynamic(
   () => import("@/components/landing/WaveScene").then((m) => m.WaveScene),
@@ -15,9 +19,9 @@ const WaveScene = dynamic(
 
 /* ── Constants ────────────────────────────────────────────────────── */
 const STATS = [
-  { target: 60,  suffix: "+", label: "Реальных сценариев" },
-  { target: 100, suffix: "",  label: "Типов клиентов" },
-  { target: 10,  suffix: "",  label: "Параметров оценки" },
+  { target: 23,  suffix: "%", label: "Рост конверсии за 3 недели" },
+  { target: 147, suffix: "",  label: "Менеджеров тренируются" },
+  { target: 4,   suffix: ".2 мин", label: "До первого результата" },
 ];
 
 const TRUST = [
@@ -27,33 +31,16 @@ const TRUST = [
 ];
 
 const CAROUSEL_SLIDES = [
-  { title: "Тренировка", desc: "Менеджер разговаривает с ИИ-клиентом в реальном времени" },
-  { title: "Скоринг", desc: "Разбор по 10 параметрам: что сработало, где ошибка" },
-  { title: "Арена", desc: "Соревнуйтесь с коллегами. Рейтинг растёт с победами" },
-  { title: "Результат", desc: "Видите прогресс: какие клиенты даются, а какие нет" },
+  { title: "Тренировка", desc: "Менеджер разговаривает с ИИ-клиентом в реальном времени", icon: "🎯", accent: "var(--accent)" },
+  { title: "Скоринг", desc: "Разбор по 10 параметрам: что сработало, где ошибка", icon: "📊", accent: "var(--success)" },
+  { title: "Арена", desc: "Соревнуйтесь с коллегами. Рейтинг растёт с победами", icon: "⚔️", accent: "var(--warning)" },
+  { title: "Результат", desc: "Видите прогресс: какие клиенты даются, а какие нет", icon: "📈", accent: "var(--info)" },
+  { title: "ИИ-клиент", desc: "100 типов: скептики, манипуляторы, паникёры — как в жизни", icon: "🤖", accent: "#9a3bef" },
+  { title: "Обратная связь", desc: "Где потеряли клиента и как вернуть — после каждого звонка", icon: "💬", accent: "var(--accent)" },
+  { title: "PvP битвы", desc: "Рейтинговые дуэли с коллегами в реальном времени", icon: "🏆", accent: "var(--warning)" },
+  { title: "Геймификация", desc: "XP, стрики, ачивки — обучение через азарт", icon: "🎮", accent: "var(--success)" },
 ] as const;
 
-/* ── Terminal scenarios (loops between them) ──────────────────────── */
-const TERMINAL_SCENARIOS = [
-  [
-    { text: "> Анализ звонка #47...", delay: 0 },
-    { text: "  Скрипт          ████████░░  82%", delay: 300 },
-    { text: "  Возражения       ██████░░░░  61%", delay: 600 },
-    { text: "  Коммуникация     ███████░░░  73%", delay: 900 },
-    { text: "  Эмпатия          ████████░░  78%", delay: 1200 },
-    { text: "  ⚠ Ловушка: ложная срочность", delay: 1600 },
-    { text: "  Итог: 72/100 — Silver III", delay: 2000 },
-  ],
-  [
-    { text: "> Анализ звонка #48...", delay: 0 },
-    { text: "  Скрипт          █████████░  91%", delay: 300 },
-    { text: "  Возражения       ████████░░  84%", delay: 600 },
-    { text: "  Коммуникация     ██████████  96%", delay: 900 },
-    { text: "  Эмпатия          █████████░  88%", delay: 1200 },
-    { text: "  ✓ Ловушки пройдены", delay: 1600 },
-    { text: "  Итог: 89/100 — Gold I ↑", delay: 2000 },
-  ],
-] as const;
 
 /* ── CountUp ─────────────────────────────────────────────────────── */
 function CountUp({ target, suffix }: { target: number; suffix: string }) {
@@ -92,100 +79,84 @@ function CountUp({ target, suffix }: { target: number; suffix: string }) {
   return <span ref={ref}>{count}{suffix}</span>;
 }
 
-/* ── Looping animated terminal ───────────────────────────────────── */
-function ScoringTerminal() {
-  const [scenarioIdx, setScenarioIdx] = useState(0);
-  const [visibleLines, setVisibleLines] = useState(0);
-  const [isTyping, setIsTyping] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const started = useRef(false);
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  const scenario = TERMINAL_SCENARIOS[scenarioIdx];
+/* ── Bento Testimonials (glass-panel, auto-scroll, pause on hover) ─ */
+const BENTO_REVIEWS = [
+  { name: "Алексей К.", role: "Руководитель отдела продаж", text: "За 2 месяца средний балл команды вырос с 54 до 78.", rating: 5 },
+  { name: "Мария В.", role: "Менеджер по продажам", text: "Наконец-то тренировка, где клиент ведёт себя как настоящий.", rating: 5 },
+  { name: "Дмитрий Л.", role: "Директор по развитию", text: "Конверсия из первого звонка выросла на 23% за квартал.", rating: 5 },
+  { name: "Елена С.", role: "Старший менеджер БФЛ", text: "Каждый разговор — живой опыт. Клиент давит, торгуется — как в реальности.", rating: 4 },
+  { name: "Игорь М.", role: "РОП, 15 менеджеров", text: "Вижу слабые места каждого менеджера без прослушки звонков.", rating: 5 },
+];
 
-  const clearTimers = useCallback(() => {
-    timersRef.current.forEach(clearTimeout);
-    timersRef.current = [];
-  }, []);
-
-  const runScenario = useCallback((idx: number) => {
-    clearTimers();
-    setScenarioIdx(idx);
-    setVisibleLines(0);
-    setIsTyping(true);
-    const lines = TERMINAL_SCENARIOS[idx];
-    lines.forEach((_, i) => {
-      timersRef.current.push(setTimeout(() => setVisibleLines(i + 1), lines[i].delay));
-    });
-    // After all lines shown, wait 4s then start next scenario
-    timersRef.current.push(setTimeout(() => {
-      setIsTyping(false);
-      timersRef.current.push(setTimeout(() => {
-        runScenario((idx + 1) % TERMINAL_SCENARIOS.length);
-      }, 4000));
-    }, lines[lines.length - 1].delay + 500));
-  }, [clearTimers]);
+function BentoTestimonials({ onReviewClick }: { onReviewClick: () => void }) {
+  const [idx, setIdx] = useState(0);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !started.current) {
-          started.current = true;
-          runScenario(0);
-        }
-      },
-      { threshold: 0.3 },
-    );
-    observer.observe(el);
-    return () => {
-      observer.disconnect();
-      clearTimers();
-    };
-  }, [runScenario, clearTimers]);
+    if (paused) return;
+    const id = setInterval(() => setIdx((p) => (p + 1) % BENTO_REVIEWS.length), 5000);
+    return () => clearInterval(id);
+  }, [paused]);
+
+  const review = BENTO_REVIEWS[idx];
 
   return (
-    <div
-      ref={containerRef}
-      className="rounded-lg overflow-hidden h-full"
-      style={{ background: "#0a0a12", border: "1px solid var(--border-color)" }}
-    >
-      <div className="flex items-center gap-1.5 px-4 py-2.5" style={{ background: "#111118", borderBottom: "1px solid var(--border-color)" }}>
-        <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#ff5f57" }} />
-        <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#febc2e" }} />
-        <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#28c840" }} />
-        <span className="ml-3 text-xs" style={{ color: "var(--text-muted)" }}>scoring_output</span>
+    <div className="flex flex-col gap-3 h-full">
+      {/* Review card */}
+      <div
+        className="rounded-xl relative overflow-hidden flex-1 min-h-[180px]"
+        style={{
+          background: "var(--bg-panel)",
+          border: "1px solid var(--border-color)",
+        }}
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+      >
+        <div className="h-full flex flex-col justify-between p-5">
+          {/* Header with star rating */}
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-display font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>Отзывы</span>
+            <div className="flex gap-0.5">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <span key={s} className="text-[10px]" style={{ color: s <= review.rating ? "#EAB308" : "var(--border-color)" }}>★</span>
+              ))}
+            </div>
+          </div>
+
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.3 }}
+              className="my-auto py-2"
+            >
+              <p className="text-xs sm:text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                &laquo;{review.text}&raquo;
+              </p>
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Author */}
+          <div className="flex items-center gap-3">
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ background: "var(--accent)", border: "2px solid var(--border-color)" }}
+            >
+              <span className="text-[10px] font-black text-white">{review.name.charAt(0)}</span>
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-bold truncate" style={{ color: "var(--text-primary)" }}>{review.name}</div>
+              <div className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{review.role}</div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="p-5 font-mono text-sm sm:text-base leading-relaxed min-h-[220px]">
-        {scenario.slice(0, visibleLines).map((line, i) => (
-          <motion.div
-            key={`${scenarioIdx}-${i}`}
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.25 }}
-            style={{
-              color: line.text.includes("⚠") ? "var(--danger)"
-                : line.text.includes("✓") ? "var(--success)"
-                : line.text.includes("Итог") ? "var(--success)"
-                : line.text.includes(">") ? "var(--accent)"
-                : "var(--text-secondary)",
-            }}
-          >
-            {line.text}
-          </motion.div>
-        ))}
-        {isTyping && visibleLines < scenario.length && (
-          <motion.span
-            animate={{ opacity: [1, 0] }}
-            transition={{ duration: 0.5, repeat: Infinity }}
-            style={{ color: "var(--accent)" }}
-          >
-            █
-          </motion.span>
-        )}
-      </div>
+      {/* Pixel review button — directly under the card */}
+      <PixelReviewButton onClick={onReviewClick} />
     </div>
   );
 }
@@ -199,9 +170,11 @@ function ProductCarousel() {
     return () => clearInterval(id);
   }, []);
 
+  const slide = CAROUSEL_SLIDES[active];
+
   return (
     <div
-      className="aspect-square rounded-xl overflow-hidden relative"
+      className="rounded-xl overflow-hidden relative h-full min-h-[200px]"
       style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}
     >
       <AnimatePresence mode="wait">
@@ -211,46 +184,50 @@ function ProductCarousel() {
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }}
           transition={{ duration: 0.4 }}
-          className="absolute inset-0 flex flex-col items-center justify-center p-6 sm:p-8 text-center"
+          className="absolute inset-0 flex flex-col items-center justify-center p-5 sm:p-6 text-center"
         >
-          <div className="w-full h-2/3 rounded-lg mb-4" style={{ background: "linear-gradient(135deg, var(--bg-tertiary), var(--accent-muted))" }} />
+          {/* Icon with accent glow */}
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+            style={{
+              background: "var(--bg-tertiary)",
+              border: `1px solid color-mix(in srgb, ${slide.accent} 30%, transparent)`,
+              boxShadow: `0 0 24px color-mix(in srgb, ${slide.accent} 20%, transparent)`,
+            }}
+          >
+            <span className="text-2xl select-none">{slide.icon}</span>
+          </div>
           <h4 className="font-display font-bold text-sm mb-1" style={{ color: "var(--text-primary)" }}>
-            {CAROUSEL_SLIDES[active].title}
+            {slide.title}
           </h4>
-          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-            {CAROUSEL_SLIDES[active].desc}
+          <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
+            {slide.desc}
           </p>
+
+          {/* Step indicator */}
+          <div className="flex gap-1 mt-3">
+            {CAROUSEL_SLIDES.map((_, i) => (
+              <div
+                key={i}
+                className="h-1 rounded-full transition-all duration-300"
+                style={{
+                  width: i === active ? 16 : 4,
+                  background: i === active ? slide.accent : "var(--border-color)",
+                }}
+              />
+            ))}
+          </div>
         </motion.div>
       </AnimatePresence>
     </div>
   );
 }
 
-/* ── Score bar ────────────────────────────────────────────────────── */
-function ScoreBar({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-1.5">
-        <span className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>{label}</span>
-        <span className="text-sm font-bold" style={{ color }}>{value}%</span>
-      </div>
-      <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "var(--border-color)" }}>
-        <motion.div
-          className="h-full rounded-full"
-          style={{ background: color }}
-          initial={{ width: 0 }}
-          whileInView={{ width: `${value}%` }}
-          viewport={{ once: true }}
-          transition={{ duration: 1, delay: 0.2 }}
-        />
-      </div>
-    </div>
-  );
-}
 
 /* ═══════════════════════════ PAGE ═════════════════════════════════ */
 export default function Home() {
   const { openRegister } = useLandingAuth();
+  const [showReviewForm, setShowReviewForm] = useState(false);
 
   return (
     <>
@@ -258,27 +235,28 @@ export default function Home() {
       <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0"><WaveScene /></div>
         <div className="absolute inset-0 z-[1] pointer-events-none" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.10) 40%, rgba(0,0,0,0.45) 80%, rgba(0,0,0,0.75) 100%)" }} />
-        <div className="absolute inset-0 z-[2] pointer-events-none" style={{ background: "radial-gradient(ellipse at 50% 55%, rgba(124,106,232,0.22) 0%, transparent 55%)" }} />
+        <div className="absolute inset-0 z-[2] pointer-events-none" style={{ background: "radial-gradient(ellipse at 50% 55%, var(--accent-glow) 0%, transparent 55%)" }} />
 
-        <div className="relative z-[4] text-center px-4 sm:px-6 w-full max-w-4xl mx-auto pt-16 sm:pt-20">
+        <div className="relative z-[4] text-center px-5 sm:px-8 md:px-10 w-full max-w-[1440px] mx-auto pt-16 sm:pt-20">
           <motion.div initial={{ opacity: 0, scale: 0.88 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2, duration: 0.85, ease: EASE_SNAP }}>
             <h1 className="font-display font-black leading-none">
               <span className="block select-none" style={{ fontSize: "clamp(5rem, 20vw, 16rem)", lineHeight: 0.88, color: "transparent", WebkitTextStroke: "1.5px var(--accent)", filter: "drop-shadow(0 0 40px var(--accent-glow))" }}>X</span>
-              <span className="block tracking-[0.28em]" style={{ fontSize: "clamp(1.4rem, 5.5vw, 4.5rem)", color: "var(--text-primary)" }}>HUNTER</span>
+              <span className="block tracking-widest" style={{ fontSize: "clamp(1.4rem, 5.5vw, 4.5rem)", color: "var(--text-primary)" }}>HUNTER</span>
             </h1>
           </motion.div>
 
           {/* UVP — headline + body */}
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="max-w-xl mx-auto mt-6 mb-8">
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="max-w-2xl mx-auto mt-6 mb-8">
             <p
               className="text-lg md:text-xl font-display font-bold mb-3"
               style={{ color: "var(--text-primary)", lineHeight: 1.5 }}
             >
-              Каждое возражение — это сделка, которая ещё не закрыта.
+              7 из 10 звонков вашего менеджера — в мусор.
             </p>
             <p className="text-base md:text-lg" style={{ color: "var(--text-secondary)", lineHeight: 1.7 }}>
-              X Hunter даёт вашей команде сотни тренировок с ИИ-клиентами, которые ведут себя как настоящие — давят, сомневаются, уходят.{" "}
-              <strong style={{ color: "var(--text-primary)" }}>После каждой тренировки — точный разбор: где потеряли и как вернуть.</strong>
+              Мы прослушали 60 000 переговоров и знаем, где он ломается.
+              <br />
+              <strong style={{ color: "var(--text-primary)" }}>XHUNTER тренирует менеджеров БФЛ на реальных сценариях. Не теория — практика со скептиками, манипуляторами и агрессорами.</strong>
             </p>
           </motion.div>
 
@@ -291,7 +269,7 @@ export default function Home() {
                   <div className="font-display font-black leading-none" style={{ fontSize: "clamp(1.6rem, 6vw, 2.5rem)", color: "var(--accent)" }}>
                     <CountUp target={target} suffix={suffix} />
                   </div>
-                  <div className="font-display font-semibold tracking-wide mt-1.5 uppercase" style={{ fontSize: "clamp(13px, 2.2vw, 15px)", color: "var(--text-primary)", opacity: 0.75 }}>{label}</div>
+                  <div className="font-display font-semibold tracking-wide mt-1.5 uppercase" style={{ fontSize: "clamp(14px, 2.2vw, 15px)", color: "var(--text-primary)", opacity: 0.75 }}>{label}</div>
                 </div>
               </div>
             ))}
@@ -301,8 +279,8 @@ export default function Home() {
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.72 }} className="mb-5">
             <style>{`
               @keyframes pulse-glow {
-                0%, 100% { box-shadow: 0 0 8px rgba(124,106,232,0.3), 0 0 24px rgba(124,106,232,0.1); }
-                50% { box-shadow: 0 0 16px rgba(124,106,232,0.5), 0 0 40px rgba(124,106,232,0.25); }
+                0%, 100% { box-shadow: 0 0 8px rgba(107,77,199,0.3), 0 0 24px rgba(107,77,199,0.1); }
+                50% { box-shadow: 0 0 16px rgba(107,77,199,0.5), 0 0 40px rgba(107,77,199,0.25); }
               }
             `}</style>
             <button
@@ -310,7 +288,7 @@ export default function Home() {
               className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl text-base font-bold transition-transform hover:scale-[1.02] active:scale-[0.98]"
               style={{ background: "var(--accent)", color: "white", animation: "pulse-glow 2s ease-in-out infinite" }}
             >
-              Начать бесплатно <ArrowRight size={18} />
+              Бесплатно протестировать за 2 минуты <ArrowRight size={18} />
             </button>
           </motion.div>
 
@@ -326,29 +304,25 @@ export default function Home() {
 
       {/* ═══ BENTO GRID ═══════════════════════════════════════════ */}
       <section className="relative overflow-hidden" style={{ background: "var(--bg-primary)" }}>
-        {/* Grid pattern — fades in from top */}
-        <div className="absolute inset-0 pointer-events-none" style={{
-          backgroundImage: `linear-gradient(to right, var(--text-muted) 1px, transparent 1px), linear-gradient(to bottom, var(--text-muted) 1px, transparent 1px)`,
-          backgroundSize: "24px 24px",
-          opacity: 0.03,
-          maskImage: "linear-gradient(to bottom, transparent 0%, black 15%)",
-          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 15%)",
-        }} />
+        {/* Canvas pixel grid — full grid + 15% of cells decay ("disappear") */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            maskImage: "linear-gradient(to bottom, transparent 0%, black 15%)",
+            WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 15%)",
+          }}
+        >
+          <PixelGridBackground cellSize={24} pixelSize={6} />
+        </div>
 
-        <div className="relative z-10 max-w-[1440px] mx-auto px-5 sm:px-8 md:px-10 pt-14 sm:pt-20 pb-12">
+        <div className="relative z-10 max-w-[1440px] mx-auto px-5 sm:px-8 md:px-10 pt-16 sm:pt-24 pb-16 sm:pb-24">
 
-          {/* Section label */}
-          <motion.p
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="text-sm font-medium mb-8"
-            style={{ color: "var(--text-muted)" }}
-          >
-            Тренировка → Разбор → Рост
-          </motion.p>
+          {/* Section label — pixel text assembly */}
+          <div className="mb-8">
+            <PixelTextReveal />
+          </div>
 
-          <div className="grid lg:grid-cols-[1.618fr_1fr] gap-6">
+          <div className="grid lg:grid-cols-[1.618fr_1fr] lg:grid-rows-[1fr_1fr] gap-6">
 
             {/* ── PANEL A: Product Portal (62%) ── */}
             <Link href="/product" className="lg:row-span-2 group">
@@ -375,32 +349,15 @@ export default function Home() {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 flex-grow">
-                  <div className="rounded-lg p-5 sm:p-6" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)" }}>
-                    <h3 className="text-sm font-bold uppercase mb-5" style={{ color: "var(--text-muted)" }}>По типам клиентов</h3>
-                    <div className="space-y-4">
-                      <ScoreBar label="Скептики" value={87} color="var(--success)" />
-                      <ScoreBar label="Переговорщики" value={64} color="var(--text-muted)" />
-                      <ScoreBar label="Агрессоры" value={42} color="var(--danger)" />
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg p-5 sm:p-6" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)" }}>
-                    <h3 className="text-sm font-bold uppercase mb-5" style={{ color: "var(--text-muted)" }}>Оценка звонка</h3>
-                    <div className="space-y-4">
-                      <ScoreBar label="Следование скрипту" value={92} color="var(--success)" />
-                      <ScoreBar label="Работа с возражениями" value={71} color="var(--text-muted)" />
-                    </div>
-                  </div>
-
-                  <div className="sm:col-span-2 mt-1">
-                    <ScoringTerminal />
-                  </div>
-                </div>
-
-                <div className="mt-5 flex items-center gap-2 opacity-40 group-hover:opacity-100 transition-opacity" style={{ color: "var(--text-secondary)" }}>
-                  <span className="text-sm font-medium">Узнать больше о продукте</span>
-                  <ChevronRight size={16} />
+                <div className="rounded-lg overflow-hidden flex-grow" style={{ border: "1px solid var(--border-color)" }}>
+                  <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="w-full h-full block object-cover"
+                    src="/landing/promo.mp4"
+                  />
                 </div>
               </motion.div>
             </Link>
@@ -417,8 +374,8 @@ export default function Home() {
                 style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}
               >
                 <h3 className="text-base font-bold uppercase mb-6" style={{ color: "var(--text-muted)" }}>Выберите план</h3>
-                <div className="space-y-4 flex-grow">
-                  <div className="flex justify-between items-center p-5 rounded-lg" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)" }}>
+                <div className="flex flex-col gap-4 flex-1 justify-between">
+                  <div className="flex justify-between items-center p-5 rounded-lg flex-1" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)" }}>
                     <div>
                       <h4 className="font-bold text-base uppercase" style={{ color: "var(--text-primary)" }}>Scout</h4>
                       <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>Базовые сценарии</p>
@@ -428,7 +385,7 @@ export default function Home() {
                       <span className="text-xs block" style={{ color: "var(--text-muted)" }}>/мес</span>
                     </div>
                   </div>
-                  <div className="flex justify-between items-center p-5 rounded-lg" style={{ background: "var(--accent)", color: "white" }}>
+                  <div className="flex justify-between items-center p-5 rounded-lg flex-1" style={{ background: "var(--accent)", color: "white" }}>
                     <div>
                       <h4 className="font-black text-base uppercase">Hunter</h4>
                       <p className="text-sm mt-0.5 opacity-80">Всё включено</p>
@@ -438,7 +395,7 @@ export default function Home() {
                       <span className="text-xs opacity-80 block">/мес</span>
                     </div>
                   </div>
-                  <div className="flex justify-between items-center p-5 rounded-lg" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)" }}>
+                  <div className="flex justify-between items-center p-5 rounded-lg flex-1" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)" }}>
                     <div>
                       <h4 className="font-bold text-base uppercase" style={{ color: "var(--text-primary)" }}>Enterprise</h4>
                       <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>Для команд</p>
@@ -459,107 +416,20 @@ export default function Home() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.7, delay: 0.3 }}
-              className="grid grid-cols-2 gap-4 sm:gap-6"
+              className="grid grid-cols-2 gap-6 h-full"
             >
-              <ProductCarousel />
-
-              <div className="aspect-square rounded-xl relative overflow-hidden" style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}>
-                <div className="relative z-10 h-full flex flex-col justify-between p-5 sm:p-7">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-px" style={{ background: "var(--text-muted)" }} />
-                    <span className="text-xs font-display font-bold tracking-widest uppercase" style={{ color: "var(--text-muted)" }}>Основатель</span>
-                  </div>
-                  <blockquote className="my-auto py-2">
-                    <p className="text-xs sm:text-sm leading-relaxed italic" style={{ color: "var(--text-secondary)", fontFamily: "Georgia, 'Times New Roman', serif" }}>
-                      &laquo;Я 8 лет руководил отделом продаж в банкротстве и видел, как менеджеры повторяют одни и те же ошибки.{" "}
-                      <strong className="not-italic" style={{ color: "var(--text-primary)", fontFamily: "var(--font-display, sans-serif)" }}>X Hunter — это тренажёр, который я хотел иметь тогда.</strong>&raquo;
-                    </p>
-                  </blockquote>
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)" }}>
-                      <span className="text-xs font-black" style={{ color: "var(--text-muted)" }}>XH</span>
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>CEO</div>
-                      <div className="text-xs" style={{ color: "var(--text-muted)" }}>X Hunter</div>
-                    </div>
-                  </div>
+              {/* Trust block — static testimonial (replaces carousel per WCAG 2.2.2) */}
+              <div className="rounded-2xl p-6" style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}>
+                <blockquote className="text-base italic mb-4" style={{ color: "var(--text-secondary)", lineHeight: 1.7 }}>
+                  &laquo;Конверсия отдела выросла на 23% за 3 недели. Менеджеры перестали бояться возражений.&raquo;
+                </blockquote>
+                <div className="text-sm font-medium" style={{ color: "var(--text-muted)" }}>
+                  РОП, ООО &laquo;ПравоКонсульт&raquo;
                 </div>
               </div>
-            </motion.div>
-          </div>
 
-          {/* ═══ TESTIMONIALS ═══════════════════════════════════════ */}
-          <div className="mt-16">
-            <motion.p
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              viewport={{ once: true }}
-              className="text-sm font-medium mb-3"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Отзывы
-            </motion.p>
-            <motion.h2
-              initial={{ opacity: 0, y: 12 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="font-display font-black tracking-tight mb-10"
-              style={{ fontSize: "clamp(1.4rem, 3vw, 2rem)", color: "var(--text-primary)" }}
-            >
-              Что говорят клиенты
-            </motion.h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[
-                {
-                  name: "Алексей М.",
-                  role: "Руководитель ОП",
-                  company: "ФинТраст",
-                  text: "За 2 месяца средний балл команды вырос с 54 до 78. Менеджеры сами просят доступ к тренажёру — раньше от обучения бегали.",
-                  initials: "АМ",
-                },
-                {
-                  name: "Дарья К.",
-                  role: "Менеджер по продажам",
-                  company: "КредитПро",
-                  text: "Наконец-то тренировка, где клиент ведёт себя как настоящий. Первый раз я проиграла — и это было полезнее любого тренинга.",
-                  initials: "ДК",
-                },
-                {
-                  name: "Игорь С.",
-                  role: "Директор по развитию",
-                  company: "ДолгофСервис",
-                  text: "Подключили 12 менеджеров. Конверсия из первого звонка выросла на 23% за квартал. ROI окупился за первый месяц.",
-                  initials: "ИС",
-                },
-              ].map((t, i) => (
-                <motion.div
-                  key={t.name}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1 }}
-                  className="rounded-xl p-6 flex flex-col"
-                  style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}
-                >
-                  <p className="text-sm leading-relaxed flex-1 mb-5" style={{ color: "var(--text-secondary)" }}>
-                    &laquo;{t.text}&raquo;
-                  </p>
-                  <div className="flex items-center gap-3 pt-4" style={{ borderTop: "1px solid var(--border-color)" }}>
-                    <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-                      style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
-                    >
-                      <span className="text-xs font-black">{t.initials}</span>
-                    </div>
-                    <div>
-                      <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{t.name}</div>
-                      <div className="text-xs" style={{ color: "var(--text-muted)" }}>{t.role}, {t.company}</div>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
+              <BentoTestimonials onReviewClick={() => setShowReviewForm(true)} />
+            </motion.div>
           </div>
 
           {/* Pre-footer CTA */}
@@ -567,7 +437,7 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="mt-16 text-center py-12 rounded-2xl"
+            className="mt-20 text-center py-14 sm:py-16 px-5 sm:px-8 rounded-2xl"
             style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}
           >
             <h3
@@ -581,12 +451,210 @@ export default function Home() {
               className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-base font-bold transition-transform hover:scale-[1.02] active:scale-[0.98]"
               style={{ background: "var(--accent)", color: "white" }}
             >
-              Начать бесплатно <ArrowRight size={18} />
+              Бесплатно протестировать за 2 минуты <ArrowRight size={18} />
             </button>
-            <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>14 дней · без карты · отмена в любой момент</p>
+            <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>14 дней бесплатно · без кредитной карты · готово за 5 минут</p>
           </motion.div>
         </div>
       </section>
+
+      {/* ═══ ARCADE REVIEW MODAL ═══════════════════════════════════ */}
+      <AnimatePresence>
+        {showReviewForm && (
+          <ArcadeReviewModal onClose={() => setShowReviewForm(false)} />
+        )}
+      </AnimatePresence>
     </>
+  );
+}
+
+/* ── Arcade-styled Review Form Modal ─────────────────────── */
+function ArcadeReviewModal({ onClose }: { onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("");
+  const [text, setText] = useState("");
+  const [rating, setRating] = useState(5);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+
+  const isValid = name.trim().length >= 2 && role.trim().length >= 2 && text.trim().length >= 10;
+
+  const handleSubmit = async () => {
+    if (!isValid) { setError("Заполните все поля"); return; }
+    setError("");
+    setSending(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/reviews`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), role: role.trim(), text: text.trim(), rating }),
+      });
+      if (res.ok) {
+        setSent(true);
+        setTimeout(onClose, 2500);
+      } else {
+        setError("Требуется авторизация для отправки отзыва");
+      }
+    } catch {
+      setError("Нет соединения с сервером");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        className="w-full max-w-md rounded-xl overflow-hidden"
+        style={{
+          background: "#0e0b1a",
+          border: "2px solid #6b4dc7",
+          boxShadow: "0 0 40px rgba(107,77,199,0.3), inset 0 1px 0 rgba(255,255,255,0.05)",
+          imageRendering: "auto",
+        }}
+      >
+        {/* Arcade title bar */}
+        <div className="px-5 py-3 flex items-center justify-between" style={{ background: "#1a1530", borderBottom: "2px solid #6b4dc7" }}>
+          <div className="flex items-center gap-3">
+            <span className="text-lg">🎮</span>
+            <span className="text-sm font-bold tracking-wider uppercase" style={{ color: "#e8e4f0", fontFamily: "monospace" }}>
+              НОВЫЙ ОТЗЫВ
+            </span>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold transition-colors hover:bg-[#6b4dc7]" style={{ color: "#e8e4f0", border: "1px solid #5a5478" }}>
+            ✕
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {sent ? (
+            <div className="text-center py-8">
+              <div className="text-4xl mb-3">🏆</div>
+              <p className="text-base font-bold" style={{ color: "#d4a84b", fontFamily: "monospace" }}>
+                ACHIEVEMENT UNLOCKED!
+              </p>
+              <p className="text-sm mt-2" style={{ color: "#5a5478", fontFamily: "monospace" }}>
+                Отзыв отправлен на модерацию
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Rating stars */}
+              <div>
+                <label className="block text-[10px] font-bold tracking-wider uppercase mb-2" style={{ color: "#5a5478", fontFamily: "monospace" }}>
+                  РЕЙТИНГ
+                </label>
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onMouseEnter={() => setHoverRating(i)}
+                      onMouseLeave={() => setHoverRating(0)}
+                      onClick={() => setRating(i)}
+                      className="text-xl transition-transform hover:scale-125"
+                      style={{ color: i <= (hoverRating || rating) ? "#d4a84b" : "#5a5478" }}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Name */}
+              <div>
+                <label className="block text-[10px] font-bold tracking-wider uppercase mb-2" style={{ color: "#5a5478", fontFamily: "monospace" }}>
+                  ИМЯ
+                </label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Как вас зовут"
+                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+                  style={{
+                    background: "#1a1530",
+                    border: "1px solid #5a5478",
+                    color: "#e8e4f0",
+                    fontFamily: "monospace",
+                  }}
+                />
+              </div>
+
+              {/* Role */}
+              <div>
+                <label className="block text-[10px] font-bold tracking-wider uppercase mb-2" style={{ color: "#5a5478", fontFamily: "monospace" }}>
+                  ДОЛЖНОСТЬ
+                </label>
+                <input
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  placeholder="Ваша должность"
+                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+                  style={{
+                    background: "#1a1530",
+                    border: "1px solid #5a5478",
+                    color: "#e8e4f0",
+                    fontFamily: "monospace",
+                  }}
+                />
+              </div>
+
+              {/* Review text */}
+              <div>
+                <label className="block text-[10px] font-bold tracking-wider uppercase mb-2" style={{ color: "#5a5478", fontFamily: "monospace" }}>
+                  ОТЗЫВ
+                </label>
+                <textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder="Расскажите о вашем опыте"
+                  rows={3}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none resize-none"
+                  style={{
+                    background: "#1a1530",
+                    border: "1px solid #5a5478",
+                    color: "#e8e4f0",
+                    fontFamily: "monospace",
+                  }}
+                />
+              </div>
+
+              {error && (
+                <p className="text-xs font-bold" style={{ color: "#ff5f57", fontFamily: "monospace" }}>
+                  ⚠ {error}
+                </p>
+              )}
+
+              <button
+                onClick={handleSubmit}
+                disabled={sending || !isValid}
+                className="w-full rounded-lg px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all disabled:opacity-40 hover:brightness-110"
+                style={{
+                  background: "linear-gradient(135deg, #6b4dc7, #9a3bef)",
+                  color: "#fff",
+                  border: "2px solid #9a3bef",
+                  fontFamily: "monospace",
+                  boxShadow: isValid ? "0 0 20px rgba(107,77,199,0.4)" : "none",
+                }}
+              >
+                {sending ? "ОТПРАВКА..." : "▶ ОТПРАВИТЬ ОТЗЫВ"}
+              </button>
+            </>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }

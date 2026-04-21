@@ -181,7 +181,7 @@ export function GameTimeline({
                   </div>
 
                   <p
-                    className="text-[13px] font-medium mt-1 leading-tight"
+                    className="text-sm font-medium mt-1 leading-tight"
                     style={{ color: "var(--text-primary)" }}
                   >
                     {event.title}

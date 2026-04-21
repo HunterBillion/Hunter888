@@ -38,9 +38,12 @@ export function LandingFooter() {
       className="relative z-10 border-t"
       style={{ borderColor: "var(--border-color)", background: "var(--bg-secondary)" }}
     >
-      <div className="max-w-7xl mx-auto px-5 sm:px-8 md:px-12 pt-14 pb-10">
-        {/* Main grid — 5 columns on desktop */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-10 md:gap-8">
+      <div
+        className="mx-auto px-5 sm:px-8 md:px-12 pt-14 pb-10"
+        style={{ maxWidth: "var(--app-shell-max)" }}
+      >
+        {/* Main grid — 5 columns on desktop, items-start for baseline alignment */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-10 md:gap-8 items-start">
 
           {/* ── Brand column ─────────────────────────────────── */}
           <div className="col-span-2 md:col-span-2">
@@ -71,9 +74,17 @@ export function LandingFooter() {
 
           {/* ── Product column ────────────────────────────────── */}
           <div>
-            <h4 className="font-display text-xs font-bold tracking-[0.2em] uppercase mb-5" style={{ color: "var(--text-primary)" }}>
+            <h4
+              className="font-display text-xs font-bold tracking-wider uppercase mb-2 pb-2"
+              style={{
+                color: "var(--text-primary)",
+                borderBottom: "2px solid var(--accent)",
+                display: "inline-block",
+              }}
+            >
               Продукт
             </h4>
+            <div className="h-3" />
             <ul className="space-y-3">
               {PRODUCT_LINKS.map(({ href, label, icon: Icon }) => (
                 <li key={label}>
@@ -92,9 +103,17 @@ export function LandingFooter() {
 
           {/* ── Company column ────────────────────────────────── */}
           <div>
-            <h4 className="font-display text-xs font-bold tracking-[0.2em] uppercase mb-5" style={{ color: "var(--text-primary)" }}>
+            <h4
+              className="font-display text-xs font-bold tracking-wider uppercase mb-2 pb-2"
+              style={{
+                color: "var(--text-primary)",
+                borderBottom: "2px solid var(--accent)",
+                display: "inline-block",
+              }}
+            >
               Компания
             </h4>
+            <div className="h-3" />
             <ul className="space-y-3">
               {COMPANY_LINKS.map(({ href, label, ...rest }) => {
                 const isExternal = "external" in rest && rest.external;
@@ -138,9 +157,17 @@ export function LandingFooter() {
 
           {/* ── Legal column ──────────────────────────────────── */}
           <div>
-            <h4 className="font-display text-xs font-bold tracking-[0.2em] uppercase mb-5" style={{ color: "var(--text-primary)" }}>
+            <h4
+              className="font-display text-xs font-bold tracking-wider uppercase mb-2 pb-2"
+              style={{
+                color: "var(--text-primary)",
+                borderBottom: "2px solid var(--accent)",
+                display: "inline-block",
+              }}
+            >
               Документы
             </h4>
+            <div className="h-3" />
             <ul className="space-y-3">
               {LEGAL_LINKS.map(({ href, label }) => (
                 <li key={label}>
@@ -160,7 +187,7 @@ export function LandingFooter() {
             <div className="mt-6 pt-4" style={{ borderTop: "1px solid var(--border-color)" }}>
               <div className="flex items-center gap-2">
                 <Shield size={14} style={{ color: "var(--success)", opacity: 0.7 }} />
-                <span className="text-[10px] leading-tight" style={{ color: "var(--text-muted)" }}>
+                <span className="text-xs leading-tight" style={{ color: "var(--text-muted)" }}>
                   152-ФЗ / 127-ФЗ<br />Compliance
                 </span>
               </div>

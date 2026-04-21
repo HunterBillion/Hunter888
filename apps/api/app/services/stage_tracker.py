@@ -132,9 +132,22 @@ STAGE_KEYWORDS: dict[str, dict] = {
     },
 }
 
-# Minimum fraction of matched markers required to trigger a stage transition.
-# With ~12 markers per stage, 0.12 means ~2 matched markers is enough.
-TRANSITION_THRESHOLD = 0.12
+# S3-09: Minimum fraction of matched markers required to trigger a stage transition.
+# History: 0.12 (~2 markers) caused oscillation → raised to 0.25 (~3 markers).
+# 2026-04-20: 0.25 proved too strict for real dialogues where managers handle
+# objections (price / guarantees / fraud fears) without hitting ≥3 exact
+# qualification markers. Lowered to 0.18 (~2 markers) — still above the
+# oscillation floor but permissive enough for natural conversation flow.
+TRANSITION_THRESHOLD = 0.18
+
+# S3-09: Hysteresis — require N consecutive messages confirming transition
+# before actually advancing. Prevents single-message keyword noise from
+# triggering false stage changes.
+# 2026-04-20: 3 confirmations paired with the old 0.25 threshold effectively
+# required 3 back-to-back highly-matched turns — unrealistic in short calls.
+# Reduced to 2: one strong match still needs confirmation, but a genuinely
+# progressing dialogue advances without a 3-turn commitment.
+HYSTERESIS_CONFIRMATIONS = 2
 
 
 # ─── Stage-Aware AI Behavior Rules ──────────────────────────────────────────
@@ -254,6 +267,8 @@ class StageState:
     total_stages: int = 7
     last_detected_at: int = 0                                 # message_index of last transition
     confidence: float = 1.0                                   # 0-1, how sure we are
+    # S3-09: Hysteresis — {candidate_stage: consecutive_confirmations}
+    transition_confirmations: dict[int, int] = field(default_factory=dict)
 
 
 # ─── StageTracker ────────────────────────────────────────────────────────────
@@ -322,7 +337,7 @@ class StageTracker:
         # Assistant messages update current stage quality (confirmatory signal)
         # but do NOT trigger stage transitions — only user messages advance stages
         if role != "user":
-            if state.current_stage <= len(STAGE_ORDER):
+            if 1 <= state.current_stage <= len(STAGE_ORDER):
                 text_lower = message_text.lower()
                 current_stage_name = STAGE_ORDER[state.current_stage - 1]
                 kw = STAGE_KEYWORDS[current_stage_name]
@@ -334,9 +349,23 @@ class StageTracker:
                     await self._save_state(state)
             return state, False, []
 
-        # All stages completed — nothing to do
-        if state.current_stage > len(STAGE_ORDER):
+        # All stages completed or invalid — nothing to do
+        if state.current_stage > len(STAGE_ORDER) or state.current_stage < 1:
             return state, False, []
+
+        # v6.1: Skip stage processing for "human moment" messages (off-topic, typos).
+        # These messages shouldn't block or advance stage progression — just ignore them.
+        try:
+            from app.services.emotion_v6 import detect_human_moment
+            human_trigger = detect_human_moment(message_text)
+            if human_trigger is not None:
+                logger.debug(
+                    "Stage tracker: skipping human_moment message (trigger=%s) at stage %s",
+                    human_trigger, state.current_stage_name,
+                )
+                return state, False, []
+        except Exception:
+            pass  # Graceful degradation if emotion_v6 import fails
 
         text_lower = message_text.lower()
 
@@ -376,8 +405,28 @@ class StageTracker:
                 best_score = score
                 best_match_stage = check_stage
 
-        # ── Apply transition ──
+        # S3-09: Hysteresis — require HYSTERESIS_CONFIRMATIONS consecutive
+        # messages confirming the same candidate stage before transitioning.
+        # Reset confirmation counter for candidates that weren't matched this turn.
         if best_match_stage is not None:
+            state.transition_confirmations[best_match_stage] = (
+                state.transition_confirmations.get(best_match_stage, 0) + 1
+            )
+            # Clear confirmations for other candidate stages (they broke continuity)
+            for k in list(state.transition_confirmations):
+                if k != best_match_stage:
+                    state.transition_confirmations.pop(k, None)
+        else:
+            # No match this message — reset all pending confirmations
+            state.transition_confirmations.clear()
+
+        # ── Apply transition (only after enough confirmations) ──
+        if (
+            best_match_stage is not None
+            and state.transition_confirmations.get(best_match_stage, 0) >= HYSTERESIS_CONFIRMATIONS
+        ):
+            # Clear confirmation counter on successful transition
+            state.transition_confirmations.clear()
             # Mark current stage as completed
             if state.current_stage not in state.stages_completed:
                 state.stages_completed.append(state.current_stage)
@@ -554,6 +603,7 @@ class StageTracker:
             "ts": state.total_stages,
             "ld": state.last_detected_at,
             "cf": state.confidence,
+            "tc": {str(k): v for k, v in state.transition_confirmations.items()},
         }
         try:
             await self.redis.set(self._state_key, json.dumps(data), ex=7200)
@@ -580,6 +630,7 @@ class StageTracker:
                 total_stages=data.get("ts", 7),
                 last_detected_at=data.get("ld", 0),
                 confidence=data.get("cf", 1.0),
+                transition_confirmations={int(k): v for k, v in data.get("tc", {}).items()},
             )
         except (json.JSONDecodeError, TypeError, KeyError):
             logger.warning("Corrupted stage state for session %s, resetting", self.session_id)

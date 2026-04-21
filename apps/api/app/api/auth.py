@@ -3,12 +3,10 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-limiter = Limiter(key_func=get_remote_address)
 
 import redis.asyncio as aioredis
+
+from app.core.rate_limit import limiter
 
 from app.config import settings
 from app.core import errors as err
@@ -163,7 +161,7 @@ async def register(request: Request, body: RegisterRequest, db: AsyncSession = D
         "auth.register.success user_id=%s email=%s ip=%s",
         user.id, body.email, request.client.host if request.client else "unknown",
     )
-    tokens = _create_tokens(str(user.id), user.role)
+    tokens = await _create_tokens(str(user.id), user.role)
     response = JSONResponse(content=tokens.model_dump(), status_code=201)
     return _set_auth_cookies(response, tokens)
 
@@ -255,7 +253,7 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
     except Exception:
         _logger.debug("Failed to record login fingerprint for %s", user.id)
 
-    tokens = _create_tokens(str(user.id), user.role)
+    tokens = await _create_tokens(str(user.id), user.role)
     tokens.must_change_password = user.must_change_password
     response = JSONResponse(content=tokens.model_dump())
     return _set_auth_cookies(response, tokens)
@@ -277,25 +275,7 @@ async def refresh(request: Request, body: RefreshRequest | None = None, db: Asyn
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=err.INVALID_REFRESH_TOKEN)
     old_jti = payload.get("jti")
 
-    # Check if this specific refresh token was already revoked (rotation replay attack)
-    from app.core.deps import _is_user_blacklisted, _is_token_revoked
-    if old_jti and await _is_token_revoked(old_jti):
-        # A revoked refresh token is being reused → possible theft.
-        # Blacklist the user entirely to force re-login.
-        _logger.warning(
-            "auth.refresh.replay_detected user_id=%s jti=%s — blacklisting user",
-            user_id, old_jti,
-        )
-        try:
-            r = get_redis()
-            ttl = settings.jwt_refresh_token_expire_days * 86400
-            await r.setex(f"blacklist:user:{user_id}", ttl, "1")
-        except aioredis.RedisError:
-            pass
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=err.TOKEN_REVOKED_RELOGIN,
-        )
+    from app.core.deps import _is_user_blacklisted
 
     if await _is_user_blacklisted(user_id):
         raise HTTPException(
@@ -303,28 +283,63 @@ async def refresh(request: Request, body: RefreshRequest | None = None, db: Asyn
             detail=err.TOKEN_REVOKED_RELOGIN,
         )
 
-    # Rotate: revoke old refresh token, issue new pair
+    # Atomic revocation gate: use SETNX to atomically check-and-revoke the old
+    # refresh token in a single Redis call.  This eliminates the TOCTOU race
+    # where two concurrent refresh requests could both pass a separate
+    # _is_token_revoked() check before either writes the revocation key.
     if old_jti:
         try:
             r = get_redis()
             ttl = settings.jwt_refresh_token_expire_days * 86400
-            await r.setex(f"token:revoked:{old_jti}", ttl, "1")
+            # SET NX returns True only if the key did NOT exist (first caller wins).
+            was_set = await r.set(f"token:revoked:{old_jti}", "1", nx=True, ex=ttl)
         except aioredis.RedisError as exc:
-            _logger.warning("Failed to revoke old refresh token jti=%s: %s", old_jti, exc)
+            # Fail closed: if Redis is unavailable we cannot guarantee
+            # single-use semantics, so reject the request.
+            _logger.error(
+                "auth.refresh.redis_error jti=%s: %s — denying refresh (fail closed)",
+                old_jti, exc,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=err.SERVICE_TEMPORARILY_UNAVAILABLE,
+            )
 
-    # Fetch current role from DB for the new access token
+        if not was_set:
+            # Key already existed → this refresh token was already consumed.
+            # A revoked token is being replayed → possible theft.
+            # Blacklist the user entirely to force re-login.
+            _logger.warning(
+                "auth.refresh.replay_detected user_id=%s jti=%s — blacklisting user",
+                user_id, old_jti,
+            )
+            try:
+                await r.setex(f"blacklist:user:{user_id}", ttl, "1")
+            except aioredis.RedisError:
+                pass
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=err.TOKEN_REVOKED_RELOGIN,
+            )
+
+    # Fetch current role and must_change_password from DB for the new access token
     from app.models.user import User as UserModel
-    result = await db.execute(select(UserModel.role).where(UserModel.id == user_id))
-    user_role = result.scalar_one_or_none() or "manager"
+    result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    db_user = result.scalar_one_or_none()
+    user_role = db_user.role if db_user else "manager"
+    must_change = db_user.must_change_password if db_user else False
 
-    tokens = _create_tokens(user_id, user_role)
+    tokens = await _create_tokens(user_id, user_role)
+    tokens.must_change_password = must_change
     response = JSONResponse(content=tokens.model_dump())
     return _set_auth_cookies(response, tokens)
 
 
 @router.get("/me", response_model=UserResponse)
 async def me(user: User = Depends(get_current_user)):
-    return user
+    payload = {c.name: getattr(user, c.name) for c in user.__table__.columns}
+    payload["team_id"] = str(user.team_id) if user.team_id else None
+    return UserResponse.model_validate(payload)
 
 
 @limiter.limit("10/minute")
@@ -346,9 +361,11 @@ async def logout(request: Request, user: User = Depends(get_current_user)):
     return _clear_auth_cookies(response)
 
 
-def _create_tokens(user_id: str, role: str = "manager") -> TokenResponse:
+async def _create_tokens(user_id: str, role: str = "manager") -> TokenResponse:
+    from app.core.security import get_role_version
+    rv = await get_role_version(user_id)
     return TokenResponse(
-        access_token=create_access_token({"sub": user_id, "role": role}),
+        access_token=create_access_token({"sub": user_id, "role": role}, role_version=rv),
         refresh_token=create_refresh_token({"sub": user_id}),
     )
 
@@ -499,6 +516,13 @@ async def reset_password(request: Request, body: ResetPasswordRequest, db: Async
     user.must_change_password = False
     db.add(user)
     await db.commit()
+
+    # Blacklist all existing tokens so user must re-login with new password
+    try:
+        r = get_redis()
+        await r.setex(f"blacklist:user:{user.id}", 7 * 24 * 3600, "password_changed")
+    except aioredis.RedisError as exc:
+        _logger.warning("Redis error blacklisting user after password reset %s: %s", user.id, exc)
 
     _logger.info("auth.password_reset.success user_id=%s", user.id)
     return {"message": "Пароль успешно изменён. Войдите с новым паролем."}
@@ -709,7 +733,7 @@ async def yandex_callback(request: Request, body: OAuthCallbackRequest, db: Asyn
 
 async def _oauth_find_or_create(
     db: AsyncSession, provider: str, provider_id: str, email: str, name: str,
-) -> TokenResponse:
+) -> JSONResponse:
     """Find existing user by OAuth provider ID or email, or create new user."""
     provider_col = User.google_id if provider == "google" else User.yandex_id
 
@@ -747,7 +771,9 @@ async def _oauth_find_or_create(
     except aioredis.RedisError as exc:
         _logger.warning("Redis error clearing blacklist during OAuth for user %s: %s", user.id, exc)
 
-    return _create_tokens(str(user.id), user.role)
+    tokens = await _create_tokens(str(user.id), user.role)
+    response = JSONResponse(content=tokens.model_dump())
+    return _set_auth_cookies(response, tokens)
 
 
 # --- Disconnect OAuth provider ---

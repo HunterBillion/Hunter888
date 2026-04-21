@@ -1,19 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { motion, type PanInfo } from "framer-motion";
+import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import Link from "next/link";
 import {
-  ChevronLeft,
   ArrowRight,
+  ChevronLeft,
   GitBranch,
   Loader2,
-  Move,
   Network,
-  RotateCcw,
   Users,
 } from "lucide-react";
 import { BackButton } from "@/components/ui/BackButton";
+import { FunnelChart } from "@/components/clients/FunnelChart";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -32,51 +31,11 @@ interface GraphData {
   total_managers: number;
 }
 
-type NodeMeta = {
-  x: number;
-  y: number;
-  kind: "primary" | "branch";
-  description: string;
-};
-
-const CANVAS = {
-  width: 1160,
-  height: 680,
-  nodeWidth: 188,
-  nodeHeight: 112,
-};
-
-const INITIAL_LAYOUT: Record<ClientStatus, NodeMeta> = {
-  new: { x: 48, y: 80, kind: "primary", description: "Карточка создана, контакт ещё не подтверждён." },
-  contacted: { x: 280, y: 80, kind: "primary", description: "Первичный контакт состоялся, клиент в активной обработке." },
-  interested: { x: 512, y: 80, kind: "primary", description: "Интерес подтверждён, клиент готов двигаться дальше." },
-  consultation: { x: 744, y: 80, kind: "primary", description: "Назначена или проведена консультация по делу клиента." },
-  thinking: { x: 972, y: 80, kind: "primary", description: "Клиент на стадии решения, ожидания документов или обратной связи." },
-  consent_given: { x: 628, y: 278, kind: "primary", description: "Получено согласие на дальнейшую работу и обработку данных." },
-  contract_signed: { x: 860, y: 278, kind: "primary", description: "Договорный этап завершён, клиент формально подтверждён." },
-  in_process: { x: 972, y: 478, kind: "primary", description: "Клиент находится в активной юридической работе." },
-  completed: { x: 744, y: 478, kind: "primary", description: "Основной путь клиента завершён успешно." },
-  lost: { x: 280, y: 478, kind: "branch", description: "Клиент потерян: отказ, недозвон, прекращение диалога." },
-  consent_revoked: { x: 512, y: 478, kind: "branch", description: "Клиент отозвал согласие и требует отдельной обработки." },
-  paused: { x: 118, y: 478, kind: "branch", description: "Работа временно приостановлена, но клиент может вернуться в поток." },
-};
-
 const STAGE_ORDER: ClientStatus[] = [
-  "new",
-  "contacted",
-  "interested",
-  "consultation",
-  "thinking",
-  "consent_given",
-  "contract_signed",
-  "in_process",
-  "completed",
-  "lost",
-  "consent_revoked",
-  "paused",
+  "new", "contacted", "interested", "consultation", "thinking",
+  "consent_given", "contract_signed", "in_process", "completed",
+  "lost", "consent_revoked", "paused",
 ];
-
-const BRANCH_STAGES = new Set<ClientStatus>(["lost", "consent_revoked", "paused"]);
 
 function formatCount(value: number): string {
   return new Intl.NumberFormat("ru-RU").format(value);
@@ -90,24 +49,12 @@ function getScopeLabel(role: UserRole | undefined): string {
   return "Видимость определяется вашей ролью.";
 }
 
-function buildConnectorPath(from: NodeMeta, to: NodeMeta): string {
-  const startX = from.x + CANVAS.nodeWidth;
-  const startY = from.y + CANVAS.nodeHeight / 2;
-  const endX = to.x;
-  const endY = to.y + CANVAS.nodeHeight / 2;
-  const curve = Math.max(80, Math.abs(endX - startX) * 0.42);
-
-  return `M ${startX} ${startY} C ${startX + curve} ${startY}, ${endX - curve} ${endY}, ${endX} ${endY}`;
-}
-
 export default function ClientGraphPage() {
   const { user } = useAuth();
-  const canvasRef = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedStage, setSelectedStage] = useState<ClientStatus>("contacted");
-  const [nodeLayout, setNodeLayout] = useState<Record<ClientStatus, NodeMeta>>(INITIAL_LAYOUT);
 
   useEffect(() => {
     if (!user) return;
@@ -129,7 +76,6 @@ export default function ClientGraphPage() {
   const selectedCount = data?.status_counts[selectedStage] || 0;
   const totalClients = data?.total_clients || 0;
   const selectedShare = totalClients > 0 ? Math.round((selectedCount / totalClients) * 100) : 0;
-  const maxCount = Math.max(...STAGE_ORDER.map((status) => data?.status_counts[status] || 0), 1);
 
   const stageFlows = useMemo(() => {
     const transitions = data?.transitions || [];
@@ -158,29 +104,26 @@ export default function ClientGraphPage() {
     };
   }, [data?.status_counts, data?.total_managers, totalClients]);
 
-  const handleNodeDragEnd = (status: ClientStatus, _: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    setNodeLayout((prev) => {
-      const current = prev[status];
-      const nextX = Math.min(
-        Math.max(current.x + info.offset.x, 16),
-        CANVAS.width - CANVAS.nodeWidth - 16,
-      );
-      const nextY = Math.min(
-        Math.max(current.y + info.offset.y, 16),
-        CANVAS.height - CANVAS.nodeHeight - 16,
-      );
-
-      return {
-        ...prev,
-        [status]: { ...current, x: nextX, y: nextY },
-      };
-    });
+  const nodeLayoutDescriptions: Record<ClientStatus, { kind: "primary" | "branch"; description: string }> = {
+    new: { kind: "primary", description: "Карточка создана, контакт ещё не подтверждён." },
+    contacted: { kind: "primary", description: "Первичный контакт состоялся, клиент в активной обработке." },
+    interested: { kind: "primary", description: "Интерес подтверждён, клиент готов двигаться дальше." },
+    consultation: { kind: "primary", description: "Назначена или проведена консультация по делу клиента." },
+    thinking: { kind: "primary", description: "Клиент на стадии решения, ожидания документов или обратной связи." },
+    consent_given: { kind: "primary", description: "Получено согласие на дальнейшую работу и обработку данных." },
+    contract_signed: { kind: "primary", description: "Договорный этап завершён, клиент формально подтверждён." },
+    in_process: { kind: "primary", description: "Клиент находится в активной юридической работе." },
+    completed: { kind: "primary", description: "Основной путь клиента завершён успешно." },
+    lost: { kind: "branch", description: "Клиент потерян: отказ, недозвон, прекращение диалога." },
+    consent_revoked: { kind: "branch", description: "Клиент отозвал согласие и требует отдельной обработки." },
+    paused: { kind: "branch", description: "Работа временно приостановлена, но клиент может вернуться в поток." },
   };
 
   return (
     <AuthLayout>
       <div className="panel-grid-bg min-h-screen">
         <div className="mx-auto max-w-[1600px] px-4 py-8">
+          {/* ─── Header ─── */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -197,32 +140,17 @@ export default function ClientGraphPage() {
                 </div>
                 <div>
                   <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
-                    Граф пути клиента
+                    Воронка клиентов
                   </h1>
                   <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                    Lifecycle клиентов от контакта до завершения. Перетаскивайте узлы, связи обновляются автоматически.
+                    Конверсия между этапами и зоны оттока — видна сразу, без интерактива.
                   </p>
                 </div>
               </div>
             </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setNodeLayout(INITIAL_LAYOUT)}
-                className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium"
-                style={{
-                  background: "var(--input-bg)",
-                  border: "1px solid var(--border-color)",
-                  color: "var(--text-secondary)",
-                }}
-              >
-                <RotateCcw size={14} />
-                Сбросить схему
-              </button>
-            </div>
           </motion.div>
 
+          {/* ─── Empty state ─── */}
           {totalClients === 0 && !loading && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -234,7 +162,7 @@ export default function ClientGraphPage() {
                 Портфель клиентов пуст
               </h3>
               <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
-                Граф дел появится когда вы добавите первого клиента. Начните с охоты или добавьте клиента вручную через CRM.
+                Граф дел появится когда вы добавите первого клиента.
               </p>
               <Link href="/clients" className="btn-neon inline-flex items-center gap-2 text-sm">
                 Перейти к клиентам
@@ -242,6 +170,7 @@ export default function ClientGraphPage() {
             </motion.div>
           )}
 
+          {/* ─── Summary cards ─── */}
           <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {[
               { label: "Карточек в модуле", value: formatCount(totalClients), icon: Users, color: "var(--accent)" },
@@ -270,208 +199,51 @@ export default function ClientGraphPage() {
             })}
           </div>
 
+          {/* ─── Main content: Funnel + Sidebar ─── */}
           <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+            {/* Conversion funnel */}
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               className="glass-panel overflow-hidden p-4 sm:p-5"
             >
-              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
-                    КАРТА КЛИЕНТОВ
-                  </h2>
-                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                    Перетаскивай этапы как модули. Связи обновляются автоматически.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2 text-xs font-medium">
-                  <span
-                    className="rounded-full px-2 py-1"
-                    style={{ background: "rgba(59,130,246,0.12)", color: "#93C5FD", border: "1px solid rgba(59,130,246,0.25)" }}
-                  >
-                    Основной путь
-                  </span>
-                  <span
-                    className="rounded-full px-2 py-1"
-                    style={{ background: "rgba(249,115,22,0.12)", color: "#FDBA74", border: "1px solid rgba(249,115,22,0.25)" }}
-                  >
-                    Ветки риска
-                  </span>
-                  <span
-                    className="rounded-full px-2 py-1"
-                    style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
-                  >
-                    <Move size={10} className="mr-1 inline" />
-                    Двигать
-                  </span>
-                </div>
+              <div className="mb-4">
+                <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
+                  ВОРОНКА КОНВЕРСИИ
+                </h2>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Каждый этап — доля от первоначального входа и конверсия между этапами.
+                </p>
               </div>
 
               {error && (
-                <div className="rounded-2xl p-6 text-sm" style={{ background: "rgba(239,68,68,0.12)", color: "#FCA5A5" }}>
+                <div className="rounded-2xl p-6 text-sm" style={{ background: "var(--danger-muted)", color: "#FCA5A5" }}>
                   {error}
                 </div>
               )}
 
               {loading && (
-                <div className="flex min-h-[680px] items-center justify-center">
+                <div className="flex min-h-[320px] items-center justify-center">
                   <Loader2 size={28} className="animate-spin" style={{ color: "var(--accent)" }} />
                 </div>
               )}
 
-              {!loading && !error && (
-                <div
-                  ref={canvasRef}
-                  className="relative overflow-auto rounded-[28px] border"
-                  style={{
-                    minHeight: 700,
-                    borderColor: "rgba(255,255,255,0.08)",
-                    background:
-                      "linear-gradient(180deg, rgba(7,10,14,0.96), rgba(6,7,10,0.98)), radial-gradient(circle at top, rgba(255,212,0,0.05), transparent 30%)",
-                  }}
-                >
-                  <div
-                    className="absolute inset-0 opacity-40"
-                    style={{
-                      backgroundImage:
-                        "linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)",
-                      backgroundSize: "32px 32px",
-                    }}
-                  />
-
-                  <div className="relative" style={{ width: CANVAS.width, height: CANVAS.height }}>
-                    <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${CANVAS.width} ${CANVAS.height}`} preserveAspectRatio="none">
-                      <defs>
-                        <linearGradient id="flow-line" x1="0%" x2="100%" y1="0%" y2="0%">
-                          <stop offset="0%" stopColor="rgba(255,255,255,0.05)" />
-                          <stop offset="45%" stopColor="rgba(255,255,255,0.18)" />
-                          <stop offset="100%" stopColor="rgba(255,255,255,0.05)" />
-                        </linearGradient>
-                      </defs>
-                      {(data?.transitions || []).map((transition) => {
-                        const from = nodeLayout[transition.from];
-                        const to = nodeLayout[transition.to];
-                        const selected = selectedStage === transition.from || selectedStage === transition.to;
-                        return (
-                          <g key={`${transition.from}-${transition.to}`}>
-                            <path
-                              d={buildConnectorPath(from, to)}
-                              fill="none"
-                              stroke={selected ? `${CLIENT_STATUS_COLORS[transition.to]}88` : "url(#flow-line)"}
-                              strokeWidth={selected ? 3 : 2}
-                              strokeLinecap="round"
-                              strokeDasharray={BRANCH_STAGES.has(transition.to) ? "7 10" : undefined}
-                              opacity={selected ? 0.8 : 0.42}
-                            />
-                            <circle
-                              cx={from.x + CANVAS.nodeWidth}
-                              cy={from.y + CANVAS.nodeHeight / 2}
-                              r={4}
-                              fill={selected ? CLIENT_STATUS_COLORS[transition.from] : "rgba(255,255,255,0.18)"}
-                              opacity={selected ? 0.95 : 0.45}
-                            />
-                            <circle
-                              cx={to.x}
-                              cy={to.y + CANVAS.nodeHeight / 2}
-                              r={4}
-                              fill={selected ? CLIENT_STATUS_COLORS[transition.to] : "rgba(255,255,255,0.18)"}
-                              opacity={selected ? 0.95 : 0.45}
-                            />
-                          </g>
-                        );
-                      })}
-                    </svg>
-
-                    {STAGE_ORDER.map((status) => {
-                      const meta = nodeLayout[status];
-                      const count = data?.status_counts[status] || 0;
-                      const color = CLIENT_STATUS_COLORS[status];
-                      const isSelected = selectedStage === status;
-                      const density = Math.round((count / maxCount) * 100);
-
-                      return (
-                        <motion.button
-                          key={status}
-                          drag
-                          dragMomentum={false}
-                          dragConstraints={canvasRef}
-                          onDragEnd={(event, info) => handleNodeDragEnd(status, event, info)}
-                          onClick={() => setSelectedStage(status)}
-                          className="absolute rounded-[24px] p-0 text-left"
-                          style={{
-                            left: meta.x,
-                            top: meta.y,
-                            width: CANVAS.nodeWidth,
-                            height: CANVAS.nodeHeight,
-                          }}
-                          whileDrag={{ scale: 1.02, zIndex: 30 }}
-                        >
-                          <div
-                            className="h-full rounded-[24px] border px-4 py-3"
-                            style={{
-                              background: isSelected
-                                ? `linear-gradient(180deg, ${color}18, rgba(7,8,11,0.92))`
-                                : "linear-gradient(180deg, rgba(17,20,27,0.92), rgba(8,10,14,0.96))",
-                              borderColor: isSelected ? `${color}88` : "rgba(255,255,255,0.08)",
-                              boxShadow: isSelected
-                                ? `0 0 0 1px ${color}44, 0 26px 60px rgba(0,0,0,0.35)`
-                                : "0 18px 40px rgba(0,0,0,0.22)",
-                            }}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: isSelected ? color : "var(--text-muted)" }}>
-                                  {meta.kind === "primary" ? "ЭТАП" : "ВЕТКА"}
-                                </div>
-                                <div className="mt-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                                  {CLIENT_STATUS_LABELS[status]}
-                                </div>
-                              </div>
-                              <div
-                                className="flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-sm font-semibold"
-                                style={{ background: `${color}20`, color }}
-                              >
-                                {formatCount(count)}
-                              </div>
-                            </div>
-
-                            <div className="mt-3 flex items-center justify-between">
-                              <span
-                                className="rounded-full px-2 py-1 text-xs font-medium"
-                                style={{
-                                  background: "rgba(255,255,255,0.05)",
-                                  color: "var(--text-muted)",
-                                  border: "1px solid rgba(255,255,255,0.06)",
-                                }}
-                              >
-                                плотность {density}%
-                              </span>
-                              <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-                                {count > 0 ? `${Math.round((count / Math.max(totalClients, 1)) * 100)}% потока` : "0%"}
-                              </span>
-                            </div>
-
-                            <div className="mt-3 flex items-center justify-between">
-                              <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-                                перемещение
-                              </span>
-                              <Move size={12} style={{ color: isSelected ? color : "var(--text-muted)" }} />
-                            </div>
-                          </div>
-                        </motion.button>
-                      );
-                    })}
-                  </div>
-                </div>
+              {!loading && !error && data && (
+                <FunnelChart
+                  statusCounts={data.status_counts}
+                  selectedStage={selectedStage}
+                  onSelectStage={setSelectedStage}
+                />
               )}
             </motion.div>
 
+            {/* ─── Sidebar ─── */}
             <motion.aside
               initial={{ opacity: 0, x: 12 }}
               animate={{ opacity: 1, x: 0 }}
               className="space-y-4"
             >
+              {/* Selected stage panel */}
               <div className="glass-panel p-5">
                 <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
                   ВЫБРАННЫЙ ЭТАП
@@ -482,7 +254,7 @@ export default function ClientGraphPage() {
                       {CLIENT_STATUS_LABELS[selectedStage]}
                     </h3>
                     <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
-                      {nodeLayout[selectedStage].description}
+                      {nodeLayoutDescriptions[selectedStage].description}
                     </p>
                   </div>
                   <div
@@ -507,15 +279,15 @@ export default function ClientGraphPage() {
                       ТИП
                     </div>
                     <div className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                      {nodeLayout[selectedStage].kind === "primary" ? "Основной поток" : "Риск / возврат"}
+                      {nodeLayoutDescriptions[selectedStage].kind === "primary" ? "Основной поток" : "Риск / возврат"}
                     </div>
                   </div>
                   <div className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
                     <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-                      РЕЖИМ
+                      ДОЛЯ
                     </div>
                     <div className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                      перемещение
+                      {selectedShare}%
                     </div>
                   </div>
                 </div>
@@ -554,6 +326,7 @@ export default function ClientGraphPage() {
                 </div>
               </div>
 
+              {/* Transitions panel */}
               <div className="glass-panel p-5">
                 <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
                   ПЕРЕХОДЫ
@@ -619,6 +392,7 @@ export default function ClientGraphPage() {
                 </div>
               </div>
 
+              {/* Branch statuses accent panel */}
               <div className="glass-panel p-5">
                 <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
                   СТАТУСНЫЕ АКЦЕНТЫ

@@ -587,12 +587,65 @@ class IntraSessionAdapter:
         return IntraSessionState()
 
     async def save_state(self, session_id: str, state: IntraSessionState) -> None:
-        """Сохраняет состояние в Redis."""
+        """Сохраняет состояние в Redis (atomic SET with TTL)."""
         await self._redis.set(
             self._key(session_id),
             json.dumps(state.to_dict(), ensure_ascii=False),
             ex=REDIS_TTL,
         )
+
+    async def _atomic_process(self, session_id: str, quality: "ReplyQuality", base_difficulty: int) -> "AdaptiveAction":
+        """Process reply with Redis WATCH for CAS (compare-and-swap) safety.
+
+        Retries up to 3 times if the key was modified between read and write.
+        """
+        key = self._key(session_id)
+        for attempt in range(3):
+            try:
+                async with self._redis.pipeline(transaction=True) as pipe:
+                    await pipe.watch(key)
+                    raw = await pipe.get(key)
+                    state = IntraSessionState.from_dict(json.loads(raw)) if raw else IntraSessionState()
+
+                    state.current_turn += 1
+                    self._update_streak(state, quality)
+                    self._check_comeback(state)
+                    self._check_coaching_mode(state)
+                    self._check_onboarding_mode(state)
+                    effect = self._get_streak_effect(state)
+                    self._apply_effect(state, effect, base_difficulty)
+
+                    if state.challenge_mode and state.challenge_turns_left > 0:
+                        state.challenge_turns_left -= 1
+                        if state.challenge_turns_left <= 0:
+                            state.challenge_mode = False
+                    if state.traps_disabled and state.traps_disabled_turns > 0:
+                        state.traps_disabled_turns -= 1
+                        if state.traps_disabled_turns <= 0:
+                            state.traps_disabled = False
+
+                    eff_diff = self._effective_difficulty(base_difficulty, state.difficulty_modifier)
+                    action = self._build_action(state, effect, eff_diff, base_difficulty)
+
+                    pipe.multi()
+                    pipe.set(key, json.dumps(state.to_dict(), ensure_ascii=False), ex=REDIS_TTL)
+                    await pipe.execute()
+
+                    logger.info(
+                        "Adaptive [%s] turn=%d quality=%s streak=+%d/-%d mod=%d eff=%d action=%s",
+                        session_id[:8], state.current_turn, quality.value,
+                        state.good_streak, state.bad_streak,
+                        state.difficulty_modifier, eff_diff,
+                        effect.code if effect else "none",
+                    )
+                    return action
+            except Exception as e:
+                if "WATCH" in str(type(e).__name__).upper() or "WatchError" in str(type(e).__name__):
+                    logger.debug("Adaptive CAS retry %d for session %s", attempt + 1, session_id[:8])
+                    continue
+                raise
+        # Fallback: non-atomic path after 3 retries
+        return await self.process_reply(session_id, quality, base_difficulty)
 
     async def delete_state(self, session_id: str) -> None:
         """Удаляет состояние из Redis (при завершении сессии)."""
@@ -617,44 +670,36 @@ class IntraSessionAdapter:
         Returns:
             AdaptiveAction с инструкциями для LLM и метриками
         """
+        # Use atomic CAS (WATCH/MULTI/EXEC) to prevent lost updates
+        try:
+            return await self._atomic_process(session_id, quality, base_difficulty)
+        except Exception:
+            # Graceful fallback: non-atomic path if Redis doesn't support WATCH
+            logger.debug("Atomic process unavailable, using non-atomic fallback for %s", session_id[:8])
+
         state = await self.get_state(session_id)
         state.current_turn += 1
 
-        # ── Шаг 1: Обновить streak ──
         self._update_streak(state, quality)
-
-        # ── Шаг 2: Проверить камбэк ──
         self._check_comeback(state)
-
-        # ── Шаг 3: Проверить coaching mode (чередование) ──
         self._check_coaching_mode(state)
-
-        # ── Шаг 4: Проверить onboarding mode (5 bad подряд в начале) ──
         self._check_onboarding_mode(state)
-
-        # ── Шаг 5: Получить streak effect ──
         effect = self._get_streak_effect(state)
-
-        # ── Шаг 6: Применить effect к state ──
         self._apply_effect(state, effect, base_difficulty)
 
-        # ── Шаг 7: Обновить challenge mode countdown ──
         if state.challenge_mode and state.challenge_turns_left > 0:
             state.challenge_turns_left -= 1
             if state.challenge_turns_left <= 0:
                 state.challenge_mode = False
 
-        # ── Шаг 8: Обновить traps disabled countdown ──
         if state.traps_disabled and state.traps_disabled_turns > 0:
             state.traps_disabled_turns -= 1
             if state.traps_disabled_turns <= 0:
                 state.traps_disabled = False
 
-        # ── Шаг 9: Вычислить effective difficulty и метрики ──
         eff_diff = self._effective_difficulty(base_difficulty, state.difficulty_modifier)
         action = self._build_action(state, effect, eff_diff, base_difficulty)
 
-        # ── Шаг 10: Сохранить ──
         await self.save_state(session_id, state)
 
         logger.info(
@@ -909,8 +954,9 @@ class IntraSessionAdapter:
             })
 
     @staticmethod
-    def _effective_difficulty(base: int, modifier: int) -> int:
-        return max(1, min(10, base + modifier))
+    def _effective_difficulty(base: int, modifier: int, chapter_ceiling: int = 10) -> int:
+        """Effective difficulty clamped to [1, chapter_ceiling]."""
+        return max(1, min(chapter_ceiling, base + modifier))
 
     def _build_action(
         self,

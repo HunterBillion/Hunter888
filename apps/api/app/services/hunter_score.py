@@ -7,7 +7,7 @@ Combines: Training level (35%) + PvP rating (25%) + Knowledge (20%) +
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select, func
@@ -63,16 +63,23 @@ async def update_hunter_score(db: AsyncSession, user_id: UUID) -> float:
     # Knowledge avg score (simplified: from skills)
     knowledge_avg = getattr(profile, "skill_legal_knowledge", 50)
 
-    # Achievement completion
+    # Achievement completion (S3-06: dynamic total from AchievementDefinition)
     try:
         from app.models.analytics import UserAchievement
+        from app.models.progress import AchievementDefinition
+
         ach_count_result = await db.execute(
             select(func.count()).select_from(UserAchievement).where(
                 UserAchievement.user_id == user_id
             )
         )
         ach_count = ach_count_result.scalar() or 0
-        ach_pct = min(1.0, ach_count / 140)  # 140 total achievements
+
+        total_result = await db.execute(
+            select(func.count()).select_from(AchievementDefinition)
+        )
+        total_achievements = total_result.scalar() or 140  # fallback to 140 if table empty
+        ach_pct = min(1.0, ach_count / total_achievements)
     except Exception:
         ach_pct = 0.0
 
@@ -95,7 +102,7 @@ async def update_hunter_score(db: AsyncSession, user_id: UUID) -> float:
     )
 
     profile.hunter_score = score
-    profile.hunter_score_updated_at = datetime.utcnow()
+    profile.hunter_score_updated_at = datetime.now(timezone.utc)
 
     return score
 

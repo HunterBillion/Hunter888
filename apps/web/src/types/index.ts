@@ -916,7 +916,8 @@ export interface CustomClientProfile {
 export interface TrainingStats {
   total_sessions: number;
   completed_sessions: number;
-  average_score: number | null;
+  average_score: number | null;  // mapped from backend "avg_score"
+  avg_score?: number | null;     // backend field name (alias)
   best_score: number | null;
   total_duration_minutes: number;
 }
@@ -959,11 +960,11 @@ export const CLIENT_STATUS_COLORS: Record<ClientStatus, string> = {
   consent_revoked: "var(--danger)",
 };
 
-/** Active pipeline statuses shown on Kanban board (excludes terminal/special). */
+/** Active pipeline statuses shown on Kanban board (includes paused & consent_revoked). */
 export const PIPELINE_STATUSES: ClientStatus[] = [
   "new", "contacted", "interested", "consultation",
   "thinking", "consent_given", "contract_signed",
-  "in_process", "completed",
+  "in_process", "paused", "completed", "consent_revoked",
 ];
 
 /** Allowed status transitions per backend ALLOWED_STATUS_TRANSITIONS. */
@@ -1145,6 +1146,7 @@ export interface AppNotification {
   id: string;
   title: string;
   body: string | null;
+  type?: NotificationType | string;
   channel: NotificationChannel;
   status: NotificationStatus;
   client_id: string | null;
@@ -1261,7 +1263,7 @@ export interface ChatBubble {
 // ─── Transcription ─────────────────────────────────────────────────────────
 
 export interface TranscriptionState {
-  status: "idle" | "transcribing" | "done";
+  status: "idle" | "transcribing" | "done" | "preview";
   partial: string;
   final: string;
 }
@@ -1445,7 +1447,22 @@ export interface GamePortfolioStats {
 
 // ─── PvP Arena ───────────────────────────────────────────────────────────────
 
+// Base tier names (used for colors, labels, lookups)
 export type PvPRankTier = "unranked" | "iron" | "bronze" | "silver" | "gold" | "platinum" | "diamond" | "master" | "grandmaster";
+
+// Backend sends division-specific values like "iron_3", "bronze_2", "gold_1".
+// This type accepts both base names and division-specific values from the API.
+export type PvPRankTierRaw = PvPRankTier | `${Exclude<PvPRankTier, "unranked" | "grandmaster">}_${1 | 2 | 3}`;
+
+/**
+ * Normalize backend rank tier value to base tier name.
+ * "iron_3" → "iron", "grandmaster" → "grandmaster", "unranked" → "unranked"
+ */
+export function normalizeRankTier(raw: string): PvPRankTier {
+  const base = raw.replace(/_[123]$/, "") as PvPRankTier;
+  if (base in PVP_RANK_LABELS) return base;
+  return "unranked"; // fallback for unknown values
+}
 
 export type DuelStatus =
   | "pending" | "round_1" | "swap" | "round_2"
@@ -1460,7 +1477,7 @@ export const PVP_RANK_LABELS: Record<PvPRankTier, string> = {
   silver: "Серебро",
   gold: "Золото",
   platinum: "Платина",
-  diamond: "Даймонд",
+  diamond: "Алмаз",
   master: "Мастер",
   grandmaster: "Грандмастер",
 };

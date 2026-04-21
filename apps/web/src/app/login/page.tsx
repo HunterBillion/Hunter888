@@ -1,18 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Mail, ArrowRight, AlertCircle, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { api } from "@/lib/api";
-import { EASE_SNAP } from "@/lib/constants";
+import { api, resetAuthCircuitBreaker } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
 import { getApiBaseUrl } from "@/lib/public-origin";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
-import { LogoSeparator } from "@/components/ui/LogoSeparator";
-import { XHunterLogo } from "@/components/ui/XHunterLogo";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import dynamic from "next/dynamic";
 const WaveScene = dynamic(
@@ -39,6 +36,13 @@ export default function LoginPage() {
   const [forgotMode, setForgotMode] = useState<ForgotMode>("idle");
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState<{ google: boolean; yandex: boolean }>({ google: false, yandex: false });
+
+  useEffect(() => {
+    api.get<{ google: boolean; yandex: boolean }>("/auth/oauth/status")
+      .then(setOauthStatus)
+      .catch(() => {});
+  }, []);
 
   const handleForgot = async () => {
     if (!forgotEmail.trim()) return;
@@ -74,13 +78,37 @@ export default function LoginPage() {
     try {
       const data = await api.post("/auth/login", { email: trimmedEmail, password });
       setTokens(data.access_token, data.refresh_token, data.csrf_token);
+      resetAuthCircuitBreaker(); // Allow API calls again after fresh login
       try { sessionStorage.removeItem("vh-login-email"); } catch {}
       // router.push keeps tokens in memory (no page reload), middleware sees
       // vh_authenticated cookie set by setTokens above.
       if (data.must_change_password) {
         router.push("/change-password");
       } else {
-        router.push("/home");
+        // Check consent status before redirecting to /home
+        try {
+          const consentStatus = await api.get<{ all_accepted: boolean }>("/consent/status");
+          if (!consentStatus.all_accepted) {
+            router.push("/consent");
+            return;
+          }
+        } catch {
+          // If consent check fails, proceed to /home — backend will guard individual endpoints
+        }
+        // Respect ?redirect= param if present
+        const params = new URLSearchParams(window.location.search);
+        const redirect = params.get("redirect");
+        const isSafeRedirect = redirect && redirect.startsWith("/") && !redirect.startsWith("//") && !redirect.includes("\\");
+        if (isSafeRedirect && redirect !== "/login") {
+          router.push(redirect);
+        } else {
+          // 2026-04-18: все роли приземляются на /home — это единая главная
+          // страница с дашбордом пользователя (менеджер/админ/РОП видят свои
+          // релевантные панели). Админ/РОП могут перейти в /dashboard через
+          // меню или прямую ссылку. Раньше admin/rop уходили в /dashboard
+          // и пропускали home-визуал (разминка, утренний список дел, стрик).
+          router.push("/home");
+        }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Ошибка входа";
@@ -122,7 +150,7 @@ export default function LoginPage() {
             <div className="text-center py-6">
               <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 280 }}
                 className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5"
-                style={{ background: "rgba(61,220,132,0.1)", border: "1px solid rgba(61,220,132,0.25)" }}
+                style={{ background: "var(--success-muted)", border: "1px solid var(--success-muted)" }}
               >
                 <Mail size={24} style={{ color: "var(--success)" }} />
               </motion.div>
@@ -155,7 +183,7 @@ export default function LoginPage() {
                 <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
                 <input
                   type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
-                  className="vh-input pl-10 w-full" placeholder="you@example.com" autoComplete="email"
+                  className="vh-input pl-10 w-full" placeholder="Ваш email" autoComplete="email"
                   onKeyDown={(e) => e.key === "Enter" && handleForgot()}
                 />
               </div>
@@ -172,7 +200,7 @@ export default function LoginPage() {
   return (
     <div className="relative flex min-h-screen items-center justify-center px-4 overflow-hidden" style={{ background: "var(--bg-primary)" }}>
       {/* Ambient glow */}
-      <div className="fixed inset-0 z-0 pointer-events-none" style={{ background: "radial-gradient(ellipse at 50% 70%, rgba(138,43,226,0.15) 0%, transparent 60%)" }} />
+      <div className="fixed inset-0 z-0 pointer-events-none" style={{ background: "radial-gradient(ellipse at 50% 70%, var(--accent-muted) 0%, transparent 60%)" }} />
 
       {/* 3D Wave Background */}
       <div className="fixed inset-0 z-[1]">
@@ -195,60 +223,48 @@ export default function LoginPage() {
         <div className="absolute top-0 left-6 right-6 h-[2px] rounded-full" style={{ background: "linear-gradient(90deg, transparent, var(--accent), transparent)" }} />
 
         <div className="mb-8 text-center">
-          {/* Animated logo icon — neural pulse */}
+          {/* Big logo */}
           <motion.div
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
             transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
-            className="relative mx-auto mb-5 h-20 w-20 flex items-center justify-center"
+            className="mb-4"
           >
-            {/* Static accent border */}
-            <div
-              className="absolute inset-0 rounded-2xl"
-              style={{
-                border: "1.5px solid var(--accent)",
-                opacity: 0.25,
-              }}
-            />
-            {/* Core — stylized "X" */}
-            <motion.svg
-              width="28"
-              height="28"
-              viewBox="0 0 28 28"
-              fill="none"
-              className="relative z-10"
-              style={{ filter: "drop-shadow(0 0 6px var(--accent-glow))" }}
-            >
-              <motion.path
-                d="M6 6L22 22M22 6L6 22"
-                stroke="var(--accent)"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 1.2, delay: 0.3, ease: EASE_SNAP }}
-              />
-            </motion.svg>
+            <div className="inline-flex items-center justify-center">
+              <span
+                className="font-display font-black leading-none"
+                style={{ fontSize: "3.5rem", color: "var(--accent)", filter: "drop-shadow(0 0 20px var(--accent-glow))" }}
+              >
+                X
+              </span>
+              <span
+                className="font-display font-extrabold leading-none tracking-widest uppercase ml-3"
+                style={{ fontSize: "1.75rem", color: "var(--text-primary)" }}
+              >
+                HUNTER
+              </span>
+            </div>
           </motion.div>
 
-          {/* Logo text */}
-          <motion.h1
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="inline-flex items-center justify-center"
-          >
-            <XHunterLogo size="lg" />
-          </motion.h1>
-          <motion.p
+          {/* Tagline with accent line */}
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            className="mt-2 text-sm font-medium tracking-wide"
-            style={{ color: "var(--text-muted)" }}
+            transition={{ delay: 0.3 }}
           >
-            Тренажёр продаж
-          </motion.p>
+            <p className="text-sm font-medium tracking-widest uppercase" style={{ color: "var(--text-muted)" }}>
+              Тренажёр продаж
+            </p>
+            <div className="mt-3 flex items-center gap-3 justify-center">
+              <div className="h-px flex-1 max-w-[60px]" style={{ background: "linear-gradient(90deg, transparent, var(--accent))" }} />
+              <div className="flex gap-1.5">
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--accent)", opacity: 0.4 }} />
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--accent)", opacity: 0.7 }} />
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--accent)" }} />
+              </div>
+              <div className="h-px flex-1 max-w-[60px]" style={{ background: "linear-gradient(90deg, var(--accent), transparent)" }} />
+            </div>
+          </motion.div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -258,8 +274,8 @@ export default function LoginPage() {
               animate={{ opacity: 1, y: 0 }}
               className="flex items-center gap-2 rounded-xl p-3 text-sm"
               style={{
-                background: "rgba(255, 51, 51, 0.08)",
-                border: "1px solid rgba(255, 51, 51, 0.2)",
+                background: "var(--danger-muted)",
+                border: "1px solid var(--danger-muted)",
                 color: "var(--danger)",
               }}
             >
@@ -279,7 +295,7 @@ export default function LoginPage() {
                 onChange={(e) => { setEmail(e.target.value); try { sessionStorage.setItem("vh-login-email", e.target.value); } catch {} }}
                 required
                 className="vh-input pl-10"
-                placeholder="you@example.com"
+                placeholder="Ваш email"
                 aria-label="Email"
                 autoComplete="email"
               />
@@ -313,7 +329,8 @@ export default function LoginPage() {
             Войти
           </Button>
 
-          {/* Social login */}
+          {/* Social login — only show if at least one provider is configured */}
+          {(oauthStatus.google || oauthStatus.yandex) && (
           <div className="relative">
             <div className="flex items-center gap-3 my-1">
               <div className="flex-1 h-px" style={{ background: "var(--border-color)" }} />
@@ -371,6 +388,7 @@ export default function LoginPage() {
               </motion.button>
             </div>
           </div>
+          )}
         </form>
 
         <p className="mt-5 text-center text-sm" style={{ color: "var(--text-muted)" }}>
@@ -379,6 +397,7 @@ export default function LoginPage() {
             Зарегистрироваться
           </Link>
         </p>
+
       </motion.div>
     </div>
   );

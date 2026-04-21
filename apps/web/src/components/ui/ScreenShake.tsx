@@ -14,9 +14,9 @@ interface ShakeConfig {
 
 const PRESETS: Record<ShakePreset, ShakeConfig> = {
   light:   { intensity: 2,  duration: 200 },
-  medium:  { intensity: 4,  duration: 300, vignette: "rgba(124,106,232,0.15)" },
-  heavy:   { intensity: 6,  duration: 400, vignette: "rgba(229,72,77,0.25)" },
-  error:   { intensity: 5,  duration: 350, vignette: "rgba(229,72,77,0.3)" },
+  medium:  { intensity: 4,  duration: 300, vignette: "var(--accent-muted)" },
+  heavy:   { intensity: 6,  duration: 400, vignette: "var(--danger-muted)" },
+  error:   { intensity: 5,  duration: 350, vignette: "var(--danger-muted)" },
   victory: { intensity: 3,  duration: 500, vignette: "rgba(212,168,75,0.2)" },
 };
 

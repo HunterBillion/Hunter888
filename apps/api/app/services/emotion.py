@@ -22,12 +22,30 @@ import logging
 import uuid
 from dataclasses import dataclass, asdict, field
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
 
 from app.models.character import EmotionState, TERMINAL_STATES, FINAL_STATES
 from app.config import settings
+
+# v6 extension imports (module-level for performance, with fallback)
+try:
+    from app.services.emotion_v6 import (
+        NEW_TRIGGERS as _V6_NEW_TRIGGERS,
+        NEW_TRIGGER_ENERGY as _V6_NEW_TRIGGER_ENERGY,
+        TRIGGER_CONFLICTS as _V6_TRIGGER_CONFLICTS,
+        get_transitions_for_archetype as _v6_get_archetype_graph,
+    )
+    _HAS_V6 = True
+except ImportError:
+    _HAS_V6 = False
+    _V6_NEW_TRIGGERS = []
+    _V6_NEW_TRIGGER_ENERGY = {}
+    _V6_TRIGGER_CONFLICTS = {}
+
+    def _v6_get_archetype_graph(code: str) -> dict:  # type: ignore
+        return ALLOWED_TRANSITIONS
 from app.core.redis_pool import get_redis
 
 logger = logging.getLogger(__name__)
@@ -577,7 +595,7 @@ async def set_emotion(
         # Append to timeline with rich metadata
         timeline_entry = {
             "state": state,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "previous_state": previous_state,
             "triggers": triggers or [],
             "energy_before": energy_before,
@@ -621,7 +639,7 @@ async def init_emotion(session_id: uuid.UUID, initial_state: str = "cold") -> No
         # Initialize timeline with first entry
         timeline_entry = {
             "state": initial_state,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "previous_state": None,
             "triggers": [],
             "energy_before": None,
@@ -667,7 +685,7 @@ async def init_emotion_v3(session_id: uuid.UUID, archetype_code: str) -> str:
         # Initialize timeline with first entry
         timeline_entry = {
             "state": config.initial_state,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "previous_state": None,
             "triggers": [],
             "energy_before": None,
@@ -1074,35 +1092,44 @@ async def _apply_triggers(
     if "insult" in triggers:
         return -1.0, ["insult"]
 
-    # Deduplicate and check for counter gates
+    # Deduplicate and check for counter gates (atomic Lua script)
+    # Lua script: atomically increment counter and check if gate is passed
+    _COUNTER_GATE_LUA = """
+    local count = redis.call('INCR', KEYS[1])
+    if count == 1 then
+        redis.call('EXPIRE', KEYS[1], ARGV[2])
+    end
+    if count >= tonumber(ARGV[1]) then
+        redis.call('DEL', KEYS[1])
+        return 1
+    end
+    return 0
+    """
     filtered_triggers = []
     try:
         redis = await _get_redis()
 
+        # v6 integration: accept both original (23) and new (22) triggers
+        _all_known = set(TRIGGERS) | set(_V6_NEW_TRIGGERS)
+
         for trigger in triggers:
-            if trigger not in TRIGGERS:
+            if trigger not in _all_known:
                 continue
 
-            # Check counter gate
+            # Check counter gate (atomic: increment + threshold check in one op)
             if trigger in config.counter_gates:
                 required_count = config.counter_gates[trigger]
                 counter_key = _counter_key(session_id, trigger)
 
                 if redis:
-                    count = await redis.get(counter_key)
-                    count = int(count) if count else 0
+                    gate_passed = await redis.eval(
+                        _COUNTER_GATE_LUA, 1, counter_key,
+                        str(required_count), str(_KEY_TTL),
+                    )
+                    if not gate_passed:
+                        continue
                 else:
-                    count = 0
-
-                if count < required_count - 1:
-                    if redis:
-                        await redis.incr(counter_key)
-                        await redis.expire(counter_key, _KEY_TTL)
-                    continue
-
-                # Gate passed, reset counter
-                if redis:
-                    await redis.delete(counter_key)
+                    pass  # No Redis — allow trigger through
 
             filtered_triggers.append(trigger)
 
@@ -1121,9 +1148,20 @@ async def _apply_triggers(
     if "pressure" in filtered_triggers and "empathy" in filtered_triggers:
         filtered_triggers = [t for t in filtered_triggers if t != "empathy"]
 
-    # Sort by energy: negative → neutral → positive
+    # v6 Rule 4: Apply TRIGGER_CONFLICTS from emotion_v6
+    _trigger_set = set(filtered_triggers)
+    for winner, losers in _V6_TRIGGER_CONFLICTS.items():
+        if winner in _trigger_set:
+            for loser in losers:
+                if loser in _trigger_set:
+                    filtered_triggers = [t for t in filtered_triggers if t != loser]
+                    _trigger_set.discard(loser)
+
+    # Sort by energy: negative → neutral → positive (v6: merged energy dict)
+    _merged_energy = {**DEFAULT_ENERGY, **_V6_NEW_TRIGGER_ENERGY}
+
     def energy_sort_key(trigger: str) -> tuple:
-        energy = DEFAULT_ENERGY.get(trigger, 0.0)
+        energy = _merged_energy.get(trigger, 0.0)
         return (energy >= 0, energy)  # Negatives first, then by magnitude
 
     filtered_triggers.sort(key=energy_sort_key)
@@ -1137,10 +1175,10 @@ async def _apply_triggers(
         if same_count >= 3:
             multiplier = 0.5
 
-    # Calculate total energy
+    # Calculate total energy (v6: use merged energy dict)
     total_energy = 0.0
     for trigger in filtered_triggers:
-        base_energy = DEFAULT_ENERGY.get(trigger, 0.0)
+        base_energy = _merged_energy.get(trigger, 0.0)
         modifier = config.energy_modifiers.get(trigger, 1.0)
         energy = base_energy * modifier * multiplier
         total_energy += energy
@@ -1203,22 +1241,20 @@ async def _resolve_transition(
     current: str,
     energy: float,
     config: ArchetypeConfig,
+    archetype_code: str = "skeptic",
 ) -> Optional[str]:
     """
     Determine target state based on accumulated energy and thresholds.
 
-    Rules:
-    - Positive threshold: pick best forward state
-    - Negative threshold: pick backward state
-    - insult → hostile (or hangup if already hostile)
-    - counter_aggression → hangup if hostile, hostile otherwise
-    - challenge trigger → testing if in guarded/curious/considering
-    - defer trigger → callback from any intermediate state
+    v6: Uses archetype-specific graph variants instead of base ALLOWED_TRANSITIONS.
     """
+    # v6: Get archetype-specific transition graph
+    transitions = _v6_get_archetype_graph(archetype_code) if _HAS_V6 else ALLOWED_TRANSITIONS
+
     # Check for threshold crossing
     if energy >= config.threshold_positive:
         # Forward transition
-        available_forward = ALLOWED_TRANSITIONS.get(current, set())
+        available_forward = transitions.get(current, set())
         if not available_forward:
             return None
 
@@ -1234,7 +1270,7 @@ async def _resolve_transition(
 
     elif energy <= config.threshold_negative:
         # Backward transition
-        available_backward = ALLOWED_TRANSITIONS.get(current, set())
+        available_backward = transitions.get(current, set())
         if not available_backward:
             return None
 
@@ -1377,12 +1413,14 @@ async def _transition_emotion_v3_inner(
         rollback = False
         transition_occurred = False
 
-        if target_override and target_override in ALLOWED_TRANSITIONS.get(current_state, set()):
+        # v6: Use archetype graph for override validation
+        _arch_transitions = _v6_get_archetype_graph(archetype_code) if _HAS_V6 else ALLOWED_TRANSITIONS
+        if target_override and target_override in _arch_transitions.get(current_state, set()):
             new_state = target_override
             transition_occurred = True
             buffer.reset_after_transition()
         else:
-            resolved = await _resolve_transition(current_state, buffer.energy_smoothed, config)
+            resolved = await _resolve_transition(current_state, buffer.energy_smoothed, config, archetype_code)
             if resolved and resolved != current_state:
                 new_state = resolved
                 transition_occurred = True
@@ -1430,12 +1468,12 @@ async def _transition_emotion_v3_inner(
 
         # Force hangup on excessive total rollbacks — but only from valid states
         if memory.rollback_count >= 5:
-            if "hangup" in ALLOWED_TRANSITIONS.get(new_state, set()):
+            if "hangup" in _arch_transitions.get(new_state, set()):
                 new_state = "hangup"
                 transition_occurred = True
             else:
                 # Can't reach hangup from current state (e.g. "deal") — mark hostile if allowed
-                if "hostile" in ALLOWED_TRANSITIONS.get(new_state, set()):
+                if "hostile" in _arch_transitions.get(new_state, set()):
                     new_state = "hostile"
                     transition_occurred = True
                 logger.warning(
@@ -1467,7 +1505,7 @@ async def _transition_emotion_v3_inner(
         # Get fake prompt if active
         fake_prompt = await get_fake_prompt(session_id, archetype_code)
 
-        # Build metadata
+        # Build metadata (v6: include thresholds for intensity calculation)
         metadata = {
             "energy_before": energy_before,
             "energy_after": energy_after,
@@ -1482,6 +1520,8 @@ async def _transition_emotion_v3_inner(
             "rollback_count": memory.rollback_count,
             "peak_state": memory.peak_state,
             "message_index": message_index,
+            "threshold_pos": config.threshold_positive,
+            "threshold_neg": config.threshold_negative,
         }
 
         return new_state, metadata

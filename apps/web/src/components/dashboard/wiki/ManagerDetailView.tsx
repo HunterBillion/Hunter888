@@ -42,12 +42,14 @@ import { PatternsTab } from "./PatternsTab";
 import { TechniquesTab } from "./TechniquesTab";
 import { WikiChartsSection } from "./WikiChartsSection";
 import { LogTab } from "./LogTab";
+import { HealthTab } from "./HealthTab";
 
 const DETAIL_TABS: { id: DetailTab; label: string; icon: typeof BookOpen }[] = [
   { id: "profile", label: "Профиль", icon: Pulse },
   { id: "pages", label: "Страницы", icon: FileText },
   { id: "patterns", label: "Паттерны", icon: Brain },
   { id: "techniques", label: "Техники", icon: Lightbulb },
+  { id: "health", label: "Здоровье", icon: Pulse },
   { id: "charts", label: "Графики", icon: ChartBar },
   { id: "log", label: "Лог изменений", icon: Clock },
 ];
@@ -133,7 +135,7 @@ export function ManagerDetailView({
             borderRadius: 8,
             color: "var(--text-muted)",
             cursor: "pointer",
-            fontSize: "0.85rem",
+            fontSize: "0.875rem",
           }}
         >
           <ChevronLeft size={16} />
@@ -146,10 +148,10 @@ export function ManagerDetailView({
             </h1>
             {manager.status && manager.status !== "active" && (
               <span style={{
-                fontSize: "0.7rem",
+                fontSize: "0.875rem",
                 padding: "2px 8px",
                 borderRadius: 8,
-                background: manager.status === "paused" ? "rgba(245,158,11,0.12)" : "rgba(107,114,128,0.15)",
+                background: manager.status === "paused" ? "var(--warning-muted)" : "rgba(107,114,128,0.15)",
                 color: manager.status === "paused" ? "var(--warning)" : "var(--text-muted)",
                 fontWeight: 600,
               }}>
@@ -157,7 +159,7 @@ export function ManagerDetailView({
               </span>
             )}
           </div>
-          <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "0.8rem" }}>
+          <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "0.875rem" }}>
             Wiki | {manager.sessions_ingested} сессий | {manager.patterns_discovered} паттернов | {manager.pages_count} страниц
             {manager.last_ingest_at && ` | Обновлено: ${timeAgo(manager.last_ingest_at)}`}
           </p>
@@ -224,10 +226,10 @@ export function ManagerDetailView({
             {t.id === "patterns" && patterns.length > 0 && (
               <span style={{
                 marginLeft: 4,
-                fontSize: "0.7rem",
+                fontSize: "0.875rem",
                 padding: "1px 6px",
                 borderRadius: 8,
-                background: "rgba(239,68,68,0.15)",
+                background: "var(--danger-muted)",
                 color: "var(--danger)",
               }}>
                 {patterns.length}
@@ -259,6 +261,7 @@ export function ManagerDetailView({
           )}
           {tab === "patterns" && <PatternsTab patterns={patterns} />}
           {tab === "techniques" && <TechniquesTab techniques={techniques} />}
+          {tab === "health" && <HealthTab managerId={manager.manager_id} />}
           {tab === "charts" && <WikiChartsSection data={detailChartData} />}
           {tab === "log" && <LogTab logEntries={logEntries} />}
         </motion.div>

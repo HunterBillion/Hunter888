@@ -94,11 +94,17 @@ export default function SettingsPage() {
   const [experienceLevel, setExperienceLevel] = useState<string>("beginner");
   const [pipelineColumns, setPipelineColumns] = useState<string[]>(PIPELINE_STATUSES as string[]);
   const [compactMode, setCompactMode] = useState(false);
+  const [animatedBg, setAnimatedBg] = useState(true);
   const [accentColor, setAccentColor] = useState<string>("violet");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  // Editable display name (PATCH /api/users/me/profile)
+  const [fullName, setFullName] = useState<string>("");
+  const [fullNameSaving, setFullNameSaving] = useState(false);
+  const [fullNameSaved, setFullNameSaved] = useState(false);
+  const [fullNameError, setFullNameError] = useState<string | null>(null);
 
   const webPush = useWebPush();
 
@@ -115,6 +121,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!user) return;
     if (user.avatar_url) setAvatarUrl(user.avatar_url);
+    if (user.full_name) setFullName(user.full_name);
     const p = (user.preferences as Record<string, unknown>) || {};
     if (typeof p.tts_enabled === "boolean") setTtsEnabled(p.tts_enabled);
     if (typeof p.notifications === "boolean") setNotifications(p.notifications);
@@ -150,6 +157,19 @@ export default function SettingsPage() {
     document.body.classList.toggle("compact-mode", compactMode);
   }, [compactMode, mounted]);
 
+  // Animated background — localStorage only (no API, client-side pref)
+  useEffect(() => {
+    if (!mounted) return;
+    try { localStorage.setItem("vh-animated-bg", animatedBg ? "1" : "0"); } catch {}
+  }, [animatedBg, mounted]);
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("vh-animated-bg");
+      if (v === "0") setAnimatedBg(false);
+    } catch {}
+  }, []);
+
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
@@ -175,6 +195,29 @@ export default function SettingsPage() {
       setSaveError(e instanceof Error ? e.message : "Ошибка сохранения настроек");
     }
     setSaving(false);
+  };
+
+  const handleSaveName = async () => {
+    const trimmed = fullName.trim();
+    if (!trimmed || trimmed.length < 2) {
+      setFullNameError("Имя должно содержать минимум 2 символа");
+      return;
+    }
+    if (trimmed === user?.full_name) {
+      // No change
+      return;
+    }
+    setFullNameSaving(true);
+    setFullNameError(null);
+    try {
+      await api.patch("/users/me/profile", { full_name: trimmed });
+      invalidateUserCache();
+      setFullNameSaved(true);
+      setTimeout(() => setFullNameSaved(false), 2000);
+    } catch (e) {
+      setFullNameError(e instanceof Error ? e.message : "Ошибка сохранения имени");
+    }
+    setFullNameSaving(false);
   };
 
   const showCRM = user?.role && ["admin", "rop", "manager"].includes(user.role);
@@ -209,12 +252,12 @@ export default function SettingsPage() {
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             className="relative flex items-center gap-4 mb-8 rounded-2xl p-6 overflow-hidden"
             style={{
-              background: "linear-gradient(135deg, var(--glass-bg), rgba(124,106,232,0.06))",
-              border: "1px solid rgba(124,106,232,0.15)",
+              background: "linear-gradient(135deg, var(--glass-bg), var(--accent-muted))",
+              border: "1px solid var(--accent-muted)",
             }}
           >
             {/* Corner glow */}
-            <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(124,106,232,0.12) 0%, transparent 70%)" }} />
+            <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, var(--accent-muted) 0%, transparent 70%)" }} />
             <AvatarUpload
               currentUrl={avatarUrl}
               userName={user?.full_name || ""}
@@ -253,6 +296,65 @@ export default function SettingsPage() {
           </motion.div>
 
           <div className="space-y-4">
+
+            {/* ── Account (editable profile fields) ── */}
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: nextDelay() }}
+              className="glass-panel p-5 relative overflow-hidden"
+              style={{ borderLeft: "3px solid var(--accent)" }}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--accent-muted)" }}>
+                  <Gear weight="duotone" size={20} style={{ color: "var(--accent)" }} />
+                </div>
+                <div>
+                  <div className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Аккаунт</div>
+                  <div className="text-sm" style={{ color: "var(--text-muted)" }}>Ваше отображаемое имя</div>
+                </div>
+              </div>
+
+              <label className="block text-sm font-mono uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
+                Имя
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => { setFullName(e.target.value); setFullNameError(null); setFullNameSaved(false); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSaveName(); }}
+                  maxLength={100}
+                  placeholder="Введите ваше имя"
+                  disabled={fullNameSaving}
+                  className="flex-1 rounded-xl px-4 py-2.5 text-base outline-none transition-colors"
+                  style={{
+                    background: "var(--glass-bg)",
+                    border: "1px solid var(--glass-border)",
+                    color: "var(--text-primary)",
+                  }}
+                />
+                <Button
+                  onClick={handleSaveName}
+                  disabled={fullNameSaving || !fullName.trim() || fullName.trim() === user?.full_name}
+                  className="shrink-0"
+                >
+                  {fullNameSaving ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : fullNameSaved ? (
+                    <CheckCircle2 size={16} />
+                  ) : (
+                    <Save size={16} />
+                  )}
+                </Button>
+              </div>
+              {fullNameError && (
+                <div className="text-xs mt-2" style={{ color: "var(--danger)" }}>{fullNameError}</div>
+              )}
+              {fullNameSaved && (
+                <div className="text-xs mt-2" style={{ color: "var(--success)" }}>✓ Имя обновлено</div>
+              )}
+              <div className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+                Email: {user?.email} (не редактируется)
+              </div>
+            </motion.div>
 
             {/* ── Appearance ── */}
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: nextDelay() }}
@@ -312,6 +414,15 @@ export default function SettingsPage() {
                 <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Компактный режим</span>
                 <Toggle on={compactMode} onChange={() => setCompactMode(!compactMode)} />
               </div>
+
+              {/* Animated background */}
+              <div className="flex items-center justify-between pt-4" style={{ borderTop: "1px solid var(--border-color)" }}>
+                <div>
+                  <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Анимированный фон</span>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Пиксельная сетка на фоне страниц</p>
+                </div>
+                <Toggle on={animatedBg} onChange={() => setAnimatedBg(!animatedBg)} />
+              </div>
             </motion.div>
 
             {/* ── Training ── */}
@@ -320,7 +431,7 @@ export default function SettingsPage() {
               style={{ borderLeft: "3px solid var(--success)" }}
             >
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "rgba(61,220,132,0.1)" }}>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--success-muted)" }}>
                   <GameController weight="duotone" size={20} style={{ color: "var(--success)" }} />
                 </div>
                 <div>
@@ -367,7 +478,7 @@ export default function SettingsPage() {
                 style={{ borderLeft: "3px solid var(--warning)" }}
               >
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "rgba(232,166,48,0.1)" }}>
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--warning-muted)" }}>
                     <Kanban weight="duotone" size={20} style={{ color: "var(--warning)" }} />
                   </div>
                   <div>
@@ -541,8 +652,8 @@ export default function SettingsPage() {
                         setUnlinking(null);
                       }}
                       disabled={unlinking === "google"}
-                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[12px]"
-                      style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--danger)" }}
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs"
+                      style={{ background: "var(--danger-muted)", border: "1px solid var(--danger-muted)", color: "var(--danger)" }}
                       whileTap={{ scale: 0.95 }}
                     >
                       {unlinking === "google" ? <Loader2 size={12} className="animate-spin" /> : <Unlink size={12} />}
@@ -551,7 +662,7 @@ export default function SettingsPage() {
                   ) : oauthStatus.google ? (
                     <motion.button
                       onClick={async () => { try { const d = await api.get("/auth/google/login"); if (d?.url) { const { validateOAuthUrl } = await import("@/lib/sanitize"); const safeUrl = validateOAuthUrl(d.url); if (safeUrl) window.location.href = safeUrl; } } catch (err) { logger.error("[Settings] Google link failed:", err); } }}
-                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[12px]"
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs"
                       style={{ background: "var(--accent-muted)", border: "1px solid var(--accent)", color: "var(--accent)" }}
                       whileTap={{ scale: 0.95 }}
                     >
@@ -581,8 +692,8 @@ export default function SettingsPage() {
                         setUnlinking(null);
                       }}
                       disabled={unlinking === "yandex"}
-                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[12px]"
-                      style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--danger)" }}
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs"
+                      style={{ background: "var(--danger-muted)", border: "1px solid var(--danger-muted)", color: "var(--danger)" }}
                       whileTap={{ scale: 0.95 }}
                     >
                       {unlinking === "yandex" ? <Loader2 size={12} className="animate-spin" /> : <Unlink size={12} />}
@@ -591,7 +702,7 @@ export default function SettingsPage() {
                   ) : oauthStatus.yandex ? (
                     <motion.button
                       onClick={async () => { try { const d = await api.get("/auth/yandex/login"); if (d?.url) { const { validateOAuthUrl } = await import("@/lib/sanitize"); const safeUrl = validateOAuthUrl(d.url); if (safeUrl) window.location.href = safeUrl; } } catch (err) { logger.error("[Settings] Yandex link failed:", err); } }}
-                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[12px]"
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs"
                       style={{ background: "var(--accent-muted)", border: "1px solid var(--accent)", color: "var(--accent)" }}
                       whileTap={{ scale: 0.95 }}
                     >

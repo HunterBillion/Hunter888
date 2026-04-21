@@ -212,7 +212,7 @@ export function BracketView({ bracket }: Props) {
                     : "var(--glass-bg)",
                   border: `1px solid ${
                     p.eliminated_at_round
-                      ? "rgba(229,72,77,0.12)"
+                      ? "var(--danger-muted)"
                       : isPodium
                         ? "rgba(212,168,75,0.15)"
                         : "var(--glass-border)"
@@ -240,7 +240,7 @@ export function BracketView({ bracket }: Props) {
                   </span>
                 )}
                 {p.eliminated_at_round && !isPodium && (
-                  <span className="status-badge status-badge--danger" style={{ fontSize: "12px", padding: "1px 4px" }}>
+                  <span className="status-badge status-badge--danger" style={{ fontSize: "14px", padding: "1px 4px" }}>
                     R{p.eliminated_at_round}
                   </span>
                 )}

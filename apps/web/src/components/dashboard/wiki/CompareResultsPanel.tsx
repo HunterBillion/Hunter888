@@ -11,7 +11,7 @@ import { CATEGORY_CONFIG } from "./types";
 function getCompareColors() {
   return [
     cssVar("--warning", "#E8A630"),
-    cssVar("--accent", "#7C6AE8"),
+    cssVar("--accent", "#6B4DC7"),
     cssVar("--success", "#3DDC84"),
     cssVar("--danger", "#E5484D"),
     cssVar("--magenta", "#D926B8"),
@@ -148,7 +148,7 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
             borderTop: `3px solid ${colors[i]}`,
           }}>
             <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "1rem", marginBottom: "0.5rem" }}>{m.name}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.3rem", fontSize: "0.8rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.3rem", fontSize: "0.875rem" }}>
               <div><span style={{ color: "var(--text-muted)" }}>Сессий: </span><span style={{ color: "var(--warning)", fontWeight: 600 }}>{m.sessions_total}</span></div>
               <div><span style={{ color: "var(--text-muted)" }}>Ср. балл: </span><span style={{ color: "var(--success)", fontWeight: 600 }}>{m.avg_score}</span></div>
               <div><span style={{ color: "var(--text-muted)" }}>Лучший: </span><span style={{ color: "var(--accent-hover)", fontWeight: 600 }}>{m.best_score}</span></div>
@@ -164,7 +164,7 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem", marginBottom: "1rem" }}>
         {/* Score comparison bar */}
         <div style={glassCard}>
-          <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.5rem" }}>Баллы</div>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem" }}>Баллы</div>
           <div style={{ height: 220 }}>
             <Bar data={barData} options={{
               responsive: true,
@@ -180,7 +180,7 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
 
         {/* Score layers radar */}
         <div style={glassCard}>
-          <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.5rem" }}>Слои оценки</div>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem" }}>Слои оценки</div>
           <div style={{ height: 220 }}>
             <Radar data={radarData} options={radarOpts} />
           </div>
@@ -188,7 +188,7 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
 
         {/* Skills radar */}
         <div style={glassCard}>
-          <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.5rem" }}>Навыки</div>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem" }}>Навыки</div>
           <div style={{ height: 220 }}>
             <Radar data={skillRadar} options={radarOpts} />
           </div>
@@ -199,11 +199,11 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
         {/* Patterns */}
         <div style={glassCard}>
-          <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.75rem" }}>
             <Brain size={14} weight="duotone" style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
             Паттерны по категориям
           </div>
-          <table style={{ width: "100%", fontSize: "0.8rem", borderCollapse: "collapse" }}>
+          <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
                 <th style={{ textAlign: "left", padding: "4px 8px", color: "var(--text-muted)", fontWeight: 500 }}>Категория</th>
@@ -241,18 +241,18 @@ export function CompareResultsPanel({ data, onClose }: { data: CompareManager[];
 
         {/* Techniques */}
         <div style={glassCard}>
-          <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.75rem" }}>
             <Lightbulb size={14} weight="duotone" style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
             Лучшие техники
           </div>
           {data.map((m, i) => (
             <div key={m.manager_id + i} style={{ marginBottom: "0.5rem" }}>
-              <div style={{ fontSize: "0.85rem", fontWeight: 600, color: colors[i], marginBottom: "0.25rem" }}>{m.name}</div>
+              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: colors[i], marginBottom: "0.25rem" }}>{m.name}</div>
               {m.techniques.length === 0 ? (
-                <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontStyle: "italic" }}>Нет техник</div>
+                <div style={{ fontSize: "0.875rem", color: "var(--text-muted)", fontStyle: "italic" }}>Нет техник</div>
               ) : (
                 m.techniques.slice(0, 3).map((t) => (
-                  <div key={t.code} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", color: "var(--text-muted)", padding: "2px 0" }}>
+                  <div key={t.code} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "var(--text-muted)", padding: "2px 0" }}>
                     <span>{t.name}</span>
                     <span style={{ color: t.success_rate >= 0.7 ? "var(--success)" : t.success_rate >= 0.4 ? "var(--warning)" : "var(--danger)" }}>
                       {Math.round(t.success_rate * 100)}%

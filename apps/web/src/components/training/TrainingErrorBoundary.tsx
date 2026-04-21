@@ -58,9 +58,9 @@ export class TrainingErrorBoundary extends Component<Props, State> {
               <div
                 className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full"
                 style={{
-                  background: "rgba(229,72,77,0.06)",
+                  background: "var(--danger-muted)",
                   border: "2px solid rgba(229,72,77,0.15)",
-                  boxShadow: "0 0 30px rgba(229,72,77,0.08)",
+                  boxShadow: "0 0 30px var(--danger-muted)",
                 }}
               >
                 <div
@@ -75,7 +75,7 @@ export class TrainingErrorBoundary extends Component<Props, State> {
               </div>
 
               <div
-                className="font-mono text-[10px] tracking-[0.25em] uppercase mb-3"
+                className="font-mono text-xs tracking-widest uppercase mb-3"
                 style={{ color: "rgba(229,72,77,0.5)" }}
               >
                 {"// ОШИБКА_ТРЕНИРОВКИ"}

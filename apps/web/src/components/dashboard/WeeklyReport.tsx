@@ -40,7 +40,7 @@ function TrendBadge({ trend }: { trend: string | null }) {
   if (trend === "improving") {
     return (
       <span className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold"
-        style={{ background: "rgba(34, 197, 94, 0.1)", color: "var(--success)" }}>
+        style={{ background: "var(--success-muted)", color: "var(--success)" }}>
         <TrendUp size={10} weight="duotone" /> Рост
       </span>
     );
@@ -48,7 +48,7 @@ function TrendBadge({ trend }: { trend: string | null }) {
   if (trend === "declining") {
     return (
       <span className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold"
-        style={{ background: "rgba(239, 68, 68, 0.1)", color: "var(--danger)" }}>
+        style={{ background: "var(--danger-muted)", color: "var(--danger)" }}>
         <TrendDown size={10} weight="duotone" /> Спад
       </span>
     );
@@ -154,7 +154,7 @@ export function WeeklyReport() {
                   key={skill}
                   className="rounded-md px-2 py-0.5 text-xs font-mono"
                   style={{
-                    background: delta > 0 ? "rgba(34,197,94,0.1)" : delta < 0 ? "rgba(239,68,68,0.1)" : "var(--input-bg)",
+                    background: delta > 0 ? "var(--success-muted)" : delta < 0 ? "var(--danger-muted)" : "var(--input-bg)",
                     color: delta > 0 ? "var(--success)" : delta < 0 ? "var(--danger)" : "var(--text-muted)",
                   }}
                 >

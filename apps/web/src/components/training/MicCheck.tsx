@@ -87,7 +87,7 @@ export function MicCheck({ onComplete, onSkip }: MicCheckProps) {
       <div
         className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl"
         style={{
-          background: status === "success" ? "rgba(61,220,132,0.1)" : status === "denied" || status === "error" ? "rgba(229,72,77,0.1)" : "var(--accent-muted)",
+          background: status === "success" ? "var(--success-muted)" : status === "denied" || status === "error" ? "var(--danger-muted)" : "var(--accent-muted)",
           border: `2px solid ${status === "success" ? "var(--success)" : status === "denied" || status === "error" ? "var(--danger)" : "var(--accent)"}`,
         }}
       >
@@ -136,14 +136,36 @@ export function MicCheck({ onComplete, onSkip }: MicCheckProps) {
 
       <div className="flex gap-3 justify-center">
         {status === "idle" && (
-          <>
-            <motion.button onClick={checkMic} className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
-              <Mic size={16} /> Проверить микрофон
+          <div className="grid grid-cols-2 gap-3 w-full">
+            <motion.button
+              onClick={checkMic}
+              className="flex flex-col items-center justify-center gap-2 rounded-xl px-4 py-4 text-sm font-medium transition-colors"
+              style={{
+                background: "var(--accent-muted)",
+                border: "1px solid var(--accent-glow)",
+                color: "var(--accent)",
+              }}
+              whileHover={{ borderColor: "var(--accent)" }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <Mic size={22} />
+              Голосовой режим
             </motion.button>
-            <motion.button onClick={skip} className="btn-neon" whileTap={{ scale: 0.97 }}>
+            <motion.button
+              onClick={skip}
+              className="flex flex-col items-center justify-center gap-2 rounded-xl px-4 py-4 text-sm font-medium transition-colors"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                color: "var(--text-muted)",
+              }}
+              whileHover={{ borderColor: "rgba(255,255,255,0.2)" }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <Volume2 size={22} />
               Текстовый режим
             </motion.button>
-          </>
+          </div>
         )}
         {status === "success" && (
           <motion.button onClick={proceed} className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
@@ -151,14 +173,36 @@ export function MicCheck({ onComplete, onSkip }: MicCheckProps) {
           </motion.button>
         )}
         {(status === "denied" || status === "error") && (
-          <>
-            <motion.button onClick={checkMic} className="btn-neon flex items-center gap-2" whileTap={{ scale: 0.97 }}>
-              <AlertTriangle size={14} /> Повторить
+          <div className="grid grid-cols-2 gap-3 w-full">
+            <motion.button
+              onClick={checkMic}
+              className="flex flex-col items-center justify-center gap-2 rounded-xl px-4 py-4 text-sm font-medium transition-colors"
+              style={{
+                background: "rgba(245,158,11,0.08)",
+                border: "1px solid rgba(245,158,11,0.25)",
+                color: "var(--warning)",
+              }}
+              whileHover={{ borderColor: "var(--warning)" }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <AlertTriangle size={22} />
+              Повторить
             </motion.button>
-            <motion.button onClick={skip} className="btn-neon" whileTap={{ scale: 0.97 }}>
+            <motion.button
+              onClick={skip}
+              className="flex flex-col items-center justify-center gap-2 rounded-xl px-4 py-4 text-sm font-medium transition-colors"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                color: "var(--text-muted)",
+              }}
+              whileHover={{ borderColor: "rgba(255,255,255,0.2)" }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <Volume2 size={22} />
               Текстовый режим
             </motion.button>
-          </>
+          </div>
         )}
       </div>
     </motion.div>

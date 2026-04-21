@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.character import Character
@@ -225,13 +225,15 @@ def compute_session_radar(session: TrainingSession) -> dict[str, float]:
     script = details.get("script_adherence", {})
     obj = details.get("objection_handling", {})
 
+    # S3-07: L3 and L8 sub-scores are now stored normalized to [0,1].
+    # No need for _norm() — use values directly as weights.
     empathy_l3 = comm.get("empathy_score", 0)
     empathy_l8_patience = hf.get("patience_score", 0)
     empathy_l8_empathy = hf.get("empathy_check_score", 0)
     empathy = (
-        _norm(empathy_l3, 3.75) * 0.4
-        + _norm(empathy_l8_patience, 5) * 0.3
-        + _norm(empathy_l8_empathy, 5) * 0.3
+        empathy_l3 * 0.4
+        + empathy_l8_patience * 0.3
+        + empathy_l8_empathy * 0.3
     ) * 100
 
     l1 = session.score_script_adherence or 0
@@ -261,8 +263,8 @@ def compute_session_radar(session: TrainingSession) -> dict[str, float]:
     pace = comm.get("pace_score", 0)
     stress_resistance = (
         _norm(l4 + 11.25, 11.25) * 0.4
-        + _norm(composure, 5) * 0.3
-        + _norm(pace, 3.75) * 0.3
+        + composure * 0.3      # S3-07: already [0,1]
+        + pace * 0.3           # S3-07: already [0,1]
     ) * 100
 
     l5 = session.score_result or 0
@@ -279,8 +281,8 @@ def compute_session_radar(session: TrainingSession) -> dict[str, float]:
     listening = comm.get("listening_score", 0)
     qualification = (
         _norm(discovery, 10) * 0.4
-        + _norm(control, 3.75) * 0.3
-        + _norm(listening, 3.75) * 0.3
+        + control * 0.3        # S3-07: already [0,1]
+        + listening * 0.3      # S3-07: already [0,1]
     ) * 100
 
     return {
@@ -405,7 +407,7 @@ async def build_progress_chart(
 
     result = await db.execute(
         select(
-            func.date_trunc("week", TrainingSession.started_at).label("week"),
+            func.date_trunc(literal_column("'week'"), TrainingSession.started_at).label("week"),
             func.count(TrainingSession.id).label("cnt"),
             func.avg(TrainingSession.score_total).label("avg_total"),
             func.avg(TrainingSession.score_script_adherence).label("avg_script"),
@@ -434,6 +436,12 @@ async def build_progress_chart(
         week_start = row[0]
         if isinstance(week_start, datetime):
             week_start = week_start.date()
+        # FIX: PostgreSQL date_trunc('week') returns Monday 00:00 in server TZ (e.g. +04).
+        # asyncpg converts to UTC, shifting midnight +04 → previous day 20:00 UTC.
+        # .date() then gives Sunday instead of Monday → key mismatch with the loop.
+        # Round UP to nearest Monday to recover correct week key.
+        if week_start.weekday() != 0:  # Not already Monday
+            week_start += timedelta(days=(7 - week_start.weekday()) % 7)
         week_data[week_start] = row
 
     # Also compute per-week radar from sessions

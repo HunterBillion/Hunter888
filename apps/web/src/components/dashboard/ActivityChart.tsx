@@ -41,10 +41,12 @@ export function ActivityChart() {
 
   const theme = getChartTheme();
 
+  const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+
   const chartData = {
     labels: data.map((d) => {
       const date = new Date(d.date);
-      return `${date.getDate()}.${date.getMonth() + 1}`;
+      return `${date.getDate()} ${MONTHS_SHORT[date.getMonth()]}`;
     }),
     datasets: [
       {

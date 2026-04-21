@@ -549,11 +549,13 @@ async def evaluate_answer(
                     )
 
     # ── LLM evaluation with RAG grounding ────────────────────────────────────
+    from app.services.scenario_engine import _sanitize_db_prompt
     context_str = rag_context.to_prompt_context() if rag_context.has_results else ""
+    sanitized_answer = _sanitize_db_prompt(user_answer, "user_answer")
 
     messages = [
         {"role": "assistant", "content": json.dumps({"type": "question", "question_text": question.question_text, "category": question.category}, ensure_ascii=False)},
-        {"role": "user", "content": user_answer},
+        {"role": "user", "content": sanitized_answer},
         {"role": "user", "content": (
             f"Оцени ответ пользователя на вопрос.\n\n"
             f"Правовой контекст для проверки:\n{context_str}\n\n"

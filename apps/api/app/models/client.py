@@ -157,12 +157,15 @@ STATUS_TIMEOUTS: dict[ClientStatus, list[dict]] = {
     ClientStatus.new: [{"days": 3, "action": "remind_manager"}],
     ClientStatus.contacted: [{"days": 5, "action": "remind_manager_and_rop"}],
     ClientStatus.interested: [{"days": 7, "action": "remind_manager"}],
+    ClientStatus.consultation: [{"days": 7, "action": "remind_manager"}],
     ClientStatus.thinking: [
         {"days": 21, "action": "remind_manager"},
         {"days": 28, "action": "notify_rop"},
         {"days": 30, "action": "auto_lost"},
     ],
     ClientStatus.consent_given: [{"days": 5, "action": "remind_manager"}],
+    ClientStatus.contract_signed: [{"days": 10, "action": "remind_manager"}],
+    ClientStatus.in_process: [{"days": 30, "action": "remind_manager"}],
     ClientStatus.paused: [{"days": 14, "action": "remind_manager"}],
     ClientStatus.consent_revoked: [{"days": 7, "action": "remind_manager"}],
 }
@@ -183,7 +186,7 @@ class RealClient(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     manager_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(20), index=True)

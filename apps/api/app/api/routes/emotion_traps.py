@@ -26,17 +26,15 @@ import logging
 from typing import Optional
 from uuid import UUID
 
+from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.core import errors as err
 from app.core.deps import get_current_user
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
-limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(tags=["emotion", "traps", "chains"])
 

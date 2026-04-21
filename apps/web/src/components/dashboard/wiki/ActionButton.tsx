@@ -31,7 +31,7 @@ export function ActionButton({
         borderRadius: 8,
         color: loading || disabled ? "var(--text-muted)" : color,
         cursor: loading || disabled ? "not-allowed" : "pointer",
-        fontSize: "0.8rem",
+        fontSize: "0.875rem",
         fontWeight: 500,
         opacity: disabled ? 0.5 : 1,
       }}

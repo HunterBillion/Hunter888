@@ -8,7 +8,7 @@ exhausts Redis's connection limit and causes cascading failures.
 Architecture:
 ┌──────────────────────────────────────────────────────────────────┐
 │  get_redis()  →  shared ConnectionPool  →  Redis server         │
-│                  (max 20 connections)                            │
+│                  (max 50 connections, tuned for 50 DAU)          │
 │                                                                  │
 │  Usage:                                                          │
 │      from app.core.redis_pool import get_redis                   │
@@ -36,16 +36,20 @@ def _ensure_pool() -> aioredis.ConnectionPool:
     """Lazily create a shared connection pool (thread-safe in async context)."""
     global _pool
     if _pool is None:
+        # OPT-1 (2026-04-18): 20→50 connections under 50 DAU / 15-30 concurrent.
+        # Per request: rate_limiter + session state + blacklist + emotion =
+        # 3-5 Redis ops. 30 concurrent × 2 ops-in-flight = 60 peak demand.
+        # 20 was marginal → pool exhaustion under burst. 50 gives 1.5× safety.
         _pool = aioredis.ConnectionPool.from_url(
             settings.redis_url,
             decode_responses=True,
-            max_connections=20,
+            max_connections=50,
             # Retry on transient connection errors
             retry_on_timeout=True,
             socket_connect_timeout=5,
             socket_timeout=5,
         )
-        logger.info("Redis connection pool created (max_connections=20)")
+        logger.info("Redis connection pool created (max_connections=50)")
     return _pool
 
 

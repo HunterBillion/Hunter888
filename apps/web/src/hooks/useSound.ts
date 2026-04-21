@@ -16,31 +16,30 @@ type SoundName =
 
 export type { SoundName };
 
+// All sounds are now procedurally synthesized via SOUND_DESIGNS below.
+// SOUND_PATHS is kept as an empty map so the fetch-fallback path is never triggered
+// (prevents 404 errors for missing .mp3 files like xp.mp3).
 const SOUND_PATHS: Record<SoundName, string> = {
-  success: "/sounds/success.mp3",
-  epic: "/sounds/epic.mp3",
-  legendary: "/sounds/legendary.mp3",
-  fail: "/sounds/fail.mp3",
-  levelup: "/sounds/levelup.mp3",
-  // Arena
-  correct: "/sounds/correct.mp3",
-  incorrect: "/sounds/incorrect.mp3",
-  tick: "/sounds/tick.mp3",
-  challenge: "/sounds/challenge.mp3",
-  match_start: "/sounds/match_start.mp3",
-  victory: "/sounds/victory.mp3",
-  defeat: "/sounds/defeat.mp3",
-  streak: "/sounds/streak.mp3",
-  rank_up: "/sounds/rank_up.mp3",
-  // PvP
+  success: "",
+  epic: "",
+  legendary: "",
+  fail: "",
+  levelup: "",
+  correct: "",
+  incorrect: "",
+  tick: "",
+  challenge: "",
+  match_start: "",
+  victory: "",
+  defeat: "",
+  streak: "",
+  rank_up: "",
   pvpMatch: "",
   countdownTick: "",
-  // Gamification
-  click: "/sounds/click.mp3",
-  xp: "/sounds/xp.mp3",
-  levelUp: "/sounds/levelup.mp3",
-  notification: "/sounds/notification.mp3",
-  // UI
+  click: "",
+  xp: "",
+  levelUp: "",
+  notification: "",
   hover: "",
 };
 
@@ -470,7 +469,9 @@ export function useSound() {
     } catch { /* localStorage may throw in private browsing */ }
 
     const path = SOUND_PATHS[name];
-    if (!path) return;
+    const design = SOUND_DESIGNS[name];
+    // Skip early if there's neither a file path nor a synthesis design
+    if (!path && !design) return;
 
     try {
       const ctx = getContext();
@@ -483,17 +484,17 @@ export function useSound() {
       let buffer = cacheRef.current.get(name);
 
       if (!buffer) {
-        try {
-          const response = await fetch(path);
-          if (!response.ok) throw new Error("not found");
-          const arrayBuffer = await response.arrayBuffer();
-          buffer = await ctx.decodeAudioData(arrayBuffer);
-        } catch {
-          // MP3 file missing — use multi-layer procedural synthesis
-          const design = SOUND_DESIGNS[name];
-          if (design) {
-            buffer = _renderSoundDesign(ctx, design);
-          } else {
+        // Prefer procedural synthesis (avoids 404 errors for missing mp3 files)
+        if (design) {
+          buffer = _renderSoundDesign(ctx, design);
+        } else if (path) {
+          // Only fetch if no synthesis design exists
+          try {
+            const response = await fetch(path);
+            if (!response.ok) throw new Error("not found");
+            const arrayBuffer = await response.arrayBuffer();
+            buffer = await ctx.decodeAudioData(arrayBuffer);
+          } catch {
             // Ultimate fallback: simple beep
             const sr = ctx.sampleRate;
             buffer = ctx.createBuffer(1, Math.ceil(sr * 0.15), sr);
@@ -503,12 +504,12 @@ export function useSound() {
             }
           }
         }
-        cacheRef.current.set(name, buffer);
+        if (buffer) cacheRef.current.set(name, buffer);
       }
 
       const source = ctx.createBufferSource();
       const gain = ctx.createGain();
-      source.buffer = buffer;
+      source.buffer = buffer ?? null;
       gain.gain.value = volume;
       source.connect(gain).connect(ctx.destination);
       source.start();

@@ -6,6 +6,8 @@ import { motion } from "framer-motion";
 import { Trophy, Clock, Swords, Zap, UserPlus, Shield } from "lucide-react";
 import { BackButton } from "@/components/ui/BackButton";
 import { useTournamentStore } from "@/stores/useTournamentStore";
+import { useNotificationStore } from "@/stores/useNotificationStore";
+import AuthLayout from "@/components/layout/AuthLayout";
 import { BracketView } from "@/components/pvp/BracketView";
 import { useSound } from "@/hooks/useSound";
 import { AppIcon } from "@/components/ui/AppIcon";
@@ -63,15 +65,29 @@ export default function TournamentPage() {
   const handleRegister = async () => {
     if (!tournament) return;
     setRegistering(true);
-    const ok = await registerForBracket(tournament.id);
-    setRegistering(false);
-    if (ok) {
+    try {
+      await registerForBracket(tournament.id);
       playSound("match_start", 0.4);
       fetchBracket(tournament.id);
+      useNotificationStore.getState().addToast({
+        title: "Регистрация успешна",
+        body: "Вы добавлены в сетку турнира.",
+        type: "success",
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Не удалось зарегистрироваться";
+      useNotificationStore.getState().addToast({
+        title: "Ошибка регистрации",
+        body: msg,
+        type: "error",
+      });
+    } finally {
+      setRegistering(false);
     }
   };
 
   return (
+    <AuthLayout>
     <div className="min-h-screen" style={{ background: "var(--bg-primary)" }}>
       {/* Header */}
       <div
@@ -309,6 +325,7 @@ export default function TournamentPage() {
         )}
       </div>
     </div>
+    </AuthLayout>
   );
 }
 

@@ -15,17 +15,17 @@ export function LogTab({ logEntries }: { logEntries: WikiLogEntry[] }) {
           key={entry.id}
           style={{
             padding: "0.75rem 1rem",
-            background: entry.error_msg ? "rgba(239,68,68,0.04)" : "rgba(255,255,255,0.03)",
-            border: `1px solid ${entry.error_msg ? "rgba(239,68,68,0.15)" : "rgba(255,255,255,0.06)"}`,
+            background: entry.error_msg ? "var(--danger-muted)" : "rgba(255,255,255,0.03)",
+            border: `1px solid ${entry.error_msg ? "var(--danger-muted)" : "rgba(255,255,255,0.06)"}`,
             borderRadius: 8,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.3rem" }}>
             <span style={{
-              fontSize: "0.75rem",
+              fontSize: "0.875rem",
               padding: "2px 8px",
               borderRadius: 6,
-              background: entry.status === "completed" ? "rgba(34,197,94,0.12)" : entry.status === "failed" ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)",
+              background: entry.status === "completed" ? "var(--success-muted)" : entry.status === "failed" ? "var(--danger-muted)" : "var(--warning-muted)",
               color: entry.status === "completed" ? "var(--success)" : entry.status === "failed" ? "var(--danger)" : "var(--warning)",
               fontWeight: 600,
             }}>
@@ -34,16 +34,16 @@ export function LogTab({ logEntries }: { logEntries: WikiLogEntry[] }) {
             <span style={{ fontWeight: 500, color: "var(--text-secondary)", fontSize: "0.9rem" }}>
               {ACTION_LABELS[entry.action] || entry.action}
             </span>
-            <span style={{ marginLeft: "auto", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            <span style={{ marginLeft: "auto", fontSize: "0.875rem", color: "var(--text-muted)" }}>
               {formatDate(entry.started_at)}
             </span>
           </div>
           {entry.description && (
-            <p style={{ color: "var(--text-muted)", margin: "0.25rem 0 0", fontSize: "0.8rem" }}>
+            <p style={{ color: "var(--text-muted)", margin: "0.25rem 0 0", fontSize: "0.875rem" }}>
               {entry.description}
             </p>
           )}
-          <div style={{ display: "flex", gap: "1rem", marginTop: "0.3rem", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+          <div style={{ display: "flex", gap: "1rem", marginTop: "0.3rem", fontSize: "0.875rem", color: "var(--text-muted)" }}>
             {entry.pages_created > 0 && <span>+{entry.pages_created} страниц</span>}
             {entry.pages_modified > 0 && <span>{entry.pages_modified} обновлено</span>}
             {entry.patterns_discovered.length > 0 && (
@@ -52,7 +52,7 @@ export function LogTab({ logEntries }: { logEntries: WikiLogEntry[] }) {
             {entry.tokens_used > 0 && <span>{entry.tokens_used} токенов</span>}
           </div>
           {entry.error_msg && (
-            <p style={{ color: "var(--danger)", margin: "0.3rem 0 0", fontSize: "0.75rem" }}>
+            <p style={{ color: "var(--danger)", margin: "0.3rem 0 0", fontSize: "0.875rem" }}>
               {entry.error_msg}
             </p>
           )}

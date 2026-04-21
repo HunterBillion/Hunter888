@@ -26,7 +26,7 @@ export function ConsequenceToast({ consequence, onDismiss }: Props) {
 
   const isHigh = consequence ? consequence.severity >= 0.7 : false;
   const color = isHigh ? "var(--danger)" : "var(--warning, #F59E0B)";
-  const bgColor = isHigh ? "rgba(229,72,77,0.1)" : "rgba(245,158,11,0.1)";
+  const bgColor = isHigh ? "var(--danger-muted)" : "var(--warning-muted)";
   const borderColor = isHigh ? "rgba(229,72,77,0.3)" : "rgba(245,158,11,0.3)";
 
   return (

@@ -24,7 +24,7 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -92,7 +92,7 @@ class ConsequenceEvent:
     level: str = CONSEQUENCE_LOCAL  # cosmetic | local | global
     trigger_action: str = ""
     effect_description: str = ""
-    applied_at: datetime = field(default_factory=datetime.utcnow)
+    applied_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: Optional[datetime] = None
     is_active: bool = True
     source_agent: str = ""  # "agent_1", "agent_3", etc.
@@ -105,7 +105,7 @@ class StoryletActivation:
     narrative_text: str = ""
     effects: dict = field(default_factory=dict)
     priority: int = 5
-    activated_at: datetime = field(default_factory=datetime.utcnow)
+    activated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -114,7 +114,7 @@ class BetweenCallEvent:
     event_type: str = "message"  # message | status_change | consequence | storylet | callback
     title: str = ""
     content: str = ""
-    game_timestamp: datetime = field(default_factory=datetime.utcnow)
+    game_timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     payload: dict = field(default_factory=dict)
 
 
@@ -304,6 +304,11 @@ class GameDirectorEngine:
         db: AsyncSession,
     ) -> ClientStory:
         """Create a new ClientStory. Called when manager starts a multi-call arc."""
+        # Resolve VRM avatar model from personality profile archetype
+        from app.services.avatar_assignment import resolve_model_key
+        archetype_code = personality_profile.get("archetype_code") if personality_profile else None
+        vrm_model_id = resolve_model_key(archetype_code)
+
         story = ClientStory(
             id=str(uuid.uuid4()),
             user_id=user_id,
@@ -311,6 +316,7 @@ class GameDirectorEngine:
             total_calls=0,
             relationship_score=50.0,
             personality_profile=personality_profile,
+            vrm_model_id=vrm_model_id,
             memory={"promises": [], "key_moments": [], "insults": [], "agreements": []},
             active_storylets=[],
             consequence_log=[],
@@ -488,7 +494,7 @@ class GameDirectorEngine:
 
                 # Record state entry timestamp for time-based gates (Task 1.2)
                 director = story.director_state or {}
-                director["state_entered_at"] = datetime.utcnow().isoformat()
+                director["state_entered_at"] = datetime.now(timezone.utc).isoformat()
                 director["previous_state"] = old_state
                 story.director_state = director
 
@@ -504,12 +510,12 @@ class GameDirectorEngine:
             for p in result.promises_made:
                 memory.setdefault("promises", []).append({
                     "text": p, "call_number": story.total_calls,
-                    "fulfilled": False, "created_at": datetime.utcnow().isoformat(),
+                    "fulfilled": False, "created_at": datetime.now(timezone.utc).isoformat(),
                 })
             for km in result.key_moments:
                 memory.setdefault("key_moments", []).append({
                     "text": km, "call_number": story.total_calls,
-                    "created_at": datetime.utcnow().isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                 })
             story.memory = memory
 
@@ -585,7 +591,7 @@ class GameDirectorEngine:
                 return True  # No timestamp recorded — allow transition
             try:
                 entered = datetime.fromisoformat(state_entered_at)
-                return datetime.utcnow() - entered >= timedelta(hours=min_hours)
+                return datetime.now(timezone.utc) - entered >= timedelta(hours=min_hours)
             except (ValueError, TypeError):
                 return True
 
@@ -747,7 +753,7 @@ class GameDirectorEngine:
                 # ── Persist activation timestamp for cooldown enforcement (Task 1.3) ──
                 director = story.director_state or {}
                 activations = director.get("storylet_activations", {})
-                activations[tpl["code"]] = datetime.utcnow().isoformat()
+                activations[tpl["code"]] = datetime.now(timezone.utc).isoformat()
                 director["storylet_activations"] = activations
                 story.director_state = director
 
@@ -767,7 +773,7 @@ class GameDirectorEngine:
             if last_activated:
                 try:
                     last_dt = datetime.fromisoformat(last_activated)
-                    if datetime.utcnow() - last_dt < timedelta(days=cooldown_days):
+                    if datetime.now(timezone.utc) - last_dt < timedelta(days=cooldown_days):
                         return False  # Still in cooldown
                 except (ValueError, TypeError):
                     pass  # Invalid date — allow activation

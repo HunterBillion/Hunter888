@@ -15,7 +15,7 @@ const ICON_MAP: Record<string, typeof Scale> = {
 
 const TYPE_COLORS: Record<string, string> = {
   legal: "rgba(234, 179, 8, 0.15)",
-  emotion: "rgba(239, 68, 68, 0.12)",
+  emotion: "var(--danger-muted)",
   stage: "rgba(34, 197, 94, 0.12)",
   objection: "rgba(139, 92, 246, 0.12)",
   transition: "rgba(59, 130, 246, 0.12)",
@@ -23,7 +23,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 const TYPE_BORDER_COLORS: Record<string, string> = {
   legal: "rgba(234, 179, 8, 0.3)",
-  emotion: "rgba(239, 68, 68, 0.25)",
+  emotion: "var(--danger-muted)",
   stage: "rgba(34, 197, 94, 0.25)",
   objection: "rgba(139, 92, 246, 0.25)",
   transition: "rgba(59, 130, 246, 0.25)",
@@ -53,11 +53,16 @@ interface WhisperPanelProps {
 export default function WhisperPanel({ onToggle }: WhisperPanelProps) {
   const whispers = useSessionStore((s) => s.whispers);
   const enabled = useSessionStore((s) => s.whispersEnabled);
+  const hintsEnabled = useSessionStore((s) => s.scriptHintsEnabled);
 
   const handleToggle = () => {
     const next = !enabled;
     useSessionStore.getState().setWhispersEnabled(next);
     onToggle?.(next);
+  };
+
+  const handleToggleHints = () => {
+    useSessionStore.getState().setScriptHintsEnabled(!hintsEnabled);
   };
 
   return (
@@ -82,6 +87,24 @@ export default function WhisperPanel({ onToggle }: WhisperPanelProps) {
         >
           {enabled ? <Eye size={13} /> : <EyeOff size={13} />}
           <span className="text-xs font-medium uppercase">{enabled ? "ВКЛ" : "ВЫКЛ"}</span>
+        </button>
+      </div>
+
+      {/* Script hints toggle (AI-generated reply suggestions) */}
+      <div className="flex items-center justify-between mb-3 pb-3" style={{ borderBottom: "1px solid var(--border-color)" }}>
+        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Варианты ответа
+        </span>
+        <button
+          onClick={handleToggleHints}
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg transition-colors text-[10px] font-medium uppercase"
+          style={{
+            background: hintsEnabled ? "rgba(107, 77, 199, 0.15)" : "rgba(255, 255, 255, 0.04)",
+            color: hintsEnabled ? "var(--accent)" : "var(--text-muted)",
+          }}
+          title={hintsEnabled ? "Скрыть варианты реплик" : "Показать варианты реплик"}
+        >
+          {hintsEnabled ? "ВКЛ" : "ВЫКЛ"}
         </button>
       </div>
 

@@ -1089,7 +1089,7 @@ export function getArchetypesForLevel(level: number): ArchetypeInfo[] {
 /** Get tier color */
 export function getTierColor(tier: ArchetypeTier): string {
   switch (tier) {
-    case 1: return "#7C6AE8"; // accent purple — baseline
+    case 1: return "#6B4DC7"; // accent purple — baseline
     case 2: return "#9B7AE8"; // lighter purple — intermediate
     case 3: return "#B896F0"; // lavender — advanced
     case 4: return "#D4A84B"; // gold accent — expert (reward color)
@@ -1098,7 +1098,7 @@ export function getTierColor(tier: ArchetypeTier): string {
 
 /** Difficulty colors — monochrome purple scale + gold for extreme */
 export function getDifficultyColor(difficulty: number): string {
-  if (difficulty <= 3) return "#7C6AE8"; // accent — easy
+  if (difficulty <= 3) return "#6B4DC7"; // accent — easy
   if (difficulty <= 6) return "#9B7AE8"; // lighter — medium
   if (difficulty <= 8) return "#B896F0"; // lavender — hard
   return "#D4A84B"; // gold — extreme (reward/challenge)

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Loader2, AlertCircle, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { api } from "@/lib/api";
+import { api, resetAuthCircuitBreaker } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
 import { useAuthStore } from "@/stores/useAuthStore";
 
@@ -36,12 +36,23 @@ function OAuthCallbackContent() {
 
     api
       .post(`/auth/${provider}/callback`, { code, state })
-      .then((data: { access_token: string; refresh_token: string; csrf_token?: string }) => {
+      .then(async (data: { access_token: string; refresh_token: string; csrf_token?: string; must_change_password?: boolean }) => {
         setTokens(data.access_token, data.refresh_token, data.csrf_token);
+        resetAuthCircuitBreaker();
         // Invalidate auth store so /home fetches fresh user with correct preferences
         useAuthStore.getState().invalidate();
         setStatus("success");
-        setTimeout(() => router.replace("/home"), 800);
+
+        let target = "/home";
+        if (data.must_change_password) {
+          target = "/change-password";
+        } else {
+          try {
+            const consentStatus = await api.get<{ all_accepted: boolean }>("/consent/status");
+            if (!consentStatus.all_accepted) target = "/consent";
+          } catch { /* proceed to /home — AuthLayout will guard */ }
+        }
+        setTimeout(() => router.replace(target), 800);
       })
       .catch((err: unknown) => {
         setStatus("error");

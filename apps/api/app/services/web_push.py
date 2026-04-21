@@ -52,7 +52,7 @@ class PushSubscription(Base):
     __tablename__ = "push_subscriptions"
 
     id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     endpoint: Mapped[str] = mapped_column(Text, nullable=False)
     p256dh: Mapped[str] = mapped_column(String(200), nullable=False)
     auth: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -79,11 +79,16 @@ async def save_subscription(
     p256dh: str,
     auth: str,
     user_agent: str | None = None,
+    current_user_id: uuid.UUID | None = None,
 ) -> PushSubscription:
     """
     Register or update a push subscription for a user.
     Upsert by (user_id, endpoint).
+
+    S1-04: If current_user_id is provided, validates ownership.
     """
+    if current_user_id is not None and current_user_id != user_id:
+        raise ValueError(f"Ownership violation: user {current_user_id} cannot manage subscriptions for {user_id}")
     result = await db.execute(
         select(PushSubscription).where(
             PushSubscription.user_id == user_id,
@@ -155,11 +160,18 @@ async def send_push_to_user(
     icon: str | None = None,
     tag: str | None = None,
     data: dict | None = None,
+    current_user_id: uuid.UUID | None = None,
 ) -> int:
     """
     Send a Web Push notification to all active subscriptions of a user.
     Returns count of successful deliveries.
+
+    S1-04: If current_user_id is provided, validates ownership (user can only push to self).
+    Server-side callers (event_bus, notifications) pass current_user_id=None (trusted).
     """
+    if current_user_id is not None and current_user_id != user_id:
+        logger.warning("Push ownership violation: user %s tried to push to %s", current_user_id, user_id)
+        return 0
     if not settings.web_push_configured:
         logger.debug("Web Push not configured, skipping push to user %s", user_id)
         return 0
@@ -183,8 +195,9 @@ async def send_push_to_user(
     success_count = 0
     expired_subs: list[uuid.UUID] = []
 
+    import asyncio
     for sub in subscriptions:
-        ok = _send_single_push(sub, payload)
+        ok = await asyncio.to_thread(_send_single_push, sub, payload)
         if ok:
             success_count += 1
             sub.last_used_at = datetime.now(timezone.utc)

@@ -118,8 +118,8 @@ async def purchase_ap_item(
     try:
         result = await purchase_item(db, user.id, body.item_id)
         await db.commit()
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Невозможно выполнить покупку")
 
     return APPurchaseResponse(
         success=True,
@@ -196,9 +196,9 @@ async def soften_checkpoint(
     if ucp.is_softened:
         raise HTTPException(status_code=400, detail="Checkpoint already softened")
 
-    from datetime import datetime
+    from datetime import datetime, timezone
 
-    days_stuck = (datetime.utcnow() - (ucp.updated_at or ucp.created_at)).days
+    days_stuck = (datetime.now(timezone.utc) - (ucp.updated_at or ucp.created_at)).days
     if days_stuck < 14:
         raise HTTPException(status_code=400, detail=f"Checkpoint not eligible yet (stuck {days_stuck} days, need 14)")
 

@@ -18,11 +18,10 @@ Endpoints:
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
+from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,7 +31,6 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
 
 # All endpoints require methodologist or admin role
@@ -309,7 +307,7 @@ async def update_scoring_config(
     config = {
         "weights": data.get("weights", {}),
         "thresholds": data.get("thresholds", {}),
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": str(user.id),
     }
     await redis.set(SCORING_CONFIG_KEY, json.dumps(config))

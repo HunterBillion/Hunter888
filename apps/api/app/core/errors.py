@@ -14,6 +14,7 @@ INVALID_OR_EXPIRED_TOKEN = "Недействительный или просро
 INVALID_TOKEN = "Недействительный токен"
 TOKEN_REVOKED = "Токен отозван"
 TOKEN_REVOKED_RELOGIN = "Токен отозван. Пожалуйста, войдите заново."
+ROLE_VERSION_STALE = "Роль обновлена. Обновите токен."
 INVALID_CREDENTIALS = "Неверный email или пароль"
 ACCOUNT_DISABLED = "Аккаунт отключён"
 INVALID_REFRESH_TOKEN = "Недействительный refresh-токен"

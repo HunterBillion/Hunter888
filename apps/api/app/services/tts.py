@@ -394,17 +394,32 @@ class VoiceProfileManager:
         """
         story_key = str(client_story_id)
 
-        # 1. In-memory cache hit
+        # 1. In-memory cache hit — but validate gender, reject mismatched
         if story_key in _story_voice_cache:
-            return _story_voice_cache[story_key]
+            cached = _story_voice_cache[story_key]
+            if gender and cached.get("gender") and cached["gender"] != gender:
+                logger.warning(
+                    "TTS voice cache gender mismatch for story %s: cached=%s, requested=%s — reassigning",
+                    story_key, cached.get("gender"), gender,
+                )
+                _story_voice_cache.pop(story_key, None)
+            else:
+                return cached
 
-        # 2. Check DB
+        # 2. Check DB — same validation
         if db_session:
             try:
                 assignment = await VoiceProfileManager._load_from_db(story_key, db_session)
                 if assignment:
-                    _story_voice_cache[story_key] = assignment
-                    return assignment
+                    if gender and assignment.get("gender") and assignment["gender"] != gender:
+                        logger.warning(
+                            "TTS voice DB gender mismatch for story %s: stored=%s, requested=%s — reassigning",
+                            story_key, assignment.get("gender"), gender,
+                        )
+                        # Skip DB cache; fall through to re-pick
+                    else:
+                        _story_voice_cache[story_key] = assignment
+                        return assignment
             except Exception as exc:
                 logger.warning("Failed to load voice from DB for story %s: %s", story_key, exc)
 
@@ -517,11 +532,15 @@ class VoiceProfileManager:
         if not candidates:
             return None
 
-        # Filter by gender
+        # Filter by gender — FAIL CLOSED: if requested gender has no matches,
+        # return None so caller falls back to env-based _pick_legacy which has
+        # proper per-gender pools. Previously soft-fallback silently picked
+        # a wrong-gender voice (bug: female client → male voice).
         if gender:
             gendered = [vp for vp in candidates if vp.get("gender") == gender]
-            if gendered:
-                candidates = gendered
+            if not gendered:
+                return None
+            candidates = gendered
 
         # Filter by archetype
         if archetype:
@@ -1028,6 +1047,53 @@ def _is_configured() -> bool:
     )
 
 
+async def _synthesize_navy(text: str, voice: str | None = None, speed: float = 1.0) -> bytes:
+    """Fallback TTS via navy.api OpenAI-compatible endpoint.
+
+    Called when ElevenLabs is unavailable. Returns raw mp3 audio bytes.
+    Raises TTSError on failure — caller should fall back to browser Web Speech.
+    """
+    if not (settings.navy_tts_enabled and settings.local_llm_url and settings.local_llm_api_key):
+        raise TTSError("Navy TTS not configured")
+
+    # Ensure /v1/ prefix for OpenAI-compat endpoint
+    _tts_base = settings.local_llm_url.rstrip("/")
+    if not _tts_base.endswith("/v1"):
+        _tts_base += "/v1"
+    url = f"{_tts_base}/audio/speech"
+    payload = {
+        "model": settings.navy_tts_model,
+        "input": text[:4096],  # OpenAI/ElevenLabs limit
+        "voice": voice or settings.navy_tts_voice,
+        "speed": max(0.25, min(4.0, speed)),
+        "response_format": "mp3",
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.local_llm_api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        client = _get_shared_client()
+        response = await client.post(url, json=payload, headers=headers)
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError) as exc:
+        logger.error("Navy TTS unavailable: %s", exc)
+        raise TTSError(f"Navy TTS unavailable: {exc}")
+
+    if response.status_code != 200:
+        detail = response.text[:200]
+        logger.error("Navy TTS error %d: %s", response.status_code, detail)
+        raise TTSError(f"Navy TTS returned {response.status_code}")
+
+    audio_bytes = response.content
+    if len(audio_bytes) < 100:
+        raise TTSError("Navy TTS returned empty audio")
+
+    logger.info("NAVY_TTS_USAGE | chars=%d | model=%s | voice=%s | audio_bytes=%d",
+                len(text), settings.navy_tts_model, voice or settings.navy_tts_voice, len(audio_bytes))
+    return audio_bytes
+
+
 # =============================================================================
 # Main synthesis API
 # =============================================================================
@@ -1121,33 +1187,67 @@ async def synthesize_speech(
         proxy or "direct",
     )
 
+    # Navy TTS fallback helper — runs if ElevenLabs fails for any non-quota reason.
+    # TTSQuotaExhausted still bubbles up (client does browser Web Speech fallback).
+    async def _try_navy_fallback(reason: str) -> bytes | None:
+        if not settings.navy_tts_enabled:
+            return None
+        try:
+            logger.warning("ElevenLabs fallback → navy TTS (%s)", reason)
+            return await _synthesize_navy(text, speed=speed)
+        except TTSError as e:
+            logger.error("Navy TTS fallback also failed: %s", e)
+            return None
+
     try:
         client = _get_shared_client()
         response = await client.post(url, json=payload, headers=headers, params=params_qs)
     except httpx.ConnectError:
         logger.error("ElevenLabs API unavailable")
-        raise TTSError("ElevenLabs API unavailable")
+        fallback_audio = await _try_navy_fallback("connect_error")
+        if fallback_audio:
+            audio_bytes = fallback_audio
+            response = None
+        else:
+            raise TTSError("ElevenLabs API unavailable")
     except httpx.TimeoutException:
         logger.error("ElevenLabs API timeout (%ds)", settings.elevenlabs_timeout_seconds)
-        raise TTSError("ElevenLabs API timeout")
+        fallback_audio = await _try_navy_fallback("timeout")
+        if fallback_audio:
+            audio_bytes = fallback_audio
+            response = None
+        else:
+            raise TTSError("ElevenLabs API timeout")
     except httpx.HTTPError as exc:
         logger.error("ElevenLabs HTTP error: %s", exc)
-        raise TTSError(f"ElevenLabs HTTP error: {exc}")
+        fallback_audio = await _try_navy_fallback(f"http_error:{exc}")
+        if fallback_audio:
+            audio_bytes = fallback_audio
+            response = None
+        else:
+            raise TTSError(f"ElevenLabs HTTP error: {exc}")
 
     latency_ms = int((time.monotonic() - start_ts) * 1000)
 
-    if response.status_code == 401:
-        raise TTSError("Invalid ElevenLabs API key")
-    if response.status_code in (402, 429):
-        raise TTSQuotaExhausted("ElevenLabs quota exhausted — fallback to browser TTS")
-    if response.status_code != 200:
-        detail = response.text[:300]
-        logger.error("ElevenLabs error %d: %s", response.status_code, detail)
-        raise TTSError(f"ElevenLabs returned {response.status_code}")
-
-    audio_bytes = response.content
-    if len(audio_bytes) < 100:
-        raise TTSError("ElevenLabs returned empty audio")
+    # Only do status-code checks if we actually got a response (i.e. ElevenLabs responded).
+    if response is not None:
+        if response.status_code == 401:
+            raise TTSError("Invalid ElevenLabs API key")
+        if response.status_code in (402, 429):
+            # Quota is unique — bubble up so client switches to browser Web Speech.
+            raise TTSQuotaExhausted("ElevenLabs quota exhausted — fallback to browser TTS")
+        if response.status_code != 200:
+            detail = response.text[:300]
+            logger.error("ElevenLabs error %d: %s", response.status_code, detail)
+            fallback_audio = await _try_navy_fallback(f"http_{response.status_code}")
+            if fallback_audio:
+                audio_bytes = fallback_audio
+            else:
+                raise TTSError(f"ElevenLabs returned {response.status_code}")
+        else:
+            audio_bytes = response.content
+            if len(audio_bytes) < 100:
+                raise TTSError("ElevenLabs returned empty audio")
 
     # Cache short phrases
     if use_cache and len(text) < 200:

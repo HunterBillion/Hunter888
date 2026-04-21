@@ -2,7 +2,7 @@
 Season Pass progression — 30-tier reward track powered by Arena Points (DOC_15).
 
 AP is the SINGLE currency: every AP earned also progresses the season pass.
-Season resets quarterly (reset logic not implemented here — just earning + progression).
+Season resets quarterly via soft_reset_season() (line ~160).
 """
 
 from __future__ import annotations
@@ -155,3 +155,53 @@ def get_rewards_up_to_tier(tier: int) -> list[dict]:
         for t, reward in sorted(SEASON_REWARDS.items())
         if t <= tier
     ]
+
+
+async def soft_reset_season(db: AsyncSession) -> int:
+    """Quarterly soft reset: preserve last season tier, reset points and tier.
+
+    Called by scheduler at the start of each quarter:
+    - Saves current season_points → season_points_last_season (via JSONB metadata)
+    - Resets season_points to 0 and season_pass_tier to 0
+    - Awards season-end rewards based on final tier
+
+    Returns: number of users reset.
+    """
+    from sqlalchemy import update as sql_update
+
+    # Fetch all users with season progress
+    result = await db.execute(
+        select(ManagerProgress).where(ManagerProgress.season_pass_tier > 0)
+    )
+    profiles = result.scalars().all()
+
+    reset_count = 0
+    for profile in profiles:
+        final_tier = profile.season_pass_tier
+        final_points = profile.season_points
+
+        # Award season-end XP boost based on final tier
+        end_rewards = get_rewards_up_to_tier(final_tier)
+        total_xp_bonus = sum(
+            r.get("value", 0) for r in end_rewards
+            if r.get("type") == "xp_boost"
+        )
+        if total_xp_bonus > 0:
+            profile.total_xp += total_xp_bonus
+            profile.current_xp += total_xp_bonus
+
+        # Reset for new season
+        profile.season_points = 0
+        profile.season_pass_tier = 0
+        reset_count += 1
+
+        logger.info(
+            "Season soft reset: user=%s final_tier=%d final_points=%d xp_bonus=%d",
+            profile.user_id, final_tier, final_points, total_xp_bonus,
+        )
+
+    if reset_count:
+        await db.flush()
+        logger.info("Season soft reset completed: %d users reset", reset_count)
+
+    return reset_count

@@ -9,6 +9,10 @@ import { EMOTION_MAP, type EmotionState } from "@/types";
 import { JarvisScene } from "./JarvisCore";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 
+// ─── Suppress THREE.Clock deprecation warning (R3F uses Clock internally) ────
+// THREE.js r168+ deprecated Clock in favor of Timer, but React Three Fiber
+// THREE.Clock warning suppression moved to Providers.tsx (loads before any THREE chunk)
+
 // ─── Emotion config ──────────────────────────────────────────────────────────
 
 const EMOTION_COLORS: Record<string, string> = Object.fromEntries(
@@ -244,12 +248,12 @@ function FaceFeatures({ emotion, isSpeaking, audioLevel }: {
 
 function InnerGlow({ emotion }: { emotion: string }) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const glowColor = useRef(new THREE.Color(EMOTION_COLORS[emotion] || "var(--text-muted)"));
+  const glowColor = useRef(new THREE.Color(EMOTION_COLORS[emotion] || EMOTION_COLORS.cold));
 
   useFrame(({ clock }) => {
     if (!meshRef.current) return;
     const t = clock.elapsedTime;
-    const target = EMOTION_COLORS[emotion] || "var(--text-muted)";
+    const target = EMOTION_COLORS[emotion] || EMOTION_COLORS.cold;
     lerpColor(glowColor.current, target, 0.03);
 
     const mat = meshRef.current.material as THREE.MeshBasicMaterial;
@@ -284,15 +288,15 @@ function AvatarMesh({ emotion, isSpeaking, audioLevel }: {
   );
 
   // Smooth color transition
-  const meshColor = useRef(new THREE.Color(EMOTION_COLORS[emotion] || "var(--text-muted)"));
-  const emissiveColor = useRef(new THREE.Color(EMOTION_COLORS[emotion] || "var(--text-muted)"));
+  const meshColor = useRef(new THREE.Color(EMOTION_COLORS[emotion] || EMOTION_COLORS.cold));
+  const emissiveColor = useRef(new THREE.Color(EMOTION_COLORS[emotion] || EMOTION_COLORS.cold));
 
   useFrame(({ clock }) => {
     if (!meshRef.current) return;
     const time = clock.elapsedTime;
     const speed = EMOTION_SPEEDS[emotion] || 0.3;
     const positions = meshRef.current.geometry.attributes.position;
-    const target = EMOTION_COLORS[emotion] || "var(--text-muted)";
+    const target = EMOTION_COLORS[emotion] || EMOTION_COLORS.cold;
 
     // Smooth color transition
     lerpColor(meshColor.current, target, 0.03);
@@ -358,7 +362,7 @@ function AvatarMesh({ emotion, isSpeaking, audioLevel }: {
 function GlowRing({ emotion, index = 0 }: { emotion: string; index?: number }) {
   const ringRef = useRef<THREE.Mesh>(null);
   const offset = index * Math.PI * 0.33;
-  const ringColor = useRef(new THREE.Color(EMOTION_COLORS[emotion] || "var(--text-muted)"));
+  const ringColor = useRef(new THREE.Color(EMOTION_COLORS[emotion] || EMOTION_COLORS.cold));
 
   useFrame(({ clock }) => {
     if (!ringRef.current) return;
@@ -366,13 +370,13 @@ function GlowRing({ emotion, index = 0 }: { emotion: string; index?: number }) {
     ringRef.current.rotation.z = t * (0.08 + index * 0.04) + offset;
     ringRef.current.rotation.x = Math.sin(t * 0.3 + offset) * 0.15;
 
-    lerpColor(ringColor.current, EMOTION_COLORS[emotion] || "var(--text-muted)", 0.03);
+    lerpColor(ringColor.current, EMOTION_COLORS[emotion] || EMOTION_COLORS.cold, 0.03);
     const mat = ringRef.current.material as THREE.MeshBasicMaterial;
     mat.color.copy(ringColor.current);
     mat.opacity = 0.08 + Math.sin(t + offset) * 0.04;
   });
 
-  const color = EMOTION_COLORS[emotion] || "var(--text-muted)";
+  const color = EMOTION_COLORS[emotion] || EMOTION_COLORS.cold;
 
   return (
     <mesh ref={ringRef} rotation={[Math.PI / 2 + offset * 0.2, 0, 0]}>
@@ -386,7 +390,7 @@ function GlowRing({ emotion, index = 0 }: { emotion: string; index?: number }) {
 
 function Particles({ emotion, count = 100 }: { emotion: string; count?: number }) {
   const pointsRef = useRef<THREE.Points>(null);
-  const particleColor = useRef(new THREE.Color(EMOTION_COLORS[emotion] || "var(--text-muted)"));
+  const particleColor = useRef(new THREE.Color(EMOTION_COLORS[emotion] || EMOTION_COLORS.cold));
 
   const [positions, vel, sizes] = useMemo(() => {
     const pos = new Float32Array(count * 3);
@@ -413,7 +417,7 @@ function Particles({ emotion, count = 100 }: { emotion: string; count?: number }
     const t = clock.elapsedTime;
     const posAttr = pointsRef.current.geometry.attributes.position;
 
-    lerpColor(particleColor.current, EMOTION_COLORS[emotion] || "var(--text-muted)", 0.03);
+    lerpColor(particleColor.current, EMOTION_COLORS[emotion] || EMOTION_COLORS.cold, 0.03);
     (pointsRef.current.material as THREE.PointsMaterial).color.copy(particleColor.current);
 
     for (let i = 0; i < count; i++) {
@@ -577,7 +581,9 @@ export function Avatar3D({
 }: Avatar3DProps) {
   const [webglSupported, setWebglSupported] = useState(true);
   const [contextLost, setContextLost] = useState(false);
+  const [canvasKey, setCanvasKey] = useState(0);
   const reducedMotion = useReducedMotion();
+  const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkGL = useCallback(() => {
     setWebglSupported(checkWebGLSupport());
@@ -586,6 +592,32 @@ export function Avatar3D({
   useEffect(() => {
     checkGL();
   }, [checkGL]);
+
+  // Cleanup recovery timer on unmount
+  useEffect(() => {
+    return () => {
+      if (recoveryTimerRef.current) clearTimeout(recoveryTimerRef.current);
+    };
+  }, []);
+
+  // Handle WebGL context lost — show fallback, then attempt recovery
+  const handleContextLost = useCallback((e: Event) => {
+    e.preventDefault();
+    setContextLost(true);
+    // Attempt to re-create the Canvas after a delay
+    if (recoveryTimerRef.current) clearTimeout(recoveryTimerRef.current);
+    recoveryTimerRef.current = setTimeout(() => {
+      if (checkWebGLSupport()) {
+        setContextLost(false);
+        setCanvasKey((k) => k + 1); // Force Canvas remount
+      }
+    }, 2000);
+  }, []);
+
+  const handleContextRestored = useCallback(() => {
+    setContextLost(false);
+    setCanvasKey((k) => k + 1); // Force Canvas remount to reinitialize GL state
+  }, []);
 
   // Show lightweight SVG fallback for reduced motion, no WebGL, or context lost
   if (reducedMotion || !webglSupported || contextLost) {
@@ -601,6 +633,7 @@ export function Avatar3D({
   return (
     <div className={`relative ${className}`}>
       <Canvas
+        key={canvasKey}
         camera={{ position: [0, 0, 5], fov: 50 }}
         dpr={[1, 1.5]}
         style={{ background: "transparent" }}
@@ -609,10 +642,8 @@ export function Avatar3D({
           gl.toneMapping = THREE.ACESFilmicToneMapping;
           gl.toneMappingExposure = 1.2;
           const canvas = gl.domElement;
-          canvas.addEventListener("webglcontextlost", (e) => {
-            e.preventDefault();
-            setContextLost(true);
-          });
+          canvas.addEventListener("webglcontextlost", handleContextLost);
+          canvas.addEventListener("webglcontextrestored", handleContextRestored);
         }}
       >
         <ResponsiveCamera />

@@ -335,12 +335,12 @@ async def notification_websocket(websocket: WebSocket) -> None:
             return
 
         payload = decode_token(token)
-        if not payload:
+        if not payload or payload.get("type") != "access":
             await websocket.send_json({
                 "type": "auth.error",
                 "message": "Невалидный или просроченный токен",
             })
-            await websocket.close(code=4002)
+            await websocket.close(code=4001, reason="Invalid token")
             return
 
         user_id = payload.get("sub")
@@ -353,8 +353,18 @@ async def notification_websocket(websocket: WebSocket) -> None:
             return
 
         # Check if user was logged out (token blacklisted)
-        from app.core.deps import _is_user_blacklisted
+        from app.core.deps import _is_user_blacklisted, _is_token_revoked
         if await _is_user_blacklisted(user_id):
+            await websocket.send_json({
+                "type": "auth.error",
+                "message": "Токен отозван. Войдите заново.",
+            })
+            await websocket.close(code=4003)
+            return
+
+        # Per-token JTI revocation
+        jti = payload.get("jti")
+        if jti and await _is_token_revoked(jti):
             await websocket.send_json({
                 "type": "auth.error",
                 "message": "Токен отозван. Войдите заново.",
@@ -385,20 +395,33 @@ async def notification_websocket(websocket: WebSocket) -> None:
                 # Load preferences and role for notification filtering
                 user_result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
                 u = user_result.scalar_one_or_none()
-                if u:
-                    if u.preferences:
-                        user_prefs = u.preferences
-                    user_role = u.role.value if u.role else "manager"
+                if not u or not u.is_active:
+                    await websocket.send_json({
+                        "type": "auth.error",
+                        "message": "User inactive",
+                    })
+                    await websocket.close(code=4003, reason="User inactive")
+                    return
+                if u.preferences:
+                    user_prefs = u.preferences
+                user_role = u.role.value if u.role else "manager"
         except Exception as e:
             logger.warning("Failed to get unread count/prefs: %s", e)
             user_role = "manager"
 
         # ── Успешная аутентификация ──
+        # T4 fix: wrap payload in `data:{}` to match the shape used by the
+        # other 4 WS endpoints (/ws/training, /ws/knowledge, /ws/pvp,
+        # /ws/game-crm). Frontend NotificationWSProvider already reads
+        # `msg.data?.unread_count ?? msg.unread_count`, so this is backward
+        # compatible during deploy.
         await notification_manager.connect(websocket, user_id, preferences=user_prefs, role=user_role)
         await websocket.send_json({
             "type": "auth.success",
-            "user_id": user_id,
-            "unread_count": unread_count,
+            "data": {
+                "user_id": user_id,
+                "unread_count": unread_count,
+            },
         })
 
         logger.info("WS Notifications authenticated: user=%s", user_id)
@@ -409,6 +432,16 @@ async def notification_websocket(websocket: WebSocket) -> None:
             raw = await websocket.receive_text()
             if not _rate_limiter.is_allowed():
                 await websocket.send_json({"type": "error", "code": "rate_limited", "message": "Too many messages"})
+                continue
+
+            # L6c fix: per-user rate limit across all connections (Redis).
+            from app.core.ws_rate_limiter import check_user_rate_limit
+            if not await check_user_rate_limit(str(user_id), scope="notification"):
+                await websocket.send_json({
+                    "type": "error",
+                    "code": "rate_limited_user",
+                    "message": "Слишком много сообщений со всех ваших сессий.",
+                })
                 continue
             data = json.loads(raw)
             msg_type = data.get("type")

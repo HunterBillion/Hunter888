@@ -621,6 +621,8 @@ def get_current_quote_index(now: datetime | None = None) -> int:
     """Return the deterministic quote index for the current 6-hour window."""
     if now is None:
         now = datetime.now(timezone.utc)
+    if TOTAL_QUOTES == 0:  # S4-06
+        return 0
     day_number = int(now.timestamp()) // 86400
     slot = now.hour // 6
     return (day_number * 4 + slot) % TOTAL_QUOTES
@@ -645,6 +647,17 @@ def get_navigator_response(now: datetime | None = None) -> dict:
     """Build the full navigator API response for the current window."""
     if now is None:
         now = datetime.now(timezone.utc)
+
+    # S4-06: Guard against empty QUOTES list
+    if not QUOTES:
+        return {
+            "index": 0, "total": 0,
+            "text": "Двигайся вперёд.", "author": "", "source": "",
+            "category": "general", "category_label": "Общее",
+            "slot": now.hour // 6,
+            "next_change_at": get_next_slot_utc(now).isoformat(),
+            "seconds_remaining": 0,
+        }
 
     idx = get_current_quote_index(now)
     quote = QUOTES[idx]

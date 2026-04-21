@@ -135,6 +135,13 @@ class SessionResponse(BaseModel):
     score_anti_patterns: float | None = None
     score_result: float | None = None
     score_total: float | None = None
+    # FIND-007 fix: Wave 5 layered scoring (L6-L10). Backend computes these
+    # into ORM columns; Pydantic used to drop them by silent validation.
+    score_chain_traversal: float | None = None
+    score_trap_handling: float | None = None
+    score_human_factor: float | None = None
+    score_narrative: float | None = None
+    score_legal: float | None = None
     scoring_details: dict | None = None
     emotion_timeline: list | None = None
     feedback_text: str | None = None
@@ -255,6 +262,13 @@ class SessionResultResponse(BaseModel):
     story_calls: list[StoryCallSummary] = []
     weak_legal_categories: list[WeakLegalCategory] | None = None
     promise_fulfillment: list[PromiseFulfillment] | None = None
+    # FIND-006 fix: XP + level-up rewards. WS /ws/training emits these at
+    # session.end; HTTP GET /sessions/{id} used to drop them because they
+    # weren't declared here — frontend silently missed XP animations.
+    xp_breakdown: dict | None = None
+    level_up: bool | None = None
+    new_level: int | None = None
+    new_level_name: str | None = None
 
 
 # ── Wave 5: Replay Mode ──────────────────────────────────────────────────────

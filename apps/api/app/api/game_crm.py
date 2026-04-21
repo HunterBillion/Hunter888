@@ -13,9 +13,8 @@ import logging
 import uuid
 from typing import Optional
 
+from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +27,6 @@ from app.services.game_crm_service import GameCRMService
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

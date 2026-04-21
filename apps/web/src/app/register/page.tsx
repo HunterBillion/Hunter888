@@ -6,7 +6,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { UserPlus, Mail, User, ArrowRight, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { api } from "@/lib/api";
+import { api, resetAuthCircuitBreaker } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { PasswordInput } from "@/components/ui/PasswordInput";
@@ -58,6 +58,7 @@ export default function RegisterPage() {
         full_name: normalizedName,
       });
       setTokens(data.access_token, data.refresh_token, data.csrf_token);
+      resetAuthCircuitBreaker();
       router.push("/onboarding");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Ошибка регистрации";
@@ -80,7 +81,7 @@ export default function RegisterPage() {
   return (
     <div className="relative flex min-h-screen items-center justify-center px-4 py-8 overflow-hidden" style={{ background: "var(--bg-primary)" }}>
       {/* Ambient glow */}
-      <div className="fixed inset-0 z-0 pointer-events-none" style={{ background: "radial-gradient(ellipse at 50% 70%, rgba(138,43,226,0.15) 0%, transparent 60%)" }} />
+      <div className="fixed inset-0 z-0 pointer-events-none" style={{ background: "radial-gradient(ellipse at 50% 70%, var(--accent-muted) 0%, transparent 60%)" }} />
 
       {/* 3D Wave Background */}
       <div className="fixed inset-0 z-[1]">
@@ -105,7 +106,7 @@ export default function RegisterPage() {
             animate={{ scale: 1 }}
             transition={{ type: "spring", stiffness: 300, delay: 0.1 }}
             className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
-            style={{ background: "var(--accent)", boxShadow: "0 0 30px rgba(124,106,232,0.3)" }}
+            style={{ background: "var(--accent)", boxShadow: "0 0 30px var(--accent-glow)" }}
           >
             <UserPlus size={26} className="text-white" />
           </motion.div>
@@ -123,7 +124,7 @@ export default function RegisterPage() {
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               className="flex items-center gap-2 rounded-xl p-3 text-sm"
-              style={{ background: "rgba(255, 51, 51, 0.08)", border: "1px solid rgba(255, 51, 51, 0.2)", color: "var(--danger)" }}
+              style={{ background: "var(--danger-muted)", border: "1px solid var(--danger-muted)", color: "var(--danger)" }}
             >
               <AlertCircle size={16} />
               {error}

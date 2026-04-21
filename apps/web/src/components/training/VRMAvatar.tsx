@@ -19,6 +19,15 @@ import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 
+// Suppress THREE.Clock deprecation warning (R3F uses Clock internally)
+if (typeof window !== "undefined") {
+  const _origWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    if (typeof args[0] === "string" && args[0].includes("THREE.Clock")) return;
+    _origWarn.apply(console, args);
+  };
+}
+
 // ── Emotion → VRM BlendShape mapping ──────────────────────────────────────────
 // VRM standard expression names: happy, angry, sad, relaxed, surprised, neutral
 const EMOTION_BLENDSHAPES: Record<string, Record<string, number>> = {
@@ -185,6 +194,8 @@ export function VRMAvatar({
   const [webglSupported, setWebglSupported] = useState(true);
   const [vrmAvailable, setVrmAvailable] = useState(true);
   const [contextLost, setContextLost] = useState(false);
+  const [canvasKey, setCanvasKey] = useState(0);
+  const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     // Check WebGL
@@ -201,6 +212,32 @@ export function VRMAvatar({
       .catch(() => setVrmAvailable(false));
   }, []);
 
+  // Cleanup recovery timer on unmount
+  useEffect(() => {
+    return () => {
+      if (recoveryTimerRef.current) clearTimeout(recoveryTimerRef.current);
+    };
+  }, []);
+
+  const handleContextLost = useCallback((e: Event) => {
+    e.preventDefault();
+    setContextLost(true);
+    // Attempt recovery after delay
+    if (recoveryTimerRef.current) clearTimeout(recoveryTimerRef.current);
+    recoveryTimerRef.current = setTimeout(() => {
+      const testCanvas = document.createElement("canvas");
+      if (testCanvas.getContext("webgl2") || testCanvas.getContext("webgl")) {
+        setContextLost(false);
+        setCanvasKey((k) => k + 1);
+      }
+    }, 2000);
+  }, []);
+
+  const handleContextRestored = useCallback(() => {
+    setContextLost(false);
+    setCanvasKey((k) => k + 1);
+  }, []);
+
   // Fallback to Avatar3D if VRM not available
   if (!webglSupported || !vrmAvailable || contextLost) {
     return null; // Parent will use Avatar3D fallback
@@ -209,14 +246,14 @@ export function VRMAvatar({
   return (
     <div className={className}>
       <Canvas
+        key={canvasKey}
         camera={{ position: [0, 1.3, 2.0], fov: 25 }}
         dpr={[1, 1.5]}
         style={{ background: "transparent" }}
         onCreated={({ gl }) => {
-          gl.domElement.addEventListener("webglcontextlost", (e) => {
-            e.preventDefault();
-            setContextLost(true);
-          });
+          const canvas = gl.domElement;
+          canvas.addEventListener("webglcontextlost", handleContextLost);
+          canvas.addEventListener("webglcontextrestored", handleContextRestored);
         }}
       >
         <ambientLight intensity={0.5} />

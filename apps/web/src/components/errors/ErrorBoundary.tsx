@@ -58,7 +58,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 style={{
                   fontSize: "120px",
                   color: "transparent",
-                  WebkitTextStroke: "1px rgba(229,72,77,0.08)",
+                  WebkitTextStroke: "1px var(--danger-muted)",
                 }}
               >
                 ERR
@@ -71,23 +71,23 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               <div
                 className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full"
                 style={{
-                  background: "rgba(229,72,77,0.08)",
-                  border: "1.5px solid rgba(229,72,77,0.15)",
+                  background: "var(--danger-muted)",
+                  border: "1.5px solid var(--danger-muted)",
                 }}
               >
                 <div
                   className="h-3 w-3 rounded-full"
                   style={{
                     background: "var(--danger)",
-                    boxShadow: "0 0 12px rgba(229,72,77,0.4)",
+                    boxShadow: "0 0 12px var(--danger-muted)",
                     animation: "pulse 2s ease-in-out infinite",
                   }}
                 />
               </div>
 
               <div
-                className="font-mono text-[10px] tracking-[0.25em] uppercase mb-2"
-                style={{ color: "rgba(229,72,77,0.5)" }}
+                className="font-mono text-xs tracking-widest uppercase mb-2"
+                style={{ color: "var(--danger)" }}
               >
                 {"// ОШИБКА_КОМПОНЕНТА"}
               </div>

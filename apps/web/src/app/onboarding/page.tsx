@@ -14,13 +14,13 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { logger } from "@/lib/logger";
 
-// ── Steps config ───────────────────────────────────────────
+// ── Steps config (3 steps per XHUNTER_PLAN_v2 §3.4) ──────
+// Old: 5 steps (Профиль, Настройки, Микрофон, Тренировка, Демо)
+// New: 3 steps — mic test embedded in step 3, settings merged into step 1
 const STEPS = [
   { id: 1, label: "Профиль", icon: User },
-  { id: 2, label: "Настройки", icon: Settings },
-  { id: 3, label: "Микрофон", icon: Mic },
-  { id: 4, label: "Тренировка", icon: Target },
-  { id: 5, label: "Демо", icon: MessageCircle },
+  { id: 2, label: "Архетип", icon: Crosshair },
+  { id: 3, label: "Первый звонок", icon: Target },
 ];
 
 const TEAMS = ["Отдел продаж", "Отдел B2B", "Холодные звонки", "Сопровождение", "Другое"];
@@ -218,7 +218,7 @@ function MicTest({ onResult }: { onResult: (ok: boolean) => void }) {
       {status === "success" && (
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           className="rounded-xl p-6 flex flex-col items-center gap-3"
-          style={{ background: "rgba(61,220,132,0.05)", border: "1px solid rgba(61,220,132,0.2)" }}
+          style={{ background: "var(--success-muted)", border: "1px solid var(--success-muted)" }}
         >
           <Check size={32} style={{ color: "var(--success)" }} />
           <span className="font-medium" style={{ color: "var(--success)" }}>Микрофон работает!</span>
@@ -228,7 +228,7 @@ function MicTest({ onResult }: { onResult: (ok: boolean) => void }) {
       {status === "error" && (
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           className="rounded-xl p-6 flex flex-col items-center gap-3"
-          style={{ background: "rgba(229,72,77,0.05)", border: "1px solid rgba(229,72,77,0.2)" }}
+          style={{ background: "var(--danger-muted)", border: "1px solid var(--danger-muted)" }}
         >
           <Mic size={32} style={{ color: "var(--danger)" }} />
           <span className="font-medium" style={{ color: "var(--danger)" }}>Микрофон недоступен</span>
@@ -344,11 +344,12 @@ export default function OnboardingPage() {
   const [trainingMode, setTrainingMode] = useState("structured");
 
   const canAdvance = () => {
-    if (step === 1) return !!role && team !== "" && specialization !== "" && experience !== "";
-    if (step === 2) return true;
-    if (step === 3) return micOk !== null;
-    if (step === 4) return trainingMode !== "";
-    if (step === 5) return true;
+    // Step 1: Profile (name/role/specialization)
+    if (step === 1) return !!role && specialization !== "" && experience !== "";
+    // Step 2: Archetype choice (pick first client type)
+    if (step === 2) return trainingMode !== "";
+    // Step 3: First call (demo) — always can finish
+    if (step === 3) return true;
     return false;
   };
 
@@ -540,77 +541,17 @@ export default function OnboardingPage() {
               </>
             )}
 
-            {/* Step 2: Settings */}
+            {/* Step 2: Archetype choice — 'Кто твой первый клиент?' */}
             {step === 2 && (
               <>
-                <h2 className="font-display text-xl font-bold tracking-wider mb-1 text-center" style={{ color: "var(--text-primary)" }}>Настройки</h2>
-                <p className="text-sm mb-6 text-center" style={{ color: "var(--text-muted)" }}>Настройте интерфейс</p>
+                <h2 className="font-display text-xl font-bold tracking-wider mb-1 text-center" style={{ color: "var(--text-primary)" }}>Кто твой первый клиент?</h2>
+                <p className="text-sm mb-6 text-center" style={{ color: "var(--text-muted)" }}>Выбери архетип для первого звонка</p>
                 <div className="space-y-3">
                   {[
-                    { label: "Озвучка AI-клиента", desc: "Голосовые ответы", icon: Volume2, value: ttsEnabled, toggle: () => setTtsEnabled(!ttsEnabled) },
-                    { label: "Уведомления", desc: "Напоминания", icon: Bell, value: notifications, toggle: () => setNotifications(!notifications) },
-                  ].map(item => (
-                    <div key={item.label} className="flex items-center justify-between rounded-xl p-4" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>
-                      <div className="flex items-center gap-3">
-                        <item.icon size={18} style={{ color: "var(--accent)" }} />
-                        <div>
-                          <div className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>{item.label}</div>
-                          <div className="text-xs" style={{ color: "var(--text-muted)" }}>{item.desc}</div>
-                        </div>
-                      </div>
-                      <motion.div
-                        className="relative w-11 h-6 rounded-full cursor-pointer"
-                        style={{ background: item.value ? "var(--accent)" : "var(--border-color)" }}
-                        onClick={item.toggle}
-                        whileTap={{ scale: 0.95 }}
-                      >
-                        <motion.div className="absolute top-1 w-4 h-4 rounded-full bg-white"
-                          animate={{ left: item.value ? 24 : 4 }}
-                          transition={{ type: "spring", stiffness: 500, damping: 30 }} />
-                      </motion.div>
-                    </div>
-                  ))}
-
-                  {/* D4: Theme selection */}
-                  <div className="rounded-xl p-4" style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}>
-                    <div className="flex items-center gap-3 mb-3">
-                      <Sun size={18} style={{ color: "var(--accent)" }} />
-                      <div>
-                        <div className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>Тема оформления</div>
-                        <div className="text-xs" style={{ color: "var(--text-muted)" }}>Выберите комфортный стиль</div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <ThemeToggle />
-                      <span className="text-xs self-center" style={{ color: "var(--text-muted)" }}>Нажмите для переключения</span>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Step 3: D3 Mic test */}
-            {step === 3 && (
-              <>
-                <h2 className="font-display text-xl font-bold tracking-wider mb-1 text-center" style={{ color: "var(--text-primary)" }}>Проверка микрофона</h2>
-                <p className="text-sm mb-6 text-center" style={{ color: "var(--text-muted)" }}>Для голосового ввода</p>
-                <MicTest onResult={(ok) => setMicOk(ok)} />
-                {micOk === null && (
-                  <button type="button" onClick={() => setMicOk(false)}
-                    className="mt-4 w-full text-center text-xs" style={{ color: "var(--text-muted)" }}>
-                    Пропустить — буду печатать
-                  </button>
-                )}
-              </>
-            )}
-
-            {/* Step 4: Training mode */}
-            {step === 4 && (
-              <>
-                <h2 className="font-display text-xl font-bold tracking-wider mb-1 text-center" style={{ color: "var(--text-primary)" }}>Режим тренировки</h2>
-                <p className="text-sm mb-6 text-center" style={{ color: "var(--text-muted)" }}>Формат обучения</p>
-                <div className="space-y-3">
-                  {MODES.map(m => (
+                    { value: "structured", label: "Скептик", desc: "Не верит, сомневается, задаёт неудобные вопросы", icon: "🤨" },
+                    { value: "freestyle", label: "Занятой", desc: "Торопится, перебивает, хочет быстро", icon: "⏰" },
+                    { value: "challenge", label: "Агрессор", desc: "Давит, угрожает, требует невозможного", icon: "😤" },
+                  ].map(m => (
                     <motion.button key={m.value} type="button" onClick={() => setTrainingMode(m.value)}
                       className="w-full rounded-xl px-5 py-4 text-left flex items-center gap-3"
                       style={{
@@ -631,11 +572,11 @@ export default function OnboardingPage() {
               </>
             )}
 
-            {/* Step 5: D2 Trial dialog */}
-            {step === 5 && (
+            {/* Step 3: First call (60 sec demo) — 'Охота начинается' */}
+            {step === 3 && (
               <>
-                <h2 className="font-display text-xl font-bold tracking-wider mb-1 text-center" style={{ color: "var(--text-primary)" }}>Пробный диалог</h2>
-                <p className="text-sm mb-6 text-center" style={{ color: "var(--text-muted)" }}>Попробуйте перед стартом</p>
+                <h2 className="font-display text-xl font-bold tracking-wider mb-1 text-center" style={{ color: "var(--text-primary)" }}>Охота начинается</h2>
+                <p className="text-sm mb-6 text-center" style={{ color: "var(--text-muted)" }}>Твой первый звонок — 60 секунд</p>
                 <TrialDialog />
               </>
             )}

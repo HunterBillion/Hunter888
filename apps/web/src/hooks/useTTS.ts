@@ -107,6 +107,9 @@ interface UseTTSReturn {
   /** Queue audio chunk for sentence-level TTS pipelining (Phase 2). */
   queueAudioChunk: (chunk: { audio: string; index: number; isLast: boolean }) => void;
 
+  /** Reset the chunk queue state (call between sessions or on barge-in). */
+  resetChunkQueue: () => void;
+
   /** Cancel scheduled fallback (call when tts.audio arrives). */
   cancelFallback: () => void;
 
@@ -352,6 +355,12 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     // Stop couple queue
     coupleQueueRef.current = [];
     couplePlayingRef.current = false;
+    // Stop streaming TTS chunk queue
+    if (pendingChunksRef.current) {
+      pendingChunksRef.current.clear();
+    }
+    nextExpectedIndexRef.current = 0;
+    playingChunkRef.current = false;
     // Stop animation + modulation
     stopAudioLevelSimulation();
     clearModulationState();
@@ -664,44 +673,60 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
   );
 
   // ---------------------------------------------------------------------------
-  // Phase 2: Sentence-level TTS queue
+  // Phase 2/3: Sentence-level TTS queue (streaming)
+  //
+  // Chunks may arrive out of order (parallel synth on backend). We buffer them
+  // in a map keyed by sentence_index and only play when we have the NEXT
+  // expected index — guarantees correct playback order without missing or
+  // reordering sentences.
   // ---------------------------------------------------------------------------
-  const audioQueueRef = useRef<{ audio: string; index: number; isLast: boolean }[]>([]);
+  const pendingChunksRef = useRef<Map<number, { audio: string; index: number; isLast: boolean }>>(new Map());
+  const nextExpectedIndexRef = useRef(0);
   const playingChunkRef = useRef(false);
 
+  const resetChunkQueue = useCallback(() => {
+    pendingChunksRef.current.clear();
+    nextExpectedIndexRef.current = 0;
+    playingChunkRef.current = false;
+  }, []);
+
   const playNextChunk = useCallback(() => {
-    if (playingChunkRef.current || audioQueueRef.current.length === 0) return;
+    if (playingChunkRef.current) return;
+    const chunk = pendingChunksRef.current.get(nextExpectedIndexRef.current);
+    if (!chunk) return;
+    pendingChunksRef.current.delete(nextExpectedIndexRef.current);
     playingChunkRef.current = true;
-    const chunk = audioQueueRef.current.shift()!;
     const blob = new Blob(
       [Uint8Array.from(atob(chunk.audio), (c) => c.charCodeAt(0))],
       { type: "audio/mpeg" },
     );
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
-    audio.onended = () => {
+    const advance = () => {
       URL.revokeObjectURL(url);
       playingChunkRef.current = false;
-      setSpeaking(audioQueueRef.current.length > 0);
+      nextExpectedIndexRef.current += 1;
+      const more = pendingChunksRef.current.size > 0;
+      setSpeaking(more);
+      if (chunk.isLast && !more) {
+        // Last chunk finished playing — reset index for next turn
+        nextExpectedIndexRef.current = 0;
+      }
       playNextChunk();
     };
-    audio.onerror = () => {
-      URL.revokeObjectURL(url);
-      playingChunkRef.current = false;
-      playNextChunk();
-    };
+    audio.onended = advance;
+    audio.onerror = advance;
     setSpeaking(true);
-    audio.play().catch(() => {
-      playingChunkRef.current = false;
-      playNextChunk();
-    });
+    audio.play().catch(advance);
   }, []);
 
   const queueAudioChunk = useCallback(
     (chunk: { audio: string; index: number; isLast: boolean }) => {
-      // Insert sorted by index
-      audioQueueRef.current.push(chunk);
-      audioQueueRef.current.sort((a, b) => a.index - b.index);
+      // New turn detection: if we receive index 0 while idle, reset state
+      if (chunk.index === 0 && !playingChunkRef.current && pendingChunksRef.current.size === 0) {
+        nextExpectedIndexRef.current = 0;
+      }
+      pendingChunksRef.current.set(chunk.index, chunk);
       playNextChunk();
     },
     [playNextChunk],
@@ -716,8 +741,9 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     // ТЗ-04 API
     playAudioMessage,
     playCoupleAudio,
-    // Phase 2: sentence-level TTS queue
+    // Phase 2/3: sentence-level TTS queue
     queueAudioChunk,
+    resetChunkQueue,
     // Fallback
     speak,
     scheduleFallback,

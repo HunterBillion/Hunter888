@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  ArrowRight, Loader2, X, RotateCcw, Check,
+  ArrowRight, Loader2, X, RotateCcw, Check, Phone,
 } from "lucide-react";
 import {
   Lightning, TrendUp, Target, Clock, Crosshair,
@@ -13,11 +13,12 @@ import {
   ClipboardText, Sun, Moon, Star,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/Button";
+import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { NavigatorBlock } from "@/components/ui/NavigatorBlock";
-import { ReminderWidget } from "@/components/clients/ReminderWidget";
+import { DailyRemindersPill } from "@/components/clients/DailyRemindersPill";
 import { TrainingRecommendations } from "@/components/clients/TrainingRecommendations";
 import { useTrainingStore } from "@/stores/useTrainingStore";
 import type { DashboardManager } from "@/types";
@@ -28,19 +29,143 @@ import { LoadingTip } from "@/components/ui/Skeleton";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import { logger } from "@/lib/logger";
 import { EASE_SNAP, TIMING, STORAGE, RANK, STREAK } from "@/lib/constants";
+import DailyDrillCard from "@/components/gamification/DailyDrillCard";
+import MorningWarmupCard from "@/components/gamification/MorningWarmupCard";
+import WeeklyLeague from "@/components/gamification/WeeklyLeague";
+import OfficeShelf from "@/components/gamification/OfficeShelf";
+import SeasonBanner from "@/components/gamification/SeasonBanner";
+import ChapterProgress from "@/components/gamification/ChapterProgress";
 // useTiltEffect kept in hooks/ for future use on non-motion elements
 
 
-function getGreeting(): { text: string; icon: typeof Sun } {
+// ── Time-of-day greeting (subtle, above name) ─────────────────────────
+function getTimeGreeting(): string {
   const h = new Date().getHours();
-  if (h >= 5 && h < 8) return { text: "Раннее утро — лучшее время", icon: Sun };
-  if (h >= 8 && h < 12) return { text: "Доброе утро", icon: Sun };
-  if (h >= 12 && h < 14) return { text: "Добрый день", icon: Lightning };
-  if (h >= 14 && h < 17) return { text: "Продуктивного дня", icon: Lightning };
-  if (h >= 17 && h < 19) return { text: "Добрый вечер", icon: Moon };
-  if (h >= 19 && h < 22) return { text: "Вечерняя тренировка", icon: Moon };
-  if (h >= 22 && h < 24) return { text: "Поздний сет", icon: Star };
-  return { text: "Ночная смена", icon: Star };
+  if (h >= 5 && h < 12) return "Доброе утро";
+  if (h >= 12 && h < 17) return "Добрый день";
+  if (h >= 17 && h < 22) return "Добрый вечер";
+  return "Ночная смена";
+}
+
+interface StoryProgressData {
+  current_chapter: number;
+  chapter_name: string;
+  epoch_name: string;
+  chapter_sessions: number;
+  chapter_avg_score: number;
+  next_chapter: number | null;
+  next_unlock_level: number | null;
+  next_unlock_sessions: number | null;
+  next_unlock_score: number | null;
+  manager_level: number;
+  progress_pct: number;
+}
+
+interface DailyHookData {
+  weak_points?: string[];
+  focus_recommendation?: string;
+  worst_trap?: string;
+  worst_trap_count?: number;
+}
+
+interface DailyHookResult {
+  headline: string;   // bold primary text
+  subtext: string;    // secondary description
+  emotion: string;    // css color
+  icon: typeof Sun;
+  priority: number;
+}
+
+/**
+ * Personalized daily hook — 9-priority system.
+ * Returns structured data for dedicated DailyHook card (not cramped into status line).
+ */
+function getDailyHook(
+  dashboard: DashboardManager & { daily_hook?: DailyHookData } | null,
+  story: StoryProgressData | null,
+): DailyHookResult {
+  if (!dashboard) return { headline: "Готов к охоте?", subtext: "", emotion: "var(--accent)", icon: Crosshair, priority: 9 };
+
+  const streak = dashboard.gamification?.streak_days ?? 0;
+  const lastScore = dashboard.recent_sessions?.[0]?.score_total ?? null;
+  const totalSessions = dashboard.stats?.total_sessions ?? 0;
+  const hook = (dashboard as { daily_hook?: DailyHookData }).daily_hook;
+  const worstTrap = hook?.worst_trap;
+  const worstTrapCount = hook?.worst_trap_count ?? 0;
+  const weakSkill = hook?.weak_points?.[0];
+
+  // P1/P2 streak hooks removed 2026-04-18 — user feedback: "Серия: N дней"
+  // headline was noisy and duplicated the streak badge in the hero. The streak
+  // counter chip stays visible below the name; no hero headline for streak.
+  void streak; // keep variable referenced, used elsewhere in this function
+
+  // P3: Last score < 50 — revenge
+  if (lastScore !== null && lastScore < 50) {
+    const trapInfo = worstTrap ? `Ловушка '${worstTrap}' сломала тебя.` : "Прошлый звонок не задался.";
+    return {
+      headline: `Вчера ${Math.round(lastScore)}/100`,
+      subtext: `${trapInfo} Цель сегодня — ${Math.min(Math.round(lastScore) + 15, 100)}`,
+      emotion: "var(--danger)", icon: Crosshair, priority: 3,
+    };
+  }
+
+  // P4: Last score 50-70 — focus on weak skill
+  if (lastScore !== null && lastScore >= 50 && lastScore <= 70) {
+    const skillInfo = weakSkill ? `'${weakSkill}' тянет вниз.` : "Есть куда расти.";
+    return {
+      headline: `${Math.round(lastScore)}/100 — неплохо`,
+      subtext: `${skillInfo} Сфокусируйся на слабом месте`,
+      emotion: "var(--warning)", icon: Target, priority: 4,
+    };
+  }
+
+  // P5: Failed trap 2+ times
+  if (worstTrap && worstTrapCount >= 2) {
+    return {
+      headline: `Ловушка '${worstTrap}'`,
+      subtext: `Победила тебя ${worstTrapCount} раз. Сегодня она вернётся`,
+      emotion: "var(--danger)", icon: Crosshair, priority: 5,
+    };
+  }
+
+  // P6: Chapter unlock approaching
+  if (story && story.next_chapter && story.progress_pct >= 70) {
+    return {
+      headline: `Глава ${story.next_chapter} почти открыта`,
+      subtext: `${Math.round(story.progress_pct)}% прогресса. Ещё немного`,
+      emotion: "var(--accent)", icon: Star, priority: 6,
+    };
+  }
+
+  // P6b: New chapter just started
+  if (story && story.chapter_sessions === 0 && story.current_chapter > 1) {
+    return {
+      headline: `Глава ${story.current_chapter}: ${story.chapter_name}`,
+      subtext: "Новый враг. Новые правила",
+      emotion: "var(--accent)", icon: Star, priority: 6,
+    };
+  }
+
+  // P7: New user (day 1)
+  if (totalSessions === 0) {
+    return {
+      headline: "Твой первый клиент ждёт",
+      subtext: "Добро пожаловать, Охотник. Начни прямо сейчас",
+      emotion: "var(--accent)", icon: Crosshair, priority: 7,
+    };
+  }
+
+  // P8: New user (days 2-3)
+  if (totalSessions >= 1 && totalSessions <= 3) {
+    return {
+      headline: "Ты вернулся",
+      subtext: "Хороший знак. Вчера было легко. Сегодня — нет",
+      emotion: "var(--accent)", icon: Lightning, priority: 8,
+    };
+  }
+
+  // P9: Fallback
+  return { headline: "Готов к охоте?", subtext: "", emotion: "var(--accent)", icon: Crosshair, priority: 9 };
 }
 
 // F3: Daily challenges — expanded pool in /lib/daily-challenges.ts
@@ -53,6 +178,22 @@ export default function HomePage() {
   const [starting, setStarting] = useState(false);
   const [dailyChallenge, setDailyChallenge] = useState<{ title: string; desc: string; rewardXp: number } | null>(null);
   const [dailyGoals, setDailyGoals] = useState<Array<{ id: string; title: string; xp: number; progress: number; target: number }>>([]);
+  const [storyProgress, setStoryProgress] = useState<StoryProgressData | null>(null);
+  // 2026-04-20: lightweight "warm-up done today?" indicator for the hero.
+  // Sourced from /morning-drill/streak — the same endpoint the card uses.
+  const [warmupDoneToday, setWarmupDoneToday] = useState<boolean | null>(null);
+  const [waitingClient, setWaitingClient] = useState<{
+    full_name: string;
+    age: number;
+    city: string;
+    archetype_code: string;
+    difficulty: number;
+    trust_level: number;
+    total_debt: number;
+    scenario_id: string;
+    lead_source: string;
+    gender: string;
+  } | null>(null);
 
 
   const fetchDashboard = () => {
@@ -70,13 +211,26 @@ export default function HomePage() {
         }
       })
       .catch(() => { /* optional */ });
+    api.get<StoryProgressData>("/story/progress")
+      .then((data) => setStoryProgress(data))
+      .catch(() => { /* optional — story not blocking */ });
+    api.get<{ client: typeof waitingClient }>("/home/waiting-client")
+      .then((data) => setWaitingClient(data.client))
+      .catch(() => { /* optional — fallback to old quickStart */ });
     api.get("/gamification/goals")
       .then((data: unknown) => {
-        if (data && typeof data === "object" && "goals" in data && Array.isArray((data as Record<string, unknown>).goals)) {
-          setDailyGoals((data as { goals: Array<{ id: string; title: string; xp: number; progress: number; target: number }> }).goals);
+        if (data && typeof data === "object") {
+          const d = data as Record<string, unknown>;
+          // Support both: {goals: [...]} flat array and {daily: [...], weekly: [...], goals: [...]}
+          if ("goals" in d && Array.isArray(d.goals)) {
+            setDailyGoals(d.goals as Array<{ id: string; title: string; xp: number; progress: number; target: number }>);
+          }
         }
       })
       .catch(() => { /* optional */ });
+    api.get<{ completed_today: boolean }>("/morning-drill/streak")
+      .then((s) => setWarmupDoneToday(!!s.completed_today))
+      .catch(() => { /* non-blocking badge */ });
   };
 
   useEffect(() => {
@@ -94,6 +248,49 @@ export default function HomePage() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [user]);
 
+  // 2026-04-20: targeted goal refresh after warm-up / other micro-actions.
+  // MorningWarmupCard dispatches `goals:refresh` on /complete success. We
+  // only refetch the goals endpoint — NOT the whole dashboard — because
+  // the rest of the page state hasn't changed.
+  useEffect(() => {
+    const onGoalsRefresh = () => {
+      api.get("/gamification/goals")
+        .then((data: unknown) => {
+          if (data && typeof data === "object") {
+            const d = data as Record<string, unknown>;
+            if ("goals" in d && Array.isArray(d.goals)) {
+              setDailyGoals(
+                d.goals as Array<{
+                  id: string; title: string; xp: number; progress: number; target: number;
+                }>,
+              );
+            }
+          }
+        })
+        .catch(() => { /* non-blocking */ });
+      // The hero "warm-up ✓" badge also needs to flip after /complete.
+      api.get<{ completed_today: boolean }>("/morning-drill/streak")
+        .then((s) => setWarmupDoneToday(!!s.completed_today))
+        .catch(() => { /* non-blocking */ });
+    };
+    window.addEventListener("goals:refresh", onGoalsRefresh);
+    return () => window.removeEventListener("goals:refresh", onGoalsRefresh);
+  }, []);
+
+  // 2026-04-18: автообновление рекомендаций + статистики каждые 60 сек
+  // (без таймера на UI — тихое обновление). Пауза при скрытой вкладке
+  // уже обеспечивается visibilitychange выше. Предотвращает "залипание"
+  // карточек рекомендаций на стартовых данных после прохождения сессии.
+  useEffect(() => {
+    if (!user) return;
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchDashboard();
+      }
+    }, 60_000);
+    return () => clearInterval(intervalId);
+  }, [user]);
+
 
   const recommendations = dashboard?.recommendations ?? [];
   const recentSessions = dashboard?.recent_sessions ?? [];
@@ -103,12 +300,21 @@ export default function HomePage() {
     if (starting) return;
     setStarting(true);
     try {
+      // Prefer the waiting client (new /home/start flow)
+      if (waitingClient) {
+        const session = await api.post("/home/start", {});
+        if (session?.id) {
+          router.push(`/training/${session.id}`);
+          setTimeout(() => setStarting(false), 1000);
+          return;
+        }
+      }
+      // Fallback: old random scenario flow
       let scenarioId: string;
       if (recommendations.length > 0) {
         const rec = recommendations[Math.floor(Math.random() * recommendations.length)];
         scenarioId = rec.scenario_id;
       } else {
-        // Fallback: fetch scenarios directly and pick a random one
         const scenariosData = await api.get("/scenarios/");
         const scenarios: { id: string }[] = Array.isArray(scenariosData) ? scenariosData : [];
         if (!scenarios.length) { setStarting(false); return; }
@@ -117,7 +323,6 @@ export default function HomePage() {
       const session = await api.post("/training/sessions", { scenario_id: scenarioId });
       if (!session?.id) throw new Error("Invalid session response");
       router.push(`/training/${session.id}`);
-      // Reset after navigation so the button works if user navigates back
       setTimeout(() => setStarting(false), 1000);
     } catch (err) {
       useNotificationStore.getState().addToast({
@@ -154,8 +359,24 @@ export default function HomePage() {
             {/* Accent corner glow */}
             <div
               className="absolute -top-16 -left-16 w-48 sm:w-64 h-48 sm:h-64 rounded-full pointer-events-none"
-              style={{ background: "radial-gradient(circle, rgba(124,106,232,0.14) 0%, transparent 70%)" }}
+              style={{ background: "radial-gradient(circle, var(--accent-muted) 0%, transparent 70%)" }}
             />
+
+            {/* Info button — top-right of hero card */}
+            <div className="absolute top-4 right-4 z-20">
+              <PixelInfoButton
+                title="Командный центр"
+                sections={[
+                  { icon: Lightning, label: "Уровень и XP", text: "Растёт от каждой завершённой тренировки. Нужно XP/next для следующего уровня" },
+                  { icon: Flame, label: "Серия дней", text: "Сколько дней подряд вы тренируетесь. 7+ дней = бонус Streak Freeze на случай пропуска" },
+                  { icon: Crosshair, label: "Quick Start", text: "Кнопка-огонёк слева: мгновенно подберёт сценарий под ваш уровень и начнёт тренировку" },
+                  { icon: Target, label: "Ожидающий клиент", text: "Если вы прервали звонок — он покажется здесь. Можно продолжить с того же момента" },
+                  { icon: ClipboardText, label: "Ежедневный вызов", text: "Случайное задание с повышенной наградой. Обновляется каждый день в 00:00 МСК" },
+                  { icon: TrendUp, label: "Рекомендации", text: "AI-Coach подбирает 3 тренировки на основе ваших слабых мест" },
+                ]}
+                footer="Горячие клавиши: S — быстрый старт, H — история, L — лидерборд"
+              />
+            </div>
 
             <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
               {/* Left: identity + level */}
@@ -164,7 +385,7 @@ export default function HomePage() {
                 <div className="relative shrink-0" style={{ width: 88, height: 88 }}>
                   <svg width="88" height="88" viewBox="0 0 88 88" className="rotate-[-90deg]">
                     {/* Background track */}
-                    <circle cx="44" cy="44" r="38" fill="none" stroke="rgba(124,106,232,0.12)" strokeWidth="5" />
+                    <circle cx="44" cy="44" r="38" fill="none" stroke="var(--accent-muted)" strokeWidth="5" />
                     {/* Main progress arc */}
                     <circle
                       cx="44" cy="44" r="38" fill="none"
@@ -185,8 +406,8 @@ export default function HomePage() {
 
                 {/* Name + status */}
                 <div className="min-w-0">
-                  <div className="font-semibold text-sm uppercase tracking-wide mb-1.5 flex items-center gap-1.5" style={{ color: "var(--accent)", opacity: 0.8 }}>
-                    {(() => { const g = getGreeting(); const GIcon = g.icon; return <><GIcon size={14} weight="duotone" />{g.text}</>; })()}
+                  <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+                    {getTimeGreeting()}
                   </div>
                   <h1
                     className="font-display font-black leading-none truncate"
@@ -208,31 +429,75 @@ export default function HomePage() {
                     )}
                     <span
                       className="inline-flex items-center gap-1 font-mono text-xs px-2.5 py-1 rounded-full uppercase tracking-wider"
-                      style={{ background: "var(--accent-muted)", border: "1px solid rgba(124,106,232,0.25)", color: "var(--accent)" }}
+                      style={{ background: "var(--accent-muted)", border: "1px solid var(--accent-glow)", color: "var(--accent)" }}
                     >
                       <Lightning weight="duotone" size={10} /> {xpCurrent} / {xpNext} XP
                     </span>
+                    {warmupDoneToday !== null && (
+                      <span
+                        className="inline-flex items-center gap-1 font-mono text-xs px-2.5 py-1 rounded-full uppercase tracking-wider"
+                        style={
+                          warmupDoneToday
+                            ? {
+                                background:
+                                  "color-mix(in srgb, var(--success) 12%, transparent)",
+                                border:
+                                  "1px solid color-mix(in srgb, var(--success) 35%, transparent)",
+                                color: "var(--success)",
+                              }
+                            : {
+                                background: "var(--input-bg)",
+                                border: "1px solid var(--border-color)",
+                                color: "var(--text-muted)",
+                              }
+                        }
+                        title={
+                          warmupDoneToday
+                            ? "Сегодняшняя разминка зачтена"
+                            : "Разминка сегодня ещё не пройдена"
+                        }
+                      >
+                        {warmupDoneToday ? (
+                          <>
+                            <Check size={10} /> Разминка
+                          </>
+                        ) : (
+                          <>
+                            <Sun weight="duotone" size={10} /> Разминка ждёт
+                          </>
+                        )}
+                      </span>
+                    )}
+                    {/* 2026-04-20: today's reminders — pill + pop-over.
+                        Renders nothing when the user has no reminders, so
+                        the badge row stays clean for new users. Previously
+                        lived as a full-width widget below all panels where
+                        nobody saw it. */}
+                    <DailyRemindersPill />
                   </div>
                 </div>
               </div>
 
-              {/* Right: Quick Start CTA */}
-              <motion.button
-                onClick={quickStart}
-                disabled={starting}
-                className="inline-flex items-center justify-center gap-3 font-display font-bold shrink-0 rounded-xl uppercase tracking-wide transition-all duration-200 disabled:opacity-40"
-                style={{ fontSize: "clamp(0.95rem, 2vw, 1.1rem)", padding: "clamp(0.85rem, 2vw, 1.1rem) clamp(1.5rem, 4vw, 2.5rem)", background: "var(--accent)", color: "#fff", border: "1px solid var(--accent)", boxShadow: "0 0 20px rgba(124,106,232,0.4), 0 0 60px rgba(124,106,232,0.15)", animation: starting ? "none" : "pulse-glow 2.5s ease-in-out infinite" }}
-                whileHover={{ scale: 1.04, boxShadow: "0 12px 40px rgba(49,21,115,0.55)" }}
-                whileTap={{ scale: 0.97 }}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.6, delay: 0, ease: EASE_SNAP }}
-              >
-                {starting
-                  ? <Loader2 size={20} className="animate-spin" />
-                  : <><Lightning weight="duotone" size={20} /><span>Быстрая охота</span><ArrowRight size={18} /></>
-                }
-              </motion.button>
+              {/* Right: Quick Start CTA — hidden when waiting client card below is shown,
+                  since both do the same thing (start a session). */}
+              {!waitingClient && (
+                <motion.button
+                  onClick={quickStart}
+                  disabled={starting}
+                  className="inline-flex items-center justify-center gap-3 font-display font-bold shrink-0 rounded-xl uppercase tracking-wide transition-all duration-200 disabled:opacity-40"
+                  style={{ fontSize: "clamp(0.95rem, 2vw, 1.1rem)", padding: "clamp(0.875rem, 2vw, 1.1rem) clamp(1.5rem, 4vw, 2.5rem)", background: "var(--accent)", color: "#fff", border: "1px solid var(--accent)", boxShadow: "0 0 20px var(--accent-glow), 0 0 60px var(--accent-muted)", animation: starting ? "none" : "pulse-glow 2.5s ease-in-out infinite" }}
+                  whileHover={{ scale: 1.04, boxShadow: "0 12px 40px var(--accent-glow)" }}
+                  whileTap={{ scale: 0.97 }}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.6, delay: 0, ease: EASE_SNAP }}
+                >
+                  {starting
+                    ? <Loader2 size={20} className="animate-spin" />
+                    : <><Lightning weight="duotone" size={20} /><span>Быстрая охота</span><ArrowRight size={18} /></>
+                  }
+                </motion.button>
+              )}
             </div>
 
             {/* XP bar inside hero */}
@@ -242,25 +507,296 @@ export default function HomePage() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
             >
-              <div className="xp-bar h-1.5 rounded-full" style={{ background: "rgba(124,106,232,0.1)" }}>
+              {/* 2026-04-18: увеличена высота 6px → 10px (≈1.67×),
+                  добавлен 3-стоповый градиент (deep → accent → light),
+                  inner glow + shimmer animation.
+                  ВАЖНО: класс .xp-bar задаёт h-2 (8px), но раньше inline
+                  `h-1.5` перезаписывал на 6px. Теперь `h-[10px]` — явная
+                  высота без каскадного конфликта. */}
+              <div
+                className="xp-bar rounded-full relative overflow-hidden"
+                style={{
+                  height: "10px",
+                  background: "var(--input-bg)",
+                  border: "1px solid color-mix(in srgb, var(--accent) 22%, transparent)",
+                  boxShadow: "inset 0 1px 2px rgba(0, 0, 0, 0.2)",
+                }}
+              >
                 <motion.div
                   className="xp-bar-fill h-full rounded-full"
                   initial={{ width: 0 }}
                   animate={{ width: `${xpPct}%` }}
                   transition={{ duration: 1.2, delay: 0.35, ease: EASE_SNAP }}
+                  style={{
+                    background: "linear-gradient(90deg, var(--brand-deep), var(--accent) 60%, color-mix(in srgb, var(--accent) 70%, white 30%))",
+                    boxShadow: "0 0 12px color-mix(in srgb, var(--accent) 50%, transparent)",
+                  }}
                 />
               </div>
-              {/* 2.6: "До уровня N" hint */}
-              <div className="mt-1.5 flex justify-between">
-                <span className="font-mono text-sm" style={{ color: "var(--text-muted)" }}>
-                  {xpCurrent} / {xpNext} XP
+              {/* 2026-04-20: увеличен контраст цифр под XP-баром (276/500 —
+                  пользователь "цифры не видны вообще"). Было text-muted,
+                  теперь числа text-primary + semibold, а "XP" и "До уровня"
+                  остаются приглушёнными лейблами. tabular-nums для ровной
+                  ширины. */}
+              <div className="mt-2 flex justify-between items-baseline gap-2 flex-wrap">
+                <span
+                  className="font-mono text-[13px] tabular-nums"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  <span className="font-semibold" style={{ color: "var(--text-primary)" }}>
+                    {xpCurrent}
+                  </span>
+                  {" / "}
+                  <span className="font-semibold" style={{ color: "var(--text-primary)" }}>
+                    {xpNext}
+                  </span>
+                  {" XP"}
                 </span>
-                <span className="font-mono text-sm" style={{ color: "var(--accent)" }}>
-                  До уровня {level + 1}: {xpNext - xpCurrent} XP
+                <span
+                  className="font-mono text-[13px] tabular-nums"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  {"До уровня "}
+                  <span className="font-semibold" style={{ color: "var(--accent)" }}>
+                    {level + 1}
+                  </span>
+                  {": "}
+                  <span className="font-semibold" style={{ color: "var(--accent)" }}>
+                    {xpNext - xpCurrent}
+                  </span>
+                  {" XP"}
                 </span>
               </div>
             </motion.div>
           </motion.div>
+
+          {/* ── WAITING CLIENT — rotates every ~1 hour ──────────────────── */}
+          {waitingClient && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15, duration: 0.5, ease: EASE_SNAP }}
+              className="relative rounded-2xl overflow-hidden p-5 sm:p-6 mb-6 glass-panel"
+              style={{ border: "1px solid var(--accent-muted)" }}
+            >
+              {/* 2026-04-18: зелёная пульсирующая точка → анимация
+                  звонящего телефона. framer-motion rotate keyframes
+                  имитируют "shake" звонка. Круглый фон + ping-пульс для
+                  визуального акцента. */}
+              <div className="flex items-center gap-2.5 mb-3">
+                <span
+                  className="relative flex h-7 w-7 items-center justify-center rounded-full"
+                  style={{ background: "color-mix(in srgb, var(--color-green, #22c55e) 15%, transparent)" }}
+                >
+                  {/* Ping pulse */}
+                  <span
+                    className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60"
+                    style={{ background: "var(--color-green, #22c55e)" }}
+                  />
+                  {/* Phone icon with ring-shake animation */}
+                  <motion.span
+                    className="relative inline-flex items-center justify-center"
+                    animate={{ rotate: [0, -14, 14, -14, 14, -8, 8, 0] }}
+                    transition={{
+                      duration: 0.9,
+                      repeat: Infinity,
+                      repeatDelay: 1.3,
+                      ease: "easeInOut",
+                    }}
+                  >
+                    <Phone size={14} strokeWidth={2.5} style={{ color: "var(--color-green, #22c55e)" }} />
+                  </motion.span>
+                </span>
+                <span className="font-mono text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                  Входящий звонок
+                </span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="font-display font-bold text-lg truncate" style={{ color: "var(--text-primary)" }}>
+                    {waitingClient.full_name}
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                    <span className="font-mono text-xs px-2 py-0.5 rounded-full" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
+                      {waitingClient.city}
+                    </span>
+                    <span className="font-mono text-xs px-2 py-0.5 rounded-full" style={{ background: "var(--surface-secondary)", color: "var(--text-secondary)" }}>
+                      Долг: {(waitingClient.total_debt / 1000).toFixed(0)}K
+                    </span>
+                    <span className="font-mono text-xs px-2 py-0.5 rounded-full" style={{ background: "var(--surface-secondary)", color: "var(--text-secondary)" }}>
+                      {"★".repeat(Math.min(waitingClient.difficulty, 5))}{"☆".repeat(Math.max(0, 5 - waitingClient.difficulty))}
+                    </span>
+                  </div>
+                </div>
+
+                <motion.button
+                  onClick={quickStart}
+                  disabled={starting}
+                  className="inline-flex items-center justify-center gap-2 font-display font-bold shrink-0 rounded-xl uppercase tracking-wide transition-all duration-200 disabled:opacity-40"
+                  style={{
+                    fontSize: "0.9rem",
+                    padding: "0.75rem 1.5rem",
+                    background: "var(--color-green, #22c55e)",
+                    color: "#fff",
+                    border: "none",
+                    boxShadow: "0 0 16px rgba(34, 197, 94, 0.3)",
+                  }}
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  {starting
+                    ? <Loader2 size={16} className="animate-spin" />
+                    : <><Crosshair weight="duotone" size={16} /><span>Ответить</span></>
+                  }
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* 2026-04-20: РЕКОМЕНДАЦИИ — сверху, сразу под Hero / Waiting Client.
+              Раньше блок жил ниже Stats/Mission — пользователи не скроллили
+              до него и рекомендации почти не кликались. Формат: 3 карточки
+              в одну строку, компактнее оригинала (меньше padding, нет
+              "top accent line" decor — это убивало плотность).
+              Кнопка "Все сценарии →" справа уводит в /training. */}
+          {!loading && recommendations.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.18, duration: 0.4, ease: EASE_SNAP }}
+              className="mt-4"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h2
+                  className="font-display font-bold tracking-wider flex items-center gap-2"
+                  style={{
+                    fontSize: "clamp(0.9rem, 2vw, 1.05rem)",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  <Crosshair
+                    weight="duotone"
+                    size={16}
+                    style={{ color: "var(--accent)" }}
+                  />
+                  РЕКОМЕНДУЕМ НАЧАТЬ С
+                </h2>
+                <motion.button
+                  onClick={() => router.push("/training")}
+                  className="font-medium text-xs flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors"
+                  style={{
+                    color: "var(--accent)",
+                    background: "var(--accent-muted)",
+                  }}
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  Все сценарии <ArrowRight size={12} />
+                </motion.button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {recommendations.slice(0, 3).map((rec, i) => {
+                  const diffColor =
+                    rec.difficulty >= 7
+                      ? "var(--danger)"
+                      : rec.difficulty >= 4
+                      ? "var(--warning)"
+                      : "var(--success)";
+                  return (
+                    <motion.div
+                      key={rec.scenario_id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{
+                        delay: 0.22 + i * TIMING.staggerStep,
+                        duration: 0.35,
+                        ease: EASE_SNAP,
+                      }}
+                      className="glass-panel p-4 cursor-pointer group relative overflow-hidden"
+                      whileHover={{
+                        y: -2,
+                        boxShadow: "0 6px 24px var(--accent-glow)",
+                      }}
+                      onClick={async () => {
+                        try {
+                          const session = await api.post(
+                            "/training/sessions",
+                            { scenario_id: rec.scenario_id },
+                          );
+                          router.push(`/training/${session.id}`);
+                        } catch (err) {
+                          logger.error("Failed to start training session:", err);
+                          useNotificationStore.getState().addToast({
+                            title: "Ошибка",
+                            body: "Не удалось начать тренировку",
+                            type: "error",
+                          });
+                        }
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span
+                          className="font-medium text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-full"
+                          style={{
+                            background: "var(--accent-muted)",
+                            color: "var(--accent)",
+                          }}
+                        >
+                          {rec.archetype}
+                        </span>
+                        <div className="flex gap-0.5">
+                          {[...Array(5)].map((_, j) => (
+                            <div
+                              key={j}
+                              className="w-1 h-1 rounded-full"
+                              style={{
+                                background:
+                                  j < Math.ceil(rec.difficulty / 2)
+                                    ? diffColor
+                                    : "var(--input-bg)",
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <div
+                        className="text-sm font-semibold leading-snug group-hover:text-[var(--accent)] transition-colors line-clamp-2"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        {rec.title}
+                      </div>
+                      {rec.tags.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {rec.tags.slice(0, 2).map((tag) => (
+                            <span
+                              key={tag}
+                              className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                              style={{
+                                background: "var(--input-bg)",
+                                color: "var(--text-muted)",
+                              }}
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <ArrowRight size={14} style={{ color: "var(--accent)" }} />
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+
+          {/* 2026-04-18: Daily Hook panel ("Готов к охоте?" fallback) removed
+              per user feedback — fallback headline for users with no context
+              was empty-looking noise. Specific hooks (bad-trap, worst-skill,
+              story-unlock) were informative but rarely the default state. */}
+          {false && (() => { return null; })()}
 
           {/* Tournament Banner */}
           {!loading && dashboard?.tournament && (
@@ -339,70 +875,137 @@ export default function HomePage() {
           {/* Keyboard shortcut discovery — first 3 visits */}
           <ShortcutHint />
 
-          {/* Stats Grid */}
-          {!loading && (
-            <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-              {[
-                { label: "Сессий", value: stats?.completed_sessions ?? 0, icon: Target, color: "var(--accent)", suffix: "", sparkData: [1, 2, 1, 3, 2, 4, stats?.completed_sessions ?? 0] },
-                { label: "Ср. балл", value: stats?.avg_score != null ? Math.round(stats.avg_score) : 0, icon: TrendUp, color: scoreColor(stats?.avg_score ?? null), suffix: "", sparkData: [60, 65, 55, 70, 68, 75, Math.round(stats?.avg_score ?? 0)] },
-                { label: "Лучший", value: stats?.best_score != null ? Math.round(stats.best_score) : 0, icon: ChartBar, color: scoreColor(stats?.best_score ?? null), suffix: "", sparkData: [50, 60, 65, 70, 75, 80, Math.round(stats?.best_score ?? 0)] },
-                { label: "За неделю", value: stats?.sessions_this_week ?? 0, icon: Clock, color: STREAK.light, suffix: "", sparkData: [0, 1, 0, 2, 1, 1, stats?.sessions_this_week ?? 0] },
-              ].map((card, i) => (
-                <StatCard key={card.label} card={card} i={i} />
-              ))}
-            </div>
-          )}
+          {/* Stats Grid.
+              2026-04-18 fix: sparkData больше НЕ hardcoded массивы —
+              теперь выводятся из dashboard.recent_sessions (последние 7
+              значений). Если сессий мало — массив короче, StatCard сам
+              рисует flat line. Это отражает реальную историю пользователя. */}
+          {!loading && (() => {
+            const recent = dashboard?.recent_sessions ?? [];
+            // Берём последние 7 сессий в хронологическом порядке (старые → новые)
+            const lastSessions = [...recent].slice(0, 7).reverse();
+            const scoreSeries = lastSessions
+              .map((s) => (typeof s.score_total === "number" ? Math.round(s.score_total) : null))
+              .filter((v): v is number => v !== null);
+            // Running max для "Лучший"
+            const bestSeries: number[] = [];
+            let runningMax = 0;
+            for (const v of scoreSeries) {
+              runningMax = Math.max(runningMax, v);
+              bestSeries.push(runningMax);
+            }
+            // Для "Сессий" — накопительно 1,2,3...N по числу последних сессий
+            const sessionsCumulative = scoreSeries.map((_, i) => i + 1);
+            // За неделю: агрегируем по дням (bucket last 7 days)
+            const now = Date.now();
+            const weekBuckets = Array.from({ length: 7 }, () => 0);
+            for (const s of recent) {
+              if (!s.started_at) continue;
+              const daysAgo = Math.floor((now - new Date(s.started_at).getTime()) / 86400000);
+              if (daysAgo >= 0 && daysAgo < 7) weekBuckets[6 - daysAgo] += 1;
+            }
 
-          {/* Daily Challenge + Goals */}
+            const cards = [
+              { label: "Сессий", value: stats?.completed_sessions ?? 0, icon: Target, color: "var(--accent)", suffix: "", sparkData: sessionsCumulative.length > 1 ? sessionsCumulative : [stats?.completed_sessions ?? 0] },
+              { label: "Ср. балл", value: stats?.avg_score != null ? Math.round(stats.avg_score) : 0, icon: TrendUp, color: scoreColor(stats?.avg_score ?? null), suffix: "", sparkData: scoreSeries.length > 1 ? scoreSeries : [Math.round(stats?.avg_score ?? 0)] },
+              { label: "Лучший", value: stats?.best_score != null ? Math.round(stats.best_score) : 0, icon: ChartBar, color: scoreColor(stats?.best_score ?? null), suffix: "", sparkData: bestSeries.length > 1 ? bestSeries : [Math.round(stats?.best_score ?? 0)] },
+              { label: "За неделю", value: stats?.sessions_this_week ?? 0, icon: Clock, color: STREAK.light, suffix: "", sparkData: weekBuckets },
+            ];
+            return (
+              <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                {cards.map((card, i) => (
+                  <StatCard key={card.label} card={card} i={i} />
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* ── MISSION PANEL: Drill + Goals + League + Season — all in one ──
+              2026-04-18: панель поднимается выше через mt-5 вместо mt-6,
+              увеличен padding, шрифт заголовка 16px, добавлен pixel-border
+              stylized эффект для визуального акцента (как у карточек
+              тренировок в панели "Pixel Cyber"). Contrast goals bigger. */}
           {!loading && (
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4"
+              className="mt-5 pixel-border glass-panel rounded-2xl p-6 sm:p-7"
+              style={{
+                "--pixel-border-color": "color-mix(in srgb, var(--accent) 40%, var(--border-color))",
+              } as React.CSSProperties}
             >
-              {/* Daily Challenge */}
-              {dailyChallenge && (
-                <div className="glass-panel rounded-2xl p-5 flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Lightning weight="duotone" size={16} style={{ color: "var(--warning)" }} />
-                      <span className="font-display font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
-                        Вызов дня
-                      </span>
-                    </div>
-                    <span className="font-mono text-sm" style={{ color: "var(--warning)" }}>+{dailyChallenge.rewardXp} XP</span>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>{dailyChallenge.title}</p>
-                    <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>{dailyChallenge.desc}</p>
-                  </div>
-                  <Button href="/training" size="sm" icon={<Crosshair weight="duotone" size={13} />}>Начать</Button>
-                </div>
-              )}
-              {/* Daily Goals */}
-              {dailyGoals.length > 0 && (
-                <div className="glass-panel rounded-2xl p-5 flex flex-col gap-3">
-                  <div className="flex items-center gap-2">
-                    <Target weight="duotone" size={16} style={{ color: "var(--accent)" }} />
-                    <span className="font-display font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
-                      Цели на сегодня
-                    </span>
-                  </div>
-                  <div className="space-y-2.5">
-                    {dailyGoals.slice(0, 3).map((goal: { id: string; title: string; xp: number; progress: number; target: number }) => (
+              {/* Panel header — 14px uppercase pixel font, accent icon bigger */}
+              {/* 2026-04-18: шрифт заголовка через inline-style на
+                  var(--font-vt323) напрямую — Tailwind-класс `font-pixel`
+                  иногда не подцеплялся из-за cascade/tree-shaking в dev
+                  mode. Теперь VT323 гарантированно применяется. */}
+              <div className="flex items-center justify-between mb-5">
+                <h2
+                  className="font-bold tracking-widest uppercase flex items-center gap-2.5"
+                  style={{
+                    color: "var(--text-primary)",
+                    fontFamily: "var(--font-vt323), 'Press Start 2P', monospace",
+                    fontSize: "20px",
+                    letterSpacing: "0.14em",
+                  }}
+                >
+                  <Target weight="duotone" size={22} style={{ color: "var(--accent)" }} />
+                  Задания на сегодня
+                </h2>
+                <SeasonBanner />
+              </div>
+
+              {/* Story arc progress (Путь Охотника) */}
+              <ChapterProgress />
+
+              {/* Two-column: Drill (left) + Goals (right) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                {/* Разминка дня.
+                    2026-04-17: заменила чат-style DailyDrillCard.
+                    2026-04-18: был введён time-gate (05:00-12:00) — скрывал
+                    карточку днём/вечером.
+                    2026-04-20 (owner feedback): time-gate снят — ROP зашёл в
+                    обед и не увидел разминку, "не могу пройти свою". Теперь
+                    карточка видна весь день, пока не completed_today. Сама
+                    MorningWarmupCard уже показывает "✓ Разминка зачтена"
+                    когда streak endpoint вернёт completed_today=true. */}
+                <MorningWarmupCard />
+                {false && <DailyDrillCard drillStreak={dashboard?.gamification?.streak_days ?? 0} />}
+
+                {/* Right: Goals progress.
+                    2026-04-18: увеличен шрифт (text-sm → text-base),
+                    прогресс-бар выше (h-1.5 → h-2), числа font-pixel. */}
+                <div className="space-y-4 flex flex-col justify-center">
+                  {dailyGoals.length > 0 ? (
+                    dailyGoals.slice(0, 4).map((goal: { id: string; title: string; xp: number; progress: number; target: number }) => (
                       <div key={goal.id}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span style={{ color: goal.progress >= goal.target ? "var(--success)" : "var(--text-secondary)" }}>
-                            {goal.progress >= goal.target ? <><Check size={14} className="inline" />{" "}</> : ""}{goal.title}
+                        <div className="flex justify-between items-center text-base mb-1.5">
+                          <span
+                            className="font-medium"
+                            style={{ color: goal.progress >= goal.target ? "var(--success)" : "var(--text-primary)" }}
+                          >
+                            {goal.progress >= goal.target ? <><Check size={16} className="inline mr-1" /></> : ""}
+                            {goal.title}
                           </span>
-                          <span className="font-mono" style={{ color: "var(--text-muted)" }}>
-                            {goal.progress}/{goal.target}
+                          <span
+                            className="shrink-0 ml-2 tabular-nums"
+                            style={{
+                              color: "var(--text-muted)",
+                              fontFamily: "var(--font-vt323), monospace",
+                              letterSpacing: "0.04em",
+                              // 2026-04-18: VT323 at 14px renders much smaller than sans-serif 14px.
+                              // Bump to 20px so numbers match the title visually.
+                              fontSize: 20,
+                              lineHeight: "1",
+                            }}
+                          >
+                            {goal.progress}/{goal.target} <span style={{ color: "var(--warning)" }}>+{goal.xp}</span>
                           </span>
                         </div>
-                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
+                        <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
                           <div
-                            className="h-full rounded-full transition-all duration-500"
+                            className="h-full rounded-full transition-all duration-300"
                             style={{
                               width: `${Math.min(100, (goal.progress / goal.target) * 100)}%`,
                               background: goal.progress >= goal.target ? "var(--success)" : "var(--accent)",
@@ -410,94 +1013,44 @@ export default function HomePage() {
                           />
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    ))
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] py-4">
+                      <Target weight="duotone" size={16} style={{ color: "var(--accent)" }} />
+                      Цели загружаются...
+                    </div>
+                  )}
+                  {/* Daily Challenge inline */}
+                  {dailyChallenge && (
+                    <div className="rounded-lg bg-[var(--input-bg)] p-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Lightning weight="duotone" size={14} style={{ color: "var(--warning)" }} />
+                        <span className="text-xs text-[var(--text-secondary)] truncate">{dailyChallenge.title}</span>
+                      </div>
+                      <span className="text-xs font-mono shrink-0" style={{ color: "var(--warning)" }}>+{dailyChallenge.rewardXp}</span>
+                    </div>
+                  )}
                 </div>
-              )}
-            </motion.div>
-          )}
-
-          {/* Recommendations */}
-          {!loading && recommendations.length > 0 && (
-            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="mt-8">
-              <div className="flex items-center justify-between mb-4 sm:mb-5">
-                <h2 className="font-display font-bold tracking-wider flex items-center gap-2.5" style={{ fontSize: "clamp(1rem, 2.5vw, 1.25rem)", color: "var(--text-primary)" }}>
-                  <Crosshair weight="duotone" size={18} style={{ color: "var(--accent)" }} /> РЕКОМЕНДАЦИИ
-                </h2>
-                <motion.button
-                  onClick={() => router.push("/training")}
-                  className="font-medium text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors"
-                  style={{ color: "var(--accent)", background: "var(--accent-muted)" }}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  Все сценарии <ArrowRight size={13} />
-                </motion.button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {recommendations.slice(0, 6).map((rec, i) => {
-                  const diffColor = rec.difficulty >= 7 ? "var(--danger)" : rec.difficulty >= 4 ? "var(--warning)" : "var(--success)";
-                  return (
-                    <motion.div
-                      key={rec.scenario_id}
-                      initial={{ opacity: 0, y: 16, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={{ delay: (0.4) + i * TIMING.staggerStep, duration: 0.5, ease: EASE_SNAP }}
-                      className="glass-panel glass-panel-glow p-5 cursor-pointer group relative overflow-hidden"
-                      whileHover={{ y: -4, boxShadow: "0 8px 32px var(--accent-glow)", borderColor: "var(--border-hover)" }}
-                      onClick={async () => {
-                        try {
-                          const session = await api.post("/training/sessions", { scenario_id: rec.scenario_id });
-                          router.push(`/training/${session.id}`);
-                        } catch (err) {
-                          logger.error("Failed to start training session:", err);
-                          useNotificationStore.getState().addToast({ title: "Ошибка", body: "Не удалось начать тренировку", type: "error" });
-                        }
-                      }}
-                    >
-                      {/* Subtle top accent line */}
-                      <div className="absolute top-0 left-4 right-4 h-[1px] rounded-full" style={{ background: `linear-gradient(90deg, transparent, var(--accent), transparent)`, opacity: 0.4 }} />
 
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="font-medium text-xs uppercase tracking-wide px-2.5 py-1 rounded-full" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
-                          {rec.archetype}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <div className="flex gap-0.5">
-                            {[...Array(5)].map((_, j) => (
-                              <div key={j} className="w-1.5 h-1.5 rounded-full transition-all duration-300" style={{
-                                background: j < Math.ceil(rec.difficulty / 2) ? diffColor : "var(--input-bg)",
-                                boxShadow: j < Math.ceil(rec.difficulty / 2) ? `0 0 4px ${diffColor}` : "none",
-                              }} />
-                            ))}
-                          </div>
-                        </div>
-                      </div>
+              {/* Bottom row: League + Office compact */}
+              <div className="flex items-center justify-between pt-3" style={{ borderTop: "1px solid var(--input-bg)" }}>
+                {/* League mini */}
+                <WeeklyLeague />
 
-                      <div className="text-base font-semibold leading-snug group-hover:text-[var(--accent)] transition-colors duration-300" style={{ color: "var(--text-primary)" }}>
-                        {rec.title}
-                      </div>
-
-                      {rec.tags.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {rec.tags.slice(0, 3).map((tag) => (
-                            <span key={tag} className="text-xs font-medium px-2 py-0.5 rounded-md" style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--glass-border)" }}>
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Hover arrow */}
-                      <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-2 group-hover:translate-x-0">
-                        <ArrowRight size={16} style={{ color: "var(--accent)" }} />
-                      </div>
-                    </motion.div>
-                  );
-                })}
+                {/* Office shelf compact */}
+                <OfficeShelf
+                  level={dashboard?.gamification?.level ?? 1}
+                  compact
+                />
               </div>
             </motion.div>
           )}
+
+          {/* 2026-04-20: старый большой блок "РЕКОМЕНДАЦИИ" (6 карточек)
+              удалён — теперь 3 карточки живут сразу под Hero / Waiting
+              Client. Если пользователю нужно больше — кнопка "Все сценарии"
+              в верхнем блоке ведёт в /training с полным списком. */}
 
           {/* F6.1: Training recommendations based on client losses */}
           {!loading && user?.role && ["manager", "rop", "admin"].includes(user.role) && (
@@ -506,32 +1059,20 @@ export default function HomePage() {
             </motion.div>
           )}
 
-          {/* Client reminders — only for roles with client access */}
-          {!loading && user?.role && ["manager", "rop", "admin"].includes(user.role) && (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="mt-6">
-              <ReminderWidget />
-            </motion.div>
-          )}
+          {/* 2026-04-20: client reminders block moved to hero as
+              <DailyRemindersPill /> — smaller footprint, much higher
+              visibility. The full-width widget that used to sit here was
+              below the fold for most users. */}
 
-          {/* Team link for ROP */}
-          {user?.role && (user.role === "rop" || user.role === "admin") && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="mt-8">
-              <button onClick={() => router.push("/dashboard")} className="glass-panel glass-panel-interactive p-5 w-full flex items-center gap-4 transition-all">
-                <UsersThree weight="duotone" size={20} style={{ color: "var(--accent)" }} />
-                <div className="text-left">
-                  <div className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>Панель команды</div>
-                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>Аналитика, назначение тренировок, прогресс</div>
-                </div>
-                <ArrowRight size={16} className="ml-auto" style={{ color: "var(--text-muted)" }} />
-              </button>
-            </motion.div>
-          )}
+          {/* Team link for ROP — removed 2026-04-18 per feedback. ROP accesses
+              the dashboard from the main header nav; showing a duplicate CTA
+              on /home was noise. */}
 
           {loading && (
             <div className="mt-2 space-y-4 stagger-cascade">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="glass-panel p-4 sm:p-5 space-y-3" style={{ borderLeft: "3px solid rgba(124,106,232,0.2)" }}>
+                  <div key={i} className="glass-panel p-4 sm:p-5 space-y-3" style={{ borderLeft: "3px solid var(--accent-glow)" }}>
                     <div className="h-9 w-9 rounded-xl skeleton-neon" />
                     <div className="h-8 w-16 rounded-lg skeleton-neon" />
                     <div className="h-2.5 w-12 rounded skeleton-neon" />
@@ -579,14 +1120,15 @@ function StatCard({ card, i }: StatCardProps) {
       key={card.label}
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ delay: (0.15) + i * TIMING.staggerStep, duration: 0.5, ease: EASE_SNAP }}
-      whileHover={{ y: -3, boxShadow: `0 8px 32px color-mix(in srgb, ${card.color} 15%, transparent)` }}
+      transition={{ delay: 0.05 + i * 0.06, duration: 0.3, ease: EASE_SNAP }}
+      whileHover={{ y: -3, boxShadow: `0 8px 32px color-mix(in srgb, ${card.color} 15%, transparent)`, transition: { duration: 0.1 } }}
+      whileTap={{ scale: 0.96, transition: { duration: 0.08 } }}
       className="glass-panel p-4 sm:p-5 group cursor-default relative overflow-hidden"
-      style={{ borderLeft: `3px solid ${card.color}`, transition: "box-shadow 0.3s ease-out" }}
+      style={{ borderLeft: `3px solid ${card.color}`, transition: "box-shadow 0.1s ease-out" }}
     >
       {/* Subtle bg glow */}
       <div
-        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
+        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none"
         style={{ background: `radial-gradient(ellipse at top left, color-mix(in srgb, ${card.color} 3%, transparent) 0%, transparent 70%)` }}
       />
       <div className="relative z-10">
@@ -683,7 +1225,7 @@ function AssignedBadge() {
     >
       <div
         className="flex h-10 w-10 items-center justify-center rounded-xl"
-        style={{ background: overdueCount > 0 ? "rgba(229,72,77,0.1)" : "var(--accent-muted)" }}
+        style={{ background: overdueCount > 0 ? "var(--danger-muted)" : "var(--accent-muted)" }}
       >
         <ClipboardText weight="duotone" size={18} style={{ color: overdueCount > 0 ? "var(--danger)" : "var(--accent)" }} />
       </div>

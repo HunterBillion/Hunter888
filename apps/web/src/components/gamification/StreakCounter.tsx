@@ -19,10 +19,10 @@ export function StreakCounter({ streak, className = "" }: StreakCounterProps) {
 
   return (
     <motion.div
-      className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 ${className}`}
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 ${className}`}
       style={{
         background: isActive ? STREAK.rgba(0.1) : "var(--input-bg)",
-        border: `1px solid ${isActive ? STREAK.rgba(0.25) : "var(--border-color)"}`,
+        border: `2px solid ${isActive ? STREAK.rgba(0.25) : "var(--border-color)"}`,
         boxShadow: isMilestone ? `0 0 16px ${STREAK.rgba(0.2)}` : isActive ? `0 0 12px ${STREAK.rgba(0.08)}` : "none",
       }}
       whileHover={{ scale: 1.06 }}
@@ -33,16 +33,16 @@ export function StreakCounter({ streak, className = "" }: StreakCounterProps) {
         animate={isActive && !reducedMotion ? { scale: [1, 1.25, 1], rotate: [0, -8, 8, 0] } : {}}
         transition={reducedMotion ? {} : { duration: 0.8, repeat: Infinity, repeatDelay: isMilestone ? 1.0 : 2.5 }}
       >
-        <Flame size={15} style={{ color: isActive ? STREAK.color : "var(--text-muted)", opacity: isActive ? 1 : 0.5 }} />
+        <Flame size={16} style={{ color: isActive ? STREAK.color : "var(--text-muted)", opacity: isActive ? 1 : 0.5 }} />
       </motion.div>
       <span
-        className="font-mono text-sm font-black tabular-nums"
-        style={{ color: isActive ? STREAK.color : "var(--text-muted)", letterSpacing: "-0.02em" }}
+        className="font-pixel text-lg tabular-nums"
+        style={{ color: isActive ? STREAK.color : "var(--text-muted)" }}
       >
         {isActive ? streak : ""}
       </span>
       <span
-        className="font-semibold text-xs uppercase tracking-wide"
+        className="font-pixel text-base uppercase tracking-wide"
         style={{ color: isActive ? STREAK.rgba(0.6) : "var(--text-muted)" }}
       >
         {isActive ? dayLabel : "Начни серию"}

@@ -270,7 +270,7 @@ export default function AuditLogPage() {
               )}
             </motion.button>
 
-            <span style={{ color: "var(--text-muted)", fontSize: 13 }}>
+            <span style={{ color: "var(--text-muted)", fontSize: 14 }}>
               {total} {total === 1 ? "запись" : total < 5 ? "записи" : "записей"}
             </span>
           </div>
@@ -305,8 +305,8 @@ export default function AuditLogPage() {
               <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
                 {/* Action filter */}
                 <div>
-                  <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                    <Zap size={11} style={{ display: "inline", marginRight: 4 }} />
+                  <label style={{ fontSize: 14, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                    <Zap size={14} style={{ display: "inline", marginRight: 4 }} />
                     Действие
                   </label>
                   <select
@@ -319,7 +319,7 @@ export default function AuditLogPage() {
                       background: "var(--input-bg)",
                       color: "var(--text-primary)",
                       border: "1px solid var(--border-color)",
-                      fontSize: 13,
+                      fontSize: 14,
                     }}
                   >
                     <option value="">Все действия</option>
@@ -331,8 +331,8 @@ export default function AuditLogPage() {
 
                 {/* Entity type filter */}
                 <div>
-                  <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                    <Layers size={11} style={{ display: "inline", marginRight: 4 }} />
+                  <label style={{ fontSize: 14, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                    <Layers size={14} style={{ display: "inline", marginRight: 4 }} />
                     Тип сущности
                   </label>
                   <select
@@ -345,7 +345,7 @@ export default function AuditLogPage() {
                       background: "var(--input-bg)",
                       color: "var(--text-primary)",
                       border: "1px solid var(--border-color)",
-                      fontSize: 13,
+                      fontSize: 14,
                     }}
                   >
                     <option value="">Все типы</option>
@@ -357,8 +357,8 @@ export default function AuditLogPage() {
 
                 {/* Date from */}
                 <div>
-                  <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                    <Calendar size={11} style={{ display: "inline", marginRight: 4 }} />
+                  <label style={{ fontSize: 14, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                    <Calendar size={14} style={{ display: "inline", marginRight: 4 }} />
                     Дата от
                   </label>
                   <input
@@ -372,15 +372,15 @@ export default function AuditLogPage() {
                       background: "var(--input-bg)",
                       color: "var(--text-primary)",
                       border: "1px solid var(--border-color)",
-                      fontSize: 13,
+                      fontSize: 14,
                     }}
                   />
                 </div>
 
                 {/* Date to */}
                 <div>
-                  <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                    <Calendar size={11} style={{ display: "inline", marginRight: 4 }} />
+                  <label style={{ fontSize: 14, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                    <Calendar size={14} style={{ display: "inline", marginRight: 4 }} />
                     Дата до
                   </label>
                   <input
@@ -394,7 +394,7 @@ export default function AuditLogPage() {
                       background: "var(--input-bg)",
                       color: "var(--text-primary)",
                       border: "1px solid var(--border-color)",
-                      fontSize: 13,
+                      fontSize: 14,
                     }}
                   />
                 </div>
@@ -480,7 +480,7 @@ export default function AuditLogPage() {
                     }}
                   >
                     {/* Date */}
-                    <span style={{ fontSize: 12, color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
+                    <span style={{ fontSize: 14, color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
                       {formatDate(entry.created_at)}
                     </span>
 
@@ -488,13 +488,13 @@ export default function AuditLogPage() {
                     <div>{actionBadge(entry.action)}</div>
 
                     {/* Entity */}
-                    <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                    <span style={{ fontSize: 14, color: "var(--text-secondary)" }}>
                       {ENTITY_LABELS[entry.entity_type] || entry.entity_type}
                     </span>
 
                     {/* Actor */}
                     <span
-                      style={{ fontSize: 13, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      style={{ fontSize: 14, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                       title={entry.actor_name || "Система"}
                     >
                       {entry.actor_name || "Система"}
@@ -569,7 +569,7 @@ export default function AuditLogPage() {
 
                           {/* Diff */}
                           <div>
-                            <span style={{ color: "var(--text-muted)", fontSize: 11, display: "block", marginBottom: 6 }}>
+                            <span style={{ color: "var(--text-muted)", fontSize: 14, display: "block", marginBottom: 6 }}>
                               Изменения:
                             </span>
                             <DiffViewer oldValues={entry.old_values} newValues={entry.new_values} />
@@ -588,7 +588,7 @@ export default function AuditLogPage() {
                 className="flex items-center justify-between px-4 py-3"
                 style={{ borderTop: "1px solid var(--border-color)" }}
               >
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                <span style={{ fontSize: 14, color: "var(--text-muted)" }}>
                   Стр. {page} из {totalPages}
                 </span>
                 <div className="flex gap-2">

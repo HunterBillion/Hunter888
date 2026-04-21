@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { BackButton } from "@/components/ui/BackButton";
 import { HunterCard } from "@/components/profile/HunterCard";
+import { XPDailyProgress } from "@/components/gamification/XPDailyProgress";
 import dynamic from "next/dynamic";
 import { Skeleton } from "@/components/ui/Skeleton";
 
@@ -25,6 +26,8 @@ const ProgressGraph = dynamic(
   { loading: () => <Skeleton height={240} width="100%" rounded="12px" />, ssr: false }
 );
 import { AchievementWall } from "@/components/profile/AchievementWall";
+import OfficeShelf from "@/components/gamification/OfficeShelf";
+import DealPortfolio from "@/components/gamification/DealPortfolio";
 import type { TrainingStats, GamificationProgress, ProgressPoint } from "@/types";
 import { logger } from "@/lib/logger";
 
@@ -116,7 +119,7 @@ function ProfilePageContent() {
     <AuthLayout>
       <div className="panel-grid-bg min-h-screen">
         <div className="app-page max-w-4xl">
-          <BackButton href="/home" label="На главную" />
+          <BackButton href={isViewingOther ? "/dashboard" : "/home"} label={isViewingOther ? "Панель РОП" : "На главную"} />
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
             <div className="flex items-center gap-2">
@@ -129,34 +132,62 @@ function ProfilePageContent() {
 
           {/* Hunter Card */}
           <div className="mt-6">
-            <HunterCard
-              user={{ full_name: user?.full_name || "", email: user?.email || "", role: user?.role || "" }}
-              stats={stats ? { completed_sessions: stats.completed_sessions, avg_score: stats.average_score, best_score: stats.best_score } : null}
-              gamification={progress}
-              teamName={user?.team ?? undefined}
-            />
+            {isViewingOther && !viewedUser ? (
+              <Skeleton height={160} width="100%" rounded="12px" />
+            ) : (
+              <HunterCard
+                user={{
+                  full_name: isViewingOther && viewedUser ? viewedUser.full_name : user?.full_name || "",
+                  email: isViewingOther ? "" : user?.email || "",
+                  role: isViewingOther && viewedUser ? viewedUser.role : user?.role || "",
+                }}
+                stats={stats ? { completed_sessions: stats.completed_sessions, avg_score: stats.average_score ?? stats.avg_score ?? null, best_score: stats.best_score } : null}
+                gamification={progress}
+                teamName={user?.team ?? undefined}
+              />
+            )}
           </div>
 
+          {/* Daily XP Cap Status */}
+          {!isViewingOther && (
+            <XPDailyProgress className="mt-8" />
+          )}
+
           {/* Progress Graph */}
-          <div className="mt-6">
+          <div className="mt-8">
             <ProgressGraph data={progressData} />
           </div>
 
           {/* Achievement Wall */}
-          <div className="mt-6">
+          <div className="mt-10 mb-12">
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-              <div className="flex items-center gap-2 mb-4">
-                <User size={16} style={{ color: "var(--accent)" }} />
-                <span className="font-display text-sm font-bold tracking-widest uppercase" style={{ color: "var(--text-secondary)" }}>
+              <div className="flex items-center gap-2 mb-6">
+                <User size={18} style={{ color: "var(--accent)" }} />
+                <span className="font-display text-base font-bold tracking-widest uppercase" style={{ color: "var(--text-secondary)" }}>
                   Достижения
                 </span>
               </div>
               <AchievementWall achievements={progress?.achievements ?? []} />
             </motion.div>
+
+            {/* Office Shelf — full display */}
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+              <OfficeShelf
+                level={progress?.level ?? 1}
+                achievementCount={progress?.achievements?.length ?? 0}
+                totalDeals={0}
+                totalSessions={stats?.completed_sessions ?? 0}
+              />
+            </motion.div>
+
+            {/* Deal Portfolio — full display */}
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+              <DealPortfolio compact={false} limit={50} />
+            </motion.div>
           </div>
 
-          {/* Password change */}
-          <motion.div
+          {/* Password change — only for own profile */}
+          {!isViewingOther && <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
@@ -171,7 +202,7 @@ function ProfilePageContent() {
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="flex items-center gap-2 rounded-xl p-3 text-sm"
-                  style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--danger)" }}
+                  style={{ background: "var(--danger-muted)", border: "1px solid var(--danger-muted)", color: "var(--danger)" }}
                 >
                   <AlertCircle size={14} />
                   {passwordError}
@@ -182,7 +213,7 @@ function ProfilePageContent() {
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="flex items-center gap-2 rounded-xl p-3 text-sm"
-                  style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", color: "var(--success)" }}
+                  style={{ background: "var(--success-muted)", border: "1px solid var(--success-muted)", color: "var(--success)" }}
                 >
                   <CheckCircle size={14} />
                   {passwordSuccess}
@@ -221,7 +252,7 @@ function ProfilePageContent() {
                 Изменить пароль
               </Button>
             </form>
-          </motion.div>
+          </motion.div>}
         </div>
       </div>
     </AuthLayout>

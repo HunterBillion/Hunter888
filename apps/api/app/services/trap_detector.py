@@ -36,6 +36,9 @@ from app.core.redis_pool import get_redis
 
 logger = logging.getLogger(__name__)
 
+# S1-05: Import sanitization for trap data before LLM prompts
+from app.services.scenario_engine import _sanitize_db_prompt as _sanitize_trap_field
+
 # Redis keys
 _TRAP_STATE_KEY = "session:{session_id}:traps"
 _CASCADE_STATE_KEY = "session:{session_id}:cascades"
@@ -211,17 +214,18 @@ async def _analyze_llm(
         # Lazy import to avoid circular dependency
         from app.services.llm import generate_response
 
-        client_phrase = trap.get("client_phrase", "")
-        law_ref = trap.get("law_reference", "")
+        # S1-05: Sanitize all trap fields before LLM prompt injection
+        client_phrase = _sanitize_trap_field(trap.get("client_phrase", ""), "client_phrase")
+        law_ref = _sanitize_trap_field(trap.get("law_reference", ""), "law_reference")
         law_ref_line = f"- Ссылка на закон: {law_ref}" if law_ref else ""
 
         prompt_text = _LLM_TRAP_PROMPT.format(
             client_phrase=client_phrase,
-            manager_message=manager_message,
-            category=trap.get("category", ""),
-            wrong_example=trap.get("wrong_response_example", ""),
-            correct_example=trap.get("correct_response_example", ""),
-            explanation=trap.get("explanation", ""),
+            manager_message=_sanitize_trap_field(manager_message, "manager_message"),
+            category=_sanitize_trap_field(trap.get("category", ""), "category"),
+            wrong_example=_sanitize_trap_field(trap.get("wrong_response_example", ""), "wrong_example"),
+            correct_example=_sanitize_trap_field(trap.get("correct_response_example", ""), "correct_example"),
+            explanation=_sanitize_trap_field(trap.get("explanation", ""), "explanation"),
             law_ref_line=law_ref_line,
         )
 
@@ -830,14 +834,16 @@ def build_trap_injection_prompt(traps: list[dict]) -> str:
     ]
 
     for trap in traps:
-        phrase = trap.get("client_phrase", "")
-        category = trap.get("category", "")
+        # S1-05: Sanitize all trap fields before prompt injection
+        phrase = _sanitize_trap_field(trap.get("client_phrase", ""), "client_phrase")
+        category = _sanitize_trap_field(trap.get("category", ""), "trap_category")
         variants = trap.get("client_phrase_variants", [])
         difficulty = trap.get("difficulty", 5)
 
         line = f'- [{category}, сл.{difficulty}] "{phrase}"'
         if variants:
-            alt_list = " | ".join(f'"{v}"' for v in variants[:2])
+            safe_variants = [_sanitize_trap_field(v, "variant") for v in variants[:2]]
+            alt_list = " | ".join(f'"{v}"' for v in safe_variants)
             line += f" (варианты: {alt_list})"
         lines.append(line)
 

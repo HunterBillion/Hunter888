@@ -26,22 +26,8 @@ from app.models.training import Message, SessionStatus, TrainingSession
 logger = logging.getLogger(__name__)
 
 
-def _parse_json_safe(text: str) -> dict | None:
-    """Extract JSON from LLM response, handling markdown code fences."""
-    if not text:
-        return None
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        first_newline = cleaned.index("\n") if "\n" in cleaned else len(cleaned)
-        cleaned = cleaned[first_newline + 1:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
-    cleaned = cleaned.strip()
-    try:
-        return json.loads(cleaned)
-    except (json.JSONDecodeError, ValueError):
-        logger.warning("Failed to parse synthesis LLM response as JSON")
-        return None
+# Reuse shared JSON parser (eliminates code duplication)
+from app.services.wiki_ingest_service import _parse_json_safe  # noqa: E402
 
 
 async def _get_recent_sessions_summary(
@@ -192,7 +178,7 @@ async def _daily_synthesis_for_manager(
             prefer_provider="local",
         )
         analysis = _parse_json_safe(resp.content)
-        log.tokens_used = resp.latency_ms or 0
+        log.tokens_used = (resp.input_tokens or 0) + (resp.output_tokens or 0)
 
         if not analysis:
             log.status = "error"
@@ -237,6 +223,14 @@ async def _daily_synthesis_for_manager(
 
         wiki.last_daily_synthesis_at = now
         await db.commit()
+
+        # Rebuild wiki index page after synthesis
+        try:
+            from app.services.wiki_ingest_service import _rebuild_index_page
+            await _rebuild_index_page(wiki, db)
+            await db.commit()
+        except Exception as idx_err:
+            logger.warning("Daily synthesis: index rebuild failed for %s: %s", wiki.manager_id, idx_err)
 
         return {
             "manager_id": str(wiki.manager_id),
@@ -348,7 +342,7 @@ async def _weekly_synthesis_for_manager(
             prefer_provider="local",
         )
         analysis = _parse_json_safe(resp.content)
-        log.tokens_used = resp.latency_ms or 0
+        log.tokens_used = (resp.input_tokens or 0) + (resp.output_tokens or 0)
 
         if not analysis:
             log.status = "error"
@@ -399,6 +393,14 @@ async def _weekly_synthesis_for_manager(
 
         wiki.last_weekly_synthesis_at = now
         await db.commit()
+
+        # Rebuild wiki index page after synthesis
+        try:
+            from app.services.wiki_ingest_service import _rebuild_index_page
+            await _rebuild_index_page(wiki, db)
+            await db.commit()
+        except Exception as idx_err:
+            logger.warning("Weekly synthesis: index rebuild failed for %s: %s", wiki.manager_id, idx_err)
 
         return {
             "manager_id": str(wiki.manager_id),

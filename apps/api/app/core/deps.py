@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core import errors as err
-from app.core.security import decode_token
+from app.core.security import decode_token, get_role_version
 from app.core.redis_pool import get_redis
 from app.database import get_db
 from app.models.user import User
@@ -44,7 +44,8 @@ async def _is_token_revoked(jti: str | None) -> bool:
     SECURITY: Fails CLOSED — if Redis is down, deny access.
     """
     if not jti:
-        return False  # Legacy tokens without JTI are not revoked (backward compat)
+        logger.warning("Token without JTI rejected — possible legacy or forged token")
+        return True  # Reject tokens without JTI — all current token creation includes JTI
     try:
         r = get_redis()
         result = await r.get(f"token:revoked:{jti}")
@@ -104,6 +105,15 @@ async def get_current_user(
             detail=err.TOKEN_REVOKED,
         )
 
+    # S4-01: Check role_version freshness — reject tokens with stale role
+    token_rv = payload.get("rv", 0)
+    current_rv = await get_role_version(user_id)
+    if token_rv < current_rv:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=err.ROLE_VERSION_STALE,
+        )
+
     result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
     user = result.scalar_one_or_none()
 
@@ -153,6 +163,37 @@ async def check_entitlement(feature: str, user: User, db) -> None:
         )
 
 
+def _plan_limit_payload(
+    feature: str,
+    *,
+    plan: str,
+    limit: int,
+    used: int,
+    friendly_ru: str,
+) -> dict:
+    """Uniform 429 body so the frontend PlanLimitModal can render a proper
+    upsell dialog instead of a generic toast.
+
+    Phase C (2026-04-20): owner feedback — юзер, упирающийся в лимит, не
+    должен видеть «Daily limit reached», он должен видеть «Scout: 3/3.
+    Обновись до Ranger — 10/день». Structured keys:
+
+      feature     — `sessions | pvp | rag` (for analytics + icon choice)
+      plan        — текущий plan (`scout | ranger | hunter | master`)
+      limit       — численный порог текущего plan
+      used        — сколько уже израсходовано
+      message     — человек-фраза на ру (legacy `detail` alias)
+    """
+    return {
+        "detail": f"{friendly_ru} (лимит {limit}, план {plan}).",
+        "feature": feature,
+        "plan": plan,
+        "limit": limit,
+        "used": used,
+        "message": friendly_ru,
+    }
+
+
 async def check_session_limit(user: User, db) -> None:
     """Check if user hasn't exceeded daily session limit. Raises 429 if exceeded."""
     from app.services.entitlement import get_entitlement, check_session_limit as _check
@@ -160,5 +201,45 @@ async def check_session_limit(user: User, db) -> None:
     if not _check(ent):
         raise HTTPException(
             status_code=429,
-            detail=f"Daily session limit reached ({ent.limits.sessions_per_day}). Upgrade your plan.",
+            detail=_plan_limit_payload(
+                "sessions",
+                plan=ent.plan.value,
+                limit=ent.limits.sessions_per_day,
+                used=ent.sessions_used_today,
+                friendly_ru="Дневной лимит тренировок достигнут",
+            ),
+        )
+
+
+async def check_pvp_limit(user: User, db) -> None:
+    """Check PvP match limit by plan. Raises 429 if exceeded."""
+    from app.services.entitlement import get_entitlement, check_pvp_limit as _check
+    ent = await get_entitlement(user.id, db)
+    if not _check(ent):
+        raise HTTPException(
+            status_code=429,
+            detail=_plan_limit_payload(
+                "pvp",
+                plan=ent.plan.value,
+                limit=ent.limits.pvp_matches_per_day,
+                used=ent.pvp_used_today,
+                friendly_ru="Дневной лимит PvP матчей достигнут",
+            ),
+        )
+
+
+async def check_rag_limit(user: User, db) -> None:
+    """Check RAG query limit by plan. Raises 429 if exceeded."""
+    from app.services.entitlement import get_entitlement, check_rag_limit as _check
+    ent = await get_entitlement(user.id, db)
+    if not _check(ent):
+        raise HTTPException(
+            status_code=429,
+            detail=_plan_limit_payload(
+                "rag",
+                plan=ent.plan.value,
+                limit=ent.limits.rag_queries_per_day,
+                used=ent.rag_used_today,
+                friendly_ru="Дневной лимит RAG-запросов достигнут",
+            ),
         )

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { CheckCircle, XCircle, Clock, Pencil, Medal, Bot, User, Star } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { CheckCircle, XCircle, Clock, Pencil, Medal, Bot, User, Star, LogOut } from "lucide-react";
 import { useKnowledgeStore } from "@/stores/useKnowledgeStore";
 import type { ArenaRoundResult, ArenaFinalResults } from "@/types";
 import { ArenaAudioPlayer } from "@/components/pvp/ArenaAudioPlayer";
@@ -53,6 +54,8 @@ interface PvPArenaMatchProps {
 }
 
 export default function PvPArenaMatch({ userId, sendMessage }: PvPArenaMatchProps) {
+  const router = useRouter();
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
   const {
     pvpRound,
     pvpTotalRounds,
@@ -196,9 +199,47 @@ export default function PvPArenaMatch({ userId, sendMessage }: PvPArenaMatchProp
 
   return (
     <div className="flex flex-col h-full" style={{ background: "var(--bg-primary)", color: "var(--text-primary)" }}>
+      {/* Exit confirmation overlay */}
+      {showExitConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "var(--overlay-bg)", backdropFilter: "blur(4px)" }}>
+          <div className="rounded-xl p-6 max-w-sm w-full mx-4" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-color)" }}>
+            <h3 className="text-lg font-bold mb-2" style={{ color: "var(--text-primary)" }}>Выйти из матча?</h3>
+            <p className="text-sm mb-5" style={{ color: "var(--text-muted)" }}>Прогресс текущего матча будет потерян.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowExitConfirm(false)}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium"
+                style={{ background: "var(--input-bg)", color: "var(--text-primary)", border: "1px solid var(--border-color)" }}
+              >
+                Остаться
+              </button>
+              <button
+                onClick={() => {
+                  sendMessage({ type: "leave_match" });
+                  router.push("/pvp");
+                }}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium"
+                style={{ background: "var(--danger)", color: "#fff" }}
+              >
+                Выйти
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 glass-panel border-b" style={{ borderColor: "var(--border-color)" }}>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowExitConfirm(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+            style={{ background: "var(--danger-muted)", color: "var(--danger)", border: "1px solid var(--danger-muted)" }}
+            title="Выйти из матча"
+          >
+            <LogOut size={14} />
+            Выйти
+          </button>
           <span className="text-lg font-bold">ДУЭЛЬ ЗНАНИЙ</span>
         </div>
         <div className="text-sm text-[var(--text-secondary)]">

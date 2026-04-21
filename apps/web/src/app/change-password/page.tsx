@@ -90,8 +90,8 @@ export default function ChangePasswordPage() {
               animate={{ opacity: 1, y: 0 }}
               className="flex items-center gap-2 rounded-xl p-3 text-sm"
               style={{
-                background: "rgba(239, 68, 68, 0.08)",
-                border: "1px solid rgba(239, 68, 68, 0.2)",
+                background: "var(--danger-muted)",
+                border: "1px solid var(--danger-muted)",
                 color: "var(--danger)",
               }}
             >

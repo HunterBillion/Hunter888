@@ -230,7 +230,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
       <div
         className="pointer-events-none absolute inset-0 z-50"
         style={{
-          background: "repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(124,106,232,0.008) 3px, rgba(124,106,232,0.008) 6px)",
+          background: "repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(107,77,199,0.008) 3px, rgba(107,77,199,0.008) 6px)",
         }}
       />
 
@@ -267,12 +267,12 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
             <svg width="16" height="16" viewBox="0 0 16 16">
               <polygon
                 points="8,0 10,6 16,6 11,10 13,16 8,12 3,16 5,10 0,6 6,6"
-                fill="#FFD700"
+                fill="var(--rank-gold)"
               />
             </svg>
             <motion.div
               className="absolute top-0 left-1/2 -translate-x-1/2 w-[2px]"
-              style={{ background: "linear-gradient(180deg, #FFD700, transparent)", height: 40 }}
+              style={{ background: "linear-gradient(180deg, var(--rank-gold), transparent)", height: 40 }}
               initial={{ opacity: 0.8, scaleY: 0 }}
               animate={{ opacity: [0.8, 0], scaleY: 1 }}
               transition={{ duration: 0.8 }}
@@ -306,7 +306,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
           <motion.path
             d="M0,10 Q100,4 200,10 T400,10 T600,10 T800,10 T1000,10 T1200,10"
             fill="none"
-            stroke="rgba(124,106,232,0.4)"
+            stroke="rgba(107,77,199,0.4)"
             strokeWidth="2"
             animate={{
               d: [
@@ -320,7 +320,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
           <motion.path
             d="M0,12 Q150,6 300,12 T600,12 T900,12 T1200,12"
             fill="none"
-            stroke="rgba(124,106,232,0.2)"
+            stroke="rgba(107,77,199,0.2)"
             strokeWidth="1.5"
             animate={{
               d: [
@@ -364,7 +364,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
             <motion.path
               d="M0,4 Q15,1 30,4 T60,4 T90,4 T116,4"
               fill="none"
-              stroke="rgba(124,106,232,0.3)"
+              stroke="rgba(107,77,199,0.3)"
               strokeWidth="1"
               animate={{
                 d: [
@@ -444,7 +444,7 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
               strokeDasharray="4,2"
             />
             <g transform={`translate(75, ${hookLineLength - 2})`}>
-              <circle r="5" fill="rgba(124,106,232,0.6)" stroke="rgba(129,140,248,0.5)" strokeWidth="1" />
+              <circle r="5" fill="rgba(107,77,199,0.6)" stroke="rgba(129,140,248,0.5)" strokeWidth="1" />
               <WifiIcon x={-3.5} y={-3.5} />
             </g>
           </svg>
@@ -470,14 +470,14 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
               transform: `scale(${f.size}) scaleX(${f.direction === 1 ? 1 : -1})`,
             }}
           >
-            <svg width="44" height="22" viewBox="-2 -1 48 22" style={{ filter: f.isGolden ? "drop-shadow(0 0 6px #FFD700)" : "drop-shadow(0 0 4px rgba(124,106,232,0.5))" }}>
+            <svg width="44" height="22" viewBox="-2 -1 48 22" style={{ filter: f.isGolden ? "drop-shadow(0 0 6px var(--rank-gold))" : "drop-shadow(0 0 4px rgba(107,77,199,0.5))" }}>
               <polygon
                 points="36,10 46,3 46,17"
-                fill={f.isGolden ? "#FFD700" : "rgba(124,106,232,0.7)"}
+                fill={f.isGolden ? "var(--rank-gold)" : "rgba(107,77,199,0.7)"}
               />
               <ellipse
                 cx="20" cy="10" rx="16" ry="8"
-                fill={f.isGolden ? "#FFD700" : "rgba(124,106,232,0.8)"}
+                fill={f.isGolden ? "var(--rank-gold)" : "rgba(107,77,199,0.8)"}
                 stroke={f.isGolden ? "#FFA500" : "rgba(129,140,248,0.6)"}
                 strokeWidth="1.5"
               />
@@ -492,8 +492,8 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
           <span
             className="absolute -top-4 left-1/2 -translate-x-1/2 font-mono text-xs font-bold whitespace-nowrap"
             style={{
-              color: f.isGolden ? "#FFD700" : "rgba(165,180,252,0.9)",
-              textShadow: f.isGolden ? "0 0 8px #FFD700" : "0 0 6px rgba(124,106,232,0.5)",
+              color: f.isGolden ? "var(--rank-gold)" : "rgba(165,180,252,0.9)",
+              textShadow: f.isGolden ? "0 0 8px var(--rank-gold)" : "0 0 6px rgba(107,77,199,0.5)",
             }}
           >
             {f.code}
@@ -511,10 +511,10 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
             className="absolute font-mono text-sm font-bold px-5 py-3 rounded-xl"
             style={{
               top: "38%",
-              background: caught === "golden" ? "rgba(212,168,75,0.15)" : "rgba(124,106,232,0.15)",
-              border: `1px solid ${caught === "golden" ? "rgba(212,168,75,0.3)" : "rgba(124,106,232,0.25)"}`,
-              color: caught === "golden" ? "#FFD700" : "rgba(165,180,252,0.9)",
-              boxShadow: caught === "golden" ? "0 0 30px rgba(212,168,75,0.2)" : "0 0 20px rgba(124,106,232,0.1)",
+              background: caught === "golden" ? "rgba(212,168,75,0.15)" : "var(--accent-muted)",
+              border: `1px solid ${caught === "golden" ? "rgba(212,168,75,0.3)" : "var(--accent-glow)"}`,
+              color: caught === "golden" ? "var(--rank-gold)" : "rgba(165,180,252,0.9)",
+              boxShadow: caught === "golden" ? "0 0 30px rgba(212,168,75,0.2)" : "0 0 20px var(--accent-muted)",
               backdropFilter: "blur(12px)",
             }}
           >
@@ -549,8 +549,8 @@ export function FishermanError({ onRetry, message }: FishermanErrorProps) {
         >
           {/* Terminal label */}
           <div
-            className="font-mono text-[10px] tracking-[0.25em] uppercase mb-3"
-            style={{ color: "rgba(124,106,232,0.4)" }}
+            className="font-mono text-xs tracking-widest uppercase mb-3"
+            style={{ color: "var(--accent)" }}
           >
             {"// ПОТЕРЯ_СОЕДИНЕНИЯ"}
           </div>

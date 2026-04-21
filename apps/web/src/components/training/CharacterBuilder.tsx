@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { logger } from "@/lib/logger";
+import { AvatarPreview } from "./AvatarPreview";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import {
   ArrowRight, ChevronLeft, Loader2, Sparkles, RotateCcw, Check, Save, CheckCircle2,
@@ -14,6 +15,7 @@ import {
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/Button";
 import { AppIcon } from "@/components/ui/AppIcon";
+import { GROUP_ICONS } from "@/lib/groupIcons";
 import { api } from "@/lib/api";
 import type {
   ArchetypeCode, ArchetypeGroup, ArchetypeTier, LeadSource, ProfessionCategory,
@@ -337,7 +339,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                   <button key={key} onClick={() => setGroupFilter(groupFilter === key ? null : key)}
                     className="rounded-full px-2 py-1 text-sm font-medium uppercase tracking-wide"
                     style={{ background: groupFilter === key ? g.color + "20" : "var(--input-bg)", color: groupFilter === key ? g.color : "var(--text-muted)", border: groupFilter === key ? `1px solid ${g.color}40` : "1px solid transparent" }}>
-                    <AppIcon emoji={g.icon} size={14} /> {g.label} ({count})
+                    {(() => { const I = GROUP_ICONS[g.icon]; return I ? <I size={14} weight="duotone" /> : null; })()} {g.label} ({count})
                   </button>
                 );
               })}
@@ -347,7 +349,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                 const tc = getTierColor(t); const labels = ["T1", "T2", "T3", "T4"];
                 return (
                   <button key={t} onClick={() => setTierFilter(tierFilter === t ? null : t)}
-                    className="rounded-full px-2 py-1 text-sm font-medium uppercase"
+                    className="rounded-full px-2 py-1 text-xs font-semibold uppercase"
                     style={{ background: tierFilter === t ? tc + "20" : "var(--input-bg)", color: tierFilter === t ? tc : "var(--text-muted)", border: tierFilter === t ? `1px solid ${tc}40` : "1px solid transparent" }}>
                     {labels[t - 1]}
                   </button>
@@ -381,7 +383,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                       return (
                         <motion.button key={p.code} onClick={() => setProfession(p.code)}
                           className="glass-panel p-3 text-left rounded-xl relative"
-                          style={{ borderColor: sel ? "var(--accent)60" : undefined, boxShadow: sel ? "0 0 16px rgba(124,106,232,0.15)" : undefined }}
+                          style={{ borderColor: sel ? "var(--accent)60" : undefined, boxShadow: sel ? "0 0 16px var(--accent-muted)" : undefined }}
                           whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
                           {sel && <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "var(--accent)" }}><Check size={8} className="text-white" /></div>}
                           <div className="text-xl mb-1"><AppIcon emoji={p.icon} size={22} /></div>
@@ -446,7 +448,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                 return (
                   <motion.button key={ep.code} onClick={() => setEmotionPreset(ep.code)}
                     className="glass-panel p-4 text-center rounded-xl relative"
-                    style={{ borderColor: sel ? "var(--accent)60" : undefined, boxShadow: sel ? "0 0 16px rgba(124,106,232,0.15)" : undefined }}
+                    style={{ borderColor: sel ? "var(--accent)60" : undefined, boxShadow: sel ? "0 0 16px var(--accent-muted)" : undefined }}
                     whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
                     {sel && <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "var(--accent)" }}><Check size={8} className="text-white" /></div>}
                     <div className="text-2xl mb-2"><AppIcon emoji={ep.icon} size={28} /></div>
@@ -466,7 +468,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                   <h3 className="font-display text-base font-bold" style={{ color: "var(--text-primary)" }}>Уровень сложности</h3>
                   <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>Влияет на агрессивность, ловушки и адаптивную сложность</p>
                 </div>
-                <div className="flex items-center gap-2 rounded-xl px-4 py-2.5" style={{ background: `${difficulty <= 3 ? "rgba(61,220,132,0.10)" : difficulty <= 6 ? "rgba(212,168,75,0.10)" : "rgba(229,72,77,0.10)"}` }}>
+                <div className="flex items-center gap-2 rounded-xl px-4 py-2.5" style={{ background: `${difficulty <= 3 ? "var(--success-muted)" : difficulty <= 6 ? "var(--warning-muted)" : "var(--danger-muted)"}` }}>
                   <span className="font-display text-3xl font-black tabular-nums" style={{ color: difficulty <= 3 ? "var(--success)" : difficulty <= 6 ? "var(--warning)" : "var(--danger)" }}>{difficulty}</span>
                   <div className="flex flex-col">
                     <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>/10</span>
@@ -511,9 +513,23 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
           {/* ═══ Step 7: Preview + Summary ═══ */}
           {step === 7 && (<>
             <div className="glass-panel p-6 rounded-2xl">
-              <div className="flex items-center gap-2 mb-4">
-                <Sparkles size={16} style={{ color: "var(--accent)" }} />
-                <h3 className="font-display text-sm font-bold" style={{ color: "var(--text-primary)" }}>Ваш персонаж</h3>
+              <div className="flex items-center gap-3 mb-4">
+                {selectedArchetype ? (
+                  <AvatarPreview
+                    seed={selectedArchetype.code}
+                    size={48}
+                    className="shrink-0 rounded-full"
+                    style={{
+                      border: `2px solid color-mix(in srgb, ${ARCHETYPE_GROUPS[selectedArchetype.group]?.color ?? "var(--accent)"} 30%, transparent)`,
+                    }}
+                  />
+                ) : (
+                  <Sparkles size={16} style={{ color: "var(--accent)" }} />
+                )}
+                <div>
+                  <h3 className="font-display text-sm font-bold" style={{ color: "var(--text-primary)" }}>Ваш персонаж</h3>
+                  {selectedArchetype && <div className="text-xs" style={{ color: "var(--text-muted)" }}>{selectedArchetype.name} · {selectedArchetype.subtitle}</div>}
+                </div>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
@@ -521,7 +537,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                   <div className="text-sm font-bold" style={{ color: selectedArchetype ? ARCHETYPE_GROUPS[selectedArchetype.group]?.color : "var(--text-primary)" }}>
                     {selectedArchetype ? <><AppIcon emoji={selectedArchetype.icon} size={16} /> {selectedArchetype.name}</> : "\u2014"}
                   </div>
-                  {selectedArchetype && <div className="text-xs mt-0.5 italic" style={{ color: "var(--text-muted)" }}>T{selectedArchetype.tier} \u00B7 Lv{selectedArchetype.unlock_level}+</div>}
+                  {selectedArchetype && <div className="text-xs font-semibold mt-0.5" style={{ color: "var(--text-muted)" }}>T{selectedArchetype.tier} · Lv{selectedArchetype.unlock_level}+</div>}
                 </div>
                 <div className="rounded-xl p-3" style={{ background: "var(--input-bg)" }}>
                   <div className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>Профессия</div>
@@ -582,7 +598,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
               <Button variant="primary" onClick={() => handleStart(false)} disabled={starting || !archetype || !profession} size="sm" loading={starting} icon={<Sparkles size={16} />}>
                 Начать
               </Button>
-              <Button onClick={() => handleStart(true)} disabled={starting || !archetype || !profession} size="sm" loading={starting} icon={<Sparkles size={16} />} style={{ borderColor: "rgba(124,106,232,0.28)", color: "var(--accent)" }}>
+              <Button onClick={() => handleStart(true)} disabled={starting || !archetype || !profession} size="sm" loading={starting} icon={<Sparkles size={16} />} style={{ borderColor: "var(--accent-glow)", color: "var(--accent)" }}>
                 AI x{storyCalls}
               </Button>
             </div>

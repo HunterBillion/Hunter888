@@ -65,7 +65,9 @@ async def get_or_create_reputation(
 ) -> ManagerReputation:
     """Get existing reputation record or create a new one with defaults."""
     result = await db.execute(
-        select(ManagerReputation).where(ManagerReputation.user_id == user_id)
+        select(ManagerReputation)
+        .where(ManagerReputation.user_id == user_id)
+        .with_for_update()
     )
     rep = result.scalar_one_or_none()
 

@@ -36,15 +36,16 @@ async def generate_weekly_report(
     prev_week_start = week_start - timedelta(days=7)
 
     # Check if report already exists for this week
-    existing = await db.execute(
+    existing_result = await db.execute(
         select(WeeklyReport).where(
             WeeklyReport.user_id == user_id,
             WeeklyReport.week_start == week_start,
         )
     )
-    if existing.scalar_one_or_none():
+    existing_report = existing_result.scalar_one_or_none()
+    if existing_report:
         logger.info("Weekly report already exists for user=%s week=%s", user_id, week_start)
-        return existing.scalar_one_or_none()
+        return existing_report  # fixed: previously called scalar_one_or_none() twice → None on 2nd call
 
     # Sessions this week
     sessions_result = await db.execute(
@@ -89,7 +90,9 @@ async def generate_weekly_report(
 
     skills_snapshot = {}
     skills_change = {}
-    if progress:
+    # Only include skills if user has REAL data (at least one completed session).
+    # DB default=50 for skill_* columns is a lie when total_sessions == 0.
+    if progress and progress.total_sessions > 0:
         skills_snapshot = {
             "empathy": progress.skill_empathy,
             "knowledge": progress.skill_knowledge,
@@ -97,6 +100,10 @@ async def generate_weekly_report(
             "stress_resistance": progress.skill_stress_resistance,
             "closing": progress.skill_closing,
             "qualification": progress.skill_qualification,
+            "time_management": progress.skill_time_management,
+            "adaptation": progress.skill_adaptation,
+            "legal_knowledge": progress.skill_legal_knowledge,
+            "rapport_building": progress.skill_rapport_building,
         }
 
         # Skills change vs previous report
@@ -131,38 +138,33 @@ async def generate_weekly_report(
     for wp in weak_points[:3]:
         recommendations.append(f"Сфокусируйтесь на навыке '{wp['skill']}' — отставание {wp['gap']} от среднего")
 
-    # Weekly rank in team
+    # Weekly rank in team — single GROUP BY instead of N queries (S2-07a)
     weekly_rank = None
     rank_change = None
     user_r = await db.execute(select(User).where(User.id == user_id))
     user_obj = user_r.scalar_one_or_none()
     if user_obj and user_obj.team_id:
-        team_members_r = await db.execute(
-            select(User.id).where(
+        # One query: avg score per team member, ordered by avg desc
+        rank_result = await db.execute(
+            select(
+                TrainingSession.user_id,
+                func.avg(TrainingSession.score_total).label("avg_score"),
+            )
+            .join(User, User.id == TrainingSession.user_id)
+            .where(
                 User.team_id == user_obj.team_id,
                 User.is_active == True,  # noqa: E712
+                TrainingSession.status == SessionStatus.completed,
+                TrainingSession.started_at >= week_start,
+                TrainingSession.started_at < week_end,
             )
+            .group_by(TrainingSession.user_id)
+            .order_by(func.avg(TrainingSession.score_total).desc())
         )
-        team_member_ids = [r[0] for r in team_members_r.all()]
-
-        # Rank by avg score this week
-        scores_by_member = []
-        for mid in team_member_ids:
-            r = await db.execute(
-                select(func.avg(TrainingSession.score_total)).where(
-                    TrainingSession.user_id == mid,
-                    TrainingSession.status == SessionStatus.completed,
-                    TrainingSession.started_at >= week_start,
-                    TrainingSession.started_at < week_end,
-                )
-            )
-            member_avg = r.scalar()
-            scores_by_member.append((mid, float(member_avg or 0)))
-
-        scores_by_member.sort(key=lambda x: x[1], reverse=True)
-        for i, (mid, _) in enumerate(scores_by_member):
-            if mid == user_id:
-                weekly_rank = i + 1
+        rankings = rank_result.all()
+        for i, row in enumerate(rankings, 1):
+            if row.user_id == user_id:
+                weekly_rank = i
                 break
 
         # Rank change from previous week
@@ -288,14 +290,18 @@ async def get_team_weekly_digest(team_id: uuid.UUID, db: AsyncSession) -> dict:
     top_improvements = []
     degrading = []
 
-    for member in members:
-        report_r = await db.execute(
-            select(WeeklyReport).where(
-                WeeklyReport.user_id == member.id,
-                WeeklyReport.week_start == week_start,
-            )
+    # S2-07b2: batch-load all reports in one query instead of N+1
+    member_ids = [m.id for m in members]
+    reports_r = await db.execute(
+        select(WeeklyReport).where(
+            WeeklyReport.user_id.in_(member_ids),
+            WeeklyReport.week_start == week_start,
         )
-        report = report_r.scalar_one_or_none()
+    )
+    reports_by_user = {r.user_id: r for r in reports_r.scalars().all()}
+
+    for member in members:
+        report = reports_by_user.get(member.id)
 
         sessions = report.sessions_completed if report else 0
         avg_score = float(report.average_score) if report and report.average_score else 0

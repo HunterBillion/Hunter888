@@ -101,6 +101,10 @@ interface SessionStore {
   whispers: CoachingWhisper[];
   whispersEnabled: boolean;
 
+  // Script hints (AI-generated reply suggestions)
+  scriptHintsEnabled: boolean;
+  scriptHintsRefreshKey: number;
+
   // Real-time scores (from score.hint)
   realtimeScores: {
     script_adherence: number;
@@ -206,6 +210,8 @@ interface SessionStore {
   setCheckpointHint: (hint: CheckpointHint | null) => void;
   addWhisper: (w: CoachingWhisper) => void;
   setWhispersEnabled: (enabled: boolean) => void;
+  setScriptHintsEnabled: (enabled: boolean) => void;
+  refreshScriptHints: () => void;
   setRealtimeScores: (scores: SessionStore["realtimeScores"]) => void;
   addTrapToHistory: (trap: TrapEvent) => void;
   addEmotionToHistory: (state: EmotionState) => void;
@@ -276,6 +282,8 @@ const INITIAL_STATE = {
   checkpointHint: null as CheckpointHint | null,
   whispers: [] as CoachingWhisper[],
   whispersEnabled: true,
+  scriptHintsEnabled: true,
+  scriptHintsRefreshKey: 0,
   realtimeScores: null as SessionStore["realtimeScores"],
   trapHistory: [] as TrapEvent[],
   emotionHistory: [] as { state: EmotionState; timestamp: number }[],
@@ -436,6 +444,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   setCheckpointHint: (checkpointHint) => set({ checkpointHint }),
   addWhisper: (w) => set((s) => ({ whispers: [w, ...s.whispers].slice(0, 3) })),
   setWhispersEnabled: (whispersEnabled) => set({ whispersEnabled }),
+  setScriptHintsEnabled: (scriptHintsEnabled) => set({ scriptHintsEnabled }),
+  refreshScriptHints: () => set((state) => ({ scriptHintsRefreshKey: state.scriptHintsRefreshKey + 1 })),
   setRealtimeScores: (realtimeScores) => set({ realtimeScores }),
   addTrapToHistory: (trap) =>
     set((s) => ({

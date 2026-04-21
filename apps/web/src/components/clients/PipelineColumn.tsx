@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, forwardRef } from "react";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Plus, GripVertical } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { CRMClient, ClientStatus, UserRole } from "@/types";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
@@ -19,6 +19,8 @@ interface PipelineColumnProps {
   onQuickNote?: (client: CRMClient) => void;
   onReminder?: (client: CRMClient) => void;
   onInlineNoteSubmit?: (client: CRMClient, text: string) => Promise<void>;
+  onInlineEdit?: (clientId: string, patch: Partial<CRMClient>) => Promise<void>;
+  onAddClient?: (status: ClientStatus) => void;
   // HTML5 DnD handlers (desktop)
   onDragOver: (status: string, e: React.DragEvent) => void;
   onDragLeave: (status: string) => void;
@@ -45,6 +47,8 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
       onQuickNote,
       onReminder,
       onInlineNoteSubmit,
+      onInlineEdit,
+      onAddClient,
       onDragOver,
       onDragLeave,
       onDrop,
@@ -92,7 +96,9 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
             ? `color-mix(in srgb, ${color} 6%, var(--bg-secondary))`
             : "var(--bg-secondary)",
           border: `1px solid ${isOver ? color : "var(--border-color)"}`,
-          boxShadow: isOver ? `0 0 20px ${color}15` : "none",
+          boxShadow: isOver
+            ? `0 0 20px color-mix(in srgb, ${color} 15%, transparent)`
+            : "none",
         }}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -108,7 +114,7 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
               className="w-2.5 h-2.5 rounded-full shrink-0"
               style={{
                 background: color,
-                boxShadow: `0 0 6px ${color}80`,
+                boxShadow: `0 0 6px color-mix(in srgb, ${color} 50%, transparent)`,
               }}
             />
             <span
@@ -123,12 +129,12 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
               <span
                 className="text-xs font-mono px-1.5 py-0.5 rounded"
                 style={{
-                  background: `${color}10`,
-                  color: `${color}`,
-                  border: `1px solid ${color}20`,
+                  background: `color-mix(in srgb, ${color} 10%, transparent)`,
+                  color: color,
+                  border: `1px solid color-mix(in srgb, ${color} 20%, transparent)`,
                 }}
               >
-                {debtLabel} ₽
+                {debtLabel} &#8381;
               </span>
             )}
             <span
@@ -143,19 +149,25 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
           </div>
         </div>
 
-        {/* Drop indicator when empty + dragging over */}
-        {isOver && clients.length === 0 && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="mx-2 mt-2 rounded-lg border-2 border-dashed py-6 text-center"
-            style={{ borderColor: color, background: `${color}08` }}
-          >
-            <span className="text-xs font-mono" style={{ color }}>
-              Отпустите здесь
-            </span>
-          </motion.div>
-        )}
+        {/* Drop indicator when dragging over */}
+        <AnimatePresence>
+          {isOver && activeId && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mx-2 mt-2 rounded-lg border-2 border-dashed py-4 text-center"
+              style={{
+                borderColor: color,
+                background: `color-mix(in srgb, ${color} 5%, transparent)`,
+              }}
+            >
+              <span className="text-xs font-mono" style={{ color }}>
+                Отпустите здесь
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Cards */}
         <div className="flex-1 p-2 space-y-1.5 overflow-y-auto scrollbar-thin">
@@ -164,14 +176,18 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
               <motion.div
                 key={client.id}
                 layout
-                initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                initial={{ opacity: 0, scale: 0.92, y: 12 }}
                 animate={{
-                  opacity: activeId === client.id ? 0.4 : 1,
-                  scale: 1,
+                  opacity: activeId === client.id ? 0.3 : 1,
+                  scale: activeId === client.id ? 0.95 : 1,
                   y: 0,
                 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.15 }}
+                exit={{ opacity: 0, scale: 0.9, y: -8 }}
+                transition={{
+                  layout: { type: "spring", stiffness: 350, damping: 30 },
+                  opacity: { duration: 0.2 },
+                  scale: { duration: 0.2 },
+                }}
                 draggable={!readOnly}
                 onDragStart={readOnly ? undefined : (e) =>
                   onDragStart(
@@ -192,6 +208,17 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
                 onTouchEnd={readOnly ? undefined : onTouchEnd}
                 className={readOnly ? "" : "cursor-grab active:cursor-grabbing touch-none"}
               >
+                {/* Drag handle hint */}
+                {!readOnly && (
+                  <div
+                    className="flex items-center justify-center h-0 overflow-visible relative"
+                    style={{ zIndex: 1 }}
+                  >
+                    <div className="absolute -top-0 opacity-0 group-hover:opacity-30 transition-opacity">
+                      <GripVertical size={10} style={{ color: "var(--text-muted)" }} />
+                    </div>
+                  </div>
+                )}
                 <PipelineCard
                   client={client}
                   userRole={userRole}
@@ -200,18 +227,70 @@ export const PipelineColumn = forwardRef<HTMLDivElement, PipelineColumnProps>(
                   onQuickNote={onQuickNote}
                   onReminder={onReminder}
                   onInlineNoteSubmit={onInlineNoteSubmit}
+                  onInlineEdit={onInlineEdit}
                 />
               </motion.div>
             ))}
           </AnimatePresence>
 
+          {/* Empty state */}
           {!clients.length && !isOver && (
             <div className="text-center py-6 px-3">
-              <div className="text-base opacity-30 mb-1.5"><ClipboardList size={18} /></div>
-              <span className="text-xs font-mono" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
+              <div
+                className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg"
+                style={{
+                  background: `color-mix(in srgb, ${color} 8%, transparent)`,
+                  border: `1px solid color-mix(in srgb, ${color} 15%, transparent)`,
+                }}
+              >
+                <ClipboardList size={16} style={{ color, opacity: 0.6 }} />
+              </div>
+              <span
+                className="text-xs font-mono block"
+                style={{ color: "var(--text-muted)", opacity: 0.6 }}
+              >
                 Нет клиентов
               </span>
+              {!readOnly && onAddClient && (
+                <motion.button
+                  type="button"
+                  onClick={() => onAddClient(status)}
+                  className="mt-3 inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+                  style={{
+                    background: `color-mix(in srgb, ${color} 10%, transparent)`,
+                    color: color,
+                    border: `1px solid color-mix(in srgb, ${color} 20%, transparent)`,
+                  }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  <Plus size={12} />
+                  Добавить клиента
+                </motion.button>
+              )}
             </div>
+          )}
+
+          {/* Add client button at bottom of non-empty columns */}
+          {!readOnly && onAddClient && clients.length > 0 && (
+            <motion.button
+              type="button"
+              onClick={() => onAddClient(status)}
+              className="w-full mt-1 flex items-center justify-center gap-1 rounded-lg py-2 text-xs font-medium transition-colors border border-dashed"
+              style={{
+                borderColor: "var(--border-color)",
+                color: "var(--text-muted)",
+                opacity: 0.5,
+              }}
+              whileHover={{
+                opacity: 0.9,
+                borderColor: color,
+              }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <Plus size={10} />
+              Добавить
+            </motion.button>
           )}
         </div>
       </div>

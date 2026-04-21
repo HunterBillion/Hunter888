@@ -12,9 +12,8 @@ import json
 import logging
 import uuid
 
+from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +24,6 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
 
 SETTINGS_KEY_PREFIX = "integration:settings:"
@@ -149,7 +147,11 @@ async def get_or_create_api_key(
         settings["api_key"] = api_key
         await _set_team_settings(user.team_id, settings)
 
-        # Index API key → team_id for lookup
+        # Index API key → team_id for lookup.
+        # 2026-04-18 (FIND-010): removed `EXPIRE 86400` — TTL on the whole
+        # hash caused ALL teams' keys to need expensive KEYS-scan fallback
+        # every 24h. Index is now persistent; stale entries are removed
+        # explicitly on key rotation (see /api-key/rotate endpoint).
         redis = await get_redis()
         if redis:
             await redis.hset(API_KEY_INDEX, api_key, str(user.team_id))
@@ -164,16 +166,57 @@ async def get_or_create_api_key(
 # ═══════════════════════════════════════════════════════════════════════════
 
 async def _verify_api_key(x_api_key: str = Header(...)) -> uuid.UUID:
-    """Verify API key and return team_id."""
+    """Verify API key and return team_id.
+
+    2026-04-18 (FIND-010):
+      - Index is now persistent (no TTL on API_KEY_INDEX hash) → no periodic
+        KEYS-scan fallback needed. Lookup is O(1) redis HGET on every call.
+      - Comparison uses hmac.compare_digest to eliminate timing-attack surface
+        on the one-time SCAN rehydration path that survives for backward-compat.
+      - Rehydration path retained in case of manual Redis FLUSHDB; rare.
+    """
+    import hmac as _hmac
+
+    # Reject empty / suspicious inputs before any IO
+    if not x_api_key or len(x_api_key) > 512:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
     redis = await get_redis()
     if not redis:
         raise HTTPException(status_code=503, detail="Service unavailable")
 
     team_id_str = await redis.hget(API_KEY_INDEX, x_api_key)
-    if not team_id_str:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+    if team_id_str:
+        return uuid.UUID(team_id_str)
 
-    return uuid.UUID(team_id_str)
+    # Rehydration fallback: persistent hash shouldn't expire in normal ops,
+    # but FLUSHDB or migration may wipe it. Walk team settings once.
+    # SCAN is preferred over KEYS in production Redis — non-blocking, cursor-based.
+    import json as _json
+    cursor = 0
+    scanned = 0
+    while True:
+        cursor, keys_batch = await redis.scan(cursor=cursor, match=f"{SETTINGS_KEY_PREFIX}*", count=100)
+        for key in keys_batch:
+            scanned += 1
+            if scanned > 500:  # Safety cap — very large tenants
+                break
+            raw = await redis.get(key)
+            if not raw:
+                continue
+            try:
+                data = _json.loads(raw)
+            except (_json.JSONDecodeError, ValueError):
+                continue
+            stored = (data.get("api_key") or "").encode()
+            if stored and _hmac.compare_digest(stored, x_api_key.encode()):
+                tid = key.decode().replace(SETTINGS_KEY_PREFIX, "")
+                await redis.hset(API_KEY_INDEX, x_api_key, tid)
+                return uuid.UUID(tid)
+        if cursor == 0 or scanned > 500:
+            break
+
+    raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 @router.get("/v1/external/manager/{manager_id}/progress")

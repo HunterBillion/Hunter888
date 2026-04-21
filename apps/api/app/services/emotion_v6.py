@@ -383,6 +383,12 @@ NEW_TRIGGERS: list[str] = [
     "deadline_reminder", "jargon", "repetition", "interruption",
     "false_empathy", "script_detected", "competitor_mention",
     "time_respect", "silence_comfortable", "social_proof",
+    # v6.1: "Stupid question dilemma" — human-like interaction triggers
+    "off_topic_reaction",   # Client reacts to manager's off-topic/stupid question
+    "human_tangent",        # Client goes on a brief human tangent (then returns to topic)
+    "typo_confusion",       # Client confused by manager's typo/gibberish
+    "curiosity_personal",   # Client asks a personal/tangential question about manager
+    "self_correction",      # Client corrects themselves mid-sentence (human imperfection)
 ]
 
 NEW_TRIGGER_ENERGY: dict[str, float] = {
@@ -403,6 +409,12 @@ NEW_TRIGGER_ENERGY: dict[str, float] = {
     "time_respect": 0.20,
     "silence_comfortable": 0.15,
     "social_proof": 0.30,
+    # v6.1: Human-like interaction — NEUTRAL energy (don't penalize, don't reward)
+    "off_topic_reaction": 0.0,    # Client reacting to stupid question = neutral (not a penalty)
+    "human_tangent": 0.0,         # Brief tangent = neutral (preserves current emotion)
+    "typo_confusion": -0.05,      # Slight annoyance from gibberish, but NOT a real penalty
+    "curiosity_personal": 0.05,   # Slight positive — client is engaging as human
+    "self_correction": 0.0,       # Neutral — natural speech pattern
 }
 
 # Trigger conflict rules: if both detected, winner takes precedence
@@ -433,6 +445,12 @@ NEW_TRIGGER_PATTERNS: dict[str, list[str]] = {
     "time_respect": [r"(?:не\s+буду|не\s+стану)\s+(?:задерживать|отнимать)", r"понимаю.*(?:торопитесь|заняты|время)"],
     "silence_comfortable": [],  # detected by manager waiting > 5 sec without panic
     "social_proof": [r"\d+\s*(?:тысяч|клиент|человек|семей)", r"(?:статистика|исследован|опрос)", r"(?:90|95|98|99)\s*%"],
+    # v6.1: Human-like interaction detection patterns
+    "off_topic_reaction": [],    # detected by semantic analysis: manager msg has low relevance to bankruptcy/sales
+    "human_tangent": [],         # detected by AI output containing tangent markers (injected via prompt)
+    "typo_confusion": [],        # detected by high gibberish ratio in manager message
+    "curiosity_personal": [r"(?:вы\s+давно|сколько\s+вам|а\s+вы\s+сами|где\s+вы\s+(?:работ|учил))", r"(?:а\s+у\s+вас|вам\s+нравится|вы\s+женат|у\s+вас\s+дети)"],
+    "self_correction": [],       # detected by AI output patterns (injected via prompt)
 }
 
 # Deadline_reminder dual-energy by archetype group
@@ -510,3 +528,129 @@ def score_emotion_awareness(
             bonus += 0.50
 
     return min(1.25, bonus)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  8. HUMAN MOMENT DETECTION (v6.1 — "Stupid Question Dilemma")
+# ═══════════════════════════════════════════════════════════════════════
+
+# Bankruptcy/sales domain keywords — if a message contains NONE of these,
+# it's likely off-topic or a "stupid question"
+_DOMAIN_KEYWORDS = {
+    "долг", "кредит", "банк", "банкротств", "процедур", "суд", "арбитраж",
+    "управляющ", "реструктуриз", "списан", "имуществ", "квартир", "ипотек",
+    "платёж", "платеж", "просрочк", "коллектор", "пристав", "исполнительн",
+    "127-фз", "закон", "статья", "встреч", "консультац", "услуг", "стоим",
+    "цен", "оплат", "рассрочк", "гарантир", "документ", "справк", "заявлен",
+    "кредитор", "задолженност", "займ", "микрозайм", "мфо", "пенсия",
+    "зарплат", "прожиточн", "алимент", "жильё", "жилье", "машин", "авто",
+    "депозит", "вклад", "счёт", "счет", "карт", "финанс", "юрист",
+    "здравствуйте", "добрый", "меня зовут", "компания", "звоню",
+    "понимаю", "сочувствую", "ситуация", "помощь", "помочь", "решение",
+    "предлагаю", "давайте", "расскажите", "могу", "опасения", "боитесь",
+    "переживаете", "тревожит", "страх", "последств", "кредитная история",
+}
+
+
+def detect_human_moment(
+    manager_message: str,
+    *,
+    min_words: int = 3,
+    gibberish_ratio_threshold: float = 0.6,
+) -> str | None:
+    """Detect if manager's message is a "human moment" — off-topic, typo, or gibberish.
+
+    Returns trigger name or None:
+      - "typo_confusion" — message is mostly gibberish/typos (>60% non-dictionary words)
+      - "off_topic_reaction" — message has NO domain keywords (off-topic)
+      - "curiosity_personal" — message asks personal question about the manager
+      - None — normal message, no special handling needed
+    """
+    import re
+
+    text = manager_message.strip()
+    if not text:
+        return None
+
+    words = text.lower().split()
+    word_count = len(words)
+
+    # Very short messages (1-2 words) — could be valid ("нет", "да", "слушаю")
+    if word_count < min_words:
+        # Check if it's pure gibberish (no real Russian words)
+        cyrillic_count = sum(1 for w in words if re.search(r"[а-яё]{2,}", w))
+        if cyrillic_count == 0 and word_count >= 1:
+            return "typo_confusion"
+        return None
+
+    text_lower = text.lower()
+
+    # 1. Gibberish detection: count words that look like Russian
+    real_words = sum(1 for w in words if re.search(r"^[а-яё]{2,}$", w))
+    if word_count >= 3 and real_words / word_count < (1.0 - gibberish_ratio_threshold):
+        return "typo_confusion"
+
+    # 2. Personal curiosity detection (before domain check)
+    curiosity_patterns = NEW_TRIGGER_PATTERNS.get("curiosity_personal", [])
+    for pattern in curiosity_patterns:
+        if re.search(pattern, text_lower):
+            return "curiosity_personal"
+
+    # 3. Domain relevance check: does message contain ANY bankruptcy/sales keywords?
+    has_domain_word = any(kw in text_lower for kw in _DOMAIN_KEYWORDS)
+    if not has_domain_word:
+        return "off_topic_reaction"
+
+    return None
+
+
+def should_ai_add_human_tangent(
+    emotion_state: str,
+    message_index: int,
+    archetype_code: str,
+    *,
+    tangent_cooldown: int = 8,
+    last_tangent_at: int = -99,
+) -> bool:
+    """Decide if AI client should insert a brief human tangent in this response.
+
+    Rules:
+      - Only in certain emotion states (curious, considering, callback, deal)
+      - Not too early (message_index >= 6) and not too often (cooldown 8 messages)
+      - Probability varies by archetype personality type
+      - Never during hostile/hangup/cold (would break immersion)
+    """
+    # States where human tangent feels natural
+    tangent_friendly_states = {"curious", "considering", "callback", "deal", "negotiating"}
+    if emotion_state not in tangent_friendly_states:
+        return False
+
+    # Not too early in conversation
+    if message_index < 6:
+        return False
+
+    # Cooldown between tangents
+    if message_index - last_tangent_at < tangent_cooldown:
+        return False
+
+    # Archetype-specific probability (some characters tangent more)
+    _TANGENT_PRONE = {
+        "anxious", "crying", "desperate", "hysteric", "mood_swinger",
+        "overwhelmed", "couple", "grateful", "sarcastic", "psychologist",
+    }
+    _TANGENT_RARE = {
+        "aggressive", "hostile", "power_player", "strategist", "auditor",
+        "know_it_all", "litigious", "pragmatic",
+    }
+
+    # Simple deterministic check based on message_index parity
+    # This avoids randomness (reproducible) while still feeling organic
+    if archetype_code in _TANGENT_PRONE:
+        # Every ~8 messages in tangent-friendly state
+        return message_index % 8 == 0
+    elif archetype_code in _TANGENT_RARE:
+        # Every ~16 messages
+        return message_index % 16 == 0
+    else:
+        # Default: every ~12 messages
+        return message_index % 12 == 0

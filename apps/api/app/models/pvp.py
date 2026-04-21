@@ -231,7 +231,7 @@ class PvPDuel(Base):
     player1_total: Mapped[float] = mapped_column(Float, default=0.0)
     player2_total: Mapped[float] = mapped_column(Float, default=0.0)
     winner_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     is_draw: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -365,8 +365,12 @@ class PvPMatchQueue(Base):
     )
     # Range expands over time: base_range + (seconds_waited * expansion_rate)
     expanded_range: Mapped[float] = mapped_column(Float, default=0.0)
-    matched_with: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    duel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    matched_with: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    duel_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pvp_duels.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class AntiCheatLog(Base):

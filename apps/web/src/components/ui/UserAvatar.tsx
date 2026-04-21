@@ -34,7 +34,7 @@ export function UserAvatar({ avatarUrl, fullName, size = 32, className = "" }: U
     .slice(0, 2);
 
   const sizeStyle = { width: size, height: size, minWidth: size, minHeight: size };
-  const fontSize = Math.max(10, size * 0.38);
+  const fontSize = Math.max(14, size * 0.38);
 
   if (avatarUrl && !imageFailed) {
     const src = resolveUrl(avatarUrl);

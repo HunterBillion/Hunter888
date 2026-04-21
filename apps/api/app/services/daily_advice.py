@@ -163,7 +163,7 @@ async def generate_daily_advice(
     Returns None if advice already exists for today.
     Priority: decline_alert > weak_skill > confidence_low > stress_high > arena > streak > general
     """
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
 
     # Check if already generated today
     existing = await db.execute(
@@ -287,7 +287,7 @@ async def generate_daily_advice(
 
 async def get_today_advice(user_id: uuid.UUID, db: AsyncSession) -> DailyAdvice | None:
     """Get today's advice for a user (or generate if missing)."""
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     result = await db.execute(
         select(DailyAdvice).where(
             DailyAdvice.user_id == user_id,

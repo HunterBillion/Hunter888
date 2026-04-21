@@ -2,16 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 2026-04-18: unified pixel-UI design tokens + component classes.
+   See ../styles/pixel-ui.css for details. */
+@import "../styles/pixel-ui.css";
+
 /* ═══════════════════════════════════════════════════════════════════════════
    X HUNTER — Refined Cyber Design System v3.0
-   Palette: #311573 brand deep + #7C6AE8 accent
+   Palette: #311573 brand deep + #6B4DC7 accent (deep, not neon)
    Fonts: Geist Sans + Geist Mono (loaded via next/font)
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── CSS Custom Properties ───────────────────────────────────────────────── */
 :root {
   /* ── Layout ─────────────────────────────────────────── */
-  --app-shell-max: 1760px;
+  --app-shell-max: 1520px;
   --app-content-max: 1440px;
   --app-shell-padding: clamp(16px, 2vw, 32px);
   --app-section-padding-y: clamp(20px, 2.4vw, 40px);
@@ -24,7 +28,7 @@
   --radius-full: 9999px;
 
   /* ── Fluid type scale (min 14px for app) ────────────── */
-  --fs-xs:   clamp(0.75rem,   0.9vw,  0.875rem);   /* 12–14px (captions only) */
+  --fs-xs:   clamp(0.875rem,  0.95vw, 0.9375rem);  /* 14–15px (min 14px enforced) */
   --fs-sm:   clamp(0.875rem,  1vw,    1rem);        /* 14–16px */
   --fs-base: clamp(1rem,      1.1vw,  1.125rem);   /* 16–18px */
   --fs-md:   clamp(1.125rem,  1.3vw,  1.25rem);    /* 18–20px */
@@ -50,18 +54,23 @@
   --text-secondary: #3D3A52;
   --text-muted: #6E6B85;
   --border-color: rgba(0, 0, 0, 0.10);
-  --border-hover: rgba(99, 82, 217, 0.28);
-  --accent: #6352D9;
-  --accent-hover: #5242C0;
-  --accent-muted: rgba(99, 82, 217, 0.10);
-  --accent-glow: rgba(99, 82, 217, 0.18);
+  --border-hover: rgba(90, 61, 181, 0.28);
+  --accent: #5A3DB5;
+  --accent-hover: #4A2EA0;
+  --accent-muted: rgba(90, 61, 181, 0.10);
+  --accent-glow: rgba(90, 61, 181, 0.18);
   --brand-deep: #311573;
   --magenta: #C026D3;
   --magenta-muted: rgba(192, 38, 211, 0.10);
   --success: #0F8847;
   --warning: #B07A10;
   --danger: #C02228;
+  --danger-muted: rgba(192, 34, 40, 0.12);
+  --warning-muted: rgba(176, 122, 16, 0.12);
+  --success-muted: rgba(15, 136, 71, 0.12);
   --info: #2563EB;
+  --info-muted: rgba(37, 99, 235, 0.12);
+  --overlay-bg: rgba(0, 0, 0, 0.5);
 
   /* ── Gamification tokens ────────────────────────────── */
   --gf-xp: #D4A84B;
@@ -71,6 +80,12 @@
   --gf-levelup: #8B5CF6;
   --gf-reward: #10B981;
   --gf-reward-muted: rgba(16, 185, 129, 0.10);
+
+  /* ── Pixel layer tokens ──────────────────────────────── */
+  --pixel-border-color: var(--accent);
+  --pixel-glow-color: var(--accent-glow);
+  --pixel-grid-opacity: 0.03;
+  --pixel-grid-animated-opacity: 0.12;
 
   /* ── Surface tokens ─────────────────────────────────── */
   --surface-card: #FFFFFF;
@@ -82,15 +97,15 @@
   --glass-border: rgba(0, 0, 0, 0.08);
   --scrollbar-track: #f0f1f5;
   --scrollbar-thumb: #c7c9d1;
-  --selection-bg: rgba(99, 82, 217, 0.18);
+  --selection-bg: rgba(90, 61, 181, 0.18);
   --input-bg: rgba(0, 0, 0, 0.04);
 
   /* ── Chart tokens (light) ──────────────────────────── */
   --chart-grid: rgba(0, 0, 0, 0.08);
   --chart-text: #3D3A52;
-  --chart-line: #6352D9;
-  --chart-fill: rgba(99, 82, 217, 0.15);
-  --chart-bar-1: #6352D9;
+  --chart-line: #5A3DB5;
+  --chart-fill: rgba(90, 61, 181, 0.15);
+  --chart-bar-1: #5A3DB5;
   --chart-bar-2: #10B981;
   --chart-bar-3: #F59E0B;
   --chart-bar-4: #EC4899;
@@ -98,9 +113,9 @@
   --chart-tooltip-border: rgba(0, 0, 0, 0.12);
 
   /* ── Interactive tokens ─────────────────────────────── */
-  --interactive-default: #6352D9;
-  --interactive-hover: #5242C0;
-  --interactive-active: #4232B0;
+  --interactive-default: #5A3DB5;
+  --interactive-hover: #4A2EA0;
+  --interactive-active: #3B2098;
   --surface-elevated: #FFFFFF;
   --surface-sunken: #E4E4EE;
 
@@ -114,7 +129,7 @@
   --event-call: #2D7DD2;
   --event-message: #1A9E55;
   --event-consequence: #C48A15;
-  --event-storylet: #6352D9;
+  --event-storylet: #5A3DB5;
   --event-status: #8686A0;
   --event-callback: #D97706;
 
@@ -133,19 +148,19 @@
   /* ── Header (light mode) ────────────────────────────── */
   --header-bg: linear-gradient(180deg, rgba(247,247,250,0.96) 0%, rgba(237,237,242,0.94) 100%);
   --header-border: rgba(0, 0, 0, 0.08);
-  --header-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(99,82,217,0.06);
+  --header-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(90,61,181,0.06);
   --header-text: #15151F;
   --header-text-muted: rgba(21, 21, 31, 0.55);
   --header-text-active: #15151F;
-  --header-nav-active-bg: linear-gradient(135deg, rgba(99,82,217,0.12), rgba(99,82,217,0.06));
-  --header-nav-active-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 4px rgba(99,82,217,0.12);
+  --header-nav-active-bg: linear-gradient(135deg, rgba(90,61,181,0.12), rgba(90,61,181,0.06));
+  --header-nav-active-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 4px rgba(90,61,181,0.12);
   --header-btn-bg: rgba(0,0,0,0.03);
   --header-btn-border: rgba(0,0,0,0.07);
 
   /* ── Grid background (light mode) ──────────────────── */
-  --grid-dot-color: rgba(99, 82, 217, 0.08);
-  --grid-dot-color-major: rgba(99, 82, 217, 0.14);
-  --grid-glow: rgba(99, 82, 217, 0.04);
+  --grid-dot-color: rgba(90, 61, 181, 0.08);
+  --grid-dot-color-major: rgba(90, 61, 181, 0.14);
+  --grid-glow: rgba(90, 61, 181, 0.04);
 }
 
 /* ── Dark mode — Gamified Cyber ───────────────────────────────────────── */
@@ -158,27 +173,38 @@
   --text-secondary: #B8B5CC;
   --text-muted: #807DA0;
   --border-color: rgba(255, 255, 255, 0.08);
-  --border-hover: rgba(124, 106, 232, 0.30);
-  --accent: #7C6AE8;
-  --accent-hover: #9584F0;
-  --accent-muted: rgba(124, 106, 232, 0.14);
-  --accent-glow: rgba(124, 106, 232, 0.25);
+  --border-hover: rgba(107, 77, 199, 0.30);
+  --accent: #6B4DC7;
+  --accent-hover: #7E5FD9;
+  --accent-muted: rgba(107, 77, 199, 0.14);
+  --accent-glow: rgba(107, 77, 199, 0.25);
   --brand-deep: #311573;
   --magenta: #D926B8;
   --magenta-muted: rgba(217, 38, 184, 0.14);
   --success: #3DDC84;
   --warning: #E8A630;
   --danger: #E5484D;
+  --danger-muted: rgba(229, 72, 77, 0.20);
+  --warning-muted: rgba(232, 166, 48, 0.20);
+  --success-muted: rgba(61, 220, 132, 0.20);
   --info: #5B9EE9;
+  --info-muted: rgba(91, 158, 233, 0.20);
+  --overlay-bg: rgba(0, 0, 0, 0.65);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 8px 36px rgba(0, 0, 0, 0.6);
   --glass-bg: rgba(24, 23, 42, 0.72);
-  --glass-border: rgba(124, 106, 232, 0.14);
+  --glass-border: rgba(107, 77, 199, 0.14);
   --scrollbar-track: #100F1A;
   --scrollbar-thumb: #2E2C44;
-  --selection-bg: rgba(124, 106, 232, 0.30);
+  --selection-bg: rgba(107, 77, 199, 0.30);
   --input-bg: rgba(255, 255, 255, 0.07);
+
+  /* ── Pixel layer tokens (dark) ──────────────────────── */
+  --pixel-border-color: var(--accent);
+  --pixel-glow-color: var(--accent-glow);
+  --pixel-grid-opacity: 0.04;
+  --pixel-grid-animated-opacity: 0.15;
 
   /* ── Gamification tokens (dark) ────────────────────── */
   --gf-xp: #E8B84B;
@@ -206,9 +232,9 @@
   --chart-tooltip-border: rgba(255, 255, 255, 0.18);
 
   /* ── Interactive tokens (dark) ──────────────────────── */
-  --interactive-default: #7C6AE8;
-  --interactive-hover: #9584F0;
-  --interactive-active: #6352D9;
+  --interactive-default: #6B4DC7;
+  --interactive-hover: #7E5FD9;
+  --interactive-active: #5A3DB5;
   --surface-elevated: #1E1D30;
   --surface-sunken: #0C0B15;
 
@@ -222,7 +248,7 @@
   --event-call: #5B9EE9;
   --event-message: #3DDC84;
   --event-consequence: #E8A630;
-  --event-storylet: #7C6AE8;
+  --event-storylet: #6B4DC7;
   --event-status: #6C6C82;
   --event-callback: #FB923C;
 
@@ -239,20 +265,20 @@
   --streak-muted: rgba(232, 166, 48, 0.12);
 
   /* ── Header (dark mode) ─────────────────────────────── */
-  --header-bg: linear-gradient(180deg, rgba(16,15,26,0.98) 0%, rgba(24,23,42,0.94) 100%);
+  --header-bg: linear-gradient(180deg, rgba(10,9,18,0.99) 0%, rgba(16,15,28,0.97) 100%);
   --header-border: rgba(255, 255, 255, 0.07);
   --header-shadow: 0 8px 32px rgba(0,0,0,0.22), 0 2px 8px rgba(0,0,0,0.15);
   --header-text: #EEEEF2;
   --header-text-muted: rgba(238, 238, 242, 0.48);
   --header-text-active: #EEEEF2;
-  --header-nav-active-bg: linear-gradient(135deg, rgba(124,106,232,0.20), rgba(124,106,232,0.08));
+  --header-nav-active-bg: linear-gradient(135deg, rgba(107,77,199,0.20), rgba(107,77,199,0.08));
   --header-nav-active-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 0 16px rgba(49,21,115,0.18);
   --header-btn-bg: rgba(255,255,255,0.03);
   --header-btn-border: rgba(255,255,255,0.07);
 
   /* ── Grid background (dark mode) ───────────────────── */
-  --grid-dot-color: rgba(124, 106, 232, 0.18);
-  --grid-dot-color-major: rgba(124, 106, 232, 0.30);
+  --grid-dot-color: rgba(107, 77, 199, 0.18);
+  --grid-dot-color-major: rgba(107, 77, 199, 0.30);
   --grid-glow: rgba(49, 21, 115, 0.14);
 }
 
@@ -362,9 +388,15 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
 
   /* ─────────────────────────────────────────────────────────────
    * TYPOGRAPHY PRIMITIVES (2026-04-20)
-   * Единый набор для всех UI-панелей, чтобы избежать хаоса
-   * letter-spacing / font-family / размеров.
+   * Владелец жаловался: в /pvp смешано 5+ tracking-значений, 5
+   * размеров шрифта, 3 семейства (pixel/mono/default) — «невозможно
+   * читать и понимать». Эти 4 класса — единственно-верный набор
+   * для любой UI-панели. Новые компоненты строго на них, старые —
+   * постепенно мигрируются.
    * ────────────────────────────────────────────────────────── */
+
+  /* Kicker: мелкая пиксельная капса над заголовками секций
+     («SELECT MODE — PVP», «ТРЕНИРОВКА С КЛИЕНТОМ»). */
   .t-kicker {
     font-family: var(--font-vt323), 'Press Start 2P', monospace;
     font-size: 11px;
@@ -373,6 +405,9 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
     letter-spacing: 0.18em;
     line-height: 1.1;
   }
+
+  /* Section title: главный заголовок карточки / секции
+     («Арена», «Знания ФЗ-127», «Друзья арены»). */
   .t-title {
     font-family: var(--font-vt323), 'Press Start 2P', monospace;
     font-size: 15px;
@@ -381,180 +416,31 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
     letter-spacing: 0.14em;
     line-height: 1.2;
   }
+
+  /* Card title: шрифт имени режима / внутри плитки
+     (name of mode, name of category). */
   .t-card-title {
     font-size: 14px;
     font-weight: 600;
     line-height: 1.25;
     letter-spacing: 0.01em;
   }
+
+  /* Body: описания, help-text, content под заголовком. */
   .t-body {
     font-size: 13px;
     font-weight: 400;
     line-height: 1.4;
     color: var(--text-secondary);
   }
+
+  /* Label mono: числа, таймеры, статусы-чипы, score delta. */
   .t-label-mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11px;
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-  }
-
-  /* ─────────────────────────────────────────────────────────────
-   * BUTTON SYSTEM (2026-04-20)
-   * 4 уровня иерархии — чтобы пользователь не путался что главное.
-   * Владельцу важно: «выделяй те элементы, который важны».
-   *   pvp-btn-primary   — единственная hero-CTA страницы («Найти
-   *                        соперника», «Начать тест»). Accent-glow,
-   *                        large, pulse-ready.
-   *   pvp-btn-tile      — обычные плитки выбора режима. glass-panel
-   *                        border, hover lifts 2px, цвет бордера
-   *                        задаётся через --tile-accent inline.
-   *   pvp-btn-featured  — выделенная «рекомендуем-новичку» плитка.
-   *                        Ring-glow в accent-цвете, CTA-бейдж
-   *                        сверху («СТАРТ» / «ПОПУЛЯРНО»).
-   *   pvp-btn-chip      — мелкие чипы-теги (категории, личности,
-   *                        lifelines). Compact, pill-shape.
-   * ────────────────────────────────────────────────────────── */
-
-  .pvp-btn-primary {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    width: 100%;
-    padding: 1rem 1.5rem;
-    background: var(--accent);
-    color: #fff;
-    border: 1px solid var(--accent);
-    border-radius: var(--radius-lg);
-    font-size: 1rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    box-shadow:
-      0 4px 16px var(--accent-glow),
-      0 0 0 1px color-mix(in srgb, #fff 10%, transparent) inset;
-    transition:
-      transform 180ms ease-out,
-      box-shadow 180ms ease-out,
-      filter 180ms ease-out;
-    cursor: pointer;
-  }
-  .pvp-btn-primary:hover:not(:disabled) {
-    transform: translateY(-1px);
-    filter: brightness(1.07);
-    box-shadow:
-      0 6px 22px var(--accent-glow),
-      0 0 0 1px color-mix(in srgb, #fff 14%, transparent) inset;
-  }
-  .pvp-btn-primary:active:not(:disabled) {
-    transform: translateY(1px) scale(0.99);
-  }
-  .pvp-btn-primary:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .pvp-btn-tile {
-    position: relative;
-    display: block;
-    width: 100%;
-    text-align: left;
-    background: var(--surface-card);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-lg);
-    padding: 0.75rem;
-    transition:
-      transform 150ms ease-out,
-      border-color 150ms ease-out,
-      box-shadow 150ms ease-out;
-    cursor: pointer;
-  }
-  .pvp-btn-tile:hover:not(:disabled) {
-    transform: translateY(-2px);
-    border-color: color-mix(in srgb, var(--tile-accent, var(--accent)) 55%, transparent);
-    box-shadow: 0 4px 14px color-mix(in srgb, var(--tile-accent, var(--accent)) 20%, transparent);
-  }
-  .pvp-btn-tile:active:not(:disabled) {
-    transform: translateY(0) scale(0.98);
-  }
-  .pvp-btn-tile:disabled {
-    cursor: not-allowed;
-  }
-  .pvp-btn-tile[data-locked="true"] {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  /* Featured — для самой важной плитки, которую юзер должен
-     заметить первой (напр. «Классическая дуэль» для нового игрока). */
-  .pvp-btn-featured {
-    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--accent) 8%, var(--surface-card)) 0%,
-      var(--surface-card) 70%
-    );
-    box-shadow:
-      0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
-      0 4px 18px color-mix(in srgb, var(--accent) 22%, transparent);
-  }
-  .pvp-btn-featured:hover:not(:disabled) {
-    border-color: var(--accent);
-    box-shadow:
-      0 0 0 1px var(--accent),
-      0 6px 24px color-mix(in srgb, var(--accent) 35%, transparent);
-  }
-
-  /* Featured-badge — «СТАРТ» / «ПОПУЛЯРНО» pill, сверху-справа
-     плитки. Используется с .pvp-btn-featured. */
-  .pvp-btn-badge {
-    position: absolute;
-    top: -8px;
-    right: 12px;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.15rem 0.6rem;
-    background: var(--accent);
-    color: #fff;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    border-radius: var(--radius-full);
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 50%, transparent);
-    white-space: nowrap;
-  }
-
-  .pvp-btn-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.35rem 0.7rem;
-    background: var(--input-bg);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-full);
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition:
-      border-color 120ms ease-out,
-      color 120ms ease-out,
-      background 120ms ease-out;
-  }
-  .pvp-btn-chip:hover:not(:disabled) {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-  .pvp-btn-chip[aria-pressed="true"],
-  .pvp-btn-chip[data-active="true"] {
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    border-color: var(--accent);
-    color: var(--accent);
   }
 
   /* ── Panel System (3 levels of hierarchy) ────────────── */
@@ -604,6 +490,61 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
     border-radius: var(--radius-sm);
   }
 
+  /* ── Pixel accent utilities ─────────────────────────── */
+
+  /* outline instead of box-shadow: no repaint on hover/scroll,
+     critical on pages with 20+ cards (training, archetypes) */
+  .pixel-border {
+    outline: 2px solid var(--pixel-border-color, var(--accent));
+    outline-offset: -2px;
+    border-radius: 0;
+  }
+
+  /* Stepped corners — only for leaderboard top-3, pixijs containers */
+  .pixel-border-stepped {
+    box-shadow:
+      2px -2px 0 0 var(--accent),
+      -2px -2px 0 0 var(--accent),
+      2px 2px 0 0 var(--accent),
+      -2px 2px 0 0 var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  .pixel-shadow {
+    box-shadow:
+      2px 2px 0 0 rgba(0, 0, 0, 0.3),
+      4px 4px 0 0 rgba(0, 0, 0, 0.15);
+  }
+
+  .pixel-glow {
+    text-shadow:
+      0 0 4px var(--accent),
+      0 0 8px var(--accent-glow);
+  }
+
+  .pixel-divider {
+    height: 2px;
+    background: repeating-linear-gradient(
+      to right,
+      var(--border-color) 0px,
+      var(--border-color) 8px,
+      transparent 8px,
+      transparent 12px
+    );
+  }
+
+  /* Step-based animation timing (retro sprite feel) */
+  .animate-steps {
+    animation-timing-function: steps(8, end);
+  }
+
+  /* Pixelated rendering for canvas/sprites */
+  .render-pixel {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+
   /* Interactive card — lift on hover */
   .glass-panel-interactive {
     cursor: pointer;
@@ -651,16 +592,38 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
 
   .training-session-panel {
     min-height: 0;
+    /* 2026-04-18: lock to viewport so the grid cell has a definite height. */
+    max-height: calc(100vh - 90px);
+    height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(124,106,232,0.2) transparent;
+    scrollbar-width: auto;
+    scrollbar-color: rgba(107,77,199,0.5) transparent;
   }
 
-  .training-session-panel::-webkit-scrollbar { width: 4px; }
-  .training-session-panel::-webkit-scrollbar-track { background: transparent; }
-  .training-session-panel::-webkit-scrollbar-thumb { background: rgba(124,106,232,0.2); border-radius: 4px; }
-  .training-session-panel::-webkit-scrollbar-thumb:hover { background: rgba(124,106,232,0.35); }
+  /* 2026-04-18: extra bottom padding ONLY for the stats (right) panel.
+     Chat panel (left) must NOT have this — otherwise input bar floats
+     above an empty pocket of "воздух" at the bottom. */
+  .training-session-panel--stats {
+    padding-bottom: 140px;
+  }
+
+  /* Chat panel uses overflow-hidden so padding doesn't leak into the scrollable
+     messages div inside — but for safety reset any inherited padding-bottom. */
+  .training-session-panel--chat {
+    padding-bottom: 0;
+  }
+
+  .training-session-panel::-webkit-scrollbar { width: 12px; }
+  .training-session-panel::-webkit-scrollbar-track { background: rgba(107,77,199,0.08); border-radius: 2px; }
+  .training-session-panel::-webkit-scrollbar-thumb {
+    background: rgba(107,77,199,0.55);
+    border-radius: 6px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+    min-height: 40px;
+  }
+  .training-session-panel::-webkit-scrollbar-thumb:hover { background: rgba(107,77,199,0.8); background-clip: content-box; }
 
   .training-session-center { min-height: min(50vh, 480px); }
 
@@ -926,7 +889,7 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
   /* ── PvP grid ──────────────────────────────────────── */
   .pvp-pyramid-grid {
     background:
-      radial-gradient(circle at top, rgba(124, 106, 232, 0.14), transparent 42%),
+      radial-gradient(circle at top, rgba(107, 77, 199, 0.14), transparent 42%),
       linear-gradient(var(--grid-dot-color) 1px, transparent 1px),
       linear-gradient(90deg, var(--grid-dot-color) 1px, transparent 1px);
     background-size: auto, 32px 32px, 32px 32px;
@@ -1145,10 +1108,10 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
   /* ── Pulse glow for CTA buttons ─────────────────── */
   @keyframes pulse-glow {
     0%, 100% {
-      box-shadow: 0 0 20px rgba(124,106,232,0.3), 0 0 60px rgba(124,106,232,0.1);
+      box-shadow: 0 0 20px rgba(107,77,199,0.3), 0 0 60px rgba(107,77,199,0.1);
     }
     50% {
-      box-shadow: 0 0 30px rgba(124,106,232,0.5), 0 0 80px rgba(124,106,232,0.2);
+      box-shadow: 0 0 30px rgba(107,77,199,0.5), 0 0 80px rgba(107,77,199,0.2);
     }
   }
 
@@ -1203,7 +1166,7 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
 
   /* ── Mic glow ──────────────────────────────────────── */
   .global-mic-glow {
-    background: radial-gradient(circle at center, rgba(124, 106, 232, 0.12) 0%, transparent 70%);
+    background: radial-gradient(circle at center, rgba(107, 77, 199, 0.12) 0%, transparent 70%);
     opacity: 0; transition: opacity 0.4s ease; pointer-events: none;
   }
   .global-mic-glow.active { opacity: 1; }
@@ -1293,21 +1256,21 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
 }
 :root:not(.dark) .glass-panel:hover {
-  border-color: rgba(99, 82, 217, 0.2);
+  border-color: rgba(90, 61, 181, 0.2);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 :root:not(.dark) .app-grid-layer { opacity: 0.4; }
-:root:not(.dark) .glow-text-purple { color: #6352D9; }
+:root:not(.dark) .glow-text-purple { color: #5A3DB5; }
 :root:not(.dark) .glow-text-green  { color: #1A9E55; }
 :root:not(.dark) .glow-text-magenta { color: #C026D3; }
 :root:not(.dark) .kw-highlight { color: #1A9E55; border-bottom-color: rgba(26, 158, 85, 0.4); }
-:root:not(.dark) .xp-bar-fill { box-shadow: 0 0 4px rgba(99, 82, 217, 0.2); }
+:root:not(.dark) .xp-bar-fill { box-shadow: 0 0 4px rgba(90, 61, 181, 0.2); }
 :root:not(.dark) .vh-input { background: rgba(0, 0, 0, 0.025); border-color: rgba(0, 0, 0, 0.12); }
-:root:not(.dark) .vh-input:focus { border-color: #6352D9; box-shadow: 0 0 0 3px rgba(99, 82, 217, 0.12); }
-:root:not(.dark) .btn-neon { box-shadow: 0 1px 3px rgba(99, 82, 217, 0.12); }
-:root:not(.dark) .btn-neon:hover { box-shadow: 0 4px 12px rgba(99, 82, 217, 0.18); }
-:root:not(.dark) .badge-neon { box-shadow: none; border-color: rgba(99, 82, 217, 0.15); }
+:root:not(.dark) .vh-input:focus { border-color: #5A3DB5; box-shadow: 0 0 0 3px rgba(90, 61, 181, 0.12); }
+:root:not(.dark) .btn-neon { box-shadow: 0 1px 3px rgba(90, 61, 181, 0.12); }
+:root:not(.dark) .btn-neon:hover { box-shadow: 0 4px 12px rgba(90, 61, 181, 0.18); }
+:root:not(.dark) .badge-neon { box-shadow: none; border-color: rgba(90, 61, 181, 0.15); }
 :root:not(.dark) .badge-success { background: rgba(26, 158, 85, 0.10); color: #047857; }
 :root:not(.dark) .badge-warning { background: rgba(196, 138, 21, 0.10); color: #B45309; }
 :root:not(.dark) .badge-danger  { background: rgba(205, 43, 49, 0.10); color: #CD2B31; }
@@ -1319,15 +1282,15 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
   backdrop-filter: none;
 }
 :root:not(.dark) .cyber-card:hover {
-  border-color: rgba(99, 82, 217, 0.2);
+  border-color: rgba(90, 61, 181, 0.2);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 :root:not(.dark) .neon-pulse {
   animation: neon-pulse-light 2s ease-in-out infinite;
 }
 @keyframes neon-pulse-light {
-  0%, 100% { box-shadow: 0 0 4px rgba(99, 82, 217, 0.08); border-color: rgba(99, 82, 217, 0.15); }
-  50% { box-shadow: 0 0 12px rgba(99, 82, 217, 0.15); border-color: rgba(99, 82, 217, 0.3); }
+  0%, 100% { box-shadow: 0 0 4px rgba(90, 61, 181, 0.08); border-color: rgba(90, 61, 181, 0.15); }
+  50% { box-shadow: 0 0 12px rgba(90, 61, 181, 0.15); border-color: rgba(90, 61, 181, 0.3); }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1344,35 +1307,35 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
 
 /* Landing — cold, professional, high contrast */
 .rhythm-landing {
-  --rhythm-accent-glow: rgba(99, 82, 217, 0.08);
+  --rhythm-accent-glow: rgba(90, 61, 181, 0.08);
   --rhythm-transition: cubic-bezier(0.4, 0, 0.2, 1);
   --rhythm-animation-speed: 0.8s;
 }
 
 /* Dashboard — warm, motivating, welcoming */
 .rhythm-dashboard {
-  --rhythm-accent-glow: rgba(124, 106, 232, 0.15);
+  --rhythm-accent-glow: rgba(107, 77, 199, 0.15);
   --rhythm-transition: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --rhythm-animation-speed: 0.5s;
 }
 
 /* Training catalog — anticipation, readiness */
 .rhythm-catalog {
-  --rhythm-accent-glow: rgba(124, 106, 232, 0.10);
+  --rhythm-accent-glow: rgba(107, 77, 199, 0.10);
   --rhythm-transition: cubic-bezier(0.4, 0, 0.2, 1);
   --rhythm-animation-speed: 0.6s;
 }
 
 /* Training session — tense, immersive, minimal chrome */
 .rhythm-session {
-  --rhythm-accent-glow: rgba(124, 106, 232, 0.05);
+  --rhythm-accent-glow: rgba(107, 77, 199, 0.05);
   --rhythm-transition: cubic-bezier(0.16, 1, 0.3, 1);
   --rhythm-animation-speed: 0.3s;
 }
 
 /* Results — relief, celebration, growth */
 .rhythm-results {
-  --rhythm-accent-glow: rgba(124, 106, 232, 0.20);
+  --rhythm-accent-glow: rgba(107, 77, 199, 0.20);
   --rhythm-transition: cubic-bezier(0.34, 1.56, 0.64, 1);
   --rhythm-animation-speed: 0.4s;
 }

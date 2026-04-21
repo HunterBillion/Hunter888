@@ -23,12 +23,18 @@ import {
   Flame,
   Star,
   Zap,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { useSound } from "@/hooks/useSound";
+import { QuizThinkingIndicator } from "@/components/pvp/QuizThinkingIndicator";
+import { QuizCaseIntro } from "@/components/pvp/QuizCaseIntro";
 import { useKnowledgeStore, type QuizMessage } from "@/stores/useKnowledgeStore";
 import { ErrorBoundary } from "@/components/errors/ErrorBoundary";
+import { PageAuthGate } from "@/components/layout/PageAuthGate";
 import { logger } from "@/lib/logger";
 import type { WSMessage } from "@/types";
 
@@ -36,9 +42,11 @@ import type { WSMessage } from "@/types";
 
 export default function KnowledgeSessionPageWrapper() {
   return (
-    <ErrorBoundary>
-      <KnowledgeSessionPage />
-    </ErrorBoundary>
+    <PageAuthGate>
+      <ErrorBoundary>
+        <KnowledgeSessionPage />
+      </ErrorBoundary>
+    </PageAuthGate>
   );
 }
 
@@ -55,6 +63,40 @@ function KnowledgeSessionPage() {
 
   const [showResults, setShowResults] = useState(false);
   const [hintLoading, setHintLoading] = useState(false);
+
+  // 2026-04-20: голосовой ответ в knowledge quiz. Владельцу было важно
+  // чтобы "во всей панели" работал голос — TTS для intro здесь уже есть
+  // (QuizCaseIntro), а вот STT для ответа юзера — нет. Добавляем через
+  // тот же useSpeechRecognition, что и в /training/[id]. Результат
+  // хука дописывается в store.input, а не заменяет его — чтобы юзер мог
+  // начать печатать, добавить голосом, поправить руками и отправить.
+  const speech = useSpeechRecognition({
+    lang: "ru-RU",
+    onResult: (text: string) => {
+      if (!text) return;
+      const current = store.input.trim();
+      // пробел-разделитель: если уже есть текст — добавляем с пробелом
+      const next = current ? `${current} ${text}` : text;
+      store.setInput(next);
+    },
+  });
+  const handleMicToggle = useCallback(() => {
+    if (!speech.isSupported) return;
+    if (speech.status === "listening") {
+      speech.stopListening();
+    } else {
+      speech.startListening();
+    }
+  }, [speech]);
+  // quiz_v2: narrative case briefing (2026-04-18)
+  const [caseIntro, setCaseIntro] = useState<{
+    caseId: string;
+    complexity: "simple" | "tangled" | "adversarial";
+    introText: string;
+    totalQuestions: number;
+    personality: "professor" | "detective" | "blitz";
+    audioUrl?: string | null;
+  } | null>(null);
 
   // #7 fix: Reset store when navigating to a different session to prevent stale state leak
   useEffect(() => {
@@ -96,6 +138,33 @@ function KnowledgeSessionPage() {
         }
 
         // V2: quiz.ready with personality data
+        // quiz_v2: narrative case briefing (2026-04-18)
+        case "case.intro": {
+          const cx = (data.complexity === "simple" || data.complexity === "tangled" || data.complexity === "adversarial")
+            ? data.complexity
+            : "simple";
+          const p = (data.personality === "detective" || data.personality === "professor" || data.personality === "blitz")
+            ? data.personality
+            : "professor";
+          setCaseIntro({
+            caseId: String(data.case_id ?? "C-???"),
+            complexity: cx as "simple" | "tangled" | "adversarial",
+            introText: String(data.intro_text ?? ""),
+            totalQuestions: Number(data.total_questions ?? 10),
+            personality: p as "professor" | "detective" | "blitz",
+            audioUrl: typeof data.audio_url === "string" ? data.audio_url : null,
+          });
+          break;
+        }
+        // quiz_v2: TTS audio arrives async AFTER case.intro (backend synth takes 1-3s)
+        case "case.intro.audio": {
+          const audio = typeof data.audio_url === "string" ? data.audio_url : null;
+          if (audio) {
+            setCaseIntro((prev) => prev ? { ...prev, audioUrl: audio } : prev);
+          }
+          break;
+        }
+
         case "quiz.ready": {
           store.setStatus("active");
           store.setSessionId(sessionId);
@@ -147,6 +216,35 @@ function KnowledgeSessionPage() {
           break;
         }
 
+        // 2026-04-18 STREAMING: verdict arrives first (< 1-2s), UI shows ✓/✖ + sets up streaming bubble.
+        case "quiz.feedback.verdict": {
+          const correctAns = typeof data.correct_answer === "string" ? data.correct_answer : undefined;
+          const articleRef = typeof data.article_reference === "string" ? data.article_reference : undefined;
+          const isCorrect = Boolean(data.is_correct);
+          store.setIsTyping(false);
+          store.addMessage({
+            type: "feedback",
+            content: "",              // will be filled by chunk events
+            isCorrect,
+            correctAnswer: correctAns,
+            articleRef,
+            explanation: "",
+          });
+          if (isCorrect) {
+            playSound("correct", 0.4);
+          } else {
+            playSound("incorrect", 0.3);
+          }
+          break;
+        }
+        // Streaming chunks — append to the last feedback message as tokens arrive.
+        case "quiz.feedback.chunk": {
+          const t = typeof data.text === "string" ? data.text : "";
+          if (t) {
+            store.appendToLastMessage(t);
+          }
+          break;
+        }
         case "feedback":
         case "quiz.feedback": {
           // V2: Enhanced feedback with personality, streak, speed bonus
@@ -174,6 +272,8 @@ function KnowledgeSessionPage() {
             isCorrect: data.is_correct as boolean,
             explanation: data.explanation as string | undefined,
             articleRef: (data.article_ref || data.article_reference) as string | undefined,
+            // 2026-04-18: surface correct answer prominently in the bubble
+            correctAnswer: (data.correct_answer || data.correct_answer_summary) as string | undefined,
             personalityComment,
             speedBonus,
             avatarEmoji: currentPersonality2?.avatarEmoji,
@@ -444,7 +544,7 @@ function KnowledgeSessionPage() {
                       ? "rgba(61,220,132,0.1)"
                       : accuracy >= 50
                         ? "rgba(245,158,11,0.1)"
-                        : "rgba(229,72,77,0.1)",
+                        : "var(--danger-muted)",
                   border: `2px solid ${accuracy >= 75 ? "#00FF6640" : accuracy >= 50 ? "#F59E0B40" : "#FF333340"}`,
                 }}
               >
@@ -494,7 +594,7 @@ function KnowledgeSessionPage() {
                   {store.correct}
                 </div>
                 <div
-                  className="mt-1 font-mono text-xs uppercase tracking-widest"
+                  className="mt-1 font-mono text-sm uppercase tracking-widest"
                   style={{ color: "var(--text-muted)" }}
                 >
                   Верно
@@ -503,8 +603,8 @@ function KnowledgeSessionPage() {
               <div
                 className="rounded-xl p-4 text-center"
                 style={{
-                  background: "rgba(229,72,77,0.06)",
-                  border: "1px solid rgba(229,72,77,0.15)",
+                  background: "var(--danger-muted)",
+                  border: "1px solid var(--danger-muted)",
                 }}
               >
                 <div
@@ -514,7 +614,7 @@ function KnowledgeSessionPage() {
                   {store.incorrect}
                 </div>
                 <div
-                  className="mt-1 font-mono text-xs uppercase tracking-widest"
+                  className="mt-1 font-mono text-sm uppercase tracking-widest"
                   style={{ color: "var(--text-muted)" }}
                 >
                   Неверно
@@ -523,8 +623,8 @@ function KnowledgeSessionPage() {
               <div
                 className="rounded-xl p-4 text-center"
                 style={{
-                  background: "rgba(124,106,232,0.06)",
-                  border: "1px solid rgba(124,106,232,0.15)",
+                  background: "var(--accent-muted)",
+                  border: "1px solid var(--accent-muted)",
                 }}
               >
                 <div
@@ -534,7 +634,7 @@ function KnowledgeSessionPage() {
                   {accuracy}%
                 </div>
                 <div
-                  className="mt-1 font-mono text-xs uppercase tracking-widest"
+                  className="mt-1 font-mono text-sm uppercase tracking-widest"
                   style={{ color: "var(--text-muted)" }}
                 >
                   Точность
@@ -554,7 +654,7 @@ function KnowledgeSessionPage() {
                   {store.score}
                 </div>
                 <div
-                  className="mt-1 font-mono text-xs uppercase tracking-widest"
+                  className="mt-1 font-mono text-sm uppercase tracking-widest"
                   style={{ color: "var(--text-muted)" }}
                 >
                   Очки
@@ -594,7 +694,7 @@ function KnowledgeSessionPage() {
                   </span>
                   {store.streak >= 5 && (
                     <motion.span
-                      className="text-xs font-mono text-orange-400 ml-1"
+                      className="text-sm font-mono text-orange-400 ml-1"
                       animate={{ opacity: [0.6, 1, 0.6] }}
                       transition={{ repeat: Infinity, duration: 1.2 }}
                     >
@@ -608,11 +708,11 @@ function KnowledgeSessionPage() {
             {/* V2: Difficulty indicator */}
             {store.currentDifficulty > 0 && (
               <div className="mt-2 text-center">
-                <span className="font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>
+                <span className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>
                   СЛОЖНОСТЬ{" "}
                 </span>
                 {Array.from({ length: 5 }).map((_, i) => (
-                  <span key={i} style={{ color: i < store.currentDifficulty ? "var(--warning)" : "var(--text-muted)", fontSize: "12px" }}>
+                  <span key={i} style={{ color: i < store.currentDifficulty ? "var(--warning)" : "var(--text-muted)", fontSize: "14px" }}>
                     <Star size={12} style={{ color: "var(--rank-gold)" }} />
                   </span>
                 ))}
@@ -621,7 +721,7 @@ function KnowledgeSessionPage() {
 
             {store.skipped > 0 && (
               <div
-                className="mt-3 text-center font-mono text-xs"
+                className="mt-3 text-center font-mono text-sm"
                 style={{ color: "var(--text-muted)" }}
               >
                 Пропущено: {store.skipped}
@@ -631,7 +731,7 @@ function KnowledgeSessionPage() {
             {/* #5 fix: Category progress from server results */}
             {Array.isArray(results.category_progress) && (results.category_progress as Array<{ category: string; correct: number; total: number }>).length > 0 && (
               <div className="mt-6">
-                <h3 className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>
+                <h3 className="font-mono text-sm uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>
                   По категориям
                 </h3>
                 <div className="space-y-2">
@@ -640,8 +740,8 @@ function KnowledgeSessionPage() {
                     return (
                       <div key={cat.category}>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{cat.category}</span>
-                          <span className="font-mono text-xs" style={{ color: pct >= 75 ? "var(--success)" : pct >= 50 ? "var(--warning)" : "var(--danger)" }}>
+                          <span className="text-sm" style={{ color: "var(--text-secondary)" }}>{cat.category}</span>
+                          <span className="font-mono text-sm" style={{ color: pct >= 75 ? "var(--success)" : pct >= 50 ? "var(--warning)" : "var(--danger)" }}>
                             {cat.correct}/{cat.total} ({pct}%)
                           </span>
                         </div>
@@ -675,13 +775,13 @@ function KnowledgeSessionPage() {
                   }}
                 >
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="font-mono text-xs uppercase tracking-widest font-bold" style={{ color: "var(--warning)" }}>
+                    <span className="font-mono text-sm uppercase tracking-widest font-bold" style={{ color: "var(--warning)" }}>
                       Слабые категории ФЗ-127
                     </span>
                   </div>
                   <ul className="space-y-1">
                     {weak.map(c => (
-                      <li key={c.category} className="flex items-start gap-2 text-xs" style={{ color: "var(--text-secondary)" }}>
+                      <li key={c.category} className="flex items-start gap-2 text-sm" style={{ color: "var(--text-secondary)" }}>
                         <span style={{ color: "var(--danger)", flexShrink: 0 }}>→</span>
                         <span><strong>{c.category}</strong> — {c.correct}/{c.total} ({Math.round((c.correct / c.total) * 100)}%). Рекомендуем дополнительную тренировку.</span>
                       </li>
@@ -694,8 +794,8 @@ function KnowledgeSessionPage() {
             {/* Server summary */}
             {typeof results.summary === "string" && results.summary && (
               <div
-                className="mt-4 rounded-xl p-3 text-xs leading-relaxed"
-                style={{ background: "rgba(124,106,232,0.06)", border: "1px solid rgba(124,106,232,0.15)", color: "var(--text-secondary)" }}
+                className="mt-4 rounded-xl p-3 text-sm leading-relaxed"
+                style={{ background: "var(--accent-muted)", border: "1px solid var(--accent-muted)", color: "var(--text-secondary)" }}
               >
                 {results.summary as string}
               </div>
@@ -707,7 +807,7 @@ function KnowledgeSessionPage() {
                   store.reset();
                   router.push("/pvp");
                 }}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 font-mono text-xs tracking-wider transition-all"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 font-mono text-sm tracking-wider transition-all"
                 style={{
                   borderColor: "rgba(255,255,255,0.08)",
                   background: "rgba(255,255,255,0.03)",
@@ -741,16 +841,42 @@ function KnowledgeSessionPage() {
   // ─── Chat Interface ────────────────────────────────
   return (
     <div
-      className="flex h-screen flex-col"
-      style={{ background: "var(--bg-primary)" }}
+      className="flex h-screen flex-col relative"
+      style={{
+        background: "var(--bg-primary)",
+        // 2026-04-18 fix: add pixel-arcade background (was blank/empty).
+        backgroundImage: `
+          radial-gradient(ellipse at top, var(--accent-muted) 0%, transparent 60%),
+          repeating-linear-gradient(0deg, transparent 0, transparent 23px, rgba(107,77,199,0.035) 23px, rgba(107,77,199,0.035) 24px),
+          repeating-linear-gradient(90deg, transparent 0, transparent 23px, rgba(107,77,199,0.035) 23px, rgba(107,77,199,0.035) 24px)
+        `,
+      }}
     >
-      {/* Top Bar */}
+      {/* quiz_v2: case briefing overlay — pops in when backend emits case.intro */}
+      {caseIntro && (
+        <QuizCaseIntro
+          caseId={caseIntro.caseId}
+          complexity={caseIntro.complexity}
+          introText={caseIntro.introText}
+          totalQuestions={caseIntro.totalQuestions}
+          personality={caseIntro.personality}
+          audioUrl={caseIntro.audioUrl}
+          onAccept={() => setCaseIntro(null)}
+        />
+      )}
+
+      {/* Top Bar — pixel arcade (2026-04-18: enlarged padding + min-height so components breathe) */}
       <div
-        className="shrink-0 border-b px-4 py-3"
+        className="shrink-0 px-5 sm:px-6"
         style={{
-          borderColor: "rgba(255,255,255,0.06)",
-          background: "rgba(3,3,6,0.95)",
-          backdropFilter: "blur(20px)",
+          paddingTop: 14,
+          paddingBottom: 14,
+          minHeight: 72,
+          borderBottom: "2px solid var(--accent)",
+          background: "var(--bg-primary)",
+          boxShadow: "0 2px 0 0 rgba(0,0,0,0.15), 0 4px 0 0 var(--accent-muted)",
+          position: "relative",
+          zIndex: 10,
         }}
       >
         <div className="mx-auto flex max-w-3xl items-center justify-between">
@@ -761,123 +887,126 @@ function KnowledgeSessionPage() {
                 store.reset();
                 router.push("/pvp");
               }}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border transition-colors"
+              whileHover={{ y: -1 }}
+              whileTap={{ y: 2 }}
+              className="flex items-center justify-center"
               style={{
-                borderColor: "rgba(255,255,255,0.08)",
+                width: 44, height: 44,
+                background: "var(--input-bg)",
+                border: "2px solid var(--border-color)",
+                borderRadius: 0,
                 color: "var(--text-secondary)",
+                boxShadow: "2px 2px 0 0 var(--border-color)",
+                transition: "box-shadow 140ms ease-out, transform 140ms ease-out",
               }}
-              whileHover={{ background: "rgba(255,255,255,0.06)" }}
-              whileTap={{ scale: 0.95 }}
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={22} />
             </motion.button>
             <div>
               <div
-                className="font-mono text-xs uppercase tracking-[0.2em]"
-                style={{ color: "var(--accent)" }}
+                className="font-pixel uppercase tracking-wider"
+                style={{ color: "var(--accent)", textShadow: "0 0 6px var(--accent-glow)", fontSize: 16 }}
               >
-                {store.mode === "blitz"
+                ▶ {store.mode === "blitz"
                   ? "БЛИЦ"
                   : store.mode === "themed"
                     ? "ПО ТЕМЕ"
                     : store.mode === "pvp"
                       ? "PVP"
-                      : "СВОБОДНЫЙ ДИАЛОГ"}
+                      : "ДИАЛОГ"}
               </div>
               {store.category && (
-                <div
-                  className="text-xs"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {store.category}
+                <div className="font-pixel uppercase tracking-wider mt-1" style={{ color: "var(--text-muted)", fontSize: 14 }}>
+                  ● {store.category}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Center: Progress */}
-          <div className="flex items-center gap-4">
+          {/* Center: segmented pixel progress bar (arcade healthbar) */}
+          <div className="flex items-center gap-3">
             {store.totalQuestions > 0 && (
               <div className="flex items-center gap-2">
-                <div
-                  className="h-1.5 w-24 overflow-hidden rounded-full sm:w-32"
-                  style={{ background: "rgba(255,255,255,0.06)" }}
-                >
-                  <motion.div
-                    className="h-full rounded-full"
-                    style={{ background: "var(--accent)" }}
-                    animate={{ width: `${progressPct}%` }}
-                    transition={{ duration: 0.3 }}
-                  />
+                <div className="hidden sm:flex items-center gap-1" aria-label={`Прогресс ${store.currentQuestion}/${store.totalQuestions}`}>
+                  {Array.from({ length: Math.min(store.totalQuestions, 12) }).map((_, i) => {
+                    const filled = i < Math.round((store.currentQuestion / store.totalQuestions) * Math.min(store.totalQuestions, 12));
+                    return (
+                      <span
+                        key={i}
+                        style={{
+                          width: 14,
+                          height: 18,
+                          background: filled ? "var(--accent)" : "var(--input-bg)",
+                          border: `2px solid ${filled ? "var(--accent)" : "var(--border-color)"}`,
+                          borderRadius: 0,
+                          boxShadow: filled ? "0 0 6px var(--accent-glow)" : "none",
+                          transition: "background 180ms ease-out, border-color 180ms ease-out",
+                        }}
+                      />
+                    );
+                  })}
                 </div>
-                <span
-                  className="font-mono text-xs"
-                  style={{ color: "var(--text-muted)" }}
-                >
+                <span className="font-pixel uppercase tracking-wider tabular-nums" style={{ color: "var(--text-primary)", fontSize: 16 }}>
                   {store.currentQuestion}/{store.totalQuestions}
                 </span>
               </div>
             )}
           </div>
 
-          {/* Right: Score + Timer */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 size={12} style={{ color: "var(--success)" }} />
-              <span
-                className="font-mono text-xs"
-                style={{ color: "var(--success)" }}
-              >
-                {store.correct}
-              </span>
-              <XCircle size={12} style={{ color: "var(--danger)" }} />
-              <span
-                className="font-mono text-xs"
-                style={{ color: "var(--danger)" }}
-              >
-                {store.incorrect}
-              </span>
-            </div>
-
-            {store.timeLeft !== null && (
+          {/* Right: Pixel scoreboard + timer */}
+          <div className="flex items-center gap-2">
+            {/* Score box — pixel retro (only shown in active quiz) */}
+            {(store.correct > 0 || store.incorrect > 0) && (
               <div
-                className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1"
+                className="flex items-center gap-2 px-3 py-1.5 font-pixel tabular-nums"
                 style={{
-                  borderColor:
-                    store.timeLeft <= 30
-                      ? "rgba(229,72,77,0.4)"
-                      : "rgba(245,158,11,0.3)",
-                  background:
-                    store.timeLeft <= 30
-                      ? "rgba(229,72,77,0.08)"
-                      : "rgba(245,158,11,0.08)",
+                  background: "var(--input-bg)",
+                  border: "2px solid var(--accent)",
+                  borderRadius: 0,
+                  boxShadow: "2px 2px 0 0 var(--accent-muted)",
+                  fontSize: 16,
                 }}
               >
-                <Clock
-                  size={12}
-                  style={{
-                    color:
-                      store.timeLeft <= 30 ? "var(--danger)" : "var(--warning)",
-                  }}
-                />
-                <span
-                  className="font-mono text-sm font-bold"
-                  style={{
-                    color:
-                      store.timeLeft <= 30 ? "var(--danger)" : "var(--warning)",
-                  }}
-                >
-                  {formatTime(store.timeLeft)}
-                </span>
+                <span style={{ color: "var(--success)" }}>✓{store.correct}</span>
+                <span style={{ color: "var(--text-muted)" }}>│</span>
+                <span style={{ color: "var(--danger)" }}>✖{store.incorrect}</span>
               </div>
+            )}
+
+            {store.timeLeft !== null && (
+              <motion.div
+                className="flex items-center gap-2 px-3 py-1.5 font-pixel uppercase tracking-wider"
+                animate={store.timeLeft <= 10 ? { scale: [1, 1.08, 1] } : {}}
+                transition={{ duration: 0.6, repeat: store.timeLeft <= 10 ? Infinity : 0, ease: "easeInOut" }}
+                style={{
+                  background: store.timeLeft <= 30 ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.1)",
+                  color: store.timeLeft <= 30 ? "var(--danger)" : "var(--warning)",
+                  border: `2px solid ${store.timeLeft <= 30 ? "var(--danger)" : "var(--warning)"}`,
+                  borderRadius: 0,
+                  boxShadow: `2px 2px 0 0 ${store.timeLeft <= 30 ? "var(--danger)" : "var(--warning)"}`,
+                  fontSize: 15,
+                }}
+              >
+                <Clock size={14} />
+                <span className="tabular-nums">{formatTime(store.timeLeft)}</span>
+              </motion.div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-6 space-y-4">
+      {/* Chat Messages — pixel-grid arcade background (2026-04-18 UX fix) */}
+      <div
+        className="flex-1 overflow-y-auto relative"
+        style={{
+          backgroundImage: `
+            radial-gradient(ellipse at 50% 20%, rgba(107,77,199,0.12) 0%, transparent 55%),
+            repeating-linear-gradient(0deg, transparent 0, transparent 31px, rgba(107,77,199,0.06) 31px, rgba(107,77,199,0.06) 32px),
+            repeating-linear-gradient(90deg, transparent 0, transparent 31px, rgba(107,77,199,0.06) 31px, rgba(107,77,199,0.06) 32px)
+          `,
+        }}
+      >
+        <div className="mx-auto max-w-3xl px-4 py-6 space-y-4 relative">
           {/* Connection status */}
           {connectionState !== "connected" && (
             <motion.div
@@ -891,7 +1020,7 @@ function KnowledgeSessionPage() {
                 style={{ color: "var(--accent)" }}
               />
               <span
-                className="font-mono text-xs"
+                className="font-mono text-sm"
                 style={{ color: "var(--text-muted)" }}
               >
                 {connectionState === "connecting"
@@ -906,49 +1035,9 @@ function KnowledgeSessionPage() {
             <MessageBubble key={msg.id} message={msg} />
           ))}
 
-          {/* Typing indicator */}
+          {/* Typing indicator — rotating arcade messages (2026-04-18) */}
           <AnimatePresence>
-            {store.isTyping && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                className="flex items-start gap-3"
-              >
-                <div
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                  style={{
-                    background: "rgba(124,106,232,0.12)",
-                    border: "1px solid rgba(124,106,232,0.25)",
-                  }}
-                >
-                  <Brain size={14} style={{ color: "var(--accent)" }} />
-                </div>
-                <div
-                  className="rounded-2xl rounded-tl-sm px-4 py-3"
-                  style={{
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                  }}
-                >
-                  <div className="flex gap-1.5">
-                    {[0, 1, 2].map((i) => (
-                      <motion.div
-                        key={i}
-                        className="h-2 w-2 rounded-full"
-                        style={{ background: "var(--text-muted)" }}
-                        animate={{ opacity: [0.3, 1, 0.3] }}
-                        transition={{
-                          duration: 1,
-                          repeat: Infinity,
-                          delay: i * 0.2,
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </motion.div>
-            )}
+            {store.isTyping && <QuizThinkingIndicator />}
           </AnimatePresence>
 
           <div ref={messagesEndRef} />
@@ -960,18 +1049,18 @@ function KnowledgeSessionPage() {
         <div
           className="shrink-0 border-t px-4 py-3"
           style={{
-            borderColor: "rgba(124,106,232,0.15)",
-            background: "rgba(124,106,232,0.04)",
+            borderColor: "var(--accent-muted)",
+            background: "var(--accent-muted)",
           }}
         >
           <div className="mx-auto flex max-w-3xl items-center justify-between">
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            <span className="text-sm" style={{ color: "var(--text-muted)" }}>
               Уточняющий вопрос — вы можете ответить или пропустить
             </span>
             <div className="flex gap-2">
               <button
-                className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
-                style={{ background: "rgba(124,106,232,0.15)", color: "var(--accent)" }}
+                className="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+                style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
                 onClick={() => {
                   store.setPendingFollowUp(null);
                   // Let user type answer normally - next text.message will be treated as follow-up answer
@@ -980,7 +1069,7 @@ function KnowledgeSessionPage() {
                 Ответить
               </button>
               <button
-                className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+                className="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
                 style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-muted)" }}
                 onClick={() => {
                   store.setPendingFollowUp(null);
@@ -994,60 +1083,78 @@ function KnowledgeSessionPage() {
         </div>
       )}
 
-      {/* Input Bar */}
+      {/* ═══ Pixel Input Bar — 2026-04-18 redesigned:
+             - opaque solid background (no stray artifacts behind input)
+             - explicit per-element padding so hard-shadows don't collide
+             - "SEND" label hides on <sm; keeps bar compact on mobile
+         ═══ */}
       <div
-        className="shrink-0 border-t px-4 py-3"
+        className="shrink-0 relative"
         style={{
-          borderColor: "rgba(255,255,255,0.06)",
-          background: "rgba(3,3,6,0.95)",
-          backdropFilter: "blur(20px)",
+          borderTop: "2px solid var(--accent)",
+          background: "var(--bg-primary)",
+          boxShadow: "0 -2px 0 0 rgba(0,0,0,0.15)",
+          zIndex: 10,
+          paddingTop: 14,
+          paddingBottom: 14,
+          paddingLeft: 12,
+          paddingRight: 12,
         }}
       >
-        <div className="mx-auto flex max-w-3xl items-end gap-2">
-          {/* Hint button */}
+        <div className="mx-auto flex max-w-3xl items-end gap-3">
+          {/* Hint button — pixel amber. 2026-04-18: hidden in blitz (hints not available, user was seeing error toast). */}
+          {store.mode !== "blitz" && (
           <motion.button
             onClick={handleHint}
             disabled={hintLoading || store.status !== "active"}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors disabled:opacity-30"
+            whileHover={{ y: -1 }}
+            whileTap={{ y: 2 }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center disabled:opacity-40"
             style={{
-              borderColor: "rgba(245,158,11,0.25)",
-              background: "rgba(245,158,11,0.06)",
+              background: "rgba(245,158,11,0.12)",
+              border: "2px solid var(--warning)",
+              borderRadius: 0,
               color: "var(--warning)",
+              boxShadow: "2px 2px 0 0 var(--warning)",
+              transition: "box-shadow 120ms, transform 120ms",
             }}
-            whileHover={{ background: "rgba(245,158,11,0.12)" }}
-            whileTap={{ scale: 0.95 }}
             title="Подсказка"
+            aria-label="Подсказка"
           >
-            {hintLoading ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Lightbulb size={16} />
-            )}
+            {hintLoading ? <Loader2 size={16} className="animate-spin" /> : <Lightbulb size={16} />}
           </motion.button>
+          )}
 
-          {/* Skip button */}
+          {/* Skip button — pixel neutral */}
           <motion.button
             onClick={handleSkip}
             disabled={store.status !== "active"}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors disabled:opacity-30"
+            whileHover={{ y: -1 }}
+            whileTap={{ y: 2 }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center disabled:opacity-40"
             style={{
-              borderColor: "rgba(255,255,255,0.08)",
-              background: "rgba(255,255,255,0.03)",
+              background: "var(--input-bg)",
+              border: "2px solid var(--border-color)",
+              borderRadius: 0,
               color: "var(--text-muted)",
+              boxShadow: "2px 2px 0 0 var(--border-color)",
+              transition: "box-shadow 120ms, transform 120ms",
             }}
-            whileHover={{ background: "rgba(255,255,255,0.06)" }}
-            whileTap={{ scale: 0.95 }}
             title="Пропустить"
+            aria-label="Пропустить"
           >
             <SkipForward size={16} />
           </motion.button>
 
-          {/* Text input */}
+          {/* Pixel text input */}
           <div
-            className="flex flex-1 items-end rounded-xl border transition-colors"
+            className="flex flex-1 items-end relative min-w-0"
             style={{
-              borderColor: "rgba(255,255,255,0.08)",
               background: "var(--input-bg)",
+              border: "2px solid var(--accent)",
+              borderRadius: 0,
+              boxShadow: "2px 2px 0 0 var(--accent-muted)",
+              minHeight: 44,
             }}
           >
             <textarea
@@ -1055,30 +1162,95 @@ function KnowledgeSessionPage() {
               value={store.input}
               onChange={(e) => store.setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Введите ответ..."
+              placeholder={
+                speech.status === "listening"
+                  ? "◉ Говорите…"
+                  : "▸ ВВЕДИТЕ ОТВЕТ ИЛИ НАЖМИТЕ 🎤"
+              }
               rows={1}
-              className="flex-1 resize-none bg-transparent px-4 py-2.5 text-sm outline-none placeholder:text-[var(--text-muted)]"
+              className="flex-1 resize-none bg-transparent px-3 py-2.5 text-sm outline-none placeholder:opacity-50"
               style={{
                 color: "var(--text-primary)",
                 maxHeight: "120px",
+                fontFamily: "var(--font-mono, monospace)",
               }}
               disabled={store.status !== "active"}
             />
+            {/* 2026-04-20: live interim transcript — шёпот справа, чтобы
+                юзер видел что именно распозналось ДО вставки в input. */}
+            {speech.status === "listening" && speech.interimText && (
+              <div
+                className="absolute right-2 bottom-0 translate-y-full mt-1 max-w-[60%] truncate text-[11px]"
+                style={{ color: "var(--accent)" }}
+              >
+                ▸ {speech.interimText}
+              </div>
+            )}
           </div>
 
-          {/* Send button */}
+          {/* 2026-04-20: Mic toggle button.
+              Pixel-стиль совпадает с hint/skip/send. Цвет:
+                danger (красный) во время записи — явный signal,
+                border-accent в покое.
+              Если браузер не поддерживает Web Speech API — кнопка
+              disabled с tooltip-объяснением. */}
+          <motion.button
+            onClick={handleMicToggle}
+            disabled={store.status !== "active" || !speech.isSupported}
+            whileTap={{ y: 2 }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center disabled:opacity-40"
+            style={{
+              background:
+                speech.status === "listening"
+                  ? "var(--danger)"
+                  : "var(--input-bg)",
+              border:
+                speech.status === "listening"
+                  ? "2px solid var(--danger)"
+                  : "2px solid var(--accent)",
+              borderRadius: 0,
+              color:
+                speech.status === "listening" ? "#fff" : "var(--accent)",
+              boxShadow:
+                speech.status === "listening"
+                  ? "2px 2px 0 0 #000"
+                  : "2px 2px 0 0 var(--accent-muted)",
+              transition: "box-shadow 120ms, transform 120ms, background 120ms",
+            }}
+            title={
+              !speech.isSupported
+                ? "Голосовой ввод не поддерживается в этом браузере"
+                : speech.status === "listening"
+                ? "Остановить запись"
+                : "Голосовой ответ"
+            }
+            aria-label={
+              speech.status === "listening" ? "Остановить микрофон" : "Включить микрофон"
+            }
+            aria-pressed={speech.status === "listening"}
+          >
+            {speech.status === "listening" ? <MicOff size={16} /> : <Mic size={16} />}
+          </motion.button>
+
+          {/* Send — pixel arcade accent */}
           <motion.button
             onClick={handleSend}
             disabled={!store.input.trim() || store.status !== "active"}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors disabled:opacity-30"
+            whileHover={{ y: -1 }}
+            whileTap={{ y: 2 }}
+            className="flex h-11 shrink-0 items-center justify-center gap-1.5 px-3 sm:px-4 disabled:opacity-40 font-pixel text-sm uppercase tracking-widest"
             style={{
               background: "var(--accent)",
+              border: "2px solid var(--accent)",
+              borderRadius: 0,
               color: "#fff",
+              boxShadow: "2px 2px 0 0 #000",
+              transition: "box-shadow 120ms, transform 120ms",
             }}
-            whileHover={{ opacity: 0.9 }}
-            whileTap={{ scale: 0.95 }}
+            aria-label="Отправить"
           >
-            <Send size={16} />
+            <Send size={14} />
+            <span className="hidden sm:inline">SEND</span>
           </motion.button>
         </div>
       </div>
@@ -1108,20 +1280,22 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         className="flex justify-center"
       >
         <div
-          className="rounded-full px-4 py-1.5 font-mono text-xs uppercase tracking-wider"
+          className="px-4 py-1.5 font-pixel text-sm uppercase tracking-widest"
           style={{
-            background: "rgba(255,255,255,0.04)",
+            background: "var(--input-bg)",
             color: "var(--text-muted)",
-            border: "1px solid rgba(255,255,255,0.06)",
+            border: "2px solid var(--border-color)",
+            borderRadius: 0,
+            boxShadow: "2px 2px 0 0 rgba(0,0,0,0.15)",
           }}
         >
-          {message.content}
+          ▌{message.content}
         </div>
       </motion.div>
     );
   }
 
-  // Hint messages
+  // ═══ Hint message — amber pixel card
   if (isHint) {
     return (
       <motion.div
@@ -1130,26 +1304,30 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         className="flex items-start gap-3"
       >
         <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+          className="flex h-9 w-9 shrink-0 items-center justify-center"
           style={{
-            background: "rgba(245,158,11,0.12)",
-            border: "1px solid rgba(245,158,11,0.25)",
+            background: "rgba(245,158,11,0.1)",
+            border: "2px solid var(--warning)",
+            borderRadius: 0,
+            boxShadow: "2px 2px 0 0 var(--warning)",
           }}
         >
           <Lightbulb size={14} style={{ color: "var(--warning)" }} />
         </div>
         <div
-          className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
+          className="max-w-[90%] sm:max-w-[80%] px-4 py-3 relative"
           style={{
             background: "rgba(245,158,11,0.06)",
-            border: "1px solid rgba(245,158,11,0.15)",
+            border: "2px solid var(--warning)",
+            borderRadius: 0,
+            boxShadow: "3px 3px 0 0 rgba(245,158,11,0.35)",
           }}
         >
           <div
-            className="font-mono text-xs uppercase tracking-widest mb-1"
+            className="font-pixel text-[13px] uppercase tracking-widest mb-1"
             style={{ color: "var(--warning)" }}
           >
-            Подсказка
+            💡 ПОДСКАЗКА
           </div>
           <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
             {message.content}
@@ -1159,14 +1337,11 @@ function MessageBubble({ message }: { message: QuizMessage }) {
     );
   }
 
-  // Feedback messages
+  // ═══ Feedback message — green/red pixel with speed bonus
   if (isFeedback) {
     const correct = message.isCorrect;
     const color = correct ? "var(--success)" : "var(--danger)";
-    const bgColor = correct ? "rgba(61,220,132,0.06)" : "rgba(229,72,77,0.06)";
-    const borderColor = correct
-      ? "rgba(61,220,132,0.18)"
-      : "rgba(229,72,77,0.18)";
+    const bgColor = correct ? "var(--success-muted)" : "var(--danger-muted)";
 
     return (
       <motion.div
@@ -1175,54 +1350,81 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         className="flex items-start gap-3"
       >
         <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+          className="flex h-9 w-9 shrink-0 items-center justify-center"
           style={{
-            background: correct
-              ? "rgba(61,220,132,0.12)"
-              : "rgba(229,72,77,0.12)",
-            border: `1px solid ${borderColor}`,
+            background: bgColor,
+            border: `2px solid ${color}`,
+            borderRadius: 0,
+            boxShadow: `2px 2px 0 0 ${color}`,
           }}
         >
-          {correct ? (
-            <CheckCircle2 size={14} style={{ color }} />
-          ) : (
-            <XCircle size={14} style={{ color }} />
-          )}
+          {correct ? <CheckCircle2 size={14} style={{ color }} /> : <XCircle size={14} style={{ color }} />}
         </div>
         <div
-          className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
-          style={{ background: bgColor, border: `1px solid ${borderColor}` }}
+          className="max-w-[90%] sm:max-w-[80%] px-4 py-3"
+          style={{
+            background: bgColor,
+            border: `2px solid ${color}`,
+            borderRadius: 0,
+            boxShadow: `3px 3px 0 0 ${color}`,
+          }}
         >
           <div
-            className="font-mono text-xs uppercase tracking-widest mb-1"
-            style={{ color }}
+            className="font-pixel text-[13px] uppercase tracking-widest mb-1"
+            style={{ color, textShadow: `0 0 6px ${color}` }}
           >
-            {correct ? "Верно!" : "Неверно"}
+            {correct ? "▸ ВЕРНО! +XP" : "✖ НЕВЕРНО"}
           </div>
           {message.explanation && (
-            <p
-              className="text-sm leading-relaxed"
-              style={{ color: "var(--text-secondary)" }}
-            >
+            <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
               {message.explanation}
             </p>
           )}
-          {message.articleRef && (
+          {/* 2026-04-18: dedicated "ПРАВИЛЬНО" block — always visible when wrong answer + correct known */}
+          {!message.isCorrect && message.correctAnswer && (
             <div
-              className="mt-2 flex items-center gap-1.5 font-mono text-xs"
-              style={{ color: "var(--text-muted)" }}
+              className="mt-3 px-3 py-2"
+              style={{
+                background: "rgba(34,197,94,0.08)",
+                border: "2px solid var(--success)",
+                borderRadius: 0,
+                boxShadow: "2px 2px 0 0 rgba(34,197,94,0.35)",
+              }}
             >
-              <BookOpen size={13} />
-              <span>{message.articleRef}</span>
+              <div className="font-pixel text-[13px] uppercase tracking-widest mb-1" style={{ color: "var(--success)" }}>
+                ▸ ПРАВИЛЬНО
+              </div>
+              <div className="text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>
+                {message.correctAnswer}
+              </div>
             </div>
           )}
-          {/* V2: Speed bonus badge */}
+          {message.articleRef && (
+            <div
+              className="mt-2 inline-flex items-center gap-1.5 font-pixel text-[13px] uppercase tracking-wider px-2 py-1"
+              style={{
+                color: "var(--text-muted)",
+                background: "var(--input-bg)",
+                border: "1px solid var(--border-color)",
+                borderRadius: 0,
+              }}
+            >
+              <BookOpen size={11} />
+              {message.articleRef}
+            </div>
+          )}
           {message.speedBonus && message.speedBonus > 0 && (
             <div
-              className="mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-mono font-bold"
-              style={{ background: "rgba(34,197,94,0.15)", color: "var(--success)", border: "1px solid rgba(34,197,94,0.25)" }}
+              className="mt-2 inline-flex items-center gap-1 px-2 py-1 font-pixel text-[13px] uppercase tracking-wider"
+              style={{
+                background: "var(--warning)",
+                color: "#000",
+                border: "2px solid var(--warning)",
+                borderRadius: 0,
+                boxShadow: "2px 2px 0 0 #000",
+              }}
             >
-              <Zap size={14} className="inline" style={{ color: "var(--warning)" }} /> +{message.speedBonus} SPEED BONUS
+              <Zap size={11} /> +{message.speedBonus} SPEED
             </div>
           )}
         </div>
@@ -1230,7 +1432,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
     );
   }
 
-  // V2: Follow-up message
+  // ═══ Follow-up message
   if (isFollowUp) {
     return (
       <motion.div
@@ -1239,24 +1441,27 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         className="flex items-start gap-3"
       >
         <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg"
+          className="flex h-9 w-9 shrink-0 items-center justify-center text-lg"
           style={{
-            background: "rgba(124,106,232,0.12)",
-            border: "1px solid rgba(124,106,232,0.25)",
+            background: "var(--accent-muted)",
+            border: "2px solid var(--accent)",
+            borderRadius: 0,
+            boxShadow: "2px 2px 0 0 var(--accent)",
           }}
         >
-          {avatarEmoji ? <AppIcon emoji={avatarEmoji} size={20} /> : <AppIcon emoji={"\uD83D\uDCA1"} size={20} />}
+          {avatarEmoji ? <AppIcon emoji={avatarEmoji} size={18} /> : <AppIcon emoji={"\uD83D\uDCA1"} size={18} />}
         </div>
         <div
-          className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
+          className="max-w-[90%] sm:max-w-[80%] px-4 py-3"
           style={{
-            background: "rgba(124,106,232,0.06)",
-            border: "1px solid rgba(124,106,232,0.15)",
-            borderLeft: "3px solid rgba(124,106,232,0.4)",
+            background: "var(--accent-muted)",
+            border: "2px solid var(--accent)",
+            borderRadius: 0,
+            boxShadow: "3px 3px 0 0 var(--accent-muted), 3px 3px 0 2px rgba(0,0,0,0.15)",
           }}
         >
-          <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: "var(--accent)" }}>
-            Уточняющий вопрос (опционально)
+          <div className="font-pixel text-[13px] uppercase tracking-widest mb-1" style={{ color: "var(--accent)" }}>
+            ▸ FOLLOW-UP (опц.)
           </div>
           <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
             {message.content}
@@ -1266,7 +1471,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
     );
   }
 
-  // Question from AI
+  // ═══ Question from AI
   if (isQuestion) {
     return (
       <motion.div
@@ -1275,33 +1480,39 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         className="flex items-start gap-3"
       >
         <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg"
+          className="flex h-9 w-9 shrink-0 items-center justify-center text-lg"
           style={{
-            background: "rgba(124,106,232,0.12)",
-            border: "1px solid rgba(124,106,232,0.25)",
+            background: "var(--accent-muted)",
+            border: "2px solid var(--accent)",
+            borderRadius: 0,
+            boxShadow: "2px 2px 0 0 var(--accent)",
           }}
         >
-          {avatarEmoji ? <AppIcon emoji={avatarEmoji} size={20} /> : <BookOpen size={14} style={{ color: "var(--accent)" }} />}
+          {avatarEmoji ? <AppIcon emoji={avatarEmoji} size={18} /> : <BookOpen size={14} style={{ color: "var(--accent)" }} />}
         </div>
         <div
-          className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3"
+          className="max-w-[90%] sm:max-w-[80%] px-4 py-3"
           style={{
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.08)",
+            background: "var(--bg-panel)",
+            border: "2px solid var(--accent)",
+            borderRadius: 0,
+            boxShadow: "3px 3px 0 0 var(--accent-muted), 3px 3px 0 2px rgba(0,0,0,0.15)",
           }}
         >
           {message.category && (
             <div
-              className="font-mono text-xs uppercase tracking-widest mb-1.5"
-              style={{ color: "var(--accent)" }}
+              className="inline-block font-pixel text-[13px] uppercase tracking-widest mb-2 px-2 py-0.5"
+              style={{
+                color: "#fff",
+                background: "var(--accent)",
+                border: "1px solid var(--accent)",
+                borderRadius: 0,
+              }}
             >
-              {message.category}
+              ▸ {message.category}
             </div>
           )}
-          <p
-            className="text-sm leading-relaxed"
-            style={{ color: "var(--text-primary)" }}
-          >
+          <p className="text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>
             {message.content}
           </p>
         </div>
@@ -1309,7 +1520,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
     );
   }
 
-  // User answer
+  // ═══ User answer — pixel accent bubble right-aligned
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -1317,16 +1528,19 @@ function MessageBubble({ message }: { message: QuizMessage }) {
       className="flex justify-end"
     >
       <div
-        className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-3"
+        className="max-w-[90%] sm:max-w-[80%] px-4 py-3"
         style={{
-          background: "rgba(124,106,232,0.15)",
-          border: "1px solid rgba(124,106,232,0.25)",
+          background: "var(--accent)",
+          color: "#fff",
+          border: "2px solid var(--accent)",
+          borderRadius: 0,
+          boxShadow: "-3px 3px 0 0 #000, 0 0 10px var(--accent-glow)",
         }}
       >
-        <p
-          className="text-sm leading-relaxed"
-          style={{ color: "var(--text-primary)" }}
-        >
+        <div className="font-pixel text-[13px] uppercase tracking-widest mb-1 opacity-70">
+          ВЫ ▸
+        </div>
+        <p className="text-sm leading-relaxed" style={{ color: "#fff" }}>
           {message.content}
         </p>
       </div>

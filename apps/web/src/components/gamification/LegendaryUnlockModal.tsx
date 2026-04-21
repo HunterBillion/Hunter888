@@ -48,7 +48,7 @@ export function LegendaryUnlockModal({ title, description, icon, onClose }: Lege
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[210] flex items-center justify-center cursor-pointer"
-            style={{ background: "rgba(0, 0, 0, 0.9)" }}
+            style={{ background: "var(--overlay-bg)" }}
             onClick={() => {
               setVisible(false);
               setTimeout(onClose, 300);
@@ -79,7 +79,7 @@ export function LegendaryUnlockModal({ title, description, icon, onClose }: Lege
                 style={{
                   width: 100,
                   height: 100,
-                  background: "linear-gradient(135deg, rgba(255, 215, 0, 0.3), rgba(124, 106, 232, 0.2))",
+                  background: "linear-gradient(135deg, rgba(255, 215, 0, 0.3), var(--accent-glow))",
                   border: "2px solid rgba(255, 215, 0, 0.5)",
                   boxShadow: "0 0 40px rgba(255, 215, 0, 0.3), 0 0 80px rgba(255, 215, 0, 0.1)",
                 }}

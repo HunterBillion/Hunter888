@@ -16,21 +16,38 @@ import type { NextRequest } from "next/server";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** API origin for CSP — avatars & video assets load from API host. */
-function apiOriginForCsp(): string {
+/** API origin for CSP — avatars & video assets load from API host.
+ *  When env is default localhost but request comes from LAN IP,
+ *  infer API origin from request host (same logic as public-origin.ts).
+ */
+function apiOriginForCsp(requestHost?: string | null): string {
   const raw = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
   try {
-    return new URL(raw).origin;
+    const parsed = new URL(raw);
+    if (
+      requestHost &&
+      (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1")
+    ) {
+      const reqHostname = requestHost.split(":")[0];
+      if (reqHostname && reqHostname !== "localhost" && reqHostname !== "127.0.0.1") {
+        const proto = parsed.protocol;  // http: or https:
+        return `${proto}//${reqHostname}:8000`;
+      }
+    }
+    return parsed.origin;
   } catch {
     return "http://localhost:8000";
   }
 }
 
 /** Build the full CSP header value for a given nonce. */
-function buildCsp(nonce: string): string {
-  const apiOrigin = apiOriginForCsp();
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-  const wsUrl = (process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000").replace(/^ws/, "ws");
+function buildCsp(nonce: string, requestHost?: string | null): string {
+  const apiOrigin = apiOriginForCsp(requestHost);
+  const apiUrl = apiOrigin;
+  // Derive WS URL from API origin
+  const wsProto = apiOrigin.startsWith("https") ? "wss:" : "ws:";
+  const apiHost = apiOrigin.replace(/^https?:\/\//, "");
+  const wsUrl = `${wsProto}//${apiHost}`;
   const isDev = process.env.NODE_ENV !== "production";
 
   // Development: unsafe-eval is required for Next.js Fast Refresh / HMR.
@@ -74,7 +91,7 @@ const PUBLIC_ROUTES = [
   "/auth/callback",
   "/change-password",
   "/reset-password",
-  "/test",
+  // S1-03: /test removed from PUBLIC_ROUTES — requires admin role
 ];
 
 function isPublicRoute(pathname: string): boolean {
@@ -99,9 +116,12 @@ type UserRole = "manager" | "rop" | "methodologist" | "admin";
  */
 const ROLE_PROTECTED_ROUTES: Record<string, UserRole[]> = {
   "/admin": ["admin"],
+  "/test": ["admin"],  // S1-03: QA test page — admin only
   "/methodologist": ["admin", "methodologist"],
   "/dashboard": ["admin", "rop"],
-  "/reports": ["admin", "rop", "manager", "methodologist"],
+  // "/reports" removed — consolidated into /dashboard?tab=reports
+  "/wiki": ["admin", "rop", "manager"],
+  "/clients": ["admin", "rop", "manager", "methodologist"],
 };
 
 /**
@@ -160,7 +180,7 @@ export function middleware(request: NextRequest) {
 
   // ── 1. Generate nonce ────────────────────────────────────────────────
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const cspHeaderValue = buildCsp(nonce);
+  const cspHeaderValue = buildCsp(nonce, request.headers.get("host"));
 
   // ── 2. Skip auth guard for public/static routes ──────────────────────
   if (
@@ -168,7 +188,7 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
     pathname.startsWith("/sw-") ||
-    pathname.includes(".")
+    /\.(js|css|ico|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|eot|map|json|txt|xml|webmanifest)$/i.test(pathname)
   ) {
     const response = NextResponse.next();
     response.headers.set("Content-Security-Policy", cspHeaderValue);

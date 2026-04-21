@@ -1,6 +1,7 @@
 """WebSocket endpoint for PvP and PvE arena duels."""
 
 import asyncio
+import json
 import logging
 import random
 import time
@@ -44,6 +45,86 @@ from app.services.pvp_bot_engine import (
 from app.core.ws_rate_limiter import pvp_limiter
 
 logger = logging.getLogger(__name__)
+
+
+# ── Redis-backed duel state persistence ────────────────────────────────────
+class PvPDuelRedis:
+    """Persist duel game state in Redis. WebSocket refs stay in-memory."""
+
+    _PREFIX = "pvp:duel:"
+    _MSG_PREFIX = "pvp:msgs:"
+    _USER_DUEL = "pvp:user_duel:"  # reverse index: user_id -> duel_id
+    _TTL = 3600  # 1 hour max duel lifetime
+
+    @classmethod
+    def _r(cls):
+        from app.core.redis_pool import get_redis
+        return get_redis()
+
+    @classmethod
+    async def save_session(cls, duel_id: str, session: dict) -> None:
+        """Save serializable duel state to Redis."""
+        r = cls._r()
+        # Filter out non-serializable fields
+        data = {k: v for k, v in session.items()
+                if k not in ("round_task",)}
+        # Convert sets to lists, UUIDs to strings
+        if "ready" in data:
+            data["ready"] = list(str(x) for x in data["ready"])
+        if "difficulty" in data and hasattr(data["difficulty"], "value"):
+            data["difficulty"] = data["difficulty"].value
+        await r.set(f"{cls._PREFIX}{duel_id}", json.dumps(data, default=str), ex=cls._TTL)
+        # Reverse index for fast user->duel lookup
+        for key in ("player1_id", "player2_id"):
+            uid = str(session.get(key, ""))
+            if uid:
+                await r.set(f"{cls._USER_DUEL}{uid}", str(duel_id), ex=cls._TTL)
+
+    @classmethod
+    async def get_session(cls, duel_id: str) -> dict | None:
+        r = cls._r()
+        raw = await r.get(f"{cls._PREFIX}{duel_id}")
+        if not raw:
+            return None
+        data = json.loads(raw)
+        # Restore sets
+        if "ready" in data:
+            data["ready"] = set(data["ready"])
+        return data
+
+    @classmethod
+    async def delete_session(cls, duel_id: str, player_ids: list[str] | None = None) -> None:
+        r = cls._r()
+        await r.delete(f"{cls._PREFIX}{duel_id}")
+        await r.delete(f"{cls._MSG_PREFIX}{duel_id}")
+        if player_ids:
+            for uid in player_ids:
+                await r.delete(f"{cls._USER_DUEL}{uid}")
+
+    @classmethod
+    async def get_duel_for_user(cls, user_id: str) -> str | None:
+        r = cls._r()
+        return await r.get(f"{cls._USER_DUEL}{user_id}")
+
+    @classmethod
+    async def save_messages(cls, duel_id: str, messages: dict) -> None:
+        r = cls._r()
+        await r.set(f"{cls._MSG_PREFIX}{duel_id}", json.dumps(messages, default=str), ex=cls._TTL)
+
+    @classmethod
+    async def get_messages(cls, duel_id: str) -> dict | None:
+        r = cls._r()
+        raw = await r.get(f"{cls._MSG_PREFIX}{duel_id}")
+        if not raw:
+            return None
+        return json.loads(raw)
+
+    @classmethod
+    async def bump_ttl(cls, duel_id: str) -> None:
+        r = cls._r()
+        await r.expire(f"{cls._PREFIX}{duel_id}", cls._TTL)
+        await r.expire(f"{cls._MSG_PREFIX}{duel_id}", cls._TTL)
+
 
 # Archetype pool for PvP duels (subset suitable for competitive play)
 _PVP_ARCHETYPES = [
@@ -134,8 +215,9 @@ _duel_sessions: dict[uuid.UUID, dict[str, Any]] = {}
 _disconnect_tasks: dict[tuple[uuid.UUID, uuid.UUID], asyncio.Task] = {}
 # Phase 2: Spectator connections per duel
 _spectator_connections: dict[uuid.UUID, list[WebSocket]] = {}
-# Lock to protect concurrent access to _duel_sessions (race condition prevention)
+# Locks to protect concurrent access to shared duel state (race condition prevention)
 _duel_sessions_lock = asyncio.Lock()
+_duel_messages_lock = asyncio.Lock()
 
 # ── New mode session storage ────────────────────────────────────────────────
 _rapid_fire_sessions: dict[uuid.UUID, dict[str, Any]] = {}
@@ -143,6 +225,38 @@ _gauntlet_sessions: dict[uuid.UUID, dict[str, Any]] = {}
 _team_sessions: dict[uuid.UUID, dict[str, Any]] = {}
 # Team 2v2: waiting room for partner to connect
 _team_waiting: dict[uuid.UUID, dict[str, Any]] = {}  # team_id -> {players, ws_map, ...}
+
+# ── Periodic sweep for stale PvP state (unbounded dict protection) ─────────
+_pvp_timestamps: dict[uuid.UUID, float] = {}  # duel_id -> last_activity
+_PVP_STALE_SECONDS = 3600  # 1 hour
+_PVP_MAX_DUELS = 5000
+_pvp_sweep_counter = 0
+_PVP_SWEEP_INTERVAL = 50  # sweep every 50th call
+
+
+def _pvp_sweep_stale() -> None:
+    """Remove PvP state for duels inactive > 1 hour.
+
+    Runs TTL-based cleanup every _PVP_SWEEP_INTERVAL calls,
+    plus forced full sweep if dict exceeds _PVP_MAX_DUELS.
+    """
+    global _pvp_sweep_counter
+    _pvp_sweep_counter += 1
+    if _pvp_sweep_counter % _PVP_SWEEP_INTERVAL != 0 and len(_pvp_timestamps) < _PVP_MAX_DUELS:
+        return
+    now = time.time()
+    stale = [k for k, t in _pvp_timestamps.items() if now - t > _PVP_STALE_SECONDS]
+    for duel_id in stale:
+        _pvp_timestamps.pop(duel_id, None)
+        _duel_messages.pop(duel_id, None)
+        _duel_sessions.pop(duel_id, None)
+        _active_connections.pop(duel_id, None)
+        _spectator_connections.pop(duel_id, None)
+        _disconnect_tasks.pop(duel_id, None)
+        _rapid_fire_sessions.pop(duel_id, None)
+        _gauntlet_sessions.pop(duel_id, None)
+        _team_sessions.pop(duel_id, None)
+        _team_waiting.pop(duel_id, None)
 
 
 async def _send(ws: WebSocket, msg_type: str, data: dict | None = None) -> None:
@@ -164,6 +278,103 @@ async def _send_to_user(user_id: uuid.UUID, msg_type: str, data: dict | None = N
         )
 
 
+def _schedule_arena_audio_for_user(
+    *,
+    user_id: uuid.UUID,
+    round_id: str,
+    text: str,
+) -> None:
+    """Fire TTS for an arena round and deliver ``pvp.audio_ready`` to user.
+
+    Phase 2.7 (2026-04-19). We do NOT block the round-start broadcast on
+    audio synthesis (a navy.api round-trip is ~800-1500ms and would stall
+    the UI). Instead we kick off a background task that, when done, pushes
+    an ``pvp.audio_ready`` event with a data-URL the frontend can play.
+    """
+
+    try:
+        from app.services.arena.audio import schedule_round_audio
+
+        async def _emit(payload: dict) -> None:
+            await _send_to_user(user_id, "pvp.audio_ready", payload)
+
+        schedule_round_audio(round_id=round_id, text=text, emit=_emit)
+    except Exception:  # noqa: BLE001 — never let audio break the round
+        logger.debug("arena audio schedule failed for user %s", user_id, exc_info=True)
+
+
+def _schedule_arena_audio_for_ws(
+    *,
+    ws: WebSocket,
+    round_id: str,
+    text: str,
+) -> None:
+    """Same as ``_schedule_arena_audio_for_user`` but for rapid-fire mode
+    where the bound user is the WS owner and we have the socket directly.
+    """
+
+    try:
+        from app.services.arena.audio import schedule_round_audio
+
+        async def _emit(payload: dict) -> None:
+            await _send(ws, "pvp.audio_ready", payload)
+
+        schedule_round_audio(round_id=round_id, text=text, emit=_emit)
+    except Exception:  # noqa: BLE001
+        logger.debug("arena audio schedule failed (ws path)", exc_info=True)
+
+
+async def _init_lifelines_for_mode(
+    *,
+    session_id: str,
+    user_id: uuid.UUID,
+    mode: str,
+) -> dict[str, int]:
+    """Initialise arena lifelines for this (session, user, mode) and return
+    the starting counters.
+
+    Phase A (2026-04-20). Wraps services/arena/lifelines.init_for_match so
+    the Duel / Rapid / Gauntlet / Team WS handlers can surface the initial
+    quota in their `*.brief` / `*.started` event. The actual consume path
+    stays REST (`/api/arena/lifeline/...`) — this just seeds the Redis key
+    and returns the numbers for display.
+
+    Always succeeds: on Redis miss / service error we fall back to the
+    static DEFAULT_QUOTAS table so the client still sees "hints=2 skips=1"
+    etc. instead of a blank UI.
+    """
+
+    try:
+        from app.services.arena.lifelines import (
+            DEFAULT_QUOTAS,
+            init_for_match,
+        )
+
+        quota = await init_for_match(
+            session_id=session_id, user_id=str(user_id), mode=mode,  # type: ignore[arg-type]
+        )
+        return {
+            "hints": int(getattr(quota, "hints", 0)),
+            "skips": int(getattr(quota, "skips", 0)),
+            "fiftys": int(getattr(quota, "fiftys", 0)),
+        }
+    except Exception:  # noqa: BLE001 — fail-open
+        logger.debug("lifelines.init failed (ws path)", exc_info=True)
+        try:
+            from app.services.arena.lifelines import DEFAULT_QUOTAS
+
+            fallback = DEFAULT_QUOTAS.get(mode)  # type: ignore[arg-type]
+            if fallback:
+                return {
+                    "hints": int(fallback.hints),
+                    "skips": int(fallback.skips),
+                    "fiftys": int(fallback.fiftys),
+                }
+        except Exception:  # noqa: BLE001
+            pass
+        return {"hints": 0, "skips": 0, "fiftys": 0}
+
+
 async def _broadcast_to_spectators(duel_id: uuid.UUID, msg_type: str, data: dict) -> None:
     """Send update to all spectators of a duel."""
     spectators = _spectator_connections.get(duel_id, [])
@@ -179,23 +390,37 @@ async def _broadcast_to_spectators(duel_id: uuid.UUID, msg_type: str, data: dict
 
 async def _handle_spectator(ws: WebSocket, duel_id: uuid.UUID) -> None:
     """Handle a spectator connection to a live duel."""
-    session = _duel_sessions.get(duel_id)
-    if not session:
-        await _send(ws, "error", {"message": "Duel not found or already finished"})
-        await ws.close()
-        return
+    async with _duel_sessions_lock:
+        session = _duel_sessions.get(duel_id)
+        if session is None:
+            # Redis fallback for cross-process spectator joins
+            session = await PvPDuelRedis.get_session(str(duel_id))
+            if session:
+                _duel_sessions[duel_id] = session
+        if not session:
+            await _send(ws, "error", {"message": "Duel not found or already finished"})
+            await ws.close()
+            return
+        # Snapshot state under lock
+        _snap_names = dict(session.get("player_names", {}))
+        _snap_p1 = session.get("player1_id", "")
+        _snap_p2 = session.get("player2_id", "")
+        _snap_round = session.get("round", 1)
 
     if duel_id not in _spectator_connections:
         _spectator_connections[duel_id] = []
     _spectator_connections[duel_id].append(ws)
 
+    async with _duel_messages_lock:
+        _snap_messages = list(_duel_messages.get(duel_id, {}).get(_snap_round, []))
+
     # Send current state (catch-up)
     await _send(ws, "spectator.state", {
         "duel_id": str(duel_id),
-        "player1_name": session.get("player_names", {}).get(str(session.get("player1_id", "")), "Player 1"),
-        "player2_name": session.get("player_names", {}).get(str(session.get("player2_id", "")), "Player 2"),
-        "round": session.get("round", 1),
-        "messages": _duel_messages.get(duel_id, {}).get(session.get("round", 1), []),
+        "player1_name": _snap_names.get(str(_snap_p1), "Player 1"),
+        "player2_name": _snap_names.get(str(_snap_p2), "Player 2"),
+        "round": _snap_round,
+        "messages": _snap_messages,
         "spectator_count": len(_spectator_connections[duel_id]),
     })
 
@@ -227,6 +452,10 @@ async def _auth_websocket(ws: WebSocket) -> tuple[uuid.UUID, str] | None:
 
     try:
         payload = decode_token(token)
+        if payload is None or payload.get("type") != "access":
+            await _send(ws, "auth.error", {"detail": "Invalid token"})
+            await ws.close(code=4001, reason="Invalid token")
+            return None
         user_id = uuid.UUID(payload["sub"])
     except Exception as exc:
         await _send(ws, "auth.error", {"detail": f"Invalid token: {exc}"})
@@ -234,14 +463,21 @@ async def _auth_websocket(ws: WebSocket) -> tuple[uuid.UUID, str] | None:
 
     async with async_session() as db:
         user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-        if not user:
+        if not user or not user.is_active:
             await _send(ws, "auth.error", {"detail": "User not found"})
+            await ws.close(code=4003, reason="User inactive")
             return None
         username = user.full_name or user.email or str(user_id)[:8]
 
     # Check if user was logged out (token blacklisted)
-    from app.core.deps import _is_user_blacklisted
+    from app.core.deps import _is_user_blacklisted, _is_token_revoked
     if await _is_user_blacklisted(str(user_id)):
+        await _send(ws, "auth.error", {"detail": "Token has been revoked"})
+        return None
+
+    # Per-token JTI revocation
+    jti = payload.get("jti")
+    if jti and await _is_token_revoked(jti):
         await _send(ws, "auth.error", {"detail": "Token has been revoked"})
         return None
 
@@ -275,11 +511,12 @@ def _serialize_round_messages(messages: list[dict[str, Any]]) -> list[dict[str, 
     return serialized
 
 
-def _flatten_duel_messages(duel_id: uuid.UUID) -> list[dict[str, Any]]:
+async def _flatten_duel_messages(duel_id: uuid.UUID) -> list[dict[str, Any]]:
     all_messages: list[dict[str, Any]] = []
-    rounds = _duel_messages.get(duel_id, {})
-    for round_number in (1, 2):
-        all_messages.extend(_serialize_round_messages(rounds.get(round_number, [])))
+    async with _duel_messages_lock:
+        rounds = _duel_messages.get(duel_id, {})
+        for round_number in (1, 2):
+            all_messages.extend(_serialize_round_messages(list(rounds.get(round_number, []))))
     return all_messages
 
 
@@ -413,6 +650,8 @@ async def _ensure_session(duel_id: uuid.UUID, duel: PvPDuel, player1_name: str, 
         }
         _duel_sessions[duel_id] = session
         _duel_messages.setdefault(duel_id, {1: [], 2: []})
+        # Persist to Redis for cross-process durability
+        await PvPDuelRedis.save_session(str(duel_id), session)
         return session
 
 
@@ -430,6 +669,13 @@ async def _update_duel_row(duel_id: uuid.UUID, **updates: Any) -> None:
 async def _send_duel_state(user_id: uuid.UUID, session: dict[str, Any]) -> None:
     round_number = session["round"]
     role = _player_role_for_round(session, user_id, round_number)
+    # Phase A (2026-04-20): seed lifeline quota for this duel session so
+    # ArenaAnswerInput can render the Подсказка/Пропустить/50-50 buttons.
+    lifelines_remaining = await _init_lifelines_for_mode(
+        session_id=str(session["duel_id"]),
+        user_id=user_id,
+        mode="duel",
+    )
     await _send_to_user(user_id, "duel.brief", {
         "duel_id": str(session["duel_id"]),
         "your_role": role,
@@ -440,6 +686,7 @@ async def _send_duel_state(user_id: uuid.UUID, session: dict[str, Any]) -> None:
         "scenario_title": session["scenario_title"],
         "round_number": round_number,
         "time_limit_seconds": ROUND_TIME_LIMIT,
+        "lifelines_remaining": lifelines_remaining,
     })
     await _send_to_user(user_id, "duel.state", {
         "duel_id": str(session["duel_id"]),
@@ -447,7 +694,7 @@ async def _send_duel_state(user_id: uuid.UUID, session: dict[str, Any]) -> None:
         "round_number": round_number,
         "time_limit": ROUND_TIME_LIMIT,
         "time_remaining": _remaining_round_time(session),
-        "messages": _flatten_duel_messages(session["duel_id"]),
+        "messages": await _flatten_duel_messages(session["duel_id"]),
     })
 
 
@@ -458,6 +705,14 @@ def _cancel_disconnect_task(user_id: uuid.UUID, duel_id: uuid.UUID) -> None:
 
 
 async def _cleanup_duel_runtime(duel_id: uuid.UUID) -> None:
+    # Clean Redis state before touching in-memory dicts
+    player_ids: list[str] = []
+    session_peek = _duel_sessions.get(duel_id)
+    if session_peek:
+        player_ids = [str(session_peek.get("player1_id", "")),
+                      str(session_peek.get("player2_id", ""))]
+    await PvPDuelRedis.delete_session(str(duel_id), player_ids)
+
     async with _duel_sessions_lock:
         session = _duel_sessions.pop(duel_id, None)
     if session:
@@ -470,7 +725,8 @@ async def _cleanup_duel_runtime(duel_id: uuid.UUID) -> None:
                 pass
         for participant_id in [session["player1_id"], session["player2_id"]]:
             _cancel_disconnect_task(participant_id, duel_id)
-    _duel_messages.pop(duel_id, None)
+    async with _duel_messages_lock:
+        _duel_messages.pop(duel_id, None)
     # Clean up bot emotion/state memory for this duel
     cleanup_bot_state(str(duel_id))
 
@@ -481,9 +737,16 @@ async def _cancel_duel_after_disconnect(user_id: uuid.UUID, duel_id: uuid.UUID) 
         if user_id in _active_connections:
             return
 
-        session = _duel_sessions.get(duel_id)
-        if not session or session["completed"]:
-            return
+        async with _duel_sessions_lock:
+            session = _duel_sessions.get(duel_id)
+            if session is None:
+                session = await PvPDuelRedis.get_session(str(duel_id))
+                if session:
+                    _duel_sessions[duel_id] = session
+            if not session or session["completed"]:
+                return
+            _snap_p1 = session["player1_id"]
+            _snap_p2 = session["player2_id"]
 
         async with async_session() as db:
             duel = (await db.execute(select(PvPDuel).where(PvPDuel.id == duel_id))).scalar_one_or_none()
@@ -499,7 +762,7 @@ async def _cancel_duel_after_disconnect(user_id: uuid.UUID, duel_id: uuid.UUID) 
             db.add(duel)
             await db.commit()
 
-        for participant_id in [session["player1_id"], session["player2_id"]]:
+        for participant_id in [_snap_p1, _snap_p2]:
             if participant_id in (user_id, BOT_ID):
                 continue
             await _send_to_user(participant_id, "duel.cancelled", {
@@ -515,35 +778,46 @@ async def _cancel_duel_after_disconnect(user_id: uuid.UUID, duel_id: uuid.UUID) 
 
 async def _finish_round_after_timeout(duel_id: uuid.UUID, round_number: int) -> None:
     await asyncio.sleep(ROUND_TIME_LIMIT)
-    session = _duel_sessions.get(duel_id)
-    if not session or session["completed"] or session["round"] != round_number:
-        return
-    for user_id in [session["player1_id"], session["player2_id"]]:
+    async with _duel_sessions_lock:
+        session = _duel_sessions.get(duel_id)
+        if not session or session["completed"] or session["round"] != round_number:
+            return
+        _snap_p1 = session["player1_id"]
+        _snap_p2 = session["player2_id"]
+    for user_id in [_snap_p1, _snap_p2]:
         if user_id != BOT_ID:
             await _send_to_user(user_id, "round.time_up", {"round": round_number})
     await _advance_round(duel_id)
 
 
 async def _send_ai_message(duel_id: uuid.UUID, round_number: int, ai_role: str, text: str) -> None:
-    session = _duel_sessions.get(duel_id)
-    if not session or session["completed"]:
-        return
+    async with _duel_sessions_lock:
+        session = _duel_sessions.get(duel_id)
+        if not session or session["completed"]:
+            return
+        session["last_ai_message"] = text
+        session["history"][round_number].append({"role": "assistant", "content": text})
+        _snap_p1 = session["player1_id"]
+        _snap_p2 = session["player2_id"]
 
-    session["last_ai_message"] = text
     payload = {
         "sender_role": ai_role,
         "text": text,
         "round": round_number,
     }
-    _duel_messages[duel_id][round_number].append({
+    msg_entry = {
         "sender_id": str(BOT_ID),
         "role": ai_role,
         "text": text,
         "timestamp": time.time(),
-    })
-    session["history"][round_number].append({"role": "assistant", "content": text})
+    }
+    async with _duel_messages_lock:
+        dm = _duel_messages.get(duel_id)
+        if dm is not None and round_number in dm:
+            dm[round_number].append(msg_entry)
+
     # PvP-1 fix: send AI message to BOTH players, not just player1
-    for pid in [session["player1_id"], session["player2_id"]]:
+    for pid in [_snap_p1, _snap_p2]:
         if pid != BOT_ID:
             await _send_to_user(pid, "duel.message", payload)
     # Phase 2: broadcast to spectators
@@ -635,72 +909,106 @@ async def _generate_ai_reply(session: dict[str, Any], round_number: int, user_te
 
 
 async def _start_round(duel_id: uuid.UUID, round_number: int) -> None:
-    session = _duel_sessions.get(duel_id)
-    if not session or session["completed"]:
-        return
+    async with _duel_sessions_lock:
+        session = _duel_sessions.get(duel_id)
+        if not session or session["completed"]:
+            return
+        session["round"] = round_number
+        session["round_started_at"] = time.time()
+        # Snapshot values needed for I/O outside lock
+        _snap_p1 = session["player1_id"]
+        _snap_p2 = session["player2_id"]
+        _snap_archetype = session["archetype"]
+        _snap_difficulty = session["difficulty"]
+        _snap_scenario = session["scenario_title"]
+        _snap_is_pve = session["is_pve"]
+        # Cancel old round task
+        task = session.get("round_task")
+        if task and not task.done():
+            task.cancel()
+        session["round_task"] = asyncio.create_task(_finish_round_after_timeout(duel_id, round_number))
 
-    session["round"] = round_number
-    session["round_started_at"] = time.time()
     await _update_duel_row(
         duel_id,
         status=DuelStatus.round_1 if round_number == 1 else DuelStatus.round_2,
         round_number=round_number,
     )
 
-    for user_id in [session["player1_id"], session["player2_id"]]:
+    for user_id in [_snap_p1, _snap_p2]:
         if user_id == BOT_ID:
             continue
-        role = _player_role_for_round(session, user_id, round_number)
-        archetype = session["archetype"]
+        role = _player_role_for_round({"player1_id": _snap_p1, "player2_id": _snap_p2}, user_id, round_number)
+        # Phase A — seed lifelines (idempotent via SETNX inside init_for_match)
+        lifelines_remaining = await _init_lifelines_for_mode(
+            session_id=str(duel_id),
+            user_id=user_id,
+            mode="duel",
+        )
         await _send_to_user(user_id, "duel.brief", {
             "duel_id": str(duel_id),
             "your_role": role,
-            "archetype": archetype if role == "client" else None,
-            "character_brief": _ARCHETYPE_BRIEFS.get(archetype) if role == "client" else None,
+            "archetype": _snap_archetype if role == "client" else None,
+            "character_brief": _ARCHETYPE_BRIEFS.get(_snap_archetype) if role == "client" else None,
             "human_factors": None,
-            "difficulty": session["difficulty"].value,
-            "scenario_title": session["scenario_title"],
+            "difficulty": _snap_difficulty.value,
+            "scenario_title": _snap_scenario,
             "round_number": round_number,
             "time_limit_seconds": ROUND_TIME_LIMIT,
+            "lifelines_remaining": lifelines_remaining,
         })
         await _send_to_user(user_id, "round.start", {
             "round": round_number,
             "your_role": role,
-            "archetype": archetype if role == "client" else None,
+            "archetype": _snap_archetype if role == "client" else None,
             "time_limit": ROUND_TIME_LIMIT,
         })
+        # Phase 2.7 (2026-04-19): arcade TTS narration for each round.
+        _arc_line = (
+            f"Раунд {round_number}. Твоя роль: "
+            f"{'клиент' if role == 'client' else 'продавец'}. "
+            f"{'Архетип — ' + _snap_archetype + '. ' if role == 'client' else ''}"
+            f"Время — {ROUND_TIME_LIMIT} секунд. Начинай."
+        )
+        _schedule_arena_audio_for_user(
+            user_id=user_id,
+            round_id=f"{duel_id}:{round_number}:{role}",
+            text=_arc_line,
+        )
 
-    task = session.get("round_task")
-    if task and not task.done():
-        task.cancel()
-    session["round_task"] = asyncio.create_task(_finish_round_after_timeout(duel_id, round_number))
-
-    if session["is_pve"]:
-        user_role = _player_role_for_round(session, session["player1_id"], round_number)
+    if _snap_is_pve:
+        user_role = _player_role_for_round({"player1_id": _snap_p1, "player2_id": _snap_p2}, _snap_p1, round_number)
         if user_role == "client":
             opener = await generate_bot_opener(
                 duel_id=str(duel_id),
                 round_number=round_number,
-                archetype=session["archetype"],
-                difficulty=session["difficulty"],
+                archetype=_snap_archetype,
+                difficulty=_snap_difficulty,
                 ai_role="seller",
-                player_id=str(session["player1_id"]),
-                scenario_title=session.get("scenario_title"),
+                player_id=str(_snap_p1),
+                scenario_title=_snap_scenario,
             )
             await _send_ai_message(duel_id, round_number, "seller", opener)
 
 
 async def _advance_round(duel_id: uuid.UUID) -> None:
-    session = _duel_sessions.get(duel_id)
-    if not session or session["completed"]:
-        return
+    async with _duel_sessions_lock:
+        session = _duel_sessions.get(duel_id)
+        if not session or session["completed"]:
+            return
+        round_number = session["round"]
+        _snap_p1 = session["player1_id"]
+        _snap_p2 = session["player2_id"]
+        _snap_names = dict(session.get("player_names", {}))
+        _snap_archetype = session["archetype"]
+        _snap_difficulty = session["difficulty"]
 
-    round_number = session["round"]
-    round_messages = _duel_messages.get(duel_id, {}).get(round_number, [])
-    seller_id = session["player1_id"] if round_number == 1 else session["player2_id"]
-    client_id = session["player2_id"] if round_number == 1 else session["player1_id"]
-    seller_name = session["player_names"].get(seller_id, "Seller")
-    client_name = session["player_names"].get(client_id, "Client")
+    async with _duel_messages_lock:
+        round_messages = list(_duel_messages.get(duel_id, {}).get(round_number, []))
+
+    seller_id = _snap_p1 if round_number == 1 else _snap_p2
+    client_id = _snap_p2 if round_number == 1 else _snap_p1
+    seller_name = _snap_names.get(seller_id, "Seller")
+    client_name = _snap_names.get(client_id, "Client")
 
     try:
         async with async_session() as db:
@@ -710,8 +1018,8 @@ async def _advance_round(duel_id: uuid.UUID) -> None:
                 client_id=client_id,
                 seller_name=seller_name,
                 client_name=client_name,
-                archetype=session["archetype"],
-                difficulty=session["difficulty"],
+                archetype=_snap_archetype,
+                difficulty=_snap_difficulty,
                 round_number=round_number,
                 db=db,
             )
@@ -724,23 +1032,30 @@ async def _advance_round(duel_id: uuid.UUID) -> None:
                 "seller_flags": seller_score.flags,
                 "legal_details": seller_score.legal_details,
             },
+            # Phase A (2026-04-20): coaching payload — what the seller SHOULD
+            # have said + статьи. Frontend uses this to render CoachingCard.
+            "coaching": {
+                "tip": seller_score.coaching_tip,
+                "ideal_reply": seller_score.ideal_reply,
+                "key_articles": seller_score.key_articles,
+            },
         }
-        for participant_id in [session["player1_id"], session["player2_id"]]:
+        for participant_id in [_snap_p1, _snap_p2]:
             if participant_id != BOT_ID:
                 await _send_to_user(participant_id, "judge.score", round_score_payload)
     except Exception as exc:
         logger.error("Round judge failed: duel=%s round=%s error=%s", duel_id, round_number, exc, exc_info=True)
         # Notify players about partial scoring failure
-        for pid in [session["player1_id"], session["player2_id"]]:
+        for pid in [_snap_p1, _snap_p2]:
             if pid != BOT_ID:
                 await _send_to_user(pid, "round.judge_error", {
                     "duel_id": str(duel_id), "round": round_number,
                     "detail": "Ошибка оценки раунда — результат будет рассчитан при финализации",
                 })
 
-    if session["round"] == 1:
+    if round_number == 1:
         await _update_duel_row(duel_id, status=DuelStatus.swap)
-        for user_id in [session["player1_id"], session["player2_id"]]:
+        for user_id in [_snap_p1, _snap_p2]:
             if user_id != BOT_ID:
                 await _send_to_user(user_id, "round.swap", {"next_round": 2})
         await asyncio.sleep(1.0)
@@ -751,26 +1066,31 @@ async def _advance_round(duel_id: uuid.UUID) -> None:
 
 
 async def _maybe_finish_round(duel_id: uuid.UUID) -> None:
-    session = _duel_sessions.get(duel_id)
-    if not session or session["completed"]:
-        return
-    current_round = session["round"]
-    if len(_duel_messages[duel_id][current_round]) >= ROUND_MESSAGE_LIMIT:
+    async with _duel_sessions_lock:
+        session = _duel_sessions.get(duel_id)
+        if not session or session["completed"]:
+            return
+        current_round = session["round"]
+    async with _duel_messages_lock:
+        dm = _duel_messages.get(duel_id)
+        msg_count = len(dm[current_round]) if dm and current_round in dm else 0
+    if msg_count >= ROUND_MESSAGE_LIMIT:
         await _advance_round(duel_id)
 
 
 async def _finalize_duel(duel_id: uuid.UUID) -> None:
-    session = _duel_sessions.get(duel_id)
-    if not session or session["completed"]:
-        return
-    session["completed"] = True
+    async with _duel_sessions_lock:
+        session = _duel_sessions.get(duel_id)
+        if not session or session["completed"]:
+            return
+        session["completed"] = True
+        round_task = session.get("round_task")
+        if round_task and not round_task.done():
+            round_task.cancel()
 
-    round_task = session.get("round_task")
-    if round_task and not round_task.done():
-        round_task.cancel()
-
-    round1_messages = _duel_messages.get(duel_id, {}).get(1, [])
-    round2_messages = _duel_messages.get(duel_id, {}).get(2, [])
+    async with _duel_messages_lock:
+        round1_messages = list(_duel_messages.get(duel_id, {}).get(1, []))
+        round2_messages = list(_duel_messages.get(duel_id, {}).get(2, []))
 
     async with async_session() as db:
         duel = (await db.execute(select(PvPDuel).where(PvPDuel.id == duel_id))).scalar_one_or_none()
@@ -899,6 +1219,18 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
                         flags = list(duel.anti_cheat_flags or [])
                         flags.append(_collect_anti_cheat_flag(uid, ac_result))
                         duel.anti_cheat_flags = flags
+                    # ── Enforce anti-cheat penalties ──
+                    if ac_result.recommended_action and ac_result.recommended_action not in ("none", "flag_review"):
+                        if uid == duel.player1_id:
+                            duel.player1_score = 0
+                            p1_delta = 0.0
+                        elif uid == duel.player2_id:
+                            duel.player2_score = 0
+                            p2_delta = 0.0
+                        logger.warning(
+                            "anti_cheat: enforced %s for user %s in duel %s — score zeroed, rating frozen",
+                            ac_result.recommended_action, uid, duel.id,
+                        )
                 except Exception as exc:
                     logger.warning("Anti-cheat failed for user %s in duel %s: %s", uid, duel_id, exc)
 
@@ -906,6 +1238,27 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
         duel.player2_rating_delta = p2_delta
         duel.rating_change_applied = not duel.is_pve
         db.add(duel)
+
+        # ── EventBus → PvP achievements + gamification (SAME transaction) ──
+        try:
+            from app.services.event_bus import event_bus, GameEvent, EVENT_PVP_COMPLETED
+            for uid in [session["player1_id"], session["player2_id"]]:
+                if uid == BOT_ID:
+                    continue
+                is_winner = (judge_result.winner_id is not None and uid == judge_result.winner_id)
+                await event_bus.emit(GameEvent(
+                    kind=EVENT_PVP_COMPLETED,
+                    user_id=uid,
+                    db=db,
+                    payload={
+                        "duel_id": str(duel_id),
+                        "is_win": is_winner,
+                        "is_pve": session.get("is_pve", False),
+                    },
+                ))
+        except Exception:
+            logger.debug("PvP EventBus emit failed for duel %s", duel_id)
+
         await db.commit()
 
     # Auto-complete bracket match if this duel belongs to one
@@ -958,28 +1311,6 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
         if user_id != BOT_ID:
             await _send_to_user(user_id, "duel.result", result_data)
 
-    # ── 3.4: EventBus → PvP achievements + gamification ──
-    try:
-        from app.services.event_bus import event_bus, GameEvent, EVENT_PVP_COMPLETED
-        async with async_session() as ev_db:
-            for uid in [session["player1_id"], session["player2_id"]]:
-                if uid == BOT_ID:
-                    continue
-                is_winner = (winner_id is not None and uid == winner_id)
-                await event_bus.emit(GameEvent(
-                    kind=EVENT_PVP_COMPLETED,
-                    user_id=uid,
-                    db=ev_db,
-                    payload={
-                        "duel_id": str(duel_id),
-                        "is_win": is_winner,
-                        "is_pve": session.get("is_pve", False),
-                    },
-                ))
-            await ev_db.commit()
-    except Exception:
-        logger.debug("PvP EventBus emit failed for duel %s", duel_id)
-
     # ── 3.4b: Arena Points + Season Pass progression ──
     try:
         from app.services.arena_points import award_arena_points, AP_RATES
@@ -988,7 +1319,7 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
             for uid in [session["player1_id"], session["player2_id"]]:
                 if uid == BOT_ID:
                     continue
-                is_winner = (winner_id is not None and uid == winner_id)
+                is_winner = (judge_result.winner_id is not None and uid == judge_result.winner_id)
                 is_draw = judge_result.is_draw
                 if is_draw:
                     ap_source = "pvp_draw"
@@ -1068,6 +1399,8 @@ async def _handle_duel_ready(user_id: uuid.UUID, duel_id: uuid.UUID) -> None:
         session["scenario_title"] = context["scenario_title"]
     session["ready"].add(user_id)
     _cancel_disconnect_task(user_id, duel_id)
+    _pvp_timestamps[duel_id] = time.time()
+    _pvp_sweep_stale()
 
     ready_required = 1 if session["is_pve"] else 2
     if session["started"]:
@@ -1085,17 +1418,36 @@ async def _handle_duel_ready(user_id: uuid.UUID, duel_id: uuid.UUID) -> None:
 
 
 async def _handle_duel_message(user_id: uuid.UUID, text: str) -> None:
-    session = next(
-        (
-            duel_session for duel_session in _duel_sessions.values()
-            if user_id in (duel_session["player1_id"], duel_session["player2_id"])
-            and duel_session["started"] and not duel_session["completed"]
-        ),
-        None,
-    )
+    # Fast lookup via Redis reverse index, then fall back to in-memory scan
+    session = None
+    _user_duel_id = await PvPDuelRedis.get_duel_for_user(str(user_id))
+    if _user_duel_id:
+        duel_id = uuid.UUID(_user_duel_id)
+        async with _duel_sessions_lock:
+            session = _duel_sessions.get(duel_id)
+        if session is None:
+            session = await PvPDuelRedis.get_session(_user_duel_id)
+            if session:
+                _duel_sessions[duel_id] = session  # cache locally
+        # Verify session is active
+        if session and (not session.get("started") or session.get("completed")):
+            session = None
+    if session is None:
+        # Fallback: scan in-memory (handles edge cases during Redis lag)
+        async with _duel_sessions_lock:
+            session = next(
+                (
+                    duel_session for duel_session in _duel_sessions.values()
+                    if user_id in (duel_session["player1_id"], duel_session["player2_id"])
+                    and duel_session["started"] and not duel_session["completed"]
+                ),
+                None,
+            )
     if not session:
         await _send_to_user(user_id, "error", {"detail": "Активная дуэль не найдена"})
         return
+
+    _pvp_timestamps[session.get("duel_id", uuid.uuid4())] = time.time()
 
     if session["completed"] or _remaining_round_time(session) <= 0:
         await _send_to_user(user_id, "error", {"detail": "Раунд уже завершён"})
@@ -1130,8 +1482,22 @@ async def _handle_duel_message(user_id: uuid.UUID, text: str) -> None:
         "timestamp": time.time(),
     }
     msg["round"] = round_number
-    _duel_messages[session["duel_id"]][round_number].append(msg)
-    session["history"][round_number].append({"role": "user", "content": text})
+    async with _duel_messages_lock:
+        dm = _duel_messages.get(session["duel_id"])
+        if dm is not None and round_number in dm:
+            dm[round_number].append(msg)
+    # Persist messages to Redis
+    _dm_snapshot = _duel_messages.get(session["duel_id"])
+    if _dm_snapshot:
+        await PvPDuelRedis.save_messages(str(session["duel_id"]), _dm_snapshot)
+    async with _duel_sessions_lock:
+        s = _duel_sessions.get(session["duel_id"])
+        if s:
+            s["history"][round_number].append({"role": "user", "content": text})
+    # Persist updated session to Redis
+    _s_snapshot = _duel_sessions.get(session["duel_id"])
+    if _s_snapshot:
+        await PvPDuelRedis.save_session(str(session["duel_id"]), _s_snapshot)
 
     if session["is_pve"]:
         await _send_to_user(user_id, "duel.message", payload)
@@ -1256,7 +1622,15 @@ async def _score_rapid_mini_round(
     difficulty: DuelDifficulty,
     db,
 ) -> dict:
-    """Score a single Rapid Fire mini-round. Returns {selling: 0-15, legal: 0-5, total: 0-20}."""
+    """Score a single Rapid Fire mini-round.
+
+    Returns a dict with scores AND coaching payload:
+      {selling: 0-15, legal: 0-5, total: 0-20,
+       coaching: {tip, ideal_reply, key_articles}, flags, legal_details}
+
+    Phase A (2026-04-20): coaching fields added so the frontend can render
+    the post-round CoachingCard in Rapid-Fire (previously blank).
+    """
     try:
         seller_score, _ = await judge_round(
             dialog=messages,
@@ -1272,10 +1646,25 @@ async def _score_rapid_mini_round(
         # Normalize to mini-round scale: selling 0-15 (from 0-50), legal 0-5 (from 0-20)
         selling = min(15.0, seller_score.selling_score * 15.0 / 50.0)
         legal = min(5.0, seller_score.legal_accuracy * 5.0 / 20.0)
-        return {"selling": round(selling, 1), "legal": round(legal, 1), "total": round(selling + legal, 1)}
+        return {
+            "selling": round(selling, 1),
+            "legal": round(legal, 1),
+            "total": round(selling + legal, 1),
+            "coaching": {
+                "tip": seller_score.coaching_tip,
+                "ideal_reply": seller_score.ideal_reply,
+                "key_articles": seller_score.key_articles,
+            },
+            "flags": seller_score.flags,
+            "legal_details": seller_score.legal_details,
+        }
     except Exception as exc:
         logger.error("Rapid mini-round scoring failed: %s", exc, exc_info=True)
-        return {"selling": 7.5, "legal": 2.5, "total": 10.0}
+        return {
+            "selling": 7.5, "legal": 2.5, "total": 10.0,
+            "coaching": {"tip": "", "ideal_reply": "", "key_articles": []},
+            "flags": [], "legal_details": [],
+        }
 
 
 async def _handle_rapid_fire(ws: WebSocket, user_id: uuid.UUID, match_id: uuid.UUID) -> None:
@@ -1307,25 +1696,43 @@ async def _handle_rapid_fire(ws: WebSocket, user_id: uuid.UUID, match_id: uuid.U
         mini_scores: list[dict] = []
         session_key = f"rapid:{match_id}"
 
+        # Phase A (2026-04-20): seed lifeline quota for this rapid-fire match
+        # (1 hint, no skip, no fifty). REST endpoints handle consume.
+        rapid_lifelines = await _init_lifelines_for_mode(
+            session_id=str(match_id), user_id=user_id, mode="rapid",
+        )
+
         await _send(ws, "rapid.started", {
             "match_id": str(match_id),
             "total_rounds": RAPID_FIRE_ROUNDS,
             "time_per_round": RAPID_FIRE_TIME_LIMIT,
             "messages_per_round": RAPID_FIRE_MSG_LIMIT,
+            "lifelines_remaining": rapid_lifelines,
         })
 
         for round_num in range(RAPID_FIRE_ROUNDS):
             archetype = archetypes[round_num]
             difficulty = _escalate_difficulty(base_difficulty, round_num // 2)
 
+            _arch_name_rapid = _ARCHETYPE_BRIEFS.get(archetype, {}).get("name", archetype)
             await _send(ws, "rapid.round_start", {
                 "round": round_num + 1,
                 "archetype": archetype,
-                "archetype_name": _ARCHETYPE_BRIEFS.get(archetype, {}).get("name", archetype),
+                "archetype_name": _arch_name_rapid,
                 "difficulty": difficulty.value,
                 "time_limit": RAPID_FIRE_TIME_LIMIT,
                 "message_limit": RAPID_FIRE_MSG_LIMIT,
             })
+            # Phase 2.7 (2026-04-19): TTS narration for rapid-fire rounds.
+            _schedule_arena_audio_for_ws(
+                ws=ws,
+                round_id=f"rapid:{round_num + 1}",
+                text=(
+                    f"Раунд {round_num + 1}. Архетип: {_arch_name_rapid}. "
+                    f"Сложность {difficulty.value}. "
+                    f"{RAPID_FIRE_TIME_LIMIT} секунд — поехали."
+                ),
+            )
 
             round_messages: list[dict[str, Any]] = []
             history: list[dict[str, str]] = []
@@ -1420,12 +1827,22 @@ async def _handle_rapid_fire(ws: WebSocket, user_id: uuid.UUID, match_id: uuid.U
         total = sum(s["total"] for s in mini_scores)
         normalized = round(total * 100.0 / (RAPID_FIRE_MAX_SCORE * RAPID_FIRE_ROUNDS), 1) if mini_scores else 0.0
 
-        # Apply rating change
+        # Apply rating change (idempotency: SELECT FOR UPDATE + completed_at guard)
         rating_delta = 0.0
         async with async_session() as db:
             match = (await db.execute(
-                select(RapidFireMatch).where(RapidFireMatch.id == match_id)
+                select(RapidFireMatch)
+                .where(RapidFireMatch.id == match_id)
+                .with_for_update()
             )).scalar_one_or_none()
+            if match and match.completed_at is not None:
+                # Already completed — skip double processing
+                logger.warning("RapidFireMatch %s already completed, skipping", match_id)
+                await _send_to_user(user_id, "rapid_fire.result", {
+                    "match_id": str(match_id),
+                    "already_completed": True,
+                })
+                return
             if match:
                 match.mini_scores = mini_scores
                 match.total_score = total
@@ -1510,10 +1927,16 @@ async def _handle_gauntlet(ws: WebSocket, user_id: uuid.UUID, run_id: uuid.UUID)
             rating = await get_or_create_rating(user_id, db)
             base_difficulty = _difficulty_for_rating(rating.rating)
 
+        # Phase A (2026-04-20): seed PvE lifeline quota for gauntlet (3/2/1).
+        gauntlet_lifelines = await _init_lifelines_for_mode(
+            session_id=str(run_id), user_id=user_id, mode="pve",
+        )
+
         await _send(ws, "gauntlet.started", {
             "run_id": str(run_id),
             "total_duels": run.total_duels,
             "base_difficulty": base_difficulty.value,
+            "lifelines_remaining": gauntlet_lifelines,
         })
 
         duel_scores: list[float] = []
@@ -1525,17 +1948,29 @@ async def _handle_gauntlet(ws: WebSocket, user_id: uuid.UUID, run_id: uuid.UUID)
             difficulty = _escalate_difficulty(base_difficulty, duel_num)
             archetype = random.choice(_PVP_ARCHETYPES)
 
+            _arch_name_g = _ARCHETYPE_BRIEFS.get(archetype, {}).get("name", archetype)
             await _send(ws, "gauntlet.duel_start", {
                 "duel_number": duel_num + 1,
                 "total_duels": run.total_duels,
                 "archetype": archetype,
-                "archetype_name": _ARCHETYPE_BRIEFS.get(archetype, {}).get("name", archetype),
+                "archetype_name": _arch_name_g,
                 "difficulty": difficulty.value,
                 "losses": losses,
                 "max_losses": GAUNTLET_MAX_LOSSES,
                 "time_limit": GAUNTLET_TIME_LIMIT,
                 "message_limit": GAUNTLET_MSG_LIMIT,
             })
+            # Sprint 4 (2026-04-20): arcade TTS narration for gauntlet duels.
+            _schedule_arena_audio_for_ws(
+                ws=ws,
+                round_id=f"gauntlet:{run_id}:d{duel_num + 1}",
+                text=(
+                    f"Бой {duel_num + 1} из {run.total_duels}. "
+                    f"Архетип: {_arch_name_g}. "
+                    f"Сложность {difficulty.value}. Проигрышей: {losses} из "
+                    f"{GAUNTLET_MAX_LOSSES}. Поехали."
+                ),
+            )
 
             # Run a single-round duel (seller only)
             round_messages: list[dict[str, Any]] = []
@@ -1623,6 +2058,10 @@ async def _handle_gauntlet(ws: WebSocket, user_id: uuid.UUID, run_id: uuid.UUID)
 
             # Score this duel stage
             duel_score = 0.0
+            # Phase A (2026-04-20): capture coaching payload for CoachingCard UI
+            coaching_payload: dict[str, Any] = {"tip": "", "ideal_reply": "", "key_articles": []}
+            seller_flags: list[str] = []
+            legal_details_list: list[dict] = []
             async with async_session() as db:
                 try:
                     seller_score, _ = await judge_round(
@@ -1637,6 +2076,13 @@ async def _handle_gauntlet(ws: WebSocket, user_id: uuid.UUID, run_id: uuid.UUID)
                         db=db,
                     )
                     duel_score = seller_score.total  # selling + legal (0-70 range)
+                    coaching_payload = {
+                        "tip": seller_score.coaching_tip,
+                        "ideal_reply": seller_score.ideal_reply,
+                        "key_articles": seller_score.key_articles,
+                    }
+                    seller_flags = seller_score.flags
+                    legal_details_list = seller_score.legal_details
                 except Exception as exc:
                     logger.error("Gauntlet duel scoring failed: %s", exc, exc_info=True)
                     duel_score = 35.0  # neutral fallback
@@ -1655,6 +2101,10 @@ async def _handle_gauntlet(ws: WebSocket, user_id: uuid.UUID, run_id: uuid.UUID)
                 "is_loss": is_loss,
                 "losses": losses,
                 "max_losses": GAUNTLET_MAX_LOSSES,
+                # Phase A — coaching payload for CoachingCard overlay
+                "coaching": coaching_payload,
+                "flags": seller_flags,
+                "legal_details": legal_details_list,
             })
 
             if losses >= GAUNTLET_MAX_LOSSES:
@@ -1672,8 +2122,13 @@ async def _handle_gauntlet(ws: WebSocket, user_id: uuid.UUID, run_id: uuid.UUID)
 
         async with async_session() as db:
             run = (await db.execute(
-                select(GauntletRun).where(GauntletRun.id == run_id)
+                select(GauntletRun)
+                .where(GauntletRun.id == run_id)
+                .with_for_update()
             )).scalar_one_or_none()
+            if run and run.is_completed:
+                logger.warning("GauntletRun %s already completed, skipping", run_id)
+                return
             if run:
                 run.completed_duels = completed_duels
                 run.losses = losses
@@ -1941,9 +2396,15 @@ async def _handle_team_battle(ws: WebSocket, user_id: uuid.UUID, team_id: uuid.U
                     db=db,
                 )
                 my_score = seller_score.total
+                my_coaching = {
+                    "tip": seller_score.coaching_tip,
+                    "ideal_reply": seller_score.ideal_reply,
+                    "key_articles": seller_score.key_articles,
+                }
             except Exception as exc:
                 logger.error("Team 2v2 scoring failed: %s", exc, exc_info=True)
                 my_score = 35.0
+                my_coaching = {"tip": "", "ideal_reply": "", "key_articles": []}
 
         cleanup_bot_state(team_duel_key)
 
@@ -1952,6 +2413,8 @@ async def _handle_team_battle(ws: WebSocket, user_id: uuid.UUID, team_id: uuid.U
         await _send(ws, "team.your_score", {
             "score": round(my_score, 1),
             "waiting_for_partner": partner_id not in tw["scores"],
+            # Phase A (2026-04-20): coaching payload for CoachingCard overlay
+            "coaching": my_coaching,
         })
 
         # Wait for partner to finish (up to TEAM_TIME_LIMIT + 30s buffer)
@@ -2032,7 +2495,18 @@ async def _handle_team_battle(ws: WebSocket, user_id: uuid.UUID, team_id: uuid.U
 async def pvp_websocket(websocket: WebSocket) -> None:
     await websocket.accept()
 
+    auth = await _auth_websocket(websocket)
+    if not auth:
+        try:
+            await websocket.close(code=1008)
+        except RuntimeError:
+            pass  # Already closed by client
+        return
+
+    user_id, _ = auth
+
     # Phase 2: Spectator mode — observe live duels without participating
+    # Placed AFTER auth so spectators must authenticate first
     _qs = dict(websocket.query_params)
     if _qs.get("mode") == "spectator" and _qs.get("match_id"):
         try:
@@ -2043,16 +2517,6 @@ async def pvp_websocket(websocket: WebSocket) -> None:
             return
         await _handle_spectator(websocket, _match_id)
         return
-
-    auth = await _auth_websocket(websocket)
-    if not auth:
-        try:
-            await websocket.close(code=1008)
-        except RuntimeError:
-            pass  # Already closed by client
-        return
-
-    user_id, _ = auth
 
     # ── B.2: Connection race guard ──────────────────────────────────────
     # Each connection gets a unique ID so the finally block only removes
@@ -2094,14 +2558,53 @@ async def pvp_websocket(websocket: WebSocket) -> None:
             })
 
         _rate_limiter = pvp_limiter()
+        # Phase D (2026-04-20): server-side heartbeat + idle-kill watchdog.
+        # Hung clients (device sleep, network partition without FIN, broken
+        # middleboxes) previously stayed "connected" until the OS eventually
+        # gave up (minutes). We now ping every `IDLE_PING_SEC` of silence
+        # and hard-close at `IDLE_KILL_SEC` — bounds resource lifetime per
+        # connection to 2 min of radio silence.
+        _IDLE_PING_SEC = 30
+        _IDLE_KILL_SEC = 120
+        _last_msg_at = time.time()
         while True:
             try:
-                msg = await websocket.receive_json()
+                msg = await asyncio.wait_for(
+                    websocket.receive_json(), timeout=_IDLE_PING_SEC,
+                )
+                _last_msg_at = time.time()
+            except asyncio.TimeoutError:
+                # Silence from client — nudge with a ping and bail out if
+                # the idle window has exceeded the hard kill threshold.
+                if time.time() - _last_msg_at > _IDLE_KILL_SEC:
+                    logger.info(
+                        "PvP WS idle-kill user=%s (no msg for %.0fs)",
+                        user_id, time.time() - _last_msg_at,
+                    )
+                    try:
+                        await websocket.close(code=1001)
+                    except Exception:
+                        pass
+                    break
+                try:
+                    await _send(websocket, "ping")
+                except Exception:
+                    break
+                continue
             except WebSocketDisconnect:
                 break
 
             if not _rate_limiter.is_allowed():
                 await _send(websocket, "error", {"code": "rate_limited", "detail": "Too many messages"})
+                continue
+
+            # L6c fix: per-user rate limit across all connections (Redis).
+            from app.core.ws_rate_limiter import check_user_rate_limit
+            if not await check_user_rate_limit(str(user_id), scope="pvp"):
+                await _send(websocket, "error", {
+                    "code": "rate_limited_user",
+                    "detail": "Слишком много сообщений со всех ваших сессий.",
+                })
                 continue
 
             msg_type = msg.get("type")
@@ -2265,17 +2768,22 @@ async def pvp_websocket(websocket: WebSocket) -> None:
         _cancel_matchmaking_task(user_id)
 
         # Handle active duel disconnection
-        for duel_id, session in list(_duel_sessions.items()):
-            if user_id in (session["player1_id"], session["player2_id"]) and not session["completed"]:
-                await matchmaker.set_reconnect_grace(user_id, duel_id)
-                _cancel_disconnect_task(user_id, duel_id)
-                _disconnect_tasks[(duel_id, user_id)] = asyncio.create_task(
-                    _cancel_duel_after_disconnect(user_id, duel_id)
-                )
-                opponent_id = session["player2_id"] if user_id == session["player1_id"] else session["player1_id"]
-                if opponent_id != BOT_ID:
-                    await _send_to_user(opponent_id, "opponent.disconnected", {
-                        "duel_id": str(duel_id),
-                        "seconds_remaining": matchmaker.RECONNECT_GRACE_SECONDS,
-                    })
+        async with _duel_sessions_lock:
+            _active_duels = [
+                (did, s["player1_id"], s["player2_id"])
+                for did, s in _duel_sessions.items()
+                if user_id in (s["player1_id"], s["player2_id"]) and not s["completed"]
+            ]
+        for duel_id, _p1, _p2 in _active_duels:
+            await matchmaker.set_reconnect_grace(user_id, duel_id)
+            _cancel_disconnect_task(user_id, duel_id)
+            _disconnect_tasks[(duel_id, user_id)] = asyncio.create_task(
+                _cancel_duel_after_disconnect(user_id, duel_id)
+            )
+            opponent_id = _p2 if user_id == _p1 else _p1
+            if opponent_id != BOT_ID:
+                await _send_to_user(opponent_id, "opponent.disconnected", {
+                    "duel_id": str(duel_id),
+                    "seconds_remaining": matchmaker.RECONNECT_GRACE_SECONDS,
+                })
         logger.info("PvP connection cleaned up: user=%s", user_id)

@@ -140,7 +140,7 @@ export default function ConsentVerifyPage() {
               width: "56px",
               height: "56px",
               borderRadius: "16px",
-              background: "linear-gradient(135deg, #3b82f6, #6366F1)",
+              background: "linear-gradient(135deg, #3b82f6, var(--accent))",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
@@ -192,14 +192,14 @@ export default function ConsentVerifyPage() {
             {/* Имя клиента */}
             <div
               style={{
-                background: "rgba(59,130,246,0.08)",
-                border: "1px solid rgba(59,130,246,0.15)",
+                background: "var(--info-muted, rgba(59,130,246,0.08))",
+                border: "1px solid var(--info-muted, rgba(59,130,246,0.15))",
                 borderRadius: "12px",
                 padding: "16px",
                 marginBottom: "20px",
               }}
             >
-              <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "12px", margin: "0 0 4px 0" }}>
+              <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "14px", margin: "0 0 4px 0" }}>
                 Клиент
               </p>
               <p style={{ color: "#fff", fontSize: "16px", fontWeight: 500, margin: 0 }}>
@@ -210,14 +210,14 @@ export default function ConsentVerifyPage() {
             {/* Тип согласия */}
             <div
               style={{
-                background: "rgba(124,106,232,0.08)",
-                border: "1px solid rgba(124,106,232,0.15)",
+                background: "var(--accent-muted)",
+                border: "1px solid var(--accent-muted)",
                 borderRadius: "12px",
                 padding: "16px",
                 marginBottom: "20px",
               }}
             >
-              <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "12px", margin: "0 0 4px 0" }}>
+              <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "14px", margin: "0 0 4px 0" }}>
                 Вы даёте согласие на
               </p>
               <p style={{ color: "#fff", fontSize: "16px", fontWeight: 500, margin: 0 }}>
@@ -237,16 +237,16 @@ export default function ConsentVerifyPage() {
                 overflowY: "auto",
               }}
             >
-              <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "11px", margin: "0 0 8px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "14px", margin: "0 0 8px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                 Текст согласия
               </p>
-              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: "13px", lineHeight: 1.6, margin: 0 }}>
+              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: "14px", lineHeight: 1.6, margin: 0 }}>
                 В соответствии с Федеральным законом №152-ФЗ «О персональных данных»,
                 я даю согласие на обработку моих персональных данных (ФИО, номер телефона,
                 адрес электронной почты, сведения о задолженности) в целях оказания
                 юридических услуг по процедуре банкротства физических лиц.
               </p>
-              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: "13px", lineHeight: 1.6, margin: "12px 0 0 0" }}>
+              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: "14px", lineHeight: 1.6, margin: "12px 0 0 0" }}>
                 Согласие может быть отозвано в любой момент путём направления
                 уведомления оператору. Срок обработки отзыва — 30 дней.
               </p>
@@ -278,7 +278,7 @@ export default function ConsentVerifyPage() {
             <p
               style={{
                 color: "rgba(255,255,255,0.3)",
-                fontSize: "12px",
+                fontSize: "14px",
                 textAlign: "center",
                 margin: "16px 0 0 0",
                 lineHeight: 1.5,
@@ -298,8 +298,8 @@ export default function ConsentVerifyPage() {
                 width: "64px",
                 height: "64px",
                 borderRadius: "50%",
-                background: "rgba(34,197,94,0.1)",
-                border: "2px solid rgba(34,197,94,0.3)",
+                background: "var(--success-muted)",
+                border: "2px solid var(--success-muted)",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -326,8 +326,8 @@ export default function ConsentVerifyPage() {
                 width: "64px",
                 height: "64px",
                 borderRadius: "50%",
-                background: "rgba(245,158,11,0.1)",
-                border: "2px solid rgba(245,158,11,0.3)",
+                background: "var(--warning-muted)",
+                border: "2px solid var(--warning-muted)",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -355,8 +355,8 @@ export default function ConsentVerifyPage() {
                 width: "64px",
                 height: "64px",
                 borderRadius: "50%",
-                background: "rgba(239,68,68,0.1)",
-                border: "2px solid rgba(239,68,68,0.3)",
+                background: "var(--danger-muted)",
+                border: "2px solid var(--danger-muted)",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",

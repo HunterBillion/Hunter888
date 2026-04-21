@@ -59,9 +59,9 @@ function scoreDeltaBadge(delta: number | null) {
     <span
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold"
       style={{
-        background: isPositive ? "rgba(61,220,132,0.15)" : "rgba(229,72,77,0.15)",
+        background: isPositive ? "var(--success-muted)" : "var(--danger-muted)",
         color: isPositive ? "var(--success)" : "var(--danger)",
-        border: `1px solid ${isPositive ? "rgba(61,220,132,0.3)" : "rgba(229,72,77,0.3)"}`,
+        border: `1px solid ${isPositive ? "var(--success-muted)" : "var(--danger-muted)"}`,
       }}
     >
       <TrendingUp className="w-3 h-3" />
@@ -248,8 +248,8 @@ export default function ReplayModal({
             <div
               className="rounded-xl p-4 text-sm flex items-center gap-2"
               style={{
-                background: "rgba(229,72,77,0.1)",
-                border: "1px solid rgba(229,72,77,0.3)",
+                background: "var(--danger-muted)",
+                border: "1px solid var(--danger-muted)",
                 color: "var(--danger)",
               }}
             >

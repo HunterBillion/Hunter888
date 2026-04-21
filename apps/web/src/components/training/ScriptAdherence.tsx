@@ -86,7 +86,7 @@ export default function ScriptAdherence({
         <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
           <motion.div
             className="h-full rounded-full"
-            style={{ background: "var(--accent)", boxShadow: "0 0 5px rgba(124,106,232,0.5)" }}
+            style={{ background: "var(--accent)", boxShadow: "0 0 5px rgba(107,77,199,0.5)" }}
             animate={{ width: `${pct}%` }}
             transition={{ duration: 0.8 }}
           />

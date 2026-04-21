@@ -10,47 +10,63 @@ import {
   Plus,
 } from "lucide-react";
 import { useLandingAuth } from "@/components/landing/LandingAuthContext";
+import { PixelGridBackground } from "@/components/landing/PixelGridBackground";
 
 /* ── Constants ────────────────────────────────────────────────────── */
 const PRICING_TIERS = [
   {
     id: "scout",
-    label: "Scout",
-    name: "Разведчик",
-    badge: "14 дней бесплатно",
+    label: "Free",
+    name: "Бесплатный",
+    badge: "Навсегда бесплатно",
     features: [
-      "Базовые сценарии — холодные, тёплые, входящие",
-      "Анализ темпа речи и пауз после каждого звонка",
-      "Проверка по 5 ключевым параметрам",
-      "Тест знаний по 127-ФЗ",
+      "3 сессии в день, 3 PvP-дуэли",
+      "10 базовых сценариев, 5 архетипов",
+      "Сюжет: Главы 1-3 (Эпоха I)",
+      "Базовая аналитика",
     ],
-    cta: "Попробовать бесплатно",
+    cta: "Начать бесплатно",
+    featured: false,
+    free: true,
+  },
+  {
+    id: "ranger",
+    label: "Basic",
+    name: "Базовый",
+    badge: "Для активных",
+    features: [
+      "15 сессий в день, 10 PvP-дуэлей",
+      "30+ сценариев, 12 архетипов",
+      "Сюжет: Главы 1-6 (Эпохи I-II)",
+      "AI-коуч и расширенная аналитика",
+    ],
+    cta: "Выбрать Basic",
     featured: false,
   },
   {
     id: "hunter",
-    label: "Hunter",
-    name: "Полный цикл",
+    label: "Pro",
+    name: "Профессиональный",
     badge: "Самый популярный",
     features: [
-      "Все 60 сценариев — давление, кризис, торги",
-      "100 типов клиентов — от скептика до манипулятора",
-      "Полная проверка по 10 параметрам + ловушки",
-      "PvP-арена с рейтингом и голосовой режим",
+      "Безлимит сессий и PvP + турниры",
+      "Все 60+ сценариев и архетипов",
+      "Все 12 глав сюжета + Season Pass",
+      "Полная аналитика + экспорт + CRM",
     ],
     cta: "Начать тренировки",
     featured: true,
   },
   {
-    id: "api",
+    id: "master",
     label: "Enterprise",
-    name: "Для команд",
+    name: "Для компаний",
     badge: "Индивидуально",
     features: [
-      "CRM-модуль — ведите клиентов прямо в платформе",
-      "Создавайте свои сценарии под ваш бизнес",
-      "Дашборд руководителя — видите прогресс команды",
-      "Выделенный методолог и приоритетная поддержка",
+      "Всё из Pro + безлимит RAG-запросов",
+      "Выделенная LLM-модель + Team Missions",
+      "Корпоративные турниры + полный API",
+      "Выделенный методолог + дашборд РОП",
     ],
     cta: "Связаться с нами",
     featured: false,
@@ -100,23 +116,26 @@ const PARTNERS = [
 
 /* ── Comparison features ──────────────────────────────────────────── */
 const COMPARISON = [
-  { name: "Сценарии", scout: "20+", hunter: "Все 60", enterprise: "Кастомные" },
-  { name: "Типы клиентов", scout: "Базовые", hunter: "Все 100", enterprise: "Все 100 + свои" },
-  { name: "Параметров оценки", scout: "5", hunter: "10", enterprise: "10 + кастомные" },
-  { name: "Голосовой режим", scout: "—", hunter: "Да", enterprise: "Да" },
-  { name: "PvP-арена", scout: "—", hunter: "Да", enterprise: "Да" },
-  { name: "CRM-модуль", scout: "—", hunter: "—", enterprise: "Да" },
-  { name: "Дашборд руководителя", scout: "—", hunter: "—", enterprise: "Да" },
-  { name: "Методолог", scout: "—", hunter: "—", enterprise: "Выделенный" },
+  { name: "Сессий в день", scout: "3", ranger: "15", hunter: "∞", master: "∞" },
+  { name: "PvP-дуэлей", scout: "3", ranger: "10", hunter: "∞", master: "∞" },
+  { name: "Сценарии", scout: "10", ranger: "30+", hunter: "60+", master: "Все + кастом" },
+  { name: "Архетипы", scout: "5", ranger: "12", hunter: "Все", master: "Все + создание" },
+  { name: "Сюжет (главы)", scout: "1-3", ranger: "1-6", hunter: "Все 12", master: "12 + Team" },
+  { name: "Макс. ранг", scout: "Silver III", ranger: "Эксперт", hunter: "Охотник", master: "Охотник" },
+  { name: "AI-коуч", scout: "—", ranger: "Да", hunter: "Да", master: "Персональный" },
+  { name: "CRM / Дашборд РОП", scout: "—", ranger: "—", hunter: "Базовый", master: "Полный + API" },
+  { name: "RAG-запросов", scout: "5", ranger: "50", hunter: "500", master: "∞" },
+  { name: "LLM приоритет", scout: "Low", ranger: "Normal", hunter: "High", master: "Dedicated" },
+  { name: "Аналитика", scout: "Базовая", ranger: "Расширенная", hunter: "Полная + экспорт", master: "Полная + API" },
 ] as const;
 
 /* ── Pricing Section with billing toggle ─────────────────────────── */
 function PricingSection({ openRegister }: { openRegister: () => void }) {
   const [annual, setAnnual] = useState(false);
 
-  const prices = {
-    scout: annual ? "3 900 ₽" : "4 900 ₽",
-    hunter: annual ? "15 900 ₽" : "19 900 ₽",
+  const prices: Record<string, string> = {
+    ranger: annual ? "790 ₽/мес" : "990 ₽/мес",
+    hunter: annual ? "1 990 ₽/мес" : "2 490 ₽/мес",
   };
 
   return (
@@ -140,7 +159,7 @@ function PricingSection({ openRegister }: { openRegister: () => void }) {
       </div>
 
       {/* Tier cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
         {PRICING_TIERS.map((tier, i) => (
           <motion.div
             key={tier.id}
@@ -165,10 +184,16 @@ function PricingSection({ openRegister }: { openRegister: () => void }) {
               </h3>
 
               {/* Price */}
-              {tier.id !== "api" ? (
+              {tier.id === "scout" ? (
+                <div className="mb-1">
+                  <span className="text-3xl sm:text-4xl font-black" style={{ color: "var(--success)" }}>
+                    Бесплатно
+                  </span>
+                </div>
+              ) : tier.id !== "master" ? (
                 <div className="mb-1">
                   <span className="text-3xl sm:text-4xl font-black" style={{ color: "var(--text-primary)" }}>
-                    {tier.id === "scout" ? prices.scout : prices.hunter}
+                    {prices[tier.id]}
                   </span>
                   <span className="text-sm ml-1" style={{ color: "var(--text-muted)" }}>/мес</span>
                 </div>
@@ -221,24 +246,34 @@ function PricingSection({ openRegister }: { openRegister: () => void }) {
           <h3 className="font-display font-bold text-lg" style={{ color: "var(--text-primary)" }}>Сравнение планов</h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-base">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
-                <th className="text-left px-6 py-3 font-medium" style={{ color: "var(--text-muted)" }}>Возможность</th>
-                <th className="text-center px-4 py-3 font-bold" style={{ color: "var(--text-secondary)" }}>Scout</th>
-                <th className="text-center px-4 py-3 font-bold" style={{ color: "var(--accent)" }}>Hunter</th>
-                <th className="text-center px-4 py-3 font-bold" style={{ color: "var(--text-secondary)" }}>Enterprise</th>
+                <th className="text-left px-6 py-4 font-semibold text-base" style={{ color: "var(--text-muted)" }}>Возможность</th>
+                <th className="text-center px-5 py-4 font-bold text-base" style={{ color: "var(--text-secondary)" }}>Scout</th>
+                <th className="text-center px-5 py-4 font-bold text-base" style={{ color: "var(--text-secondary)" }}>Ranger</th>
+                <th className="text-center px-5 py-4 font-bold text-base" style={{ color: "var(--accent)" }}>Hunter</th>
+                <th className="text-center px-5 py-4 font-bold text-base" style={{ color: "var(--text-secondary)" }}>Master</th>
               </tr>
             </thead>
             <tbody>
-              {COMPARISON.map((row, i) => (
-                <tr key={row.name} style={{ borderBottom: i < COMPARISON.length - 1 ? "1px solid var(--border-color)" : "none" }}>
-                  <td className="px-6 py-3 font-medium" style={{ color: "var(--text-primary)" }}>{row.name}</td>
-                  <td className="text-center px-4 py-3" style={{ color: String(row.scout) === "—" ? "var(--text-muted)" : "var(--text-secondary)" }}>{row.scout}</td>
-                  <td className="text-center px-4 py-3 font-medium" style={{ color: String(row.hunter) === "—" ? "var(--text-muted)" : "var(--accent)" }}>{row.hunter}</td>
-                  <td className="text-center px-4 py-3" style={{ color: String(row.enterprise) === "—" ? "var(--text-muted)" : "var(--text-secondary)" }}>{row.enterprise}</td>
-                </tr>
-              ))}
+              {COMPARISON.map((row, i) => {
+                const renderCell = (val: string, accent?: boolean) => {
+                  if (val === "∞") return <span className="text-3xl font-black leading-none" style={{ color: accent ? "var(--accent)" : "var(--success)" }}>∞</span>;
+                  if (val === "—") return <span className="text-xl" style={{ color: "var(--text-muted)" }}>—</span>;
+                  if (val === "Да") return <CheckCircle2 size={24} className="inline-block" style={{ color: accent ? "var(--accent)" : "var(--success)" }} />;
+                  return <span className="text-base font-semibold" style={{ color: accent ? "var(--accent)" : "var(--text-secondary)" }}>{val}</span>;
+                };
+                return (
+                  <tr key={row.name} style={{ borderBottom: i < COMPARISON.length - 1 ? "1px solid var(--border-color)" : "none" }}>
+                    <td className="px-6 py-4 font-medium text-base" style={{ color: "var(--text-primary)" }}>{row.name}</td>
+                    <td className="text-center px-5 py-4 text-base">{renderCell(row.scout)}</td>
+                    <td className="text-center px-5 py-4 text-base">{renderCell(row.ranger)}</td>
+                    <td className="text-center px-5 py-4 text-base font-medium">{renderCell(row.hunter, true)}</td>
+                    <td className="text-center px-5 py-4 text-base">{renderCell(row.master)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -254,17 +289,12 @@ export default function PricingPage() {
   return (
     <div
       className="relative min-h-screen"
-      style={{ background: "var(--bg-primary)", paddingTop: "96px" }}
+      style={{ background: "var(--bg-primary)", paddingTop: "80px" }}
     >
-      {/* Geometric grid bg */}
-      <div
-        className="fixed inset-0 opacity-[0.02] pointer-events-none"
-        style={{
-          backgroundImage: `linear-gradient(to right, var(--text-muted) 1px, transparent 1px),
-                            linear-gradient(to bottom, var(--text-muted) 1px, transparent 1px)`,
-          backgroundSize: "40px 40px",
-        }}
-      />
+      {/* Canvas pixel grid — full grid + 15% of cells decay ("disappear") */}
+      <div className="fixed inset-0 pointer-events-none">
+        <PixelGridBackground cellSize={40} pixelSize={8} />
+      </div>
 
       <div className="relative z-10">
         {/* ── Hero ─────────────────────────────────────────────── */}
@@ -338,7 +368,7 @@ export default function PricingPage() {
                     <div className="mb-4 transition-colors group-hover:text-white">
                       <Logo />
                     </div>
-                    <span className="text-[10px] font-bold tracking-widest uppercase text-center transition-colors group-hover:text-white">
+                    <span className="text-xs font-bold tracking-widest uppercase text-center transition-colors group-hover:text-white">
                       {name}
                     </span>
                   </div>
@@ -348,7 +378,7 @@ export default function PricingPage() {
                   style={{ background: "var(--bg-panel)", border: "1px solid var(--accent-muted)" }}
                 >
                   <Plus size={36} className="mb-2" style={{ color: "var(--accent)" }} />
-                  <span className="text-[10px] font-bold tracking-widest text-center uppercase" style={{ color: "var(--accent)" }}>
+                  <span className="text-xs font-bold tracking-widest text-center uppercase" style={{ color: "var(--accent)" }}>
                     Стать Партнёром
                   </span>
                 </div>

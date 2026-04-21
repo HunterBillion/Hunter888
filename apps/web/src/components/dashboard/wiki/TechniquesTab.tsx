@@ -25,10 +25,10 @@ export function TechniquesTab({ techniques }: { techniques: TechniqueItem[] }) {
             {t.applicable_to_archetype && (
               <span
                 style={{
-                  fontSize: "0.7rem",
+                  fontSize: "0.875rem",
                   padding: "2px 8px",
                   borderRadius: 10,
-                  background: "rgba(124,106,232,0.1)",
+                  background: "var(--accent-muted)",
                   color: "var(--accent)",
                 }}
               >
@@ -38,7 +38,7 @@ export function TechniquesTab({ techniques }: { techniques: TechniqueItem[] }) {
             <span
               style={{
                 marginLeft: "auto",
-                fontSize: "0.8rem",
+                fontSize: "0.875rem",
                 color: t.success_rate >= 0.7 ? "var(--success)" : t.success_rate >= 0.4 ? "var(--warning)" : "var(--danger)",
                 fontWeight: 600,
               }}
@@ -52,11 +52,11 @@ export function TechniquesTab({ techniques }: { techniques: TechniqueItem[] }) {
             </p>
           )}
           {t.how_to_apply && (
-            <p style={{ color: "var(--text-muted)", margin: "0.5rem 0 0.25rem", fontSize: "0.85rem", fontStyle: "italic" }}>
+            <p style={{ color: "var(--text-muted)", margin: "0.5rem 0 0.25rem", fontSize: "0.875rem", fontStyle: "italic" }}>
               Как применять: {t.how_to_apply}
             </p>
           )}
-          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+          <div style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>
             Использовано {t.attempt_count} раз | Успешно {t.success_count}
           </div>
         </div>

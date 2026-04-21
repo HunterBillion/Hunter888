@@ -87,7 +87,7 @@ export function AvatarUpload({ currentUrl, userName, size = 48, onUploaded, onDe
         <UserAvatar avatarUrl={avatarSrc} fullName={userName} size={size} />
         <div
           className="absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{ background: "rgba(0,0,0,0.5)" }}
+          style={{ background: "var(--overlay-bg)" }}
         >
           {uploading ? (
             <Loader2 size={size * 0.3} className="text-white animate-spin" />

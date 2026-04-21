@@ -1,22 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useMemo } from "react";
-import { motion } from "framer-motion";
-import { Send } from "lucide-react";
+import { useEffect, useRef, useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Send, Wifi, WifiOff, MoreHorizontal } from "lucide-react";
 
-/**
- * Defense-in-depth text sanitizer for PvP chat messages.
- * React JSX auto-escapes, but since messages come from other users via WS,
- * we strip any embedded HTML/script tags and limit length as extra protection.
- */
+/* ── Constants ──────────────────────────────────────────── */
 const MAX_MESSAGE_LENGTH = 2000;
+
+/* ── Sanitizer (defense-in-depth for WS messages) ──────── */
 function sanitizeMessageText(text: string): string {
   if (!text || typeof text !== "string") return "";
-  // Strip HTML tags (defense-in-depth — React doesn't render them, but belt-and-suspenders)
   const stripped = text.replace(/<[^>]*>/g, "");
-  // Truncate excessively long messages
   return stripped.length > MAX_MESSAGE_LENGTH
-    ? stripped.slice(0, MAX_MESSAGE_LENGTH) + "…"
+    ? stripped.slice(0, MAX_MESSAGE_LENGTH) + "\u2026"
     : stripped;
 }
 
@@ -30,6 +26,7 @@ function formatMessageTime(ts: string): string {
   }
 }
 
+/* ── Types ──────────────────────────────────────────────── */
 interface Message {
   id: string;
   sender_role: "seller" | "client";
@@ -38,6 +35,14 @@ interface Message {
   timestamp: string;
 }
 
+interface DuelScores {
+  selling_score: number;
+  acting_score: number;
+  legal_accuracy: number;
+}
+
+type ConnectionStatus = "online" | "typing" | "offline" | "reconnecting";
+
 interface Props {
   messages: Message[];
   myRole: "seller" | "client";
@@ -45,17 +50,143 @@ interface Props {
   onInputChange: (value: string) => void;
   onSend: () => void;
   disabled?: boolean;
+  /** Optional: opponent connection status */
+  opponentStatus?: ConnectionStatus;
+  /** Optional: current judge scores to show in header */
+  scores?: DuelScores | null;
 }
 
-export function DuelChat({ messages, myRole, input, onInputChange, onSend, disabled }: Props) {
-  const endRef = useRef<HTMLDivElement>(null);
+/* ── Subcomponents ──────────────────────────────────────── */
 
-  // Pre-sanitize all messages (memoized to avoid re-processing on every render)
+/** macOS-style traffic light dots */
+function TrafficLights() {
+  return (
+    <div className="flex items-center gap-1.5 shrink-0">
+      <span
+        className="block w-[10px] h-[10px] rounded-full"
+        style={{ background: "#ff5f57" }}
+      />
+      <span
+        className="block w-[10px] h-[10px] rounded-full"
+        style={{ background: "#febc2e" }}
+      />
+      <span
+        className="block w-[10px] h-[10px] rounded-full"
+        style={{ background: "#28c840" }}
+      />
+    </div>
+  );
+}
+
+/** Status badge for opponent */
+function StatusBadge({ status }: { status: ConnectionStatus }) {
+  const config: Record<
+    ConnectionStatus,
+    { label: string; color: string; dot: string; pulse: boolean }
+  > = {
+    online: {
+      label: "online",
+      color: "rgba(40,200,64,0.15)",
+      dot: "#28c840",
+      pulse: false,
+    },
+    typing: {
+      label: "typing\u2026",
+      color: "var(--accent-muted)",
+      dot: "var(--accent)",
+      pulse: true,
+    },
+    offline: {
+      label: "offline",
+      color: "rgba(255,95,87,0.12)",
+      dot: "#ff5f57",
+      pulse: false,
+    },
+    reconnecting: {
+      label: "reconnecting",
+      color: "rgba(254,188,46,0.12)",
+      dot: "#febc2e",
+      pulse: true,
+    },
+  };
+
+  const c = config[status];
+
+  return (
+    <div
+      className="flex items-center gap-1.5 rounded-full px-2.5 py-1"
+      style={{ background: c.color }}
+    >
+      <span
+        className={`block w-[6px] h-[6px] rounded-full ${c.pulse ? "animate-pulse" : ""}`}
+        style={{ background: c.dot }}
+      />
+      <span
+        className="font-mono text-xs uppercase tracking-widest"
+        style={{ color: "var(--text-muted)" }}
+      >
+        {c.label}
+      </span>
+    </div>
+  );
+}
+
+/** Typing indicator dots animation */
+function TypingDots() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      className="flex justify-start"
+    >
+      <div
+        className="flex items-center gap-1 px-4 py-3"
+        style={{
+          borderRadius: "16px 16px 16px 4px",
+          background: "var(--bg-tertiary)",
+        }}
+      >
+        {[0, 1, 2].map((i) => (
+          <motion.span
+            key={i}
+            className="block w-[5px] h-[5px] rounded-full"
+            style={{ background: "var(--text-muted)" }}
+            animate={{ opacity: [0.3, 1, 0.3] }}
+            transition={{
+              repeat: Infinity,
+              duration: 1.2,
+              delay: i * 0.2,
+              ease: "easeInOut",
+            }}
+          />
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+/* ── Main Component ─────────────────────────────────────── */
+export function DuelChat({
+  messages,
+  myRole,
+  input,
+  onInputChange,
+  onSend,
+  disabled,
+  opponentStatus = "online",
+  scores,
+}: Props) {
+  const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [isFocused, setIsFocused] = useState(false);
+
   const sanitizedMessages = useMemo(
     () => messages.map((msg) => ({ ...msg, text: sanitizeMessageText(msg.text) })),
     [messages],
   );
 
+  // Auto-scroll to latest message
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -70,141 +201,317 @@ export function DuelChat({ messages, myRole, input, onInputChange, onSend, disab
   const charCount = input.length;
   const charWarning = charCount > 1800;
 
+  const myLabel = myRole === "seller" ? "Менеджер" : "Клиент";
+  const oppLabel = myRole === "seller" ? "Клиент" : "Менеджер";
+
   return (
     <div
-      className="flex h-full flex-col overflow-hidden rounded-[28px] border"
+      className="flex h-full flex-col overflow-hidden rounded-lg"
       style={{
-        borderColor: "var(--glass-border)",
-        background: "linear-gradient(180deg, rgba(18,18,30,0.86), rgba(8,8,16,0.98))",
+        background: "var(--bg-secondary)",
+        border: "1px solid var(--border-color)",
+        boxShadow: "0 8px 32px var(--overlay-bg)",
       }}
     >
-      {/* Header — player roles */}
+      {/* ── macOS Title Bar ───────────────────────────────── */}
       <div
-        className="flex items-center justify-between border-b px-5 py-3"
+        className="flex items-center px-3.5 py-2.5 shrink-0"
         style={{
-          borderColor: "rgba(255,255,255,0.06)",
-          background: "linear-gradient(90deg, rgba(124,106,232,0.12), rgba(61,220,132,0.08))",
+          background: "var(--glass-bg)",
+          borderBottom: "1px solid var(--border-color)",
         }}
       >
-        <div className="flex items-center gap-2">
-          <div
-            className="h-2 w-2 rounded-full"
-            style={{ background: myRole === "seller" ? "var(--accent)" : "var(--info)" }}
-          />
-          <span className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-            {myRole === "seller" ? "Вы: Менеджер" : "Вы: Клиент"}
+        <TrafficLights />
+
+        {/* Centered terminal title */}
+        <div className="flex-1 text-center">
+          <span
+            className="font-mono text-xs tracking-wide"
+            style={{ color: "var(--text-muted)" }}
+          >
+            pvp-chat &mdash; xhunter
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-            {myRole === "seller" ? "Оппонент: Клиент" : "Оппонент: Менеджер"}
-          </span>
-          <div
-            className="h-2 w-2 rounded-full"
-            style={{ background: myRole === "seller" ? "var(--info)" : "var(--accent)" }}
-          />
+
+        {/* Balance spacer + opponent status */}
+        <div className="flex items-center gap-2 shrink-0">
+          <StatusBadge status={opponentStatus} />
         </div>
       </div>
 
-      {/* Messages area */}
-      <div className="pvp-pyramid-grid flex-1 overflow-y-auto p-4 sm:p-6">
+      {/* ── Score Overlay Bar ─────────────────────────────── */}
+      {scores && (
+        <div
+          className="flex items-center justify-center gap-6 px-4 py-2 shrink-0"
+          style={{
+            background: "var(--accent-muted)",
+            borderBottom: "1px solid var(--border-color)",
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <span
+              className="font-mono text-xs uppercase tracking-widest"
+              style={{ color: "var(--text-muted)" }}
+            >
+              sell
+            </span>
+            <span
+              className="font-mono text-sm font-bold"
+              style={{ color: "var(--accent)" }}
+            >
+              {Math.round(scores.selling_score)}
+            </span>
+          </div>
+          <div
+            className="w-px h-3"
+            style={{ background: "var(--border-color)" }}
+          />
+          <div className="flex items-center gap-2">
+            <span
+              className="font-mono text-xs uppercase tracking-widest"
+              style={{ color: "var(--text-muted)" }}
+            >
+              act
+            </span>
+            <span
+              className="font-mono text-sm font-bold"
+              style={{ color: "var(--text-primary)" }}
+            >
+              {Math.round(scores.acting_score)}
+            </span>
+          </div>
+          <div
+            className="w-px h-3"
+            style={{ background: "var(--border-color)" }}
+          />
+          <div className="flex items-center gap-2">
+            <span
+              className="font-mono text-xs uppercase tracking-widest"
+              style={{ color: "var(--text-muted)" }}
+            >
+              legal
+            </span>
+            <span
+              className="font-mono text-sm font-bold"
+              style={{ color: "#28c840" }}
+            >
+              {Math.round(scores.legal_accuracy)}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Messages Area ─────────────────────────────────── */}
+      <div
+        className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5"
+        style={{
+          background:
+            "radial-gradient(ellipse at top, var(--accent-muted), transparent 60%)",
+        }}
+      >
         <div className="space-y-3">
-          {sanitizedMessages.map((msg, index) => {
-            const isMine = msg.sender_role === myRole;
-            const previousRound = index > 0 ? sanitizedMessages[index - 1]?.round : null;
-            const timeStr = formatMessageTime(msg.timestamp);
+          <AnimatePresence initial={false}>
+            {sanitizedMessages.map((msg, index) => {
+              const isMine = msg.sender_role === myRole;
+              const previousRound =
+                index > 0 ? sanitizedMessages[index - 1]?.round : null;
+              const timeStr = formatMessageTime(msg.timestamp);
 
-            return (
-              <div key={msg.id}>
-                {(index === 0 || previousRound !== msg.round) && (
-                  <div className="flex justify-center my-3">
-                    <div
-                      className="rounded-full px-4 py-1.5 text-xs font-mono uppercase tracking-widest"
-                      style={{ background: "rgba(124,106,232,0.1)", color: "var(--accent)", border: "1px solid rgba(124,106,232,0.2)" }}
-                    >
-                      Раунд {msg.round}
-                    </div>
-                  </div>
-                )}
-
-                <motion.div
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className={`flex ${isMine ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className="max-w-[82%] px-4 py-3"
-                    style={{
-                      borderRadius: isMine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-                      background: isMine
-                        ? "linear-gradient(135deg, rgba(124,106,232,0.3), rgba(55,48,163,0.18))"
-                        : "linear-gradient(135deg, rgba(42,52,74,0.6), rgba(18,26,41,0.4))",
-                      borderLeft: isMine ? "none" : "3px solid rgba(125,211,252,0.4)",
-                      borderRight: isMine ? "3px solid rgba(124,106,232,0.5)" : "none",
-                      backdropFilter: "blur(8px)",
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-3 mb-1.5">
-                      <span className="text-xs font-mono uppercase tracking-wider" style={{
-                        color: isMine ? "rgba(124,106,232,0.8)" : "rgba(125,211,252,0.7)",
-                      }}>
-                        {msg.sender_role === "seller" ? "Менеджер" : "Клиент"}
+              return (
+                <div key={msg.id}>
+                  {/* Round separator */}
+                  {(index === 0 || previousRound !== msg.round) && (
+                    <div className="flex items-center gap-3 my-4">
+                      <div
+                        className="flex-1 h-px"
+                        style={{ background: "var(--border-color)" }}
+                      />
+                      <span
+                        className="font-mono text-xs uppercase tracking-wider px-3 py-1 rounded-full"
+                        style={{
+                          color: "var(--accent)",
+                          background: "var(--accent-muted)",
+                          border: "1px solid var(--border-color)",
+                        }}
+                      >
+                        round {msg.round}
                       </span>
-                      {timeStr && (
-                        <span className="text-xs font-mono" style={{ color: "rgba(255,255,255,0.3)" }}>
-                          {timeStr}
-                        </span>
-                      )}
+                      <div
+                        className="flex-1 h-px"
+                        style={{ background: "var(--border-color)" }}
+                      />
                     </div>
-                    <p className="text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>
-                      {msg.text}
-                    </p>
-                  </div>
-                </motion.div>
-              </div>
-            );
-          })}
+                  )}
+
+                  {/* Message bubble */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, ease: "easeOut" }}
+                    className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className="max-w-[78%] group"
+                      style={{
+                        borderRadius: isMine
+                          ? "14px 14px 4px 14px"
+                          : "14px 14px 14px 4px",
+                        padding: "10px 14px",
+                        background: isMine
+                          ? "var(--accent)"
+                          : "var(--bg-tertiary)",
+                        border: isMine
+                          ? "none"
+                          : "1px solid var(--border-color)",
+                        color: isMine ? "#fff" : "var(--text-primary)",
+                      }}
+                    >
+                      {/* Sender label + time */}
+                      <div className="flex items-center justify-between gap-3 mb-1">
+                        <span
+                          className="font-mono text-xs uppercase tracking-widest font-semibold"
+                          style={{
+                            color: isMine
+                              ? "rgba(255,255,255,0.65)"
+                              : "var(--text-muted)",
+                          }}
+                        >
+                          {msg.sender_role === "seller" ? myRole === "seller" ? "you" : oppLabel.toLowerCase() : myRole === "client" ? "you" : oppLabel.toLowerCase()}
+                        </span>
+                        {timeStr && (
+                          <span
+                            className="font-mono text-xs"
+                            style={{
+                              color: isMine
+                                ? "rgba(255,255,255,0.4)"
+                                : "var(--text-muted)",
+                            }}
+                          >
+                            {timeStr}
+                          </span>
+                        )}
+                      </div>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{
+                          color: isMine ? "#fff" : "var(--text-primary)",
+                        }}
+                      >
+                        {msg.text}
+                      </p>
+                    </div>
+                  </motion.div>
+                </div>
+              );
+            })}
+          </AnimatePresence>
+
+          {/* Typing indicator */}
+          <AnimatePresence>
+            {opponentStatus === "typing" && <TypingDots />}
+          </AnimatePresence>
         </div>
         <div ref={endRef} />
       </div>
 
-      {/* Input area */}
+      {/* ── Terminal Input Area ────────────────────────────── */}
       <div
-        className="border-t p-4 sm:p-5"
-        style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(5,8,18,0.88)" }}
+        className="shrink-0"
+        style={{
+          borderTop: "1px solid var(--border-color)",
+          background: "var(--bg-secondary)",
+        }}
       >
-        <div className="flex gap-2">
-          <textarea
-            value={input}
-            onChange={(e) => {
-              if (e.target.value.length <= MAX_MESSAGE_LENGTH) {
-                onInputChange(e.target.value);
+        <div className="flex items-end gap-2 p-3 sm:p-4">
+          {/* $ prompt prefix */}
+          <span
+            className="font-mono text-sm font-bold shrink-0 pb-[14px]"
+            style={{ color: isFocused ? "var(--accent)" : "var(--text-muted)" }}
+          >
+            $
+          </span>
+
+          {/* Text input */}
+          <div className="flex-1 min-w-0">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => {
+                if (e.target.value.length <= MAX_MESSAGE_LENGTH) {
+                  onInputChange(e.target.value);
+                }
+              }}
+              onKeyDown={handleKeyDown}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              placeholder={
+                disabled
+                  ? "waiting..."
+                  : myRole === "seller"
+                    ? "type your response as manager..."
+                    : "respond as client..."
               }
-            }}
-            onKeyDown={handleKeyDown}
-            placeholder={disabled ? "Ожидание..." : myRole === "seller" ? "Ваш ответ как менеджер..." : "Ответьте как клиент..."}
-            disabled={disabled}
-            rows={1}
-            className="glow-input flex-1 min-h-[48px] max-h-28 resize-none"
-          />
+              disabled={disabled}
+              rows={1}
+              className="w-full min-h-[44px] max-h-28 resize-none bg-transparent font-mono text-sm outline-none"
+              style={{
+                color: "var(--text-primary)",
+                caretColor: "var(--accent)",
+              }}
+            />
+          </div>
+
+          {/* Send button */}
           <motion.button
             onClick={onSend}
             disabled={disabled || !input.trim()}
             aria-label="Отправить сообщение"
-            className="btn-neon shrink-0 flex h-[48px] w-[48px] items-center justify-center rounded-2xl text-white"
-            style={{ opacity: disabled || !input.trim() ? 0.4 : 1 }}
-            whileTap={{ scale: 0.95 }}
+            className="shrink-0 flex items-center justify-center rounded-lg transition-colors"
+            style={{
+              width: 40,
+              height: 40,
+              background:
+                disabled || !input.trim()
+                  ? "var(--bg-tertiary)"
+                  : "var(--accent)",
+              color:
+                disabled || !input.trim()
+                  ? "var(--text-muted)"
+                  : "#fff",
+              cursor:
+                disabled || !input.trim()
+                  ? "not-allowed"
+                  : "pointer",
+            }}
+            whileTap={
+              disabled || !input.trim() ? {} : { scale: 0.92 }
+            }
+            whileHover={
+              disabled || !input.trim()
+                ? {}
+                : { boxShadow: "0 0 16px var(--accent-glow)" }
+            }
           >
-            <Send size={16} />
+            <Send size={15} />
           </motion.button>
         </div>
+
         {/* Character counter */}
         {charCount > 0 && (
-          <div className="mt-1.5 text-right">
+          <div
+            className="px-4 pb-2 flex items-center justify-between"
+          >
             <span
-              className="text-xs font-mono"
-              style={{ color: charWarning ? "var(--danger)" : "var(--text-muted)" }}
+              className="font-mono text-xs"
+              style={{ color: "var(--text-muted)" }}
+            >
+              {isFocused ? "enter to send / shift+enter for newline" : ""}
+            </span>
+            <span
+              className="font-mono text-xs"
+              style={{
+                color: charWarning ? "var(--danger)" : "var(--text-muted)",
+              }}
             >
               {charCount}/{MAX_MESSAGE_LENGTH}
             </span>

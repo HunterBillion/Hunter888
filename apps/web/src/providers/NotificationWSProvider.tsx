@@ -18,6 +18,16 @@ let _wsConnected = false;
 let _lastTokenHash = "";
 
 /**
+ * Reset module-level flags on logout. Call this from clearTokens / logout handler
+ * so that the next login (same or different user) re-fetches and re-connects.
+ */
+export function resetNotificationWSFlags(): void {
+  _initialFetchDone = false;
+  _wsConnected = false;
+  _lastTokenHash = "";
+}
+
+/**
  * Global WebSocket provider for notifications.
  * Mounts once in layout, writes to useNotificationStore.
  * Safe for public pages — does nothing without a token.
@@ -85,8 +95,8 @@ export function NotificationWSProvider({ children }: { children: React.ReactNode
           switch (msg.type) {
             case "auth.success":
               s.setWsConnected(true);
-              if (msg.data?.unread_count !== undefined) {
-                s.setUnread(msg.data.unread_count);
+              if ((msg.data?.unread_count ?? msg.unread_count) !== undefined) {
+                s.setUnread(msg.data?.unread_count ?? msg.unread_count);
               }
               break;
 

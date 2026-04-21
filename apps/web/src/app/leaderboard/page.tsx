@@ -1,620 +1,379 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, Plus, X as XIcon } from "lucide-react";
-import { Trophy, Medal, Crown, TrendUp, Sword, Clock, Lightning } from "@phosphor-icons/react";
+import { Loader2, Trophy, Calendar, Swords, BookOpen, Crown } from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
-import { UserAvatar } from "@/components/ui/UserAvatar";
-import { LeaderboardSkeleton } from "@/components/ui/Skeleton";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { hasRole } from "@/lib/guards";
-import { RANK } from "@/lib/constants";
-import type { TournamentLeaderboardEntry, ActiveTournamentResponse, Scenario } from "@/types";
 import { logger } from "@/lib/logger";
+import { PodiumCard, type PodiumEntry } from "@/components/leaderboard/PodiumCard";
+import { LeaderboardTable, type LeaderboardRow } from "@/components/leaderboard/LeaderboardTable";
+import { TPBreakdown, type TPBreakdownData } from "@/components/leaderboard/TPBreakdown";
+import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 
-interface GamificationEntry {
+/** Hunter Score row from GET /gamification/leaderboard/hunters */
+interface HunterEntry {
   rank: number;
   user_id: string;
   full_name: string;
   avatar_url?: string | null;
-  sessions_count: number;
-  total_score: number;
-  avg_score: number;
+  hunter_score: number;
+  current_level: number;
+  week_tp: number;
+  prev_week_tp: number;
+  delta_vs_last_week: number;
+  is_me: boolean;
 }
 
-interface CompositeEntry {
+/** Weekly TP row from GET /gamification/leaderboard/weekly-tp */
+interface WeeklyTpEntry {
   rank: number;
   user_id: string;
   full_name: string;
   avatar_url?: string | null;
-  composite_score: number;
-  training_avg: number;
-  pvp_rating_norm: number;
-  knowledge_score: number;
-  streak_bonus: number;
+  week_tp: number;
+  is_me: boolean;
 }
 
-type Tab = "general" | "tournament" | "composite";
+type Tab = "hunter" | "week" | "month" | "arena" | "knowledge";
 
-function getRankIcon(rank: number) {
-  if (rank === 1) return <Crown weight="duotone" size={18} style={{ color: RANK.gold }} />;
-  if (rank === 2) return <Medal weight="duotone" size={18} style={{ color: RANK.silver }} />;
-  if (rank === 3) return <Medal weight="duotone" size={18} style={{ color: RANK.bronze }} />;
-  return <span className="font-mono text-sm font-bold" style={{ color: "var(--text-muted)" }}>{rank}</span>;
-}
-
-function getRankStyle(rank: number) {
-  if (rank === 1) return { bg: RANK.goldRgba(0.08), border: RANK.goldRgba(0.2), glow: `0 0 15px ${RANK.goldRgba(0.15)}` };
-  if (rank === 2) return { bg: RANK.silverRgba(0.06), border: RANK.silverRgba(0.15), glow: "none" };
-  if (rank === 3) return { bg: RANK.bronzeRgba(0.06), border: RANK.bronzeRgba(0.15), glow: "none" };
-  return { bg: "var(--glass-bg)", border: "var(--glass-border)", glow: "none" };
-}
-
-function formatTimeLeft(weekEnd: string): string {
-  const diff = new Date(weekEnd).getTime() - Date.now();
-  if (diff <= 0) return "Завершён";
-  const days = Math.floor(diff / 86400000);
-  const hours = Math.floor((diff % 86400000) / 3600000);
-  if (days > 0) return `${days}д ${hours}ч`;
-  return `${hours}ч`;
-}
+const TABS: { key: Tab; label: string; icon: typeof Trophy }[] = [
+  { key: "hunter", label: "Охотник", icon: Crown },
+  { key: "week", label: "Неделя", icon: Calendar },
+  { key: "month", label: "Месяц", icon: Trophy },
+  { key: "arena", label: "Арена", icon: Swords },
+  { key: "knowledge", label: "Знания", icon: BookOpen },
+];
 
 export default function LeaderboardPage() {
   const { user } = useAuth();
-  const canCreateTournament = hasRole(user, ["admin", "rop"]);
-  const [tab, setTab] = useState<Tab>("general");
-  const [period, setPeriod] = useState<"week" | "month" | "all">("week");
-  const [entries, setEntries] = useState<GamificationEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<Tab>("hunter");
 
-  // Tournament state
-  const [tournament, setTournament] = useState<ActiveTournamentResponse | null>(null);
-  const [tournamentEntries, setTournamentEntries] = useState<TournamentLeaderboardEntry[]>([]);
-  const [tournamentLoading, setTournamentLoading] = useState(true);
+  // Hunter tab state
+  const [hunters, setHunters] = useState<HunterEntry[]>([]);
+  const [hunterLoading, setHunterLoading] = useState(true);
 
-  // Composite leaderboard state
-  const [compositeEntries, setCompositeEntries] = useState<CompositeEntry[]>([]);
-  const [compositeLoading, setCompositeLoading] = useState(false);
+  // Weekly TP tab state
+  const [weeklyTp, setWeeklyTp] = useState<WeeklyTpEntry[]>([]);
+  const [weeklyLoading, setWeeklyLoading] = useState(true);
 
-  // Create tournament modal
-  const [showCreate, setShowCreate] = useState(false);
+  // My TP breakdown (shown alongside hunter & week tabs)
+  const [breakdown, setBreakdown] = useState<TPBreakdownData | null>(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(true);
 
-  // Fetch gamification leaderboard
-  useEffect(() => {
-    setLoading(true);
-    api
-      .get(`/gamification/leaderboard?period=${period}`)
-      .then((data: GamificationEntry[]) => setEntries(data))
-      .catch((err) => { logger.error("Failed to load leaderboard:", err); setEntries([]); })
-      .finally(() => setLoading(false));
-  }, [period]);
+  // Monthly / arena / knowledge — reuse existing endpoints
+  const [monthlyRows, setMonthlyRows] = useState<LeaderboardRow[] | null>(null);
+  const [arenaRows, setArenaRows] = useState<LeaderboardRow[] | null>(null);
+  const [knowledgeRows, setKnowledgeRows] = useState<LeaderboardRow[] | null>(null);
 
-  // Fetch tournament data
-  useEffect(() => {
-    api.get("/tournament/active")
-      .then((data: ActiveTournamentResponse) => {
-        setTournament(data);
-        if (data.tournament) {
-          // Fetch full leaderboard (top 20)
-          api.get(`/tournament/leaderboard/${data.tournament.id}`)
-            .then((lb: TournamentLeaderboardEntry[]) => setTournamentEntries(lb))
-            .catch((err) => { logger.error("Failed to load tournament leaderboard:", err); setTournamentEntries(data.leaderboard); });
-        }
-      })
-      .catch((err) => { logger.error("Failed to load active tournament:", err); })
-      .finally(() => setTournamentLoading(false));
+  const fetchHunters = useCallback(async () => {
+    setHunterLoading(true);
+    try {
+      const data: HunterEntry[] = await api.get("/gamification/leaderboard/hunters?scope=company&limit=50");
+      setHunters(Array.isArray(data) ? data : []);
+    } catch (err) {
+      logger.error("Failed to load hunter leaderboard:", err);
+      setHunters([]);
+    } finally {
+      setHunterLoading(false);
+    }
   }, []);
 
-  // Fetch composite leaderboard when tab switches
-  useEffect(() => {
-    if (tab !== "composite") return;
-    setCompositeLoading(true);
-    api.get("/gamification/leaderboard/composite")
-      .then((data: CompositeEntry[]) => setCompositeEntries(data))
-      .catch((err) => { logger.error("Failed to load composite leaderboard:", err); setCompositeEntries([]); })
-      .finally(() => setCompositeLoading(false));
-  }, [tab]);
+  const fetchWeeklyTp = useCallback(async () => {
+    setWeeklyLoading(true);
+    try {
+      const data: WeeklyTpEntry[] = await api.get("/gamification/leaderboard/weekly-tp?scope=company&limit=50");
+      setWeeklyTp(Array.isArray(data) ? data : []);
+    } catch (err) {
+      logger.error("Failed to load weekly TP:", err);
+      setWeeklyTp([]);
+    } finally {
+      setWeeklyLoading(false);
+    }
+  }, []);
 
-  const TABS: { id: Tab; label: string; icon: React.ComponentType<Record<string, unknown>> }[] = [
-    { id: "general", label: "Общий", icon: Trophy },
-    { id: "tournament", label: "Турнир", icon: Sword },
-    { id: "composite", label: "Комплексный", icon: Lightning },
-  ];
+  const fetchBreakdown = useCallback(async () => {
+    setBreakdownLoading(true);
+    try {
+      const data: TPBreakdownData = await api.get("/gamification/leaderboard/my-breakdown");
+      setBreakdown(data);
+    } catch (err) {
+      logger.error("Failed to load TP breakdown:", err);
+      setBreakdown(null);
+    } finally {
+      setBreakdownLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchHunters();
+    fetchBreakdown();
+    fetchWeeklyTp();
+  }, [user, fetchHunters, fetchBreakdown, fetchWeeklyTp]);
+
+  // Lazy-load less common tabs
+  useEffect(() => {
+    if (!user) return;
+    if (activeTab === "arena" && arenaRows === null) {
+      api.get<{ entries?: Array<{ rank: number; user_id: string; full_name: string; rating: number; rank_tier?: string }> }>("/pvp/leaderboard?limit=50")
+        .then((data) => {
+          const entries = data?.entries ?? [];
+          setArenaRows(entries.map((e) => ({
+            rank: e.rank,
+            user_id: e.user_id,
+            full_name: e.full_name,
+            score: e.rating,
+            subtitle: e.rank_tier ? String(e.rank_tier).toUpperCase() : null,
+            is_me: e.user_id === user.id,
+          })));
+        })
+        .catch(() => setArenaRows([]));
+    }
+    if (activeTab === "knowledge" && knowledgeRows === null) {
+      api.get<Array<{ rank: number; user_id: string; full_name: string; rating: number }>>("/knowledge/arena/leaderboard?limit=50")
+        .then((data) => {
+          const arr = Array.isArray(data) ? data : [];
+          setKnowledgeRows(arr.map((e) => ({
+            rank: e.rank,
+            user_id: e.user_id,
+            full_name: e.full_name,
+            score: e.rating,
+            is_me: e.user_id === user.id,
+          })));
+        })
+        .catch(() => setKnowledgeRows([]));
+    }
+    if (activeTab === "month" && monthlyRows === null) {
+      api.get<{ tournament?: { id: string } | null; leaderboard?: Array<{ rank: number; user_id: string; full_name: string; best_score: number; attempts: number }> }>("/tournament/active?type=monthly_championship")
+        .then((data) => {
+          const arr = data?.leaderboard ?? [];
+          setMonthlyRows(arr.map((e) => ({
+            rank: e.rank,
+            user_id: e.user_id,
+            full_name: e.full_name,
+            score: e.best_score,
+            subtitle: `${e.attempts} попыток`,
+            is_me: e.user_id === user.id,
+          })));
+        })
+        .catch(() => setMonthlyRows([]));
+    }
+  }, [activeTab, user, arenaRows, knowledgeRows, monthlyRows]);
+
+  // Convert Hunter entries → table rows
+  const hunterRows: LeaderboardRow[] = hunters.map((h) => ({
+    rank: h.rank,
+    user_id: h.user_id,
+    full_name: h.full_name,
+    avatar_url: h.avatar_url,
+    score: h.hunter_score,
+    delta: h.delta_vs_last_week,
+    subtitle: `Ур. ${h.current_level} · ${h.week_tp} TP за неделю`,
+    is_me: h.is_me,
+  }));
+
+  const hunterPodium: PodiumEntry[] = hunters.slice(0, 3).map((h) => ({
+    user_id: h.user_id,
+    full_name: h.full_name,
+    avatar_url: h.avatar_url,
+    score: h.hunter_score,
+    delta: h.delta_vs_last_week,
+    scoreUnit: "HS",
+  }));
+
+  const weeklyRows: LeaderboardRow[] = weeklyTp.map((w) => ({
+    rank: w.rank,
+    user_id: w.user_id,
+    full_name: w.full_name,
+    avatar_url: w.avatar_url,
+    score: w.week_tp,
+    subtitle: null,
+    is_me: w.is_me,
+  }));
+
+  const weeklyPodium: PodiumEntry[] = weeklyTp.slice(0, 3).map((w) => ({
+    user_id: w.user_id,
+    full_name: w.full_name,
+    score: w.week_tp,
+    scoreUnit: "TP",
+  }));
 
   return (
     <AuthLayout>
-      <div className="relative panel-grid-bg min-h-screen">
-        <div className="app-page max-w-3xl">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "var(--gf-xp-muted)" }}>
-                <Trophy weight="duotone" size={20} style={{ color: "var(--gf-xp)" }} />
-              </div>
-              <div>
-                <h1 className="font-display text-2xl font-extrabold" style={{ color: "var(--text-primary)" }}>
-                  Рейтинг охотников
-                </h1>
-                <p className="mt-0.5 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  Сравни свои результаты с лучшими
-                </p>
-              </div>
+      <div className="panel-grid-bg min-h-screen">
+        <div className="app-page max-w-6xl">
+          {/* Header */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 flex items-start justify-between gap-3"
+          >
+            <div>
+              <h1 className="font-display text-2xl md:text-3xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
+                Лидерборд
+              </h1>
+              <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
+                Единый рейтинг охотников. Очки от всех активностей: тренировки, PvP, квизы, мульти-сессии.
+              </p>
             </div>
+            <PixelInfoButton
+              title="Лидерборд"
+              sections={[
+                { icon: Trophy, label: "Hunter Score", text: "Общий рейтинг охотников компании — чем выше, тем элитнее" },
+                { icon: Crown, label: "Лига недели", text: "Автогруппы по 20 игроков близкого уровня. Топ-3 получают chest-награды в воскресенье 23:00 МСК" },
+                { icon: Calendar, label: "Неделя/Месяц", text: "TP (Training Points) — очки за тренировки, накапливаются еженедельно и сбрасываются в понедельник" },
+                { icon: Swords, label: "PvP", text: "Отдельный ELO-рейтинг дуэлей. Стартовый tier: Bronze → ↑ Silver → Gold → Platinum" },
+                { icon: BookOpen, label: "Knowledge Arena", text: "Квизы по 127-ФЗ. Очки начисляются за правильные + быстрые ответы" },
+              ]}
+              footer="Tip: кликните на свою строку — раскроется TP-breakdown (откуда пришли очки)"
+            />
           </motion.div>
 
           {/* Tabs */}
-          <div className="mt-6 flex gap-1 rounded-xl p-1" style={{ background: "var(--input-bg)" }}>
+          <div
+            className="flex gap-1 mb-6 p-1 rounded-xl overflow-x-auto"
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}
+          >
             {TABS.map((t) => {
               const Icon = t.icon;
-              const active = tab === t.id;
+              const active = activeTab === t.key;
               return (
                 <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className="relative flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-medium text-sm tracking-wide transition-colors"
-                  style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
+                  key={t.key}
+                  onClick={() => setActiveTab(t.key)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all shrink-0"
+                  style={{
+                    background: active ? "var(--accent)" : "transparent",
+                    color: active ? "#fff" : "var(--text-secondary)",
+                    boxShadow: active ? "0 2px 10px var(--accent-glow)" : "none",
+                  }}
                 >
-                  {active && (
-                    <motion.div
-                      layoutId="lbActiveTab"
-                      className="absolute inset-0 rounded-lg"
-                      style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)" }}
-                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                    />
-                  )}
-                  <span className="relative z-10 flex items-center gap-2">
-                    <Icon size={14} style={{ color: active ? "var(--accent)" : "var(--text-muted)" }} />
-                    {t.label}
-                    {t.id === "tournament" && tournament?.tournament && (
-                      <span className="flex h-2 w-2 rounded-full" style={{ background: "var(--success)" }} />
-                    )}
-                  </span>
+                  <Icon size={14} />
+                  {t.label}
                 </button>
               );
             })}
           </div>
 
           <AnimatePresence mode="wait">
-            {tab === "general" && (
-              <motion.div key="general" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
-                {/* Period selector */}
-                <div className="mt-6 flex gap-2 overflow-x-auto scrollbar-hide">
-                  {([
-                    { key: "week", label: "Неделя" },
-                    { key: "month", label: "Месяц" },
-                    { key: "all", label: "Всё время" },
-                  ] as const).map((p) => (
-                    <motion.button
-                      key={p.key}
-                      onClick={() => setPeriod(p.key)}
-                      className="rounded-lg px-3 sm:px-4 py-2.5 font-medium text-sm tracking-wide transition-all whitespace-nowrap"
-                      style={{
-                        background: period === p.key ? "var(--accent-muted)" : "var(--input-bg)",
-                        border: `1px solid ${period === p.key ? "var(--accent)" : "var(--border-color)"}`,
-                        color: period === p.key ? "var(--accent)" : "var(--text-muted)",
-                      }}
-                      whileTap={{ scale: 0.97 }}
-                    >
-                      {p.label}
-                    </motion.button>
-                  ))}
-                </div>
-
-                <LeaderboardList
-                  loading={loading}
-                  empty={entries.length === 0}
-                  items={entries.map((e) => ({
-                    rank: e.rank,
-                    userId: e.user_id,
-                    name: e.full_name,
-                    avatarUrl: e.avatar_url,
-                    subtitle: `${e.sessions_count} сессий · ср. ${Math.round(e.avg_score)}`,
-                    score: Math.round(e.total_score),
-                    scoreLabel: "ОЧКИ",
-                  }))}
-                />
-              </motion.div>
-            )}
-
-            {tab === "tournament" && (
-              <motion.div key="tournament" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
-                {/* Create tournament button for Admin/ROP */}
-                {canCreateTournament && (
-                  <div className="mt-6 flex justify-end">
-                    <motion.button
-                      onClick={() => setShowCreate(true)}
-                      className="btn-neon flex items-center gap-2 text-xs"
-                      whileTap={{ scale: 0.97 }}
-                    >
-                      <Plus size={14} /> Создать турнир
-                    </motion.button>
-                  </div>
-                )}
-
-                {tournament?.tournament ? (
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18 }}
+              className="grid gap-5 md:grid-cols-[1fr_320px]"
+            >
+              <div className="space-y-5 min-w-0">
+                {activeTab === "hunter" && (
                   <>
-                    {/* Tournament info banner */}
-                    <div className="mt-6 rounded-xl p-4 flex items-center gap-4"
-                      style={{ background: "color-mix(in srgb, var(--rank-gold) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--rank-gold) 15%, transparent)" }}
-                    >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "color-mix(in srgb, var(--rank-gold) 10%, transparent)" }}>
-                        <Sword weight="duotone" size={18} style={{ color: RANK.gold }} />
+                    {hunterLoading ? (
+                      <div className="flex items-center justify-center py-16">
+                        <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
                       </div>
-                      <div className="flex-1">
-                        <div className="font-display text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                          {tournament.tournament.title}
-                        </div>
-                        <div className="flex items-center gap-3 mt-1 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-                          <span className="flex items-center gap-1">
-                            <Clock weight="duotone" size={10} /> {formatTimeLeft(tournament.tournament.week_end)}
-                          </span>
-                          <span className="flex items-center gap-1" style={{ color: RANK.gold }}>
-                            <Crown weight="duotone" size={10} /> {tournament.tournament.bonus_xp[0]} XP
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Lightning weight="duotone" size={10} /> макс. {tournament.tournament.max_attempts} попыток
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <LeaderboardList
-                      loading={tournamentLoading}
-                      empty={tournamentEntries.length === 0}
-                      emptyText="Пока нет участников турнира"
-                      items={tournamentEntries.map((e) => ({
-                        rank: e.rank,
-                        userId: e.user_id,
-                        name: e.full_name,
-                        avatarUrl: e.avatar_url,
-                        subtitle: `${e.attempts} попыт${e.attempts === 1 ? "ка" : e.attempts < 5 ? "ки" : "ок"}`,
-                        score: Math.round(e.best_score),
-                        scoreLabel: "ЛУЧШИЙ",
-                      }))}
-                    />
+                    ) : (
+                      <>
+                        {hunterPodium.length >= 3 && (
+                          <PodiumCard top3={hunterPodium} title="Топ-3 охотника" />
+                        )}
+                        <LeaderboardTable
+                          rows={hunterRows}
+                          scoreUnit="HS"
+                          emptyMessage="Пока никто не накопил Hunter Score. Тренируйтесь — цифры появятся!"
+                        />
+                      </>
+                    )}
                   </>
-                ) : (
-                  <div className="mt-16 flex flex-col items-center py-8">
-                    <Sword weight="duotone" size={32} style={{ color: "var(--text-muted)" }} />
-                    <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
-                      {tournamentLoading ? "Загрузка..." : "Охотничьих турниров нет на этой неделе"}
-                    </p>
-                  </div>
                 )}
-              </motion.div>
-            )}
 
-            {tab === "composite" && (
-              <motion.div key="composite" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
-                {compositeLoading ? (
-                  <div className="flex justify-center py-12">
-                    <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
-                  </div>
-                ) : compositeEntries.length > 0 ? (
-                  <div className="mt-6 space-y-2" role="list" aria-label="Комплексный рейтинг">
-                    {/* Formula legend */}
-                    <div className="glass-panel p-3 mb-4 flex flex-wrap gap-3 text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-                      <span className="badge-neon text-xs">40% Тренировки</span>
-                      <span className="badge-neon text-xs">30% PvP</span>
-                      <span className="badge-neon text-xs">20% Знания</span>
-                      <span className="badge-neon text-xs">10% Серия</span>
-                    </div>
-
-                    {compositeEntries.map((entry) => {
-                      const rankStyle = getRankStyle(entry.rank);
-                      const isMe = entry.user_id === user?.id;
-                      return (
-                        <motion.div
-                          key={entry.user_id}
-                          role="listitem"
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className={`cyber-card flex items-center gap-3 px-4 py-3 ${isMe ? "neon-pulse" : ""}`}
-                          style={{
-                            background: rankStyle.bg,
-                            border: `1px solid ${rankStyle.border}`,
-                            boxShadow: rankStyle.glow,
-                          }}
-                        >
-                          <div className="w-8 text-center">{getRankIcon(entry.rank)}</div>
-                          <UserAvatar fullName={entry.full_name} avatarUrl={entry.avatar_url} size={32} />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate" style={{ color: isMe ? "var(--accent)" : "var(--text-primary)" }}>
-                              {entry.full_name}
-                            </div>
-                            <div className="flex gap-2 mt-1 flex-wrap">
-                              <span className="stat-chip text-xs" style={{ color: "var(--accent)" }}>
-                                T:{Math.round(entry.training_avg)}
-                              </span>
-                              <span className="stat-chip text-xs" style={{ color: "var(--success)" }}>
-                                P:{Math.round(entry.pvp_rating_norm)}
-                              </span>
-                              <span className="stat-chip text-xs" style={{ color: "var(--warning)" }}>
-                                K:{Math.round(entry.knowledge_score)}
-                              </span>
-                              <span className="stat-chip text-xs" style={{ color: "var(--warning)" }}>
-                                S:{Math.round(entry.streak_bonus)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-mono text-lg font-bold" style={{ color: "var(--accent)" }}>
-                              {Math.round(entry.composite_score)}
-                            </div>
-                            <div className="text-xs" style={{ color: "var(--text-muted)" }}>очков</div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="mt-16 flex flex-col items-center py-8">
-                    <Lightning weight="duotone" size={32} style={{ color: "var(--text-muted)" }} />
-                    <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
-                      Недостаточно данных для комплексного рейтинга
-                    </p>
-                  </div>
+                {activeTab === "week" && (
+                  <>
+                    {weeklyLoading ? (
+                      <div className="flex items-center justify-center py-16">
+                        <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
+                      </div>
+                    ) : (
+                      <>
+                        {weeklyPodium.length >= 3 && (
+                          <PodiumCard top3={weeklyPodium} title="Топ-3 недели" />
+                        )}
+                        <LeaderboardTable
+                          rows={weeklyRows}
+                          scoreUnit="TP"
+                          emptyMessage="На этой неделе ещё нет активностей — пройдите тренировку, чтобы начать."
+                        />
+                      </>
+                    )}
+                  </>
                 )}
-              </motion.div>
-            )}
+
+                {activeTab === "month" && (
+                  <>
+                    {monthlyRows === null ? (
+                      <div className="flex items-center justify-center py-16">
+                        <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
+                      </div>
+                    ) : monthlyRows.length === 0 ? (
+                      <div className="glass-panel p-8 text-center">
+                        <Trophy size={36} className="mx-auto mb-3" style={{ color: "var(--text-muted)", opacity: 0.4 }} />
+                        <div className="font-display font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
+                          Месячный турнир не активен
+                        </div>
+                        <div className="text-sm" style={{ color: "var(--text-muted)" }}>
+                          Админ может создать турнир типа &laquo;monthly_championship&raquo; через панель управления.
+                        </div>
+                      </div>
+                    ) : (
+                      <LeaderboardTable rows={monthlyRows} scoreUnit="pts" />
+                    )}
+                  </>
+                )}
+
+                {activeTab === "arena" && (
+                  <>
+                    {arenaRows === null ? (
+                      <div className="flex items-center justify-center py-16">
+                        <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
+                      </div>
+                    ) : (
+                      <LeaderboardTable
+                        rows={arenaRows}
+                        scoreUnit="ELO"
+                        emptyMessage="В арене пока никто не сыграл — сразитесь первым."
+                      />
+                    )}
+                  </>
+                )}
+
+                {activeTab === "knowledge" && (
+                  <>
+                    {knowledgeRows === null ? (
+                      <div className="flex items-center justify-center py-16">
+                        <Loader2 size={24} className="animate-spin" style={{ color: "var(--accent)" }} />
+                      </div>
+                    ) : (
+                      <LeaderboardTable
+                        rows={knowledgeRows}
+                        scoreUnit="ELO"
+                        emptyMessage="Пока нет участников. Пройдите квиз в Арене Знаний."
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Sidebar — TP breakdown for Hunter & Week tabs */}
+              {(activeTab === "hunter" || activeTab === "week") && (
+                <div className="min-w-0">
+                  <TPBreakdown data={breakdown} loading={breakdownLoading} />
+                </div>
+              )}
+            </motion.div>
           </AnimatePresence>
         </div>
       </div>
-      {/* Create Tournament Modal */}
-      <AnimatePresence>
-        {showCreate && (
-          <CreateTournamentModal
-            onClose={() => setShowCreate(false)}
-            onCreated={() => {
-              setShowCreate(false);
-              // Refresh tournament data
-              api.get("/tournament/active")
-                .then((data: ActiveTournamentResponse) => {
-                  setTournament(data);
-                  if (data.tournament) {
-                    api.get(`/tournament/leaderboard/${data.tournament.id}`)
-                      .then((lb: TournamentLeaderboardEntry[]) => setTournamentEntries(lb))
-                      .catch((err) => { logger.error("Failed to reload tournament leaderboard:", err); });
-                  }
-                })
-                .catch((err) => { logger.error("Failed to reload tournament data:", err); });
-            }}
-          />
-        )}
-      </AnimatePresence>
     </AuthLayout>
-  );
-}
-
-/* ─── Create Tournament Modal ──────────────────────────────────────────────── */
-
-function CreateTournamentModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [title, setTitle] = useState("");
-  const [scenarioId, setScenarioId] = useState("");
-  const [maxAttempts, setMaxAttempts] = useState(3);
-  const [bonusFirst, setBonusFirst] = useState(500);
-  const [bonusSecond, setBonusSecond] = useState(300);
-  const [bonusThird, setBonusThird] = useState(150);
-  const [scenarios, setScenarios] = useState<Scenario[]>([]);
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    api.get("/scenarios/").then(setScenarios).catch((err) => { logger.error("Failed to load scenarios:", err); });
-  }, []);
-
-  const handleCreate = async () => {
-    if (!title.trim() || !scenarioId) {
-      setError("Укажите название и сценарий");
-      return;
-    }
-    setCreating(true);
-    setError("");
-    try {
-      await api.post("/tournament/create-weekly", {
-        title: title.trim(),
-        scenario_id: scenarioId,
-        max_attempts: maxAttempts,
-        bonus_xp_first: bonusFirst,
-        bonus_xp_second: bonusSecond,
-        bonus_xp_third: bonusThird,
-      });
-      onCreated();
-    } catch (e) {
-      setError((e as Error).message || "Ошибка создания");
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.7)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        className="glass-panel max-w-md w-full mx-4 p-6"
-      >
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="font-display text-lg font-bold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-            <Sword weight="duotone" size={18} style={{ color: RANK.gold }} /> Новый турнир
-          </h2>
-          <button onClick={onClose} className="p-1 rounded-lg" style={{ color: "var(--text-muted)" }}>
-            <XIcon size={18} />
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="vh-label">Название</label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Турнир недели: Скептики"
-              className="vh-input w-full"
-            />
-          </div>
-
-          <div>
-            <label className="vh-label">Сценарий</label>
-            <select
-              value={scenarioId}
-              onChange={(e) => setScenarioId(e.target.value)}
-              className="vh-input w-full"
-            >
-              <option value="">Выберите сценарий...</option>
-              {scenarios.map((s) => (
-                <option key={s.id} value={s.id}>{s.title} ({s.difficulty}/10)</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="vh-label">Макс. попыток</label>
-            <input
-              type="number"
-              value={maxAttempts}
-              onChange={(e) => setMaxAttempts(Number(e.target.value))}
-              min={1}
-              max={10}
-              className="vh-input w-full"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="vh-label"><Medal weight="duotone" size={14} className="inline" /> 1st XP</label>
-              <input type="number" value={bonusFirst} onChange={(e) => setBonusFirst(Number(e.target.value))} className="vh-input w-full" />
-            </div>
-            <div>
-              <label className="vh-label"><Medal weight="duotone" size={14} className="inline" /> 2nd XP</label>
-              <input type="number" value={bonusSecond} onChange={(e) => setBonusSecond(Number(e.target.value))} className="vh-input w-full" />
-            </div>
-            <div>
-              <label className="vh-label"><Medal weight="duotone" size={14} className="inline" /> 3rd XP</label>
-              <input type="number" value={bonusThird} onChange={(e) => setBonusThird(Number(e.target.value))} className="vh-input w-full" />
-            </div>
-          </div>
-
-          {error && (
-            <p className="text-xs" style={{ color: "var(--danger)" }}>{error}</p>
-          )}
-
-          <motion.button
-            onClick={handleCreate}
-            disabled={creating}
-            className="btn-neon w-full flex items-center justify-center gap-2"
-            whileTap={{ scale: 0.98 }}
-          >
-            {creating ? <Loader2 size={16} className="animate-spin" /> : <><Sword weight="duotone" size={16} /> Создать турнир</>}
-          </motion.button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-/* ─── Shared Leaderboard List ──────────────────────────────────────────────── */
-
-function LeaderboardList({
-  loading,
-  empty,
-  emptyText = "Таблица пуста — займи первое место",
-  items,
-}: {
-  loading: boolean;
-  empty: boolean;
-  emptyText?: string;
-  items: { rank: number; userId: string; name: string; avatarUrl?: string | null; subtitle: string; score: number; scoreLabel: string }[];
-}) {
-  if (loading) {
-    return (
-      <LeaderboardSkeleton />
-    );
-  }
-
-  if (empty) {
-    return (
-      <EmptyState
-        icon={Trophy}
-        title={emptyText}
-        description="Пройдите охоту, чтобы попасть в рейтинг"
-        hint="1 сессия — и вы среди охотников"
-        illustration={<img src="/pixel/empty/sword-in-stone.png" alt="" className="w-24 h-24 mx-auto mb-2 opacity-80" />}
-        actionLabel="Начать тренировку"
-        onAction={() => window.location.href = "/training"}
-      />
-    );
-  }
-
-  return (
-    <div className="mt-6 space-y-3" role="list" aria-label="Рейтинг участников">
-      {items.map((entry, i) => {
-        const style = getRankStyle(entry.rank);
-        return (
-          <motion.div
-            key={entry.userId}
-            role="listitem"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-            className="cyber-card flex items-center gap-2 sm:gap-4 p-3 sm:p-4 transition-all relative overflow-hidden group"
-            style={{
-              background: style.bg,
-              border: `1px solid ${style.border}`,
-              boxShadow: style.glow,
-            }}
-            whileHover={{ y: -2, boxShadow: `0 4px 20px ${entry.rank <= 3 ? style.border : "rgba(124,106,232,0.1)"}` }}
-          >
-            {/* Rank accent bar — slides in on hover */}
-            <div
-              className="absolute left-0 top-0 bottom-0 w-0 group-hover:w-[3px] transition-all duration-300"
-              style={{ background: entry.rank === 1 ? RANK.gold : entry.rank === 2 ? RANK.silver : entry.rank === 3 ? RANK.bronze : "var(--accent)" }}
-            />
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              <div className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center">
-                {getRankIcon(entry.rank)}
-              </div>
-              <UserAvatar avatarUrl={entry.avatarUrl} fullName={entry.name} size={32} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-xs sm:text-sm truncate" style={{ color: "var(--text-primary)" }}>{entry.name}</div>
-              <div className="mt-0.5 text-xs sm:text-xs truncate" style={{ color: "var(--text-muted)" }}>{entry.subtitle}</div>
-            </div>
-            <div className="text-right shrink-0 flex flex-col items-end">
-              <motion.div
-                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1"
-                style={{
-                  background: entry.rank <= 3
-                    ? `color-mix(in srgb, ${entry.rank === 1 ? RANK.gold : entry.rank === 2 ? RANK.silver : RANK.bronze} 12%, transparent)`
-                    : "var(--accent-muted)",
-                }}
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: i * 0.05 + 0.15, type: "spring", stiffness: 400, damping: 25 }}
-              >
-                <TrendUp weight="duotone" size={14} style={{ color: entry.rank === 1 ? RANK.gold : entry.rank === 2 ? RANK.silver : entry.rank === 3 ? RANK.bronze : "var(--accent)" }} />
-                <span
-                  className="font-display text-lg sm:text-xl font-extrabold tabular-nums"
-                  style={{ color: entry.rank === 1 ? RANK.gold : entry.rank === 2 ? RANK.silver : entry.rank === 3 ? RANK.bronze : "var(--accent)" }}
-                >
-                  {entry.score}
-                </span>
-              </motion.div>
-              <span className="text-xs mt-0.5 font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{entry.scoreLabel}</span>
-            </div>
-          </motion.div>
-        );
-      })}
-    </div>
   );
 }

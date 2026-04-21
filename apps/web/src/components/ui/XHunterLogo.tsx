@@ -6,9 +6,9 @@ interface XHunterLogoProps {
 }
 
 const SIZES = {
-  sm: { x: "text-2xl", hunter: "text-[0.6rem]", gap: "gap-1" },
-  md: { x: "text-4xl", hunter: "text-sm", gap: "gap-1.5" },
-  lg: { x: "text-5xl", hunter: "text-base", gap: "gap-2" },
+  sm: { x: "text-2xl", hunter: "text-[0.875rem]", gap: "gap-1" },
+  md: { x: "text-[3.375rem]", hunter: "text-[1.3rem]", gap: "gap-2" },
+  lg: { x: "text-5xl", hunter: "text-[1.4rem]", gap: "gap-2" },
 };
 
 export function XHunterLogo({ size = "md", className = "" }: XHunterLogoProps) {
@@ -17,7 +17,11 @@ export function XHunterLogo({ size = "md", className = "" }: XHunterLogoProps) {
     <span className={`inline-flex items-baseline ${s.gap} ${className}`}>
       <span
         className={`font-display font-black leading-none ${s.x}`}
-        style={{ color: "var(--brand-deep)" }}
+        style={{
+          color: "var(--accent)",
+          textShadow: "0 0 20px var(--accent-glow), 0 0 40px rgba(107, 77, 199, 0.15)",
+          WebkitTextStroke: "0.5px rgba(255, 255, 255, 0.08)",
+        }}
       >
         X
       </span>

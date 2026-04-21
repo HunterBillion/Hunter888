@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Minus, ChevronUp } from "lucide-react";
 import { TrendUp, TrendDown, Sword, Flame } from "@phosphor-icons/react";
 import type { PvPRating, PvPRankTier } from "@/types";
+import { normalizeRankTier } from "@/types";
 import { RankBadge } from "./RankBadge";
 
 const TIER_THRESHOLDS: { tier: PvPRankTier; min: number }[] = [
@@ -45,9 +46,10 @@ interface Props {
 }
 
 export function RatingCard({ rating: r }: Props) {
+  const tier = normalizeRankTier(r.rank_tier);
   const winRate = r.total_duels > 0 ? Math.round((r.wins / r.total_duels) * 100) : 0;
   const placementLeft = Math.max(0, 10 - r.placement_count);
-  const nextTier = r.placement_done ? getNextTier(r.rating, r.rank_tier) : null;
+  const nextTier = r.placement_done ? getNextTier(r.rating, tier) : null;
   const streakIcon = r.current_streak > 0
     ? <TrendUp weight="duotone" size={14} style={{ color: "var(--success)" }} />
     : r.current_streak < 0
@@ -56,29 +58,30 @@ export function RatingCard({ rating: r }: Props) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="glass-panel overflow-hidden p-0"
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="pixel-border overflow-hidden p-0"
+      style={{ "--pixel-border-color": "var(--accent)", background: "var(--bg-panel)" } as React.CSSProperties}
     >
       <div
         className="p-6"
-        style={{ background: "linear-gradient(135deg, rgba(212,168,75,0.14), rgba(59,130,246,0.08) 45%, rgba(0,0,0,0) 100%)" }}
+        style={{ background: "linear-gradient(135deg, rgba(107,77,199,0.12), rgba(212,168,75,0.08) 45%, rgba(0,0,0,0) 100%)" }}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="font-mono text-sm tracking-[0.24em]" style={{ color: "var(--text-muted)" }}>
-              Рейтинг арены
+            <div className="font-pixel text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+              ARENA RATING
             </div>
             <div className="mt-2 flex items-end gap-3">
-              <div className="font-display text-3xl sm:text-5xl font-black leading-none" style={{ color: "var(--text-primary)" }}>
+              <div className="font-pixel text-3xl sm:text-5xl font-black leading-none pixel-glow" style={{ color: "var(--accent)" }}>
                 {Math.round(r.rating)}
               </div>
-              <div className="pb-1 text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+              <div className="pb-1 font-pixel text-xs" style={{ color: "var(--text-muted)" }}>
                 RD {Math.round(r.rd)}
               </div>
             </div>
             <div className="mt-3">
-              <RankBadge tier={r.rank_tier} rating={r.rating} size="lg" />
+              <RankBadge tier={tier} rating={r.rating} size="lg" />
             </div>
           </div>
           {!r.placement_done && (
@@ -135,14 +138,14 @@ export function RatingCard({ rating: r }: Props) {
           <div className="h-2 w-full rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
             <motion.div
               className="h-full rounded-full"
-              style={{ background: "linear-gradient(90deg, var(--accent), var(--magenta))", boxShadow: "0 0 8px rgba(124,106,232,0.4)" }}
+              style={{ background: "linear-gradient(90deg, var(--accent), var(--magenta))", boxShadow: "0 0 8px var(--accent-glow)" }}
               initial={{ width: 0 }}
               animate={{ width: `${Math.round(nextTier.progress * 100)}%` }}
               transition={{ duration: 1, ease: "easeOut" }}
             />
           </div>
           <div className="flex items-center justify-between mt-1.5">
-            <RankBadge tier={r.rank_tier} size="sm" />
+            <RankBadge tier={tier} size="sm" />
             <RankBadge tier={nextTier.tier} size="sm" />
           </div>
         </div>

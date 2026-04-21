@@ -81,14 +81,97 @@ async def retrieve_wiki_context(
     return wiki_results
 
 
+async def compound_knowledge(
+    manager_id: uuid.UUID,
+    query: str,
+    synthesis: str,
+    source_pages: list[str],
+    db: AsyncSession,
+) -> bool:
+    """Karpathy knowledge compounding: save novel insights back into the wiki.
+
+    When the AI Coach synthesizes an answer from 2+ wiki pages, the synthesis
+    itself may contain a novel connection. This function saves it as a new wiki
+    page of type 'insight', compounding the wiki's knowledge over time.
+
+    Only saves if:
+    - synthesis is substantial (>100 chars)
+    - source_pages >= 2 (cross-page insight, not a simple retrieval)
+    - No existing insight page with very similar content already exists
+    """
+    if len(synthesis) < 100 or len(source_pages) < 2:
+        return False
+
+    try:
+        wiki_result = await db.execute(
+            select(ManagerWiki).where(ManagerWiki.manager_id == manager_id)
+        )
+        wiki = wiki_result.scalar_one_or_none()
+        if not wiki:
+            return False
+
+        # Check for duplicate: if any existing insight page shares >60% words, skip
+        existing_insights = await db.execute(
+            select(WikiPage.content)
+            .where(WikiPage.wiki_id == wiki.id, WikiPage.page_type == "insight")
+            .order_by(WikiPage.updated_at.desc())
+            .limit(10)
+        )
+        synthesis_words = set(synthesis.lower().split())
+        for (existing_content,) in existing_insights:
+            if existing_content:
+                existing_words = set(existing_content.lower().split())
+                overlap = len(synthesis_words & existing_words) / max(1, len(synthesis_words))
+                if overlap > 0.6:
+                    return False  # Too similar to existing insight
+
+        # Generate unique path
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        page_path = f"insights/compound_{now.strftime('%Y%m%d_%H%M%S')}"
+
+        content = (
+            f"# Инсайт\n\n"
+            f"**Запрос:** {query[:200]}\n\n"
+            f"**Источники:** {', '.join(source_pages)}\n\n"
+            f"---\n\n"
+            f"{synthesis[:2000]}\n"
+        )
+
+        page = WikiPage(
+            wiki_id=wiki.id,
+            page_path=page_path,
+            content=content,
+            page_type="insight",
+            tags=["compound", "auto-generated"] + source_pages[:5],
+            source_sessions=[],  # no specific session
+        )
+        db.add(page)
+        await db.flush()
+
+        # Generate embedding for the new insight page
+        await generate_wiki_embedding(page, db)
+
+        await db.commit()
+        logger.info(
+            "Wiki knowledge compounded for manager %s: %s (from %d pages)",
+            manager_id, page_path, len(source_pages),
+        )
+        return True
+
+    except Exception:
+        logger.debug("Knowledge compounding failed for manager %s", manager_id, exc_info=True)
+        return False
+
+
 async def generate_wiki_embedding(page: WikiPage, db: AsyncSession) -> bool:
     """Generate and store embedding for a wiki page. Returns True if successful."""
     if not page.content:
         return False
 
     try:
-        # Embed first 500 chars (content summary)
-        text_to_embed = page.content[:500]
+        # Embed first 1500 chars for deeper semantic coverage (was 500)
+        text_to_embed = page.content[:1500]
         embedding = await get_embedding(text_to_embed)
         if embedding:
             page.embedding = embedding

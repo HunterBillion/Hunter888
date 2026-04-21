@@ -33,7 +33,7 @@ const STATUS_CONFIG = {
     color: "var(--danger)",
     glow: "rgba(229,72,77,0.25)",
     border: "rgba(229,72,77,0.4)",
-    bg: "rgba(229,72,77,0.08)",
+    bg: "var(--danger-muted)",
     message: "Вы попались в ловушку",
   },
   dodged: {
@@ -42,7 +42,7 @@ const STATUS_CONFIG = {
     color: "var(--success)",
     glow: "rgba(61,220,132,0.25)",
     border: "rgba(61,220,132,0.4)",
-    bg: "rgba(61,220,132,0.08)",
+    bg: "var(--success-muted)",
     message: "Ловушка обойдена",
   },
   partial: {
@@ -51,7 +51,7 @@ const STATUS_CONFIG = {
     color: "var(--warning)",
     glow: "rgba(212,168,75,0.25)",
     border: "rgba(212,168,75,0.4)",
-    bg: "rgba(212,168,75,0.08)",
+    bg: "var(--warning-muted)",
     message: "Неоднозначный ответ",
   },
 } as const;

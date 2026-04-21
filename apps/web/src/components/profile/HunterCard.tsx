@@ -47,15 +47,15 @@ export function HunterCard({ user, stats, gamification, teamName }: HunterCardPr
       animate={{ opacity: 1, y: 0 }}
       className="relative overflow-hidden rounded-2xl p-8"
       style={{
-        background: "linear-gradient(135deg, var(--glass-bg), rgba(124,106,232,0.04))",
-        border: "1px solid rgba(124,106,232,0.2)",
+        background: "linear-gradient(135deg, var(--glass-bg), var(--accent-muted))",
+        border: "1px solid var(--accent-muted)",
         backdropFilter: "blur(24px) saturate(1.5)",
         boxShadow: "0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)",
       }}
     >
       {/* Corner glows */}
-      <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(124,106,232,0.15) 0%, transparent 70%)" }} />
-      <div className="absolute -bottom-16 -left-16 w-48 h-48 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(124,106,232,0.08) 0%, transparent 70%)" }} />
+      <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, var(--accent-muted) 0%, transparent 70%)" }} />
+      <div className="absolute -bottom-16 -left-16 w-48 h-48 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, var(--accent-muted) 0%, transparent 70%)" }} />
 
       <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-6">
         {/* Left: Avatar + Info */}
@@ -64,7 +64,7 @@ export function HunterCard({ user, stats, gamification, teamName }: HunterCardPr
           <div
             className="w-[80px] h-[80px] rounded-2xl flex items-center justify-center text-2xl font-bold text-white shrink-0"
             style={{
-              background: "linear-gradient(135deg, var(--accent), rgba(124,106,232,0.8))",
+              background: "linear-gradient(135deg, var(--accent), var(--accent-glow))",
               boxShadow: "0 8px 32px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.2)",
             }}
           >
@@ -77,13 +77,13 @@ export function HunterCard({ user, stats, gamification, teamName }: HunterCardPr
             </h2>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span
-                className="rounded-full px-3 py-0.5 text-xs font-mono"
+                className="rounded-full px-3 py-1 text-sm font-mono font-semibold"
                 style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
               >
                 {ROLE_LABELS[user.role] ?? user.role}
               </span>
               {teamName && (
-                <span className="text-sm" style={{ color: "var(--text-muted)" }}>
+                <span className="text-base" style={{ color: "var(--text-muted)" }}>
                   {teamName}
                 </span>
               )}
@@ -102,7 +102,7 @@ export function HunterCard({ user, stats, gamification, teamName }: HunterCardPr
         {/* Right: Level Ring */}
         <div className="relative shrink-0 self-center w-16 h-16 sm:w-[88px] sm:h-[88px]">
           <svg viewBox="0 0 88 88" className="w-full h-full rotate-[-90deg]">
-            <circle cx="44" cy="44" r="38" fill="none" stroke="rgba(124,106,232,0.12)" strokeWidth="5" />
+            <circle cx="44" cy="44" r="38" fill="none" stroke="var(--accent-muted)" strokeWidth="5" />
             <circle
               cx="44" cy="44" r="38" fill="none"
               stroke="var(--accent)"
@@ -124,15 +124,15 @@ export function HunterCard({ user, stats, gamification, teamName }: HunterCardPr
       {/* XP Progress Bar */}
       <div className="relative z-10 mt-6">
         <div className="flex items-center justify-between mb-2">
-          <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-            <Zap size={12} className="inline mr-1" />
+          <span className="font-mono text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>
+            <Zap size={16} className="inline mr-1" />
             {xpCurrent} / {xpNext} XP
           </span>
-          <span className="font-mono text-xs" style={{ color: "var(--accent)" }}>
+          <span className="font-mono text-sm font-semibold" style={{ color: "var(--accent)" }}>
             Level {level}
           </span>
         </div>
-        <div className="h-2 rounded-full" style={{ background: "var(--input-bg)" }}>
+        <div className="h-3 rounded-full" style={{ background: "var(--input-bg)" }}>
           <motion.div
             className="h-full rounded-full"
             initial={{ width: 0 }}
@@ -143,34 +143,7 @@ export function HunterCard({ user, stats, gamification, teamName }: HunterCardPr
         </div>
       </div>
 
-      {/* Stats Row */}
-      <div className="relative z-10 mt-6 grid grid-cols-3 gap-4">
-        {[
-          { label: "Сессий", value: stats?.completed_sessions ?? 0, icon: Trophy, color: "var(--accent)" },
-          { label: "Ср. балл", value: stats?.avg_score != null ? Math.round(stats.avg_score) : 0, icon: TrendingUp, color: scoreColor(stats?.avg_score ?? null) },
-          { label: "Лучший", value: stats?.best_score != null ? Math.round(stats.best_score) : 0, icon: Star, color: scoreColor(stats?.best_score ?? null) },
-        ].map((stat) => {
-          const SIcon = stat.icon;
-          return (
-            <div
-              key={stat.label}
-              className="rounded-xl px-5 py-4 text-center relative overflow-hidden"
-              style={{ background: "var(--input-bg)", border: `1px solid ${colorAlpha(stat.color, 8)}` }}
-            >
-              <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${colorAlpha(stat.color, 6)} 0%, transparent 70%)` }} />
-              <div className="w-9 h-9 rounded-lg mx-auto mb-2 flex items-center justify-center" style={{ background: colorAlpha(stat.color, 8) }}>
-                <SIcon size={18} style={{ color: stat.color }} />
-              </div>
-              <div className="font-display text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
-                <AnimatedCounter value={stat.value} />
-              </div>
-              <div className="font-mono text-xs mt-1 uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-                {stat.label}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {/* Stats moved to ProgressGraph — no duplicate cards here */}
     </motion.div>
   );
 }

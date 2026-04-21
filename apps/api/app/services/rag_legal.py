@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.rag import ChunkUsageLog, LegalCategory, LegalKnowledgeChunk
+from app.services.content_filter import filter_rag_context
 
 logger = logging.getLogger(__name__)
 
@@ -79,15 +80,27 @@ class RAGContext:
     def to_prompt_context(self) -> str:
         if not self.results:
             return ""
-        lines = ["### Правовая база (127-ФЗ «О несостоятельности (банкротстве)»):"]
+
+        # ── Security: filter RAG data before prompt injection ──
+        _, violations = filter_rag_context(self.results)
+        if violations:
+            logger.warning("RAG prompt context filtered: %d violation(s): %s", len(violations), violations[:10])
+
+        lines = [
+            "[DATA_START]",
+            "### Правовая база (127-ФЗ «О несостоятельности (банкротстве)»):",
+        ]
         for i, r in enumerate(self.results, 1):
-            lines.append(f"{i}. [{r.category}] {r.fact_text} (Основание: {r.law_article})")
+            # Sanitize markers from chunk text to prevent prompt breakout
+            safe_text = r.fact_text.replace("[DATA_START]", "").replace("[DATA_END]", "")
+            lines.append(f"{i}. [{r.category}] {safe_text} (Основание: {r.law_article})")
             if r.common_errors:
-                lines.append(f"   ⚠ Частые ошибки: {'; '.join(r.common_errors[:3])}")
+                lines.append(f"   Частые ошибки: {'; '.join(r.common_errors[:3])}")
             if r.correct_response_hint:
                 lines.append(f"   Подсказка: {r.correct_response_hint}")
             if r.court_case_reference:
                 lines.append(f"   Судебная практика: {r.court_case_reference}")
+        lines.append("[DATA_END]")
         return "\n".join(lines)
 
     def to_json(self) -> str:
@@ -374,16 +387,18 @@ async def _retrieve_by_embedding(query: str, db: AsyncSession, config: Retrieval
     where, where_params = _build_where_clauses(config)
     where += " AND embedding IS NOT NULL"
     emb_literal = "[" + ",".join(str(float(v)) for v in embedding) + "]"
+    # Inline the vector literal directly in SQL — asyncpg can't handle :param::vector cast.
+    # emb_literal is safe (constructed from float() values only).
     sql = sa_text(f"""
         SELECT id, category, fact_text, law_article, common_errors,
                correct_response_hint, difficulty_level, is_court_practice,
                court_case_reference, question_templates, follow_up_questions,
                blitz_question, blitz_answer, tags,
-               1 - (embedding <=> :emb_vector::vector) AS similarity
+               1 - (embedding <=> '{emb_literal}'::vector) AS similarity
         FROM legal_knowledge_chunks WHERE {where}
-        ORDER BY embedding <=> :emb_vector::vector LIMIT :top_k
+        ORDER BY embedding <=> '{emb_literal}'::vector LIMIT :top_k
     """)
-    query_params = {**where_params, "top_k": config.top_k * 2, "emb_vector": emb_literal}
+    query_params = {**where_params, "top_k": config.top_k * 2}
     try:
         result = await db.execute(sql, query_params)
         rows = result.fetchall()
@@ -391,7 +406,7 @@ async def _retrieve_by_embedding(query: str, db: AsyncSession, config: Retrieval
         logger.warning("pgvector query failed: %s", e)
         return []
 
-    min_sim = 0.25 if config.mode == "blitz" else 0.20
+    min_sim = settings.rag_min_similarity_blitz if config.mode == "blitz" else settings.rag_min_similarity
     results = []
     for row in rows:
         sim = float(row.similarity)
@@ -817,6 +832,7 @@ async def record_chunk_outcome(
                     ChunkUsageLog.user_id == user_id,
                     ChunkUsageLog.source_id == source_id,
                     ChunkUsageLog.was_answered.is_(False),
+                    ChunkUsageLog.is_deleted.is_(False),  # S4-09
                 ).limit(1)
             )
             log_entry = existing.scalar_one_or_none()
@@ -894,6 +910,7 @@ async def recalculate_chunk_effectiveness(db: AsyncSession) -> int:
                 FROM chunk_usage_logs
                 WHERE discovered_error IS NOT NULL
                   AND answer_correct = false
+                  AND is_deleted = false
                 GROUP BY chunk_id, discovered_error
                 HAVING COUNT(*) >= 2
                 ORDER BY cnt DESC

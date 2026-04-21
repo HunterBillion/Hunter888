@@ -242,9 +242,9 @@ export default function ResultsPage() {
           Math.min(100, Math.max(0, skillRadar.closing ?? 0)),
           Math.min(100, Math.max(0, skillRadar.qualification ?? 0)),
           Math.min(100, Math.max(0, skillRadar.time_management ?? 0)),
-          Math.min(100, Math.max(0, skillRadar.adaptability ?? 0)),
+          Math.min(100, Math.max(0, (skillRadar.adaptation ?? skillRadar.adaptability ?? 0))),
           Math.min(100, Math.max(0, skillRadar.legal_knowledge ?? 0)),
-          Math.min(100, Math.max(0, skillRadar.rapport ?? 0)),
+          Math.min(100, Math.max(0, (skillRadar.rapport_building ?? skillRadar.rapport ?? 0))),
         ],
         // Previous session overlay for progress comparison
         previousValues: previousSkillRadar
@@ -256,9 +256,9 @@ export default function ResultsPage() {
               Math.min(100, Math.max(0, previousSkillRadar.closing ?? 0)),
               Math.min(100, Math.max(0, previousSkillRadar.qualification ?? 0)),
               Math.min(100, Math.max(0, previousSkillRadar.time_management ?? 0)),
-              Math.min(100, Math.max(0, previousSkillRadar.adaptability ?? 0)),
+              Math.min(100, Math.max(0, (previousSkillRadar.adaptation ?? previousSkillRadar.adaptability ?? 0))),
               Math.min(100, Math.max(0, previousSkillRadar.legal_knowledge ?? 0)),
-              Math.min(100, Math.max(0, previousSkillRadar.rapport ?? 0)),
+              Math.min(100, Math.max(0, (previousSkillRadar.rapport_building ?? previousSkillRadar.rapport ?? 0))),
             ]
           : undefined,
       }
@@ -377,8 +377,8 @@ export default function ResultsPage() {
               <Link href={`/stories/${story.id}`}>
                 <motion.span
                   className="flex items-center gap-2 rounded-lg px-4 py-3 font-mono text-xs tracking-widest transition-colors backdrop-blur"
-                  style={{ background: "rgba(124,106,232,0.12)", border: "1px solid rgba(124,106,232,0.25)", color: "var(--accent)" }}
-                  whileHover={{ background: "rgba(124,106,232,0.2)" }}
+                  style={{ background: "var(--accent-muted)", border: "1px solid var(--accent-glow)", color: "var(--accent)" }}
+                  whileHover={{ background: "var(--accent-glow)" }}
                   whileTap={{ scale: 0.97 }}
                 >
                   <Layers3 size={14} /> ИСТОРИЯ CRM
@@ -452,7 +452,7 @@ export default function ResultsPage() {
 
               <div className="mt-4 flex flex-wrap justify-center gap-6 z-10 font-mono text-sm">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 border" style={{ background: "rgba(124,106,232,0.5)", borderColor: "var(--accent)" }} />
+                  <div className="w-3 h-3 border" style={{ background: "var(--accent-glow)", borderColor: "var(--accent)" }} />
                   <span style={{ color: "var(--text-secondary)" }}>Ваш профиль</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -503,7 +503,7 @@ export default function ResultsPage() {
                 className="grid grid-cols-1 sm:grid-cols-2 gap-4"
               >
                 {criticalDrop && (
-                  <div className="glass-panel p-5 rounded-xl" style={{ borderLeft: "4px solid var(--danger)", background: "linear-gradient(to right, rgba(229,72,77,0.05), transparent)" }}>
+                  <div className="glass-panel p-5 rounded-xl" style={{ borderLeft: "4px solid var(--danger)", background: "linear-gradient(to right, var(--danger-muted), transparent)" }}>
                     <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle size={14} style={{ color: "var(--danger)" }} />
                       <div className="font-mono text-sm uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Критич. падение</div>
@@ -641,7 +641,7 @@ export default function ResultsPage() {
           >
             <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, transparent, var(--danger), transparent)" }} />
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(229,72,77,0.1)", border: "1px solid rgba(229,72,77,0.2)" }}>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "var(--danger-muted)", border: "1px solid var(--danger-muted)" }}>
                 <BookOpen size={18} style={{ color: "var(--danger)" }} />
               </div>
               <div className="flex-1">
@@ -654,14 +654,14 @@ export default function ResultsPage() {
                 </p>
                 <div className="flex flex-wrap gap-2 mb-4">
                   {result.weak_legal_categories.map((cat: { category: string; display_name: string; accuracy_pct: number }) => (
-                    <Link key={cat.category} href={`/knowledge?category=${encodeURIComponent(cat.category)}`}>
+                    <Link key={cat.category} href={`/pvp?tab=knowledge&category=${encodeURIComponent(cat.category)}`}>
                       <span className="status-badge status-badge--danger" style={{ cursor: "pointer" }}>
                         {cat.display_name} · {cat.accuracy_pct}%
                       </span>
                     </Link>
                   ))}
                 </div>
-                <Button href={`/knowledge?category=${encodeURIComponent(result.weak_legal_categories[0]?.category || "")}`} size="sm" icon={<BookOpen size={14} />}>
+                <Button href={`/pvp?tab=knowledge&category=${encodeURIComponent(result.weak_legal_categories[0]?.category || "")}`} size="sm" icon={<BookOpen size={14} />}>
                     Подтяни знания по ФЗ-127
                 </Button>
               </div>
@@ -687,8 +687,8 @@ export default function ResultsPage() {
                   key={i}
                   className="flex items-center gap-3 rounded-lg p-2.5"
                   style={{
-                    background: p.fulfilled ? "rgba(61,220,132,0.06)" : "rgba(229,72,77,0.06)",
-                    border: `1px solid ${p.fulfilled ? "rgba(61,220,132,0.15)" : "rgba(229,72,77,0.15)"}`,
+                    background: p.fulfilled ? "var(--success-muted)" : "var(--danger-muted)",
+                    border: `1px solid ${p.fulfilled ? "var(--success-muted)" : "var(--danger-muted)"}`,
                   }}
                 >
                   {p.fulfilled ? (
@@ -704,7 +704,7 @@ export default function ResultsPage() {
                   </div>
                   <span className={`stat-chip ${p.fulfilled ? "" : "neon-pulse"}`} style={{
                     color: p.fulfilled ? "var(--success)" : "var(--danger)",
-                    fontSize: "12px",
+                    fontSize: "14px",
                   }}>
                     {p.fulfilled ? "+0.5" : "−1.0"}
                   </span>

@@ -92,19 +92,19 @@ export const STORAGE = {
 /* ── Rank colours ─────────────────────────────────────────────────── */
 
 export const RANK_COLORS = {
-  gold: { primary: '#FFD700', bg: 'rgba(212,168,75,0.1)', border: 'rgba(212,168,75,0.3)' },
-  silver: { primary: '#C0C0C0', bg: 'rgba(192,192,192,0.1)', border: 'rgba(192,192,192,0.3)' },
-  bronze: { primary: '#CD7F32', bg: 'rgba(205,127,50,0.1)', border: 'rgba(205,127,50,0.3)' },
+  gold: { primary: 'var(--rank-gold)', bg: 'var(--rank-gold-muted)', border: 'color-mix(in srgb, var(--rank-gold) 30%, transparent)' },
+  silver: { primary: 'var(--rank-silver)', bg: 'var(--rank-silver-muted)', border: 'color-mix(in srgb, var(--rank-silver) 30%, transparent)' },
+  bronze: { primary: 'var(--rank-bronze)', bg: 'var(--rank-bronze-muted)', border: 'color-mix(in srgb, var(--rank-bronze) 30%, transparent)' },
 } as const;
 
-/** @deprecated Use `RANK_COLORS` instead */
+/** @deprecated Use `RANK_COLORS` or CSS variables (--rank-gold, --rank-silver, --rank-bronze) instead */
 export const RANK = {
-  gold: '#FFD700',
-  goldRgba: (a: number) => `rgba(255, 215, 0, ${a})`,
-  silver: '#C0C0C0',
-  silverRgba: (a: number) => `rgba(192, 192, 192, ${a})`,
-  bronze: '#CD7F32',
-  bronzeRgba: (a: number) => `rgba(205, 127, 50, ${a})`,
+  gold: 'var(--rank-gold)',
+  goldRgba: (a: number) => `color-mix(in srgb, var(--rank-gold) ${Math.round(a * 100)}%, transparent)`,
+  silver: 'var(--rank-silver)',
+  silverRgba: (a: number) => `color-mix(in srgb, var(--rank-silver) ${Math.round(a * 100)}%, transparent)`,
+  bronze: 'var(--rank-bronze)',
+  bronzeRgba: (a: number) => `color-mix(in srgb, var(--rank-bronze) ${Math.round(a * 100)}%, transparent)`,
 } as const;
 
 /* ── Streak colours ───────────────────────────────────────────────── */

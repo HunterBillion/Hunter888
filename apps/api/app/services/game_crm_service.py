@@ -580,6 +580,20 @@ class GameCRMService:
             "ended_at": story.ended_at.isoformat() if story.ended_at else None,
         }
 
+    # Transition matrix for game pipeline statuses
+    ALLOWED_GAME_TRANSITIONS: dict[str, set[str]] = {
+        "new": {"contacted"},
+        "contacted": {"interested", "lost"},
+        "interested": {"thinking", "consent_given", "lost"},
+        "thinking": {"consent_given", "interested", "lost"},
+        "consent_given": {"documents", "lost"},
+        "documents": {"contract_signed", "lost"},
+        "contract_signed": {"in_process", "lost"},
+        "in_process": {"completed", "lost"},
+        "completed": set(),
+        "lost": {"contacted"},  # retry
+    }
+
     async def change_game_status(
         self,
         story_id: uuid.UUID,
@@ -590,12 +604,64 @@ class GameCRMService:
         reason: str | None = None,
     ) -> dict:
         """Сменить игровой статус клиента. owner_id=None для admin."""
-        story = await self._get_story(story_id, owner_id)
+
+        # Validate new_status against GameClientStatus enum
+        try:
+            GameClientStatus(new_status)
+        except ValueError:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail=f"Неизвестный игровой статус: {new_status}. "
+                       f"Допустимые: {[s.value for s in GameClientStatus]}",
+            )
+
+        # SELECT FOR UPDATE to prevent race conditions on concurrent status changes
+        from sqlalchemy import select as sa_select
+        row = await self.db.execute(
+            sa_select(ClientStory)
+            .where(ClientStory.id == story_id)
+            .with_for_update()
+        )
+        story = row.scalar_one_or_none()
+        if not story:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail=err.STORY_NOT_FOUND_OR_ACCESS_DENIED)
+        if owner_id is not None and story.user_id != owner_id:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail=err.STORY_NOT_FOUND_OR_ACCESS_DENIED)
+
         ds = story.director_state or {}
         old_status = ds.get("game_status", "new")
 
         if old_status == new_status:
             return {"old_status": old_status, "new_status": new_status, "changed": False}
+
+        # Validate transition is allowed
+        allowed = self.ALLOWED_GAME_TRANSITIONS.get(old_status, set())
+        if new_status not in allowed:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail=f"Переход {old_status} → {new_status} недопустим. "
+                       f"Допустимые: {sorted(allowed)}",
+            )
+
+        # Require reason for backward transitions (moving to an earlier stage or to lost)
+        _STAGE_ORDER = [
+            "new", "contacted", "interested", "thinking",
+            "consent_given", "documents", "contract_signed",
+            "in_process", "completed",
+        ]
+        old_idx = _STAGE_ORDER.index(old_status) if old_status in _STAGE_ORDER else -1
+        new_idx = _STAGE_ORDER.index(new_status) if new_status in _STAGE_ORDER else -1
+        is_backward = (new_status == "lost") or (new_idx != -1 and old_idx != -1 and new_idx < old_idx)
+        if is_backward and not reason:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail="Для обратного перехода статуса необходимо указать причину (reason)",
+            )
 
         # Обновляем director_state
         ds["game_status"] = new_status

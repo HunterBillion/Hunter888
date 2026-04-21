@@ -144,7 +144,13 @@ async def generate_weekly_report(
     svc = ManagerProgressService(db)
     profile = await svc.get_or_create_profile(user_id)
 
-    current_skills = profile.skills_dict()
+    # Only include skills if user has ANY session history — otherwise DB default=50
+    # is a lie and would show up as "50 for everything" in reports.
+    # `total_sessions` tracks lifetime training sessions on this profile.
+    if profile.total_sessions > 0:
+        current_skills = profile.skills_dict()
+    else:
+        current_skills = {}  # signal: no real data yet
     level_now = profile.current_level
 
     # ── Previous week report (for trend + rank change) ──

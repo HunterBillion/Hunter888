@@ -259,6 +259,8 @@ async def get_or_create_rating(
     user_id: uuid.UUID,
     db: AsyncSession,
     rating_type: str = "training_duel",
+    *,
+    lock: bool = False,
 ) -> PvPRating:
     """Get existing rating or create a new one with defaults.
 
@@ -269,15 +271,18 @@ async def get_or_create_rating(
     Args:
         rating_type: "training_duel" (default, for PvP sales duels) or
                      "knowledge_arena" (for 127-FZ knowledge PvP).
+        lock: if True, use SELECT ... FOR UPDATE to prevent concurrent
+              modification races (e.g. placement_count increment).
     """
     from sqlalchemy.exc import IntegrityError
 
-    result = await db.execute(
-        select(PvPRating).where(
-            PvPRating.user_id == user_id,
-            PvPRating.rating_type == rating_type,
-        )
+    stmt = select(PvPRating).where(
+        PvPRating.user_id == user_id,
+        PvPRating.rating_type == rating_type,
     )
+    if lock:
+        stmt = stmt.with_for_update()
+    result = await db.execute(stmt)
     rating = result.scalar_one_or_none()
 
     if rating is None:
@@ -324,8 +329,12 @@ async def update_rating_after_duel(
     Returns:
         (updated_rating, rating_delta)
     """
-    user_rating = await get_or_create_rating(user_id, db)
-    opp_rating = await get_or_create_rating(opponent_id, db)
+    # Deterministic lock order to prevent deadlocks
+    first_id, second_id = (user_id, opponent_id) if str(user_id) < str(opponent_id) else (opponent_id, user_id)
+    first_rating = await get_or_create_rating(first_id, db, lock=True)
+    second_rating = await get_or_create_rating(second_id, db, lock=True)
+    user_rating = first_rating if first_id == user_id else second_rating
+    opp_rating = second_rating if first_id == user_id else first_rating
 
     # Apply RD decay before calculation
     user_rating.rd = apply_rd_decay(user_rating.rd, user_rating.last_played)
@@ -345,6 +354,19 @@ async def update_rating_after_duel(
     )
 
     rating_delta = new_r - old_rating
+
+    # S3-05: Cap placement gain to +100 per match (prevent wild swings)
+    PLACEMENT_CAP = 100
+    if is_placement and rating_delta > PLACEMENT_CAP:
+        new_r = old_rating + PLACEMENT_CAP
+        rating_delta = PLACEMENT_CAP
+        logger.info(
+            "Placement cap applied: user=%s capped_delta=+%d (raw=+%.0f)",
+            user_id, PLACEMENT_CAP, new_r - old_rating + (rating_delta - PLACEMENT_CAP),
+        )
+    elif is_placement and rating_delta < -PLACEMENT_CAP:
+        new_r = old_rating - PLACEMENT_CAP
+        rating_delta = -PLACEMENT_CAP
 
     # Update fields
     user_rating.rating = new_r
@@ -406,7 +428,8 @@ async def apply_season_reset(db: AsyncSession, season_id: uuid.UUID) -> int:
     new_rating_expr = PvPRating.rating * 0.75 + DEFAULT_RATING * 0.25
 
     # CASE determines rank tier from the post-reset rating value.
-    # placement_done is forced True for all rows, so unranked never applies.
+    # S3-12/v12 fix: placement_done=False so players re-do placement in new season.
+    # Rank tier computed assuming placed=True for the CASE (visual only during placement).
     rank_tier_expr = case(
         (new_rating_expr >= 2300, "diamond"),
         (new_rating_expr >= 2000, "platinum"),
@@ -420,7 +443,8 @@ async def apply_season_reset(db: AsyncSession, season_id: uuid.UUID) -> int:
         .values(
             rating=new_rating_expr,
             rd=150.0,
-            placement_done=True,
+            placement_done=False,
+            placement_count=0,
             current_streak=0,
             season_id=season_id,
             rank_tier=rank_tier_expr,

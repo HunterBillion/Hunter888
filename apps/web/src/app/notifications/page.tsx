@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Check, CheckCheck, Inbox } from "lucide-react";
 import { api } from "@/lib/api";
@@ -9,15 +10,32 @@ import AuthLayout from "@/components/layout/AuthLayout";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { AppNotification } from "@/types";
 import { logger } from "@/lib/logger";
+import { useNotificationStore } from "@/stores/useNotificationStore";
 
 type TabFilter = "all" | "unread";
 
+function getNotificationRoute(type: string | undefined): string | null {
+  if (!type) return null;
+  const t = type.toLowerCase();
+  if (t.includes("training") || t.includes("session")) return "/training";
+  if (t.includes("pvp") || t.includes("duel") || t.includes("challenge")) return "/pvp";
+  if (t.includes("achievement")) return "/profile";
+  if (t.includes("streak") || t.includes("goal")) return "/home";
+  if (t.includes("client") || t.includes("reminder")) return "/clients";
+  return null;
+}
+
 export default function NotificationsPage() {
   useAuth();
+  const router = useRouter();
   const [items, setItems] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabFilter>("all");
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Realtime: subscribe to Zustand store (fed by NotificationWSProvider)
+  const wsItems = useNotificationStore((s) => s.items);
+  const wsUnread = useNotificationStore((s) => s.unread);
 
   const fetchNotifications = useCallback(async () => {
     setLoading(true);
@@ -31,6 +49,28 @@ export default function NotificationsPage() {
   }, [tab]);
 
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
+
+  // Realtime: when WS pushes new notifications, merge them into the list
+  useEffect(() => {
+    if (wsItems.length === 0) return;
+    setItems((prev) => {
+      const existingIds = new Set(prev.map((n) => n.id));
+      const newOnes = wsItems
+        .filter((ws) => !existingIds.has(ws.id))
+        .map((ws) => ({
+          id: ws.id,
+          title: ws.title,
+          body: ws.body,
+          type: ws.type,
+          read_at: ws.read ? new Date().toISOString() : null,
+          created_at: ws.created_at,
+        } as unknown as AppNotification));
+      if (newOnes.length === 0) return prev;
+      const merged = [...newOnes, ...prev];
+      return tab === "unread" ? merged.filter((n) => !n.read_at) : merged;
+    });
+    setUnreadCount(wsUnread);
+  }, [wsItems, wsUnread, tab]);
 
   const markRead = async (id: string) => {
     try {
@@ -146,8 +186,19 @@ export default function NotificationsPage() {
                 transition={{ delay: 0.02 * i }}
                 className="glass-panel p-4 flex items-start gap-3 cursor-pointer"
                 style={{ background: n.read_at ? undefined : "var(--accent-muted)" }}
-                onClick={() => !n.read_at && markRead(n.id)}
-                onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !n.read_at) { e.preventDefault(); markRead(n.id); } }}
+                onClick={() => {
+                  if (!n.read_at) markRead(n.id);
+                  const route = getNotificationRoute(n.type);
+                  if (route) router.push(route);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    if (!n.read_at) markRead(n.id);
+                    const route = getNotificationRoute(n.type);
+                    if (route) router.push(route);
+                  }
+                }}
                 role="button"
                 tabIndex={0}
                 aria-label={`${n.read_at ? "Прочитано" : "Отметить как прочитанное"}: ${n.title}`}

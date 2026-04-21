@@ -224,6 +224,10 @@ class ManagerProgress(Base):
     current_deal_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     best_deal_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # ── Perfect Score Streak (3+ sessions with score >80) ──
+    perfect_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    best_perfect_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     # ── Arena Knowledge Streak ──
     arena_answer_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     arena_best_answer_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -257,6 +261,15 @@ class ManagerProgress(Base):
     arena_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     arena_points_last_month: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     arena_points_total_earned: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # ── Daily Drill (habit loop) ──
+    last_drill_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    drill_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    best_drill_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_drills: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # ── Weekly League ──
+    league_tier: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0-4
 
     # ── Метаданные ──
     created_at: Mapped[datetime] = mapped_column(
@@ -608,4 +621,59 @@ class AchievementDefinition(Base):
         ),
         Index("idx_achievement_definitions_category", "category"),
         Index("idx_achievement_definitions_rarity", "rarity"),
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  GoalCompletionLog — prevent duplicate XP awards for daily/weekly goals
+# ──────────────────────────────────────────────────────────────────────
+
+class GoalCompletionLog(Base):
+    """Tracks which goals have been awarded XP to prevent duplicates."""
+    __tablename__ = "goal_completion_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    goal_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    period_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+    )
+    xp_awarded: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "goal_id", "period_date", name="uq_goal_completion_user_goal_period"),
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  StreakFreeze — streak protection item (purchasable for AP)
+# ──────────────────────────────────────────────────────────────────────
+
+class StreakFreeze(Base):
+    """Streak freeze item: protects drill streak from breaking on 1 missed day."""
+    __tablename__ = "streak_freezes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    purchased_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(),
+    )
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    month_year: Mapped[str] = mapped_column(
+        String(7), nullable=False,  # "2026-04" format for monthly cap
     )

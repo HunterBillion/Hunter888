@@ -58,7 +58,7 @@ const LAYER_DEFS: LayerScore[] = [
 ];
 
 function getBarColor(pct: number, isModifier: boolean): string {
-  if (isModifier) return "var(--accent, #6366f1)";
+  if (isModifier) return "var(--accent)";
   if (pct >= 80) return "var(--success)";
   if (pct >= 60) return "var(--warning, #E8A630)";
   if (pct >= 40) return "var(--info, #5B9EE9)";
@@ -109,7 +109,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
           <span className="text-sm font-medium" style={{ color: totalGrade.color }}>
             {totalGrade.label}
           </span>
-          <div className="flex items-center gap-1 rounded-xl px-3 py-1.5" style={{ background: "rgba(124,106,232,0.1)", border: "1px solid rgba(124,106,232,0.2)" }}>
+          <div className="flex items-center gap-1 rounded-xl px-3 py-1.5" style={{ background: "var(--accent-muted)", border: "1px solid var(--accent-glow)" }}>
             <span className="text-lg font-bold font-mono" style={{ color: "var(--accent)" }}>{Math.round(totalScore)}</span>
             <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>/100</span>
           </div>
@@ -122,7 +122,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
           const raw = scoreBreakdown[layer.key] ?? 0;
           const value = layer.isModifier ? raw : Math.round(raw);
           const pct = layer.isModifier
-            ? Math.max(0, Math.min(100, ((raw + (layer.key === "score_legal" ? 5 : 0)) / (layer.maxValue * 2)) * 100))
+            ? Math.max(0, Math.min(100, (Math.abs(raw) / layer.maxValue) * 100))
             : Math.max(0, Math.min(100, (raw / layer.maxValue) * 100));
 
           const layerKey = `L${i + 1}`;
@@ -139,7 +139,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.04 }}
               className="rounded-xl overflow-hidden"
-              style={{ background: isExpanded ? "rgba(124,106,232,0.04)" : "transparent" }}
+              style={{ background: isExpanded ? "var(--accent-muted)" : "transparent" }}
             >
               <button
                 type="button"
@@ -225,7 +225,7 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
                               key={hi}
                               className="flex items-start gap-2.5 rounded-lg px-3 py-2"
                               style={{
-                                background: h.delta < 0 ? "rgba(229,72,77,0.06)" : h.delta > 0 ? "rgba(61,220,132,0.06)" : "rgba(255,255,255,0.02)",
+                                background: h.delta < 0 ? "var(--danger-muted)" : h.delta > 0 ? "var(--success-muted)" : "rgba(255,255,255,0.02)",
                                 borderLeft: h.delta !== 0
                                   ? `3px solid ${h.delta < 0 ? "var(--danger)" : "var(--success)"}`
                                   : "3px solid var(--border-color)",

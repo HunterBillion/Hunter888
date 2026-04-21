@@ -35,6 +35,7 @@ Edge cases (TZ 3.1.3):
 
 import asyncio
 import base64
+import html
 import json
 import logging
 import re
@@ -366,8 +367,14 @@ async def _authenticate_first_message(ws: WebSocket, raw: str) -> uuid.UUID | No
             return None
 
     # Check if user was logged out (token blacklisted)
-    from app.core.deps import _is_user_blacklisted
+    from app.core.deps import _is_user_blacklisted, _is_token_revoked
     if await _is_user_blacklisted(user_id_str):
+        await _send(ws, "auth.error", {"message": err.WS_TOKEN_REVOKED})
+        return None
+
+    # S1-diag: Check per-token JTI revocation (e.g. refresh rotation invalidated this token)
+    jti = payload.get("jti")
+    if jti and await _is_token_revoked(jti):
         await _send(ws, "auth.error", {"message": err.WS_TOKEN_REVOKED})
         return None
 
@@ -377,19 +384,46 @@ async def _authenticate_first_message(ws: WebSocket, raw: str) -> uuid.UUID | No
 # ─── WS Session Lock (mutex for single-connection-per-session) ─────────────
 
 _WS_LOCK_KEY = "ws:lock:{session_id}"
+_WS_LOCK_OWNER_KEY = "ws:lock:{session_id}:owner"  # user_id of current holder
 _WS_LOCK_TTL = 60  # seconds, refreshed on heartbeat
 
 
 async def _acquire_session_lock(
-    session_id: uuid.UUID, ws_id: str
+    session_id: uuid.UUID, ws_id: str, user_id: uuid.UUID | None = None,
 ) -> bool:
-    """Try to acquire exclusive WS lock for a session. Returns True if acquired."""
+    """Acquire exclusive WS lock for a session.
+
+    Normal path (nx=True): lock is free → we get it.
+    Takeover path: lock is held by the SAME user (e.g. React Strict-Mode
+    remount, Fast Refresh, or user opened a new tab for the same session).
+    We forcibly take it over and the old connection will learn about it on
+    its next heartbeat (and redirect to results). This prevents spurious
+    "session_hijacked" errors during normal dev/user flows while still
+    blocking different-user hijack attempts.
+    """
     from app.core.redis_pool import get_redis
     r = get_redis()
     try:
         key = _WS_LOCK_KEY.format(session_id=session_id)
+        owner_key = _WS_LOCK_OWNER_KEY.format(session_id=session_id)
         acquired = await r.set(key, ws_id, nx=True, ex=_WS_LOCK_TTL)
-        return bool(acquired)
+        if acquired:
+            if user_id is not None:
+                await r.set(owner_key, str(user_id), ex=_WS_LOCK_TTL)
+            return True
+        # Lock held — check if same user; allow takeover
+        if user_id is not None:
+            existing_owner = await r.get(owner_key)
+            if existing_owner and existing_owner.decode() == str(user_id):
+                # Same user — force takeover
+                await r.set(key, ws_id, ex=_WS_LOCK_TTL)
+                await r.set(owner_key, str(user_id), ex=_WS_LOCK_TTL)
+                logger.info(
+                    "WS lock takeover for session %s by same user %s (new ws_id=%s)",
+                    session_id, user_id, ws_id,
+                )
+                return True
+        return False
     except Exception:
         logger.error("Failed to acquire WS lock for session %s — rejecting connection", session_id)
         return False  # Fail-CLOSED: reject if lock cannot be verified (security > availability)
@@ -484,6 +518,10 @@ async def _handle_session_resume(
         return
 
     # 1. Verify session exists and belongs to user
+    # NOTE: We access session attributes (user_id, status, scenario_id, custom_params,
+    # client_story_id, call_number_in_story) after session close. These are simple columns
+    # loaded by the initial query — safe for detached access. If relationship access is
+    # ever needed here, add selectinload() or extract data within the async-with block.
     async with async_session() as db:
         result = await db.execute(
             select(TrainingSession).where(TrainingSession.id == session_id)
@@ -499,8 +537,8 @@ async def _handle_session_resume(
         await _send(ws, "error", {"code": "session_completed"})
         return
 
-    # 3. Acquire exclusive lock
-    locked = await _acquire_session_lock(session_id, ws_id)
+    # 3. Acquire exclusive lock (same-user takeover allowed — see _acquire_session_lock)
+    locked = await _acquire_session_lock(session_id, ws_id, state.get("user_id"))
     if not locked:
         await _send(ws, "error", {"code": "session_locked"})
         return
@@ -566,10 +604,43 @@ async def _handle_session_resume(
         state["fake_transition_prompt"] = ""
         state["stt_failure_count"] = 0
 
-        # C2 fix: restore story mode fields from session record
+        # C2 fix: restore story mode fields from session record.
+        # 2026-04-18 audit fix: also restore total_calls, personality profile,
+        # relationship_score, lifecycle_state, accumulated events. Without
+        # these, a WS reconnect mid-story on call 3 of 5 would leave the
+        # client_profile_prompt missing the story context, the HUD showing
+        # call?/0, and between-call events empty — the AI would lose all
+        # narrative continuity.
         if session.client_story_id:
-            state["story_id"] = str(session.client_story_id)
+            state["story_id"] = session.client_story_id
             state["call_number"] = session.call_number_in_story or 1
+            try:
+                from app.models.roleplay import ClientStory as _CS_resume
+                _cs_row = await db_resume.get(_CS_resume, session.client_story_id)
+                if _cs_row is not None:
+                    state["total_calls"] = _cs_row.total_calls_planned or 3
+                    state["personality_profile"] = _cs_row.personality_profile or {}
+                    state["active_factors"] = _cs_row.active_factors or []
+                    state["accumulated_consequences"] = _cs_row.consequences or []
+                    state["between_call_events"] = _cs_row.between_call_events or []
+                    state["relationship_score"] = _cs_row.relationship_score or 50.0
+                    state["lifecycle_state"] = _cs_row.lifecycle_state or "FIRST_CONTACT"
+                    state["active_storylets"] = _cs_row.active_storylets or []
+                    state["consequence_log"] = _cs_row.consequence_log or []
+                    logger.info(
+                        "Resumed story %s at call %d/%d (rel=%.0f state=%s)",
+                        session.client_story_id,
+                        state["call_number"],
+                        state["total_calls"],
+                        state["relationship_score"],
+                        state["lifecycle_state"],
+                    )
+            except Exception:
+                logger.warning(
+                    "Failed to restore ClientStory state on resume for session %s",
+                    session_id,
+                    exc_info=True,
+                )
         else:
             state["story_id"] = None
             state["call_number"] = 1
@@ -583,7 +654,8 @@ async def _handle_session_resume(
                 )
                 state["message_count"] = msg_count_result.scalar() or 0
             except Exception:
-                pass
+                # FIND-008 fix (2026-04-18): keep session alive on DB blip, log the error so we can see it.
+                logger.warning("training.resume: message_count fetch failed for session %s", session_id, exc_info=True)
 
         # Restore template_checkpoints for scenarios without script_id
         state["template_checkpoints"] = None
@@ -708,8 +780,18 @@ async def _handle_session_resume(
     logger.info("Session %s: full state restored (character=%s, traps=%d, difficulty=%s)",
                 session_id, state.get("character_prompt_path"), len(active_traps), state.get("base_difficulty"))
 
-    # 5. Send current emotion
+    # 5. Send current emotion (C2 fix: DB fallback if Redis lost state)
     emotion = await get_emotion(session_id)
+    if emotion == "cold" and messages:
+        # Redis may have lost emotion — recover from last message with emotion_state
+        for msg in reversed(messages):
+            db_emotion = msg.get("emotion_state")
+            if db_emotion and db_emotion != "cold":
+                emotion = db_emotion
+                # Re-seed Redis so subsequent calls work
+                await set_emotion(session_id, emotion)
+                logger.info("Session %s: emotion restored from message history: %s", session_id, emotion)
+                break
     await _send(ws, "emotion.update", {"current": str(emotion)})
 
     # 6. Stage tracking (optional — only if StageTracker is available)
@@ -779,18 +861,27 @@ async def _handle_session_resume(
         elapsed = (datetime.now(timezone.utc) - started).total_seconds()
 
     # 9. Confirm resume (C2 fix: send full state to frontend)
+    # Use client profile name when available (matches the briefing card)
+    _resume_display_name = (client_card.get("full_name") if client_card else None) or state.get("character_name", "")
     _resumed_data: dict = {
         "session_id": str(session_id),
         "elapsed_seconds": elapsed,
         "message_count": len(messages),
         "emotion": str(emotion),
-        "character_name": state.get("character_name", ""),
+        "character_name": _resume_display_name,
         "archetype_code": state.get("archetype_code", ""),
         "scenario_title": scenario.title if scenario else "Тренировка",
         "character_gender": client_gender or "M",
     }
     if client_card:
         _resumed_data["client_card"] = client_card
+    # 2026-04-18 audit fix: ship story context so the frontend HUD bar,
+    # PreCallBriefOverlay gating, and StoryCallReportOverlay totalCalls
+    # display all work correctly after a WS reconnect mid-story.
+    if state.get("story_id"):
+        _resumed_data["story_id"] = str(state["story_id"])
+        _resumed_data["total_calls"] = int(state.get("total_calls", 3))
+        _resumed_data["call_number"] = int(state.get("call_number", 1))
     await _send(ws, "session.resumed", _resumed_data)
 
     # Refresh Redis TTLs
@@ -839,8 +930,10 @@ async def _handle_auth_refresh(ws: WebSocket, data: dict, state: dict) -> None:
             _role_result = await _db.execute(sa_select(UserModel.role).where(UserModel.id == user_id_str))
             _user_role = _role_result.scalar_one_or_none() or "manager"
 
-        # Create new tokens
-        new_access_token = create_access_token({"sub": user_id_str, "role": _user_role})
+        # Create new tokens (S4-01: include role_version)
+        from app.core.security import get_role_version
+        _rv = await get_role_version(user_id_str)
+        new_access_token = create_access_token({"sub": user_id_str, "role": _user_role}, role_version=_rv)
         new_refresh_token = create_refresh_token({"sub": user_id_str})
 
         await _send(ws, "auth.refreshed", {
@@ -865,10 +958,29 @@ async def _generate_character_reply(
 
     v3: Uses V3 emotion engine with trigger detection and fake transition prompts.
     """
-    # Send avatar.typing indicator
+    # Send avatar.typing indicator + mark LLM as busy so the silence watchdog
+    # pauses while the model is generating (slow local LLMs can take 20–40s).
+    state["llm_busy"] = True
     await _send(ws, "avatar.typing", {"is_typing": True})
 
     current_emotion = await get_emotion(session_id)
+
+    # Check force_hangup flag set by adaptive difficulty on previous turn.
+    # If set, the AI will now play a short goodbye line and terminate the call.
+    try:
+        from app.core.redis_pool import get_redis as _get_redis_fh
+        _r_fh = _get_redis_fh()
+        _forced = await _r_fh.get(f"session:{session_id}:force_hangup")
+        if _forced:
+            await _r_fh.delete(f"session:{session_id}:force_hangup")
+            # Seed emotion as hostile → downstream emotion engine will push to hangup
+            current_emotion = "hostile"
+            state["force_hangup_triggered"] = True
+            logger.info("Force-hangup flag consumed for session %s", session_id)
+    except Exception:
+        # FIND-008 fix (2026-04-18): Redis failure in force-hangup shouldn't kill session.
+        # Log instead of swallow; fallback behavior is "hangup not forced this turn".
+        logger.warning("training.force_hangup: Redis check failed for session %s", session_id, exc_info=True)
 
     history = await get_message_history(session_id)
     messages = [
@@ -883,12 +995,106 @@ async def _generate_character_reply(
 
     # Build extended system prompt
     extra_system = ""
-    # Inject character name to prevent mismatch with prompt file
-    char_name = state.get("character_name", "")
-    if char_name:
-        extra_system = f"ВАЖНО: В этой сессии тебя зовут {char_name}. Если в инструкции ниже указано другое имя — игнорируй его, используй ТОЛЬКО {char_name}.\n\n" + extra_system
+    # ── 2026-04-18 Name consistency fix ──
+    # User bug: AI-client called itself "Алексей" then "Сережа" few turns later.
+    # Root cause: character prompt file has a hardcoded name ("Алексей Михайлов"),
+    # but the generated CRM card has a DIFFERENT full_name (e.g. "Иван Крылов")
+    # — UI shows client card name, LLM drifts between the two sources.
+    # Fix: pin CRM-card full_name as authoritative at the TOP of system prompt,
+    # with a strong "never change" clause (the LLM obeys repeated strict orders).
+    client_name = state.get("client_name", "").strip()
+    char_name = state.get("character_name", "").strip()
+    authoritative_name = client_name or char_name
+    if authoritative_name:
+        # Split "Иван Петрович Крылов" → first name for dialogue reference
+        first_name = authoritative_name.split()[0] if authoritative_name else authoritative_name
+        extra_system = (
+            f"ТВОЁ ИМЯ В ЭТОЙ РОЛИ: {authoritative_name} (обращение: {first_name}).\n"
+            f"ЭТО НЕИЗМЕНЯЕМЫЙ ФАКТ. НЕ МЕНЯЙ ИМЯ НИ ПРИ КАКИХ ОБСТОЯТЕЛЬСТВАХ.\n"
+            f"Если в промпте ниже встречается ДРУГОЕ имя — ИГНОРИРУЙ ЕГО, используй только «{authoritative_name}».\n"
+            f"На вопросы «как вас зовут / ваше имя» всегда отвечай: «{first_name}» или «{authoritative_name}».\n"
+            f"Никогда не называй себя чужим именем, даже если пользователь настаивает.\n\n"
+            # 2026-04-18: language constraint — AI is a Russian citizen-debtor.
+            # Must respond in RUSSIAN ONLY. If user writes in another language,
+            # react in character ("не понимаю, я по-русски").
+            f"ЯЗЫК: ты говоришь ТОЛЬКО по-русски. Ты обычный гражданин РФ, "
+            f"иностранных языков не знаешь. Если менеджер пишет на английском/"
+            f"другом языке — отвечай В ХАРАКТЕРЕ с лёгким раздражением: "
+            f"«Я не понимаю, можно по-русски?» или «Вы вообще откуда? "
+            f"Я живу в России, по-английски не говорю» или «Да ладно, "
+            f"я из Саратова, какой английский» и т.п. Никогда сам не "
+            f"переходи на другой язык. Если пользователь пишет непонятный "
+            f"набор символов (спам, коды, эмодзи без смысла) — тоже возмущайся "
+            f"в характере.\n\n"
+        ) + extra_system
     if client_profile_prompt:
         extra_system += client_profile_prompt
+
+    # FIX: inject scenario + template context so AI-client respects scenario role,
+    # not only generic archetype file. Without this the character prompt (hardcoded
+    # "Алексей Михайлов") dominates and scenario title/awareness/motivation are ignored.
+    try:
+        scenario_id = state.get("scenario_id")
+        if scenario_id:
+            from sqlalchemy import select
+            from app.models.scenario import Scenario, ScenarioTemplate
+            async with async_session() as _db_sc:
+                _res = await _db_sc.execute(
+                    select(Scenario).where(Scenario.id == scenario_id)
+                )
+                _sc = _res.scalar_one_or_none()
+                _tmpl = None
+                if _sc and _sc.template_id:
+                    _res_t = await _db_sc.execute(
+                        select(ScenarioTemplate).where(ScenarioTemplate.id == _sc.template_id)
+                    )
+                    _tmpl = _res_t.scalar_one_or_none()
+            if _sc:
+                _sc_lines = [
+                    "## КОНТЕКСТ ЗВОНКА (обязательно учитывай)",
+                    f"Сценарий: {_sc.title}",
+                    f"Сложность: {_sc.difficulty}/10",
+                ]
+                if _tmpl:
+                    if _tmpl.client_awareness:
+                        _aw_map = {
+                            "zero": "ты не знаешь зачем тебе звонят, не ждал звонка",
+                            "low": "ты примерно помнишь что оставил заявку, но деталей не помнишь",
+                            "medium": "ты ждёшь звонка, помнишь что обсуждали",
+                            "high": "ты ждал звонка, готов обсуждать конкретику",
+                        }
+                        _aw_desc = _aw_map.get(_tmpl.client_awareness, _tmpl.client_awareness)
+                        _sc_lines.append(f"Осведомлённость: {_aw_desc}")
+                    if _tmpl.client_motivation:
+                        _mot_map = {
+                            "very_low": "тебе почти не нужен продукт",
+                            "low": "продукт тебе малоинтересен",
+                            "medium": "продукт умеренно интересен",
+                            "high": "продукт нужен, ты ищешь решение",
+                            "very_high": "продукт остро нужен прямо сейчас",
+                        }
+                        _sc_lines.append(f"Мотивация: {_mot_map.get(_tmpl.client_motivation, _tmpl.client_motivation)}")
+                    if _tmpl.initial_emotion:
+                        _sc_lines.append(f"Начальная эмоция: {_tmpl.initial_emotion}")
+                    if _tmpl.awareness_prompt:
+                        _sc_lines.append(f"Дополнительно: {_tmpl.awareness_prompt}")
+                    # Current stage info if available
+                    _cur_stage_n = state.get("current_stage_order", 1)
+                    _stages = _tmpl.stages or []
+                    if _stages and isinstance(_stages, list):
+                        try:
+                            _cur_stage = next((s for s in _stages if s.get("order") == _cur_stage_n), None)
+                            if _cur_stage:
+                                _sc_lines.append(
+                                    f"Текущий этап звонка: {_cur_stage.get('label') or _cur_stage.get('name')} "
+                                    f"— менеджер должен {_cur_stage.get('description', '...')}"
+                                )
+                        except Exception:
+                            # FIND-008: stage metadata parse can legitimately fail for legacy scenarios — log to debug only.
+                            logger.debug("training.stage_hint: stage metadata unusable for session %s", session_id, exc_info=True)
+                extra_system = "\n".join(_sc_lines) + "\n\n" + extra_system
+    except Exception:
+        logger.debug("Scenario context injection failed", exc_info=True)
 
     # Inject next objection from chain (dynamic per-turn)
     try:
@@ -952,18 +1158,186 @@ async def _generate_character_reply(
         except Exception:
             logger.debug("Game Director context injection failed for story %s", _story_id, exc_info=True)
 
+    # ── Narrative + Human Factor trap prompts (story mode only) ──
+    if state.get("story_id"):
+        try:
+            from app.services.narrative_trap_detector import build_narrative_trap_prompt
+            from app.services.human_factor_traps import build_human_factor_prompt
+            # Load ClientStory once, cache in state for reuse by trap detection
+            _nt_story_id = state["story_id"]
+            _nt_story = state.get("_cached_client_story")
+            if _nt_story is None:
+                async with async_session() as _nt_db:
+                    from app.models.roleplay import ClientStory as _CS
+                    _nt_result = await _nt_db.execute(
+                        select(_CS).where(_CS.id == uuid.UUID(str(_nt_story_id)))
+                    )
+                    _nt_story = _nt_result.scalar_one_or_none()
+                    state["_cached_client_story"] = _nt_story
+            if _nt_story:
+                _nar_prompt = build_narrative_trap_prompt(_nt_story)
+                if _nar_prompt:
+                    extra_system += "\n\n" + _nar_prompt
+            _hf_prompt = build_human_factor_prompt(
+                state.get("active_factors", []),
+                state.get("_last_hf_results"),
+            )
+            if _hf_prompt:
+                extra_system += "\n\n" + _hf_prompt
+        except Exception:
+            logger.debug("Narrative/HF prompt injection failed for story %s", state.get("story_id"), exc_info=True)
+
+    # v6: Human tangent injection — AI client occasionally goes off-script with relatable asides
+    try:
+        from app.services.emotion_v6 import should_ai_add_human_tangent
+        _msg_idx = state.get("message_count", 0)
+        if should_ai_add_human_tangent(
+            emotion_state=current_emotion,
+            message_index=_msg_idx,
+            archetype_code=state.get("archetype_code", "neutral"),
+        ):
+            extra_system += (
+                "\n\n[HUMAN_MOMENT: В этом ответе добавь короткое личное отступление "
+                "(2-3 предложения) — воспоминание, мысль вслух, или бытовую аналогию. "
+                "Это должно звучать естественно, как будто клиент на секунду отвлёкся от темы. "
+                "Потом плавно вернись к обсуждению.]"
+            )
+    except Exception:
+        # FIND-008: human-moment is purely cosmetic prompt augmentation — debug-log only.
+        logger.debug("training.human_moment: injection skipped for session %s", session_id, exc_info=True)
+
+    # Phase 2.4+2.5 (2026-04-18): inject manager-profile and quote sections.
+    # Both are strictly additive and fail-closed — if either read errors, we
+    # just skip the injection rather than derail the whole turn.
+    try:
+        from app.services.manager_profile import build_manager_profile_section
+        from app.services.quote_reply import build_quote_section
+
+        _story_id = state.get("story_id")
+        _pending_quote = state.pop("pending_quoted_message_id", None)
+
+        async with async_session() as _mp_db:
+            _mp_section = (
+                await build_manager_profile_section(story_id=_story_id, db=_mp_db)
+                if _story_id else ""
+            )
+            _quote_section = await build_quote_section(
+                session_id=session_id,
+                quoted_message_id=_pending_quote,
+                db=_mp_db,
+            )
+
+        if _mp_section:
+            extra_system = extra_system + "\n\n" + _mp_section
+        if _quote_section:
+            extra_system = extra_system + "\n\n" + _quote_section
+    except Exception:
+        logger.debug("manager_profile/quote injection failed", exc_info=True)
+
     try:
         # H1 fix: route by estimated token count, not call_number
         _est_tokens = len(extra_system) // 2  # rough estimate for Russian text
         _prefer = "local" if _est_tokens < 4000 else "auto"
 
+        # Phase 3.4 (2026-04-19): pull the level-specific temperature hint
+        # from ``DIFFICULTY_PARAMS`` and stash it on ``state`` so providers
+        # can read it through the existing state dict. We don't rewire the
+        # provider signatures (too invasive) — llm.py picks this up when it
+        # sees ``state["_llm_temperature_hint"]`` set, otherwise it keeps
+        # the legacy per-provider default. This is purely additive.
+        try:
+            from app.services.adaptive_difficulty import (
+                resolve_params as _resolve_diff_params,
+            )
+
+            _diff = _resolve_diff_params(state.get("scenario_difficulty"))
+            state["_llm_temperature_hint"] = _diff.llm_temperature
+            state["_llm_coaching_hints"] = _diff.coaching_hints
+            state["_llm_agreement_prob"] = _diff.agreement_base_probability
+            state["_llm_objection_density"] = _diff.objection_density
+        except Exception:
+            logger.debug("difficulty params lookup failed", exc_info=True)
+
         # Phase 1 streaming: try streaming first, fall back to blocking
+        # Phase 3 (streaming TTS): launch per-sentence TTS tasks INSIDE the LLM
+        # stream loop so that the first audio arrives ~400ms after the first
+        # sentence is complete, not after the entire LLM response.
         from app.services.llm import generate_response_stream
         _streamed_text = ""
         _stream_ok = False
+        _stream_tts_used = False  # if True, skip post-LLM sentence TTS block
+        # Pre-compute TTS eligibility (same checks as post-LLM block)
+        _tts_stream_enabled = (
+            is_tts_available()
+            and settings.elevenlabs_enabled
+            and state.get("user_prefs", {}).get("tts_enabled", True)
+        )
         try:
             _chunk_buffer = ""
+            _tts_sentence_buffer = ""      # accumulates clean text for TTS
+            _tts_sent_indices: list[int] = []  # sentence indices dispatched
+            _tts_tasks: dict[int, asyncio.Task] = {}  # idx -> TTS task
+            _tts_next_to_send = 0
+            _tts_disabled_due_to_error = False
             _start_stream = time.monotonic()
+
+            # Regex to strip stage directions (e.g. [PAUSE], *вздыхает*)
+            import re as _re_stream
+            _STAGE_DIR_RE = _re_stream.compile(r"\[[^\]]*\]|\*[^*]*\*")
+
+            async def _flush_ordered_tts_chunks(*, last_idx: int | None = None) -> None:
+                """Send any completed TTS tasks in order, non-blocking for pending ones."""
+                nonlocal _tts_next_to_send, _tts_disabled_due_to_error
+                while _tts_next_to_send in _tts_tasks:
+                    task = _tts_tasks[_tts_next_to_send]
+                    if not task.done():
+                        break  # wait for earlier sentence before moving on
+                    try:
+                        result = task.result()
+                    except TTSQuotaExhausted:
+                        _tts_disabled_due_to_error = True
+                        await _send(ws, "tts.fallback", {"reason": "quota_exhausted"})
+                        _tts_next_to_send += 1
+                        continue
+                    except Exception as _tts_err:
+                        logger.debug("Stream TTS task %d failed: %s", _tts_next_to_send, _tts_err)
+                        _tts_next_to_send += 1
+                        continue
+                    if result and result.get("audio"):
+                        is_last = (last_idx is not None and _tts_next_to_send == last_idx)
+                        await _send(ws, "tts.audio_chunk", {
+                            "audio_b64": result["audio"],
+                            "format": result.get("format", "mp3"),
+                            "sentence_index": _tts_next_to_send,
+                            "is_last": is_last,
+                            "text": result.get("text", ""),
+                        })
+                    _tts_next_to_send += 1
+
+            async def _synth_for_stream(_text: str, _idx: int) -> dict | None:
+                """Synthesize one sentence for streaming TTS. Returns dict with `audio` or None.
+
+                Hard timeout prevents a slow TTS provider from hanging the session.
+                """
+                try:
+                    # Per-sentence budget = ElevenLabs timeout + 2s grace (covers Navy fallback)
+                    _sent_budget = float(settings.elevenlabs_timeout_seconds) + 2.0
+                    r = await asyncio.wait_for(
+                        get_tts_audio_b64(_text, str(session_id), emotion=current_emotion),
+                        timeout=_sent_budget,
+                    )
+                    if r:
+                        r["text"] = _text  # preserve text for client
+                    return r
+                except asyncio.TimeoutError:
+                    logger.warning("Stream TTS per-sentence timeout idx=%d session=%s", _idx, session_id)
+                    return None
+                except TTSQuotaExhausted:
+                    raise
+                except TTSError as _te:
+                    logger.debug("Stream TTS synth error: %s", _te)
+                    return None
+
             async for token in generate_response_stream(
                 system_prompt=extra_system,
                 messages=messages,
@@ -974,7 +1348,9 @@ async def _generate_character_reply(
             ):
                 _streamed_text += token
                 _chunk_buffer += token
-                # Send chunk every ~40 chars or on sentence boundary
+                _tts_sentence_buffer += token
+
+                # Text chunks to frontend — every ~40 chars or on sentence boundary
                 if len(_chunk_buffer) >= 40 or (
                     _chunk_buffer.rstrip()
                     and _chunk_buffer.rstrip()[-1] in ".!?…"
@@ -984,11 +1360,87 @@ async def _generate_character_reply(
                         "text": _chunk_buffer,
                     })
                     _chunk_buffer = ""
-            # Flush remaining buffer
+
+                # Streaming TTS — launch synth on sentence boundary
+                if (
+                    _tts_stream_enabled
+                    and not _tts_disabled_due_to_error
+                    and _tts_sentence_buffer.rstrip()
+                    and _tts_sentence_buffer.rstrip()[-1] in ".!?…"
+                ):
+                    # Clean stage directions inline (may span tokens, so strip the whole buffer)
+                    _clean_sent = _STAGE_DIR_RE.sub("", _tts_sentence_buffer).strip()
+                    # Skip tiny fragments (e.g. "А.", "Да!") — too short for meaningful TTS
+                    if len(_clean_sent) >= 10:
+                        _idx = len(_tts_sent_indices)
+                        _tts_sent_indices.append(_idx)
+                        _tts_tasks[_idx] = asyncio.create_task(_synth_for_stream(_clean_sent, _idx))
+                        _tts_sentence_buffer = ""
+                        _stream_tts_used = True
+                        # Send any ready chunks without blocking the stream
+                        await _flush_ordered_tts_chunks()
+
+            # Flush remaining buffer (text)
             if _chunk_buffer:
                 await _send(ws, "character.response_chunk", {
                     "text": _chunk_buffer,
                 })
+
+            # Flush trailing sentence without punctuation (rare)
+            if (
+                _tts_stream_enabled
+                and not _tts_disabled_due_to_error
+                and _tts_sentence_buffer.strip()
+            ):
+                _clean_sent = _STAGE_DIR_RE.sub("", _tts_sentence_buffer).strip()
+                if len(_clean_sent) >= 10:
+                    _idx = len(_tts_sent_indices)
+                    _tts_sent_indices.append(_idx)
+                    _tts_tasks[_idx] = asyncio.create_task(_synth_for_stream(_clean_sent, _idx))
+                    _stream_tts_used = True
+
+            # Text portion of LLM response is complete — let UI clear the
+            # typing spinner NOW, before we wait for any trailing TTS audio.
+            # This prevents "infinite loading" if TTS is slow: user sees the
+            # response immediately, audio chunks arrive asynchronously.
+            if _streamed_text.strip():
+                try:
+                    await _send(ws, "avatar.typing", {"is_typing": False})
+                except Exception:
+                    pass
+
+            # Wait for all TTS tasks to finish, emitting in-order as they complete.
+            # Hard timeout prevents hanging the session if TTS provider is slow.
+            if _stream_tts_used:
+                _last_idx = len(_tts_sent_indices) - 1 if _tts_sent_indices else None
+                if _tts_tasks:
+                    pending = [t for t in _tts_tasks.values() if not t.done()]
+                    if pending:
+                        # Overall budget for TTS tail: cap at 15s to keep UI responsive.
+                        _tail_budget = min(float(settings.elevenlabs_timeout_seconds) * 2, 15.0)
+                        try:
+                            await asyncio.wait_for(
+                                asyncio.gather(*pending, return_exceptions=True),
+                                timeout=_tail_budget,
+                            )
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                "Stream TTS tail timeout %.1fs — cancelling %d pending tasks, session=%s",
+                                _tail_budget, len(pending), session_id,
+                            )
+                            for t in pending:
+                                if not t.done():
+                                    t.cancel()
+                            # Drain cancelled without blocking
+                            try:
+                                await asyncio.wait_for(
+                                    asyncio.gather(*pending, return_exceptions=True),
+                                    timeout=2.0,
+                                )
+                            except asyncio.TimeoutError:
+                                pass
+                await _flush_ordered_tts_chunks(last_idx=_last_idx)
+
             _stream_latency = int((time.monotonic() - _start_stream) * 1000)
             if _streamed_text.strip():
                 _stream_ok = True
@@ -1003,19 +1455,63 @@ async def _generate_character_reply(
                 )
         except Exception as stream_err:
             logger.debug("Streaming failed, falling back to blocking: %s", stream_err)
+            _stream_tts_used = False
 
         if not _stream_ok:
-            # Blocking fallback
-            llm_result = await generate_response(
-                system_prompt=extra_system,
-                messages=messages,
-                emotion_state=current_emotion,
-                character_prompt_path=prompt_path,
-                task_type="roleplay",
-                prefer_provider=_prefer,
+            # Blocking fallback.
+            # Phase 1.7 (2026-04-18): if MCP tooling is enabled, route through
+            # ``generate_with_tool_dispatch`` so the LLM can invoke registered
+            # tools (generate_image, get_geolocation_context, etc.). The
+            # helper transparently falls back to a plain call when no tools
+            # are registered, so flipping ``mcp_enabled=True`` is zero-risk
+            # before Phase 2 ships concrete tools.
+            _use_mcp = (
+                settings.mcp_enabled
+                and _prefer != "local-ollama"  # Ollama has no tool support
             )
+            if _use_mcp:
+                try:
+                    from app.mcp import ToolContext
+                    from app.mcp.registry import ToolRegistry
+                    from app.services.llm_tools import generate_with_tool_dispatch
+                    from app.ws.tool_events import make_tool_emit
+
+                    if ToolRegistry.all():
+                        _tool_ctx = ToolContext(
+                            session_id=str(session_id),
+                            user_id=str(state.get("user_id") or ""),
+                            manager_ip=state.get("manager_ip"),
+                            request_id=str(session_id),
+                        )
+                        llm_result = await generate_with_tool_dispatch(
+                            system_prompt=extra_system,
+                            messages=messages,
+                            ctx=_tool_ctx,
+                            provider="local" if _prefer == "local" else "openai",
+                            emit=make_tool_emit(ws),
+                        )
+                    else:
+                        _use_mcp = False  # fall through to legacy path
+                except Exception as _mcp_err:
+                    logger.warning(
+                        "MCP dispatch failed for session %s, falling back: %s",
+                        session_id, _mcp_err, exc_info=True,
+                    )
+                    _use_mcp = False
+
+            if not _use_mcp:
+                llm_result = await generate_response(
+                    system_prompt=extra_system,
+                    messages=messages,
+                    emotion_state=current_emotion,
+                    character_prompt_path=prompt_path,
+                    task_type="roleplay",
+                    prefer_provider=_prefer,
+                )
     except LLMError as e:
         logger.error("LLM failed for session %s: %s", session_id, e)
+        state["llm_busy"] = False
+        await update_activity(session_id)  # reset silence timer so watchdog doesn't fire from our own slow LLM
         await _send(ws, "avatar.typing", {"is_typing": False})
         fallback_content = "Секунду... мне нужно собраться с мыслями."
         await _send(ws, "character.response", {
@@ -1039,7 +1535,10 @@ async def _generate_character_reply(
             logger.error("Failed to save fallback message for session %s: %s", session_id, db_err)
         return
 
-    # Stop typing indicator
+    # Stop typing indicator + release silence watchdog + reset user-silence timer
+    # (otherwise the next ~60s of user thinking count from BEFORE the LLM started)
+    state["llm_busy"] = False
+    await update_activity(session_id)
     await _send(ws, "avatar.typing", {"is_typing": False})
 
     # ── Security: filter AI output before sending to user ──
@@ -1104,6 +1603,33 @@ async def _generate_character_reply(
         if trap_emotion_triggers:
             all_triggers.extend(trap_emotion_triggers)
             logger.debug("Merged trap emotion triggers into V3 engine: %s", trap_emotion_triggers)
+
+        # 2026-04-20: surface trigger detection at INFO level so a flat
+        # emotion chart is immediately diagnosable from logs. Previously
+        # the only signal was a DEBUG line inside the detector itself,
+        # which made "why did my session graph stay cold?" invisible.
+        logger.info(
+            "emotion_pipeline session=%s method=%s confidence=%.2f triggers=%s trap=%s skip_llm=%s",
+            session_id,
+            getattr(trigger_result, "detection_method", "n/a") if trigger_result else "none",
+            getattr(trigger_result, "confidence", 0.0) if trigger_result else 0.0,
+            all_triggers,
+            trap_emotion_triggers,
+            _skip_llm_detection,
+        )
+
+        # Phase F1 (2026-04-20): capture rudeness detection BEFORE the
+        # emotion engine — even if the client doesn't hang up on THIS
+        # turn, we need to remember the manager was rude so the final
+        # session report + judge can factor that in. Previously the flag
+        # was only set inside the hangup branch, which meant "rude but
+        # didn't escalate to hangup" was invisible.
+        if "insult" in all_triggers or "counter_aggression" in all_triggers:
+            state["rudeness_detected"] = True
+            logger.info(
+                "Rudeness detected: session=%s, triggers=%s",
+                session_id, [t for t in all_triggers if t in ("insult", "counter_aggression")],
+            )
 
         # Use V3 engine with detected + trap triggers
         if archetype_code and all_triggers:
@@ -1195,8 +1721,16 @@ async def _generate_character_reply(
         _triggers = trigger_result.triggers if trigger_result else []
         if "insult" in _triggers:
             hangup_reason = "Клиент оскорблён вашим поведением"
+            # Phase F1 (2026-04-20): CRITICAL fix — the `rudeness_detected`
+            # flag was initialised in SessionResult and read at session-end
+            # but NEVER written. This meant post-match analysis couldn't
+            # see that the manager had been rude. Now we flip it here so
+            # judge + results page can show "you were rude → client hung
+            # up" feedback instead of a generic "client decided to end".
+            state["rudeness_detected"] = True
         elif "counter_aggression" in _triggers:
             hangup_reason = "Клиент ответил на вашу агрессию"
+            state["rudeness_detected"] = True
         elif emotion_meta.get("forced_hangup"):
             hangup_reason = "Клиент потерял терпение (слишком много неудачных ответов)"
         else:
@@ -1380,9 +1914,20 @@ async def _generate_character_reply(
     # Uses v5 parsed output if available, falls back to v1 stripping
     clean_content = _strip_stage_directions(clean_v5) if clean_v5 else _strip_stage_directions(llm_result.content)
 
+    # 2026-04-20 defense-in-depth: decode any HTML entities the LLM may have
+    # emitted (e.g. `&quot;`, `&amp;`, `&#39;`). Keeps DB / Redis / WS payload
+    # in clean Unicode so downstream consumers (frontend, TTS, analytics)
+    # never see literal `&quot;` in text. See XHUNTER_HTML_ENTITIES_FIX_TZ §3.5.
+    clean_content = html.unescape(clean_content)
+
     await _send(ws, "character.response", {
         "content": clean_content,
         "emotion": new_emotion,
+        # 2026-04-20: include sequence_number so the frontend can sort the
+        # bubble into the correct slot. Without this, the assistant bubble
+        # fell back to `?? 0` in the store's sort and could appear before
+        # the user turn that triggered it.
+        "sequence_number": state.get("message_count"),
         "model": llm_result.model,
         "latency_ms": llm_result.latency_ms,
         "is_fallback": llm_result.is_fallback,
@@ -1408,7 +1953,9 @@ async def _generate_character_reply(
         "TTS_CHECK | session=%s | is_tts_available=%s | elevenlabs_enabled=%s",
         session_id, tts_available, tts_enabled,
     )
-    if tts_available and tts_enabled:
+    # If streaming TTS already dispatched all sentences during LLM stream,
+    # skip the post-LLM sentence pipeline to avoid double-synthesis.
+    if tts_available and tts_enabled and not _stream_tts_used:
         try:
             # Split into sentences for pipelined TTS
             import re as _re
@@ -1483,7 +2030,7 @@ async def _generate_character_reply(
             "is_fake": emotion_meta.get("is_fake", False),
             "rollback": emotion_meta.get("rollback", False),
         }
-        # v6 extensions: intensity + compound emotion
+        # v6 extensions: intensity + compound + micro-expressions
         try:
             _energy_val = emotion_meta.get("energy_after", 0.0)
             _thresh_pos = emotion_meta.get("threshold_pos", 1.0)
@@ -1492,18 +2039,55 @@ async def _generate_character_reply(
                 _energy_val, _thresh_pos, _thresh_neg,
             )
             _em_msg["intensity"] = _intensity_level.value  # "low"/"medium"/"high"
+            _em_msg["intensity_value"] = round(_intensity_norm, 3)
 
-            _recent = [current_emotion, new_emotion]
+            # Fix: use full recent states history (not just [prev, new])
+            _recent_history = state.get("_emotion_history", [])
+            _recent_history.append(new_emotion)
+            if len(_recent_history) > 10:
+                _recent_history = _recent_history[-10:]
+            state["_emotion_history"] = _recent_history
+
             _compound = detect_compound_emotion(
                 current_state=new_emotion,
                 intensity=_intensity_level,
                 intensity_value=_intensity_norm,
-                recent_states=_recent,
+                recent_states=_recent_history,
                 fake_active=emotion_meta.get("is_fake", False),
                 ocean_profile=state.get("ocean_profile"),
                 recent_triggers=[t for t in (trigger_result.triggers if trigger_result else [])],
             )
             _em_msg["compound"] = _compound.code if _compound else None
+
+            # v6: MicroExpression queue
+            try:
+                from app.services.emotion_v6 import MicroExpressionQueue, MICRO_EXPRESSIONS
+                _micro_q = state.get("_micro_queue")
+                if _micro_q is None:
+                    _micro_q = MicroExpressionQueue()
+                elif isinstance(_micro_q, dict):
+                    _micro_q = MicroExpressionQueue.from_dict(_micro_q)
+
+                _msg_idx = emotion_meta.get("message_index", 0)
+                _active_triggers = emotion_meta.get("triggers_applied", [])
+                # Try triggering new micro-expressions
+                for _me_code, _me in MICRO_EXPRESSIONS.items():
+                    _micro_q.try_trigger(_me_code, _me, _active_triggers, _msg_idx)
+                # Tick existing ones
+                active_micros = _micro_q.tick()
+                state["_micro_queue"] = _micro_q.to_dict()
+
+                if active_micros:
+                    _em_msg["micro_expressions"] = [
+                        {"code": m.expression, "remaining": m.remaining_messages}
+                        for m in active_micros
+                    ]
+            except Exception:
+                pass  # micro-expressions are non-critical
+
+            # v6: Store intensity for TRAP_INTENSITY_MULTIPLIER
+            state["_current_intensity"] = _intensity_level.value
+
         except Exception:
             logger.debug("v6 emotion extensions failed for session %s", session_id)
         await _send(ws, "emotion.update", _em_msg)
@@ -1586,12 +2170,25 @@ async def _generate_character_reply(
 
         # Check if adaptive difficulty triggers hangup (bad_streak >= 15 + mercy failed)
         if adapter.should_hangup(ad_state) and new_emotion != "hangup":
-            logger.info(
+            logger.warning(
                 "Adaptive difficulty triggered hangup | session=%s | bad_streak=%d",
                 session_id, ad_state.bad_streak,
             )
+            # Set Redis flag — next reply will force emotion to "hangup"
+            # and trigger the full hangup flow (character.response + client.hangup + session_end).
+            try:
+                await _r_ad.setex(f"session:{session_id}:force_hangup", 600, "adaptive")
+                # Send early warning so the manager sees "client is about to hang up"
+                await _send(ws, "client.hangup_warning", {
+                    "reason": "adaptive_difficulty",
+                    "bad_streak": ad_state.bad_streak,
+                })
+            except Exception:
+                # FIND-008 fix (2026-04-18): Redis/WS send failures here are non-fatal —
+                # session continues without adaptive hangup. Log so we can track frequency.
+                logger.warning("training.adaptive_difficulty: hangup warning dispatch failed for session %s", session_id, exc_info=True)
     except Exception:
-        logger.debug("Adaptive difficulty failed for session %s", session_id)
+        logger.warning("Adaptive difficulty failed for session %s", session_id, exc_info=True)
 
 
 async def _silence_watchdog(
@@ -1604,14 +2201,24 @@ async def _silence_watchdog(
     """Background task: detect prolonged silence.
 
     - 30s silence → avatar says "Алло?" (character.response)
-    - 60s silence → send silence.timeout for modal "Continue?"
+    - 60s silence → send silence.timeout modal ("Continue?")
+    - Grace period after modal: SILENCE_GRACE_SEC to wait for user response
+    - If still silent → end session AND send session.ended so the UI unsticks
     """
     warned = False
+    timeout_modal_sent_at: float | None = None  # when the modal was shown
+    SILENCE_GRACE_SEC = 20  # user has this many seconds to click "continue"
 
     while not stop_event.is_set():
         await asyncio.sleep(5)
         if stop_event.is_set():
             break
+
+        # Skip silence counting while LLM is mid-response. Slow local models
+        # (Gemma on CPU) can take 20-40s to answer — that's not user silence.
+        if state.get("llm_busy"):
+            timeout_modal_sent_at = None  # reset grace if we re-entered busy
+            continue
 
         from app.services.session_manager import get_last_activity_time
 
@@ -1621,16 +2228,35 @@ async def _silence_watchdog(
 
         elapsed = time.time() - last_activity
 
+        # User responded after the modal — cancel the grace countdown
+        if timeout_modal_sent_at is not None and last_activity > timeout_modal_sent_at:
+            timeout_modal_sent_at = None
+            warned = False
+
         if elapsed >= SILENCE_TIMEOUT_SEC and not stop_event.is_set():
-            # 60s — send timeout modal
-            await _send(ws, "silence.timeout", {
-                "message": "Вы давно молчите. Хотите продолжить тренировку?",
-                "timeout_seconds": SILENCE_TIMEOUT_SEC,
-            })
-            # End session due to inactivity
+            if timeout_modal_sent_at is None:
+                # First time crossing the threshold — show the modal and start grace.
+                timeout_modal_sent_at = time.time()
+                await _send(ws, "silence.timeout", {
+                    "message": "Вы давно молчите. Хотите продолжить тренировку?",
+                    "timeout_seconds": SILENCE_GRACE_SEC,
+                })
+                continue
+
+            # Grace period expired — user didn't respond to the modal.
+            if time.time() - timeout_modal_sent_at < SILENCE_GRACE_SEC:
+                continue
+
             async with async_session() as db:
                 await end_session(session_id, db, status=SessionStatus.abandoned)
                 await db.commit()
+            # CRITICAL: notify the client so the "loading" modal can clear and
+            # the page can redirect. Without this the UI hangs forever.
+            await _send(ws, "session.ended", {
+                "reason": "silence_timeout",
+                "status": "abandoned",
+                "message": "Сессия завершена из-за длительного бездействия.",
+            })
             if state_lock:
                 async with state_lock:
                     state["active"] = False
@@ -1889,6 +2515,13 @@ def _build_client_profile_prompt(profile) -> str:
     if profile.resistance_level is not None:
         parts.append(f"Уровень сопротивления: {profile.resistance_level}/10.")
 
+    # FIX P1: inject hidden_objections — AI-client should reveal them gradually, not ignore
+    if hasattr(profile, "hidden_objections") and profile.hidden_objections:
+        objections_text = "; ".join(profile.hidden_objections[:5])
+        parts.append(
+            f"\nСкрытые возражения (НЕ озвучивай их сразу, раскрывай постепенно по ходу диалога): {objections_text}."
+        )
+
     parts.append(
         "\nИспользуй эти данные для реалистичных ответов. "
         "НЕ раскрывай менеджеру свои страхи и мягкую точку напрямую — "
@@ -2116,9 +2749,11 @@ async def _handle_session_start(
             except Exception:
                 logger.debug("Voice pick failed for session %s", session.id)
 
+        # Use client profile name when available (matches the briefing card)
+        display_name = (client_card.get("full_name") if client_card else None) or (character.name if character else "Клиент")
         response_data = {
             "session_id": str(session.id),
-            "character_name": character.name if character else "Клиент",
+            "character_name": display_name,
             "initial_emotion": initial_emotion.value,
             "scenario_title": scenario.title if scenario else "Тренировка",
         }
@@ -2158,6 +2793,61 @@ async def _handle_session_start(
     if not user_id:
         await _send_error(ws, "Not authenticated", "auth_error")
         return
+
+    # ── Concurrent active session guard (prevent XP farming via multiple tabs) ──
+    # 2026-04-17 fix: auto-abandon sessions with no activity in 30 min before
+    # rejecting a new one. Previous bug: if the WS dropped (closed tab, network
+    # blip, server restart) without session.end being sent, the DB row stayed
+    # `status=active` forever and permanently blocked the user from starting
+    # fresh. Example: admin@trainer.local had 9 stale active sessions from
+    # previous days before this fix landed.
+    from datetime import datetime, timedelta, timezone as _tz
+    _STALE_SESSION_GRACE = timedelta(minutes=30)
+    async with async_session() as guard_db:
+        existing_active_result = await guard_db.execute(
+            select(TrainingSession)
+            .where(
+                TrainingSession.user_id == user_id,
+                TrainingSession.status == SessionStatus.active,
+            )
+            .with_for_update()
+        )
+        existing_active_sessions = existing_active_result.scalars().all()
+        _now = datetime.now(_tz.utc)
+
+        # Separate fresh (truly concurrent) from stale (orphaned)
+        stale: list = []
+        fresh: list = []
+        for s in existing_active_sessions:
+            started = s.started_at
+            # ensure tz-aware for comparison
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=_tz.utc)
+            if _now - started > _STALE_SESSION_GRACE:
+                stale.append(s)
+            else:
+                fresh.append(s)
+
+        # Auto-abandon stale ones so they never block again
+        for s in stale:
+            s.status = SessionStatus.abandoned
+            if s.ended_at is None:
+                s.ended_at = _now
+        if stale:
+            await guard_db.commit()
+            logger.info(
+                "Auto-abandoned %d stale active session(s) for user=%s before "
+                "starting new one (grace=%s)",
+                len(stale), user_id, _STALE_SESSION_GRACE,
+            )
+
+        if fresh:
+            await _send_error(
+                ws,
+                "У вас уже есть активная сессия. Завершите её перед началом новой.",
+                "concurrent_session",
+            )
+            return
 
     # Load user preferences for this session
     async with async_session() as pref_db:
@@ -2382,9 +3072,11 @@ async def _handle_session_start(
     # Save character name in state for LLM prompt injection (prevents name mismatch)
     state["character_name"] = character.name
 
+    # Use client profile name when available (matches the briefing card shown to user)
+    _display_name = (client_card.get("full_name") if client_card else None) or character.name
     started_data = {
         "session_id": str(session.id),
-        "character_name": character.name,
+        "character_name": _display_name,
         "initial_emotion": initial_emotion.value,
         "scenario_title": scenario.title,
     }
@@ -2636,6 +3328,11 @@ async def _handle_audio_chunk(
         "is_empty": False,
     })
 
+    # Transcribe-only mode: return transcription without processing
+    # Frontend shows preview → user confirms → sends text.message
+    if data.get("transcribe_only"):
+        return
+
     # Save user message
     current_emotion = await get_emotion(session_id)
     async with async_session() as db:
@@ -2744,13 +3441,21 @@ async def _send_score_update(
         matched_ids: set[str] = state.get("matched_checkpoints", set())
 
         if script_id:
-            # Primary path: script with DB checkpoints
+            # Primary path: script with DB checkpoints.
+            # Phase 3.2 (2026-04-19): threshold is picked from
+            # DIFFICULTY_PARAMS instead of the hardcoded 0.58 so that easy
+            # scenarios actually *feel* easier (the matcher forgives
+            # paraphrases earlier).
             from app.services.script_checker import check_checkpoints_with_accumulation
+            from app.services.adaptive_difficulty import resolve_params as _resolve_diff
+
+            _diff_params = _resolve_diff(state.get("scenario_difficulty"))
 
             all_results, new_matches = await check_checkpoints_with_accumulation(
                 user_text=user_text,
                 script_id=script_id,
                 already_matched=matched_ids,
+                threshold=_diff_params.script_similarity_threshold,
             )
         elif template_checkpoints:
             # Fallback path: virtual checkpoints from ScenarioTemplate stages
@@ -2879,21 +3584,68 @@ async def _check_traps_after_user_message(
             active_traps=active_traps,
         )
 
+        # v6: Apply TRAP_INTENSITY_MULTIPLIER based on current emotion intensity
+        _trap_multiplier = 1.0
+        try:
+            from app.services.emotion_v6 import TRAP_INTENSITY_MULTIPLIER, IntensityLevel
+            _cur_intensity = state.get("_current_intensity", "MEDIUM")
+            _int_level = IntensityLevel[_cur_intensity.upper()] if isinstance(_cur_intensity, str) else IntensityLevel.MEDIUM
+            _trap_multiplier = TRAP_INTENSITY_MULTIPLIER.get(_int_level, 1.0)
+        except Exception:
+            # FIND-008: emotion_v6 optional module — fall back to 1.0 multiplier, debug-log.
+            logger.debug("training.trap_intensity: emotion_v6 lookup failed, using 1.0", exc_info=True)
+
         for result in results:
             if result.status == "not_activated":
                 continue
 
+            _scaled_delta = round(result.score_delta * _trap_multiplier, 1)
             await _send(ws, "trap.triggered", {
                 "trap_name": result.trap_name,
                 "category": result.category,
                 "status": result.status,  # fell | dodged | partial
-                "score_delta": result.score_delta,
+                "score_delta": _scaled_delta,
+                "intensity_multiplier": _trap_multiplier,
                 "wrong_keywords": result.wrong_keywords_found,
                 "correct_keywords": result.correct_keywords_found,
                 # Post-session review data
                 "client_phrase": result.client_phrase,
                 "correct_example": result.correct_example,
             })
+
+        # ── Personal Challenge: track trap fails per user, send challenge on 2+ ──
+        _user_id = state.get("user_id")
+        if _user_id:
+            for result in results:
+                if result.status != "fell":
+                    continue
+                try:
+                    _trap_code = result.trap_name or result.category
+                    async with async_session() as _tc_db:
+                        # Increment trap fail counter
+                        from app.models.traps import TrapSessionLog
+                        _fail_count_r = await _tc_db.execute(
+                            select(func.count(TrapSessionLog.id)).where(
+                                TrapSessionLog.session_id.in_(
+                                    select(TrainingSession.id).where(
+                                        TrainingSession.user_id == _user_id,
+                                        TrainingSession.status == SessionStatus.completed,
+                                    )
+                                ),
+                                TrapSessionLog.trap_code == _trap_code,
+                                TrapSessionLog.outcome == "fell",
+                            )
+                        )
+                        _fail_count = (_fail_count_r.scalar() or 0) + 1  # +1 for current (not yet committed)
+
+                        if _fail_count >= 2:
+                            await _send(ws, "trap.personal_challenge", {
+                                "trap_name": _trap_code,
+                                "fail_count": _fail_count,
+                                "message": f"Ловушка «{_trap_code}» победила тебя {_fail_count} раз. Попробуешь ещё?",
+                            })
+                except Exception:
+                    pass  # personal challenge is non-critical
 
         # ── Extract emotion triggers from trap results for the emotion engine ──
         trap_triggers = get_emotion_triggers(results)
@@ -2907,6 +3659,102 @@ async def _check_traps_after_user_message(
 
     except Exception:
         logger.warning("Trap detection failed for session %s", session_id, exc_info=True)
+
+    # ── Narrative traps: memory/promise/consistency checks (story mode, call 2+) ──
+    story_id = state.get("story_id")
+    if story_id:
+        try:
+            from app.services.narrative_trap_detector import (
+                detect_narrative_traps,
+                build_consequences as build_narrative_consequences,
+            )
+            # Reuse cached ClientStory from prompt injection (avoids extra DB session)
+            _narr_story = state.get("_cached_client_story")
+            if _narr_story is None:
+                from app.models.roleplay import ClientStory as _CSNarr
+                async with async_session() as _narr_db:
+                    _narr_res = await _narr_db.execute(
+                        select(_CSNarr).where(_CSNarr.id == uuid.UUID(str(story_id)))
+                    )
+                    _narr_story = _narr_res.scalar_one_or_none()
+                    state["_cached_client_story"] = _narr_story
+            if _narr_story:
+                    narrative_results = await detect_narrative_traps(
+                        session_id=session_id,
+                        client_message=last_character_msg,
+                        manager_message=manager_message,
+                        story=_narr_story,
+                    )
+                    for nr in narrative_results:
+                        if nr.status == "not_activated":
+                            continue
+                        await _send(ws, "trap.triggered", {
+                            "trap_name": nr.trap_type,
+                            "category": "narrative",
+                            "status": nr.status,
+                            "score_delta": nr.score_delta,
+                            "description": nr.description,
+                            "evidence": nr.evidence,
+                        })
+                    # Feed consequences to Game Director state
+                    narr_consequences = build_narrative_consequences(session_id, narrative_results)
+                    if narr_consequences:
+                        acc = state.get("accumulated_consequences", [])
+                        acc.extend([
+                            {"type": c.consequence_type, "severity": c.severity, "detail": str(c.payload)}
+                            for c in narr_consequences
+                        ])
+                        state["accumulated_consequences"] = acc
+        except Exception:
+            logger.debug("Narrative trap detection failed for session %s", session_id, exc_info=True)
+
+    # ── Human Factor traps: combinatorial patience/empathy/flattery/urgency (no LLM) ──
+    if state.get("active_factors"):
+        try:
+            from app.services.human_factor_traps import (
+                detect_human_factor_traps,
+                build_consequences as build_hf_consequences,
+            )
+            from app.services.trigger_detector import detect_triggers
+            trigger_result = await detect_triggers(
+                manager_message=manager_message,
+                client_message=last_character_msg,
+                archetype_code=state.get("archetype_code", "neutral"),
+                emotion_state=state.get("emotion_state", "cold"),
+                skip_llm=True,  # fast keyword-only for real-time
+            )
+            hf_results = detect_human_factor_traps(
+                trigger_result=trigger_result,
+                client_message=last_character_msg,
+                active_factors=state.get("active_factors", []),
+                session_id=str(session_id),
+            )
+            state["_last_hf_results"] = hf_results  # for prompt injection
+            for hfr in hf_results:
+                if hfr.status == "not_activated":
+                    continue
+                await _send(ws, "trap.triggered", {
+                    "trap_name": hfr.trap_type,
+                    "category": "human_factor",
+                    "status": hfr.status,
+                    "score_delta": hfr.score_delta,
+                    "description": hfr.description,
+                    "matched_triggers": hfr.matched_triggers,
+                })
+            # Feed consequences to accumulated state
+            hf_consequences = build_hf_consequences(hf_results, str(session_id))
+            if hf_consequences:
+                acc = state.get("accumulated_consequences", [])
+                acc.extend([
+                    {"type": c.consequence_type, "severity": c.severity, "detail": str(c.payload)}
+                    for c in hf_consequences
+                ])
+                state["accumulated_consequences"] = acc
+        except Exception:
+            logger.debug("Human factor trap detection failed for session %s", session_id, exc_info=True)
+
+    # Clear cached story after trap processing (refresh on next message)
+    state.pop("_cached_client_story", None)
 
 
 async def _handle_text_message(
@@ -2922,10 +3770,19 @@ async def _handle_text_message(
 
     await update_activity(session_id)
 
-    content = data.get("content", "").strip()
-    if not content:
+    # T2 fix: bound WS text input at 10KB to prevent DoS via oversized LLM
+    # prompt (audio path already has MAX_AUDIO_B64_SIZE, text path had no limit).
+    _WS_MAX_TEXT_CHARS = 10_000
+    raw_content = data.get("content", "").strip()
+    if not raw_content:
         await _send_error(ws, "content field is required", "missing_field")
         return
+    if len(raw_content) > _WS_MAX_TEXT_CHARS:
+        logger.warning(
+            "WS text.message truncated from %d to %d chars (session=%s)",
+            len(raw_content), _WS_MAX_TEXT_CHARS, session_id,
+        )
+    content = raw_content[:_WS_MAX_TEXT_CHARS]
 
     # ── Security: filter user input for jailbreak / profanity / PII ──
     from app.services.content_filter import filter_user_input
@@ -2941,6 +3798,18 @@ async def _handle_text_message(
 
     current_emotion = await get_emotion(session_id)
 
+    # Phase 2.5 (2026-04-18): optional quoted_message_id from frontend when
+    # the manager clicks "Ответить" on an older bubble. Validated when the
+    # prompt is built (see _generate_character_reply); here we only stash it.
+    _quoted_id = data.get("quoted_message_id")
+    if _quoted_id:
+        # Cheap pre-validation so we don't pass garbage along.
+        try:
+            uuid.UUID(str(_quoted_id))
+            state["pending_quoted_message_id"] = str(_quoted_id)
+        except (ValueError, TypeError):
+            logger.debug("text.message: invalid quoted_message_id=%r", _quoted_id)
+
     async with async_session() as db:
         _saved_msg = await add_message(
             session_id=session_id,
@@ -2949,7 +3818,38 @@ async def _handle_text_message(
             db=db,
             emotion_state=current_emotion,
         )
+        # Persist the quote link on the message row itself so historical
+        # replay can reconstruct the UI state. The add_message helper
+        # doesn't yet take quoted_message_id — set it directly before commit.
+        if state.get("pending_quoted_message_id"):
+            try:
+                _saved_msg.quoted_message_id = uuid.UUID(
+                    state["pending_quoted_message_id"]
+                )
+            except (ValueError, TypeError):
+                pass
         state["message_count"] = _saved_msg.sequence_number
+
+        # Phase 2.4 (2026-04-18): extract manager name/company from this turn.
+        # Non-blocking on failure — extraction is best-effort.
+        try:
+            from app.services.manager_profile import (
+                extract_manager_identity,
+                persist_manager_identity,
+            )
+
+            ident = extract_manager_identity(content)
+            if ident is not None and ident.confidence >= 0.7 and state.get("story_id"):
+                await persist_manager_identity(
+                    story_id=state["story_id"],
+                    session_id=session_id,
+                    call_number=int(state.get("call_number", 1)),
+                    identity=ident,
+                    db=db,
+                )
+        except Exception:
+            logger.debug("manager_profile extraction failed", exc_info=True)
+
         await db.commit()
 
     # Check traps and update script score before generating character reply
@@ -3048,8 +3948,14 @@ async def _handle_session_end(
 
     scores = None
     try:
+        import asyncio as _aio
         async with async_session() as db:
-            scores = await calculate_scores(session_id, db)
+            scores = await _aio.wait_for(
+                calculate_scores(session_id, db),
+                timeout=45.0,  # C4 fix: 45s timeout prevents infinite hang
+            )
+    except _aio.TimeoutError:
+        logger.error("Scoring timed out after 45s for session %s", session_id)
     except Exception:
         logger.exception("Failed to calculate scores for session %s", session_id)
 
@@ -3060,6 +3966,7 @@ async def _handle_session_end(
     except Exception:
         logger.debug("Failed to save emotion journey snapshot for %s", session_id)
 
+    mp_result: dict | None = None
     async with async_session() as db:
         session = await end_session(session_id, db, status=SessionStatus.completed)
 
@@ -3073,6 +3980,20 @@ async def _handle_session_end(
             session.score_narrative = scores.narrative_progression
             session.score_legal = scores.legal_accuracy
             session.score_total = scores.total
+
+            # BUG-FIX: Persist score to state so story mode's Game Director
+            # receives actual scores (was always 0.0 before this fix)
+            state["last_score_total"] = scores.total
+            state["last_score_breakdown"] = {
+                "script_adherence": scores.script_adherence,
+                "objection_handling": scores.objection_handling,
+                "communication": scores.communication,
+                "anti_patterns": scores.anti_patterns,
+                "result": scores.result,
+                "chain_traversal": scores.chain_traversal,
+                "trap_handling": scores.trap_handling,
+                "total": scores.total,
+            }
 
             # Inject v5 metadata into scoring_details for results page
             enriched_details = dict(scores.details) if scores.details else {}
@@ -3227,6 +4148,74 @@ async def _handle_session_end(
             except Exception:
                 logger.debug("RAG feedback capture failed for session %s", session_id, exc_info=True)
 
+        # ── GAP-1 fix: Update ManagerProgress (XP, level, skills) — merged into same txn ──
+        _uid = state.get("user_id")
+        if _uid and scores and session:
+            try:
+                from app.services.manager_progress import ManagerProgressService
+                from app.models.progress import SessionHistory
+
+                # Create SessionHistory record
+                _trap_details = (scores.details or {}).get("trap_handling", {})
+                sh = SessionHistory(
+                    user_id=_uid,
+                    session_id=session.id,
+                    scenario_code=state.get("scenario_code", "unknown"),
+                    archetype_code=state.get("archetype_code", "unknown"),
+                    difficulty=state.get("base_difficulty", 5),
+                    duration_seconds=session.duration_seconds or 0,
+                    score_total=int(scores.total or 0),
+                    outcome=state.get("call_outcome", "timeout"),
+                    score_breakdown={
+                        "script_adherence": scores.script_adherence,
+                        "objection_handling": scores.objection_handling,
+                        "communication": scores.communication,
+                        "anti_patterns": scores.anti_patterns,
+                        "result": scores.result,
+                        "chain_traversal": scores.chain_traversal,
+                        "trap_handling": scores.trap_handling,
+                    },
+                    emotion_peak=state.get("emotion_peak", "cold"),
+                    traps_fell=_trap_details.get("fell_count", 0),
+                    traps_dodged=_trap_details.get("dodged_count", 0),
+                    chain_completed=bool((scores.details or {}).get("chain_completed")),
+                    had_comeback=bool(state.get("had_comeback")),
+                )
+                db.add(sh)
+                await db.flush()
+
+                svc = ManagerProgressService(db)
+                mp_result = await svc.update_after_session(_uid, sh)
+
+                sh.xp_earned = mp_result.get("xp_breakdown", {}).get("grand_total", 0)
+                sh.xp_breakdown = mp_result.get("xp_breakdown", {})
+
+                # Emit EVENT_TRAINING_COMPLETED in SAME transaction as XP award (outbox pattern)
+                try:
+                    from app.services.event_bus import event_bus, GameEvent, EVENT_TRAINING_COMPLETED
+                    await event_bus.emit(GameEvent(
+                        kind=EVENT_TRAINING_COMPLETED,
+                        user_id=_uid,
+                        db=db,
+                        payload={
+                            "session_id": str(session_id),
+                            "score": scores.total,
+                            "scenario_id": str(state.get("scenario_id", "")),
+                            "xp_earned": sh.xp_earned,
+                            "weak_legal_categories": (scores.details or {}).get("legal_accuracy", {}).get("weak_categories", []),
+                        },
+                    ))
+                except Exception as emit_exc:
+                    logger.warning("Failed to emit training_completed event in txn: %s", emit_exc)
+
+                logger.info(
+                    "ManagerProgress updated: user=%s xp=+%d level_up=%s",
+                    _uid, sh.xp_earned, mp_result.get("level_up"),
+                )
+
+            except Exception as e:
+                logger.warning("Failed to create SessionHistory/update ManagerProgress in txn: %s", e)
+
         await db.commit()
 
     # ── C4 fix: Send results to client NOW (critical path done) ──
@@ -3303,59 +4292,34 @@ async def _handle_session_end(
     except Exception:
         logger.debug("Auto-complete assignment check failed for session %s", session_id)
 
-    # ── GAP-1 fix: Update ManagerProgress (XP, level, skills) ──
-    mp_result: dict | None = None
+    # NOTE: ManagerProgress (SessionHistory, XP, event emission) is now handled
+    # inside the main scoring transaction above — single commit, no split-brain.
+
+    # --- S3-01: Update team challenge progress ---
     try:
-        from app.services.manager_progress import ManagerProgressService
-        from app.models.progress import SessionHistory
-        _uid = state.get("user_id")
-        if _uid and scores and session:
-            async with async_session() as mp_db:
-                # Create SessionHistory record
-                _trap_details = (scores.details or {}).get("trap_handling", {})
-                sh = SessionHistory(
-                    user_id=_uid,
-                    session_id=session.id,
-                    scenario_code=state.get("scenario_code", "unknown"),
-                    archetype_code=state.get("archetype_code", "unknown"),
-                    difficulty=state.get("base_difficulty", 5),
-                    duration_seconds=session.duration_seconds or 0,
-                    score_total=int(scores.total or 0),
-                    outcome=state.get("call_outcome", "timeout"),
-                    score_breakdown={
-                        "script_adherence": scores.script_adherence,
-                        "objection_handling": scores.objection_handling,
-                        "communication": scores.communication,
-                        "anti_patterns": scores.anti_patterns,
-                        "result": scores.result,
-                        "chain_traversal": scores.chain_traversal,
-                        "trap_handling": scores.trap_handling,
-                    },
-                    emotion_peak=state.get("emotion_peak", "cold"),
-                    traps_fell=_trap_details.get("fell_count", 0),
-                    traps_dodged=_trap_details.get("dodged_count", 0),
-                    chain_completed=bool((scores.details or {}).get("chain_completed")),
-                    had_comeback=bool(state.get("had_comeback")),
-                )
-                mp_db.add(sh)
-                await mp_db.flush()
+        user_id_tc = state.get("user_id")
+        if user_id_tc:
+            from app.services.team_challenge import on_session_complete
+            async with async_session() as tc_db:
+                await on_session_complete(user_id_tc, tc_db)
+                await tc_db.commit()
+    except Exception as tc_exc:
+        logger.warning("Failed to update team challenge progress: %s", tc_exc)
 
-                svc = ManagerProgressService(mp_db)
-                mp_result = await svc.update_after_session(_uid, sh)
-
-                sh.xp_earned = mp_result.get("xp_breakdown", {}).get("grand_total", 0)
-                sh.xp_breakdown = mp_result.get("xp_breakdown", {})
-                await mp_db.commit()
-
-                logger.info(
-                    "ManagerProgress updated: user=%s xp=+%d level_up=%s",
-                    _uid, sh.xp_earned, mp_result.get("level_up"),
-                )
-    except Exception as e:
-        logger.warning("Failed to update ManagerProgress after session: %s", e)
-
-    # XP/level data sent as separate event after background processing
-    # (user already received session.ended with scores)
+    # --- Story Progression: record session + check chapter advancement ---
+    try:
+        user_id_sp = state.get("user_id")
+        final_score_sp = state.get("final_score") or state.get("score_total") or 0
+        if user_id_sp and isinstance(final_score_sp, (int, float)):
+            from app.services.story_progression import record_session_completion, check_chapter_advancement
+            async with async_session() as sp_db:
+                await record_session_completion(user_id_sp, float(final_score_sp), sp_db)
+                advancement = await check_chapter_advancement(user_id_sp, sp_db)
+                await sp_db.commit()
+                if advancement:
+                    await _send(ws, "story.chapter_advanced", advancement.to_dict())
+    except Exception as sp_exc:
+        logger.warning("Failed to update story progression: %s", sp_exc)
 
     # --- Behavioral Intelligence hooks ---
     try:
@@ -3442,27 +4406,6 @@ async def _handle_session_end(
                 )
     except Exception:
         logger.debug("Cross-module notification failed for session %s", session_id)
-
-    # Emit EVENT_TRAINING_COMPLETED for EventBus handlers (achievements, goals, SRS)
-    # Previously only the REST fallback endpoint did this — WS handler was missing it
-    try:
-        from app.services.event_bus import event_bus, GameEvent, EVENT_TRAINING_COMPLETED
-        _uid = state.get("user_id")
-        if _uid and scores:
-            async with async_session() as evt_db:
-                await event_bus.emit(GameEvent(
-                    kind=EVENT_TRAINING_COMPLETED,
-                    user_id=_uid,
-                    db=evt_db,
-                    payload={
-                        "session_id": str(session_id),
-                        "score": scores.total,
-                        "scenario_id": str(state.get("scenario_id", "")),
-                        "weak_legal_categories": (scores.details or {}).get("legal_accuracy", {}).get("weak_categories", []),
-                    },
-                ))
-    except Exception as e:
-        logger.warning("Failed to emit training_completed event: %s", e)
 
     # Generate AI recommendations (rule-based + LLM if available)
     try:
@@ -3564,6 +4507,10 @@ async def _handle_story_start(
         # Generate personality profile correlated with archetype
         personality_profile = generate_personality_profile(archetype_code)
 
+        # Resolve VRM avatar model from archetype
+        from app.services.avatar_assignment import resolve_model_key
+        vrm_model_id = resolve_model_key(archetype_code)
+
         # Create ClientStory
         from app.models.roleplay import ClientStory
         story = ClientStory(
@@ -3572,6 +4519,7 @@ async def _handle_story_start(
             total_calls_planned=total_calls,
             current_call_number=0,
             personality_profile=personality_profile,
+            vrm_model_id=vrm_model_id,
             active_factors=[],
             between_call_events=[],
             consequences=[],
@@ -3620,11 +4568,26 @@ async def _handle_story_next_call(
         await _send_error(ws, "No active story. Send story.start first.", "no_story")
         return
 
+    # 2026-04-18 audit fix: idempotency lock. Prevents double-click / duplicate
+    # WS messages from advancing call_number twice. Without this, a quick
+    # second story.next_call skipped a call entirely (3-call chain becomes
+    # 2 effective calls) and pushed the pre_call_brief out of sync.
+    # NOTE: the lock is released at the end of this function (after
+    # `story.call_ready` is sent) AND on every early-return path below.
+    if state.get("_next_call_in_progress"):
+        logger.info(
+            "Ignoring duplicate story.next_call for story %s (already in progress)",
+            story_id,
+        )
+        return
+    state["_next_call_in_progress"] = True
+
     total_calls = state.get("total_calls", 3)
     current_call = state.get("call_number", 0) + 1
 
     if current_call > total_calls:
         await _send_error(ws, "Story complete — all calls done", "story_complete")
+        state["_next_call_in_progress"] = False
         return
 
     state["call_number"] = current_call
@@ -3656,6 +4619,7 @@ async def _handle_story_next_call(
 
     # Generate between-call events (skip for call 1)
     between_events = []
+    gd_events = []  # BUG-FIX: must be defined before if-block to avoid NameError on call 1
     if current_call > 1:
         previous_outcome = state.get("last_call_outcome")
         previous_emotion = state.get("last_call_emotion", "cold")
@@ -3763,12 +4727,24 @@ async def _handle_story_next_call(
                 "source": "system",
             })
 
-        await _send(ws, "story.between_calls", {
-            "story_id": str(story_id),
-            "events": frontend_events,
-            "relationship_score": _rel_score,
-            "lifecycle_state": _lc_state,
-        })
+        # 2026-04-18 audit fix: only send between_calls if we actually have
+        # content beyond the always-present "status indicator". Empty/noise
+        # events produced an invisible overlay (`s.betweenCallsEvents.length > 0`
+        # guard hides it) — but they still polluted WS traffic and flipped
+        # `showBetweenCalls=true` in the store, which then raced with the
+        # pre_call_brief overlay. Skip the send entirely when the only item
+        # is the auto-generated status indicator.
+        _meaningful_events = [
+            e for e in frontend_events
+            if e.get("event_type") != "status_indicator"
+        ]
+        if _meaningful_events:
+            await _send(ws, "story.between_calls", {
+                "story_id": str(story_id),
+                "events": frontend_events,
+                "relationship_score": _rel_score,
+                "lifecycle_state": _lc_state,
+            })
 
     # Generate pre-call brief
     client_name = state.get("client_name", "Клиент")
@@ -3922,6 +4898,17 @@ async def _handle_story_next_call(
                 generate_between_call_content,
                 NarratorContext,
             )
+            # Fetch chapter context for story-aware narration
+            _ch_id, _ch_name, _ep_name = 1, "", ""
+            try:
+                from app.services.story_progression import get_chapter_context
+                async with async_session() as _ch_db:
+                    _ch_ctx = await get_chapter_context(state["user_id"], _ch_db)
+                    _ch_id = _ch_ctx.chapter_id
+                    _ch_name = _ch_ctx.chapter_name
+                    _ep_name = _ch_ctx.epoch_name
+            except Exception:
+                pass  # graceful degradation
             _narrator_ctx = NarratorContext(
                 lifecycle_state=state.get("lifecycle_state", "FIRST_CONTACT"),
                 relationship_score=state.get("relationship_score", 50.0),
@@ -3937,6 +4924,9 @@ async def _handle_story_next_call(
                 active_consequences=state.get("accumulated_consequences", []),
                 between_events=between_events,
                 manager_weak_points=_mgr_weak_points or [],
+                chapter_id=_ch_id,
+                chapter_name=_ch_name,
+                epoch_name=_ep_name,
             )
             _narrator_result = await generate_between_call_content(_narrator_ctx)
             _narrator_data = {
@@ -3987,8 +4977,12 @@ async def _handle_story_next_call(
     await _send(ws, "story.call_ready", {
         "story_id": str(story_id),
         "call_number": current_call,
+        "total_calls": total_calls,
         "session_id": str(state.get("session_id", "")),
     })
+
+    # 2026-04-18 audit fix: release idempotency lock after successful flow.
+    state["_next_call_in_progress"] = False
 
 
 async def _handle_story_call_end(
@@ -4041,8 +5035,11 @@ async def _handle_story_call_end(
                 story.consequences = state.get("accumulated_consequences", [])
                 story.between_call_events = state.get("between_call_events", [])
 
-                # Compress older calls if needed
-                if call_number >= 3:
+                # Compress older calls if needed.
+                # 2026-04-18 audit fix: only compress on call 3+ AND when more
+                # calls remain. On the final call, compression output is never
+                # read — it was wasted CPU and delayed `story.call_report`.
+                if call_number >= 3 and call_number < state.get("total_calls", 3):
                     mgr = get_context_budget_manager()
                     # Get message history for older calls
                     call_messages = await get_message_history(session_id)
@@ -4233,6 +5230,8 @@ async def _handle_story_call_end(
             "key_moments": key_moments_list,
             "consequences": consequences_list,
             "memories_created": memories_created,
+            "is_final": call_number >= state.get("total_calls", 3),
+            "total_calls": state.get("total_calls", 3),
         })
 
     except Exception:
@@ -4240,6 +5239,10 @@ async def _handle_story_call_end(
 
     # NOTE: last_call_outcome and last_call_emotion are already set above
     # (lines ~3560-3561) with smarter fallback logic. Do NOT overwrite them here.
+    #
+    # 2026-04-18 audit: the `story.completed` emit + EVENT_STORY_COMPLETED
+    # broadcast happen in the `else` branch below when call_number >=
+    # total_calls. This is already handled — no separate emit needed here.
 
     # Notify frontend about story progress
     total_calls = state.get("total_calls", 3)
@@ -4335,6 +5338,8 @@ async def training_websocket(websocket: WebSocket) -> None:
         "ws_id": ws_id,
         "deepgram_stt": None,  # DeepgramStreamingSTT instance (if streaming mode)
     }
+    _last_entitlement_check: float = time.time()
+    _ENTITLEMENT_RECHECK_INTERVAL = 300  # 5 minutes
     state_lock = asyncio.Lock()
 
     watchdog_task: asyncio.Task | None = None
@@ -4345,12 +5350,32 @@ async def training_websocket(websocket: WebSocket) -> None:
     stop_event = asyncio.Event()
     _rate_limiter = training_limiter()
 
+    # FIX P2: health-check STT provider instead of just checking config
+    async def _check_stt_available() -> bool:
+        if settings.deepgram_api_key:
+            return True  # Deepgram streaming — always available if key set
+        if not settings.whisper_url:
+            return False
+        try:
+            _base = settings.whisper_url.rstrip("/")
+            if _base.endswith("/v1"):
+                _base = _base[:-3]
+            _headers = {}
+            if settings.whisper_api_key:
+                _headers["Authorization"] = f"Bearer {settings.whisper_api_key}"
+            async with httpx.AsyncClient(timeout=3.0) as _c:
+                _r = await _c.get(f"{_base}/v1/models", headers=_headers)
+                return _r.status_code == 200
+        except Exception:
+            return False
+
     try:
+        stt_ok = await _check_stt_available()
         # H6 fix: include TTS/STT availability status so frontend can show banners
         await _send(websocket, "session.ready", {
             "message": err.WS_AUTHENTICATED,
             "tts_available": settings.elevenlabs_enabled and is_tts_available(),
-            "stt_available": True,  # TODO: check Whisper service health
+            "stt_available": stt_ok,
             "llm_provider": "local" if settings.local_llm_enabled else "cloud",
         })
 
@@ -4380,6 +5405,34 @@ async def training_websocket(websocket: WebSocket) -> None:
                 await _send_error(websocket, "Too many messages. Slow down.", "rate_limited")
                 continue
 
+            # L6c fix: per-user rate limit across ALL tabs/connections (Redis).
+            # Default 300 msg/10s for training. Prevents N-tab amplification.
+            from app.core.ws_rate_limiter import check_user_rate_limit
+            if not await check_user_rate_limit(str(user_id), scope="training"):
+                await _send_error(
+                    websocket,
+                    "Слишком много сообщений со всех ваших сессий. Подождите секунду.",
+                    "rate_limited_user",
+                )
+                continue
+
+            # Periodic entitlement re-check (every 5 min) — disconnect if plan expired
+            now_t = time.time()
+            if now_t - _last_entitlement_check > _ENTITLEMENT_RECHECK_INTERVAL and state.get("session_id"):
+                _last_entitlement_check = now_t
+                try:
+                    from app.services.entitlement import get_entitlement, check_session_limit
+                    async with async_session() as _ent_db:
+                        ent = await get_entitlement(user_id, _ent_db)
+                        if not check_session_limit(ent):
+                            await _send(websocket, "entitlement.expired", {
+                                "message": "Лимит сессий исчерпан. Обновите подписку.",
+                                "plan": ent.plan.value,
+                            })
+                            logger.info("ws: entitlement expired mid-session for user %s (plan=%s)", user_id, ent.plan.value)
+                except Exception as _ent_exc:
+                    logger.debug("ws: entitlement re-check failed: %s", _ent_exc)
+
             try:
                 message = json.loads(raw)
             except json.JSONDecodeError:
@@ -4391,7 +5444,13 @@ async def training_websocket(websocket: WebSocket) -> None:
 
             if msg_type == "session.start":
                 await _handle_session_start(websocket, msg_data, state)
-                if state.get("session_id") and watchdog_task is None:
+                if state.get("session_id"):
+                    # BUG-FIX: Cancel stale background tasks from previous call
+                    # in story mode (calls 2-5). Without this, tasks monitor old
+                    # session_id and new calls run without watchdog/hints.
+                    for _old_task in (watchdog_task, hint_task, soft_skills_task):
+                        if _old_task and not _old_task.done():
+                            _old_task.cancel()
                     sid = state["session_id"]
                     watchdog_task = asyncio.create_task(
                         _silence_watchdog(websocket, sid, state, stop_event, state_lock)
@@ -4505,13 +5564,53 @@ async def training_websocket(websocket: WebSocket) -> None:
                     # Refresh WS mutex lock on heartbeat
                     lock_ok = await _refresh_session_lock(state["session_id"], ws_id)
                     if not lock_ok:
-                        # BUG-7 fix: lock was hijacked — notify client and disconnect
-                        await _send(websocket, "error", {
-                            "code": "session_hijacked",
-                            "message": "Сессия перехвачена другим подключением",
-                        })
-                        await websocket.close(code=4002)
-                        return
+                        # Lock lost. Distinguish same-user takeover (dev HMR /
+                        # React Strict-Mode remount / user opened new tab) from
+                        # a real hijack by a different user.
+                        try:
+                            from app.core.redis_pool import get_redis
+                            r = get_redis()
+                            owner_key = _WS_LOCK_OWNER_KEY.format(session_id=state["session_id"])
+                            new_owner_raw = await r.get(owner_key)
+                            new_owner = new_owner_raw.decode() if new_owner_raw else None
+                        except Exception:
+                            new_owner = None
+                        if new_owner and new_owner == str(state.get("user_id", "")):
+                            # Same user took over — close silently so the UI
+                            # doesn't redirect to results or end the session.
+                            await _send(websocket, "session.takeover_by_self", {
+                                "message": "Сессия продолжается в другой вкладке/окне",
+                            })
+                            await websocket.close(code=4000)
+                            return
+                        # DEV ONLY: HMR/StrictMode creates race where owner_key gets wiped
+                        # between WS instances. Silently re-acquire lock instead of killing session.
+                        if settings.app_env == "development":
+                            try:
+                                from app.core.redis_pool import get_redis as _get_r
+                                _r = _get_r()
+                                _key = _WS_LOCK_KEY.format(session_id=state["session_id"])
+                                await _r.set(_key, ws_id, ex=_WS_LOCK_TTL)
+                                if state.get("user_id") is not None:
+                                    await _r.set(
+                                        _WS_LOCK_OWNER_KEY.format(session_id=state["session_id"]),
+                                        str(state["user_id"]),
+                                        ex=_WS_LOCK_TTL,
+                                    )
+                                logger.info(
+                                    "[dev] Re-acquired WS lock for session %s (ws_id=%s) — skipping hijack",
+                                    state["session_id"], ws_id,
+                                )
+                            except Exception as e:
+                                logger.warning("[dev] Failed to re-acquire lock: %s", e)
+                            # Skip hijack error path in dev
+                        else:
+                            await _send(websocket, "error", {
+                                "code": "session_hijacked",
+                                "message": "Сессия перехвачена другим подключением",
+                            })
+                            await websocket.close(code=4002)
+                            return
                 await _send(websocket, "pong", {})
 
             elif msg_type == "silence.continue":

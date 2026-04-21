@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { motion } from "framer-motion";
 import {
   Brain,
@@ -17,6 +18,7 @@ import {
   AlertTriangle,
   MessageSquare,
 } from "lucide-react";
+import { PixelGridBackground } from "@/components/landing/PixelGridBackground";
 
 /* ── Key scoring parameters (top 3 shown large) ───────────────────── */
 const SCORING_PRIMARY = [
@@ -37,11 +39,20 @@ const SCORING_SECONDARY = [
 
 /* ── PvP Ranks ────────────────────────────────────────────────────── */
 const PVP_RANKS = [
-  { name: "Bronze", divisions: 3, color: "#CD7F32", pct: "47%" },
-  { name: "Silver", divisions: 3, color: "#C0C0C0", pct: "28%" },
-  { name: "Gold", divisions: 3, color: "#FFD700", pct: "15%" },
-  { name: "Platinum", divisions: 3, color: "#E5E4E2", pct: "8%" },
-  { name: "Diamond", divisions: 3, color: "#B9F2FF", pct: "2%" },
+  { name: "Bronze", divisions: 3, color: "var(--rank-bronze)", pct: "47%", icon: "/pixel/ranks/bronze.png" },
+  { name: "Silver", divisions: 3, color: "var(--rank-silver)", pct: "28%", icon: "/pixel/ranks/silver.png" },
+  { name: "Gold", divisions: 3, color: "var(--rank-gold)", pct: "15%", icon: "/pixel/ranks/gold.png" },
+  { name: "Platinum", divisions: 3, color: "var(--rank-platinum)", pct: "8%", icon: "/pixel/ranks/platinum.png" },
+  { name: "Diamond", divisions: 3, color: "var(--rank-diamond)", pct: "2%", icon: "/pixel/ranks/diamond.png" },
+] as const;
+
+/* ── Achievement pixel sprites for gamification section ──────────── */
+const ACHIEVEMENT_BADGES = [
+  { label: "Первый звонок", sprite: "/pixel/achievements/first-call.png" },
+  { label: "5 побед подряд", sprite: "/pixel/achievements/streak-7.png" },
+  { label: "Gold I", sprite: "/pixel/achievements/pvp-champion.png" },
+  { label: "Мастер возражений", sprite: "/pixel/achievements/objection-master.png" },
+  { label: "100 тренировок", sprite: "/pixel/achievements/hundred-calls.png" },
 ] as const;
 
 /* ═══════════════════════════ PAGE ═════════════════════════════════ */
@@ -49,9 +60,12 @@ export default function ProductPage() {
   return (
     <div
       className="relative min-h-screen"
-      style={{ background: "var(--bg-primary)", paddingTop: "96px" }}
+      style={{ background: "var(--bg-primary)", paddingTop: "80px" }}
     >
-      <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: `linear-gradient(to right, var(--text-muted) 1px, transparent 1px), linear-gradient(to bottom, var(--text-muted) 1px, transparent 1px)`, backgroundSize: "40px 40px" }} />
+      {/* Canvas pixel grid — full grid + 15% of cells decay ("disappear") */}
+      <div className="absolute inset-0 pointer-events-none">
+        <PixelGridBackground cellSize={40} pixelSize={8} />
+      </div>
 
       <div className="relative z-10 max-w-6xl mx-auto px-5 sm:px-8 md:px-10">
 
@@ -73,32 +87,38 @@ export default function ProductPage() {
 
             <div className="max-w-xl space-y-4 text-lg sm:text-xl leading-relaxed" style={{ color: "var(--text-secondary)" }}>
               <p>
-                <strong style={{ color: "var(--accent)", fontSize: "1.1em" }}>Шаг 1:</strong>{" "}
+                <strong className="font-pixel text-2xl" style={{ color: "var(--accent)" }}>Шаг 1:</strong>{" "}
                 Менеджер выбирает ситуацию — холодный звонок, жёсткие переговоры, кризис.
               </p>
               <p>
-                <strong style={{ color: "var(--accent)", fontSize: "1.1em" }}>Шаг 2:</strong>{" "}
+                <strong className="font-pixel text-2xl" style={{ color: "var(--accent)" }}>Шаг 2:</strong>{" "}
                 Разговаривает с ИИ, который ведёт себя как настоящий клиент.
               </p>
               <p>
-                <strong style={{ color: "var(--accent)", fontSize: "1.1em" }}>Шаг 3:</strong>{" "}
+                <strong className="font-pixel text-2xl" style={{ color: "var(--accent)" }}>Шаг 3:</strong>{" "}
                 Получает детальный разбор — что сработало, а где потерял клиента.
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-5 pt-3">
-              <div className="flex items-center gap-3 text-base" style={{ color: "var(--text-secondary)" }}>
-                <Brain size={20} style={{ color: "var(--text-muted)" }} />
-                <span><strong style={{ color: "var(--text-primary)" }}>60</strong> реальных сценариев</span>
-              </div>
-              <div className="flex items-center gap-3 text-base" style={{ color: "var(--text-secondary)" }}>
-                <Users size={20} style={{ color: "var(--text-muted)" }} />
-                <span><strong style={{ color: "var(--text-primary)" }}>100</strong> типов клиентов</span>
-              </div>
-              <div className="flex items-center gap-3 text-base" style={{ color: "var(--text-secondary)" }}>
-                <Mic size={20} style={{ color: "var(--text-muted)" }} />
-                <span>Голосовой режим</span>
-              </div>
+            <div className="flex flex-wrap gap-4 pt-3">
+              {[
+                { icon: Brain, num: "60", text: "реальных сценариев" },
+                { icon: Users, num: "100", text: "типов клиентов" },
+                { icon: Mic, num: null, text: "Голосовой режим" },
+              ].map(({ icon: BadgeIcon, num, text }) => (
+                <div
+                  key={text}
+                  className="pixel-border flex items-center gap-2.5 px-4 py-2.5 text-sm"
+                  style={{ background: "var(--bg-panel)", color: "var(--text-secondary)" }}
+                >
+                  <BadgeIcon size={16} style={{ color: "var(--text-muted)" }} />
+                  {num ? (
+                    <span><strong className="font-pixel text-lg" style={{ color: "var(--text-primary)" }}>{num}</strong> {text}</span>
+                  ) : (
+                    <span>{text}</span>
+                  )}
+                </div>
+              ))}
             </div>
           </motion.div>
 
@@ -128,26 +148,28 @@ export default function ProductPage() {
         </section>
 
         {/* ── 2. ANCHOR STAT — full-width, typographic contrast ── */}
+        <div className="pixel-divider" />
         <motion.section
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
           className="text-center py-16 sm:py-24"
         >
-          <p className="text-sm font-medium tracking-widest uppercase mb-4" style={{ color: "var(--text-muted)" }}>
+          <p className="font-pixel text-lg tracking-widest uppercase mb-4" style={{ color: "var(--text-muted)" }}>
             По данным внутреннего тестирования
           </p>
-          <div className="font-display font-extralight leading-none" style={{ fontSize: "clamp(4rem, 12vw, 9rem)", color: "var(--text-primary)" }}>
-            7 <span className="text-[0.5em]" style={{ color: "var(--text-muted)" }}>из</span> 10
+          <div className="font-pixel pixel-glow leading-none" style={{ fontSize: "clamp(5rem, 14vw, 10rem)", color: "var(--text-primary)" }}>
+            7 <span className="text-4xl sm:text-6xl" style={{ color: "var(--text-muted)" }}>из</span> 10
           </div>
           <p
             className="mt-6 text-xl sm:text-2xl max-w-lg mx-auto leading-relaxed font-light"
             style={{ color: "var(--text-secondary)" }}
           >
             возражений менеджер проваливает без подготовки.
-            После 30 тренировок — <strong style={{ color: "var(--text-primary)" }}>3 из 10.</strong>
+            После 30 тренировок — <strong className="font-pixel text-2xl sm:text-3xl" style={{ color: "var(--text-primary)" }}>3 из 10.</strong>
           </p>
         </motion.section>
+        <div className="pixel-divider" />
 
         {/* ── 3. SCORING — broken rhythm: 3 large + 7 compact ── */}
         <section className="pt-6 pb-20">
@@ -168,7 +190,7 @@ export default function ProductPage() {
           </motion.div>
 
           {/* Primary 3 — large cards, different layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             {SCORING_PRIMARY.map(({ name, desc, icon: Icon, ...rest }, i) => {
               const isNeg = "negative" in rest;
               return (
@@ -178,16 +200,16 @@ export default function ProductPage() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: i * 0.1 }}
-                  className="rounded-xl p-7 sm:p-8"
-                  style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}
+                  className="pixel-shadow p-7 sm:p-8"
+                  style={{ background: "var(--bg-panel)", border: "2px solid var(--border-color)" }}
                 >
                   <div
-                    className="w-12 h-12 rounded-lg flex items-center justify-center mb-5"
-                    style={{ background: isNeg ? "rgba(229,72,77,0.10)" : "rgba(61,220,132,0.08)" }}
+                    className="w-12 h-12 flex items-center justify-center mb-5"
+                    style={{ background: isNeg ? "var(--danger-muted)" : "var(--success-muted)" }}
                   >
                     <Icon size={24} style={{ color: isNeg ? "var(--danger)" : "var(--success)" }} />
                   </div>
-                  <h3 className="font-display font-bold text-xl mb-2" style={{ color: "var(--text-primary)" }}>{name}</h3>
+                  <h3 className="font-pixel text-2xl mb-2" style={{ color: "var(--text-primary)" }}>{name}</h3>
                   <p className="text-base leading-relaxed" style={{ color: "var(--text-secondary)" }}>{desc}</p>
                 </motion.div>
               );
@@ -199,18 +221,18 @@ export default function ProductPage() {
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
-            className="rounded-xl p-6 sm:p-8"
-            style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}
+            className="p-6 sm:p-8"
+            style={{ background: "var(--bg-panel)", border: "2px solid var(--border-color)" }}
           >
-            <p className="text-sm font-medium tracking-widest uppercase mb-6" style={{ color: "var(--text-muted)" }}>
+            <p className="font-pixel text-lg tracking-widest uppercase mb-6" style={{ color: "var(--text-muted)" }}>
               Ещё 7 параметров
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-5">
               {SCORING_SECONDARY.map(({ name, desc, icon: Icon, ...rest }) => {
                 const isNeg = "negative" in rest;
                 return (
-                  <div key={name} className="flex items-start gap-3 py-3" style={{ borderBottom: "1px solid var(--border-color)" }}>
-                    <Icon size={18} className="mt-0.5 flex-shrink-0" style={{ color: isNeg ? "var(--danger)" : "var(--text-muted)", opacity: 0.6 }} />
+                  <div key={name} className="flex items-center gap-3 py-3" style={{ borderBottom: "1px solid var(--border-color)" }}>
+                    <Icon size={18} className="flex-shrink-0" style={{ color: isNeg ? "var(--danger)" : "var(--text-muted)", opacity: 0.6 }} />
                     <div>
                       <span className="font-medium text-base" style={{ color: "var(--text-primary)" }}>{name}</span>
                       <span className="text-base ml-2" style={{ color: "var(--text-muted)" }}>{desc}</span>
@@ -228,7 +250,7 @@ export default function ProductPage() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           className="py-10"
-          style={{ borderTop: "1px solid var(--border-color)" }}
+          style={{ borderTop: "none" }}
         >
           <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-12 items-center">
             <div className="space-y-6">
@@ -260,24 +282,30 @@ export default function ProductPage() {
             </div>
 
             {/* Rank visualization */}
-            <div className="rounded-xl p-7 sm:p-8" style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}>
-              <h3 className="text-base font-bold mb-1" style={{ color: "var(--text-muted)" }}>
+            <div className="pixel-border p-7 sm:p-8" style={{ background: "var(--bg-panel)" }}>
+              <h3 className="font-pixel text-xl mb-1" style={{ color: "var(--text-muted)" }}>
                 5 рангов — от Bronze до Diamond
               </h3>
               <p className="text-xs mb-5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
                 Целевое распределение
               </p>
               <div className="space-y-4">
-                {PVP_RANKS.map(({ name, divisions, color, pct }) => (
+                {PVP_RANKS.map(({ name, divisions, color, pct, icon }) => (
                   <div key={name} className="flex items-center gap-4">
-                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: color }} />
-                    <span className="font-bold text-base w-24" style={{ color }}>{name}</span>
-                    <div className="flex gap-1 flex-1">
+                    <Image
+                      src={icon}
+                      alt={name}
+                      width={24}
+                      height={24}
+                      className="flex-shrink-0 render-pixel"
+                    />
+                    <span className="font-pixel text-xl w-24" style={{ color }}>{name}</span>
+                    <div className="flex gap-0.5 flex-1">
                       {Array.from({ length: divisions }).map((_, i) => (
-                        <div key={i} className="h-2.5 flex-1 rounded-full" style={{ background: color, opacity: 0.15 + (i * 0.3) }} />
+                        <div key={i} className="h-3 flex-1" style={{ background: color, opacity: 0.15 + (i * 0.3) }} />
                       ))}
                     </div>
-                    <span className="text-xs font-medium w-10 text-right" style={{ color: "var(--text-muted)" }}>{pct}</span>
+                    <span className="font-pixel text-lg w-10 text-right" style={{ color: "var(--text-muted)" }}>{pct}</span>
                   </div>
                 ))}
               </div>
@@ -291,8 +319,8 @@ export default function ProductPage() {
           style={{
             borderTop: "1px solid var(--border-color)",
             borderBottom: "1px solid var(--border-color)",
-            maskImage: "linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)",
             WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)",
+            maskImage: "linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)",
           }}
         >
           <motion.div
@@ -312,7 +340,7 @@ export default function ProductPage() {
               "Анна К. → закрыла 3 сделки после тренировки",
               "Отдел продаж FinLead → +34% конверсия за квартал",
             ].map((item, i) => (
-              <span key={i} className="text-sm" style={{ color: "var(--text-muted)" }}>
+              <span key={i} className="font-pixel text-lg" style={{ color: "var(--text-muted)" }}>
                 {item}
               </span>
             ))}
@@ -332,33 +360,40 @@ export default function ProductPage() {
           </motion.h2>
 
           {/* Asymmetric: one big card + two small */}
-          <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-5">
+          <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6">
             {/* Big card — gamification */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              className="rounded-xl p-8 sm:p-10 lg:row-span-2"
-              style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}
+              className="pixel-border p-8 sm:p-10 lg:row-span-2"
+              style={{ background: "var(--bg-panel)" }}
             >
               <Star size={28} style={{ color: "var(--text-muted)" }} />
-              <h3 className="font-display font-bold text-2xl mt-5 mb-3" style={{ color: "var(--text-primary)" }}>
+              <h3 className="font-pixel text-3xl mt-5 mb-3" style={{ color: "var(--text-primary)" }}>
                 35+ достижений и 20 уровней
               </h3>
               <p className="text-lg leading-relaxed mb-6" style={{ color: "var(--text-secondary)" }}>
                 От «Первый звонок» до «Легендарный охотник». Редкие, эпические, легендарные.
                 Каждый уровень открывает новые сценарии и типы клиентов.
               </p>
-              {/* Achievement examples as inline badges */}
-              <div className="flex flex-wrap gap-2">
-                {["Первый звонок", "5 побед подряд", "Gold I", "Мастер возражений", "100 тренировок"].map((badge) => (
-                  <span
-                    key={badge}
-                    className="text-xs font-medium px-3 py-1.5 rounded-full"
-                    style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-color)", color: "var(--text-muted)" }}
+              {/* Achievement examples with pixel sprites */}
+              <div className="flex flex-wrap gap-3">
+                {ACHIEVEMENT_BADGES.map(({ label, sprite }) => (
+                  <div
+                    key={label}
+                    className="pixel-border flex items-center gap-2 px-3 py-2"
+                    style={{ background: "var(--bg-tertiary)", color: "var(--text-muted)" }}
                   >
-                    {badge}
-                  </span>
+                    <Image
+                      src={sprite}
+                      alt={label}
+                      width={20}
+                      height={20}
+                      className="render-pixel"
+                    />
+                    <span className="font-pixel text-base">{label}</span>
+                  </div>
                 ))}
               </div>
             </motion.div>
@@ -373,7 +408,7 @@ export default function ProductPage() {
               style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}
             >
               <Flame size={20} style={{ color: "var(--success)" }} />
-              <h3 className="font-display font-bold text-base mt-3 mb-1" style={{ color: "var(--text-primary)" }}>Стрики и дейлики</h3>
+              <h3 className="font-pixel text-xl mt-3 mb-1" style={{ color: "var(--text-primary)" }}>Стрики и дейлики</h3>
               <p className="text-sm" style={{ color: "var(--text-muted)" }}>
                 Ежедневные цели. Серии тренировок = бонусный XP.
               </p>
@@ -389,7 +424,7 @@ export default function ProductPage() {
               style={{ background: "var(--bg-panel)", border: "1px solid var(--border-color)" }}
             >
               <TrendingUp size={20} style={{ color: "var(--success)" }} />
-              <h3 className="font-display font-bold text-base mt-3 mb-1" style={{ color: "var(--text-primary)" }}>Прогресс команды</h3>
+              <h3 className="font-pixel text-xl mt-3 mb-1" style={{ color: "var(--text-primary)" }}>Прогресс команды</h3>
               <p className="text-sm" style={{ color: "var(--text-muted)" }}>
                 Дашборд руководителя. Кто растёт, кто буксует.
               </p>
@@ -398,23 +433,23 @@ export default function ProductPage() {
         </section>
 
         {/* ── 7. CRM + Knowledge — simple text, not cards ─────── */}
+        <div className="pixel-divider" />
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="grid grid-cols-1 sm:grid-cols-2 gap-8 py-16"
-          style={{ borderTop: "1px solid var(--border-color)" }}
+          className="grid grid-cols-1 sm:grid-cols-2 gap-12 py-16"
         >
           <div>
             <Users size={22} className="mb-4" style={{ color: "var(--text-muted)" }} />
-            <h3 className="font-display font-bold text-xl mb-3" style={{ color: "var(--text-primary)" }}>CRM-модуль</h3>
+            <h3 className="font-pixel text-2xl mb-3" style={{ color: "var(--text-primary)" }}>CRM-модуль</h3>
             <p className="text-base leading-relaxed" style={{ color: "var(--text-secondary)" }}>
               Управляйте клиентами прямо в платформе. 12 статусов — от первого контакта до закрытия. Полное соответствие 152-ФЗ и 127-ФЗ.
             </p>
           </div>
           <div>
             <BookOpen size={22} className="mb-4" style={{ color: "var(--text-muted)" }} />
-            <h3 className="font-display font-bold text-xl mb-3" style={{ color: "var(--text-primary)" }}>База знаний 127-ФЗ</h3>
+            <h3 className="font-pixel text-2xl mb-3" style={{ color: "var(--text-primary)" }}>База знаний 127-ФЗ</h3>
             <p className="text-base leading-relaxed" style={{ color: "var(--text-secondary)" }}>
               Квиз-система по закону о банкротстве. Блиц-режим, автоматическая проверка юридических знаний вашей команды.
             </p>

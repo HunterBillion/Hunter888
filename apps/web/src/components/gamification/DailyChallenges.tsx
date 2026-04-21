@@ -42,7 +42,7 @@ export default function DailyChallenges({
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-[var(--text-muted)]">{completed}/{total}</span>
           {multiplier > 1 && (
-            <span className="rounded-md bg-[var(--warning)]/15 px-1.5 py-0.5 text-xs font-bold text-[var(--warning)]">
+            <span className="rounded-md bg-[var(--warning-muted)] px-1.5 py-0.5 text-xs font-bold text-[var(--warning)]">
               x{multiplier.toFixed(1)}
             </span>
           )}
@@ -63,7 +63,7 @@ export default function DailyChallenges({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className={`rounded-lg px-3 py-2.5 ${
-                c.completed ? "bg-[var(--success)]/10" : "bg-[var(--bg-tertiary)]"
+                c.completed ? "bg-[var(--success-muted)]" : "bg-[var(--bg-tertiary)]"
               }`}
             >
               <div className="flex items-start gap-2.5">

@@ -78,6 +78,9 @@ class ReminderScheduler:
     async def _run_loop(self) -> None:
         """Бесконечный цикл проверки с per-task timeouts and overlap prevention."""
         _TASK_TIMEOUT = 120  # 2 minutes max per sub-task
+        _NUM_SUBTASKS = 5    # stale_clients, weekly, daily, pvp_reset, nudges, rag
+        # Lock TTL must cover worst-case: all sub-tasks timing out
+        _LOCK_TTL = _TASK_TIMEOUT * _NUM_SUBTASKS + 10
         while self._running:
             # Use a Redis distributed lock to prevent multiple workers from
             # running the same scheduler cycle simultaneously.
@@ -89,7 +92,7 @@ class ReminderScheduler:
                     "scheduler:run_lock",
                     "1",
                     nx=True,
-                    ex=CHECK_INTERVAL_MIN * 60 - 10,  # TTL slightly less than interval
+                    ex=_LOCK_TTL,
                 )
             except Exception:
                 logger.debug("Scheduler Redis lock unavailable, proceeding anyway")
@@ -145,6 +148,24 @@ class ReminderScheduler:
             except Exception as e:
                 logger.error("Smart nudge error: %s", e, exc_info=True)
 
+            # ── Weekly tournament auto-create / auto-award ──
+            try:
+                await asyncio.wait_for(self._check_weekly_tournament(), timeout=_TASK_TIMEOUT)
+            except asyncio.TimeoutError:
+                logger.error("ReminderScheduler: weekly tournament timed out")
+            except Exception as e:
+                logger.error("Weekly tournament error: %s", e, exc_info=True)
+
+            # ── Phase B (2026-04-20): weekly league form/finalize ──
+            # Duolingo-style cohort reset. Model + service already exist
+            # (services/weekly_league.py), this just wires the cron.
+            try:
+                await asyncio.wait_for(self._check_weekly_league(), timeout=_TASK_TIMEOUT)
+            except asyncio.TimeoutError:
+                logger.error("ReminderScheduler: weekly league timed out")
+            except Exception as e:
+                logger.error("Weekly league error: %s", e, exc_info=True)
+
             # ── RAG Feedback aggregation (every 6 hours) ──
             try:
                 await asyncio.wait_for(self._check_rag_feedback_aggregation(), timeout=_TASK_TIMEOUT)
@@ -152,6 +173,18 @@ class ReminderScheduler:
                 logger.error("ReminderScheduler: RAG feedback aggregation timed out")
             except Exception as e:
                 logger.error("RAG feedback aggregation error: %s", e, exc_info=True)
+
+            # ── S3-01: Expire overdue team challenges (every cycle) ──
+            try:
+                from app.services.team_challenge import expire_overdue_challenges
+                async with async_session() as db:
+                    expired = await expire_overdue_challenges(db)
+                    if expired:
+                        await db.commit()
+            except asyncio.TimeoutError:
+                logger.error("ReminderScheduler: team challenge expiry timed out")
+            except Exception as e:
+                logger.error("Team challenge expiry error: %s", e, exc_info=True)
 
             await asyncio.sleep(CHECK_INTERVAL_MIN * 60)
 
@@ -199,8 +232,8 @@ class ReminderScheduler:
                     advice = await generate_daily_advice(uid, db)
                     if advice:
                         generated += 1
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Daily advice failed for user %s: %s", uid, e)
 
             if generated > 0:
                 await db.commit()
@@ -256,6 +289,7 @@ class ReminderScheduler:
                 r.rating = 1500 + (old - 1500) * 0.75
                 r.rd = min(r.rd + 30, 350)  # Increase uncertainty
                 r.current_streak = 0
+                r.placement_done = False  # S2-06b: reset placement for new season
                 r.season_id = season.id
                 reset_count += 1
 
@@ -484,8 +518,8 @@ class ReminderScheduler:
                         "message": body,
                     },
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("WS notification to ROP failed (non-critical): %s", e)
 
     async def _auto_lost(
         self,
@@ -573,7 +607,7 @@ class ReminderScheduler:
                         push=True,
                     )
             except Exception:
-                logger.debug("Stale training nudge failed")
+                logger.warning("Stale training nudge failed", exc_info=True)
 
             # ── 2. SRS overdue: cards need review ──
             try:
@@ -601,11 +635,11 @@ class ReminderScheduler:
                         push=True,
                     )
             except Exception:
-                logger.debug("SRS overdue nudge failed")
+                logger.warning("SRS overdue nudge failed", exc_info=True)
 
             # ── 3. PvP rating decay: no match in 7 days ──
             try:
-                from app.models.pvp import PvPProfile
+                from app.models.pvp import PvPRating as PvPProfile
                 seven_days_ago = now - timedelta(days=7)
                 decay_result = await db.execute(
                     select(PvPProfile.user_id, PvPProfile.rating).where(
@@ -624,7 +658,7 @@ class ReminderScheduler:
                         push=True,
                     )
             except Exception:
-                logger.debug("PvP decay nudge failed")
+                logger.warning("PvP decay nudge failed", exc_info=True)
 
             # ── 4. Streak risk: trained yesterday but not today ──
             try:
@@ -656,8 +690,162 @@ class ReminderScheduler:
                             push=True,
                         )
             except Exception:
-                logger.debug("Streak risk nudge failed")
+                logger.warning("Streak risk nudge failed", exc_info=True)
 
+
+    async def _check_weekly_tournament(self) -> None:
+        """Auto-create weekly_sprint on Monday 00:00 UTC, auto-award on Sunday 23:55 UTC.
+
+        Uses `auto_created=True` flag so we only touch our own jobs — admin-created
+        manual tournaments are left alone.
+        """
+        from datetime import timezone as _tz
+        now = datetime.now(_tz.utc)
+
+        # Monday 00:xx (00:00-00:59 window)
+        if now.weekday() == 0 and now.hour == 0:
+            try:
+                async with async_session() as db:
+                    await self._auto_create_weekly(db, now)
+                    await db.commit()
+            except Exception:
+                logger.warning("Auto-create weekly tournament failed", exc_info=True)
+
+        # Sunday 23:xx (23:00-23:59 window) — close last week's auto tournaments
+        if now.weekday() == 6 and now.hour == 23:
+            try:
+                async with async_session() as db:
+                    await self._auto_award_weekly(db, now)
+                    await db.commit()
+            except Exception:
+                logger.warning("Auto-award weekly tournament failed", exc_info=True)
+
+    async def _auto_create_weekly(self, db, now: datetime) -> None:
+        """Create a new Tournament(type=weekly_sprint, score_source=mixed, auto_created=true)
+        for the current ISO week if none exists."""
+        from datetime import timedelta
+        from app.models.tournament import Tournament
+
+        monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        sunday_end = monday + timedelta(days=7) - timedelta(seconds=1)
+
+        # Skip if an auto-created weekly for this ISO week already exists
+        existing = await db.execute(
+            select(Tournament).where(
+                Tournament.auto_created == True,  # noqa: E712
+                Tournament.tournament_type == "weekly_sprint",
+                Tournament.week_start == monday,
+            )
+        )
+        if existing.scalar_one_or_none():
+            return
+
+        week_label = monday.strftime("%d.%m")
+        tournament = Tournament(
+            title=f"Охота недели · {week_label}",
+            description=(
+                "Единый еженедельный рейтинг. Очки идут от всех активностей: "
+                "тренировки, PvP, квизы знаний, мульти-сессии."
+            ),
+            scenario_id=None,
+            week_start=monday,
+            week_end=sunday_end,
+            is_active=True,
+            max_attempts=99,
+            bonus_xp_first=200,
+            bonus_xp_second=100,
+            bonus_xp_third=50,
+            tournament_type="weekly_sprint",
+            score_source="mixed",
+            auto_created=True,
+        )
+        db.add(tournament)
+        await db.flush()
+        logger.info("Auto-created weekly_sprint tournament %s for week %s", tournament.id, monday.date())
+
+    async def _auto_award_weekly(self, db, now: datetime) -> None:
+        """Close auto-created weekly_sprint tournaments whose week has ended, award AP."""
+        from app.models.tournament import Tournament
+        from sqlalchemy import update as _sql_update
+
+        expired_q = await db.execute(
+            select(Tournament).where(
+                Tournament.auto_created == True,  # noqa: E712
+                Tournament.is_active == True,  # noqa: E712
+                Tournament.week_end <= now,
+            )
+        )
+        expired = expired_q.scalars().all()
+
+        for t in expired:
+            try:
+                # Reuse existing prize awarding logic if available
+                try:
+                    from app.services.arena_points import award_tournament_prizes
+                    await award_tournament_prizes(db, t.id)
+                except Exception:
+                    logger.debug("award_tournament_prizes unavailable or failed for %s", t.id, exc_info=True)
+
+                await db.execute(
+                    _sql_update(Tournament)
+                    .where(Tournament.id == t.id)
+                    .values(is_active=False)
+                )
+                logger.info("Auto-awarded + closed weekly_sprint %s", t.id)
+            except Exception:
+                logger.warning("Failed to close weekly_sprint %s", t.id, exc_info=True)
+
+    async def _check_weekly_league(self) -> None:
+        """Duolingo-style weekly league cadence.
+
+        Phase B (2026-04-20). Service functions are already implemented in
+        ``app.services.weekly_league``; here we just trigger them on the
+        correct UTC cadence:
+
+          • Monday 08:00 UTC  — ``form_weekly_groups()`` gathers users who
+            earned XP last week, partitions them into ~15-user cohorts per
+            (team_id, tier) bucket, resets ``weekly_xp`` counters.
+          • Sunday 23:xx UTC  — ``finalize_week()`` promotes top-3, demotes
+            bottom-3, writes ``promotion_history`` entries, marks the group
+            ``finalized=True`` so next week's `form_weekly_groups` skips it.
+
+        We gate by hour+minute window; the outer loop runs every
+        ``CHECK_INTERVAL_MIN`` so as long as the process is alive at the
+        window we'll hit it exactly once. Idempotency is the service's
+        responsibility (``finalized`` flag + SELECT FOR UPDATE).
+        """
+
+        now = datetime.now(timezone.utc)
+
+        # Monday 08:00-08:59 UTC — form groups
+        if now.weekday() == 0 and now.hour == 8:
+            try:
+                from app.services.weekly_league import form_weekly_groups
+
+                async with async_session() as db:
+                    groups_count = await form_weekly_groups(db)
+                    await db.commit()
+                    logger.info(
+                        "WeeklyLeague: formed %d cohort group(s) at %s",
+                        groups_count, now.isoformat(),
+                    )
+            except Exception:
+                logger.warning("WeeklyLeague form_weekly_groups failed", exc_info=True)
+
+        # Sunday 23:xx UTC — finalize last week's groups
+        if now.weekday() == 6 and now.hour == 23:
+            try:
+                from app.services.weekly_league import finalize_week
+
+                async with async_session() as db:
+                    summary = await finalize_week(db)
+                    await db.commit()
+                    logger.info(
+                        "WeeklyLeague: finalized groups=%s at %s",
+                        summary, now.isoformat(),
+                    )
+            except Exception:
+                logger.warning("WeeklyLeague finalize_week failed", exc_info=True)
 
     async def _check_rag_feedback_aggregation(self) -> None:
         """Aggregate RAG feedback: recalculate chunk effectiveness, discover errors.

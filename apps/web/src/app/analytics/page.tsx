@@ -68,7 +68,7 @@ const SKILL_COLORS: Record<string, string> = {
 
 const MASTERY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   untrained: { label: "Не тренирован", color: "var(--text-muted)", bg: "var(--input-bg)" },
-  beginner: { label: "Новичок", color: "var(--info)", bg: "rgba(59,130,246,0.12)" },
+  beginner: { label: "Новичок", color: "var(--info)", bg: "var(--info-muted, rgba(59,130,246,0.12))" },
   intermediate: { label: "Средний", color: "var(--gf-xp)", bg: "var(--gf-xp-muted)" },
   advanced: { label: "Продвинутый", color: "var(--accent)", bg: "var(--accent-muted)" },
   mastered: { label: "Мастер", color: "var(--success)", bg: "var(--gf-reward-muted)" },
@@ -529,7 +529,7 @@ export default function AnalyticsPage() {
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-display text-sm font-bold"
                       style={{
-                        background: rec.priority <= 2 ? "rgba(229,72,77,0.12)" : "var(--accent-muted)",
+                        background: rec.priority <= 2 ? "var(--danger-muted)" : "var(--accent-muted)",
                         color: rec.priority <= 2 ? "var(--danger)" : "var(--accent)",
                       }}
                     >

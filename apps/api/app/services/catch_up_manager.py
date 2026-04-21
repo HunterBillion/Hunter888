@@ -9,13 +9,16 @@ Three-stage system:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.checkpoint import CheckpointDefinition, UserCheckpoint
+
+logger = logging.getLogger(__name__)
 
 
 # Reduction rules per condition parameter
@@ -36,7 +39,7 @@ class CatchUpManager:
 
     async def check_and_apply(self, user_id) -> list[dict]:
         """Check all incomplete checkpoints for catch-up eligibility."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         actions: list[dict] = []
 
         # Find incomplete user checkpoints with stale progress
@@ -69,6 +72,20 @@ class CatchUpManager:
                         "action": "softened",
                         "original": cp_def.condition,
                         "softened": softened,
+                    })
+                else:
+                    # S4-04: All params already at minimum — record explicitly
+                    # instead of silently skipping so callers can react.
+                    logger.warning(
+                        "catch_up: checkpoint %s already at minimum, cannot soften",
+                        cp_def.code,
+                    )
+                    actions.append({
+                        "code": cp_def.code,
+                        "stage": 2,
+                        "action": "already_at_minimum",
+                        "original": cp_def.condition,
+                        "softened": None,
                     })
 
             elif days_stuck >= 7:

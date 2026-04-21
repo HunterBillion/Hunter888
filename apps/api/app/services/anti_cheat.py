@@ -57,6 +57,7 @@ MIN_DUELS_FOR_STATS = 5             # Need at least 5 duels for analysis
 # Level 2: Behavioral
 COPY_PASTE_SIMILARITY_THRESHOLD = 0.85  # Jaccard similarity between responses
 MIN_UNIQUE_RESPONSE_RATIO = 0.6         # At least 60% unique responses
+SLIDING_WINDOW_SIZE = 5                 # S3-08: Compare against last N messages
 
 # Level 3: AI Detection
 PERPLEXITY_THRESHOLD = 35.0         # Low perplexity = likely AI-generated (recalibrated)
@@ -216,10 +217,13 @@ def check_behavioral(
 ) -> AntiCheatSignal:
     """Analyze message patterns for scripted/automated behavior.
 
+    S3-08: Sliding window of last 5 messages instead of single-predecessor
+    comparison. Detects A,B,A,B alternation patterns that evade pairwise checks.
+
     Checks:
-    - Repeated/copy-pasted responses (high Jaccard similarity)
-    - Response template patterns (fill-in-the-blank style)
-    - Unnatural response timing patterns
+    1. Sliding window similarity: each message vs. last 5 predecessors
+    2. Response template patterns (fill-in-the-blank style)
+    3. Unnatural response timing + length combo
     """
     user_msgs = [m for m in messages if m.get("sender_id") == str(user_id)]
 
@@ -235,21 +239,24 @@ def check_behavioral(
     anomaly_score = 0.0
     flags = []
 
-    # Check pairwise similarity
-    high_sim_pairs = 0
-    total_pairs = 0
-    for i in range(len(texts)):
-        for j in range(i + 1, len(texts)):
+    # S3-08: Sliding window similarity (last SLIDING_WINDOW_SIZE messages)
+    # For each message, compare against the previous N messages.
+    # This catches A,B,A,B patterns where A-vs-B is low but A-vs-A is high.
+    window_hits = 0
+    window_checks = 0
+    for i in range(1, len(texts)):
+        window_start = max(0, i - SLIDING_WINDOW_SIZE)
+        for j in range(window_start, i):
             sim = _jaccard_similarity(texts[i], texts[j])
-            total_pairs += 1
+            window_checks += 1
             if sim > COPY_PASTE_SIMILARITY_THRESHOLD:
-                high_sim_pairs += 1
+                window_hits += 1
 
-    if total_pairs > 0:
-        sim_ratio = high_sim_pairs / total_pairs
-        if sim_ratio > 0.3:
+    if window_checks > 0:
+        sim_ratio = window_hits / window_checks
+        if sim_ratio > 0.2:  # Lower threshold because window is more focused
             anomaly_score += 0.5
-            flags.append(f"high_similarity_ratio={sim_ratio:.2f}")
+            flags.append(f"sliding_window_sim={sim_ratio:.2f}")
 
     # Unique response ratio
     unique_count = len(set(texts))
@@ -261,10 +268,40 @@ def check_behavioral(
     # Response length variance (bots tend to have uniform length)
     lengths = [len(t.split()) for t in texts if t]
     if len(lengths) >= 3:
-        length_cv = (statistics.stdev(lengths) / statistics.mean(lengths)) if statistics.mean(lengths) > 0 else 0
+        mean_len = statistics.mean(lengths)
+        length_cv = (statistics.stdev(lengths) / mean_len) if mean_len > 0 else 0
         if length_cv < 0.15:  # Very uniform = suspicious
             anomaly_score += 0.2
             flags.append(f"length_cv={length_cv:.3f}")
+
+    # S3-08: Latency + response length combo detection
+    # If user responds suspiciously fast with long messages → likely copy-paste
+    latencies = []
+    for msg in user_msgs:
+        latency = msg.get("latency_ms") or msg.get("response_time_ms")
+        if latency is not None:
+            latencies.append(float(latency))
+    if latencies and lengths:
+        # Fast responses (< 3s) with long text (> 50 words) = suspicious
+        fast_long = sum(
+            1 for lat, wc in zip(latencies, lengths)
+            if lat < MEDIAN_RESPONSE_TIME_MIN * 1000 and wc > RESPONSE_LENGTH_FOR_LATENCY
+        )
+        if fast_long >= 2:
+            anomaly_score += 0.3
+            flags.append(f"fast_long_responses={fast_long}")
+
+        # S4-10: Words-per-second analysis — catches sleep(3.1) bypass
+        # Even if response time > 3s, check if wps is superhuman
+        high_wps_count = 0
+        for lat, wc in zip(latencies, lengths):
+            if lat > 0 and wc >= 10:
+                wps = wc / (lat / 1000.0)
+                if wps > 15.0:  # >15 words/sec = impossible for human
+                    high_wps_count += 1
+        if high_wps_count >= 2:
+            anomaly_score += 0.3
+            flags.append(f"high_wps_responses={high_wps_count}")
 
     anomaly_score = min(1.0, anomaly_score)
     flagged = anomaly_score >= 0.5
@@ -275,7 +312,8 @@ def check_behavioral(
         flagged=flagged,
         details={
             "message_count": len(user_msgs),
-            "high_sim_pairs": high_sim_pairs,
+            "window_hits": window_hits,
+            "window_checks": window_checks,
             "unique_ratio": round(unique_ratio, 3),
             "flags": flags,
         },

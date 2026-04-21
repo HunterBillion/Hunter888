@@ -11,6 +11,7 @@ Cosine similarity thresholds (tuned for Russian):
 - Keyword fallback: >= 0.25
 """
 
+import hashlib
 import logging
 import math
 import uuid
@@ -65,9 +66,19 @@ ANTI_PATTERNS = {
     ],
 }
 
-# ─── Embedding cache (in-memory, per process) ────────────────────────────────
+# ─── Embedding cache (in-memory, per process, bounded) ──────────────────────
 # Checkpoint descriptions are static, so we cache their embeddings.
+_EMBEDDING_CACHE_MAX = 200
 _embedding_cache: dict[str, list[float]] = {}
+
+
+def _evict_embedding_cache() -> None:
+    """Evict oldest 20% when cache exceeds max size."""
+    if len(_embedding_cache) < _EMBEDDING_CACHE_MAX:
+        return
+    keys = list(_embedding_cache.keys())
+    for k in keys[: len(keys) // 5]:
+        del _embedding_cache[k]
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -93,13 +104,14 @@ async def _get_gemini_embeddings(texts: list[str]) -> list[list[float]] | None:
 
 async def _get_embedding(text: str) -> list[float] | None:
     """Get embedding for a single text, with caching."""
-    cache_key = text[:200]  # Truncate for cache key
+    cache_key = hashlib.sha256(text.encode()).hexdigest()  # collision-safe
     if cache_key in _embedding_cache:
         return _embedding_cache[cache_key]
 
     from app.services.llm import get_embedding as llm_get_embedding
     vec = await llm_get_embedding(text)
     if vec:
+        _evict_embedding_cache()
         _embedding_cache[cache_key] = vec
     return vec
 
@@ -113,7 +125,7 @@ async def _llm_similarity(text1: str, text2: str) -> float | None:
     if not settings.local_llm_enabled or not settings.local_llm_url:
         return None
 
-    cache_key = f"sim:{text1[:80]}|{text2[:80]}"
+    cache_key = f"sim:{hashlib.sha256(text1.encode()).hexdigest()[:16]}|{hashlib.sha256(text2.encode()).hexdigest()[:16]}"
     if cache_key in _embedding_cache:
         cached = _embedding_cache[cache_key]
         if isinstance(cached, (int, float)):
@@ -562,7 +574,11 @@ async def get_session_checkpoint_progress(
         for m in message_history
         if m.get("role") == "user" and m.get("content")
     ]
-    combined_text = " ".join(user_texts)
+    combined_text = " ".join(user_texts).strip()
+
+    # Early return: no user messages → 0 score (prevents LLM matching empty text)
+    if not combined_text:
+        return {"total_score": 0, "checkpoints": [], "reached_count": 0, "total_count": 0}
 
     async with async_session() as db:
         result = await db.execute(

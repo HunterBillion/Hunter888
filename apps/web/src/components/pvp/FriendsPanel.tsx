@@ -171,7 +171,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
                   </button>
                   <button
                     className="flex h-9 w-9 items-center justify-center rounded-xl"
-                    style={{ background: "rgba(229,72,77,0.12)", color: "var(--danger)" }}
+                    style={{ background: "var(--danger-muted)", color: "var(--danger)" }}
                     disabled={busyId === item.friendship_id}
                     aria-label="Отклонить запрос в друзья"
                     onClick={() => mutate(() => api.delete(`/users/friends/${item.friendship_id}`), item.friendship_id)}
@@ -218,7 +218,7 @@ export function FriendsPanel({ onChallengeSent }: FriendsPanelProps) {
                 <div className="flex items-center gap-2">
                   <button
                     className="flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-mono uppercase tracking-wider"
-                    style={{ background: "rgba(124,106,232,0.12)", color: "var(--accent)" }}
+                    style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
                     disabled={busyId === `challenge-${item.user_id}`}
                     aria-label={`Вызвать на дуэль: ${item.full_name}`}
                     onClick={() => mutate(async () => {

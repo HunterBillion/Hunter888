@@ -72,7 +72,12 @@ export function createReconnectingWebSocket(
 
     ws.addEventListener("close", (ev) => {
       callbacks?.onClose?.(ev);
-      // Don't reconnect on intentional close (1000) or auth failure (4001)
+      // Don't reconnect on intentional close (1000), auth failure (4001),
+      // or token revoked (4003) — redirect to login on revoked token
+      if (ev.code === 4003) {
+        window.location.href = "/login";
+        return;
+      }
       if (disposed || ev.code === 1000 || ev.code === 4001) return;
       scheduleReconnect();
     });

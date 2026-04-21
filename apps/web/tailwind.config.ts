@@ -17,9 +17,9 @@ const config: Config = {
         /* ── Brand ── */
         brand: {
           deep: "#311573",
-          DEFAULT: "#7C6AE8",
-          light: "#9584F0",
-          muted: "rgba(124, 106, 232, 0.14)",
+          DEFAULT: "#6B4DC7",
+          light: "#7E5FD9",
+          muted: "rgba(107, 77, 199, 0.14)",
         },
         /* ── Violet scale (kept for legacy compat) ── */
         violet: {
@@ -53,7 +53,7 @@ const config: Config = {
         danger: "#ef4444",
         /* ── Gamified Cyber palette shortcuts ── */
         "vh-black": "#100F1A",
-        "vh-purple": "#7C6AE8",
+        "vh-purple": "#6B4DC7",
         "vh-darkPurple": "#311573",
         "vh-magenta": "#E028CC",
         "vh-red": "#E5484D",
@@ -65,10 +65,14 @@ const config: Config = {
         "gf-levelup": "var(--gf-levelup)",
         "gf-reward": "var(--gf-reward)",
       },
+      fontSize: {
+        xs: ["0.875rem", { lineHeight: "1.25rem" }], // 14px min (was 12px)
+      },
       fontFamily: {
         sans: ["var(--font-geist-sans)", "system-ui", "sans-serif"],
         display: ["var(--font-geist-sans)", "system-ui", "sans-serif"],
         mono: ["var(--font-geist-mono)", "monospace"],
+        pixel: ["var(--font-vt323)", "monospace"],
       },
       /* ── Spacing scale (8px grid) ── */
       spacing: {

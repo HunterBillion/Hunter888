@@ -2,18 +2,19 @@
 
 import { motion } from "framer-motion";
 import { Shield } from "@phosphor-icons/react";
-import { type PvPRankTier, PVP_RANK_COLORS, PVP_RANK_LABELS } from "@/types";
+import { type PvPRankTier, PVP_RANK_COLORS, PVP_RANK_LABELS, normalizeRankTier } from "@/types";
 import { getDivision } from "./RatingCard";
 import { colorAlpha } from "@/lib/utils";
 
 interface Props {
-  tier: PvPRankTier;
+  tier: PvPRankTier | string;
   rating?: number;
   size?: "sm" | "md" | "lg";
   showDivision?: boolean;
 }
 
-export function RankBadge({ tier, rating, size = "md", showDivision = true }: Props) {
+export function RankBadge({ tier: rawTier, rating, size = "md", showDivision = true }: Props) {
+  const tier = normalizeRankTier(rawTier);
   const color = PVP_RANK_COLORS[tier] ?? "var(--text-muted)";
   const label = PVP_RANK_LABELS[tier] ?? tier;
   const division = showDivision && rating !== undefined ? getDivision(rating, tier) : "";

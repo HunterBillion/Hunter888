@@ -73,7 +73,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                     ? "rgba(61,220,132,0.06)"
                     : isPartial
                       ? "rgba(245,158,11,0.06)"
-                      : "rgba(229,72,77,0.06)",
+                      : "var(--danger-muted)",
                   borderLeft: `3px solid ${
                     trap.caught
                       ? "var(--success)"
@@ -94,7 +94,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                       {trap.name}
                     </span>
                     {trap.category && (
-                      <span className="status-badge status-badge--neutral shrink-0" style={{ fontSize: "12px" }}>
+                      <span className="status-badge status-badge--neutral shrink-0" style={{ fontSize: "14px" }}>
                         {CATEGORY_LABELS[trap.category] || trap.category}
                       </span>
                     )}
@@ -197,7 +197,7 @@ export default function TrapResults({ traps }: TrapResultsProps) {
                             <span
                               key={`w${ki}`}
                               className="badge-neon text-xs"
-                              style={{ background: "rgba(229,72,77,0.1)", color: "var(--danger)", borderColor: "rgba(229,72,77,0.25)" }}
+                              style={{ background: "var(--danger-muted)", color: "var(--danger)", borderColor: "var(--danger-muted)" }}
                             >
                               {kw}
                             </span>

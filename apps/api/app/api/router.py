@@ -10,17 +10,23 @@ from app.api.scenarios import router as scenarios_router
 from app.api.tournament import router as tournament_router
 from app.api.training import router as training_router
 from app.api.users import router as users_router
+from app.api.home import router as home_router
+from app.api.morning_drill import router as morning_drill_router
 from app.api.routes.emotion_traps import router as emotion_traps_router
 from app.api.routes.progress import router as progress_router
 
 api_router = APIRouter()
 
 api_router.include_router(health_router, tags=["monitoring"])
+api_router.include_router(home_router, tags=["home"])
 api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
 api_router.include_router(users_router, prefix="/users", tags=["users"])
 api_router.include_router(consent_router, prefix="/consent", tags=["consent"])
 api_router.include_router(scenarios_router, prefix="/scenarios", tags=["scenarios"])
 api_router.include_router(training_router, prefix="/training", tags=["training"])
+# 2026-04-17: morning warm-up (3-5 sequential mini-questions) — parallel to
+# legacy /daily-drill chat flow; separate endpoint prefix, independent XP.
+api_router.include_router(morning_drill_router, tags=["morning-drill"])
 api_router.include_router(gamification_router, prefix="/gamification", tags=["gamification"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(tournament_router, prefix="/tournament", tags=["tournament"])
@@ -90,3 +96,18 @@ api_router.include_router(prompts_router, prefix="/prompts", tags=["prompts"])
 from app.api.manager_wiki import router as wiki_router
 
 api_router.include_router(wiki_router, tags=["wiki"])
+
+# Reviews — public landing page testimonials
+from app.api.reviews import router as reviews_router
+
+api_router.include_router(reviews_router, tags=["reviews"])
+
+# S3-03: Subscription & Entitlement
+from app.api.subscription import router as subscription_router
+
+api_router.include_router(subscription_router, prefix="/subscription", tags=["subscription"])
+
+# Story — 'Путь Охотника' 12-chapter narrative arc
+from app.api.story import router as story_router
+
+api_router.include_router(story_router, prefix="/story", tags=["story"])

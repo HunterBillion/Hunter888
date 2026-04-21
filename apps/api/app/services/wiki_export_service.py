@@ -6,6 +6,7 @@ Used by: GET /api/wiki/{manager_id}/export?format=pdf|csv
 import csv
 import io
 import logging
+import pathlib
 import uuid
 from datetime import datetime, timezone
 
@@ -21,24 +22,9 @@ from app.models.manager_wiki import (
 
 logger = logging.getLogger(__name__)
 
-# Simple Cyrillic → Latin transliteration for PDF (fpdf2 Helvetica is Latin-only)
-_CYR_TO_LAT = {
-    "А": "A", "Б": "B", "В": "V", "Г": "G", "Д": "D", "Е": "E", "Ё": "Yo",
-    "Ж": "Zh", "З": "Z", "И": "I", "Й": "Y", "К": "K", "Л": "L", "М": "M",
-    "Н": "N", "О": "O", "П": "P", "Р": "R", "С": "S", "Т": "T", "У": "U",
-    "Ф": "F", "Х": "Kh", "Ц": "Ts", "Ч": "Ch", "Ш": "Sh", "Щ": "Sch",
-    "Ъ": "", "Ы": "Y", "Ь": "", "Э": "E", "Ю": "Yu", "Я": "Ya",
-    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo",
-    "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
-    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
-    "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sch",
-    "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
-}
-
-
-def _to_latin(text: str) -> str:
-    """Convert Cyrillic text to Latin transliteration for PDF compatibility."""
-    return "".join(_CYR_TO_LAT.get(c, c) for c in text)
+# DejaVu Sans TTF supports Cyrillic, Latin, Greek — no transliteration needed
+_FONT_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / "data"
+_DEJAVU_SANS = str(_FONT_DIR / "DejaVuSans.ttf")
 
 
 async def _load_wiki_data(wiki_id: uuid.UUID, db: AsyncSession) -> dict:
@@ -97,82 +83,87 @@ async def export_wiki_pdf(
 
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
+
+    # Register DejaVu Sans — supports Cyrillic, Latin, Greek natively
+    # No more transliteration — Russian text renders correctly
+    pdf.add_font("DejaVu", "", _DEJAVU_SANS, uni=True)
+    pdf.add_font("DejaVu", "B", _DEJAVU_SANS, uni=True)
+
     pdf.add_page()
 
-    # Title — all text must be transliterated for Helvetica (Latin-only)
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, _to_latin(f"Wiki Report: {manager_name}"), new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 10)
+    # Title
+    pdf.set_font("DejaVu", "B", 16)
+    pdf.cell(0, 10, f"Wiki Отчёт: {manager_name}", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("DejaVu", "", 10)
     pdf.cell(
         0, 6,
-        f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        f"Создан: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         new_x="LMARGIN", new_y="NEXT",
     )
-    pdf.cell(0, 6, f"Sessions ingested: {wiki.sessions_ingested}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 6, f"Patterns discovered: {wiki.patterns_discovered}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 6, f"Pages: {wiki.pages_count}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"Сессий проанализировано: {wiki.sessions_ingested}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"Паттернов обнаружено: {wiki.patterns_discovered}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"Страниц Wiki: {wiki.pages_count}", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(6)
 
     # --- Pages ---
     if pages:
-        pdf.set_font("Helvetica", "B", 14)
-        pdf.cell(0, 10, "Wiki Pages", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("DejaVu", "B", 14)
+        pdf.cell(0, 10, "Страницы Wiki", new_x="LMARGIN", new_y="NEXT")
 
         for page in pages:
-            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_font("DejaVu", "B", 11)
             pdf.cell(
                 0, 8,
                 f"{page.page_path} (v{page.version})",
                 new_x="LMARGIN", new_y="NEXT",
             )
-            pdf.set_font("Helvetica", "", 9)
+            pdf.set_font("DejaVu", "", 9)
             content = page.content or ""
             if len(content) > 2000:
-                content = content[:2000] + "\n[...truncated]"
+                content = content[:2000] + "\n[...сокращено]"
             content = content.replace("##", "").replace("**", "").replace("*", "")
-            pdf.multi_cell(0, 5, _to_latin(content))
+            pdf.multi_cell(0, 5, content)
             pdf.ln(4)
 
     # --- Patterns ---
     if patterns:
         pdf.add_page()
-        pdf.set_font("Helvetica", "B", 14)
-        pdf.cell(0, 10, "Behavioral Patterns", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("DejaVu", "B", 14)
+        pdf.cell(0, 10, "Поведенческие паттерны", new_x="LMARGIN", new_y="NEXT")
 
-        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_font("DejaVu", "B", 9)
         col_w = [40, 25, 80, 20, 25]
-        headers = ["Code", "Category", "Description", "Sessions", "Confirmed"]
+        headers = ["Код", "Категория", "Описание", "Сессий", "Подтв."]
         for i, h in enumerate(headers):
             pdf.cell(col_w[i], 7, h, border=1)
         pdf.ln()
 
-        pdf.set_font("Helvetica", "", 8)
+        pdf.set_font("DejaVu", "", 8)
         for p in patterns:
-            pdf.cell(col_w[0], 6, _to_latin(p.pattern_code[:20]), border=1)
+            pdf.cell(col_w[0], 6, (p.pattern_code or "")[:20], border=1)
             pdf.cell(col_w[1], 6, str(p.category) if p.category else "", border=1)
-            desc = _to_latin((p.description or "")[:50])
-            pdf.cell(col_w[2], 6, desc, border=1)
+            pdf.cell(col_w[2], 6, (p.description or "")[:50], border=1)
             pdf.cell(col_w[3], 6, str(p.sessions_in_pattern), border=1, align="C")
-            pdf.cell(col_w[4], 6, "Yes" if p.confirmed_at else "No", border=1, align="C")
+            pdf.cell(col_w[4], 6, "Да" if p.confirmed_at else "Нет", border=1, align="C")
             pdf.ln()
 
     # --- Techniques ---
     if techniques:
         pdf.ln(6)
-        pdf.set_font("Helvetica", "B", 14)
-        pdf.cell(0, 10, "Effective Techniques", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("DejaVu", "B", 14)
+        pdf.cell(0, 10, "Эффективные техники", new_x="LMARGIN", new_y="NEXT")
 
-        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_font("DejaVu", "B", 9)
         col_w = [40, 60, 25, 25, 25]
-        headers = ["Code", "Name", "Success%", "Attempts", "Successes"]
+        headers = ["Код", "Название", "Успех%", "Попыток", "Успешно"]
         for i, h in enumerate(headers):
             pdf.cell(col_w[i], 7, h, border=1)
         pdf.ln()
 
-        pdf.set_font("Helvetica", "", 8)
+        pdf.set_font("DejaVu", "", 8)
         for t in techniques:
-            pdf.cell(col_w[0], 6, _to_latin(t.technique_code[:20]), border=1)
-            pdf.cell(col_w[1], 6, _to_latin((t.technique_name or "")[:30]), border=1)
+            pdf.cell(col_w[0], 6, (t.technique_code or "")[:20], border=1)
+            pdf.cell(col_w[1], 6, (t.technique_name or "")[:30], border=1)
             pdf.cell(col_w[2], 6, f"{round(t.success_rate * 100)}%", border=1, align="C")
             pdf.cell(col_w[3], 6, str(t.attempt_count), border=1, align="C")
             pdf.cell(col_w[4], 6, str(t.success_count), border=1, align="C")

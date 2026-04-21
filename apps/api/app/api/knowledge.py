@@ -16,9 +16,8 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,7 +60,6 @@ from app.schemas.knowledge import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 # Display names for legal categories
 CATEGORY_DISPLAY_NAMES: dict[str, str] = {
@@ -257,7 +255,15 @@ async def get_session(
     db: AsyncSession = Depends(get_db),
 ):
     """Get detailed results for a quiz session (answers + participants)."""
-    stmt = select(KnowledgeQuizSession).where(KnowledgeQuizSession.id == session_id)
+    from sqlalchemy.orm import selectinload
+    stmt = (
+        select(KnowledgeQuizSession)
+        .where(KnowledgeQuizSession.id == session_id)
+        .options(
+            selectinload(KnowledgeQuizSession.answers),
+            selectinload(KnowledgeQuizSession.participants),
+        )
+    )
     result = await db.execute(stmt)
     session = result.scalar_one_or_none()
 
@@ -936,6 +942,50 @@ async def backfill_srs_from_history(
 
 
 # ---------------------------------------------------------------------------
+# Wiki → Quiz (Karpathy pattern: "query your wiki")
+# ---------------------------------------------------------------------------
+
+@router.post("/wiki-quiz/{page_id}")
+async def generate_wiki_quiz(
+    page_id: uuid.UUID,
+    num_questions: int = Query(5, ge=1, le=10),
+    difficulty: int = Query(3, ge=1, le=5),
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate quiz questions from a wiki page content.
+
+    Uses LLM to create comprehension questions based on the wiki page text.
+    Implements the Karpathy pattern of testing understanding of your own knowledge base.
+    """
+    from app.services.wiki_quiz import generate_quiz_from_wiki_page
+
+    questions = await generate_quiz_from_wiki_page(
+        page_id=page_id,
+        db=db,
+        num_questions=num_questions,
+        difficulty=difficulty,
+    )
+    if not questions:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Wiki page not found or could not generate questions",
+        )
+    return {
+        "page_id": str(page_id),
+        "questions": [
+            {
+                "question": q.question,
+                "expected_answer": q.expected_answer,
+                "difficulty": q.difficulty,
+                "source_page": q.source_page,
+            }
+            for q in questions
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
 # DOC_11: Daily Challenge
 # ---------------------------------------------------------------------------
 
@@ -950,12 +1000,15 @@ async def get_daily_challenge(
     Level 5+ required.
     """
     from app.models.knowledge import DailyChallenge, DailyChallengeEntry
-    from datetime import date
-
-    if user.level < 5:
+    from app.models.progress import ManagerProgress
+    mp = (await db.execute(
+        select(ManagerProgress).where(ManagerProgress.user_id == user.id)
+    )).scalar_one_or_none()
+    user_level = mp.current_level if mp else 1
+    if user_level < 5:
         raise HTTPException(status_code=403, detail="Доступно с уровня 5")
 
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
 
     # Get or create today's challenge
     challenge = (await db.execute(
@@ -963,41 +1016,58 @@ async def get_daily_challenge(
     )).scalar_one_or_none()
 
     if not challenge:
-        # Generate 10 questions for today's challenge
-        from app.services.knowledge_quiz import generate_question
-        from app.services.rag_legal import retrieve_legal_context
+        # Try pre-defined epoch-based challenges first (DOC_03 §28)
+        from app.services.daily_challenges import get_daily_challenges as get_predefined_challenges
 
-        questions = []
-        categories = [
-            "procedures", "requirements", "consequences", "rights",
-            "financial_manager", "creditors", "property", "restructuring",
-            "court_process", "appeals",
-        ]
-        for i in range(10):
-            try:
-                cat = categories[i % len(categories)]
-                ctx = await retrieve_legal_context(f"вопрос по {cat} банкротство", db, top_k=1)
-                q = await generate_question(
-                    db=db,
-                    category=cat,
-                    difficulty=3,
-                    mode=QuizMode.daily_challenge,
-                )
+        predefined = get_predefined_challenges(user_level)
+        if predefined:
+            questions = []
+            for i, ch in enumerate(predefined):
                 questions.append({
                     "question_number": i + 1,
-                    "question_text": q.question_text,
-                    "category": q.category,
-                    "difficulty": q.difficulty,
-                    "expected_article": q.expected_article,
-                })
-            except Exception:
-                questions.append({
-                    "question_number": i + 1,
-                    "question_text": f"Вопрос {i + 1} по 127-ФЗ (резервный)",
-                    "category": categories[i % len(categories)],
+                    "question_text": ch.description,
+                    "category": ch.code,
                     "difficulty": 3,
                     "expected_article": "",
+                    "condition": ch.condition,
+                    "xp_reward": ch.xp_reward,
                 })
+        else:
+            # Fallback: generate via LLM
+            from app.services.knowledge_quiz import generate_question
+            from app.services.rag_legal import retrieve_legal_context
+
+            questions = []
+            categories = [
+                "procedures", "requirements", "consequences", "rights",
+                "financial_manager", "creditors", "property", "restructuring",
+                "court_process", "appeals",
+            ]
+            for i in range(10):
+                try:
+                    cat = categories[i % len(categories)]
+                    ctx = await retrieve_legal_context(f"вопрос по {cat} банкротство", db, top_k=1)
+                    q = await generate_question(
+                        db=db,
+                        category=cat,
+                        difficulty=3,
+                        mode=QuizMode.daily_challenge,
+                    )
+                    questions.append({
+                        "question_number": i + 1,
+                        "question_text": q.question_text,
+                        "category": q.category,
+                        "difficulty": q.difficulty,
+                        "expected_article": q.expected_article,
+                    })
+                except Exception:
+                    questions.append({
+                        "question_number": i + 1,
+                        "question_text": f"Вопрос {i + 1} по 127-ФЗ (резервный)",
+                        "category": categories[i % len(categories)],
+                        "difficulty": 3,
+                        "expected_article": "",
+                    })
 
         challenge = DailyChallenge(
             challenge_date=today,
@@ -1036,9 +1106,8 @@ async def get_daily_challenge_leaderboard(
 ):
     """Get today's daily challenge leaderboard."""
     from app.models.knowledge import DailyChallenge, DailyChallengeEntry
-    from datetime import date
 
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
 
     challenge = (await db.execute(
         select(DailyChallenge).where(DailyChallenge.challenge_date == today)

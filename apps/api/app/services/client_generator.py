@@ -1589,11 +1589,27 @@ def get_crm_card(profile) -> dict:
     property_list = getattr(profile, "property_list", []) or []
     call_history = getattr(profile, "call_history", []) or []
 
-    # Resolve profession name if relationship is loaded
-    profession = None
+    # Resolve profession name as a plain string (frontend expects string, not object)
+    profession_str = ""
     prof_obj = getattr(profile, "profession", None)
     if prof_obj and hasattr(prof_obj, "display_name"):
-        profession = {"name": prof_obj.display_name, "category": getattr(prof_obj, "category", "")}
+        profession_str = prof_obj.display_name or ""
+    # Fallback: try `profession_name` scalar attribute if denormalized
+    if not profession_str:
+        profession_str = getattr(profile, "profession_name", "") or ""
+
+    # Lead source human-readable label
+    _LEAD_SOURCE_LABELS = {
+        "cold_base": "Холодная база",
+        "inbound": "Входящая заявка",
+        "website_form": "Форма на сайте",
+        "referral": "По рекомендации",
+        "social_media": "Соцсети",
+        "partner": "Партнёр",
+        "repeat": "Повторное обращение",
+    }
+    lead_source_code = getattr(profile, "lead_source", "cold_base") or "cold_base"
+    lead_source_label = _LEAD_SOURCE_LABELS.get(lead_source_code, lead_source_code)
 
     return {
         "full_name": getattr(profile, "full_name", "Клиент"),
@@ -1605,12 +1621,13 @@ def get_crm_card(profile) -> dict:
         "creditors_count": len(creditors),
         "income": getattr(profile, "income", None),
         "income_type": getattr(profile, "income_type", ""),
-        "lead_source": getattr(profile, "lead_source", "cold_base"),
+        "lead_source": lead_source_code,
+        "lead_source_label": lead_source_label,
         "trust_level": getattr(profile, "trust_level", 5),
         "property_list": property_list,
         "call_history": call_history,
         "crm_notes": getattr(profile, "crm_notes", None),
-        "profession": profession,
+        "profession": profession_str,
         "archetype_code": getattr(profile, "archetype_code", ""),
     }
 

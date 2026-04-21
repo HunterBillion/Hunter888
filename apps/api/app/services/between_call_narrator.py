@@ -53,6 +53,11 @@ class NarratorContext:
     manager_weak_points: list[str] = field(default_factory=list)
     manager_strong_points: list[str] = field(default_factory=list)
 
+    # Story chapter context (Путь Охотника)
+    chapter_id: int = 1
+    chapter_name: str = ""
+    epoch_name: str = ""
+
 
 @dataclass
 class NarratorResult:
@@ -177,8 +182,11 @@ async def generate_coaching_tips_llm(ctx: NarratorContext) -> list[str] | None:
         return None
 
     if not ctx.manager_weak_points and ctx.relationship_score >= 70:
-        # No weak points and doing well — skip coaching
-        return []
+        # S3-10: No weak points and doing well — return None (not []).
+        # Empty list [] is falsy in Python, so the fallback at the call site
+        # would incorrectly trigger template generation. None signals "skip coaching"
+        # explicitly, while [] meant "LLM returned nothing" → should fall back.
+        return None
 
     weak_str = ", ".join(ctx.manager_weak_points[:3]) if ctx.manager_weak_points else "не определены"
     trait = _ARCHETYPE_TRAITS.get(ctx.archetype_code, "нейтральный")
@@ -239,13 +247,17 @@ async def generate_narrative_summary_llm(ctx: NarratorContext) -> str | None:
     if not all_events:
         return None
 
+    chapter_line = ""
+    if ctx.chapter_name and ctx.epoch_name:
+        chapter_line = f"\nМенеджер на Главе {ctx.chapter_id}: '{ctx.chapter_name}' (Эпоха: {ctx.epoch_name}). Учитывай это в тоне повествования.\n"
+
     system_prompt = f"""Ты — нарратор игры-тренажёра по банкротству.
 Между звонками с клиентом прошло время. Произошли события:
 {chr(10).join(f'- {e}' for e in all_events)}
 
 Клиент: {ctx.client_name}, {_ARCHETYPE_TRAITS.get(ctx.archetype_code, 'нейтральный')}.
 Доверие: {ctx.relationship_score:.0f}/100.
-
+{chapter_line}
 Напиши КРАТКОЕ (2-3 предложения) повествование от третьего лица о том,
 что происходило с клиентом между звонками.
 Стиль: нарративный, как в игре. НЕ используй списки. Создай атмосферу."""
@@ -422,11 +434,21 @@ async def generate_between_call_content(ctx: NarratorContext) -> NarratorResult:
         result.source = "llm"
     # (template fallback handled by game_director._generate_client_message)
 
-    # Coaching tips
-    if isinstance(llm_tips, list) and llm_tips:
+    # S3-10: Coaching tips — handle None (skip) vs Exception vs list vs empty
+    # FIX-4 (v13): asyncio.gather(return_exceptions=True) returns Exception
+    # objects as values — handle them explicitly before the type checks.
+    if isinstance(llm_tips, BaseException):
+        logger.debug("LLM coaching tips raised: %s", llm_tips)
+        llm_tips = None  # Treat as LLM failure → template fallback
+
+    if llm_tips is None:
+        # LLM decided to skip coaching (high score, no weak points) — no tips
+        result.coaching_tips = []
+    elif isinstance(llm_tips, list) and len(llm_tips) > 0:
         result.coaching_tips = llm_tips
         result.source = "llm"
     else:
+        # LLM returned empty — fall back to templates
         result.coaching_tips = generate_coaching_tips_template(ctx)
 
     # Narrative summary

@@ -85,7 +85,7 @@ export default function WhatIfPanel({ sessionId, messages }: WhatIfPanelProps) {
             onClick={() => setSelectedMsgId(msg.id)}
             className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
               selectedMsgId === msg.id
-                ? "bg-[var(--accent)]/15 ring-1 ring-[var(--accent)]/30 text-[var(--text-primary)]"
+                ? "bg-[var(--accent-muted)] ring-1 ring-[var(--accent-glow)] text-[var(--text-primary)]"
                 : "bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             }`}
           >
@@ -148,7 +148,7 @@ export default function WhatIfPanel({ sessionId, messages }: WhatIfPanelProps) {
                   </div>
                 </div>
                 {/* Alternative */}
-                <div className="rounded-lg bg-[var(--accent)]/5 border border-[var(--accent)]/10 p-3">
+                <div className="rounded-lg bg-[var(--accent-muted)] border border-[var(--accent-muted)] p-3">
                   <p className="mb-1 text-xs font-medium text-[var(--accent)]">Альтернатива</p>
                   <p className="mb-2 text-xs text-[var(--text-secondary)]">{r.alternative.manager_said.slice(0, 80)}...</p>
                   <div className="flex items-center gap-1">

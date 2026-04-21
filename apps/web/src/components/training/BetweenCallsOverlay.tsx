@@ -30,7 +30,7 @@ export function BetweenCallsOverlay({ callNumber, totalCalls, events, onContinue
           style={{ borderBottom: "1px solid var(--border-color)", background: "rgba(0,0,0,0.3)" }}
         >
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "rgba(124,106,232,0.16)" }}>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "var(--accent-muted)" }}>
               <CalendarClock size={18} style={{ color: "var(--accent)" }} />
             </div>
             <div>
@@ -63,7 +63,7 @@ export function BetweenCallsOverlay({ callNumber, totalCalls, events, onContinue
                   transition={{ delay: index * 0.06 }}
                   className="rounded-xl p-4"
                   style={{
-                    background: isHigh ? "rgba(229,72,77,0.08)" : "rgba(255,255,255,0.03)",
+                    background: isHigh ? "var(--danger-muted)" : "rgba(255,255,255,0.03)",
                     border: `1px solid ${isHigh ? "rgba(229,72,77,0.2)" : "var(--border-color)"}`,
                   }}
                 >

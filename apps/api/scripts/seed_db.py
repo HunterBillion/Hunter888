@@ -1,6 +1,9 @@
 """Seed database with initial data for development/pilot."""
 
 import asyncio
+import os
+import secrets
+import string
 import uuid
 
 from sqlalchemy import text
@@ -172,59 +175,74 @@ async def _seed_teams(db: AsyncSession) -> dict[str, Team]:
 
 # ── Users (8) ──────────────────────────────────────────────────────
 
+
+def _seed_password(env_key: str, dev_default: str) -> str:
+    """Return env var if set, dev default in development, or random in production."""
+    env_val = os.environ.get(env_key)
+    if env_val:
+        return env_val
+    app_env = os.environ.get("APP_ENV", "development")
+    if app_env in ("production", "staging"):
+        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+        pwd = "".join(secrets.choice(alphabet) for _ in range(16))
+        print(f"  !! Generated password for {env_key}: {pwd}")
+        return pwd
+    return dev_default
+
+
 async def _seed_users(db: AsyncSession, teams: dict[str, Team]):
     users = [
         User(
             email="admin@trainer.local",
-            hashed_password=hash_password("Adm1n!2024"),
+            hashed_password=hash_password(_seed_password("SEED_ADMIN_PASSWORD", "Adm1n!2024")),
             full_name="Администратор",
             role=UserRole.admin,
             team_id=teams["sales"].id,
         ),
         User(
             email="rop1@trainer.local",
-            hashed_password=hash_password("Rop1!pass"),
+            hashed_password=hash_password(_seed_password("SEED_ROP1_PASSWORD", "Rop1!pass")),
             full_name="Елена Кузнецова",
             role=UserRole.rop,
             team_id=teams["sales"].id,
         ),
         User(
             email="rop2@trainer.local",
-            hashed_password=hash_password("Rop2!pass"),
+            hashed_password=hash_password(_seed_password("SEED_ROP2_PASSWORD", "Rop2!pass")),
             full_name="Сергей Волков",
             role=UserRole.rop,
             team_id=teams["b2b"].id,
         ),
         User(
             email="method@trainer.local",
-            hashed_password=hash_password("Method!1"),
+            hashed_password=hash_password(_seed_password("SEED_METHOD_PASSWORD", "Method!1")),
             full_name="Анна Методист",
             role=UserRole.methodologist,
         ),
         User(
             email="manager1@trainer.local",
-            hashed_password=hash_password("Mgr1!pass"),
+            hashed_password=hash_password(_seed_password("SEED_MGR1_PASSWORD", "Mgr1!pass")),
             full_name="Иван Петров",
             role=UserRole.manager,
             team_id=teams["sales"].id,
         ),
         User(
             email="manager2@trainer.local",
-            hashed_password=hash_password("Mgr2!pass"),
+            hashed_password=hash_password(_seed_password("SEED_MGR2_PASSWORD", "Mgr2!pass")),
             full_name="Мария Сидорова",
             role=UserRole.manager,
             team_id=teams["sales"].id,
         ),
         User(
             email="manager3@trainer.local",
-            hashed_password=hash_password("Mgr3!pass"),
+            hashed_password=hash_password(_seed_password("SEED_MGR3_PASSWORD", "Mgr3!pass")),
             full_name="Дмитрий Козлов",
             role=UserRole.manager,
             team_id=teams["b2b"].id,
         ),
         User(
             email="manager4@trainer.local",
-            hashed_password=hash_password("Mgr4!pass"),
+            hashed_password=hash_password(_seed_password("SEED_MGR4_PASSWORD", "Mgr4!pass")),
             full_name="Ксения Морозова",
             role=UserRole.manager,
             team_id=teams["b2b"].id,

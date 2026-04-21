@@ -282,12 +282,14 @@ async def _place_winner_in_next_round(
     next_match_index = current_match_index // 2
     is_top_slot = current_match_index % 2 == 0  # even index → player1 slot
 
+    # SELECT FOR UPDATE prevents race when two matches finish simultaneously
+    # and both try to place a winner into the same next-round slot
     result = await db.execute(
         select(BracketMatch).where(
             BracketMatch.tournament_id == tournament_id,
             BracketMatch.round_num == next_round,
             BracketMatch.match_index == next_match_index,
-        )
+        ).with_for_update()
     )
     next_match = result.scalar_one_or_none()
     if not next_match:
@@ -413,7 +415,13 @@ async def complete_bracket_match(
     db: AsyncSession,
 ) -> BracketMatch | None:
     """Record the result of a bracket match and advance the winner."""
-    match = await db.get(BracketMatch, match_id)
+    # SELECT FOR UPDATE prevents concurrent completion of same match
+    result = await db.execute(
+        select(BracketMatch)
+        .where(BracketMatch.id == match_id)
+        .with_for_update()
+    )
+    match = result.scalar_one_or_none()
     if not match or match.status not in (
         BracketMatchStatus.pending.value,
         BracketMatchStatus.active.value,

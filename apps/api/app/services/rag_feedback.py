@@ -92,14 +92,21 @@ async def record_training_feedback(
         accuracy = vr.get("accuracy", "")
         is_correct = accuracy in ("correct", "correct_cited")
 
-        # Detect new error patterns
+        # Detect new error patterns (with injection filtering)
         discovered_error = None
         if not is_correct and vr.get("manager_statement"):
             stmt_excerpt = vr["manager_statement"][:200]
-            # If the explanation mentions a specific wrong number/date, capture it
             explanation = vr.get("explanation", "")
             if explanation and len(explanation) > 20:
-                discovered_error = f"Ошибка менеджера: {stmt_excerpt[:100]}"
+                from app.services.content_filter import detect_jailbreak
+                raw_error = f"Ошибка менеджера: {stmt_excerpt[:100]}"
+                if detect_jailbreak(raw_error):
+                    logger.warning(
+                        "Injection attempt in discovered_error blocked: user_id=%s, text=%s",
+                        user_id, raw_error[:80],
+                    )
+                else:
+                    discovered_error = raw_error
 
         await record_chunk_outcome(
             db,
@@ -275,16 +282,19 @@ async def get_feedback_summary(db: AsyncSession, days: int = 30) -> dict:
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
     try:
+        # S4-09: All queries filter out soft-deleted records
+        not_deleted = ChunkUsageLog.is_deleted.is_(False)
+
         # Total usage logs
         total_logs = await db.scalar(
             select(func.count()).select_from(ChunkUsageLog)
-            .where(ChunkUsageLog.created_at >= since)
+            .where(ChunkUsageLog.created_at >= since, not_deleted)
         ) or 0
 
         # Answered logs
         answered_logs = await db.scalar(
             select(func.count()).select_from(ChunkUsageLog)
-            .where(ChunkUsageLog.created_at >= since, ChunkUsageLog.was_answered.is_(True))
+            .where(ChunkUsageLog.created_at >= since, ChunkUsageLog.was_answered.is_(True), not_deleted)
         ) or 0
 
         # Correct answers
@@ -293,6 +303,7 @@ async def get_feedback_summary(db: AsyncSession, days: int = 30) -> dict:
             .where(
                 ChunkUsageLog.created_at >= since,
                 ChunkUsageLog.answer_correct.is_(True),
+                not_deleted,
             )
         ) or 0
 
@@ -302,7 +313,7 @@ async def get_feedback_summary(db: AsyncSession, days: int = 30) -> dict:
                 ChunkUsageLog.source_type,
                 func.count().label("cnt"),
             )
-            .where(ChunkUsageLog.created_at >= since)
+            .where(ChunkUsageLog.created_at >= since, not_deleted)
             .group_by(ChunkUsageLog.source_type)
         )
         by_source = {row.source_type: row.cnt for row in source_result}
@@ -313,6 +324,7 @@ async def get_feedback_summary(db: AsyncSession, days: int = 30) -> dict:
             .where(
                 ChunkUsageLog.created_at >= since,
                 ChunkUsageLog.discovered_error.isnot(None),
+                not_deleted,
             )
         ) or 0
 
@@ -361,6 +373,7 @@ async def get_category_error_rates(db: AsyncSession, days: int = 30) -> list[dic
                 FROM chunk_usage_logs cul
                 JOIN legal_knowledge_chunks lkc ON lkc.id = cul.chunk_id
                 WHERE cul.was_answered = true AND cul.created_at >= :since
+                  AND cul.is_deleted = false
                 GROUP BY lkc.category
                 ORDER BY accuracy_rate ASC NULLS LAST
             """),
@@ -402,6 +415,7 @@ async def get_user_weak_areas(
                 FROM chunk_usage_logs cul
                 JOIN legal_knowledge_chunks lkc ON lkc.id = cul.chunk_id
                 WHERE cul.user_id = :uid AND cul.was_answered = true AND cul.created_at >= :since
+                  AND cul.is_deleted = false
                 GROUP BY lkc.category
                 HAVING COUNT(cul.id) >= 3
                 ORDER BY error_rate DESC

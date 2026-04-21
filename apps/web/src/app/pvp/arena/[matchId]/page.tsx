@@ -8,8 +8,17 @@ import { useAuthStore } from "@/stores/useAuthStore";
 import PvPArenaMatch from "@/components/knowledge/PvPArenaMatch";
 import type { ArenaRoundResult } from "@/types";
 import { logger } from "@/lib/logger";
+import { PageAuthGate } from "@/components/layout/PageAuthGate";
 
-export default function ArenaMatchPage() {
+export default function ArenaMatchPageWrapper() {
+  return (
+    <PageAuthGate>
+      <ArenaMatchPage />
+    </PageAuthGate>
+  );
+}
+
+function ArenaMatchPage() {
   const params = useParams();
   const router = useRouter();
   const matchId = params.matchId as string;

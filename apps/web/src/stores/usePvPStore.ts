@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { api } from "@/lib/api";
-import type { PvPRating, PvPDuel, DuelBrief, PvPLeaderboardEntry, PvPSeason } from "@/types";
+import type { PvPRating, PvPDuel, DuelBrief, PvPLeaderboardEntry, PvPSeason, PvPRankTier } from "@/types";
+import { normalizeRankTier } from "@/types";
 import { logger } from "@/lib/logger";
 
 type QueueStatus = "idle" | "searching" | "matched" | "in_duel";
@@ -134,34 +135,18 @@ export const usePvPStore = create<PvPState>((set, get) => ({
     try {
       const params = ratingType ? `?rating_type=${ratingType}` : "";
       const data = await api.get(`/pvp/rating/me${params}`);
+      if (data && typeof data.rank_tier === "string") {
+        data.rank_tier = normalizeRankTier(data.rank_tier);
+      }
+      if (data && typeof data.peak_tier === "string") {
+        data.peak_tier = normalizeRankTier(data.peak_tier);
+      }
       set({ rating: data, ratingLoading: false });
     } catch (err) {
-      logger.warn("[PvP] Failed to fetch rating, using default:", err);
-      // Provide a default rating object so the page can render instead of
-      // silently staying blank. The API's get_or_create_rating should
-      // normally create a record, but network/auth errors can prevent it.
-      set({
-        rating: {
-          user_id: "",
-          rating: 1500,
-          rd: 350,
-          volatility: 0.06,
-          rank_tier: "iron",
-          rank_display: "Железо I",
-          wins: 0,
-          losses: 0,
-          draws: 0,
-          total_duels: 0,
-          placement_done: false,
-          placement_count: 0,
-          peak_rating: 1500,
-          peak_tier: "iron",
-          current_streak: 0,
-          best_streak: 0,
-          last_played: null,
-        } as PvPRating,
-        ratingLoading: false,
-      });
+      logger.warn("[PvP] Failed to fetch rating:", err);
+      // Keep rating=null so UI can distinguish "failed to load" from real data.
+      // Using default 1500/Iron would mislead users who actually have a real rating.
+      set({ rating: null, ratingLoading: false });
     }
   },
 

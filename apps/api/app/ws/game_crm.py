@@ -37,16 +37,31 @@ async def _auth_websocket(ws: WebSocket) -> User | None:
 
     try:
         payload = decode_token(token)
+        if payload is None or payload.get("type") != "access":
+            await _send(ws, "auth.error", {"detail": "Invalid token"})
+            await ws.close(code=4001, reason="Invalid token")
+            return None
         user_id = uuid.UUID(payload["sub"])
-    except Exception as exc:
-        await _send(ws, "auth.error", {"detail": f"Invalid token: {exc}"})
+    except Exception:
+        await _send(ws, "auth.error", {"detail": "Invalid token"})
         return None
 
     async with async_session() as db:
-        user = (await db.execute(select(User).where(User.id == user_id, User.is_active.is_(True)))).scalar_one_or_none()
-        if not user:
+        user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+        if not user or not user.is_active:
             await _send(ws, "auth.error", {"detail": "User not found"})
+            await ws.close(code=4003, reason="User inactive")
             return None
+
+    # Check if user was logged out or token revoked
+    from app.core.deps import _is_user_blacklisted, _is_token_revoked
+    if await _is_user_blacklisted(str(user_id)):
+        await _send(ws, "auth.error", {"detail": "Token has been revoked"})
+        return None
+    jti = payload.get("jti")
+    if jti and await _is_token_revoked(jti):
+        await _send(ws, "auth.error", {"detail": "Token has been revoked"})
+        return None
 
     await _send(ws, "auth.success", {"user_id": str(user.id), "role": user.role.value})
     return user
@@ -79,6 +94,15 @@ async def game_crm_websocket(websocket: WebSocket) -> None:
                 await _send(websocket, "error", {"code": "rate_limited", "detail": "Too many messages"})
                 continue
 
+            # L6c fix: per-user rate limit across all connections (Redis).
+            from app.core.ws_rate_limiter import check_user_rate_limit
+            if not await check_user_rate_limit(str(user.id), scope="game_crm"):
+                await _send(websocket, "error", {
+                    "code": "rate_limited_user",
+                    "detail": "Слишком много сообщений со всех ваших сессий.",
+                })
+                continue
+
             msg_type = msg.get("type")
             data = msg.get("data") or {}
 
@@ -107,7 +131,16 @@ async def game_crm_websocket(websocket: WebSocket) -> None:
 
             if msg_type == "story.message":
                 story_id_raw = data.get("story_id") or msg.get("story_id") or subscribed_story_id
-                content = (data.get("content") or msg.get("content") or "").strip()
+                # T2 fix: bound WS text input at 10KB to prevent DoS via
+                # oversized LLM prompt (same as training.py).
+                _WS_MAX_TEXT_CHARS = 10_000
+                raw_content = (data.get("content") or msg.get("content") or "").strip()
+                if len(raw_content) > _WS_MAX_TEXT_CHARS:
+                    logger.warning(
+                        "WS game_crm story.message truncated from %d to %d chars",
+                        len(raw_content), _WS_MAX_TEXT_CHARS,
+                    )
+                content = raw_content[:_WS_MAX_TEXT_CHARS]
                 narrative_date = data.get("narrative_date") or msg.get("narrative_date")
 
                 if not story_id_raw or not content:
@@ -139,6 +172,16 @@ async def game_crm_websocket(websocket: WebSocket) -> None:
                 continue
 
             await _send(websocket, "error", {"detail": f"Unknown message type: {msg_type}"})
+    except WebSocketDisconnect:
+        logger.info("Game CRM WebSocket disconnected: user=%s", user.id)
     except Exception as exc:
-        logger.error("Game CRM WebSocket error: user=%s error=%s", user.id, exc)
-        await _send(websocket, "error", {"detail": str(exc)})
+        logger.error("Game CRM WebSocket error: user=%s error=%s", user.id, exc, exc_info=True)
+        try:
+            await _send(websocket, "error", {"detail": "Internal server error"})
+        except Exception:
+            pass
+    finally:
+        try:
+            await websocket.close(code=1000)
+        except Exception:
+            pass

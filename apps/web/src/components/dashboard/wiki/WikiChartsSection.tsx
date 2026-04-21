@@ -38,15 +38,18 @@ function getChartOptions() {
       legend: { display: false },
       tooltip: theme.defaults.plugins.tooltip,
     },
+    layout: {
+      padding: { left: 4, right: 12, top: 8, bottom: 4 },
+    },
     scales: {
       x: {
         grid: { color: theme.defaults.scales.x.grid.color },
-        ticks: { color: theme.colors.text, font: { size: 14 } },
+        ticks: { color: theme.colors.text, font: { size: 13 }, maxTicksLimit: 6, maxRotation: 45, minRotation: 0 },
         border: { color: "transparent" },
       },
       y: {
         grid: { color: theme.colors.grid },
-        ticks: { color: theme.colors.text, font: { size: 14 } },
+        ticks: { color: theme.colors.text, font: { size: 13 }, maxTicksLimit: 5 },
         border: { color: "transparent" },
         beginAtZero: true,
       },
@@ -59,7 +62,7 @@ function getCategoryColors(): Record<string, string> {
     weakness: cssVar("--danger", "#E5484D"),
     strength: cssVar("--success", "#3DDC84"),
     quirk: cssVar("--warning", "#E8A630"),
-    misconception: cssVar("--accent", "#7C6AE8"),
+    misconception: cssVar("--accent", "#6B4DC7"),
     unknown: cssVar("--text-muted", "#807DA0"),
   };
 }
@@ -88,18 +91,20 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
   const patternDist = data.pattern_distribution;
   const wikiActivity = data.wiki_activity;
 
+  const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+
   // Sessions activity bar chart
   const sessionsBarData = {
     labels: dailySessions.map((d) => {
       const dt = new Date(d.date);
-      return `${dt.getDate()}.${dt.getMonth() + 1}`;
+      return `${dt.getDate()} ${MONTHS_SHORT[dt.getMonth()]}`;
     }),
     datasets: [
       {
         label: "Сессии",
         data: dailySessions.map((d) => d.sessions),
-        backgroundColor: "rgba(124, 106, 232, 0.7)",
-        borderColor: "rgba(124, 106, 232, 1)",
+        backgroundColor: "rgba(107, 77, 199, 0.7)",
+        borderColor: "rgba(107, 77, 199, 1)",
         borderWidth: 1.5,
         borderRadius: 6,
       },
@@ -110,14 +115,14 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
   const scoreTrendData = {
     labels: dailySessions.map((d) => {
       const dt = new Date(d.date);
-      return `${dt.getDate()}.${dt.getMonth() + 1}`;
+      return `${dt.getDate()} ${MONTHS_SHORT[dt.getMonth()]}`;
     }),
     datasets: [
       {
         label: "Средний балл",
         data: dailySessions.map((d) => d.avg_score),
         borderColor: theme.colors.accent,
-        backgroundColor: "rgba(124, 106, 232, 0.22)",
+        backgroundColor: "rgba(107, 77, 199, 0.22)",
         borderWidth: 3,
         fill: true,
         tension: 0.35,
@@ -145,7 +150,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
   const wikiActivityData = {
     labels: wikiActivity.map((d) => {
       const dt = new Date(d.date);
-      return `${dt.getDate()}.${dt.getMonth() + 1}`;
+      return `${dt.getDate()} ${MONTHS_SHORT[dt.getMonth()]}`;
     }),
     datasets: [
       {
@@ -179,7 +184,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
     ...getChartOptions(),
     plugins: {
       ...getChartOptions().plugins,
-      legend: { display: true, position: "top" as const, labels: { color: theme.colors.text, boxWidth: 14, font: { size: 14 }, padding: 12 } },
+      legend: { display: true, position: "top" as const, labels: { color: theme.colors.text, boxWidth: 12, font: { size: 13 }, padding: 12 } },
     },
   };
 
@@ -189,14 +194,14 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
     plugins: {
       legend: {
         position: "right" as const,
-        labels: { color: theme.colors.text, boxWidth: 14, font: { size: 14 }, padding: 12 },
+        labels: { color: theme.colors.text, boxWidth: 12, font: { size: 13 }, padding: 12 },
       },
       tooltip: getChartOptions().plugins.tooltip,
     },
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
       {/* Sessions per day */}
       <div style={{
         padding: "1rem",
@@ -208,7 +213,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
           <Pulse size={15} weight="duotone" style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--accent)" }} />
           Сессии по дням
         </h4>
-        <div style={{ height: 200 }}>
+        <div style={{ height: 340 }}>
           {dailySessions.length > 0 ? (
             <Bar data={sessionsBarData} options={getChartOptions() as any} />
           ) : (
@@ -228,7 +233,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
           <TrendUp size={15} weight="duotone" style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--warning)" }} />
           Тренд среднего балла
         </h4>
-        <div style={{ height: 200 }}>
+        <div style={{ height: 340 }}>
           {dailySessions.length > 0 ? (
             <Line data={scoreTrendData} options={lineOptions as any} />
           ) : (
@@ -248,7 +253,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
           <ChartPie size={15} weight="duotone" style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--danger)" }} />
           Распределение паттернов
         </h4>
-        <div style={{ height: 200 }}>
+        <div style={{ height: 340 }}>
           {patternDist.length > 0 ? (
             <Doughnut data={patternDoughnutData} options={doughnutOptions as any} />
           ) : (
@@ -268,7 +273,7 @@ export function WikiChartsSection({ data }: { data: WikiChartData | null }) {
           <BookOpen size={15} weight="duotone" style={{ marginRight: 6, verticalAlign: "text-bottom", color: "var(--success)" }} />
           Активность Wiki
         </h4>
-        <div style={{ height: 200 }}>
+        <div style={{ height: 340 }}>
           {wikiActivity.length > 0 ? (
             <Bar data={wikiActivityData} options={barOptions as any} />
           ) : (
