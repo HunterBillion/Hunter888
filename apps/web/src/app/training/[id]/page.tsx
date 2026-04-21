@@ -159,6 +159,8 @@ export default function TrainingSessionPage() {
   const storyBgNoise = searchParams.get("custom_bg_noise") || undefined;
   const storyTimeOfDay = searchParams.get("custom_time_of_day") || undefined;
   const storyFatigue = searchParams.get("custom_fatigue") || undefined;
+  // Constructor v2 tone (2026-04-21): harsh/neutral/lively/friendly.
+  const storyTone = searchParams.get("custom_tone") || undefined;
   const storyCustomParams = useMemo(() => ({
     archetype: storyArchetype,
     profession: storyProfession,
@@ -172,10 +174,11 @@ export default function TrainingSessionPage() {
     bg_noise: storyBgNoise,
     time_of_day: storyTimeOfDay,
     client_fatigue: storyFatigue,
+    tone: storyTone,
   }), [
     storyArchetype, storyProfession, storyLeadSource, storyDifficulty,
     storyFamilyPreset, storyCreditorsPreset, storyDebtStage, storyDebtRange,
-    storyEmotionPreset, storyBgNoise, storyTimeOfDay, storyFatigue,
+    storyEmotionPreset, storyBgNoise, storyTimeOfDay, storyFatigue, storyTone,
   ]);
 
   // ── Zustand store (replaces 30+ useState) ──

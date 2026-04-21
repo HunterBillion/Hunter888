@@ -40,6 +40,8 @@ class SessionStartRequest(BaseModel):
     # more colloquial, interrupt-prone replies that feel like a real phone
     # conversation, not a drafted email.
     custom_session_mode: str | None = None        # "chat" | "call"
+    # Tone / vibe (2026-04-21) — "harsh" | "neutral" | "lively" | "friendly"
+    custom_tone: str | None = None
     # Custom character link
     custom_character_id: uuid.UUID | None = None  # link to saved CustomCharacter
 
@@ -60,6 +62,8 @@ class CustomCharacterCreate(BaseModel):
     bg_noise: str | None = None
     time_of_day: str | None = None
     client_fatigue: str | None = None
+    # 2026-04-21
+    tone: str | None = None
 
 
 class CustomCharacterUpdate(BaseModel):
@@ -78,6 +82,7 @@ class CustomCharacterUpdate(BaseModel):
     bg_noise: str | None = None
     time_of_day: str | None = None
     client_fatigue: str | None = None
+    tone: str | None = None
 
 
 class CustomCharacterResponse(BaseModel):
@@ -96,6 +101,7 @@ class CustomCharacterResponse(BaseModel):
     bg_noise: str | None = None
     time_of_day: str | None = None
     client_fatigue: str | None = None
+    tone: str | None = None
     play_count: int = 0
     best_score: int | None = None
     avg_score: int | None = None

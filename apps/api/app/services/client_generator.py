@@ -990,8 +990,16 @@ class GeneratedProfile:
 def generate_personality_profile(
     archetype_code: str,
     difficulty: int,
+    tone: str | None = None,
 ) -> PersonalityProfile:
-    """Generate OCEAN, PAD, human_factors, backstory_events for archetype."""
+    """Generate OCEAN, PAD, human_factors, backstory_events for archetype.
+
+    2026-04-21: ``tone`` (harsh/neutral/lively/friendly) applies a soft
+    OceanShift *after* the base anchor + noise. See
+    ``adaptive_difficulty.TONE_OCEAN_SHIFT`` for the weights (±0.05..±0.10
+    — an order of magnitude smaller than the difficulty-driven shift so
+    archetype identity survives).
+    """
 
     # 1) OCEAN with ±0.15 noise
     ocean_anchor = ARCHETYPE_OCEAN.get(archetype_code, ARCHETYPE_OCEAN["skeptic"])
@@ -999,6 +1007,13 @@ def generate_personality_profile(
     for dim, val in ocean_anchor.items():
         noised = val + random.uniform(-0.15, 0.15)
         ocean[dim] = round(max(0.0, min(1.0, noised)), 3)
+
+    # 1a) Tone shift (constructor v2) — stylistic layer on top of archetype.
+    # Applied before the noise-clamp collapses values; any over/undershoot
+    # is re-clamped inside apply_tone_ocean_shift.
+    if tone:
+        from app.services.adaptive_difficulty import apply_tone_ocean_shift
+        ocean = apply_tone_ocean_shift(ocean, tone)
 
     # 2) PAD with ±0.1 noise
     pad_anchor = ARCHETYPE_PAD.get(archetype_code, ARCHETYPE_PAD["skeptic"])
@@ -1409,6 +1424,8 @@ async def generate_client(
     custom_family_preset: str | None = None,
     custom_creditors_preset: str | None = None,
     custom_debt_range: str | None = None,
+    # Tone / vibe — soft stylistic layer over archetype.
+    custom_tone: str | None = None,
 ) -> GeneratedProfile:
     """Generate a complete client profile.
 
@@ -1514,7 +1531,7 @@ async def generate_client(
         dti = round((total_debt / 36) / income, 2)
 
     # 6) Personality profile
-    personality = generate_personality_profile(archetype_code, difficulty)
+    personality = generate_personality_profile(archetype_code, difficulty, tone=custom_tone)
 
     # 7) Fears, soft_spot, breaking_point
     archetype_fears = ARCHETYPE_FEARS.get(archetype_code, ARCHETYPE_FEARS["skeptic"])
@@ -1594,7 +1611,7 @@ async def generate_client(
             gender = random.choice(["male", "female"])
             profile.gender = gender
             profile.full_name = _generate_name(gender)
-            personality = generate_personality_profile(archetype_code, difficulty)
+            personality = generate_personality_profile(archetype_code, difficulty, tone=custom_tone)
             profile.personality = personality
             if attempt == 4:
                 logger.warning("Uniqueness check exhausted 5 retries for %s", archetype_code)
@@ -1629,6 +1646,7 @@ async def generate_client_profile(
     custom_family_preset: str | None = None,
     custom_creditors_preset: str | None = None,
     custom_debt_range: str | None = None,
+    custom_tone: str | None = None,
 ):
     """Generate a full client profile and persist it to the database.
 
@@ -1660,6 +1678,7 @@ async def generate_client_profile(
         custom_family_preset=_unwrap(custom_family_preset),
         custom_creditors_preset=_unwrap(custom_creditors_preset),
         custom_debt_range=_unwrap(custom_debt_range),
+        custom_tone=_unwrap(custom_tone),
     )
 
     profile = ClientProfile(

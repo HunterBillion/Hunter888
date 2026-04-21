@@ -1809,13 +1809,19 @@ async def _log_token_usage(response: "LLMResponse", user_id: str | None = None) 
     )
 
 
-def build_call_mode_modifier(difficulty: int = 5) -> str:
+def build_call_mode_modifier(difficulty: int = 5, tone: str | None = None) -> str:
     """Difficulty-aware system-prompt modifier for phone-call training.
 
     Applied in addition to the normal character/scenario prompt. Forces the
     LLM to produce phone-call-appropriate replies: short, colloquial,
     interrupting, with non-verbal cues. Calibrates aggression to the
     scenario's difficulty level (1=easy, 10=brutal).
+
+    2026-04-21: added optional ``tone`` (harsh/neutral/lively/friendly)
+    from the character builder. Appends a stylistic band AFTER the
+    difficulty band so the client stays calibrated to difficulty but
+    the *register* of speech (warmth, playfulness, formality) shifts.
+    Only emitted when tone is present and not "neutral".
 
     Covers edge cases that plain chat mode handled implicitly:
     - User asks nonsense → client reacts like a real confused human.
@@ -1860,6 +1866,36 @@ def build_call_mode_modifier(difficulty: int = 5) -> str:
 - Можешь резко бросить трубку: «Всё, до свидания» — если совсем достанут.
 - Знаешь свои права, требуешь доказательств любой фразы.""".format(d=d)
 
+    # Tone band (constructor v2, 2026-04-21) — stylistic layer appended AFTER
+    # the difficulty-based aggression band. Difficulty decides how hard the
+    # client pushes back; tone decides HOW they sound doing it (warm vs cold,
+    # playful vs lean). "neutral" is no-op — baseline difficulty band alone.
+    tone_band = ""
+    if tone == "friendly":
+        tone_band = """
+### ТОН: ДРУЖЕЛЮБНЫЙ
+- Ты изначально расположен к разговору, не закрыт.
+- Улыбаешься «в голосе», смягчаешь даже отказы: «Ой, ну что вы, спасибо, пока не нужно».
+- Если что-то не нравится — говоришь спокойно, без агрессии.
+- Готов дать менеджеру шанс — слушаешь чуть дольше, чем обычно.
+- Не предавай характер архетипа и сложность — ты всё ещё этот клиент,
+  просто в мягкой манере речи."""
+    elif tone == "lively":
+        tone_band = """
+### ТОН: ЖИВОЙ
+- Ты эмоционален и непредсказуем — смеёшься, удивляешься, злишься ситуационно.
+- Перебиваешь не из раздражения, а от импульсивности — мысль обгоняет терпение.
+- Делаешь неожиданные ремарки не совсем по теме: «О, кстати, а…», «Подождите-подождите».
+- Настроение может меняться прямо в рамках одного звонка.
+- Юмор/самоирония допустимы, но не превращаешь разговор в стендап."""
+    elif tone == "harsh":
+        tone_band = """
+### ТОН: ЖЁСТКИЙ
+- Ты лаконичен и холоден с первых слов, вежливость вызывает раздражение.
+- Каждый ответ — минимум слов, максимум недовольства.
+- Никакой тёплой лексики. «Короче», «По делу», «Не интересно» — твой словарь."""
+    # tone == "neutral" or None → no additional band
+
     return f"""
 
 ## РЕЖИМ: ЖИВОЙ ТЕЛЕФОННЫЙ ЗВОНОК (v2 — адаптивный)
@@ -1877,6 +1913,7 @@ def build_call_mode_modifier(difficulty: int = 5) -> str:
 ### АДАПТИВНАЯ СЛОЖНОСТЬ
 
 {aggression_band}
+{tone_band}
 
 ### ОБРАБОТКА ПОГРАНИЧНЫХ СИТУАЦИЙ (edge cases)
 
@@ -1967,6 +2004,9 @@ async def generate_response(
     task_type: str = "default",
     max_tokens: int | None = None,
     session_mode: str = "chat",
+    # 2026-04-21: constructor v2 tone (harsh/neutral/lively/friendly).
+    # Defaults None → call-mode modifier uses only difficulty band.
+    tone: str | None = None,
 ) -> LLMResponse:
     """Generate character response with hybrid LLM routing.
 
@@ -2197,7 +2237,7 @@ async def generate_response(
                 _diff = int(m.group(1))
         except Exception:
             pass
-        full_system = full_system + build_call_mode_modifier(_diff)
+        full_system = full_system + build_call_mode_modifier(_diff, tone=tone)
 
     # ── Resolve provider and max_tokens ──
     prompt_tokens = len(full_system) // 2  # Russian: ~2 chars/token
@@ -2425,6 +2465,8 @@ async def generate_response_stream(
     prefer_provider: str = "auto",
     task_type: str = "default",
     session_mode: str = "chat",
+    # 2026-04-21: constructor v2 tone. Parity with generate_response.
+    tone: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream LLM response token-by-token. Falls back to blocking if streaming fails.
 
@@ -2521,7 +2563,7 @@ async def generate_response_stream(
                 _diff_s = int(m.group(1))
         except Exception:
             pass
-        full_system = full_system + build_call_mode_modifier(_diff_s)
+        full_system = full_system + build_call_mode_modifier(_diff_s, tone=tone)
 
     # ── Trim history — wider window in call mode (short replies, more turns matter) ──
     _history_cap = settings.llm_max_history_messages

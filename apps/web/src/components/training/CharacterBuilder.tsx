@@ -66,6 +66,21 @@ const EMOTION_PRESETS: { code: EmotionPreset; name: string; icon: string; desc: 
   { code: "trusting", name: "Доверчивый", icon: "\u{1F91D}", desc: "Открыт к разговору" },
 ];
 
+// ─── Tone / Vibe (2026-04-21) ────────────────────────────────────────────────
+// Stylistic layer on top of archetype. Applies a soft OceanShift (±0.05..±0.10)
+// to the client's personality AND swaps in a matching tone band inside the
+// call-mode system prompt. See app/services/adaptive_difficulty.TONE_OCEAN_SHIFT
+// and app/services/llm.build_call_mode_modifier for the server-side mapping.
+
+type ToneCode = "harsh" | "neutral" | "lively" | "friendly";
+
+const TONES: { code: ToneCode; name: string; desc: string }[] = [
+  { code: "harsh",    name: "Жёсткий",     desc: "Холодный, лаконичный, без вежливости" },
+  { code: "neutral",  name: "Нейтральный", desc: "Стандарт, без стилистического сдвига" },
+  { code: "lively",   name: "Живой",       desc: "Эмоциональный, разговорчивый, шутит" },
+  { code: "friendly", name: "Дружелюбный", desc: "Тёплый, открытый, готов слушать" },
+];
+
 // ─── Context data ───────────────────────────────────────────────────────────
 
 const FAMILY_PRESETS: { code: FamilyPreset; label: string }[] = [
@@ -137,6 +152,10 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
   const [debtRange, setDebtRange] = useState<DebtRange>("random");
   // Step 4
   const [emotionPreset, setEmotionPreset] = useState<EmotionPreset>("neutral");
+  // 2026-04-21: Tone/Vibe (lives on Step 4 alongside emotion — both are
+  // stylistic layers). Default "neutral" = no OceanShift, same behaviour
+  // as before the constructor v2 rollout.
+  const [tone, setTone] = useState<"harsh" | "neutral" | "lively" | "friendly">("neutral");
   // Step 5
   const [difficulty, setDifficulty] = useState(5);
   // Step 6
@@ -192,6 +211,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
       custom_bg_noise: bgNoise,
       custom_time_of_day: timeOfDay,
       custom_fatigue: clientFatigue,
+      custom_tone: tone,
     });
     return `/training/${scenarioId}?${params.toString()}`;
   };
@@ -240,6 +260,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
         custom_bg_noise: bgNoise,
         custom_time_of_day: timeOfDay,
         custom_fatigue: clientFatigue,
+        custom_tone: tone,
         custom_session_mode: sessionMode,
       });
       const targetPath = sessionMode === "call"
@@ -266,10 +287,13 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
         creditors_preset: creditorsPreset !== "random" ? creditorsPreset : null,
         debt_stage: debtStage !== "random" ? debtStage : null,
         debt_range: debtRange !== "random" ? debtRange : null,
-        emotion_preset: emotionPreset !== "neutral" ? emotionPreset : null,
-        bg_noise: bgNoise !== "none" ? bgNoise : null,
-        time_of_day: timeOfDay !== "afternoon" ? timeOfDay : null,
-        client_fatigue: clientFatigue !== "normal" ? clientFatigue : null,
+        // 2026-04-21: saving "neutral"/"afternoon"/"normal"/"none" as-is too —
+        // they're valid picks, not pseudo-defaults (matches the handleStart fix).
+        emotion_preset: emotionPreset,
+        bg_noise: bgNoise,
+        time_of_day: timeOfDay,
+        client_fatigue: clientFatigue,
+        tone: tone !== "neutral" ? tone : null,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -282,7 +306,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
   const reset = () => {
     setStep(0); setArchetype(null); setProfession(null); setLeadSource("cold_base");
     setFamilyPreset("random"); setCreditorsPreset("random"); setDebtStage("random"); setDebtRange("random");
-    setEmotionPreset("neutral"); setDifficulty(5);
+    setEmotionPreset("neutral"); setTone("neutral"); setDifficulty(5);
     setBgNoise("none"); setTimeOfDay("afternoon"); setClientFatigue("normal");
     setGroupFilter(null); setTierFilter(null);
   };
@@ -471,7 +495,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
             </div>
           </>)}
 
-          {/* ═══ Step 4: Emotion Preset (NEW) ═══ */}
+          {/* ═══ Step 4: Emotion Preset + Tone (NEW) ═══ */}
           {step === 4 && (<>
             <h3 className="font-display text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>Эмоциональный пресет</h3>
             <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>Начальное настроение клиента при звонке</p>
@@ -487,6 +511,32 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel = 20 }: Cha
                     <div className="text-2xl mb-2"><AppIcon emoji={ep.icon} size={28} /></div>
                     <div className="text-xs font-bold" style={{ color: sel ? "var(--accent)" : "var(--text-primary)" }}>{ep.name}</div>
                     <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>{ep.desc}</div>
+                  </motion.button>
+                );
+              })}
+            </div>
+
+            {/* ── Tone / Vibe (2026-04-21) ──
+                 Shown on the same step as emotion — both shape the client's
+                 *stylistic* register without touching archetype identity or
+                 difficulty. Emotion = current mood at pickup; Tone = default
+                 manner of speech. OceanShift is deliberately tiny (±0.05..
+                 ±0.10) so a "skeptic + friendly" is still clearly skeptical. */}
+            <h3 className="font-display text-sm font-bold mt-6 mb-1" style={{ color: "var(--text-primary)" }}>Тон клиента</h3>
+            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+              Манера речи и общий вайб. Сдвигает стиль, не характер и не сложность.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {TONES.map((t) => {
+                const sel = tone === t.code;
+                return (
+                  <motion.button key={t.code} onClick={() => setTone(t.code)}
+                    className="glass-panel p-4 text-center rounded-xl relative"
+                    style={{ borderColor: sel ? "var(--accent)60" : undefined, boxShadow: sel ? "0 0 16px var(--accent-muted)" : undefined }}
+                    whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
+                    {sel && <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "var(--accent)" }}><Check size={8} className="text-white" /></div>}
+                    <div className="text-xs font-bold" style={{ color: sel ? "var(--accent)" : "var(--text-primary)" }}>{t.name}</div>
+                    <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>{t.desc}</div>
                   </motion.button>
                 );
               })}

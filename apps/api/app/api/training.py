@@ -740,6 +740,43 @@ async def generate_script_hints(
     scenario = scen_q.scalar_one_or_none()
     scenario_ctx = scenario.title if scenario else "Звонок клиенту-должнику"
 
+    # 2026-04-21: hints used to be archetype-agnostic — same three templates
+    # ("empathy / structure / question") regardless of whether the client
+    # was harsh or friendly. For constructor-built clients this was jarring:
+    # a friendly client got the same hard-sell hints as a hostile one. Now
+    # the builder's archetype + tone + emotion preset flow into the coach's
+    # system prompt so suggestions match the actual client. Legacy scenarios
+    # without custom_params get the old generic behaviour.
+    _cp = session.custom_params or {}
+    _arch = _cp.get("archetype")
+    _tone = _cp.get("tone")
+    _emotion = _cp.get("emotion_preset")
+    _TONE_HINT = {
+        "harsh": "клиент жёсткий — предлагай короткие, прямые формулировки без лишней вежливости",
+        "friendly": "клиент дружелюбный — предлагай тёплые, персональные формулировки, не давящие",
+        "lively": "клиент живой/эмоциональный — подсказки могут быть игривее, ловить его настроение",
+        "neutral": "клиент нейтральный — стандартный деловой стиль",
+    }
+    _EMOTION_HINT = {
+        "anxious": "клиент тревожен — предлагай успокаивающие формулировки",
+        "angry": "клиент раздражён — рапорт/эмпатия важнее структуры",
+        "tired": "клиент устал — коротко и по делу, без давления",
+        "rushed": "клиент спешит — давай самый ёмкий вариант первым",
+        "hopeful": "клиент настроен с надеждой — подкрепляй это, не спугни",
+        "trusting": "клиент открыт — можно глубже копать ситуацию",
+    }
+    _client_hints: list[str] = []
+    if _arch:
+        _client_hints.append(f"архетип={_arch}")
+    if _tone and _tone in _TONE_HINT:
+        _client_hints.append(_TONE_HINT[_tone])
+    if _emotion and _emotion in _EMOTION_HINT:
+        _client_hints.append(_EMOTION_HINT[_emotion])
+    _client_block = (
+        "\n\nКонтекст клиента для подсказок: " + "; ".join(_client_hints) + "."
+        if _client_hints else ""
+    )
+
     system_prompt = (
         "Ты — AI-коуч по продажам. Предложи 3 варианта следующей реплики менеджера. "
         "Каждая реплика должна быть РАЗНОЙ по стилю: "
@@ -747,9 +784,11 @@ async def generate_script_hints(
         "(2) деловая/структурная, "
         "(3) вопрос для раскрытия ситуации. "
         "КАЖДАЯ реплика — максимум 2 предложения, разговорная, готовая к отправке. "
+        "Подсказки ДОЛЖНЫ соответствовать характеру и настроению клиента, если они указаны ниже. "
         "НЕ используй плейсхолдеры типа {имя}, напиши конкретно. "
         "Ответ СТРОГО в JSON формате: "
         '{"hints":[{"text":"...","label":"Эмпатия"},{"text":"...","label":"Структура"},{"text":"...","label":"Вопрос"}]}'
+        + _client_block
     )
     user_prompt = f"Сценарий: {scenario_ctx}\n\nИстория:\n{history_text}\n\nДай 3 варианта следующей реплики менеджера."
 

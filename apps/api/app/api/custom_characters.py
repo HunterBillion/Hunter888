@@ -39,6 +39,7 @@ def _char_to_response(c: CustomCharacter) -> CustomCharacterResponse:
         bg_noise=c.bg_noise,
         time_of_day=c.time_of_day,
         client_fatigue=c.client_fatigue,
+        tone=c.tone,
         play_count=c.play_count or 0,
         best_score=c.best_score,
         avg_score=c.avg_score,
@@ -100,6 +101,7 @@ async def create_custom_character(
         bg_noise=data.bg_noise,
         time_of_day=data.time_of_day,
         client_fatigue=data.client_fatigue,
+        tone=data.tone,
     )
     db.add(char)
     await db.commit()
@@ -269,6 +271,7 @@ async def import_shared_character(
         bg_noise=source.bg_noise,
         time_of_day=source.time_of_day,
         client_fatigue=source.client_fatigue,
+        tone=source.tone,
     )
     db.add(new_char)
     await db.commit()

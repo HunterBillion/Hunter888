@@ -37,6 +37,14 @@ class CustomCharacter(Base):
     time_of_day = Column(String(20), nullable=True)         # "morning", "afternoon" etc.
     client_fatigue = Column(String(20), nullable=True)      # "fresh", "normal", "tired" etc.
 
+    # ── Tone / Vibe (2026-04-21) ──
+    # One of: harsh / neutral / lively / friendly. Controls the client's
+    # stylistic register on top of archetype. Applied as a soft OceanShift
+    # (±0.05..±0.10) layered over difficulty-based shift, plus a textual
+    # tone band appended to the call-mode prompt modifier. Null = archetype
+    # default (legacy sessions behave as before the constructor v2 rollout).
+    tone = Column(String(20), nullable=True)
+
     # ── Step 7: Cached preview ──
     cached_dossier = Column(Text, nullable=True)
 

@@ -290,6 +290,48 @@ def resolve_params(level: int | float | None) -> DifficultyParams:
 
 
 # ──────────────────────────────────────────────────────────────────────
+#  Tone / Vibe shift (2026-04-21, constructor v2)
+# ──────────────────────────────────────────────────────────────────────
+# Constructor lets the user pick a "tone" alongside archetype + difficulty.
+# Unlike difficulty, which is an authoritative signal about how the client
+# *resists* the manager, tone is a *stylistic* layer — it nudges OCEAN only
+# a little so the archetype's identity stays intact (a skeptic with
+# tone=friendly is still skeptical, just warmer). Weights are deliberately
+# smaller (±0.05..±0.10) than the difficulty-driven ±0.10..±0.25 shifts,
+# and clamp happens after both are stacked. Most of the observed
+# behavioural difference comes from the matching *textual* tone band in
+# ``llm.build_call_mode_modifier`` — this numeric nudge is just the
+# personality underpinning.
+
+TONE_OCEAN_SHIFT: dict[str, OceanShift] = {
+    "harsh":    OceanShift(A=-0.08, N=+0.08),
+    "neutral":  OceanShift(),
+    "lively":   OceanShift(E=+0.07, O=+0.05),
+    "friendly": OceanShift(A=+0.10, N=-0.07),
+}
+
+
+def apply_tone_ocean_shift(ocean: dict, tone: str | None) -> dict:
+    """Apply a soft tone-based OCEAN shift on top of an already-computed vector.
+
+    Must run AFTER the difficulty-driven shift — tone is the finishing
+    layer, not a replacement. Unknown/None tone is a no-op. All dimensions
+    clamp to [0.0, 1.0]; a ``tone=friendly`` on an already max-A archetype
+    (e.g. ``grateful`` A=0.85) will hit 0.95, not 1.00+, and on a low-A
+    archetype (``hostile`` A=0.05) ``tone=harsh`` bottoms at 0.00.
+
+    Returns a new dict; input is not mutated.
+    """
+    if not tone or tone not in TONE_OCEAN_SHIFT:
+        return ocean
+    shift = TONE_OCEAN_SHIFT[tone].as_dict()
+    return {
+        dim: round(max(0.0, min(1.0, val + shift.get(dim, 0.0))), 3)
+        for dim, val in ocean.items()
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────
 #  Reply Quality
 # ──────────────────────────────────────────────────────────────────────
 
