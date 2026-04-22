@@ -351,7 +351,14 @@ export function PhoneCallMode({
       )}
 
       {/* Controls row. */}
-      <div className="relative z-10 pb-10 pt-6">
+      {/*
+        pb-24 (2026-04-22): bumped from pb-10 so call/page.tsx's text-
+        input fallback bar (fixed bottom-0) doesn't cover the speaker /
+        volume buttons. Text input is ~50px tall with its padding; pb-24
+        (96px) leaves visible gap between the controls row and the
+        typing bar below.
+      */}
+      <div className="relative z-10 pb-24 pt-6">
         {/*
           Volume popover (2026-04-21): parent passes volume + onVolumeChange.
           Tapping the speaker button now TOGGLES a slider popover anchored

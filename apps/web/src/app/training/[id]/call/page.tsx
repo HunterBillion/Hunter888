@@ -64,6 +64,11 @@ export default function TrainingCallPage() {
   const [muted, setMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(true);
   const [modeOk, setModeOk] = useState<boolean | null>(null); // null = checking
+  // 2026-04-22 fallback text input: call mode was voice-only and users
+  // with broken mic / denied permission / unsupported browser had NO
+  // way to send a message. Chat worked because you can type there.
+  // Now call has an always-visible text input as a peer to push-to-talk.
+  const [textInput, setTextInput] = useState("");
   const elapsedTickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const endInFlightRef = useRef(false);
   const currentSessionIdRef = useRef<string>(id);
@@ -409,6 +414,26 @@ export default function TrainingCallPage() {
     );
   }
 
+  // 2026-04-22 diagnostics banner: show on-screen warnings so user sees
+  // the state of critical call-mode dependencies without opening DevTools.
+  const sttSupported = stt.isSupported;
+  const sttError = stt.status === "unsupported" || stt.status === "error";
+  const wsDead = connectionState === "disconnected" || connectionState === "error";
+
+  // 2026-04-22 fallback sender: send current textInput as a plain text.message
+  // with correct `content` key (same shape as chat page). Clears the box so
+  // Enter-to-send feels responsive.
+  const sendText = useCallback(() => {
+    const trimmed = textInput.trim();
+    if (!trimmed) return;
+    if (connectionState !== "connected") {
+      logger.warn("[call] cannot send text — WS not connected", { connectionState });
+      return;
+    }
+    sendMessage({ type: "text.message", data: { content: trimmed } });
+    setTextInput("");
+  }, [textInput, connectionState, sendMessage]);
+
   return (
     <>
       <PhoneCallMode
@@ -488,6 +513,63 @@ export default function TrainingCallPage() {
           </button>
         }
       />
+
+      {/*
+        Diagnostics banner (2026-04-22). Shows on-screen why the call
+        might feel silent without user having to open DevTools:
+          - WS down: "Нет связи с сервером…"
+          - STT unsupported/error: "Микрофон недоступен, пишите текстом"
+          - tts still speaking: "Клиент говорит…" (info)
+        Positioned below the teleprompter so it doesn't fight the avatar.
+      */}
+      {(wsDead || sttError || !sttSupported) && (
+        <div className="pointer-events-none fixed top-[92px] left-0 right-0 z-30 flex justify-center px-4">
+          <div className="rounded-full bg-amber-500/90 px-4 py-1.5 text-xs font-medium text-black shadow-lg">
+            {wsDead
+              ? "Нет связи с сервером — переподключаемся…"
+              : !sttSupported
+              ? "Этот браузер не поддерживает голос. Пишите текстом ниже."
+              : "Микрофон недоступен. Нажмите значок ниже или печатайте текстом."}
+          </div>
+        </div>
+      )}
+
+      {/*
+        Text-input fallback (2026-04-22). Always visible at the bottom of
+        the call view. Works exactly like chat: type, Enter / кнопка ▶ —
+        sends `text.message` WS event with `content` key (same contract
+        as chat page). User gets a reliable way to talk even when
+        microphone is broken / denied / browser doesn't support STT.
+        Push-to-talk mic remains in the control row for voice users.
+      */}
+      <div className="fixed bottom-0 left-0 right-0 z-20 flex justify-center bg-gradient-to-t from-black/70 to-transparent px-4 pb-3 pt-10">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            sendText();
+          }}
+          className="flex w-full max-w-lg items-center gap-2 rounded-full bg-black/50 px-4 py-2 ring-1 ring-white/10 backdrop-blur-md"
+        >
+          <input
+            type="text"
+            value={textInput}
+            onChange={(e) => setTextInput(e.target.value)}
+            placeholder="Или напишите текстом…"
+            aria-label="Сообщение клиенту текстом"
+            className="flex-1 bg-transparent text-sm text-white placeholder:text-white/40 outline-none"
+            disabled={connectionState !== "connected"}
+          />
+          <button
+            type="submit"
+            disabled={!textInput.trim() || connectionState !== "connected"}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white transition-opacity hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-30"
+            aria-label="Отправить сообщение"
+          >
+            ▶
+          </button>
+        </form>
+      </div>
+
       {/*
         Autoplay-unlock overlay. Browsers (Chrome/Safari strict, iOS
         Safari especially) block HTMLAudioElement.play() that isn't
