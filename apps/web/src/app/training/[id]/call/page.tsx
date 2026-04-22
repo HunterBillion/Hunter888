@@ -389,15 +389,18 @@ export default function TrainingCallPage() {
         }
 
         case "session.ended":
-          // Navigate to results on clean backend close. Use replace +
-          // overlay so the hangup path visually matches client.hangup.
+          // 2026-04-22: dedupe with client.hangup. If client.hangup fired
+          // first, it scheduled a 3.5s timer to let farewell TTS play out
+          // THEN router.replace. session.ended arriving concurrently would
+          // cut the TTS short. Let the hangup path finish.
+          if (hangupInProgress) {
+            break;
+          }
           tts.stop();
           stt.stopListening();
           endInFlightRef.current = true;
-          if (!hangupInProgress) {
-            setHangupReason("Звонок завершён");
-            setHangupInProgress(true);
-          }
+          setHangupReason("Звонок завершён");
+          setHangupInProgress(true);
           router.replace(`/results/${currentSessionIdRef.current || id}`);
           break;
 

@@ -2007,6 +2007,12 @@ async def generate_response(
     # 2026-04-21: constructor v2 tone (harsh/neutral/lively/friendly).
     # Defaults None → call-mode modifier uses only difficulty band.
     tone: str | None = None,
+    # 2026-04-22: explicit difficulty from caller. Previously call-mode
+    # tried to regex it out of scenario_prompt — for constructor-created
+    # sessions (empty scenario_prompt) that ALWAYS returned 5. Net effect:
+    # difficulty slider in the UI was dead for every custom client in
+    # call-mode. Now caller passes state["base_difficulty"] directly.
+    difficulty: int | None = None,
 ) -> LLMResponse:
     """Generate character response with hybrid LLM routing.
 
@@ -2227,16 +2233,19 @@ async def generate_response(
     # cases for silence / meta-breaks / pressure. Difficulty is parsed from
     # the character prompt or passed via scenario_prompt; default=5.
     if session_mode == "call":
-        # Try to infer difficulty from scenario_prompt if present, else 5.
-        _diff = 5
-        try:
-            import re as _re
-            # scenario_prompt typically has "difficulty: N" or similar
-            m = _re.search(r"сложност[ьи][:\s]+(\d+)", scenario_prompt or "", _re.IGNORECASE)
-            if m:
-                _diff = int(m.group(1))
-        except Exception:
-            pass
+        # 2026-04-22: prefer explicit `difficulty` from caller; fall back to
+        # regex-parsing scenario_prompt for legacy callers. For constructor-
+        # created sessions scenario_prompt is empty so the regex always
+        # missed — `difficulty` arg makes the slider actually matter.
+        _diff = difficulty if difficulty is not None else 5
+        if difficulty is None:
+            try:
+                import re as _re
+                m = _re.search(r"сложност[ьи][:\s]+(\d+)", scenario_prompt or "", _re.IGNORECASE)
+                if m:
+                    _diff = int(m.group(1))
+            except Exception:
+                pass
         full_system = full_system + build_call_mode_modifier(_diff, tone=tone)
 
     # ── Resolve provider and max_tokens ──
@@ -2467,6 +2476,8 @@ async def generate_response_stream(
     session_mode: str = "chat",
     # 2026-04-21: constructor v2 tone. Parity with generate_response.
     tone: str | None = None,
+    # 2026-04-22: parity with generate_response. Explicit difficulty.
+    difficulty: int | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream LLM response token-by-token. Falls back to blocking if streaming fails.
 
@@ -2555,14 +2566,16 @@ async def generate_response_stream(
     # Without this the stream path (90% of actual traffic) ignored the
     # session_mode="call" and AI replied like chat mode.
     if session_mode == "call":
-        _diff_s = 5
-        try:
-            import re as _re
-            m = _re.search(r"сложност[ьи][:\s]+(\d+)", scenario_prompt or "", _re.IGNORECASE)
-            if m:
-                _diff_s = int(m.group(1))
-        except Exception:
-            pass
+        # 2026-04-22: prefer explicit difficulty (see generate_response).
+        _diff_s = difficulty if difficulty is not None else 5
+        if difficulty is None:
+            try:
+                import re as _re
+                m = _re.search(r"сложност[ьи][:\s]+(\d+)", scenario_prompt or "", _re.IGNORECASE)
+                if m:
+                    _diff_s = int(m.group(1))
+            except Exception:
+                pass
         full_system = full_system + build_call_mode_modifier(_diff_s, tone=tone)
 
     # ── Trim history — wider window in call mode (short replies, more turns matter) ──

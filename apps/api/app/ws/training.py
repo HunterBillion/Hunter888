@@ -170,7 +170,7 @@ async def _resolve_scenario(db, scenario_id: "uuid.UUID") -> Scenario | None:
 
 SILENCE_WARNING_SEC = 30  # Avatar says "Алло?"
 SILENCE_TIMEOUT_SEC = 60  # Modal "Continue?"
-MAX_STT_FAILURES = 3
+MAX_STT_FAILURES = 10  # 2026-04-22: bumped 3→10 — Whisper cold-starts look like failures but recover; don't kick user to text mode prematurely
 
 # ── Emotion-aware silence phrases ──
 # Organized by emotion → list of phrases.
@@ -1377,6 +1377,10 @@ async def _generate_character_reply(
                 prefer_provider=_prefer,
                 session_mode=_session_mode_s,
                 tone=_tone_s,
+                # 2026-04-22: pass explicit difficulty from state so
+                # build_call_mode_modifier sees custom-builder value
+                # instead of always defaulting to 5.
+                difficulty=state.get("base_difficulty"),
             ):
                 _streamed_text += token
                 _chunk_buffer += token
@@ -1547,6 +1551,8 @@ async def _generate_character_reply(
                     prefer_provider=_prefer,
                     session_mode=_session_mode,
                     tone=_tone,
+                    # 2026-04-22: see generate_response_stream call above.
+                    difficulty=state.get("base_difficulty"),
                 )
     except LLMError as e:
         logger.error("LLM failed for session %s: %s", session_id, e)
@@ -2992,8 +2998,15 @@ async def _handle_session_start(
                 existing_profile = cp_result.scalar_one_or_none()
 
                 if existing_profile:
-                    # Resume — profile already exists
-                    state["client_profile_prompt"] = _build_client_profile_prompt(existing_profile)
+                    # Resume — profile already exists.
+                    # 2026-04-22: pass ambient_ctx so the "## Атмосфера"
+                    # block (emotion_preset, bg_noise, time_of_day,
+                    # client_fatigue, debt_stage labels) is preserved
+                    # across WS reconnects. Previously a dropped/restored
+                    # connection stripped those cues from the LLM prompt.
+                    state["client_profile_prompt"] = _build_client_profile_prompt(
+                        existing_profile, ambient_ctx=custom_params,
+                    )
                     from app.services.client_generator import get_crm_card
                     client_card = get_crm_card(existing_profile)
                     client_gender = getattr(existing_profile, "gender", "") or ""
@@ -5845,7 +5858,10 @@ async def training_websocket(websocket: WebSocket) -> None:
             _headers = {}
             if settings.whisper_api_key:
                 _headers["Authorization"] = f"Bearer {settings.whisper_api_key}"
-            async with httpx.AsyncClient(timeout=3.0) as _c:
+            # 2026-04-22: 3.0 → 10.0s. Whisper model cold-start takes 6-10s
+            # after idle unload; 3s default reported stt_available=false
+            # until the model was warmed by a failed request.
+            async with httpx.AsyncClient(timeout=10.0) as _c:
                 _r = await _c.get(f"{_base}/v1/models", headers=_headers)
                 return _r.status_code == 200
         except Exception:

@@ -507,10 +507,14 @@ export default function TrainingSessionPage() {
                 }
               }, 15000);
             } else {
+              // 2026-04-22: 3500ms → 500ms. Scoring is already done before
+              // session.ended is sent; the old delay was just to let user
+              // "see the last message" which doesn't help UX — results
+              // page has its own loading state.
               s.setSessionState("completed");
               setTimeout(
-                () => router.push(`/results/${currentSessionIdRef.current || routeId}`),
-                3500,
+                () => router.replace(`/results/${currentSessionIdRef.current || routeId}`),
+                500,
               );
             }
           }
@@ -1255,11 +1259,11 @@ export default function TrainingSessionPage() {
           // 2026-04-22: watchdog — if backend STT is down (Whisper
           // crashed/loading/network blip) the transcription.result event
           // never arrives and the "Распознаю: речь..." bar sits forever.
-          // Auto-reset state after 25s and notify user.
+          // 45s timeout covers Whisper cold-start (6-10s) + slow backend.
           window.setTimeout(() => {
             const cur = useSessionStore.getState().transcription;
             if (cur.status === "transcribing") {
-              logger.warn("[training] STT watchdog: no result in 25s — resetting");
+              logger.warn("[training] STT watchdog: no result in 45s — resetting");
               useSessionStore.getState().setTranscription({ status: "idle", partial: "", final: "" });
               import("@/stores/useNotificationStore").then(({ useNotificationStore }) => {
                 useNotificationStore.getState().addToast({
@@ -1269,7 +1273,7 @@ export default function TrainingSessionPage() {
                 });
               }).catch(() => {/* ignore */});
             }
-          }, 25000);
+          }, 45000);
         } catch {
           s.setTranscription({ status: "idle", partial: "", final: "" });
           if (speech.isSupported) {
@@ -1932,6 +1936,7 @@ export default function TrainingSessionPage() {
                 </motion.button>
               ) : (
                 <CrystalMic
+                  mode="hold"
                   isRecording={microphone.recordingState === "recording" || speech.status === "listening"}
                   isProcessing={microphone.recordingState === "processing" || s.transcription.status === "transcribing"}
                   audioLevel={microphone.audioLevel || speech.audioLevel}
@@ -1977,6 +1982,7 @@ export default function TrainingSessionPage() {
                 </div>
               ) : (
                 <CrystalMic
+                  mode="hold"
                   isRecording={microphone.recordingState === "recording" || speech.status === "listening"}
                   isProcessing={microphone.recordingState === "processing" || s.transcription.status === "transcribing"}
                   audioLevel={microphone.audioLevel || speech.audioLevel}
