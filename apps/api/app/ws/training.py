@@ -1854,6 +1854,52 @@ async def _generate_character_reply(
         return  # Stop — do not continue with normal flow
     # ─── END HANGUP DETECTION ───
 
+    # 2026-04-22: AI-content-based farewell detection. The emotion FSM may not
+    # transition to "hangup" (e.g. weights softened, grace period), but the
+    # LLM can still generate a farewell phrase on its own ("Всё, кладу
+    # трубку", "До свидания"). Without this, the AI says goodbye in text but
+    # the session stays open — confusing UX (user said hi, AI keeps talking).
+    # Detect farewell intent in the AI reply and trigger session.end so the
+    # call wraps cleanly. Only fires on plain replies (we already returned
+    # for explicit hangup branch above).
+    _AI_FAREWELL_PATTERNS = (
+        "до свидания", "всего доброго", "всего хорошего", "всех благ",
+        "кладу трубку", "вешаю трубку", "повешу трубку", "положу трубку",
+        "всё, я заканчиваю", "разговор окончен", "разговор закончен",
+        "больше не звоните", "не перезванивайте", "до встречи",
+        "удачи вам", "бывайте", "прощайте",
+    )
+    _ai_reply_lower = (llm_result.content or "").lower()
+    _ai_farewell_hit = any(p in _ai_reply_lower for p in _AI_FAREWELL_PATTERNS)
+    if _ai_farewell_hit and not state.get("user_initiated_farewell") and not state.get("ai_initiated_farewell"):
+        state["ai_initiated_farewell"] = True
+        logger.info(
+            "AI-initiated farewell detected (session=%s, content snippet=%r) — "
+            "auto-firing session.end after current TTS plays.",
+            session_id, llm_result.content[:80],
+        )
+        # Send a hangup notification so the frontend shows the modal/redirect
+        # consistently with FSM-driven hangups.
+        try:
+            await _send(ws, "client.hangup", {
+                "reason": "Клиент сам завершил разговор",
+                "emotion": current_emotion,
+                "hangup_phrase": llm_result.content,
+                "call_can_continue": False,
+                "triggers": [],
+            })
+        except Exception:
+            logger.debug("client.hangup send failed (non-fatal)", exc_info=True)
+        # Schedule auto-end after TTS finishes — same pattern as user farewell.
+        async def _auto_end_after_ai_farewell():
+            try:
+                await asyncio.sleep(3.5)  # let TTS of farewell finish playing
+                await _handle_session_end(ws, {}, state)
+                state["_should_stop"] = True
+            except Exception:
+                logger.exception("auto session.end after AI farewell failed (session=%s)", session_id)
+        asyncio.create_task(_auto_end_after_ai_farewell())
+
     # Check for fake transition prompt and inject into NEXT LLM call
     try:
         fake_prompt = await get_fake_prompt(session_id, archetype_code or "skeptic")

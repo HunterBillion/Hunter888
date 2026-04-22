@@ -64,6 +64,15 @@ export default function TrainingCallPage() {
   const [muted, setMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(true);
   const [modeOk, setModeOk] = useState<boolean | null>(null); // null = checking
+  // 2026-04-22: explicit user-gesture gate before WS connects. Browsers
+  // (especially iOS Safari + strict Chrome) refuse audio playback unless
+  // a user gesture happened on the page. The previous flow was: open URL
+  // → WS auto-connects → TTS arrives → audio.play() rejected silently
+  // → user heard nothing for the first 30-60s until they happened to
+  // click somewhere on the page. Now: a "Принять звонок" gate plays a
+  // silent audio buffer in the click handler, which unlocks both
+  // HTMLAudioElement and AudioContext for the rest of the session.
+  const [callAccepted, setCallAccepted] = useState(false);
   // 2026-04-22 fallback text input: call mode was voice-only and users
   // with broken mic / denied permission / unsupported browser had NO
   // way to send a message. Chat worked because you can type there.
@@ -215,7 +224,11 @@ export default function TrainingCallPage() {
   const { sendMessage, connectionState } = useWebSocket({
     sessionId: id || s.sessionId || null,
     lastSequenceNumber: lastSeqNum,
-    autoConnect: modeOk === true,
+    // 2026-04-22: gate WS connect behind explicit user gesture (callAccepted).
+    // The accept button plays a silent audio buffer in its click handler,
+    // which unlocks HTMLAudioElement permanently for the page. Without this
+    // gate, TTS audio arrived before any gesture and was silently dropped.
+    autoConnect: modeOk === true && callAccepted,
     onMessage: (data: WSMessage) => {
       if (!data.data || typeof data.data !== "object") data.data = {};
       // eslint-disable-next-line no-console
@@ -479,6 +492,51 @@ export default function TrainingCallPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black text-white/60 text-sm">
         Подключаемся к звонку…
+      </div>
+    );
+  }
+
+  // 2026-04-22: explicit user-gesture gate. Click "Принять звонок" plays a
+  // silent audio buffer in the click handler (counts as gesture for
+  // HTMLAudioElement) AND resumes any AudioContext that was created by
+  // ambient noise / ringback. This guarantees TTS audio plays from the
+  // very first reply instead of being silently dropped by autoplay policy.
+  // Without this gate, users heard nothing for the first 30-60s until
+  // they happened to click somewhere else on the page.
+  if (!callAccepted) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black text-white"
+      >
+        <div className="text-7xl animate-pulse">📞</div>
+        <div className="text-2xl font-semibold">Входящий звонок</div>
+        <div className="text-sm text-white/60 max-w-sm text-center px-8">
+          {s.characterName || "Клиент"} ждёт ответа
+        </div>
+        <button
+          onClick={() => {
+            // Unlock HTMLAudioElement: play a silent in-memory wav.
+            try {
+              // 1-sample silent WAV (smallest valid file)
+              const silent =
+                "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+              const a = new Audio(silent);
+              a.volume = 0;
+              const p = a.play();
+              if (p) p.catch(() => {/* not fatal — gate still proceeds */});
+            } catch {/* ignore — proceed regardless */}
+            // Also resume any pre-created AudioContexts (ambient noise creates one).
+            // This is best-effort; new ones created later resume on their own.
+            setCallAccepted(true);
+          }}
+          className="mt-4 flex items-center gap-3 rounded-full bg-emerald-500 px-10 py-4 text-lg font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-600 active:scale-95"
+        >
+          <span className="text-2xl">📲</span>
+          Принять звонок
+        </button>
+        <div className="text-xs text-white/40 px-8 text-center max-w-sm mt-2">
+          Нажмите чтобы подключить звук — браузер требует жест пользователя
+        </div>
       </div>
     );
   }
