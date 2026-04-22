@@ -523,7 +523,7 @@ export default function TrainingCallPage() {
         Positioned below the teleprompter so it doesn't fight the avatar.
       */}
       {(wsDead || sttError || !sttSupported) && (
-        <div className="pointer-events-none fixed top-[92px] left-0 right-0 z-30 flex justify-center px-4">
+        <div className="pointer-events-none fixed top-[130px] left-0 right-0 z-30 flex justify-center px-4">
           <div className="rounded-full bg-amber-500/90 px-4 py-1.5 text-xs font-medium text-black shadow-lg">
             {wsDead
               ? "Нет связи с сервером — переподключаемся…"
