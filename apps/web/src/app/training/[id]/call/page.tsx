@@ -521,18 +521,28 @@ export default function TrainingCallPage() {
     if (endInFlightRef.current) return;
     endInFlightRef.current = true;
     const sid = currentSessionIdRef.current || id;
-    // Immediate navigation — guaranteed response to the click.
-    router.push(`/results/${sid}`);
-    // Best-effort cleanup in the background.
+    // 2026-04-23 UX: show the hangup overlay IMMEDIATELY so the user sees
+    // responsive feedback (red spinner in button + "Завершаем…" label +
+    // full-screen "Сохраняем результаты" overlay). Previously router.push
+    // happened in the same tick — user got an abrupt jump without seeing
+    // the button react. Now the click visibly commits → 250ms tick → /results.
+    setHangupReason("Звонок завершён");
+    setHangupInProgress(true);
+    try { tts.stop(); } catch { /* noop */ }
+    try { stt.stopListening(); } catch { /* noop */ }
+    // Fire-and-forget end POST in parallel so backend scoring starts NOW,
+    // not after we land on /results.
     (async () => {
-      try { tts.stop(); } catch { /* noop */ }
-      try { stt.stopListening(); } catch { /* noop */ }
       try {
         await api.post(`/training/sessions/${sid}/end`, {});
       } catch (err) {
         logger.warn("[call] end POST failed (may already be ended)", err);
       }
     })();
+    // Replace (not push) so back-button doesn't return to dead call.
+    window.setTimeout(() => {
+      router.replace(`/results/${sid}`);
+    }, 250);
   }, [id, router, tts, stt]);
 
   // 2026-04-22 fallback sender: send current textInput as a plain text.message
@@ -718,6 +728,7 @@ export default function TrainingCallPage() {
         onToggleMute={() => setMuted((m) => !m)}
         onToggleSpeaker={() => setSpeakerOn((v) => !v)}
         onHangup={onHangup}
+        endInFlight={hangupInProgress}
         volume={tts.volume}
         onVolumeChange={tts.setVolume}
         stage={{

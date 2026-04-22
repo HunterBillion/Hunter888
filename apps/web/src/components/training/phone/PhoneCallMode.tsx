@@ -220,6 +220,11 @@ interface Props {
     icon?: string;
     type?: string;
   } | null;
+
+  /** 2026-04-23: when true, hangup button shows spinner + "Завершаем…"
+   *  label and becomes non-clickable. Prevents double-click races during
+   *  the ~15s window where backend is scoring the session. */
+  endInFlight?: boolean;
 }
 
 function formatElapsed(sec: number): string {
@@ -246,6 +251,7 @@ export function PhoneCallMode({
   onVolumeChange,
   stage,
   coachingHint,
+  endInFlight = false,
 }: Props) {
   const sceneKey = (sceneId || "none") in SCENE_GRADIENTS ? (sceneId || "none") : "none";
   const sceneGradient = SCENE_GRADIENTS[sceneKey];
@@ -551,20 +557,45 @@ export function PhoneCallMode({
             // stays symmetrical with the other two CallButtons.
             micSlot
           ) : (
+            // 2026-04-23 UX: semantic states.
+            // muted=true  → mic OFF → red outline + slash icon + label "Включить"
+            // muted=false → mic ON (green pulse while speaking) + label "Выключить"
+            // User immediately reads: red = off, green = live.
             <CallButton
-              label={muted ? "Вкл микрофон" : "Выкл микрофон"}
+              label={muted ? "Включить микрофон" : "Микрофон включён"}
+              subtitle={muted ? "выключен" : "в эфире"}
               onClick={onToggleMute}
-              active={muted}
+              state={muted ? "danger-off" : "success-on"}
             >
               {muted ? <MicOff size={26} /> : <Mic size={26} />}
             </CallButton>
           )}
 
-          <CallHangup onClick={onHangup} />
+          <CallHangup onClick={onHangup} loading={endInFlight} />
 
           <span data-volume-button>
+            {/* 2026-04-23 UX: speaker mute state is visually unmistakable.
+                volume > 0  → accent purple, Volume2 icon, label with % — ON
+                volume === 0 → red outline, Volume1 slash icon — OFF
+                When volume popover is open — muted state is overridden with
+                the open-state accent fill (so user sees popover is live). */}
             <CallButton
-              label={typeof volume === "number" ? `Звук ${Math.round(volume * 100)}%` : (speakerOn ? "Обычный звук" : "Громкая связь")}
+              label={
+                typeof volume === "number"
+                  ? volume === 0
+                    ? "Включить звук"
+                    : `Громкость ${Math.round(volume * 100)}%`
+                  : speakerOn
+                  ? "Обычный звук"
+                  : "Громкая связь"
+              }
+              subtitle={
+                typeof volume === "number"
+                  ? volume === 0
+                    ? "выключен"
+                    : "в эфире"
+                  : undefined
+              }
               onClick={() => {
                 if (typeof volume === "number" && onVolumeChange) {
                   setShowVolumePopover((v) => !v);
@@ -572,9 +603,23 @@ export function PhoneCallMode({
                   onToggleSpeaker();
                 }
               }}
-              active={typeof volume === "number" ? showVolumePopover : speakerOn}
+              state={
+                typeof volume === "number"
+                  ? showVolumePopover
+                    ? "accent-open"
+                    : volume === 0
+                    ? "danger-off"
+                    : "accent-on"
+                  : speakerOn
+                  ? "accent-on"
+                  : "neutral"
+              }
             >
-              {(typeof volume === "number" ? (volume > 0 ? true : false) : speakerOn) ? <Volume2 size={26} /> : <Volume1 size={26} />}
+              {(typeof volume === "number" ? volume > 0 : speakerOn) ? (
+                <Volume2 size={26} />
+              ) : (
+                <Volume1 size={26} />
+              )}
             </CallButton>
           </span>
         </div>
@@ -583,63 +628,193 @@ export function PhoneCallMode({
   );
 }
 
+/**
+ * 2026-04-23 redesign: explicit semantic states replace the old boolean
+ * `active` prop. The previous design rendered `active=true` as a white
+ * pill regardless of meaning — «mic muted» and «speaker on» looked
+ * identical, and users read «white = pressed/live» either way. Now:
+ *
+ *   - success-on  : green fill (mic live / speaker live)
+ *   - danger-off  : red outlined button with red icon (mic/speaker muted)
+ *   - accent-on   : brand purple fill (generic "enabled")
+ *   - accent-open : brighter purple (popover/menu is currently open)
+ *   - neutral     : translucent white (idle)
+ *
+ * Subtitle slot shows a second-line status chip under the icon
+ * («в эфире» / «выключен») — makes the state readable without icon
+ * interpretation.
+ */
+type CallButtonState =
+  | "success-on"
+  | "danger-off"
+  | "accent-on"
+  | "accent-open"
+  | "neutral";
+
 function CallButton({
   children,
   onClick,
   label,
-  active,
+  subtitle,
+  state = "neutral",
 }: {
   children: React.ReactNode;
   onClick: () => void;
   label: string;
-  active?: boolean;
+  subtitle?: string;
+  state?: CallButtonState;
 }) {
+  const palette = STATE_PALETTE[state];
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
+      aria-pressed={state === "accent-on" || state === "success-on"}
       className="flex flex-col items-center gap-1.5"
     >
       <span
-        className="flex h-16 w-16 items-center justify-center rounded-full transition-all duration-150 active:scale-95"
+        className="flex h-16 w-16 items-center justify-center rounded-full transition-all duration-200 active:scale-95"
         style={{
-          background: active ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)",
-          color: active ? "#0b0b14" : "#fff",
-          border: "1px solid rgba(255,255,255,0.18)",
+          background: palette.bg,
+          color: palette.fg,
+          border: `1px solid ${palette.border}`,
+          boxShadow: palette.shadow,
           backdropFilter: "blur(8px)",
         }}
       >
         {children}
       </span>
-      <span className="text-[10px] uppercase tracking-wider opacity-70">
+      <span
+        className="text-[10px] uppercase tracking-wider"
+        style={{ color: palette.labelFg, opacity: 0.85 }}
+      >
         {label}
       </span>
+      {subtitle && (
+        <span
+          className="text-[9px] font-semibold tracking-wider"
+          style={{ color: palette.subtitleFg }}
+        >
+          {subtitle.toUpperCase()}
+        </span>
+      )}
     </button>
   );
 }
 
-function CallHangup({ onClick }: { onClick: () => void }) {
+const STATE_PALETTE: Record<
+  CallButtonState,
+  {
+    bg: string;
+    fg: string;
+    border: string;
+    shadow: string;
+    labelFg: string;
+    subtitleFg: string;
+  }
+> = {
+  "success-on": {
+    // Green — live/broadcasting. Mic is picking up, speaker is active.
+    bg: "linear-gradient(135deg, rgba(61,220,132,0.95) 0%, rgba(46,180,106,0.95) 100%)",
+    fg: "#062a13",
+    border: "rgba(61,220,132,0.9)",
+    shadow: "0 6px 22px rgba(61,220,132,0.35), inset 0 0 0 1px rgba(255,255,255,0.25)",
+    labelFg: "rgba(255,255,255,0.95)",
+    subtitleFg: "rgba(61,220,132,0.95)",
+  },
+  "danger-off": {
+    // Red outline — muted/blocked. Not harmful in itself, but user needs
+    // to know "this is off" at a glance.
+    bg: "rgba(255,59,89,0.08)",
+    fg: "rgba(255,100,125,0.95)",
+    border: "rgba(255,59,89,0.75)",
+    shadow: "inset 0 0 0 1px rgba(255,59,89,0.18)",
+    labelFg: "rgba(255,255,255,0.85)",
+    subtitleFg: "rgba(255,120,140,0.95)",
+  },
+  "accent-on": {
+    // Brand purple — enabled, default "positive" state for non-mic controls.
+    bg: "linear-gradient(135deg, rgba(120,92,220,0.92) 0%, rgba(79,48,184,0.95) 100%)",
+    fg: "#ffffff",
+    border: "rgba(120,92,220,0.6)",
+    shadow: "0 6px 20px rgba(49,21,115,0.38), inset 0 0 0 1px rgba(255,255,255,0.18)",
+    labelFg: "rgba(255,255,255,0.95)",
+    subtitleFg: "rgba(180,160,255,0.95)",
+  },
+  "accent-open": {
+    // Popover/menu currently shown — brighter highlight so user knows
+    // the overlay is tied to this button.
+    bg: "rgba(255,255,255,0.92)",
+    fg: "#311573",
+    border: "rgba(255,255,255,0.9)",
+    shadow: "0 8px 24px rgba(49,21,115,0.45)",
+    labelFg: "rgba(255,255,255,0.95)",
+    subtitleFg: "rgba(200,190,255,0.95)",
+  },
+  neutral: {
+    bg: "rgba(255,255,255,0.12)",
+    fg: "#ffffff",
+    border: "rgba(255,255,255,0.18)",
+    shadow: "none",
+    labelFg: "rgba(255,255,255,0.7)",
+    subtitleFg: "rgba(255,255,255,0.5)",
+  },
+};
+
+function CallHangup({
+  onClick,
+  loading = false,
+}: {
+  onClick: () => void;
+  /** 2026-04-23: when true, button is disabled + spinner replaces icon.
+   *  Used to prevent double-click-while-scoring races. */
+  loading?: boolean;
+}) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={loading ? undefined : onClick}
+      disabled={loading}
       aria-label="Завершить звонок"
-      className="flex flex-col items-center gap-1.5"
+      aria-busy={loading}
+      className="flex flex-col items-center gap-1.5 disabled:cursor-wait"
     >
       <motion.span
-        whileTap={{ scale: 0.9 }}
+        whileTap={loading ? undefined : { scale: 0.9 }}
+        animate={
+          loading
+            ? {
+                boxShadow: [
+                  "0 8px 28px rgba(255,51,85,0.5)",
+                  "0 8px 36px rgba(255,51,85,0.85)",
+                  "0 8px 28px rgba(255,51,85,0.5)",
+                ],
+              }
+            : undefined
+        }
+        transition={loading ? { duration: 1.2, repeat: Infinity, ease: "easeInOut" } : undefined}
         className="flex h-16 w-16 items-center justify-center rounded-full"
         style={{
-          background: "#ff3355",
+          background: loading
+            ? "linear-gradient(135deg, #ff6a7f 0%, #ff3355 100%)"
+            : "#ff3355",
           color: "#fff",
           boxShadow: "0 8px 28px rgba(255,51,85,0.5)",
         }}
       >
-        <PhoneOff size={26} />
+        {loading ? (
+          <motion.span
+            animate={{ rotate: 360 }}
+            transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
+            className="inline-block h-5 w-5 rounded-full border-2 border-white/30 border-t-white"
+          />
+        ) : (
+          <PhoneOff size={26} />
+        )}
       </motion.span>
-      <span className="text-[10px] uppercase tracking-wider text-red-300/80">
-        Завершить
+      <span className="text-[10px] uppercase tracking-wider text-red-300/90">
+        {loading ? "Завершаем…" : "Завершить"}
       </span>
     </button>
   );

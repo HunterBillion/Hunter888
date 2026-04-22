@@ -44,6 +44,7 @@ import { type CheckpointInfo } from "@/components/training/ScriptAdherence";
 import StageProgressBar from "@/components/training/StageProgress";
 import WhisperPanel from "@/components/training/WhisperPanel";
 import { HangupModal } from "@/components/training/HangupModal";
+import SessionEndingOverlay from "@/components/training/SessionEndingOverlay";
 import { TrapNotification, type TrapEvent } from "@/components/training/TrapNotification";
 import { ClientCard, type ClientCardData } from "@/components/training/ClientCard";
 import { ClientCardMini } from "@/components/training/ClientCardMini";
@@ -212,6 +213,10 @@ export default function TrainingSessionPage() {
   const [storyTransitionText, setStoryTransitionText] = useState(
     isStoryMode ? "ИНИЦИАЛИЗАЦИЯ AI-ИСТОРИИ..." : "ПОДКЛЮЧЕНИЕ К СЕССИИ..."
   );
+  // 2026-04-23: full-screen "Завершаем тренировку" overlay shown between
+  // handleEnd() click and router.replace → /results. Prevents the 5-15s
+  // dead-air window while backend is scoring.
+  const [ending, setEnding] = useState(false);
   const [storyCallReport, setStoryCallReport] = useState<{
     callNumber: number;
     score: number;
@@ -507,15 +512,15 @@ export default function TrainingSessionPage() {
                 }
               }, 15000);
             } else {
-              // 2026-04-22: 3500ms → 500ms. Scoring is already done before
-              // session.ended is sent; the old delay was just to let user
-              // "see the last message" which doesn't help UX — results
-              // page has its own loading state.
+              // 2026-04-23: instant redirect (0ms). Session-ending overlay
+              // (set via handleEnd → ending=true) covered the whole
+              // scoring window; session.ended is the signal to land on
+              // /results. router.replace so back-button doesn't re-open
+              // the dead chat. Also ensure overlay state is set in case
+              // backend auto-ended via silence/hangup (user didn't click).
               s.setSessionState("completed");
-              setTimeout(
-                () => router.replace(`/results/${currentSessionIdRef.current || routeId}`),
-                500,
-              );
+              setEnding(true);
+              router.replace(`/results/${currentSessionIdRef.current || routeId}`);
             }
           }
           break;
@@ -1200,7 +1205,14 @@ export default function TrainingSessionPage() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  const handleEnd = () => sendMessage({ type: "session.end", data: {} });
+  // 2026-04-23: instant overlay so user sees feedback right away. Backend
+  // takes 5-15s to score + AI-coach + RAG, but the click should never feel
+  // unresponsive. Overlay self-renders phase progress while we wait for
+  // session.ended WS event to fire the actual redirect.
+  const handleEnd = () => {
+    setEnding(true);
+    sendMessage({ type: "session.end", data: {} });
+  };
 
   const handleMicPress = async () => {
     if (s.sessionState === "ready" && s.sttAvailable) {
@@ -2184,6 +2196,15 @@ export default function TrainingSessionPage() {
         elapsed={s.elapsed}
         sessionState={s.sessionState}
         formatTime={formatTime}
+      />
+
+      {/* 2026-04-23: full-screen ending overlay — shown from handleEnd
+          click until router.replace lands on /results. Covers the 5-15s
+          scoring window so the user never sees a frozen chat UI. */}
+      <SessionEndingOverlay
+        visible={ending}
+        title="Завершаем тренировку"
+        subtitle={s.characterName || undefined}
       />
 
       {/* ── Modals ──────────────────────────────────────────── */}
