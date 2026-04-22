@@ -585,6 +585,24 @@ function AssignedTab({
 }) {
   const { assigned, assignedLoading } = useTrainingStore();
 
+  // 2026-04-22 (hotfix): useState + useEffect for recentHome USED TO live
+  // AFTER the `if (assignedLoading) return …` early-return below. That
+  // violated Rules of Hooks — on first render (assignedLoading === true)
+  // those two hooks didn't run, on second render they did, so React
+  // counted different hook totals between renders and threw Minified
+  // React error #310 ("Rendered more hooks than during the previous
+  // render"). Moved above the gate so hook order is stable.
+  const [recentHome, setRecentHome] = useState<Array<{
+    id: string; scenario_title: string; score_total: number | null;
+    duration_seconds: number | null; ended_at: string | null;
+  }>>([]);
+
+  useEffect(() => {
+    api.get<Array<{ id: string; scenario_title: string; score_total: number | null; duration_seconds: number | null; ended_at: string | null }>>("/training/recent-home?days=7")
+      .then(setRecentHome)
+      .catch(() => {});
+  }, []);
+
   if (assignedLoading) {
     return (
       <div className="mt-8 space-y-4">
@@ -597,17 +615,6 @@ function AssignedTab({
       </div>
     );
   }
-
-  const [recentHome, setRecentHome] = useState<Array<{
-    id: string; scenario_title: string; score_total: number | null;
-    duration_seconds: number | null; ended_at: string | null;
-  }>>([]);
-
-  useEffect(() => {
-    api.get<Array<{ id: string; scenario_title: string; score_total: number | null; duration_seconds: number | null; ended_at: string | null }>>("/training/recent-home?days=7")
-      .then(setRecentHome)
-      .catch(() => {});
-  }, []);
 
   if (assigned.length === 0 && recentHome.length === 0) {
     return (
