@@ -1252,6 +1252,24 @@ export default function TrainingSessionPage() {
               transcribe_only: true,
             },
           });
+          // 2026-04-22: watchdog — if backend STT is down (Whisper
+          // crashed/loading/network blip) the transcription.result event
+          // never arrives and the "Распознаю: речь..." bar sits forever.
+          // Auto-reset state after 25s and notify user.
+          window.setTimeout(() => {
+            const cur = useSessionStore.getState().transcription;
+            if (cur.status === "transcribing") {
+              logger.warn("[training] STT watchdog: no result in 25s — resetting");
+              useSessionStore.getState().setTranscription({ status: "idle", partial: "", final: "" });
+              import("@/stores/useNotificationStore").then(({ useNotificationStore }) => {
+                useNotificationStore.getState().addToast({
+                  title: "Распознавание не удалось",
+                  body: "Сервис распознавания не ответил. Попробуйте ещё раз или введите текстом.",
+                  type: "warning",
+                });
+              }).catch(() => {/* ignore */});
+            }
+          }, 25000);
         } catch {
           s.setTranscription({ status: "idle", partial: "", final: "" });
           if (speech.isSupported) {

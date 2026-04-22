@@ -73,6 +73,15 @@ export default function TrainingCallPage() {
   // silent audio buffer in the click handler, which unlocks both
   // HTMLAudioElement and AudioContext for the rest of the session.
   const [callAccepted, setCallAccepted] = useState(false);
+  // 2026-04-22: mask routing flash after hangup. When backend sends
+  // client.hangup, several handlers race (explicit client.hangup path,
+  // session.ended on WS close, modeOk re-check on remount). Without a
+  // mask the user briefly saw the call page reset / chat page flash
+  // before landing on /results. Now: any hangup trigger flips
+  // hangupInProgress which renders a full-screen "call ending" overlay
+  // that covers all intermediate states until the redirect lands.
+  const [hangupInProgress, setHangupInProgress] = useState(false);
+  const [hangupReason, setHangupReason] = useState<string>("");
   // 2026-04-22 fallback text input: call mode was voice-only and users
   // with broken mic / denied permission / unsupported browser had NO
   // way to send a message. Chat worked because you can type there.
@@ -380,35 +389,39 @@ export default function TrainingCallPage() {
         }
 
         case "session.ended":
-          // Navigate to results on clean backend close.
+          // Navigate to results on clean backend close. Use replace +
+          // overlay so the hangup path visually matches client.hangup.
           tts.stop();
           stt.stopListening();
           endInFlightRef.current = true;
-          router.push(`/results/${currentSessionIdRef.current || id}`);
+          if (!hangupInProgress) {
+            setHangupReason("Звонок завершён");
+            setHangupInProgress(true);
+          }
+          router.replace(`/results/${currentSessionIdRef.current || id}`);
           break;
 
         case "client.hangup": {
-          // 2026-04-22: backend signals client hung up the phone (either
-          // emotion FSM transitioned to "hangup" OR AI-content farewell
-          // detected). Without this handler the call page kept playing the
-          // farewell TTS and then sat there forever — backend's auto-end
-          // task wouldn't redirect because we missed the session.ended that
-          // followed. Now we wait for TTS of the farewell to finish, then
-          // navigate to results immediately.
           const canContinue = Boolean(data.data.call_can_continue);
-          logger.log("[call] client.hangup received", {
+          console.log("[CALL] client.hangup received", {
             reason: data.data.reason,
             canContinue,
           });
           if (!canContinue) {
-            // Mark in-flight so the WebSocket close handler doesn't fire a
-            // duplicate /end POST.
             endInFlightRef.current = true;
-            // Wait ~3.5s so the goodbye TTS plays out, then redirect.
+            // 2026-04-22 (v2): set hangup overlay immediately so the user
+            // doesn't see a flash of chat UI / empty call state while the
+            // WS closes and /results loads. Previously: client.hangup →
+            // setTimeout redirect → in those 3.5s, session.ended fires AND
+            // WS disconnect re-triggers modeOk check → briefly rendered
+            // chat page → then /results. Now the overlay masks ALL of it.
+            setHangupReason((data.data.reason as string) || "Звонок завершён");
+            setHangupInProgress(true);
+            // router.replace so back-button doesn't return to dead call.
             setTimeout(() => {
               tts.stop();
               stt.stopListening();
-              router.push(`/results/${currentSessionIdRef.current || id}`);
+              router.replace(`/results/${currentSessionIdRef.current || id}`);
             }, 3500);
           }
           break;
@@ -657,6 +670,35 @@ export default function TrainingCallPage() {
   const sttSupported = stt.isSupported;
   const sttError = stt.status === "unsupported" || stt.status === "error";
   const wsDead = connectionState === "disconnected" || connectionState === "error";
+
+  // 2026-04-22: hang-up transition overlay. Shown for the 3.5s between
+  // client.hangup/session.ended and the redirect to /results. Covers the
+  // entire viewport at z-[100] so any UI flash (chat page, empty call,
+  // loading spinner on /results) is invisible to the user. The farewell
+  // TTS still plays because it was queued before this render.
+  if (hangupInProgress) {
+    return (
+      <div
+        className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-5 text-white"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, #2a1a4a 0%, #14091e 55%, #06030c 100%)",
+        }}
+      >
+        <div className="text-6xl animate-pulse">📞</div>
+        <div className="text-xl font-semibold tracking-tight">Звонок завершён</div>
+        {hangupReason && (
+          <div className="text-sm text-white/60 max-w-sm text-center px-8">
+            {hangupReason}
+          </div>
+        )}
+        <div className="flex items-center gap-2 text-xs text-white/50 mt-3">
+          <div className="h-1 w-1 rounded-full bg-white/60 animate-pulse" />
+          <span>Сохраняем результаты…</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
