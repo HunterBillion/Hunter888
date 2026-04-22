@@ -158,6 +158,52 @@ export default function TrainingCallPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 2026-04-22: procedural ringback + pickup-click on call connect.
+  // Sells the "real call" feeling — instead of dead silence between
+  // session.start and the first TTS, the user hears a single short ring
+  // followed by a small click as if the AI just picked up the phone.
+  // Pure Web Audio API: no audio files needed.
+  const ringbackPlayedRef = useRef(false);
+  useEffect(() => {
+    if (modeOk !== true || ringbackPlayedRef.current) return;
+    ringbackPlayedRef.current = true;
+    if (typeof window === "undefined") return;
+    const AC = (window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext) as typeof AudioContext | undefined;
+    if (!AC) return;
+    let ctx: AudioContext;
+    try { ctx = new AC(); } catch { return; }
+    // RU/EU dial-tone is 425Hz. Single ~600ms tone, then a 90ms gap, then
+    // a soft "click" that simulates the receiver lifting.
+    const t0 = ctx.currentTime + 0.05;
+    const ring = ctx.createOscillator();
+    ring.type = "sine";
+    ring.frequency.value = 425;
+    const ringGain = ctx.createGain();
+    ringGain.gain.setValueAtTime(0, t0);
+    ringGain.gain.linearRampToValueAtTime(0.18, t0 + 0.04);
+    ringGain.gain.setValueAtTime(0.18, t0 + 0.6);
+    ringGain.gain.linearRampToValueAtTime(0, t0 + 0.65);
+    ring.connect(ringGain).connect(ctx.destination);
+    ring.start(t0); ring.stop(t0 + 0.7);
+    // Click: short noise burst with a steep envelope.
+    const t1 = t0 + 0.78;
+    const clickBuf = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate);
+    const cd = clickBuf.getChannelData(0);
+    for (let i = 0; i < cd.length; i++) cd[i] = (Math.random() * 2 - 1) * (1 - i / cd.length);
+    const click = ctx.createBufferSource();
+    click.buffer = clickBuf;
+    const clickGain = ctx.createGain();
+    clickGain.gain.value = 0.12;
+    click.connect(clickGain).connect(ctx.destination);
+    click.start(t1);
+    // Browsers suspend until gesture — try resume.
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    // Cleanup the context after sounds done so we don't leak.
+    setTimeout(() => { try { ctx.close(); } catch { /* ignore */ } }, 1500);
+  }, [modeOk]);
+
   // --- WebSocket ----------------------------------------------------------
   const lastSeqNum = s.messages.length > 0
     ? s.messages.reduce((max, m) => Math.max(max, m.sequenceNumber ?? 0), 0) || null

@@ -933,7 +933,16 @@ export default function TrainingSessionPage() {
         case "error": {
           const errMsg = typeof data.data.message === "string" ? data.data.message : "Неизвестная ошибка";
           const errCode = data.data.code as string | undefined;
-          logger.error("Training error:", errCode || errMsg);
+          // 2026-04-22: log known graceful exits at info level — they're
+          // not actual errors. The browser console kept showing scary
+          // "Training error: session_completed" right before normal redirect
+          // to /results, which made support tickets look like crashes.
+          const _gracefulCodes = new Set(["session_completed", "session_locked", "session_hijacked"]);
+          if (errCode && _gracefulCodes.has(errCode)) {
+            logger.log("[training] graceful event:", errCode);
+          } else {
+            logger.error("Training error:", errCode || errMsg);
+          }
 
           // 2026-04-18: graceful handling of terminal session states so user
           // doesn't see "Неизвестная ошибка" when trying to continue / rejoin.
