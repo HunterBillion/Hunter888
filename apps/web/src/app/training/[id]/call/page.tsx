@@ -27,6 +27,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Mic, MicOff } from "lucide-react";
 import { useSessionStore } from "@/stores/useSessionStore";
 import { PhoneCallMode } from "@/components/training/phone/PhoneCallMode";
+import IncomingCallScreen from "@/components/training/phone/IncomingCallScreen";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useTTS } from "@/hooks/useTTS";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -72,7 +73,22 @@ export default function TrainingCallPage() {
   // click somewhere on the page. Now: a "Принять звонок" gate plays a
   // silent audio buffer in the click handler, which unlocks both
   // HTMLAudioElement and AudioContext for the rest of the session.
-  const [callAccepted, setCallAccepted] = useState(false);
+  // 2026-04-23 Sprint 5 (Zone 2): callAccepted persisted across refresh
+  // via sessionStorage. Scoped to session id so switching sessions resets.
+  const [callAccepted, setCallAccepted] = useState<boolean>(() => {
+    if (typeof window === "undefined" || !id) return false;
+    try {
+      return window.sessionStorage.getItem(`call-accepted-${id}`) === "1";
+    } catch {
+      return false;
+    }
+  });
+  // Transient state flags for the IncomingCallScreen buttons.
+  const [accepting, setAccepting] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  // real_client_id pulled from GET /training/sessions/{id} — used as
+  // redirect target when user clicks Decline (back to the CRM card).
+  const [realClientId, setRealClientId] = useState<string | null>(null);
   // 2026-04-22: mask routing flash after hangup. When backend sends
   // client.hangup, several handlers race (explicit client.hangup path,
   // session.ended on WS close, modeOk re-check on remount). Without a
@@ -142,6 +158,14 @@ export default function TrainingCallPage() {
           meta?.session?.custom_params?.bg_noise ||
           null;
         if (bg) setSceneBg(bg);
+        // 2026-04-23 Zone 2: pick up real_client_id so Decline knows where
+        // to redirect (CRM card vs /training). Fields may live at top
+        // level or nested under session — tolerate either shape.
+        const rcid =
+          (meta as unknown as { real_client_id?: string | null })?.real_client_id
+          ?? (meta as unknown as { session?: { real_client_id?: string | null } })?.session?.real_client_id
+          ?? null;
+        if (rcid) setRealClientId(String(rcid));
         setModeOk(true);
       } catch (err) {
         logger.error("[call] failed to verify session mode", err);
@@ -176,15 +200,20 @@ export default function TrainingCallPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2026-04-22: procedural ringback + pickup-click on call connect.
-  // Sells the "real call" feeling — instead of dead silence between
-  // session.start and the first TTS, the user hears a single short ring
-  // followed by a small click as if the AI just picked up the phone.
-  // Pure Web Audio API: no audio files needed.
-  const ringbackPlayedRef = useRef(false);
+  // 2026-04-23 Sprint 5 (Zone 2): looped ringback. Plays 425Hz RU dial
+  // tone on a 3.5s cycle until user clicks Accept or component unmounts.
+  // Replaces the previous one-shot ring that played exactly once on
+  // mount. Looping sells the «real incoming call» feel — user can walk
+  // over to accept and still hear ringing.
+  //
+  // Audio is unlocked by the user's first Accept/Decline click (both are
+  // gesture handlers). Before that click, AudioContext sits in "suspended"
+  // state in modern Chrome; resume() is called at the top of handleAccept.
+  // On most browsers the ringback won't actually emit sound until unlock,
+  // but that's fine — the visual animation carries the UX.
+  const ringbackStopRef = useRef<(() => void) | null>(null);
   useEffect(() => {
-    if (modeOk !== true || ringbackPlayedRef.current) return;
-    ringbackPlayedRef.current = true;
+    if (modeOk !== true || callAccepted) return;
     if (typeof window === "undefined") return;
     const AC = (window.AudioContext ||
       (window as unknown as { webkitAudioContext?: typeof AudioContext })
@@ -192,35 +221,76 @@ export default function TrainingCallPage() {
     if (!AC) return;
     let ctx: AudioContext;
     try { ctx = new AC(); } catch { return; }
-    // RU/EU dial-tone is 425Hz. Single ~600ms tone, then a 90ms gap, then
-    // a soft "click" that simulates the receiver lifting.
-    const t0 = ctx.currentTime + 0.05;
-    const ring = ctx.createOscillator();
-    ring.type = "sine";
-    ring.frequency.value = 425;
-    const ringGain = ctx.createGain();
-    ringGain.gain.setValueAtTime(0, t0);
-    ringGain.gain.linearRampToValueAtTime(0.18, t0 + 0.04);
-    ringGain.gain.setValueAtTime(0.18, t0 + 0.6);
-    ringGain.gain.linearRampToValueAtTime(0, t0 + 0.65);
-    ring.connect(ringGain).connect(ctx.destination);
-    ring.start(t0); ring.stop(t0 + 0.7);
-    // Click: short noise burst with a steep envelope.
-    const t1 = t0 + 0.78;
-    const clickBuf = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate);
-    const cd = clickBuf.getChannelData(0);
-    for (let i = 0; i < cd.length; i++) cd[i] = (Math.random() * 2 - 1) * (1 - i / cd.length);
-    const click = ctx.createBufferSource();
-    click.buffer = clickBuf;
-    const clickGain = ctx.createGain();
-    clickGain.gain.value = 0.12;
-    click.connect(clickGain).connect(ctx.destination);
-    click.start(t1);
-    // Browsers suspend until gesture — try resume.
+    let stopped = false;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+
+    const playOneCycle = () => {
+      if (stopped) return;
+      const t0 = ctx.currentTime + 0.02;
+      const ring = ctx.createOscillator();
+      ring.type = "sine";
+      ring.frequency.value = 425;
+      const ringGain = ctx.createGain();
+      ringGain.gain.setValueAtTime(0, t0);
+      ringGain.gain.linearRampToValueAtTime(0.18, t0 + 0.04);  // 40ms fade-in
+      ringGain.gain.setValueAtTime(0.18, t0 + 0.6);
+      ringGain.gain.linearRampToValueAtTime(0, t0 + 0.65);     // 50ms fade-out
+      ring.connect(ringGain).connect(ctx.destination);
+      ring.start(t0);
+      ring.stop(t0 + 0.7);
+      // 40ms «trying-to-pick-up» noise burst right after the tone.
+      const t1 = t0 + 0.78;
+      const clickBuf = ctx.createBuffer(1, ctx.sampleRate * 0.04, ctx.sampleRate);
+      const cd = clickBuf.getChannelData(0);
+      for (let i = 0; i < cd.length; i++) cd[i] = (Math.random() * 2 - 1) * (1 - i / cd.length) * 0.3;
+      const click = ctx.createBufferSource();
+      click.buffer = clickBuf;
+      const clickGain = ctx.createGain();
+      clickGain.gain.value = 0.08;
+      click.connect(clickGain).connect(ctx.destination);
+      click.start(t1);
+      // Schedule next cycle — 3s silence after this cycle's click.
+      timerId = setTimeout(playOneCycle, 3500);
+    };
+
     if (ctx.state === "suspended") ctx.resume().catch(() => {});
-    // Cleanup the context after sounds done so we don't leak.
-    setTimeout(() => { try { ctx.close(); } catch { /* ignore */ } }, 1500);
-  }, [modeOk]);
+    playOneCycle();
+
+    const stop = (playPickupClick = false) => {
+      if (stopped) return;
+      stopped = true;
+      if (timerId) {
+        clearTimeout(timerId);
+        timerId = null;
+      }
+      if (playPickupClick) {
+        // Final louder pickup click — as if the receiver lifts off hook.
+        try {
+          const t = ctx.currentTime + 0.02;
+          const buf = ctx.createBuffer(1, ctx.sampleRate * 0.06, ctx.sampleRate);
+          const d = buf.getChannelData(0);
+          for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          const g = ctx.createGain();
+          g.gain.value = 0.14;
+          src.connect(g).connect(ctx.destination);
+          src.start(t);
+        } catch {
+          /* ignore */
+        }
+      }
+      setTimeout(() => {
+        try { ctx.close(); } catch { /* ignore */ }
+      }, playPickupClick ? 250 : 50);
+    };
+    ringbackStopRef.current = () => stop(true);
+
+    return () => {
+      stop(false);
+      ringbackStopRef.current = null;
+    };
+  }, [modeOk, callAccepted]);
 
   // --- WebSocket ----------------------------------------------------------
   const lastSeqNum = s.messages.length > 0
@@ -237,7 +307,13 @@ export default function TrainingCallPage() {
     // The accept button plays a silent audio buffer in its click handler,
     // which unlocks HTMLAudioElement permanently for the page. Without this
     // gate, TTS audio arrived before any gesture and was silently dropped.
-    autoConnect: modeOk === true && callAccepted,
+    // 2026-04-23 Sprint 5 (Zone 2): WS connects as soon as modeOk, even
+    // before user clicks Accept. The ONLY thing gated on callAccepted is
+    // the session.start message (see sessionStartSentRef effect). This
+    // lets the WebSocket handshake + auth.success complete while user
+    // looks at IncomingCallScreen — so when they Accept, session.started
+    // + client_card arrive in ~400ms instead of 1-2s cold-start.
+    autoConnect: modeOk === true,
     onMessage: (data: WSMessage) => {
       if (!data.data || typeof data.data !== "object") data.data = {};
       // eslint-disable-next-line no-console
@@ -484,13 +560,20 @@ export default function TrainingCallPage() {
       sessionStartSentRef.current = false;
       return;
     }
+    // 2026-04-23 Zone 2: don't send session.start until user clicks Accept.
+    // Backend only emits TTS audio AFTER session.start, so holding it
+    // until Accept prevents audio from being silently dropped by the
+    // autoplay policy. Auth handshake already completed in parallel, so
+    // as soon as user clicks Accept this effect runs and session.started
+    // lands in ~400ms.
+    if (!callAccepted) return;
     if (sessionStartSentRef.current) return;
     if (!id) return;
     sessionStartSentRef.current = true;
     // eslint-disable-next-line no-console
     console.log("[CALL] sending session.start");
     sendMessage({ type: "session.start", data: { session_id: id } });
-  }, [connectionState, id, sendMessage]);
+  }, [connectionState, id, sendMessage, callAccepted]);
 
   // --- STT start/stop bound to mute state + mode readiness ---------------
   useEffect(() => {
@@ -577,103 +660,105 @@ export default function TrainingCallPage() {
     );
   }
 
-  // 2026-04-22: explicit user-gesture gate. Click "Принять звонок" plays a
-  // silent audio buffer in the click handler (counts as gesture for
-  // HTMLAudioElement) AND resumes any AudioContext that was created by
-  // ambient noise / ringback. This guarantees TTS audio plays from the
-  // very first reply instead of being silently dropped by autoplay policy.
-  // Without this gate, users heard nothing for the first 30-60s until
-  // they happened to click somewhere else on the page.
+  // 2026-04-23 Sprint 5 (Zone 2): the old inline JSX accept-gate is
+  // replaced by the full IncomingCallScreen component with avatar, age,
+  // city, profession, lead-source badge, debt chip and a pair of
+  // Accept+Decline buttons. Accept runs the 3-vector audio unlock,
+  // Decline posts to /training/sessions/{id}/decline and redirects to
+  // the CRM card (or /training if no real_client).
   if (!callAccepted) {
     return (
-      <div
-        className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 text-white"
-        style={{
-          background:
-            "radial-gradient(ellipse at center, #2a1a4a 0%, #14091e 55%, #06030c 100%)",
-        }}
-      >
-        <div className="text-7xl animate-pulse">📞</div>
-        <div className="text-2xl font-semibold tracking-tight">
-          Входящий звонок
-        </div>
-        <div className="text-sm text-white/60 max-w-sm text-center px-8">
-          {s.characterName || "Клиент"} ждёт ответа
-        </div>
-        <button
-          onClick={async () => {
-            // 2026-04-22 (v3): aggressive multi-vector unlock. Previous
-            // versions had Web Audio silent buffer + blob-URL HTMLAudioElement
-            // but user still got silent TTS. Chrome's autoplay policy
-            // requires MULTIPLE conditions:
-            //   1) AudioContext unlocked via resume() in a gesture
-            //   2) HTMLAudioElement.play() succeeded within gesture window
-            //   3) Media engagement index sufficient
-            // We hit all three here. Also: await the play promise so the
-            // gesture frame stays alive until Chrome confirms unlock.
-            console.log("[CALL] accept-click: running unlock sequence");
-            try {
-              // --- Vector 1: Web Audio API unlock ---
-              const AC = (window.AudioContext ||
-                (window as unknown as {
-                  webkitAudioContext?: typeof AudioContext;
-                }).webkitAudioContext) as typeof AudioContext | undefined;
-              if (AC) {
-                const ctx = new AC();
-                if (ctx.state === "suspended") {
-                  await ctx.resume().catch(() => {});
-                }
-                const buf = ctx.createBuffer(1, 1, 22050);
-                const src = ctx.createBufferSource();
-                src.buffer = buf;
-                src.connect(ctx.destination);
-                src.start(0);
-                console.log("[CALL] unlock: AudioContext state =", ctx.state);
-                // Keep context around for 500ms to satisfy media policy.
-                setTimeout(() => { try { ctx.close(); } catch { /* */ } }, 500);
+      <IncomingCallScreen
+        characterName={s.characterName || "Клиент"}
+        emotion={s.emotion as EmotionState | undefined}
+        sceneId={sceneBg}
+        clientCard={s.clientCard}
+        accepting={accepting}
+        declining={declining}
+        onAccept={async () => {
+          if (accepting || declining) return;
+          setAccepting(true);
+          console.log("[CALL] accept-click: running unlock sequence");
+          // Stop looping ringback + play one final pickup click.
+          try { ringbackStopRef.current?.(); } catch { /* */ }
+          // Re-run the 3-vector unlock — proven gesture-handler sequence.
+          try {
+            // Vector 1: Web Audio API unlock.
+            const AC = (window.AudioContext ||
+              (window as unknown as {
+                webkitAudioContext?: typeof AudioContext;
+              }).webkitAudioContext) as typeof AudioContext | undefined;
+            if (AC) {
+              const ctx = new AC();
+              if (ctx.state === "suspended") {
+                await ctx.resume().catch(() => {});
               }
-              // --- Vector 2: HTMLAudioElement via blob URL ---
-              // CSP allows blob: — data: was blocked. Valid silent 8kHz mono
-              // PCM wav, 1 sample of silence. Using proper WAV headers.
-              const silentWav = new Uint8Array([
-                0x52, 0x49, 0x46, 0x46, 0x25, 0, 0, 0, 0x57, 0x41, 0x56, 0x45,
-                0x66, 0x6d, 0x74, 0x20, 0x10, 0, 0, 0, 1, 0, 1, 0,
-                0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0, 1, 0, 8, 0,
-                0x64, 0x61, 0x74, 0x61, 0x01, 0, 0, 0, 0x80,
-              ]);
-              const blob = new Blob([silentWav], { type: "audio/wav" });
-              const url = URL.createObjectURL(blob);
-              const a = new Audio(url);
-              a.volume = 0.001; // not 0 — some browsers skip 0-volume plays
-              try {
-                await a.play();
-                console.log("[CALL] unlock: HTMLAudio play() succeeded");
-              } catch (e) {
-                console.warn("[CALL] unlock: HTMLAudio play() failed:", e);
-              }
-              URL.revokeObjectURL(url);
-              // --- Vector 3: also poke tts.unlock() if pending ---
-              try { tts.unlock(); } catch { /* */ }
-            } catch (e) {
-              console.warn("[CALL] unlock sequence error:", e);
+              const buf = ctx.createBuffer(1, 1, 22050);
+              const src = ctx.createBufferSource();
+              src.buffer = buf;
+              src.connect(ctx.destination);
+              src.start(0);
+              console.log("[CALL] unlock: AudioContext state =", ctx.state);
+              setTimeout(() => { try { ctx.close(); } catch { /* */ } }, 500);
             }
-            setCallAccepted(true);
-          }}
-          className="mt-4 flex items-center gap-3 rounded-full px-10 py-4 text-lg font-semibold text-white shadow-2xl transition active:scale-95"
-          style={{
-            background:
-              "linear-gradient(135deg, #4f30b8 0%, #311573 50%, #1f0a52 100%)",
-            boxShadow:
-              "0 12px 40px rgba(49, 21, 115, 0.55), 0 0 0 1px rgba(255,255,255,0.08) inset",
-          }}
-        >
-          <span className="text-2xl">📲</span>
-          Принять звонок
-        </button>
-        <div className="text-xs text-white/40 px-8 text-center max-w-sm mt-2">
-          Нажмите чтобы подключить звук — браузер требует жест пользователя
-        </div>
-      </div>
+            // Vector 2: HTMLAudioElement via blob URL (CSP-safe).
+            const silentWav = new Uint8Array([
+              0x52, 0x49, 0x46, 0x46, 0x25, 0, 0, 0, 0x57, 0x41, 0x56, 0x45,
+              0x66, 0x6d, 0x74, 0x20, 0x10, 0, 0, 0, 1, 0, 1, 0,
+              0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0, 1, 0, 8, 0,
+              0x64, 0x61, 0x74, 0x61, 0x01, 0, 0, 0, 0x80,
+            ]);
+            const blob = new Blob([silentWav], { type: "audio/wav" });
+            const url = URL.createObjectURL(blob);
+            const a = new Audio(url);
+            a.volume = 0.001;
+            try {
+              await a.play();
+              console.log("[CALL] unlock: HTMLAudio play() succeeded");
+            } catch (e) {
+              console.warn("[CALL] unlock: HTMLAudio play() failed:", e);
+            }
+            URL.revokeObjectURL(url);
+            // Vector 3: also poke tts.unlock() if pending.
+            try { tts.unlock(); } catch { /* */ }
+          } catch (e) {
+            console.warn("[CALL] unlock sequence error:", e);
+          }
+          // Persist across refresh so F5 doesn't bounce back to incoming.
+          try {
+            window.sessionStorage.setItem(`call-accepted-${id}`, "1");
+          } catch {
+            /* storage quota / private mode — non-fatal */
+          }
+          setCallAccepted(true);
+        }}
+        onDecline={async () => {
+          if (accepting || declining) return;
+          setDeclining(true);
+          try { ringbackStopRef.current?.(); } catch { /* */ }
+          // Persist decline so refresh doesn't re-show incoming screen.
+          try {
+            window.sessionStorage.setItem(`call-declined-${id}`, "1");
+          } catch {
+            /* */
+          }
+          // Fire-and-forget POST /decline. We redirect regardless of the
+          // response — backend idempotency handles double-clicks and 429
+          // rate limits shouldn't block the UX.
+          (async () => {
+            try {
+              await api.post(`/training/sessions/${id}/decline`, {});
+            } catch (err) {
+              logger.warn("[call] decline POST failed (non-fatal)", err);
+            }
+          })();
+          // Route to CRM card if we know the real client, else back to
+          // /training catalog. router.replace prevents the user from
+          // back-button'ing into the same incoming screen.
+          const target = realClientId ? `/clients/${realClientId}` : "/training";
+          router.replace(target);
+        }}
+      />
     );
   }
 
