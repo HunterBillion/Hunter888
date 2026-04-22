@@ -1858,10 +1858,16 @@ async def _generate_character_reply(
     # transition to "hangup" (e.g. weights softened, grace period), but the
     # LLM can still generate a farewell phrase on its own ("Всё, кладу
     # трубку", "До свидания"). Without this, the AI says goodbye in text but
-    # the session stays open — confusing UX (user said hi, AI keeps talking).
-    # Detect farewell intent in the AI reply and trigger session.end so the
-    # call wraps cleanly. Only fires on plain replies (we already returned
-    # for explicit hangup branch above).
+    # the session stays open.
+    #
+    # 2026-04-22 (v2): Tightened to avoid false positives — the v1 detector
+    # fired on the SECOND turn whenever the LLM generated an aggressive
+    # response containing "до свидания" as part of an ultimatum ("иначе я
+    # кладу трубку"). Now we require:
+    #   1) message_count >= 4 (4+ user replies — gives real conversation room)
+    #   2) farewell phrase appears in the LAST sentence of the reply
+    #      (not buried inside an aggressive mid-reply ultimatum)
+    #   3) reply isn't a question (questions imply continuation)
     _AI_FAREWELL_PATTERNS = (
         "до свидания", "всего доброго", "всего хорошего", "всех благ",
         "кладу трубку", "вешаю трубку", "повешу трубку", "положу трубку",
@@ -1869,9 +1875,25 @@ async def _generate_character_reply(
         "больше не звоните", "не перезванивайте", "до встречи",
         "удачи вам", "бывайте", "прощайте",
     )
-    _ai_reply_lower = (llm_result.content or "").lower()
-    _ai_farewell_hit = any(p in _ai_reply_lower for p in _AI_FAREWELL_PATTERNS)
-    if _ai_farewell_hit and not state.get("user_initiated_farewell") and not state.get("ai_initiated_farewell"):
+    _ai_reply_text = (llm_result.content or "").strip()
+    _ai_reply_lower = _ai_reply_text.lower()
+    # Split into sentences and only look at the LAST one. Aggressive replies
+    # like "Не понял, иначе я кладу трубку!" contain farewell-ish phrases in
+    # the MIDDLE — the actual goodbye usually closes the message.
+    _last_sentence = _ai_reply_lower
+    for _delim in (".", "!", "?", "…"):
+        _parts = [p.strip() for p in _last_sentence.split(_delim) if p.strip()]
+        if _parts:
+            _last_sentence = _parts[-1]
+    _ai_farewell_hit = any(p in _last_sentence for p in _AI_FAREWELL_PATTERNS)
+    _is_question = _ai_reply_text.rstrip().endswith("?")
+    _msg_count_for_ai_farewell = state.get("message_count", 0)
+    _AI_FAREWELL_MIN_MESSAGES = 4
+    if (_ai_farewell_hit
+        and not _is_question
+        and _msg_count_for_ai_farewell >= _AI_FAREWELL_MIN_MESSAGES
+        and not state.get("user_initiated_farewell")
+        and not state.get("ai_initiated_farewell")):
         state["ai_initiated_farewell"] = True
         logger.info(
             "AI-initiated farewell detected (session=%s, content snippet=%r) — "

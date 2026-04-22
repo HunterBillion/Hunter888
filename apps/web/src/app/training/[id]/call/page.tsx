@@ -369,8 +369,45 @@ export default function TrainingCallPage() {
           router.push(`/results/${currentSessionIdRef.current || id}`);
           break;
 
+        case "client.hangup": {
+          // 2026-04-22: backend signals client hung up the phone (either
+          // emotion FSM transitioned to "hangup" OR AI-content farewell
+          // detected). Without this handler the call page kept playing the
+          // farewell TTS and then sat there forever — backend's auto-end
+          // task wouldn't redirect because we missed the session.ended that
+          // followed. Now we wait for TTS of the farewell to finish, then
+          // navigate to results immediately.
+          const canContinue = Boolean(data.data.call_can_continue);
+          logger.log("[call] client.hangup received", {
+            reason: data.data.reason,
+            canContinue,
+          });
+          if (!canContinue) {
+            // Mark in-flight so the WebSocket close handler doesn't fire a
+            // duplicate /end POST.
+            endInFlightRef.current = true;
+            // Wait ~3.5s so the goodbye TTS plays out, then redirect.
+            setTimeout(() => {
+              tts.stop();
+              stt.stopListening();
+              router.push(`/results/${currentSessionIdRef.current || id}`);
+            }, 3500);
+          }
+          break;
+        }
+
         case "error": {
           const code = (data.data.code as string) || "";
+          // 2026-04-22: session_completed means backend rejected our
+          // message because the session is already ended (auto-end after
+          // farewell, or competing tab ended it). Redirect to results
+          // instead of sitting on a dead call screen indefinitely.
+          if (code === "session_completed") {
+            logger.log("[call] session already completed → /results");
+            endInFlightRef.current = true;
+            router.push(`/results/${currentSessionIdRef.current || id}`);
+            break;
+          }
           // Hijack/conflict: do NOT auto-redirect to chat. The WS has
           // reconnect logic, and most hijacks in production are spurious
           // (React remount, fast-refresh, brief network blip). Kicking the
@@ -506,30 +543,80 @@ export default function TrainingCallPage() {
   if (!callAccepted) {
     return (
       <div
-        className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black text-white"
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 text-white"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, #2a1a4a 0%, #14091e 55%, #06030c 100%)",
+        }}
       >
         <div className="text-7xl animate-pulse">📞</div>
-        <div className="text-2xl font-semibold">Входящий звонок</div>
+        <div className="text-2xl font-semibold tracking-tight">
+          Входящий звонок
+        </div>
         <div className="text-sm text-white/60 max-w-sm text-center px-8">
           {s.characterName || "Клиент"} ждёт ответа
         </div>
         <button
           onClick={() => {
-            // Unlock HTMLAudioElement: play a silent in-memory wav.
+            // 2026-04-22 (v2): CSP blocks data: URIs for media. Use Web
+            // Audio API silent buffer instead — it's CSP-safe AND unlocks
+            // both AudioContext (for ambient noise / ringback) and
+            // HTMLAudioElement (for TTS playback) when called from a
+            // genuine user-gesture handler. The previous Audio(data:...)
+            // approach silently failed to unlock because the browser
+            // refused the blocked media element entirely.
             try {
-              // 1-sample silent WAV (smallest valid file)
-              const silent =
-                "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
-              const a = new Audio(silent);
+              const AC = (window.AudioContext ||
+                (window as unknown as {
+                  webkitAudioContext?: typeof AudioContext;
+                }).webkitAudioContext) as typeof AudioContext | undefined;
+              if (AC) {
+                const ctx = new AC();
+                // Play a 1ms silent buffer — counts as media playback.
+                const buf = ctx.createBuffer(1, 1, 22050);
+                const src = ctx.createBufferSource();
+                src.buffer = buf;
+                src.connect(ctx.destination);
+                src.start(0);
+                // resume() is required after gesture for some browsers.
+                if (ctx.state === "suspended") {
+                  ctx.resume().catch(() => {});
+                }
+                // Close after a tick — keeping it open isn't needed; ambient
+                // noise creates its own context on next render.
+                setTimeout(() => {
+                  try { ctx.close(); } catch { /* ignore */ }
+                }, 100);
+              }
+              // Also poke HTMLAudioElement via blob: URL (CSP-allowed).
+              // Build a tiny silent wav as a Uint8Array, wrap in Blob, play.
+              const silentWav = new Uint8Array([
+                0x52, 0x49, 0x46, 0x46, 0x24, 0, 0, 0, 0x57, 0x41, 0x56, 0x45,
+                0x66, 0x6d, 0x74, 0x20, 0x10, 0, 0, 0, 1, 0, 1, 0,
+                0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0, 1, 0, 8, 0,
+                0x64, 0x61, 0x74, 0x61, 0, 0, 0, 0,
+              ]);
+              const blob = new Blob([silentWav], { type: "audio/wav" });
+              const url = URL.createObjectURL(blob);
+              const a = new Audio(url);
               a.volume = 0;
               const p = a.play();
-              if (p) p.catch(() => {/* not fatal — gate still proceeds */});
-            } catch {/* ignore — proceed regardless */}
-            // Also resume any pre-created AudioContexts (ambient noise creates one).
-            // This is best-effort; new ones created later resume on their own.
+              if (p)
+                p.then(() => URL.revokeObjectURL(url)).catch(() =>
+                  URL.revokeObjectURL(url),
+                );
+            } catch {
+              /* not fatal — gate still proceeds */
+            }
             setCallAccepted(true);
           }}
-          className="mt-4 flex items-center gap-3 rounded-full bg-emerald-500 px-10 py-4 text-lg font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-600 active:scale-95"
+          className="mt-4 flex items-center gap-3 rounded-full px-10 py-4 text-lg font-semibold text-white shadow-2xl transition active:scale-95"
+          style={{
+            background:
+              "linear-gradient(135deg, #4f30b8 0%, #311573 50%, #1f0a52 100%)",
+            boxShadow:
+              "0 12px 40px rgba(49, 21, 115, 0.55), 0 0 0 1px rgba(255,255,255,0.08) inset",
+          }}
         >
           <span className="text-2xl">📲</span>
           Принять звонок
