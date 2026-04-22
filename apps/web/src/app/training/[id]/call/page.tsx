@@ -29,6 +29,7 @@ import { useSessionStore } from "@/stores/useSessionStore";
 import { PhoneCallMode } from "@/components/training/phone/PhoneCallMode";
 import IncomingCallScreen from "@/components/training/phone/IncomingCallScreen";
 import ScriptDrawer from "@/components/training/ScriptDrawer";
+import { telemetry } from "@/lib/telemetry";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useTTS } from "@/hooks/useTTS";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -449,6 +450,10 @@ export default function TrainingCallPage() {
               currentStageLabel: sd.current_stage_label ?? s.stageLabel,
               hint: sd.hint ?? "Вернитесь и закройте этот этап.",
               setAt: Date.now(),
+            });
+            telemetry.track("stage_skipped", {
+              missed: sd.missed_stage_number,
+              current: sd.current_stage_number ?? s.currentStage,
             });
           }
           break;

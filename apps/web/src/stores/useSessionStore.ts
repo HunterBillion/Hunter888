@@ -28,6 +28,11 @@ export interface DifficultyUpdate {
   trend: DifficultyTrend;
 }
 
+/** 2026-04-23 Sprint 3 (gap-fill): module-scope debounce timer for
+ *  setStageUpdate. Single in-flight setter cancels any previous one
+ *  (50ms window) so burst WS events collapse into one re-render. */
+let _stageUpdateTimer: number | null = null;
+
 /** 2026-04-23 Sprint 3 (Zone 3): stage.skipped WS event payload shape
  *  used by ScriptPanel / ScriptDrawer to render the «вы пропустили этап»
  *  yellow alert card. */
@@ -110,6 +115,11 @@ interface SessionStore {
   // here so ScriptPanel can flash a yellow border + show the hint.
   // Cleared automatically after 12s OR when next stage.update arrives.
   skippedHint: SkippedHint | null;
+
+  // 2026-04-23 Sprint 3 (gap-fill): bumps to current Date.now() when an
+  // ACTUAL stage transition is committed (not on same-stage re-emits).
+  // ScriptPanel watches this to flash header green for ~500ms.
+  stageTransitionTick: number;
 
   // Hints
   objectionHint: ObjectionHint | null;
@@ -299,6 +309,7 @@ const INITIAL_STATE = {
   totalStages: 7,
   stageConfidence: 1.0,
   skippedHint: null as SkippedHint | null,
+  stageTransitionTick: 0,
   objectionHint: null as ObjectionHint | null,
   checkpointHint: null as CheckpointHint | null,
   whispers: [] as CoachingWhisper[],
@@ -453,18 +464,36 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   addTrapDodged: () => set((s) => ({ trapsDodged: s.trapsDodged + 1 })),
   adjustTrapNetScore: (delta) =>
     set((s) => ({ trapNetScore: Math.max(-10, Math.min(10, s.trapNetScore + delta)) })),
-  setStageUpdate: (data) => set({
-    currentStage: data.stage_number,
-    currentStageName: data.stage_name,
-    stageLabel: data.stage_label,
-    stagesCompleted: data.stages_completed,
-    totalStages: data.total_stages,
-    stageConfidence: data.confidence,
-    // 2026-04-23 Sprint 3: a fresh stage transition supersedes any
-    // previous skip alert — clear it so the panel doesn't keep nagging
-    // about a stage the user has already moved past.
-    skippedHint: null,
-  }),
+  setStageUpdate: (data) => {
+    // 2026-04-23 Sprint 3 (gap-fill): debounce burst stage.update emissions.
+    // Backend can fire several stage.update events in rapid succession
+    // (e.g. on session.resume the WS handler emits one for the current
+    // state and another after the first user message). The 50ms window
+    // collapses such pairs into a single React re-render — animations
+    // don't re-trigger, ScriptDrawer doesn't auto-open twice.
+    if (_stageUpdateTimer !== null) {
+      clearTimeout(_stageUpdateTimer);
+    }
+    _stageUpdateTimer = window.setTimeout(() => {
+      _stageUpdateTimer = null;
+      const prevStage = get().currentStage;
+      set({
+        currentStage: data.stage_number,
+        currentStageName: data.stage_name,
+        stageLabel: data.stage_label,
+        stagesCompleted: data.stages_completed,
+        totalStages: data.total_stages,
+        stageConfidence: data.confidence,
+        // A fresh stage transition supersedes any previous skip alert.
+        skippedHint: null,
+        // Bump tick ONLY on actual stage change so ScriptPanel can
+        // flash header green for 500ms. Same-stage updates (e.g. score
+        // tweaks) shouldn't re-trigger the flash.
+        stageTransitionTick:
+          data.stage_number !== prevStage ? Date.now() : get().stageTransitionTick,
+      });
+    }, 50);
+  },
   setSkippedHint: (skippedHint) => set({ skippedHint }),
   clearSkippedHint: () => set({ skippedHint: null }),
   setObjectionHint: (objectionHint) => set({ objectionHint }),
@@ -562,6 +591,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       totalStages: 7,
       stageConfidence: 1.0,
       skippedHint: null,
+      stageTransitionTick: 0,
       objectionHint: null,
       checkpointHint: null,
       whispersEnabled: s.whispersEnabled,

@@ -75,9 +75,18 @@ export default function ScriptPanel({
   const stageLabel = useSessionStore((s) => s.stageLabel);
   const skippedHint = useSessionStore((s) => s.skippedHint);
   const clearSkippedHint = useSessionStore((s) => s.clearSkippedHint);
+  // 2026-04-23 gap-fill: bumps to Date.now() on real stage transition.
+  // We watch it to flash the header green for 500ms (UX cue that the
+  // user just successfully advanced).
+  const stageTransitionTick = useSessionStore((s) => s.stageTransitionTick);
 
   const [expanded, setExpanded] = useState(!defaultCollapsed);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  // Header flash trigger — flips true for ~500ms after every transition.
+  const [flashing, setFlashing] = useState(false);
+  // Tooltip on pending-dot click. Stores stage number for which to render
+  // the small popover. Click outside to dismiss.
+  const [tooltipDot, setTooltipDot] = useState<number | null>(null);
 
   const stages = useMemo(
     () => Array.from({ length: totalStages }, (_, i) => i + 1),
@@ -102,6 +111,28 @@ export default function ScriptPanel({
     }, 12_000);
     return () => window.clearTimeout(t);
   }, [skippedHint, clearSkippedHint]);
+
+  // 2026-04-23 gap-fill: green flash on stage transition. Watch the
+  // store's stageTransitionTick — bumps once per real transition.
+  // 500ms flash duration matches plan §3.3.2.
+  useEffect(() => {
+    if (stageTransitionTick === 0) return;
+    setFlashing(true);
+    const t = window.setTimeout(() => setFlashing(false), 500);
+    return () => window.clearTimeout(t);
+  }, [stageTransitionTick]);
+
+  // 2026-04-23 gap-fill: outside click dismisses pending-dot tooltip.
+  useEffect(() => {
+    if (tooltipDot === null) return;
+    const close = (e: MouseEvent) => {
+      const tgt = e.target as HTMLElement | null;
+      if (tgt?.closest("[data-stage-tooltip]")) return;
+      setTooltipDot(null);
+    };
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [tooltipDot]);
 
   const handleCopy = (text: string, idx: number) => {
     if (onCopyExample) {
@@ -154,17 +185,30 @@ export default function ScriptPanel({
         />
       </div>
 
-      {/* Header — clickable to toggle body */}
-      <button
+      {/* Header — clickable to toggle body. Green flash on stage transition. */}
+      <motion.button
         type="button"
         onClick={handleToggle}
+        animate={
+          flashing
+            ? {
+                background: [
+                  "rgba(255,255,255,0)",
+                  "rgba(61,220,132,0.18)",
+                  "rgba(255,255,255,0)",
+                ],
+              }
+            : { background: "rgba(255,255,255,0)" }
+        }
+        transition={{ duration: 0.5, ease: "easeOut" }}
         className="flex items-center justify-between gap-2 -mx-1 px-1 py-1 rounded transition-colors hover:bg-white/5"
         aria-expanded={expanded}
+        data-script-panel-header
       >
         <div className="flex items-center gap-2">
           <Target
             size={14}
-            style={{ color: "var(--accent)" }}
+            style={{ color: flashing ? "var(--success)" : "var(--accent)" }}
             aria-hidden
           />
           <span
@@ -183,7 +227,7 @@ export default function ScriptPanel({
         ) : (
           <ChevronDown size={14} style={{ color: "var(--text-muted)" }} />
         )}
-      </button>
+      </motion.button>
 
       {/* Stage dots */}
       <div className="flex items-center mt-2 mb-1">
@@ -246,14 +290,20 @@ export default function ScriptPanel({
                     </span>
                   </motion.div>
                 ) : (
-                  <motion.div
+                  <motion.button
                     key={`pen-${num}`}
-                    className="flex items-center justify-center w-5 h-5 rounded-full"
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTooltipDot(num === tooltipDot ? null : num);
+                    }}
+                    className="relative flex items-center justify-center w-5 h-5 rounded-full cursor-pointer"
                     style={{
                       background: "transparent",
                       border: "1.5px solid var(--border-color)",
                     }}
-                    aria-label={`Этап ${num} не начат`}
+                    aria-label={`Этап ${num} не начат — показать описание`}
+                    data-stage-tooltip
                   >
                     <span
                       className="text-[10px] font-bold"
@@ -261,7 +311,40 @@ export default function ScriptPanel({
                     >
                       {num}
                     </span>
-                  </motion.div>
+
+                    {/* Tooltip — plan §3.3.2 «Click на pending dot →
+                        tooltip с кратким описанием этого этапа». */}
+                    <AnimatePresence>
+                      {tooltipDot === num && (
+                        <motion.div
+                          key={`tip-${num}`}
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.15 }}
+                          data-stage-tooltip
+                          className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-44 max-w-[80vw] rounded-lg px-2.5 py-2 text-[11px] leading-snug text-left z-40"
+                          style={{
+                            background: "var(--bg-primary, #0e0e14)",
+                            border: "1px solid var(--border-color)",
+                            color: "var(--text-secondary)",
+                            boxShadow: "0 8px 20px rgba(0,0,0,0.4)",
+                          }}
+                        >
+                          <div
+                            className="font-semibold mb-0.5"
+                            style={{ color: "var(--text-primary)" }}
+                          >
+                            Этап {num}:{" "}
+                            {guidanceFor(num)?.label_ru || "—"}
+                          </div>
+                          <div style={{ color: "var(--text-muted)" }}>
+                            {guidanceFor(num)?.task_ru || "Нет описания"}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.button>
                 )}
               </AnimatePresence>
             </div>

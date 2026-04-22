@@ -615,7 +615,17 @@ export interface ScoreUpdate {
 
 // ─── Coaching Whisper (WS) ────────────────────────────────────────────────
 
-export type WhisperType = "legal" | "emotion" | "stage" | "objection" | "transition";
+export type WhisperType =
+  | "legal"
+  | "emotion"
+  | "stage"
+  | "objection"
+  | "transition"
+  // 2026-04-23 Sprint 3: educational "script" whispers fired by the
+  // backend WhisperEngine when the user is stuck on a stage. Rendered by
+  // WhisperPanel with a «Этап N» header and a click-to-scroll-to-
+  // ScriptPanel handler. See plan section 3.4.
+  | "script";
 
 export interface CoachingWhisper {
   type: WhisperType;

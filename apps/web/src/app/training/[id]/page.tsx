@@ -46,6 +46,7 @@ import ScriptDrawer from "@/components/training/ScriptDrawer";
 import WhisperPanel from "@/components/training/WhisperPanel";
 import { HangupModal } from "@/components/training/HangupModal";
 import SessionEndingOverlay from "@/components/training/SessionEndingOverlay";
+import { telemetry } from "@/lib/telemetry";
 import { TrapNotification, type TrapEvent } from "@/components/training/TrapNotification";
 import { ClientCard, type ClientCardData } from "@/components/training/ClientCard";
 import { ClientCardMini } from "@/components/training/ClientCardMini";
@@ -599,6 +600,12 @@ export default function TrainingSessionPage() {
               currentStageLabel: sd.current_stage_label ?? s.stageLabel,
               hint: sd.hint ?? "Вернитесь и закройте этот этап — клиент это заметил.",
               setAt: Date.now(),
+            });
+            // 2026-04-23 gap-fill: fire telemetry so post-demo analytics
+            // can see how often users skip ahead (and which stages).
+            telemetry.track("stage_skipped", {
+              missed: sd.missed_stage_number,
+              current: sd.current_stage_number ?? s.currentStage,
             });
           }
           break;

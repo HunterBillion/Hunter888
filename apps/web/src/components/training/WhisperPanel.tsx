@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Scale, Heart, ArrowRight, Shield, Zap, Lightbulb, Eye, EyeOff, Target } from "lucide-react";
 import type { CoachingWhisper } from "@/types";
 import { useSessionStore } from "@/stores/useSessionStore";
+import { telemetry } from "@/lib/telemetry";
 
 const ICON_MAP: Record<string, typeof Scale> = {
   scale: Scale,
@@ -132,19 +133,59 @@ export default function WhisperPanel({ onToggle }: WhisperPanelProps) {
         {enabled && whispers.map((w, i) => {
           const IconComponent = ICON_MAP[w.icon] || Lightbulb;
           const opacity = i === 0 ? 1 : i === 1 ? 0.6 : 0.35;
+          // 2026-04-23 gap-fill: type="script" whispers are educational
+          // («вы застряли на этапе N»). We render a small header «Этап N»
+          // and make the whole card clickable — click scrolls the main
+          // ScriptPanel into view and expands it if collapsed, so the
+          // user can see the task / examples for the stuck stage.
+          const isScript = w.type === "script";
+          const handleClick = isScript
+            ? () => {
+                telemetry.track("whisper_script_clicked", {
+                  stage: Number(w.stage) || undefined,
+                });
+                // Find the ScriptPanel header by data-attribute (set in
+                // ScriptPanel.tsx on the toggle button) and scroll it
+                // into view. If body is collapsed, click it to expand.
+                if (typeof document === "undefined") return;
+                const header = document.querySelector(
+                  "[data-script-panel-header]",
+                ) as HTMLButtonElement | null;
+                if (!header) return;
+                header.scrollIntoView({
+                  behavior: "smooth",
+                  block: "center",
+                });
+                // If aria-expanded=false, click to open.
+                if (header.getAttribute("aria-expanded") === "false") {
+                  header.click();
+                }
+              }
+            : undefined;
+
+          const CardTag = isScript ? motion.button : motion.div;
 
           return (
-            <motion.div
+            <CardTag
               key={`${w.type}-${w.timestamp}`}
+              type={isScript ? "button" : undefined}
+              onClick={handleClick}
               initial={{ opacity: 0, y: -8, scale: 0.95 }}
               animate={{ opacity, y: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.3, delay: i * 0.05 }}
-              className="mt-2.5 rounded-lg px-3 py-2.5"
+              className={`mt-2.5 rounded-lg px-3 py-2.5 text-left w-full ${
+                isScript ? "cursor-pointer transition-colors hover:brightness-110" : ""
+              }`}
               style={{
                 background: TYPE_COLORS[w.type] || "rgba(255,255,255,0.05)",
                 border: `1px solid ${TYPE_BORDER_COLORS[w.type] || "rgba(255,255,255,0.1)"}`,
               }}
+              aria-label={
+                isScript
+                  ? `Подсказка по этапу ${w.stage || "скрипта"}: ${w.message}. Нажмите чтобы открыть панель скрипта.`
+                  : undefined
+              }
             >
               <div className="flex items-start gap-2.5">
                 <IconComponent
@@ -152,6 +193,17 @@ export default function WhisperPanel({ onToggle }: WhisperPanelProps) {
                   style={{ color: TYPE_ICON_COLORS[w.type] || "var(--accent)", marginTop: 2, flexShrink: 0 }}
                 />
                 <div className="flex-1 min-w-0">
+                  {/* 2026-04-23 gap-fill: «Этап N» mini-header for
+                      script-type whispers — tells the user which stage
+                      this hint refers to. */}
+                  {isScript && w.stage && (
+                    <div
+                      className="text-[10px] font-bold uppercase tracking-wider mb-0.5"
+                      style={{ color: TYPE_ICON_COLORS[w.type] }}
+                    >
+                      Этап {w.stage}
+                    </div>
+                  )}
                   <div className="text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>
                     {w.message}
                   </div>
@@ -160,7 +212,7 @@ export default function WhisperPanel({ onToggle }: WhisperPanelProps) {
                   </div>
                 </div>
               </div>
-            </motion.div>
+            </CardTag>
           );
         })}
       </AnimatePresence>
