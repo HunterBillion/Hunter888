@@ -276,8 +276,14 @@ class InteractionResponse(BaseModel):
     old_status: str | None
     new_status: str | None
     created_at: datetime
+    # 2026-04-23 Sprint 6 — expose metadata_ so frontend can detect
+    # training-type interactions via metadata.training_session_id and
+    # render them as special cards with a «Повторить» mini-action.
+    # (Backend ORM column is named metadata_ to avoid SQLAlchemy's
+    # reserved attribute `metadata`; Pydantic uses Field alias.)
+    metadata: dict | None = Field(default=None, alias="metadata_")
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class InteractionSummaryResponse(BaseModel):

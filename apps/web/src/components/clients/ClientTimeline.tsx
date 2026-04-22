@@ -1,10 +1,28 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Phone, PhoneIncoming, Mail, MessageSquare, Users, FileText, ArrowRightLeft, Shield, Settings, Clock } from "lucide-react";
+import {
+  Phone,
+  PhoneIncoming,
+  Mail,
+  MessageSquare,
+  Users,
+  FileText,
+  ArrowRightLeft,
+  Shield,
+  Settings,
+  Clock,
+  Target,
+  RotateCcw,
+  Loader2,
+} from "lucide-react";
 import type { ClientInteraction, InteractionType, ClientStatus } from "@/types";
 import { CLIENT_STATUS_LABELS } from "@/types";
 import { sanitizeText } from "@/lib/sanitize";
+import { api } from "@/lib/api";
+import { logger } from "@/lib/logger";
 
 /** Translate raw status code → Russian label; fall through unknown codes. */
 function statusLabel(code: string | null): string {
@@ -82,6 +100,33 @@ function groupByBucket(interactions: ClientInteraction[]): { label: string; item
 }
 
 export function ClientTimeline({ interactions }: ClientTimelineProps) {
+  // 2026-04-23 Sprint 6 — replay mini-button state per row. Key = interaction id.
+  const router = useRouter();
+  const [replayingId, setReplayingId] = useState<string | null>(null);
+
+  const handleReplay = async (
+    interactionId: string,
+    trainingSessionId: string,
+    sessionMode: "call" | "chat",
+  ) => {
+    if (replayingId) return;
+    setReplayingId(interactionId);
+    try {
+      const session = await api.post<{ id: string }>("/training/sessions", {
+        clone_from_session_id: trainingSessionId,
+      });
+      if (!session?.id) throw new Error("Сервер не вернул id сессии");
+      if (sessionMode === "call") {
+        router.push(`/training/${session.id}/call`);
+      } else {
+        router.push(`/training/${session.id}`);
+      }
+    } catch (err) {
+      logger.error("[ClientTimeline] replay failed:", err);
+      setReplayingId(null);
+    }
+  };
+
   if (!interactions.length) {
     return (
       <div className="text-center py-8">
@@ -111,7 +156,18 @@ export function ClientTimeline({ interactions }: ClientTimelineProps) {
             />
 
             {bucket.items.map((item, i) => {
-              const Icon = ICON_MAP[item.interaction_type] || FileText;
+              // 2026-04-23 Sprint 6 — training interactions stamp
+              // metadata.training_session_id; we detect them here so the
+              // row can show a Target icon + «Повторить» mini-button.
+              const trainingSessionId = item.metadata?.training_session_id;
+              const isTraining = !!trainingSessionId;
+              const trainingMode: "call" | "chat" =
+                item.metadata?.session_mode === "call" ? "call" : "chat";
+              const declined = item.metadata?.declined === true;
+
+              const Icon = isTraining
+                ? Target
+                : ICON_MAP[item.interaction_type] || FileText;
               const dateStr = new Date(item.created_at).toLocaleTimeString("ru-RU", {
                 hour: "2-digit",
                 minute: "2-digit",
@@ -122,6 +178,14 @@ export function ClientTimeline({ interactions }: ClientTimelineProps) {
                 (item.interaction_type === "outbound_call" || item.interaction_type === "inbound_call") &&
                 item.duration_seconds &&
                 item.duration_seconds > 0;
+
+              const typeLabel = isTraining
+                ? declined
+                  ? "Отклонён звонок"
+                  : trainingMode === "call"
+                    ? "Тренировка (звонок)"
+                    : "Тренировка (чат)"
+                : TYPE_LABELS[item.interaction_type];
 
               return (
                 <motion.div
@@ -143,7 +207,7 @@ export function ClientTimeline({ interactions }: ClientTimelineProps) {
                   <div className="ml-2">
                     <div className="flex items-center flex-wrap gap-2">
                       <span className="text-xs font-mono" style={{ color: "var(--accent)" }}>
-                        {TYPE_LABELS[item.interaction_type]}
+                        {typeLabel}
                       </span>
                       <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                         {dateStr}
@@ -189,6 +253,38 @@ export function ClientTimeline({ interactions }: ClientTimelineProps) {
                       <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
                         {sanitizeText(item.manager_name)}
                       </span>
+                    )}
+
+                    {/* 2026-04-23 Sprint 6 — replay mini-chip for training
+                        interactions. Disabled when the source session was
+                        declined (abandoned) — nothing to clone usefully. */}
+                    {isTraining && trainingSessionId && (
+                      <div className="mt-1.5">
+                        <motion.button
+                          type="button"
+                          onClick={() => handleReplay(item.id, trainingSessionId, trainingMode)}
+                          disabled={declined || replayingId === item.id}
+                          whileTap={{ scale: 0.96 }}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md transition disabled:opacity-40 disabled:cursor-not-allowed"
+                          style={{
+                            color: "var(--accent)",
+                            background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+                            border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)",
+                          }}
+                          title={
+                            declined
+                              ? "Сессия была отклонена — повтор недоступен"
+                              : "Повторить с теми же параметрами"
+                          }
+                        >
+                          {replayingId === item.id ? (
+                            <Loader2 size={10} className="animate-spin" />
+                          ) : (
+                            <RotateCcw size={10} />
+                          )}
+                          Повторить
+                        </motion.button>
+                      </div>
                     )}
                   </div>
                 </motion.div>

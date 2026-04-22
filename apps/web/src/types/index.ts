@@ -1076,6 +1076,21 @@ export interface CRMClientDetail extends CRMClient {
   income: number | null;
   city: string | null;
   tags: string[];
+  // 2026-04-23 Sprint 6 — last completed training with this client.
+  last_training_session?: LastTrainingSession | null;
+}
+
+// 2026-04-23 Sprint 6 — `metadata_` JSONB column on the backend
+// ClientInteraction. Training-type interactions stamp these fields so
+// the timeline can render them as a special card with a «Повторить»
+// action.
+export interface ClientInteractionMetadata {
+  training_session_id?: string;
+  scenario_id?: string | null;
+  session_mode?: "call" | "chat" | null;
+  scores?: Record<string, number>;
+  declined?: boolean;
+  [k: string]: unknown;
 }
 
 export interface ClientInteraction {
@@ -1090,6 +1105,23 @@ export interface ClientInteraction {
   old_status: string | null;
   new_status: string | null;
   created_at: string;
+  metadata?: ClientInteractionMetadata | null;
+}
+
+// 2026-04-23 Sprint 6 — GET /clients/{id} response includes the last
+// completed training session with this client, so /clients/[id]/page.tsx
+// can render the RetrainWidget with actual score/duration/stage data.
+export interface LastTrainingSession {
+  id: string;
+  status: string | null;
+  session_mode: "call" | "chat" | string;
+  total_score: number | null;
+  duration_seconds: number | null;
+  started_at: string | null;
+  ended_at: string | null;
+  scenario_id: string | null;
+  stages_completed: number[];
+  final_stage: number | null;
 }
 
 export interface ClientConsent {

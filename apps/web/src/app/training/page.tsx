@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { logger } from "@/lib/logger";
@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   Target,
   Share2,
+  RotateCcw,
 } from "lucide-react";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import { PixelFaceIcon } from "@/components/pixel/PixelFaceIcon";
@@ -752,8 +753,15 @@ function AssignedTab({
 function SavedTab({ storyCalls }: { storyCalls: number }) {
   const { savedCharacters, savedLoading, fetchSavedCharacters } = useTrainingStore();
   const router = useRouter();
+  // 2026-04-23 Sprint 6 — retrain deep link: ?retrain_from=<sessionId>&char=<customCharId>.
+  // Shown above the grid as a RetrainBadge when the matching saved char exists.
+  const searchParamsSaved = useSearchParams();
+  const retrainFrom = searchParamsSaved.get("retrain_from");
+  const retrainChar = searchParamsSaved.get("char");
   const [starting, setStarting] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // Card refs keyed by char id so we can scroll the matched card into view.
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     fetchSavedCharacters();
@@ -922,6 +930,25 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
     }
   };
 
+  // 2026-04-23 Sprint 6 — match the saved char referenced by ?char=<id>.
+  // Passed as `SavedCharFull` to RetrainBadge (it has everything the POST
+  // body needs via char.id; see `handleStart` for payload shape).
+  const matchedRetrainChar: SavedCharFull | null =
+    retrainFrom && retrainChar
+      ? ((savedCharacters.find((c) => c.id === retrainChar) as SavedCharFull | undefined) ?? null)
+      : null;
+
+  // Scroll the matched card into view once the data arrived.
+  useEffect(() => {
+    if (matchedRetrainChar && matchedRetrainChar.id) {
+      const el = cardRefs.current[matchedRetrainChar.id];
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchedRetrainChar?.id, savedCharacters.length]);
+
   if (savedLoading) {
     return (
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -950,15 +977,33 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
   }
 
   return (
-    <div className="mt-8 grid gap-4 sm:grid-cols-2">
+    <div className="mt-8">
+      {/* 2026-04-23 Sprint 6 — Retrain banner when we landed here from
+          /results → "Повторить с тем же клиентом" (custom-character path). */}
+      {matchedRetrainChar && retrainFrom && (
+        <RetrainBadge
+          character={matchedRetrainChar}
+          sessionId={retrainFrom}
+          onDismiss={() => router.replace("/training?tab=saved")}
+        />
+      )}
+      <div className="grid gap-4 sm:grid-cols-2">
       {savedCharacters.map((char, i) => {
         return (
           <motion.div
             key={char.id}
+            ref={(el) => {
+              cardRefs.current[char.id] = el;
+            }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: i * 0.05 }}
             className="glass-panel p-5 relative overflow-hidden"
+            style={
+              matchedRetrainChar?.id === char.id
+                ? { boxShadow: "0 0 0 2px var(--accent), 0 4px 20px color-mix(in srgb, var(--accent) 30%, transparent)" }
+                : undefined
+            }
           >
             <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, transparent, var(--accent), transparent)" }} />
             <h3 className="font-display font-semibold" style={{ color: "var(--text-primary)" }}>
@@ -1016,6 +1061,95 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
           </motion.div>
         );
       })}
+      </div>
     </div>
+  );
+}
+
+/* ─── Retrain Badge (Sprint 6) ──────────────────────────────────────────────
+   Shown above the saved-characters grid when the user lands on
+   /training?tab=saved&retrain_from=<id>&char=<id>. Clones the source
+   session with the same custom character and jumps into the new session.
+   Default target is the chat route — call-mode repeat for constructor
+   sessions is rare (the CRM card path handles voice).                       */
+
+interface RetrainBadgeProps {
+  character: {
+    id?: string;
+    name?: string;
+    archetype: string;
+  };
+  sessionId: string;
+  onDismiss: () => void;
+}
+
+function RetrainBadge({ character, sessionId, onDismiss }: RetrainBadgeProps) {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+
+  const handleStart = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const payload: Record<string, unknown> = {
+        clone_from_session_id: sessionId,
+      };
+      if (character.id) payload.custom_character_id = character.id;
+      const session = await api.post<{ id: string }>("/training/sessions", payload);
+      if (!session?.id) throw new Error("Сервер не вернул id сессии");
+      router.push(`/training/${session.id}`);
+    } catch (e) {
+      logger.error("[RetrainBadge] clone failed:", e);
+      useNotificationStore.getState().addToast({
+        title: "Не удалось повторить сеанс",
+        body: e instanceof Error ? e.message : "Попробуйте ещё раз",
+        type: "error",
+      });
+      setLoading(false);
+    }
+  };
+
+  const displayName = character.name || character.archetype;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28 }}
+      className="glass-panel rounded-2xl p-4 mb-5 flex items-center gap-3 flex-wrap"
+      style={{
+        borderLeft: "3px solid var(--accent)",
+        boxShadow: "0 2px 14px color-mix(in srgb, var(--accent) 18%, transparent)",
+      }}
+    >
+      <RotateCcw size={16} style={{ color: "var(--accent)" }} />
+      <div className="flex-1 min-w-[200px]">
+        <div className="font-display text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+          Повторите сеанс с {displayName}
+        </div>
+        <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+          Те же параметры, тот же клиент.
+        </div>
+      </div>
+      <motion.button
+        type="button"
+        onClick={handleStart}
+        disabled={loading}
+        whileTap={{ scale: 0.97 }}
+        className="btn-neon flex items-center justify-center gap-2 px-4 text-xs font-semibold"
+        style={{ color: "var(--accent)", borderColor: "var(--accent)" }}
+      >
+        {loading ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+        Начать
+      </motion.button>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="text-xs px-2 py-1 rounded-md transition hover:opacity-100 opacity-60"
+        style={{ color: "var(--text-muted)" }}
+      >
+        Закрыть
+      </button>
+    </motion.div>
   );
 }

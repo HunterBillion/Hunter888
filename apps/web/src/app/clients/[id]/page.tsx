@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -16,6 +16,9 @@ import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { ClientTimeline } from "@/components/clients/ClientTimeline";
+// 2026-04-23 Sprint 6 — «deja-vu» widget на CRM-карточке при открытии
+// через ?retrain=...&from=... (пришёл с /results → "Повторить с клиентом").
+import { RetrainWidget } from "@/components/clients/RetrainWidget";
 import { ConsentBadge } from "@/components/clients/ConsentBadge";
 import { ConsentForm } from "@/components/clients/ConsentForm";
 import { StatusTransition } from "@/components/clients/StatusTransition";
@@ -29,7 +32,16 @@ export default function ClientDetailPage() {
   const { user } = useAuth();
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = typeof params.id === "string" ? params.id : String(params.id ?? "");
+
+  // 2026-04-23 Sprint 6 — retrain deja-vu. Query is shaped by
+  // /results → «Повторить с клиентом»: ?retrain=call|chat&from=<sessionId>.
+  const retrainModeRaw = searchParams.get("retrain");
+  const retrainMode: "call" | "chat" | null =
+    retrainModeRaw === "call" || retrainModeRaw === "chat" ? retrainModeRaw : null;
+  const fromSessionId = searchParams.get("from");
+  const historyRef = useRef<HTMLDivElement | null>(null);
 
   const isReadOnly = user?.role === "methodologist";
 
@@ -59,6 +71,19 @@ export default function ClientDetailPage() {
     fetchClient().finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // 2026-04-23 Sprint 6 — auto-scroll to history panel when the user lands
+  // here via ?retrain=... so the RetrainWidget is front-and-centre.
+  const showRetrain = !!(retrainMode && fromSessionId && client?.last_training_session);
+  useEffect(() => {
+    if (showRetrain && historyRef.current) {
+      historyRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [showRetrain]);
+
+  const dismissRetrain = () => {
+    router.replace(`/clients/${id}`);
+  };
 
   const handleStartTraining = async (mode: "chat" | "voice") => {
     if (!client || startingMode) return;
@@ -615,6 +640,7 @@ export default function ClientDetailPage() {
 
           {/* Right: Timeline */}
           <motion.div
+            ref={historyRef}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
@@ -635,6 +661,18 @@ export default function ClientDetailPage() {
                 </motion.button>
               )}
             </div>
+            {/* 2026-04-23 Sprint 6 — RetrainWidget shown above the timeline
+                when /clients/[id] is opened via ?retrain=call|chat&from=<id>
+                and backend returned last_training_session. */}
+            {showRetrain && retrainMode && fromSessionId && client.last_training_session && (
+              <RetrainWidget
+                mode={retrainMode}
+                fromSessionId={fromSessionId}
+                lastSession={client.last_training_session}
+                clientName={client.full_name}
+                onDismiss={dismissRetrain}
+              />
+            )}
             <ClientTimeline interactions={client.interactions ?? []} />
           </motion.div>
         </div>
