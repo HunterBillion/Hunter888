@@ -74,7 +74,7 @@ services:
           memory: 512M
 
   whisper:
-    image: fedirz/faster-whisper-server:0.4.1-cpu  # Pinned — do NOT use :latest in production
+    image: fedirz/faster-whisper-server:0.6.0-rc.3-cpu  # Pinned — do NOT use :latest in production
     profiles: ["full", "stt"]
     ports:
       - "8001:8000"
