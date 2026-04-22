@@ -28,10 +28,29 @@ MIN_MESSAGES_FOR_WHISPER = 2  # Don't whisper until manager has sent 2+ messages
 PRIORITY_MAP = {
     "legal": 3,
     "emotion": 2,
+    "script": 2,  # 2026-04-23 Sprint 3/7: stuck-on-stage educational hint
     "stage": 1,
     "objection": 1,
     "transition": 1,
 }
+
+# 2026-04-23 Sprint 3 (plan §3.1.5) — script-stuck hints. Frontend
+# WhisperPanel renders type="script" as a clickable card with a Target
+# icon; click scrolls ScriptPanel into view and expands it. We fire
+# these when the manager has been on the same stage for N messages
+# without a transition — "застрял, вот конкретная фраза чтобы двигаться".
+SCRIPT_STUCK_HINTS: dict[str, str] = {
+    "greeting": "Похоже, затянули приветствие. Попробуйте: «Здравствуйте, меня зовут {имя}, компания. Есть минутка?»",
+    "contact": "Застряли на контакте. Попробуйте: «Расскажите, что у вас случилось? Я вас слушаю.»",
+    "qualification": "Квалификация буксует. Попробуйте: «Какая примерно сумма долга? Сколько у вас кредиторов?»",
+    "presentation": "Презентация затянулась. Упростите: «Банкротство по 127-ФЗ — списание долгов за 8–10 месяцев через суд.»",
+    "objections": "Возражения висят. Присоединитесь: «Понимаю ваше беспокойство. Давайте посчитаем — сколько вы платите банкам сейчас?»",
+    "appointment": "Пора назначать встречу. Попробуйте: «Давайте встретимся — завтра или на неделе удобнее?»",
+    "closing": "Пора закрывать. Резюмируйте: «Итого: встреча в {день}, офис, с паспортом. Спасибо за доверие!»",
+}
+
+# Number of manager messages on the SAME stage before we consider them stuck.
+SCRIPT_STUCK_THRESHOLD = 5
 
 # ─── Emotion de-escalation hints ──────────────────────────────────────────────
 
@@ -188,6 +207,10 @@ class WhisperEngine:
         manager_message_count: int,
         difficulty: int,
         whispers_enabled: bool = True,
+        # 2026-04-23 Sprint 3: messages on the CURRENT stage (not total).
+        # Used by _check_script_stuck to detect «завис на этапе».
+        stage_message_count: int | None = None,
+        stage_number: int | None = None,
     ) -> dict | None:
         """Analyze context and generate a whisper if appropriate.
 
@@ -220,6 +243,17 @@ class WhisperEngine:
         stage = self._check_stage_hint(current_stage, manager_message_count)
         if stage:
             candidates.append(stage)
+
+        # 3b. 2026-04-23 Sprint 3 (plan §3.1.5) — script-stuck educational
+        # whisper. Fires when the manager has been on the SAME stage for
+        # too many messages without transitioning. Priority 2 (same as
+        # emotion) so it surfaces above generic stage hints.
+        if stage_message_count is not None:
+            script = self._check_script_stuck(
+                current_stage, stage_message_count, stage_number,
+            )
+            if script:
+                candidates.append(script)
 
         # 4. Objection — check client message for objection patterns
         objection = self._check_objection(last_client_message, current_stage)
@@ -330,6 +364,39 @@ class WhisperEngine:
                 icon="zap",
             )
         return None
+
+    def _check_script_stuck(
+        self,
+        current_stage: str,
+        stage_msg_count: int,
+        stage_number: int | None,
+    ) -> Whisper | None:
+        """2026-04-23 Sprint 3: fire when manager has been on the same
+        stage for ≥ SCRIPT_STUCK_THRESHOLD messages without transitioning.
+
+        Frontend `WhisperPanel` (type="script") renders these as a
+        clickable card that scrolls ScriptPanel into view so the user
+        can copy an example phrase. The `stage` field carries the
+        1-based stage number (not the key) for the «Этап N» mini-header.
+        """
+        if stage_msg_count < SCRIPT_STUCK_THRESHOLD:
+            return None
+        # Fire once every SCRIPT_STUCK_THRESHOLD messages (so a persistent
+        # stuck state doesn't spam — the existing throttle in
+        # generate_whisper also caps to THROTTLE_SEC).
+        if stage_msg_count % SCRIPT_STUCK_THRESHOLD != 0:
+            return None
+        hint = SCRIPT_STUCK_HINTS.get(current_stage)
+        if not hint:
+            return None
+        stage_label = str(stage_number) if stage_number is not None else current_stage
+        return Whisper(
+            type="script",
+            message=hint,
+            stage=stage_label,
+            priority="high",
+            icon="target",
+        )
 
     def _check_objection(self, client_message: str, stage: str) -> Whisper | None:
         """Check client message for objection patterns."""

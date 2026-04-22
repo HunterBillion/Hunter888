@@ -2302,6 +2302,20 @@ async def _generate_character_reply(
             from app.core.redis_pool import get_redis as _get_redis_wh
             _r_wh = _get_redis_wh()
             _whisper_engine = WhisperEngine(redis_client=_r_wh)
+            # 2026-04-23 Sprint 3 (plan §3.1.5) — pass stage-scoped message
+            # count so _check_script_stuck can detect «завис на этапе».
+            # stage_tracker stores start msg index per stage — compute
+            # messages on current stage = total - stage_started_at.
+            _sm_by_stage = state.get("stage_message_counts") or {}  # may be empty
+            _cur_stage_num = state.get("current_stage")  # 1-based
+            _cur_stage_msg = None
+            if _cur_stage_num is not None:
+                # Prefer live state from stage_tracker; fallback to total.
+                _started_at = (state.get("stage_started_at_msg") or {}).get(
+                    str(_cur_stage_num), (state.get("stage_started_at_msg") or {}).get(_cur_stage_num)
+                )
+                if isinstance(_started_at, int):
+                    _cur_stage_msg = max(0, msg_count - _started_at)
             _whisper = await _whisper_engine.generate_whisper(
                 session_id=str(session_id),
                 current_stage=state.get("current_stage_name", "greeting"),
@@ -2311,6 +2325,8 @@ async def _generate_character_reply(
                 manager_message_count=msg_count,
                 difficulty=state.get("base_difficulty", 5),
                 whispers_enabled=state.get("whispers_enabled", True),
+                stage_message_count=_cur_stage_msg,
+                stage_number=_cur_stage_num if isinstance(_cur_stage_num, int) else None,
             )
             if _whisper:
                 await _send(ws, "whisper.coaching", _whisper)
@@ -3808,6 +3824,14 @@ async def _handle_audio_chunk(
         st = StageTracker(str(session_id), r_sta)
         msg_count = state.get("message_count", 0)
         stage_state, stage_changed, skipped = await st.process_message(stt_result.text, msg_count, "user")
+        # 2026-04-23 Sprint 7 — mirror stage state into WS dict so the
+        # whisper_engine (and anyone reading state["current_stage_name"])
+        # gets fresh values. Previously nobody wrote these back, so
+        # whispers always saw «greeting».
+        state["current_stage"] = stage_state.current_stage
+        state["current_stage_name"] = stage_state.current_stage_name
+        state["stage_started_at_msg"] = dict(stage_state.stage_started_at_msg)
+        state["stage_message_counts"] = dict(stage_state.stage_message_counts)
         if stage_changed:
             await _send(ws, "stage.update", st.build_ws_payload(stage_state))
         if skipped:
@@ -4330,6 +4354,13 @@ async def _handle_text_message(
         st = StageTracker(str(session_id), r_st)
         msg_count = state.get("message_count", 0)
         stage_state, stage_changed, skipped = await st.process_message(content, msg_count, "user")
+        # 2026-04-23 Sprint 7 — mirror stage state into WS dict so the
+        # whisper_engine (and anyone reading state["current_stage_name"])
+        # gets fresh values. Matches the audio-path writer above.
+        state["current_stage"] = stage_state.current_stage
+        state["current_stage_name"] = stage_state.current_stage_name
+        state["stage_started_at_msg"] = dict(stage_state.stage_started_at_msg)
+        state["stage_message_counts"] = dict(stage_state.stage_message_counts)
         if stage_changed:
             await _send(ws, "stage.update", st.build_ws_payload(stage_state))
         if skipped:
