@@ -1017,9 +1017,23 @@ class ManagerProgressService:
                     category=ach_def["category"],
                     session_id=session.session_id,
                 )
-                self._db.add(achievement)
-                new_achievements.append(achievement)
-                logger.info("Achievement unlocked: %s for user %s", code, profile.user_id)
+                # 2026-04-22: per-achievement savepoint. Previously a single
+                # bad achievement (e.g. category not in DB constraint after
+                # schema drift, unique-violation on race) poisoned the whole
+                # transaction with PendingRollbackError, which then cascaded
+                # into _handle_session_end's commit failing — sessions
+                # couldn't end cleanly. Now each insert lives in its own
+                # nested transaction; failure rolls back JUST that achievement.
+                try:
+                    async with self._db.begin_nested():
+                        self._db.add(achievement)
+                    new_achievements.append(achievement)
+                    logger.info("Achievement unlocked: %s for user %s", code, profile.user_id)
+                except Exception as e:
+                    logger.warning(
+                        "Achievement insert failed (skipping): code=%s category=%s err=%s",
+                        code, ach_def["category"], e,
+                    )
 
         return new_achievements
 
