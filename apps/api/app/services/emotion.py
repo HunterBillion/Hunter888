@@ -95,29 +95,33 @@ TRIGGERS = [
 ]
 
 DEFAULT_ENERGY: dict[str, float] = {
-    "empathy": 0.3,
-    "facts": 0.25,
-    "hook": 0.5,
-    "resolve_fear": 0.5,
-    "expert_answer": 0.4,
-    "correct_answer": 0.3,
-    "name_use": 0.1,
-    "acknowledge": 0.2,
-    "motivator": 0.3,
-    "speed": 0.15,
-    "boundary": 0.35,
-    "flexible_offer": 0.3,
-    "calm_response": 0.3,
-    "honest_uncertainty": 0.15,
-    "pressure": -0.4,
-    "bad_response": -0.35,
-    "insult": -1.0,
-    "wrong_answer": -0.6,
-    "counter_aggression": -0.8,
-    "silence": -0.2,
-    "challenge": 0.0,
-    "defer": 0.0,
-    "personal": 0.15,
+    # 2026-04-22: demo-mode weights — positives boosted, negatives softened.
+    # Intent: make training easier by default so showcase sessions don't
+    # escalate to hangup on first rough reply. Owner control: revert by
+    # checking out this file against previous revision.
+    "empathy": 0.4,          # was 0.3
+    "facts": 0.35,           # was 0.25
+    "hook": 0.6,             # was 0.5
+    "resolve_fear": 0.6,     # was 0.5
+    "expert_answer": 0.5,    # was 0.4
+    "correct_answer": 0.4,   # was 0.3
+    "name_use": 0.15,        # was 0.1
+    "acknowledge": 0.3,      # was 0.2
+    "motivator": 0.4,        # was 0.3
+    "speed": 0.2,            # was 0.15
+    "boundary": 0.4,         # was 0.35
+    "flexible_offer": 0.4,   # was 0.3
+    "calm_response": 0.4,    # was 0.3
+    "honest_uncertainty": 0.2,   # was 0.15
+    "pressure": -0.15,       # was -0.4  (4x softer)
+    "bad_response": -0.12,   # was -0.35 (3x softer)
+    "insult": -0.3,          # was -1.0  (3.3x softer — main demo fix)
+    "wrong_answer": -0.2,    # was -0.6  (3x softer)
+    "counter_aggression": -0.25,  # was -0.8 (3.2x softer)
+    "silence": -0.08,        # was -0.2  (2.5x softer)
+    "challenge": 0.05,       # was 0.0   (now mild positive)
+    "defer": 0.05,           # was 0.0   (now mild positive)
+    "personal": 0.2,         # was 0.15
 }
 
 # ============================================================================
@@ -127,12 +131,16 @@ DEFAULT_ENERGY: dict[str, float] = {
 @dataclass
 class MoodBuffer:
     """Energy accumulation buffer with EMA smoothing, decay, and threshold-based transitions."""
+    # 2026-04-22: demo-mode thresholds — easier to progress, harder to regress.
+    # threshold_positive lowered so good replies escalate faster;
+    # threshold_negative widened so single bad reply can't trip hostile;
+    # decay_rate raised so client "forgets" negative energy faster between turns.
     current_energy: float = 0.0
     energy_smoothed: float = 0.0
     ema_alpha: float = 0.3
-    threshold_positive: float = 0.6
-    threshold_negative: float = -0.5
-    decay_rate: float = 0.1
+    threshold_positive: float = 0.4   # was 0.6
+    threshold_negative: float = -1.0  # was -0.5 (2x wider grace zone)
+    decay_rate: float = 0.15          # was 0.1  (1.5x faster forgetting)
 
     def apply_decay(self) -> None:
         """Decay energy toward zero when no triggers fire."""
@@ -1379,15 +1387,26 @@ async def _transition_emotion_v3_inner(
                 target_override = config.transition_overrides[override_key]
                 break
 
+        # 2026-04-22: demo grace — require multiple bad turns before hangup
+        # escalation. Previously one insult in hostile → immediate hangup,
+        # which combined with trigger_detector substring false-positives
+        # ("дурацкий" matching "дура") ended sessions after a single message.
+        _prior_memory_for_escalation = await _get_memory(session_id)
+        _total_bad_turns = (
+            _prior_memory_for_escalation.rollback_count
+            + _prior_memory_for_escalation.consecutive_rollbacks
+        )
+        _ESCALATION_MIN_BAD_TURNS = 3
+
         # Handle special triggers
         if "insult" in applied_triggers:
-            if current_state == "hostile":
+            if current_state == "hostile" and _total_bad_turns >= _ESCALATION_MIN_BAD_TURNS:
                 target_override = "hangup"
             else:
                 target_override = "hostile"
 
         if "counter_aggression" in applied_triggers:
-            if current_state == "hostile":
+            if current_state == "hostile" and _total_bad_turns >= _ESCALATION_MIN_BAD_TURNS:
                 target_override = "hangup"
             else:
                 target_override = "hostile"
@@ -1466,8 +1485,10 @@ async def _transition_emotion_v3_inner(
             buffer.threshold_negative *= 0.8  # 20% more sensitive to regression
             await _set_mood_buffer(session_id, buffer)
 
-        # Force hangup on excessive total rollbacks — but only from valid states
-        if memory.rollback_count >= 5:
+        # 2026-04-22: raised threshold 5→10 for demo-mode. Force-hangup on
+        # rollback_count was too eager — a user could lose 5 turns over 20
+        # messages and still be cut off. 10 gives real room for recovery.
+        if memory.rollback_count >= 10:
             if "hangup" in _arch_transitions.get(new_state, set()):
                 new_state = "hangup"
                 transition_occurred = True
@@ -1477,7 +1498,7 @@ async def _transition_emotion_v3_inner(
                     new_state = "hostile"
                     transition_occurred = True
                 logger.warning(
-                    "Session %s: 5+ rollbacks but hangup unreachable from %s",
+                    "Session %s: 10+ rollbacks but hangup unreachable from %s",
                     session_id, new_state,
                 )
 

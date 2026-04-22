@@ -123,26 +123,28 @@ KEYWORD_PATTERNS: dict[str, list[str]] = {
     # mat, pre-hangup idioms. keyword-detector использует нижний регистр
     # + substring match, поэтому корень «блят» ловит все формы.
     "insult": [
-        # Direct insults
-        "дурак", "дура", "идиот", "идиотка", "тупой", "тупая", "тупица",
-        "бестолковый", "бестолочь", "дебил", "дебилка", "придурок",
-        "имбецил", "кретин", "олух", "болван", "балбес", "лох",
-        # Condescension / worthless-talk
-        "убогий", "ничтожество", "бездарь", "неуч", "невежда", "профан",
-        "дилетант", "халтурщик", "балабол",
-        # Character attacks
-        "лжец", "врун", "мошенник", "аферист", "проходимец", "шарлатан",
-        # Profanity roots (cover all conjugations)
-        "блят", "блядь", "сука", "сучка",
-        "нахуй", "нахер", "нах.й", "пошёл ты", "пошел ты",
+        # 2026-04-22: pruned ambiguous short roots after empirical
+        # false-positive audit. Substring-match with "дура" caught
+        # "дурацкий"; "лох" caught "солохонда"; "блят" caught "благодарю".
+        # Kept only unambiguous full lexemes and long roots. To restore
+        # aggressive matching, add short roots back here + switch keyword
+        # loop to word-boundary regex in _detect_triggers_keyword_fallback.
+        # Direct insults — full unambiguous words only
+        "идиот", "идиотка", "тупица", "бестолочь", "дебил", "дебилка",
+        "придурок", "имбецил", "кретин", "олух", "болван",
+        # Condescension / worthless-talk — full words
+        "ничтожество", "невежда", "шарлатан",
+        # Character attacks — full unambiguous words
+        "мошенник", "аферист", "проходимец",
+        # Profanity — only long unambiguous forms (no short roots)
+        "блядь", "блять",
+        "нахуй", "нахер", "пошёл ты", "пошел ты",
         "заткнись", "заткнитесь",
-        "отвали", "отвалите", "отстань", "отстаньте",
-        "свали", "свалите",
-        "долбоёб", "долбоеб", "долбо",
-        "к чёрту", "к черту", "хер с то", "хер с ва",
-        "заебал", "заебали", "надоел со своим",
-        # English fallback (rare but seen)
-        "fuck", "shit", "idiot", "moron", "stupid", "dumb",
+        "отвали", "отвалите",
+        "долбоёб", "долбоеб",
+        "заебал", "заебали",
+        # English — phrases, not single ambiguous words
+        "fuck you", "fuck off", "motherfuck",
     ],
     "flexible_offer": [
         "рассрочка",

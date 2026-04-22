@@ -1701,6 +1701,31 @@ async def _generate_character_reply(
     # ─── HANGUP DETECTION ───
     # If emotion transitioned to "hangup" → client hangs up the phone.
     # Send a final phrase, notify frontend, and stop the conversation.
+    #
+    # 2026-04-22 DEMO GRACE PERIOD: on the first 4 user messages we never
+    # let the client hang up — downgrade to hostile + warning instead. This
+    # gives the manager room to recover from a single rough opening turn
+    # during a product showcase. Adjust _HANGUP_GRACE_MIN_MESSAGES to tune.
+    _HANGUP_GRACE_MIN_MESSAGES = 4
+    if new_emotion == "hangup" and state.get("message_count", 0) < _HANGUP_GRACE_MIN_MESSAGES:
+        logger.info(
+            "hangup suppressed by demo grace period: session=%s msg_count=%d",
+            session_id, state.get("message_count", 0),
+        )
+        # Keep the client in hostile state with a visible warning so the
+        # manager sees that escalation happened — just doesn't end the call.
+        new_emotion = "hostile"
+        try:
+            await _send(ws, "client.hangup_warning", {
+                "message": "Я начинаю терять терпение. Будьте осторожнее.",
+                "emotion": "hostile",
+                "severity": 0.75,
+            })
+        except Exception:
+            logger.debug("hangup_warning send failed (non-fatal)", exc_info=True)
+        # Fall through — new_emotion is now "hostile", so the `if new_emotion
+        # == "hangup"` block below simply doesn't execute.
+
     if new_emotion == "hangup":
         import random as _rng
 

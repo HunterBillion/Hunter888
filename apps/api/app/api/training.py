@@ -343,8 +343,12 @@ async def start_session(
             "creditors_preset": body.custom_creditors_preset,
             "debt_stage": body.custom_debt_stage,
             "debt_range": body.custom_debt_range,
-            # Step 4: emotional preset
+            # Step 4: emotional preset + tone (2026-04-22: tone was accepted by
+            # schema and read downstream in ws/training.py but never written to
+            # custom_params here — constructor's Tone selector was silently
+            # ignored on the REST path. Story-mode URL path already worked.)
             "emotion_preset": body.custom_emotion_preset,
+            "tone": body.custom_tone,
             # Step 6: environment
             "bg_noise": body.custom_bg_noise,
             "time_of_day": body.custom_time_of_day,
