@@ -1142,7 +1142,17 @@ async def synthesize_speech(
     if not settings.elevenlabs_api_key:
         if settings.navy_tts_enabled and settings.local_llm_url and settings.local_llm_api_key:
             start_ts = time.monotonic()
-            audio_bytes = await _synthesize_navy(text, voice=settings.navy_tts_voice, speed=speed)
+            # 2026-04-22: prefer the per-session voice_id picked by
+            # pick_voice_for_session — gives each client a distinct voice
+            # (male/female/archetype variation) instead of one global voice
+            # from settings. Falls back to settings.navy_tts_voice when the
+            # caller didn't pre-assign (e.g. system messages, first warmup).
+            # Works because Navy.api proxies ElevenLabs models through the
+            # OpenAI /v1/audio/speech endpoint and accepts ElevenLabs
+            # voice_ids in the `voice` field directly when model is an
+            # eleven_* model.
+            _navy_voice = voice_id if voice_id else settings.navy_tts_voice
+            audio_bytes = await _synthesize_navy(text, voice=_navy_voice, speed=speed)
             latency_ms = int((time.monotonic() - start_ts) * 1000)
             return TTSResult(
                 audio_bytes=audio_bytes,
