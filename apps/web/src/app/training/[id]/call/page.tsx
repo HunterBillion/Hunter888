@@ -405,6 +405,29 @@ export default function TrainingCallPage() {
     })();
   }, [id, router, tts, stt]);
 
+  // 2026-04-22 fallback sender: send current textInput as a plain text.message
+  // with correct `content` key (same shape as chat page). Clears the box so
+  // Enter-to-send feels responsive.
+  //
+  // 2026-04-22 (hotfix): this useCallback + the three const diagnostics
+  // below were originally placed AFTER the `if (modeOk === null) return …`
+  // early-return below. That violated Rules of Hooks — on the first render
+  // (modeOk === null) the hooks didn't run, on the second render they did,
+  // so React counted different hook totals between renders and threw
+  // Minified React error #310 ("Rendered more hooks than during the
+  // previous render"). Moving the hook above the early-return restores
+  // a stable hook order across every render.
+  const sendText = useCallback(() => {
+    const trimmed = textInput.trim();
+    if (!trimmed) return;
+    if (connectionState !== "connected") {
+      logger.warn("[call] cannot send text — WS not connected", { connectionState });
+      return;
+    }
+    sendMessage({ type: "text.message", data: { content: trimmed } });
+    setTextInput("");
+  }, [textInput, connectionState, sendMessage]);
+
   // Still loading mode guard
   if (modeOk === null) {
     return (
@@ -416,23 +439,10 @@ export default function TrainingCallPage() {
 
   // 2026-04-22 diagnostics banner: show on-screen warnings so user sees
   // the state of critical call-mode dependencies without opening DevTools.
+  // Plain derived values (not hooks) — safe after the early-return.
   const sttSupported = stt.isSupported;
   const sttError = stt.status === "unsupported" || stt.status === "error";
   const wsDead = connectionState === "disconnected" || connectionState === "error";
-
-  // 2026-04-22 fallback sender: send current textInput as a plain text.message
-  // with correct `content` key (same shape as chat page). Clears the box so
-  // Enter-to-send feels responsive.
-  const sendText = useCallback(() => {
-    const trimmed = textInput.trim();
-    if (!trimmed) return;
-    if (connectionState !== "connected") {
-      logger.warn("[call] cannot send text — WS not connected", { connectionState });
-      return;
-    }
-    sendMessage({ type: "text.message", data: { content: trimmed } });
-    setTextInput("");
-  }, [textInput, connectionState, sendMessage]);
 
   return (
     <>
