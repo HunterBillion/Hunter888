@@ -1097,6 +1097,7 @@ export default function ResultsPage() {
               custom_character_id?: string | null;
               custom_params?: Record<string, unknown> | null;
               id: string;
+              started_at?: string | null;
             };
             const oldMode =
               (sessionLoose.custom_params?.session_mode as string) || "chat";
@@ -1104,46 +1105,74 @@ export default function ResultsPage() {
             const customCharId = sessionLoose.custom_character_id ?? null;
             const retrainLabel = oldMode === "call" ? "Повторить звонок" : "Повторить чат";
             const canRetrain = !!(sessionLoose.scenario_id || realClientId || customCharId);
+            // 2026-04-23 Sprint 7 (scenario M) — detect legacy sessions
+            // created before Zone 1 migration (2026-04-23) that don't
+            // carry real_client_id / custom_character_id. On retrain
+            // they'll fallback to P3 direct-clone with a freshly
+            // generated random client → warn the user so the mismatch
+            // isn't a surprise («почему другой клиент?»).
+            const ZONE1_CUTOFF = "2026-04-23";
+            const isLegacySession = (() => {
+              if (realClientId || customCharId) return false;
+              if (!sessionLoose.started_at) return true;
+              try {
+                return sessionLoose.started_at.slice(0, 10) < ZONE1_CUTOFF;
+              } catch {
+                return false;
+              }
+            })();
 
             return (
-              <Button
-                onClick={async () => {
-                  if (repeating || !canRetrain) return;
-                  // Priority 1: real_client → CRM pit-stop
-                  if (realClientId) {
-                    router.push(
-                      `/clients/${realClientId}?retrain=${oldMode}&from=${sessionLoose.id}`,
-                    );
-                    return;
-                  }
-                  // Priority 2: custom_character → SavedTab pit-stop
-                  if (customCharId) {
-                    router.push(
-                      `/training?retrain_from=${sessionLoose.id}&char=${customCharId}`,
-                    );
-                    return;
-                  }
-                  // Priority 3: catalog scenario → direct POST clone (no pit-stop)
-                  setRepeating(true);
-                  try {
-                    const newSession = await api.post("/training/sessions", {
-                      clone_from_session_id: sessionLoose.id,
-                    });
-                    if (oldMode === "call") {
-                      router.push(`/training/${newSession.id}/call`);
-                    } else {
-                      router.push(`/training/${newSession.id}`);
+              <div className="flex flex-col items-center gap-1.5">
+                <Button
+                  onClick={async () => {
+                    if (repeating || !canRetrain) return;
+                    // Priority 1: real_client → CRM pit-stop
+                    if (realClientId) {
+                      router.push(
+                        `/clients/${realClientId}?retrain=${oldMode}&from=${sessionLoose.id}`,
+                      );
+                      return;
                     }
-                  } catch {
-                    setRepeating(false);
-                  }
-                }}
-                disabled={repeating || !canRetrain}
-                loading={repeating}
-                icon={<Repeat size={16} />}
-              >
-                {retrainLabel}
-              </Button>
+                    // Priority 2: custom_character → SavedTab pit-stop
+                    if (customCharId) {
+                      router.push(
+                        `/training?retrain_from=${sessionLoose.id}&char=${customCharId}`,
+                      );
+                      return;
+                    }
+                    // Priority 3: catalog scenario → direct POST clone (no pit-stop)
+                    setRepeating(true);
+                    try {
+                      const newSession = await api.post("/training/sessions", {
+                        clone_from_session_id: sessionLoose.id,
+                      });
+                      if (oldMode === "call") {
+                        router.push(`/training/${newSession.id}/call`);
+                      } else {
+                        router.push(`/training/${newSession.id}`);
+                      }
+                    } catch {
+                      setRepeating(false);
+                    }
+                  }}
+                  disabled={repeating || !canRetrain}
+                  loading={repeating}
+                  icon={<Repeat size={16} />}
+                >
+                  {retrainLabel}
+                </Button>
+                {isLegacySession && canRetrain && (
+                  <span
+                    className="text-[10px] flex items-center gap-1"
+                    style={{ color: "var(--gf-xp)" }}
+                    title="Это старая сессия из времён до обновления CRM-привязки — клиент сгенерируется случайно и может отличаться от оригинального."
+                  >
+                    <AlertTriangle size={10} />
+                    Старая сессия — клиент может отличаться
+                  </span>
+                )}
+              </div>
             );
           })()}
           <Button href="/training" variant="primary" iconRight={<ArrowRight size={16} />}>
