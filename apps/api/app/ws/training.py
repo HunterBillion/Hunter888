@@ -1135,6 +1135,20 @@ async def _generate_character_reply(
     if state.get("fake_transition_prompt"):
         extra_system += "\n\n" + state["fake_transition_prompt"]
 
+    # 2026-04-22: Manager-initiated farewell — inject closing instruction.
+    # When the manager said "до свидания" / "спасибо за время" etc., the AI
+    # should give one short polite closing reply (~10 words). After this turn
+    # the WS handler will auto-fire session.end (see _handle_text_message).
+    if state.get("user_initiated_farewell") and not state.get("user_farewell_replied"):
+        extra_system += (
+            "\n\n## ВАЖНО — клиент завершает разговор\n"
+            "Менеджер только что попрощался с вами. Ответьте КОРОТКО (одна фраза, "
+            "максимум 10 слов) в духе вашего архетипа: вежливо если разговор шёл "
+            "хорошо, сухо/недовольно если нет. Примеры: «До свидания», «Хорошо, "
+            "до связи», «Угу, бывайте», «Ладно, спасибо». Не задавайте новых "
+            "вопросов. Не продолжайте обсуждение. Это ваша последняя реплика."
+        )
+
     # ── Game Director 3-tier context injection (Tier 1: identity, Tier 2: memory) ──
     # Tier 3 is already injected ad-hoc in _prepare_next_call_context.
     # This adds OCEAN/PAD/factors (Tier 1) and episodic memories/consequences (Tier 2)
@@ -2801,6 +2815,17 @@ async def _handle_session_start(
 
             await init_emotion(session.id, initial_emotion)
 
+            # 2026-04-22: seed light baseline human factors so every client
+            # sounds slightly natural (subtle hesitation, mild breathing in
+            # voice). Without this, single-call sessions had active_factors=[]
+            # → TTS rendered "polished" robotic speech. Story-mode picks its
+            # own factors from ClientStory and overwrites these on resume.
+            if not state.get("active_factors"):
+                state["active_factors"] = [
+                    {"factor": "anxiety", "intensity": 0.22, "since_call": 1},
+                    {"factor": "fatigue", "intensity": 0.12, "since_call": 1},
+                ]
+
             # Init Redis session state (uses shared pool)
             try:
                 from app.core.redis_pool import get_redis as _get_redis_pool2
@@ -4054,6 +4079,37 @@ async def _handle_text_message(
 
     current_emotion = await get_emotion(session_id)
 
+    # 2026-04-22: Manager-initiated farewell intent. When the manager says
+    # goodbye / wraps up the call, we want the AI client to respond
+    # naturally (one short closing reply) and then session.end auto-fires
+    # — instead of sitting there waiting for more input. Two-phase: (1)
+    # mark intent on this turn, (2) on next manager turn (or after the
+    # AI's farewell reply) trigger session.end. See _generate_character_reply
+    # for the prompt-injection side and the auto-end logic below.
+    _FAREWELL_PATTERNS = (
+        "до свидания", "до встречи", "до связи", "всего доброго",
+        "всего хорошего", "всех благ", "удачи вам", "всего наилучшего",
+        "хорошего дня", "хорошего вечера", "спасибо за уделённое время",
+        "спасибо за уделенное время", "спасибо за разговор",
+        "до завтра", "до понедельника", "созвонимся", "перезвоню вам",
+        "приятно было пообщаться",
+        # Direct call-end phrases
+        "я заканчиваю звонок", "буду закругляться", "буду заканчивать",
+        "пора заканчивать", "нам пора прощаться",
+    )
+    _content_lower_for_intent = content.lower()
+    _farewell_hit = any(p in _content_lower_for_intent for p in _FAREWELL_PATTERNS)
+    # Two-stage farewell: first hit → mark + tell LLM to respond closing-style.
+    # On subsequent reply we auto-end.
+    if _farewell_hit and not state.get("user_initiated_farewell"):
+        state["user_initiated_farewell"] = True
+        state["user_farewell_msg_idx"] = state.get("message_count", 0)
+        logger.info(
+            "Manager farewell detected (session=%s) — AI will close politely, "
+            "then session.end auto-fires.",
+            session_id,
+        )
+
     # Phase 2.5 (2026-04-18): optional quoted_message_id from frontend when
     # the manager clicks "Ответить" on an older bubble. Validated when the
     # prompt is built (see _generate_character_reply); here we only stash it.
@@ -4131,6 +4187,23 @@ async def _handle_text_message(
 
     try:
         await _generate_character_reply(ws, session_id, state)
+        # 2026-04-22: Auto-fire session.end after AI replied to a manager
+        # farewell. Two-phase done — manager said goodbye, AI politely closed,
+        # now wrap the session and send results. Small await so the TTS chunk
+        # of the closing reply finishes playing client-side before redirect.
+        if state.get("user_initiated_farewell") and not state.get("user_farewell_replied"):
+            state["user_farewell_replied"] = True
+            logger.info(
+                "Auto-firing session.end after manager farewell (session=%s).",
+                session_id,
+            )
+            # Brief pause so closing TTS reaches the client cleanly.
+            await asyncio.sleep(2.5)
+            try:
+                await _handle_session_end(ws, {}, state)
+                state["_should_stop"] = True
+            except Exception:
+                logger.exception("Auto session.end on farewell failed (session=%s)", session_id)
     except Exception as _reply_err:
         # Same fail-safe as in _handle_audio_chunk: don't let
         # unhandled exceptions leave avatar.typing=True forever.

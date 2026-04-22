@@ -820,9 +820,11 @@ def inject_hesitations(
         - Fatigue adds sighs between sentences
         - Max 2 hesitations per utterance to avoid overload
     """
-    if not active_factors and (not pad_state or abs(pad_state.arousal) < 0.2):
-        return text
-
+    # 2026-04-22: removed early return when no factors. Real humans hesitate
+    # naturally even when calm — the model previously sounded too "polished"
+    # because it skipped hesitations on default cold/curious states (no
+    # active factors, low arousal). Now we always allow a small probability
+    # (~10%) of base hesitation per sentence so replies don't sound scripted.
     factors_dict = {hf.factor: hf for hf in (active_factors or [])}
 
     # Anger suppresses hesitations

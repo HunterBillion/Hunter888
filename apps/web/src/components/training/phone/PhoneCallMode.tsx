@@ -24,12 +24,130 @@
  * page's connection by mounting this view on top of the same store.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Mic, MicOff, Volume2, Volume1, PhoneOff } from "lucide-react";
 import type { EmotionState } from "@/types";
 import { EMOTION_MAP } from "@/types";
 import type { ClientCardData } from "@/components/training/ClientCard";
+
+/**
+ * 2026-04-22: Procedural ambient noise via Web Audio API.
+ *
+ * The constructor lets the user pick a `bg_noise` (office / street / home).
+ * Until now this only changed the visual gradient — there was no actual
+ * audio. We now synthesise a low-volume background loop using filtered
+ * white/brown noise tuned per scene. No external mp3 files needed; sounds
+ * realistic enough to make the call feel "in a real place".
+ *
+ * Returns a cleanup function. Caller is responsible for calling it on
+ * unmount.
+ */
+function startAmbientNoise(sceneKey: string, masterGain = 0.06): () => void {
+  if (typeof window === "undefined") return () => {};
+  const AC = (window.AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext })
+      .webkitAudioContext) as typeof AudioContext | undefined;
+  if (!AC) return () => {};
+  let ctx: AudioContext;
+  try {
+    ctx = new AC();
+  } catch {
+    return () => {};
+  }
+
+  // Generate ~2s of white noise as a buffer source we loop forever.
+  const bufferSize = ctx.sampleRate * 2;
+  const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  // Brown noise (∫ white noise) sounds warmer than raw white noise — closer
+  // to room hum / distant traffic. We scale to keep amplitude tame.
+  let lastOut = 0;
+  for (let i = 0; i < bufferSize; i++) {
+    const w = Math.random() * 2 - 1;
+    lastOut = (lastOut + 0.02 * w) / 1.02;
+    data[i] = lastOut * 3.5;
+  }
+
+  const source = ctx.createBufferSource();
+  source.buffer = noiseBuffer;
+  source.loop = true;
+
+  // Per-scene EQ. Each scene has a low-pass + optional secondary tone to
+  // sell the location. Numbers tuned by ear, not science — feel free to tweak.
+  const filter = ctx.createBiquadFilter();
+  const gain = ctx.createGain();
+  gain.gain.value = masterGain;
+
+  switch (sceneKey) {
+    case "office":
+      // Soft hum + paper/HVAC: low-pass at 800Hz, slight midrange.
+      filter.type = "lowpass";
+      filter.frequency.value = 800;
+      gain.gain.value = masterGain * 1.0;
+      break;
+    case "street":
+      // Wider band — distant traffic. More body.
+      filter.type = "lowpass";
+      filter.frequency.value = 1200;
+      gain.gain.value = masterGain * 1.4;
+      break;
+    case "children":
+      // Home with kids/TV — slightly brighter, gentle modulation later.
+      filter.type = "bandpass";
+      filter.frequency.value = 600;
+      filter.Q.value = 0.3;
+      gain.gain.value = masterGain * 0.9;
+      break;
+    case "tv":
+      // TV in background — tighter midrange, like muffled speech room.
+      filter.type = "bandpass";
+      filter.frequency.value = 900;
+      filter.Q.value = 0.5;
+      gain.gain.value = masterGain * 1.0;
+      break;
+    default:
+      // "none" or unknown — almost silent room tone.
+      filter.type = "lowpass";
+      filter.frequency.value = 400;
+      gain.gain.value = masterGain * 0.4;
+  }
+
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+
+  try {
+    source.start();
+  } catch {
+    /* ignore: source already started in some weird race */
+  }
+
+  // Browsers suspend AudioContext until a user gesture. Try resume; if
+  // blocked, attach a one-shot click listener.
+  if (ctx.state === "suspended") {
+    const tryResume = () => {
+      ctx.resume().catch(() => {});
+      window.removeEventListener("click", tryResume);
+      window.removeEventListener("touchstart", tryResume);
+    };
+    window.addEventListener("click", tryResume, { once: true });
+    window.addEventListener("touchstart", tryResume, { once: true });
+  }
+
+  return () => {
+    try {
+      source.stop();
+    } catch {
+      /* ignore */
+    }
+    try {
+      ctx.close();
+    } catch {
+      /* ignore */
+    }
+  };
+}
 
 // Scene backdrops — each value comes from CharacterBuilder's NOISES array.
 // We map audio-noise tags to visual scenes: an "office" noise implies
@@ -133,6 +251,29 @@ export function PhoneCallMode({
   const sceneGradient = SCENE_GRADIENTS[sceneKey];
   const sceneLabel = SCENE_LABEL[sceneKey];
   const ec = EMOTION_MAP[emotion] || EMOTION_MAP.cold;
+
+  // 2026-04-22: ambient procedural noise. Starts on the first user gesture
+  // (browsers block AudioContext otherwise) — usually the user has clicked
+  // somewhere by the time the call view mounts. Cleanup on unmount/scene
+  // change. Volume scales with `volume` slider (so it ducks with TTS).
+  const ambientStopRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    // Stop previous instance if scene changed mid-call.
+    if (ambientStopRef.current) {
+      ambientStopRef.current();
+      ambientStopRef.current = null;
+    }
+    // Tie ambient master gain to the user's volume preference (default 0.85).
+    // Multiplier 0.06 keeps it subtle — it's a backdrop, not a song.
+    const master = 0.06 * (typeof volume === "number" ? Math.max(0.2, volume) : 0.85);
+    ambientStopRef.current = startAmbientNoise(sceneKey, master);
+    return () => {
+      if (ambientStopRef.current) {
+        ambientStopRef.current();
+        ambientStopRef.current = null;
+      }
+    };
+  }, [sceneKey, volume]);
 
   // Volume popover state: the speaker/volume button acts as a disclosure
   // trigger. First tap opens a slider popover above it; second tap hides.
