@@ -30,6 +30,7 @@ import { Mic, MicOff, Volume2, Volume1, PhoneOff } from "lucide-react";
 import type { EmotionState } from "@/types";
 import { EMOTION_MAP } from "@/types";
 import type { ClientCardData } from "@/components/training/ClientCard";
+import ScriptPanel from "@/components/training/ScriptPanel";
 
 /**
  * 2026-04-22: Procedural ambient noise via Web Audio API.
@@ -365,6 +366,11 @@ export function PhoneCallMode({
         Reads tiny vertical space, does not overlap avatar, keeps the
         "where am I in the sales script" context present at all times.
       */}
+      {/* 2026-04-23 Sprint 3: the minimal 7-bar teleprompter is now
+          mobile-only. On lg+ the full ScriptPanel is rendered as a
+          fixed narrow column (see below) with task + examples — the
+          thin bar would duplicate the progress dots. On mobile the
+          ScriptDrawer (page-level) handles script content in a sheet. */}
       {stage && stage.total > 0 && (
         <div
           role="progressbar"
@@ -372,7 +378,7 @@ export function PhoneCallMode({
           aria-valuemax={stage.total}
           aria-valuenow={stage.current}
           aria-valuetext={`Этап ${stage.current} из ${stage.total}${stage.label ? `: ${stage.label}` : ""}`}
-          className="relative z-10 mx-auto mt-3 flex w-[min(560px,calc(100vw-48px))] items-center gap-3 rounded-full bg-black/30 px-4 py-1.5 text-xs backdrop-blur-sm ring-1 ring-white/5"
+          className="relative z-10 mx-auto mt-3 flex w-[min(560px,calc(100vw-48px))] items-center gap-3 rounded-full bg-black/30 px-4 py-1.5 text-xs backdrop-blur-sm ring-1 ring-white/5 lg:hidden"
         >
           <span className="font-mono tabular-nums text-white/70">
             {stage.current}/{stage.total}
@@ -403,6 +409,25 @@ export function PhoneCallMode({
             </span>
           )}
         </div>
+      )}
+
+      {/* 2026-04-23 Sprint 3: desktop ScriptPanel as floating right-column
+          overlay. Translucent background so the avatar remains the hero
+          element, but task / examples / mistakes are always visible to
+          the learner. Fixed width 300px, anchored top-right below the
+          header strip, scrollable if content overflows. Mobile falls
+          back to the lg:hidden bar above + ScriptDrawer at page level. */}
+      {stage && stage.total > 0 && (
+        <aside
+          className="hidden lg:block absolute right-4 top-20 z-10 w-[300px] max-h-[calc(100vh-180px)] overflow-y-auto rounded-2xl p-4 backdrop-blur-lg"
+          style={{
+            background: "rgba(10,8,20,0.58)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            boxShadow: "0 12px 36px rgba(0,0,0,0.4)",
+          }}
+        >
+          <ScriptPanel compactHeader />
+        </aside>
       )}
 
       {/* Central avatar + ring. */}

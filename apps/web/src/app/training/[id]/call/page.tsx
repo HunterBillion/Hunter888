@@ -28,6 +28,7 @@ import { Mic, MicOff } from "lucide-react";
 import { useSessionStore } from "@/stores/useSessionStore";
 import { PhoneCallMode } from "@/components/training/phone/PhoneCallMode";
 import IncomingCallScreen from "@/components/training/phone/IncomingCallScreen";
+import ScriptDrawer from "@/components/training/ScriptDrawer";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useTTS } from "@/hooks/useTTS";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -430,6 +431,29 @@ export default function TrainingCallPage() {
           break;
         }
 
+        case "stage.skipped": {
+          // 2026-04-23 Sprint 3: skipped stage notification (mirror of
+          // chat handler). ScriptDrawer auto-opens with yellow alert.
+          const sd = data.data as {
+            missed_stage_number?: number;
+            missed_stage_label?: string;
+            current_stage_number?: number;
+            current_stage_label?: string;
+            hint?: string;
+          };
+          if (sd.missed_stage_number && sd.missed_stage_label) {
+            s.setSkippedHint({
+              missedStageNumber: sd.missed_stage_number,
+              missedStageLabel: sd.missed_stage_label,
+              currentStageNumber: sd.current_stage_number ?? s.currentStage,
+              currentStageLabel: sd.current_stage_label ?? s.stageLabel,
+              hint: sd.hint ?? "Вернитесь и закройте этот этап.",
+              setAt: Date.now(),
+            });
+          }
+          break;
+        }
+
         case "whisper.coaching": {
           const d = data.data as Record<string, unknown>;
           const msg = String(d.message ?? "");
@@ -800,6 +824,17 @@ export default function TrainingCallPage() {
 
   return (
     <>
+      {/* 2026-04-23 Sprint 3: ScriptDrawer floats over PhoneCallMode on
+          mobile + narrow windows (it's lg:hidden by default). On desktop
+          the plan's merge into PhoneCallMode teleprompter happens
+          in-component; here we just guarantee the mobile drawer exists. */}
+      <ScriptDrawer
+        onCopyExample={(text) => {
+          // On call page the main input is the voice mic, but we do
+          // have a fallback text field — pre-fill it with the example.
+          setTextInput(text);
+        }}
+      />
       <PhoneCallMode
         characterName={s.characterName || "Клиент"}
         emotion={s.emotion as EmotionState}

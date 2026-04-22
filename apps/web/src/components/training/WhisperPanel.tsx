@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Scale, Heart, ArrowRight, Shield, Zap, Lightbulb, Eye, EyeOff } from "lucide-react";
+import { Scale, Heart, ArrowRight, Shield, Zap, Lightbulb, Eye, EyeOff, Target } from "lucide-react";
 import type { CoachingWhisper } from "@/types";
 import { useSessionStore } from "@/stores/useSessionStore";
 
@@ -11,6 +11,9 @@ const ICON_MAP: Record<string, typeof Scale> = {
   "arrow-right": ArrowRight,
   shield: Shield,
   zap: Zap,
+  // 2026-04-23 Sprint 3: dedicated icon for type="script" whispers
+  // — backend emits these when user gets stuck on a stage.
+  target: Target,
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -19,6 +22,9 @@ const TYPE_COLORS: Record<string, string> = {
   stage: "rgba(34, 197, 94, 0.12)",
   objection: "rgba(139, 92, 246, 0.12)",
   transition: "rgba(59, 130, 246, 0.12)",
+  // 2026-04-23 Sprint 3: script-specific hints — brand purple, same
+  // palette as ScriptPanel so user immediately recognises the source.
+  script: "rgba(120, 92, 220, 0.14)",
 };
 
 const TYPE_BORDER_COLORS: Record<string, string> = {
@@ -27,6 +33,7 @@ const TYPE_BORDER_COLORS: Record<string, string> = {
   stage: "rgba(34, 197, 94, 0.25)",
   objection: "rgba(139, 92, 246, 0.25)",
   transition: "rgba(59, 130, 246, 0.25)",
+  script: "rgba(120, 92, 220, 0.35)",
 };
 
 const TYPE_ICON_COLORS: Record<string, string> = {
@@ -35,6 +42,7 @@ const TYPE_ICON_COLORS: Record<string, string> = {
   stage: "var(--success)",
   objection: "var(--accent)",
   transition: "var(--info)",
+  script: "var(--accent)",
 };
 
 function formatTimeAgo(timestamp: number): string {

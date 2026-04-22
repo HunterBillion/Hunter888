@@ -28,6 +28,19 @@ export interface DifficultyUpdate {
   trend: DifficultyTrend;
 }
 
+/** 2026-04-23 Sprint 3 (Zone 3): stage.skipped WS event payload shape
+ *  used by ScriptPanel / ScriptDrawer to render the «вы пропустили этап»
+ *  yellow alert card. */
+export interface SkippedHint {
+  missedStageNumber: number;
+  missedStageLabel: string;
+  currentStageNumber: number;
+  currentStageLabel: string;
+  hint: string;
+  /** Unix ms — when this hint was set (for client-side TTL). */
+  setAt: number;
+}
+
 interface SessionStore {
   // Session identity
   sessionId: string;
@@ -92,6 +105,11 @@ interface SessionStore {
   stagesCompleted: number[];
   totalStages: number;
   stageConfidence: number;
+
+  // 2026-04-23 Sprint 3 (Zone 3): stage.skipped WS event payload kept
+  // here so ScriptPanel can flash a yellow border + show the hint.
+  // Cleared automatically after 12s OR when next stage.update arrives.
+  skippedHint: SkippedHint | null;
 
   // Hints
   objectionHint: ObjectionHint | null;
@@ -206,6 +224,8 @@ interface SessionStore {
   addTrapDodged: () => void;
   adjustTrapNetScore: (delta: number) => void;
   setStageUpdate: (data: StageUpdate) => void;
+  setSkippedHint: (hint: SkippedHint | null) => void;
+  clearSkippedHint: () => void;
   setObjectionHint: (hint: ObjectionHint | null) => void;
   setCheckpointHint: (hint: CheckpointHint | null) => void;
   addWhisper: (w: CoachingWhisper) => void;
@@ -278,6 +298,7 @@ const INITIAL_STATE = {
   stagesCompleted: [] as number[],
   totalStages: 7,
   stageConfidence: 1.0,
+  skippedHint: null as SkippedHint | null,
   objectionHint: null as ObjectionHint | null,
   checkpointHint: null as CheckpointHint | null,
   whispers: [] as CoachingWhisper[],
@@ -439,7 +460,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     stagesCompleted: data.stages_completed,
     totalStages: data.total_stages,
     stageConfidence: data.confidence,
+    // 2026-04-23 Sprint 3: a fresh stage transition supersedes any
+    // previous skip alert — clear it so the panel doesn't keep nagging
+    // about a stage the user has already moved past.
+    skippedHint: null,
   }),
+  setSkippedHint: (skippedHint) => set({ skippedHint }),
+  clearSkippedHint: () => set({ skippedHint: null }),
   setObjectionHint: (objectionHint) => set({ objectionHint }),
   setCheckpointHint: (checkpointHint) => set({ checkpointHint }),
   addWhisper: (w) => set((s) => ({ whispers: [w, ...s.whispers].slice(0, 3) })),
@@ -534,6 +561,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       stagesCompleted: [],
       totalStages: 7,
       stageConfidence: 1.0,
+      skippedHint: null,
       objectionHint: null,
       checkpointHint: null,
       whispersEnabled: s.whispersEnabled,

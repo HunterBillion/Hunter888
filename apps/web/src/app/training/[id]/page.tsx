@@ -41,7 +41,8 @@ const PixelGridBackground = dynamic(
 import { CrystalMic } from "@/components/training/CrystalMic";
 import VibeMeter from "@/components/training/VibeMeter";
 import { type CheckpointInfo } from "@/components/training/ScriptAdherence";
-import StageProgressBar from "@/components/training/StageProgress";
+import ScriptPanel from "@/components/training/ScriptPanel";
+import ScriptDrawer from "@/components/training/ScriptDrawer";
 import WhisperPanel from "@/components/training/WhisperPanel";
 import { HangupModal } from "@/components/training/HangupModal";
 import SessionEndingOverlay from "@/components/training/SessionEndingOverlay";
@@ -578,6 +579,30 @@ export default function TrainingSessionPage() {
           // после character.response, stage.update его не триггерил.
           s.refreshScriptHints();
           break;
+
+        case "stage.skipped": {
+          // 2026-04-23 Sprint 3: backend signals user jumped past one or
+          // more script stages. ScriptPanel / ScriptDrawer renders a
+          // yellow-bordered hint card pointing to the missed stage.
+          const sd = data.data as {
+            missed_stage_number?: number;
+            missed_stage_label?: string;
+            current_stage_number?: number;
+            current_stage_label?: string;
+            hint?: string;
+          };
+          if (sd.missed_stage_number && sd.missed_stage_label) {
+            s.setSkippedHint({
+              missedStageNumber: sd.missed_stage_number,
+              missedStageLabel: sd.missed_stage_label,
+              currentStageNumber: sd.current_stage_number ?? s.currentStage,
+              currentStageLabel: sd.current_stage_label ?? s.stageLabel,
+              hint: sd.hint ?? "Вернитесь и закройте этот этап — клиент это заметил.",
+              setAt: Date.now(),
+            });
+          }
+          break;
+        }
 
         case "score.update":
           if (data.data.script_score !== undefined) s.setScriptScore(data.data.script_score as number);
@@ -2065,12 +2090,26 @@ export default function TrainingSessionPage() {
             <TalkListenRatio talkPercent={s.talkTime + s.listenTime > 0 ? Math.round((s.talkTime / (s.talkTime + s.listenTime)) * 100) : 50} />
           </div>
 
-          {/* ── Stage progress ── */}
+          {/* ── Script panel (Sprint 3 / Zone 3): merged with stage
+                 progress dots + task / examples / mistakes / skip alert.
+                 Replaced the legacy <StageProgressBar> on 2026-04-23. ── */}
           <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)" }}>
-            <StageProgressBar
-              currentStage={s.currentStage}
-              stagesCompleted={s.stagesCompleted}
-              totalStages={s.totalStages}
+            <ScriptPanel
+              compactHeader
+              onCopyExample={(text) => {
+                // Pre-fill the message input with the example. User then
+                // edits + presses Enter. setInput is wired in the store.
+                useSessionStore.getState().setInput(text);
+                if (textareaRef.current) {
+                  textareaRef.current.focus();
+                  // Give React time to flush the value before placing caret.
+                  setTimeout(() => {
+                    if (textareaRef.current) {
+                      textareaRef.current.setSelectionRange(text.length, text.length);
+                    }
+                  }, 0);
+                }
+              }}
             />
           </div>
 
@@ -2205,6 +2244,23 @@ export default function TrainingSessionPage() {
         visible={ending}
         title="Завершаем тренировку"
         subtitle={s.characterName || undefined}
+      />
+
+      {/* 2026-04-23 Sprint 3: ScriptDrawer — mobile-only bottom-sheet for
+          the script panel. Sidebar holds it on desktop (lg+); on smaller
+          screens this drawer auto-opens on stage.update + stage.skipped. */}
+      <ScriptDrawer
+        onCopyExample={(text) => {
+          useSessionStore.getState().setInput(text);
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+            setTimeout(() => {
+              if (textareaRef.current) {
+                textareaRef.current.setSelectionRange(text.length, text.length);
+              }
+            }, 0);
+          }
+        }}
       />
 
       {/* ── Modals ──────────────────────────────────────────── */}
