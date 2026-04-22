@@ -51,6 +51,7 @@ from app.core import errors as err
 from app.core.security import create_access_token, create_refresh_token, decode_token
 from app.database import async_session
 from app.models.character import Character, EmotionState, LEGACY_MAP
+from app.models.client import ClientInteraction, InteractionType
 from app.models.scenario import Scenario, ScenarioTemplate, ScenarioType
 from app.models.training import MessageRole, SessionStatus, TrainingSession
 from app.models.user import User
@@ -3011,22 +3012,69 @@ async def _handle_session_start(
                     client_card = get_crm_card(existing_profile)
                     client_gender = getattr(existing_profile, "gender", "") or ""
                 else:
-                    # First connection — generate new client profile
-                    from app.services.client_generator import generate_client_profile, get_crm_card
-                    profile = await generate_client_profile(
-                        session_id=session.id,
-                        scenario=scenario,
-                        character=character,
-                        difficulty=custom_difficulty or (scenario.difficulty if scenario else 5),
-                        db=db,
-                        custom_archetype=custom_archetype,
-                        custom_profession=custom_params.get("profession"),
-                        custom_lead_source=custom_params.get("lead_source"),
-                        custom_family_preset=custom_params.get("family_preset"),
-                        custom_creditors_preset=custom_params.get("creditors_preset"),
-                        custom_debt_range=custom_params.get("debt_range"),
-                        custom_tone=custom_params.get("tone"),
+                    # First connection — build client profile.
+                    # 2026-04-23 Zone 1: Priority ladder for profile source:
+                    #   1. session.real_client_id → build_profile_from_real_client
+                    #      (CRM-card "Написать"/"Позвонить" flow). Uses the
+                    #      actual customer's name/debt/creditors from the
+                    #      manager's CRM. Previously ignored — user saw random
+                    #      client on call-mode even though card said Иванов.
+                    #   2. session.custom_character_id implicitly handled by
+                    #      generate_client_profile below (archetype/profession
+                    #      come from custom_params which were sourced from the
+                    #      CustomCharacter at session-start).
+                    #   3. Fallback → generate_client_profile from scratch
+                    #      (catalog scenarios / legacy sessions).
+                    from app.services.client_generator import (
+                        build_profile_from_real_client,
+                        generate_client_profile,
+                        get_crm_card,
                     )
+                    profile = None
+                    if session.real_client_id:
+                        from app.models.client import RealClient
+                        _rc = await db.get(RealClient, session.real_client_id)
+                        if _rc is not None:
+                            try:
+                                profile = await build_profile_from_real_client(
+                                    real_client=_rc,
+                                    session_id=session.id,
+                                    db=db,
+                                    custom_archetype=custom_archetype,
+                                    custom_profession=custom_params.get("profession"),
+                                    custom_lead_source=custom_params.get("lead_source"),
+                                    custom_family_preset=custom_params.get("family_preset"),
+                                    custom_creditors_preset=custom_params.get("creditors_preset"),
+                                    custom_debt_range=custom_params.get("debt_range"),
+                                    custom_tone=custom_params.get("tone"),
+                                    difficulty=custom_difficulty or (scenario.difficulty if scenario else 5),
+                                )
+                                logger.info(
+                                    "ClientProfile built from RealClient | session=%s | real_client=%s | name=%s",
+                                    session.id, _rc.id, _rc.full_name,
+                                )
+                            except Exception:
+                                logger.warning(
+                                    "build_profile_from_real_client failed for session=%s, falling back to generator",
+                                    session.id, exc_info=True,
+                                )
+                                profile = None
+
+                    if profile is None:
+                        profile = await generate_client_profile(
+                            session_id=session.id,
+                            scenario=scenario,
+                            character=character,
+                            difficulty=custom_difficulty or (scenario.difficulty if scenario else 5),
+                            db=db,
+                            custom_archetype=custom_archetype,
+                            custom_profession=custom_params.get("profession"),
+                            custom_lead_source=custom_params.get("lead_source"),
+                            custom_family_preset=custom_params.get("family_preset"),
+                            custom_creditors_preset=custom_params.get("creditors_preset"),
+                            custom_debt_range=custom_params.get("debt_range"),
+                            custom_tone=custom_params.get("tone"),
+                        )
                     client_card = get_crm_card(profile)
                     client_gender = getattr(profile, "gender", "") or ""
                     state["client_profile_prompt"] = _build_client_profile_prompt(profile, ambient_ctx=custom_params)
@@ -4681,6 +4729,49 @@ async def _handle_session_end(
                 logger.warning(
                     "custom_character_stats update failed (WS end) for %s",
                     session_id, exc_info=True,
+                )
+
+        # 2026-04-23 Zone 4: auto-register training in ClientInteraction
+        # timeline. When session is linked to a CRM RealClient, create a
+        # matching interaction row so the /clients/[id] timeline shows
+        # "Тренировка (звонок/чат)" card with score + duration + retrain
+        # mini-button. Without this the training history was invisible on
+        # the client card — every session looked "new".
+        if session is not None and session.real_client_id:
+            try:
+                _mode = (session.custom_params or {}).get("session_mode") or "chat"
+                _interaction_type = (
+                    InteractionType.outbound_call
+                    if _mode == "call"
+                    else InteractionType.note
+                )
+                _score_int = int(session.score_total) if session.score_total else 0
+                db.add(ClientInteraction(
+                    client_id=session.real_client_id,
+                    manager_id=session.user_id,
+                    interaction_type=_interaction_type,
+                    duration_seconds=session.duration_seconds,
+                    notes=(
+                        f"Тренировка #{session.id.hex[:8]} "
+                        f"({'звонок' if _mode == 'call' else 'чат'}) — "
+                        f"{_score_int} баллов"
+                    ),
+                    metadata_={
+                        "training_session_id": str(session.id),
+                        "scenario_id": str(session.scenario_id) if session.scenario_id else None,
+                        "session_mode": _mode,
+                        "total_score": session.score_total,
+                        "source": session.source,
+                    },
+                ))
+                logger.info(
+                    "ClientInteraction auto-created | session=%s | client=%s | mode=%s | score=%s",
+                    session.id, session.real_client_id, _mode, _score_int,
+                )
+            except Exception:
+                logger.warning(
+                    "ClientInteraction auto-create failed (WS end) for session=%s real_client=%s",
+                    session_id, session.real_client_id, exc_info=True,
                 )
 
         await db.commit()

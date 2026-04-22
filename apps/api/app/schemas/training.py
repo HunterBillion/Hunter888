@@ -45,6 +45,24 @@ class SessionStartRequest(BaseModel):
     # Custom character link
     custom_character_id: uuid.UUID | None = None  # link to saved CustomCharacter
 
+    # ── 2026-04-23 Zone 1 — CRM-card → session linkage ──
+    # When the user opens /clients/{id} and clicks «Написать»/«Позвонить»,
+    # the frontend already sends real_client_id + source (e.g. "crm_chat",
+    # "crm_voice"). Previously the schema dropped both fields silently,
+    # so the WS handler never knew this was a real-client training and
+    # always generated a random AI profile. Now we accept + persist them.
+    real_client_id: uuid.UUID | None = None
+    source: str | None = None
+
+    # ── 2026-04-23 Zone 4 — retrain-flow via clone_from_session_id ──
+    # When the user clicks «Повторить сценарий» on /results, the new
+    # session is created by cloning all params of the previous one
+    # (scenario_id, real_client_id, custom_character_id, custom_params,
+    # session_mode). Frontend sends ONLY clone_from_session_id and the
+    # backend does the copying — keeps the "retrain" contract in one place
+    # and avoids the bug where frontend partially forgets parameters.
+    clone_from_session_id: uuid.UUID | None = None
+
 
 class CustomCharacterCreate(BaseModel):
     name: str

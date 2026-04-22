@@ -12,6 +12,7 @@ from app.core import errors as err
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.core.deps import require_role
+from app.models.client import ClientInteraction, InteractionType, RealClient
 from app.models.roleplay import ClientStory
 from app.models.training import AssignedTraining, Message, MessageRole, SessionStatus, TrainingSession
 from app.models.scenario import Scenario, ScenarioTemplate, ScenarioType
@@ -299,6 +300,96 @@ async def start_session(
     user: User = Depends(check_consent_accepted),
     db: AsyncSession = Depends(get_db),
 ):
+    # ── 2026-04-23 Zone 4 — clone_from_session_id expansion ──────────────
+    # When the user clicks «Повторить сценарий» on /results, frontend sends
+    # ONLY `clone_from_session_id`. Backend copies scenario_id, real_client_id,
+    # custom_character_id, custom_params, session_mode from the source session
+    # into the request body. Explicit body fields win (clone is a template,
+    # not a hard override) — this lets the user «retrain with different
+    # difficulty» by sending clone_from_session_id + custom_difficulty=8.
+    #
+    # NOTE: this runs BEFORE scenario fallback / validation so all downstream
+    # logic sees a fully-populated request, as if the user had sent everything
+    # manually.
+    _clone_source_id: "uuid.UUID | None" = None
+    if body.clone_from_session_id:
+        _clone_source = (await db.execute(
+            select(TrainingSession).where(
+                TrainingSession.id == body.clone_from_session_id,
+                TrainingSession.user_id == user.id,  # own sessions only
+            )
+        )).scalar_one_or_none()
+        if _clone_source is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="clone_source_session_not_found",
+            )
+        _clone_source_id = _clone_source.id
+        _src_cp = _clone_source.custom_params or {}
+
+        # Scalar fields — explicit body value wins, clone fills absent.
+        if body.scenario_id is None:
+            body.scenario_id = _clone_source.scenario_id
+        if body.real_client_id is None:
+            body.real_client_id = _clone_source.real_client_id
+        if body.custom_character_id is None:
+            body.custom_character_id = _clone_source.custom_character_id
+
+        # Flat custom_* fields — copy from source custom_params if body empty.
+        # Note: schema flattens these into body.custom_* and start_session
+        # re-serialises back into custom_params JSON below. We inject here.
+        _CLONE_CP_KEYS = (
+            ("custom_archetype",        "archetype"),
+            ("custom_profession",       "profession"),
+            ("custom_lead_source",      "lead_source"),
+            ("custom_difficulty",       "difficulty"),
+            ("custom_family_preset",    "family_preset"),
+            ("custom_creditors_preset", "creditors_preset"),
+            ("custom_debt_stage",       "debt_stage"),
+            ("custom_debt_range",       "debt_range"),
+            ("custom_emotion_preset",   "emotion_preset"),
+            ("custom_bg_noise",         "bg_noise"),
+            ("custom_time_of_day",      "time_of_day"),
+            ("custom_fatigue",          "client_fatigue"),
+            ("custom_session_mode",     "session_mode"),
+            ("custom_tone",             "tone"),
+        )
+        for body_attr, cp_key in _CLONE_CP_KEYS:
+            if getattr(body, body_attr, None) is None and cp_key in _src_cp:
+                setattr(body, body_attr, _src_cp[cp_key])
+
+        # Diagnostic source stamp (truncated hex for brevity in logs).
+        if not body.source:
+            body.source = f"retrain_from_{_clone_source.id.hex[:8]}"
+
+        logger.info(
+            "clone_from_session_id resolved | user=%s | source=%s | mode=%s "
+            "| real_client_id=%s | custom_character_id=%s",
+            user.id, _clone_source.id,
+            body.custom_session_mode, body.real_client_id, body.custom_character_id,
+        )
+
+    # ── 2026-04-23 Zone 1 — real_client_id ownership validation ───────────
+    # Frontend /clients/[id]/page.tsx sends real_client_id + source on both
+    # "Написать" and "Позвонить". Without this check, a malicious user could
+    # clone another manager's CRM card into their own training by forging
+    # the request body. manager_id check catches it at schema-level.
+    if body.real_client_id:
+        _rc = (await db.execute(
+            select(RealClient).where(
+                RealClient.id == body.real_client_id,
+                RealClient.manager_id == user.id,
+            )
+        )).scalar_one_or_none()
+        if _rc is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="real_client_not_found",
+            )
+        # real_client passed — scenario becomes optional (we have a client
+        # profile source). Fall-back scenario picker below still runs if
+        # nothing provided.
+
     scenario_id = body.scenario_id
 
     # If no scenario_id but custom params provided — pick a fallback scenario
@@ -644,6 +735,15 @@ async def start_session(
         scenario_id=scenario_id,
         custom_params=custom_params,
         custom_character_id=body.custom_character_id,
+        # 2026-04-23 Zone 1: persist CRM-card linkage so WS handler builds
+        # the ClientProfile from RealClient instead of random generation.
+        real_client_id=body.real_client_id,
+        # 2026-04-23 Zone 4: retrain lineage — who did this session clone.
+        source_session_id=_clone_source_id,
+        # 2026-04-23: persist diagnostic source stamp (crm_chat / crm_voice /
+        # retrain_from_xxx / constructor_* / None). Column existed but
+        # nothing wrote to it before.
+        source=body.source,
     )
     db.add(session)
     await db.flush()
@@ -850,6 +950,66 @@ async def get_session(
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.SESSION_NOT_FOUND)
     return await _build_session_result(session, user=user, db=db)
+
+
+@router.post("/sessions/{session_id}/decline", response_model=SessionResponse)
+async def decline_session(
+    session_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """2026-04-23 Zone 2 — user declined incoming call gate.
+
+    Called from call/page.tsx IncomingCallScreen when user clicks
+    "Отклонить" instead of "Принять". The session was already POSTed at
+    /clients/[id]/page.tsx click (scenario_id + real_client_id), so the
+    row exists in DB. We just mark it as abandoned without scoring and
+    optionally log a ClientInteraction so the timeline shows the declined
+    attempt.
+
+    Idempotent: if session is already ended/abandoned, just return current
+    state instead of erroring — user may double-click.
+    """
+    session = (await db.execute(
+        select(TrainingSession).where(
+            TrainingSession.id == session_id,
+            TrainingSession.user_id == user.id,
+        )
+    )).scalar_one_or_none()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=err.ACTIVE_SESSION_NOT_FOUND,
+        )
+
+    # Idempotent: don't modify terminal sessions.
+    if session.status == SessionStatus.active:
+        from datetime import datetime as _dt, timezone as _tz
+        session.status = SessionStatus.abandoned
+        session.ended_at = _dt.now(_tz.utc)
+        # Log as CRM interaction if linked to real client (for timeline).
+        if session.real_client_id:
+            try:
+                db.add(ClientInteraction(
+                    client_id=session.real_client_id,
+                    manager_id=user.id,
+                    interaction_type=InteractionType.note,
+                    notes=f"Отклонил входящий звонок (тренировка #{session.id.hex[:8]})",
+                    metadata_={
+                        "training_session_id": str(session.id),
+                        "declined": True,
+                        "session_mode": (session.custom_params or {}).get("session_mode"),
+                    },
+                ))
+            except Exception:
+                logger.warning(
+                    "decline_session: ClientInteraction create failed for %s",
+                    session.real_client_id, exc_info=True,
+                )
+        await db.commit()
+        logger.info("Session %s declined by user %s", session.id, user.id)
+
+    return SessionResponse.model_validate(session)
 
 
 @router.post("/sessions/{session_id}/end", response_model=SessionResponse)

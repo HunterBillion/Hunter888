@@ -115,8 +115,21 @@ class TrainingSession(Base):
         UUID(as_uuid=True), ForeignKey("custom_characters.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
-    # Session origin: "home", "training", "story", None (legacy)
-    source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Session origin: "home", "training", "story", "crm_chat", "crm_voice",
+    # "retrain_from_<hex>", "constructor_chat", "constructor_call", None (legacy).
+    # 2026-04-23: widened to 40 chars to fit retrain_from_<8hex> stamps.
+    source: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    # 2026-04-23 Zone 4: when this session was created by cloning another
+    # (user clicked «Повторить» on /results), we store the origin session
+    # so analytics can track retrain chains and UI can surface a "retrain"
+    # badge. Nullable: only retrained sessions have this.
+    source_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("training_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Phase A (2026-04-20): frozen DifficultyParams snapshot so replays are
     # deterministic even when the params table is retuned later. Shape:

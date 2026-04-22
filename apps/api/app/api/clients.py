@@ -27,6 +27,7 @@ from app.models.client import (
     NotificationStatus,
     RealClient,
 )
+from app.models.training import SessionStatus, TrainingSession
 from app.models.user import User, UserRole
 from app.schemas.client import (
     AuditLogListResponse,
@@ -547,7 +548,7 @@ async def api_get_client(
     user: User = Depends(require_role("manager", "rop", "admin", "methodologist")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Детали клиента + история + согласия."""
+    """Детали клиента + история + согласия + last_training_session."""
     client = await get_client(db, client_id=client_id, user=user, request=request)
     consents_result = await db.execute(
         select(ClientConsent)
@@ -562,7 +563,43 @@ async def api_get_client(
     )
     client.consents = list(consents_result.scalars().all())
     client.interactions = list(interactions_result.scalars().all())
-    return _client_to_response(client, include_details=True)
+
+    # 2026-04-23 Zone 4: load last completed training session for this real
+    # client. Used by RetrainWidget (when /clients/[id] is reached with
+    # ?retrain=...) to show "your last score + retrain" card. Cheap: ORDER
+    # BY ended_at DESC LIMIT 1, already-indexed column (real_client_id).
+    last_training_session: dict | None = None
+    try:
+        last_ts = (await db.execute(
+            select(TrainingSession)
+            .where(
+                TrainingSession.real_client_id == client.id,
+                TrainingSession.user_id == user.id,
+                TrainingSession.status != SessionStatus.active,
+            )
+            .order_by(TrainingSession.ended_at.desc().nullslast(),
+                      TrainingSession.started_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        if last_ts is not None:
+            last_training_session = {
+                "id": str(last_ts.id),
+                "status": last_ts.status.value if last_ts.status else None,
+                "session_mode": (last_ts.custom_params or {}).get("session_mode") or "chat",
+                "total_score": last_ts.score_total,
+                "duration_seconds": last_ts.duration_seconds,
+                "started_at": last_ts.started_at.isoformat() if last_ts.started_at else None,
+                "ended_at": last_ts.ended_at.isoformat() if last_ts.ended_at else None,
+                "scenario_id": str(last_ts.scenario_id) if last_ts.scenario_id else None,
+                "stages_completed": (last_ts.scoring_details or {}).get("_stage_progress", {}).get("stages_completed", []),
+                "final_stage": (last_ts.scoring_details or {}).get("_stage_progress", {}).get("final_stage"),
+            }
+    except Exception:
+        logger.warning("Failed to load last_training_session for client %s", client.id, exc_info=True)
+
+    response = _client_to_response(client, include_details=True)
+    response.last_training_session = last_training_session
+    return response
 
 
 @router.put("/{client_id}", response_model=ClientResponse)

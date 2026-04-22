@@ -93,6 +93,14 @@ class ClientResponse(BaseModel):
     creditors: list[dict] | None = None
     tags: list[str] | None = None
 
+    # 2026-04-23 Zone 4: last training session summary — used by the
+    # RetrainWidget on /clients/[id] (when user arrives from /results
+    # with ?retrain=call|chat&from=...). Lightweight dict rather than a
+    # heavy nested TrainingSession model — we only need enough info to
+    # render "your last call: score 72, 4:18, 5/7 stages" and a "retrain"
+    # button pointing to clone_from_session_id.
+    last_training_session: dict | None = None
+
     model_config = {"from_attributes": True}
 
 

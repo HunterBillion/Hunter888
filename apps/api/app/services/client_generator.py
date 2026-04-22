@@ -1706,6 +1706,136 @@ async def generate_client_profile(
     return profile
 
 
+async def build_profile_from_real_client(
+    *,
+    real_client,
+    session_id: uuid.UUID,
+    db,
+    custom_archetype: str | None = None,
+    custom_profession: str | None = None,
+    custom_lead_source: str | None = None,
+    custom_family_preset: str | None = None,
+    custom_creditors_preset: str | None = None,
+    custom_debt_range: str | None = None,
+    custom_tone: str | None = None,
+    difficulty: int = 5,
+):
+    """2026-04-23 Zone 1 — build ClientProfile grounded in CRM RealClient.
+
+    Fix for the bug: «открываю карточку → "Позвонить" → случайный клиент
+    вместо Иванова». Previously WS handler always called
+    ``generate_client_profile`` which generated everything from scratch —
+    ignored the real_client entirely.
+
+    Strategy: run the normal generator for all the archetype-dependent
+    fields (fears, soft_spot, breaking_point, resistance, OCEAN), then
+    override the "identity" layer with data from RealClient:
+      - full_name   — always (it's literally "the same Иванов")
+      - total_debt  — if real.debt_amount known
+      - creditors   — if real.debt_details.creditors given
+      - crm_notes   — if real.notes set
+      - lead_source — mapped from real.source (CRM values differ from
+                      ClientProfile's enum, so we translate)
+      - trust_level — shifted by LEAD_SOURCE_TRUST_MODIFIER
+
+    Fields the generator computes (age/gender/city/profession/income/
+    OCEAN/fears/soft_spot/breaking_point) stay as generated — CRM card
+    rarely stores them, and consistency with archetype is more valuable
+    than a random pick.
+
+    Returns:
+        ClientProfile ORM instance (persisted, flushed but not committed).
+    """
+    from app.models.roleplay import ClientProfile
+
+    archetype_code = custom_archetype or "skeptic"
+    profession_category = custom_profession or "worker"
+    # Map CRM source → ClientProfile.lead_source enum. CRM is free-form
+    # (cold_call, referral, website, social_media, ...) whereas ClientProfile
+    # uses a narrower enum. Unknown values fall back to cold_base.
+    _src = (real_client.source or "").lower().strip()
+    _src_map = {
+        "cold_call": "cold_base",
+        "cold_base": "cold_base",
+        "website": "website_form",
+        "website_form": "website_form",
+        "referral": "referral",
+        "social_media": "social_media",
+        "partner": "partner",
+        "incoming": "incoming",
+        "repeat_call": "repeat_call",
+        "repeat": "repeat_call",
+    }
+    lead_source = custom_lead_source or _src_map.get(_src, "cold_base")
+
+    # Unwrap "random" sentinel like generate_client_profile does.
+    def _unwrap(val: str | None) -> str | None:
+        if val is None or (isinstance(val, str) and val.strip().lower() in ("", "random", "null")):
+            return None
+        return val
+
+    gen = await generate_client(
+        archetype_code=archetype_code,
+        difficulty=difficulty,
+        profession_category=profession_category,
+        lead_source=lead_source,
+        custom_family_preset=_unwrap(custom_family_preset),
+        custom_creditors_preset=_unwrap(custom_creditors_preset),
+        custom_debt_range=_unwrap(custom_debt_range),
+        custom_tone=_unwrap(custom_tone),
+    )
+
+    # ── RealClient overrides ──
+    # Name: always from CRM (this is the whole point).
+    override_name = real_client.full_name
+
+    # Debt: if CRM has a value, prefer it over generator's random pick.
+    override_debt: int | None = None
+    if real_client.debt_amount is not None:
+        try:
+            override_debt = int(real_client.debt_amount)
+        except (TypeError, ValueError):
+            override_debt = None
+
+    # Creditors: if CRM has explicit list, use as-is. Expected format:
+    # {"creditors": [{"name": "Сбербанк", "amount": 500000}, ...]}
+    override_creditors = None
+    _dd = real_client.debt_details or {}
+    if isinstance(_dd, dict):
+        _cc = _dd.get("creditors")
+        if isinstance(_cc, list) and _cc:
+            override_creditors = _cc
+
+    # Trust adjustment by lead source.
+    trust_base = gen.trust_level if gen.trust_level is not None else 3
+    trust_shift = LEAD_SOURCE_TRUST_MODIFIER.get(lead_source, 0)
+    override_trust = max(1, min(10, trust_base + trust_shift))
+
+    profile = ClientProfile(
+        session_id=session_id,
+        full_name=override_name,
+        age=gen.age,
+        gender=gen.gender,
+        city=gen.city,
+        archetype_code=gen.archetype_code,
+        education_level=gen.education,
+        total_debt=override_debt if override_debt is not None else gen.total_debt,
+        creditors=override_creditors if override_creditors is not None else gen.creditors,
+        income=gen.income,
+        income_type=gen.income_type,
+        fears=gen.fears,
+        soft_spot=gen.soft_spot,
+        breaking_point=gen.breaking_point,
+        trust_level=override_trust,
+        resistance_level=gen.resistance_level,
+        lead_source=lead_source,
+        crm_notes=real_client.notes,
+    )
+    db.add(profile)
+    await db.flush()
+    return profile
+
+
 def get_crm_card(profile) -> dict:
     """Build a CRM card dict from a ClientProfile or GeneratedProfile.
 

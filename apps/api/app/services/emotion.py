@@ -1082,7 +1082,7 @@ async def _apply_triggers(
     Apply multiple triggers with priority rules, modifiers, and counter gates.
 
     Priority rules:
-    1. insult overrides everything (immediate -1.0, skip others)
+    1. insult overrides everything (uses DEFAULT_ENERGY["insult"], skip others)
     2. wrong_answer overrides facts
     3. pressure + empathy → only pressure counts
     4. Apply order: negative → neutral → positive
@@ -1096,9 +1096,12 @@ async def _apply_triggers(
     # Enforce max 3 triggers per turn
     triggers = triggers[:3]
 
-    # Rule 1: insult overrides everything
+    # Rule 1: insult overrides everything.
+    # 2026-04-22: was hardcoded -1.0 which silently bypassed DEFAULT_ENERGY
+    # tuning. Now reads from DEFAULT_ENERGY so demo-mode weight (-0.3) and
+    # any future re-tuning actually take effect.
     if "insult" in triggers:
-        return -1.0, ["insult"]
+        return DEFAULT_ENERGY.get("insult", -0.3), ["insult"]
 
     # Deduplicate and check for counter gates (atomic Lua script)
     # Lua script: atomically increment counter and check if gate is passed
