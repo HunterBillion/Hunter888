@@ -883,7 +883,9 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
   // so teams can copy-paste a link without exposing credentials.
   const handleShare = async (id: string, name: string) => {
     try {
-      const res = await api.post<{ share_code: string }>(`/characters/custom/${id}/share`);
+      // api.post signature is (path, body, opts?) — the /share endpoint
+      // doesn't need a body, so pass an empty object rather than omit.
+      const res = await api.post<{ share_code: string }>(`/characters/custom/${id}/share`, {});
       const code = res.share_code;
       if (!code) throw new Error("No share code returned");
       const url = `${window.location.origin}/characters/shared/${code}`;
