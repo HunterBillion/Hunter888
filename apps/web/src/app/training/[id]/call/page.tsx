@@ -557,56 +557,61 @@ export default function TrainingCallPage() {
           {s.characterName || "Клиент"} ждёт ответа
         </div>
         <button
-          onClick={() => {
-            // 2026-04-22 (v2): CSP blocks data: URIs for media. Use Web
-            // Audio API silent buffer instead — it's CSP-safe AND unlocks
-            // both AudioContext (for ambient noise / ringback) and
-            // HTMLAudioElement (for TTS playback) when called from a
-            // genuine user-gesture handler. The previous Audio(data:...)
-            // approach silently failed to unlock because the browser
-            // refused the blocked media element entirely.
+          onClick={async () => {
+            // 2026-04-22 (v3): aggressive multi-vector unlock. Previous
+            // versions had Web Audio silent buffer + blob-URL HTMLAudioElement
+            // but user still got silent TTS. Chrome's autoplay policy
+            // requires MULTIPLE conditions:
+            //   1) AudioContext unlocked via resume() in a gesture
+            //   2) HTMLAudioElement.play() succeeded within gesture window
+            //   3) Media engagement index sufficient
+            // We hit all three here. Also: await the play promise so the
+            // gesture frame stays alive until Chrome confirms unlock.
+            console.log("[CALL] accept-click: running unlock sequence");
             try {
+              // --- Vector 1: Web Audio API unlock ---
               const AC = (window.AudioContext ||
                 (window as unknown as {
                   webkitAudioContext?: typeof AudioContext;
                 }).webkitAudioContext) as typeof AudioContext | undefined;
               if (AC) {
                 const ctx = new AC();
-                // Play a 1ms silent buffer — counts as media playback.
+                if (ctx.state === "suspended") {
+                  await ctx.resume().catch(() => {});
+                }
                 const buf = ctx.createBuffer(1, 1, 22050);
                 const src = ctx.createBufferSource();
                 src.buffer = buf;
                 src.connect(ctx.destination);
                 src.start(0);
-                // resume() is required after gesture for some browsers.
-                if (ctx.state === "suspended") {
-                  ctx.resume().catch(() => {});
-                }
-                // Close after a tick — keeping it open isn't needed; ambient
-                // noise creates its own context on next render.
-                setTimeout(() => {
-                  try { ctx.close(); } catch { /* ignore */ }
-                }, 100);
+                console.log("[CALL] unlock: AudioContext state =", ctx.state);
+                // Keep context around for 500ms to satisfy media policy.
+                setTimeout(() => { try { ctx.close(); } catch { /* */ } }, 500);
               }
-              // Also poke HTMLAudioElement via blob: URL (CSP-allowed).
-              // Build a tiny silent wav as a Uint8Array, wrap in Blob, play.
+              // --- Vector 2: HTMLAudioElement via blob URL ---
+              // CSP allows blob: — data: was blocked. Valid silent 8kHz mono
+              // PCM wav, 1 sample of silence. Using proper WAV headers.
               const silentWav = new Uint8Array([
-                0x52, 0x49, 0x46, 0x46, 0x24, 0, 0, 0, 0x57, 0x41, 0x56, 0x45,
+                0x52, 0x49, 0x46, 0x46, 0x25, 0, 0, 0, 0x57, 0x41, 0x56, 0x45,
                 0x66, 0x6d, 0x74, 0x20, 0x10, 0, 0, 0, 1, 0, 1, 0,
                 0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0, 1, 0, 8, 0,
-                0x64, 0x61, 0x74, 0x61, 0, 0, 0, 0,
+                0x64, 0x61, 0x74, 0x61, 0x01, 0, 0, 0, 0x80,
               ]);
               const blob = new Blob([silentWav], { type: "audio/wav" });
               const url = URL.createObjectURL(blob);
               const a = new Audio(url);
-              a.volume = 0;
-              const p = a.play();
-              if (p)
-                p.then(() => URL.revokeObjectURL(url)).catch(() =>
-                  URL.revokeObjectURL(url),
-                );
-            } catch {
-              /* not fatal — gate still proceeds */
+              a.volume = 0.001; // not 0 — some browsers skip 0-volume plays
+              try {
+                await a.play();
+                console.log("[CALL] unlock: HTMLAudio play() succeeded");
+              } catch (e) {
+                console.warn("[CALL] unlock: HTMLAudio play() failed:", e);
+              }
+              URL.revokeObjectURL(url);
+              // --- Vector 3: also poke tts.unlock() if pending ---
+              try { tts.unlock(); } catch { /* */ }
+            } catch (e) {
+              console.warn("[CALL] unlock sequence error:", e);
             }
             setCallAccepted(true);
           }}

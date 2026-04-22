@@ -473,11 +473,16 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
         };
 
         audio.play().then(() => {
-          logger.log(
-            `[TTS] Audio playback started | emotion=${opts?.emotion ?? "none"} | speaker=${opts?.speaker ?? "single"}`
+          // 2026-04-22: use console directly — logger.log is stripped in
+          // production builds, so users troubleshooting silent-audio bugs
+          // couldn't see whether play() succeeded. This log is critical
+          // for distinguishing "TTS arrived but browser silenced it" vs
+          // "TTS arrived and played — speakers are just muted".
+          console.log(
+            `[TTS] ▶ play STARTED | emotion=${opts?.emotion ?? "none"} | speaker=${opts?.speaker ?? "single"} | blob=${url.slice(0, 45)}`
           );
         }).catch((err) => {
-          logger.warn("[TTS] Audio play FAILED:", err.name, err.message);
+          console.warn("[TTS] ✗ play FAILED:", err.name, "|", err.message);
           // Autoplay blocked (NotAllowedError) — keep the prepared Audio
           // element and blob URL alive so the user-gesture unlock() can
           // replay the exact utterance they missed instead of skipping it.
@@ -502,7 +507,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
 
         return audio;
       } catch (err) {
-        logger.warn("[TTS] Audio decode failed:", err);
+        console.warn("[TTS] ✗ decode FAILED:", err);
         opts?.onEnded?.();
         return null;
       }
@@ -542,11 +547,12 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
   // ---------------------------------------------------------------------------
   const playAudioMessage = useCallback(
     (msg: TTSAudioMessage) => {
-      logger.log(
-        `[TTS] playAudioMessage | enabled=${enabled} | emotion=${msg.emotion} | duration=${msg.duration_ms}ms`
+      // 2026-04-22: console (not logger) so prod users can diagnose silence.
+      console.log(
+        `[TTS] ► playAudioMessage | enabled=${enabled} | emotion=${msg.emotion} | duration=${msg.duration_ms}ms | b64_len=${msg.audio?.length || 0}`
       );
       if (!enabled) {
-        logger.warn("[TTS] playAudioMessage skipped — TTS disabled");
+        console.warn("[TTS] playAudioMessage skipped — TTS disabled");
         return;
       }
       stop();
@@ -720,12 +726,12 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     pending.audio
       .play()
       .then(() => {
-        logger.log("[TTS] Audio unlocked via user gesture, playback resumed");
+        console.log("[TTS] ✓ Audio unlocked via user gesture, playback resumed");
         setNeedsAudioUnlock(false);
         pendingPlaybackRef.current = null;
       })
       .catch((err) => {
-        logger.warn("[TTS] Unlock failed:", err?.name, err?.message);
+        console.warn("[TTS] ✗ Unlock failed:", err?.name, err?.message);
         // Keep the overlay up so the user can try again.
       });
   }, []);
