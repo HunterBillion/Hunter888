@@ -68,44 +68,101 @@ STAGE_KEYWORDS: dict[str, dict] = {
         "max_messages": 4,
     },
     "contact": {
+        # 2026-04-23 Sprint 2: expanded from 12 → 30+ markers. Real
+        # dialogues routinely stalled here because the list required
+        # specific phrases ("как вас зовут" exactly) while actual managers
+        # used more colloquial rapport-building turns ("расскажите",
+        # "давайте разберёмся"). Marker hunt now matches natural Russian.
         "markers": [
-            "как вас зовут", "понимаю вашу ситуацию", "конфиденциально",
-            "расскажите", "сочувствую", "непростая ситуация",
-            "не переживайте", "можете довериться", "понимаю вас",
-            "тяжело", "сложная ситуация", "как к вам обращаться",
+            # Name request / addressing
+            "как вас зовут", "как к вам обращаться", "можно узнать ваше имя",
+            "разрешите узнать", "можно по имени",
+            # Empathy / acknowledgement
+            "понимаю вашу ситуацию", "понимаю вас", "я понимаю",
+            "сочувствую", "могу представить", "представляю как",
+            "это непросто", "непростая ситуация", "это сложно",
+            "тяжело", "сложная ситуация",
+            # Rapport / invitation to share
+            "расскажите", "расскажите подробнее", "что у вас случилось",
+            "с чего всё началось", "поделитесь",
+            "давайте разберём", "давайте разберёмся", "давайте разберемся",
+            # Reassurance
+            "не переживайте", "не волнуйтесь", "всё хорошо",
+            "можете довериться", "конфиденциально",
+            # Listening signals
+            "я вас слушаю", "слушаю вас", "помочь вам", "могу помочь",
+            "спасибо что ответили", "спасибо за открытость",
         ],
         "min_messages": 1,
         "max_messages": 8,
     },
     "qualification": {
+        # 2026-04-23: expanded to catch soft asks ("примерно сколько") and
+        # imperfect casing / stemming. Real managers rarely say "сумма долга"
+        # verbatim — they circle around ("а сколько примерно?", "какие банки").
         "markers": [
-            "сумма долга", "сколько должны", "кредиторы", "банки",
-            "платежи", "просрочка", "ипотека", "кредит", "займ",
-            "какая сумма", "сколько кредитов", "имущество",
-            "задолженность", "долг", "платите", "заём",
-            "сколько банков", "какие банки",
+            # Sum / amount probes
+            "сумма долга", "сколько должны", "какая сумма", "примерно",
+            "сколько у вас", "какой размер", "размер долга",
+            # Creditors probes
+            "кредиторы", "какие банки", "сколько банков", "сколько кредитов",
+            "в каких банках", "микрофинансовые", "мфо", "займ", "заём",
+            "кредит", "банки",
+            # Payments / arrears
+            "платежи", "просрочка", "задолженность", "долг",
+            "платите", "как платите", "давно не платите",
+            "когда перестали", "когда началось",
+            # Property
+            "имущество", "ипотека", "квартира", "машина", "есть ли работа",
+            "какой доход", "с чего всё началось",
         ],
         "min_messages": 2,
         "max_messages": 14,
     },
     "presentation": {
+        # 2026-04-23: widened to catch natural explanations ("объясню как",
+        # "простыми словами", "будет стоить"). Previously needed exact legal
+        # jargon like "127-фз" which managers often paraphrase.
         "markers": [
-            "банкротство", "списание", "процедура", "127-фз",
+            # Procedure terminology
+            "банкротство", "процедура", "127-фз", "127 фз", "127фз",
             "арбитражный", "финансовый управляющий", "реструктуризация",
-            "защита имущества", "единственное жильё", "срок",
-            "списать долги", "освобождение от долгов", "закон",
             "банкротство физических", "процедура банкротства",
+            # Explanations
+            "объясню как", "простыми словами", "как это работает",
+            "расскажу как", "поясню",
+            # Outcomes / timing
+            "списание", "списать долги", "освобождение от долгов",
+            "закон", "срок", "какие сроки", "сколько длится",
+            "8 месяцев", "10 месяцев", "полгода",
+            # Property protection
+            "защита имущества", "единственное жильё", "единственное жилье",
+            "защищено законом", "суд назначает",
+            # Cost transparency
+            "будет стоить", "стоимость", "госпошлина", "депозит",
         ],
         "min_messages": 4,
         "max_messages": 18,
     },
     "objections": {
+        # 2026-04-23: expanded to include "joining before arguing" phrases,
+        # plus concrete counter-fears (кредитная история, квартира).
         "markers": [
-            "понимаю ваши опасения", "рассрочка", "гарантия",
-            "лицензия", "отзывы", "не переживайте",
-            "не уверен", "сомневаюсь", "понимаю что",
-            "многие клиенты", "на вашем месте", "опасения",
-            "беспокоит", "тревожит", "боитесь",
+            # Join-and-acknowledge
+            "понимаю ваши опасения", "понимаю ваше беспокойство",
+            "понимаю ваш страх", "понимаю что", "я понимаю",
+            "на вашем месте", "многие клиенты", "многие думают",
+            # Counter-doubt
+            "рассрочка", "гарантия", "лицензия", "отзывы",
+            "это законно", "можете проверить", "реестр",
+            "вот наша лицензия",
+            # Soft objections voiced
+            "не уверен", "сомневаюсь", "опасения", "беспокоит",
+            "тревожит", "боитесь", "переживаете",
+            "боитесь потерять", "боитесь что",
+            # Reassurance against specific fears
+            "не переживайте", "не волнуйтесь", "всё в порядке",
+            "давайте посчитаем", "посмотрите на выгоду",
         ],
         "min_messages": 6,
         "max_messages": 22,
@@ -133,20 +190,45 @@ STAGE_KEYWORDS: dict[str, dict] = {
 }
 
 # S3-09: Minimum fraction of matched markers required to trigger a stage transition.
-# History: 0.12 (~2 markers) caused oscillation → raised to 0.25 (~3 markers).
-# 2026-04-20: 0.25 proved too strict for real dialogues where managers handle
-# objections (price / guarantees / fraud fears) without hitting ≥3 exact
-# qualification markers. Lowered to 0.18 (~2 markers) — still above the
-# oscillation floor but permissive enough for natural conversation flow.
-TRANSITION_THRESHOLD = 0.18
+# History:
+#   - 0.12 (~2 markers)         → oscillation
+#   - 0.25 (~3 markers)         → too strict on real dialogues
+#   - 0.18 (~2 markers)         → still stuck after markers expansion
+#   - 2026-04-23 Sprint 2: denominator was `len(markers)` which became
+#     unstable when Sprint 2 expanded marker pools 12 → 30+. Two real
+#     matches dropped from 0.17 → 0.07 and no longer triggered. Fixed by
+#     capping denominator at MAX_DENOM below — now 2 matches → 0.25
+#     regardless of how many markers a stage lists. Threshold itself
+#     reduced to 0.15 for a touch more permissiveness.
+TRANSITION_THRESHOLD = 0.15
+# 2026-04-23 Sprint 2: score normalisation denominator cap. Prevents big
+# marker pools from diluting signal strength.
+MARKER_DENOMINATOR_CAP = 8
 
 # S3-09: Hysteresis — require N consecutive messages confirming transition
 # before actually advancing. Prevents single-message keyword noise from
 # triggering false stage changes.
-# 2026-04-20: 3 confirmations paired with the old 0.25 threshold effectively
-# required 3 back-to-back highly-matched turns — unrealistic in short calls.
-# Reduced to 2: one strong match still needs confirmation, but a genuinely
-# progressing dialogue advances without a 3-turn commitment.
+#
+# History:
+#   - 3 + 0.25 threshold (original) → too strict, short calls never advanced
+#   - 2 + 0.18 threshold (2026-04-20) → still stuck on greeting→contact
+#   - per-stage map (2026-04-23 Sprint 2) → greeting→contact needs only
+#     ONE confirmation, because getting past the first turn is a well-
+#     defined event (manager said hi, now wants rapport). Later transitions
+#     keep 2 confirmations to avoid oscillation in objection/appointment
+#     territory where markers may coincidentally pop up in unrelated talk.
+HYSTERESIS_CONFIRMATIONS_BY_STAGE: dict[int, int] = {
+    1: 1,  # greeting → contact (main fix — users were stuck here)
+    2: 2,  # contact → qualification
+    3: 2,  # qualification → presentation
+    4: 2,  # presentation → objections
+    5: 2,  # objections → appointment
+    6: 1,  # appointment → closing (soft entry — one solid signal enough)
+    7: 1,  # closing terminal
+}
+
+# Legacy constant kept so imports don't break (some tests reference it).
+# Use HYSTERESIS_CONFIRMATIONS_BY_STAGE.get(state.current_stage, 2) in code.
 HYSTERESIS_CONFIRMATIONS = 2
 
 
@@ -270,6 +352,23 @@ class StageState:
     # S3-09: Hysteresis — {candidate_stage: consecutive_confirmations}
     transition_confirmations: dict[int, int] = field(default_factory=dict)
 
+    # 2026-04-23 Sprint 2 — post-session analytics fields.
+    # skipped_stages: stages that were marked completed with score=0 because
+    #   the manager jumped over them (e.g. greeting → qualification directly).
+    #   Used by frontend ScriptPanel to show ⚠️ skip badge and by /results
+    #   ScriptProgressReport to show ✗ in the table.
+    skipped_stages: list[int] = field(default_factory=list)
+    # stage_started_at_msg: {stage_num: message_index when stage became current}
+    #   Used to compute stage_message_counts in build_scoring_details.
+    stage_started_at_msg: dict[int, int] = field(default_factory=dict)
+    # stage_started_at_ts: {stage_num: unix timestamp when stage became current}
+    #   Used to compute stage_durations_sec (how long user spent on each stage).
+    stage_started_at_ts: dict[int, float] = field(default_factory=dict)
+    # stage_durations_sec: {stage_num: seconds spent on stage} — filled on transition
+    stage_durations_sec: dict[int, float] = field(default_factory=dict)
+    # stage_message_counts: {stage_num: number of user messages while on stage}
+    stage_message_counts: dict[int, int] = field(default_factory=dict)
+
 
 # ─── StageTracker ────────────────────────────────────────────────────────────
 
@@ -294,6 +393,8 @@ class StageTracker:
 
     async def init_state(self, total_stages: int = 7) -> StageState:
         """Initialize stage tracking at session start."""
+        import time as _time
+        _now = _time.time()
         state = StageState(
             current_stage=1,
             current_stage_name="greeting",
@@ -302,6 +403,10 @@ class StageTracker:
             total_stages=total_stages,
             last_detected_at=0,
             confidence=1.0,
+            # 2026-04-23 Sprint 2: seed stage 1 start metadata so duration
+            # tracking works even if session ends before any transition.
+            stage_started_at_msg={1: 0},
+            stage_started_at_ts={1: _now},
         )
         await self._save_state(state)
         return state
@@ -343,7 +448,10 @@ class StageTracker:
                 kw = STAGE_KEYWORDS[current_stage_name]
                 matched = sum(1 for m in kw["markers"] if m in text_lower)
                 if matched > 0:
-                    score = matched / len(kw["markers"]) * 0.5  # Half weight for client msgs
+                    # 2026-04-23 Sprint 2: cap denominator so expanded
+                    # marker pools don't dilute signal (see TRANSITION_THRESHOLD).
+                    _denom = min(MARKER_DENOMINATOR_CAP, len(kw["markers"])) or 1
+                    score = matched / _denom * 0.5  # Half weight for client msgs
                     prev = state.stage_scores.get(state.current_stage, 0.0)
                     state.stage_scores[state.current_stage] = min(1.0, max(prev, score))
                     await self._save_state(state)
@@ -374,7 +482,8 @@ class StageTracker:
         current_kw = STAGE_KEYWORDS[current_stage_name]
         current_matched = sum(1 for m in current_kw["markers"] if m in text_lower)
         if current_matched > 0:
-            score = current_matched / len(current_kw["markers"])
+            _denom_cur = min(MARKER_DENOMINATOR_CAP, len(current_kw["markers"])) or 1
+            score = current_matched / _denom_cur
             prev = state.stage_scores.get(state.current_stage, 0.0)
             state.stage_scores[state.current_stage] = min(1.0, max(prev, score))
 
@@ -395,7 +504,10 @@ class StageTracker:
             if matched == 0:
                 continue
 
-            score = matched / len(kw["markers"])
+            # 2026-04-23 Sprint 2: capped denominator so expanded pools
+            # don't dilute (see TRANSITION_THRESHOLD comment).
+            _denom = min(MARKER_DENOMINATOR_CAP, len(kw["markers"])) or 1
+            score = matched / _denom
 
             # Penalty for transitioning too early
             if message_index < kw["min_messages"]:
@@ -405,28 +517,61 @@ class StageTracker:
                 best_score = score
                 best_match_stage = check_stage
 
-        # S3-09: Hysteresis — require HYSTERESIS_CONFIRMATIONS consecutive
-        # messages confirming the same candidate stage before transitioning.
-        # Reset confirmation counter for candidates that weren't matched this turn.
+        # ── Hysteresis (2026-04-23 Sprint 2: soft-decay + per-stage) ──
+        # Require N consecutive messages confirming the same candidate
+        # stage before transitioning. N varies per current stage:
+        # HYSTERESIS_CONFIRMATIONS_BY_STAGE[state.current_stage]. The
+        # previous design cleared ALL pending confirmations on any non-
+        # matching message — a single off-topic reply between two contact-
+        # cues reset progress. Now we DECREMENT by 1 (floor 0), so one
+        # interruption doesn't kill the run; two consecutive do.
         if best_match_stage is not None:
             state.transition_confirmations[best_match_stage] = (
                 state.transition_confirmations.get(best_match_stage, 0) + 1
             )
-            # Clear confirmations for other candidate stages (they broke continuity)
+            # Other candidates get soft decay too (they drifted).
             for k in list(state.transition_confirmations):
                 if k != best_match_stage:
-                    state.transition_confirmations.pop(k, None)
+                    state.transition_confirmations[k] = max(
+                        0, state.transition_confirmations[k] - 1
+                    )
+                    if state.transition_confirmations[k] == 0:
+                        del state.transition_confirmations[k]
         else:
-            # No match this message — reset all pending confirmations
-            state.transition_confirmations.clear()
+            # No match this turn — soft-decay instead of hard clear. One
+            # neutral message shouldn't invalidate all prior progress.
+            for k in list(state.transition_confirmations):
+                state.transition_confirmations[k] = max(
+                    0, state.transition_confirmations[k] - 1
+                )
+                if state.transition_confirmations[k] == 0:
+                    del state.transition_confirmations[k]
 
         # ── Apply transition (only after enough confirmations) ──
+        needed_confirmations = HYSTERESIS_CONFIRMATIONS_BY_STAGE.get(
+            state.current_stage, HYSTERESIS_CONFIRMATIONS,
+        )
         if (
             best_match_stage is not None
-            and state.transition_confirmations.get(best_match_stage, 0) >= HYSTERESIS_CONFIRMATIONS
+            and state.transition_confirmations.get(best_match_stage, 0) >= needed_confirmations
         ):
             # Clear confirmation counter on successful transition
             state.transition_confirmations.clear()
+
+            # 2026-04-23 Sprint 2: close out the current stage with duration
+            # and message count before moving on. Used by /results
+            # ScriptProgressReport.
+            import time as _time
+            _now = _time.time()
+            _started_ts = state.stage_started_at_ts.get(state.current_stage)
+            if _started_ts is not None:
+                state.stage_durations_sec[state.current_stage] = round(_now - _started_ts, 1)
+            _started_msg = state.stage_started_at_msg.get(state.current_stage)
+            if _started_msg is not None:
+                state.stage_message_counts[state.current_stage] = max(
+                    0, message_index - _started_msg,
+                )
+
             # Mark current stage as completed
             if state.current_stage not in state.stages_completed:
                 state.stages_completed.append(state.current_stage)
@@ -434,30 +579,50 @@ class StageTracker:
                 if state.current_stage not in state.stage_scores:
                     state.stage_scores[state.current_stage] = 0.3
 
-            # Mark any skipped stages and collect them
+            # Mark any skipped stages — track in BOTH stages_completed (with
+            # score=0) AND a dedicated skipped_stages list so /results can
+            # differentiate «passed» from «skipped».
             newly_skipped: list[int] = []
             for skipped in range(state.current_stage + 1, best_match_stage):
                 if skipped not in state.stages_completed:
                     state.stages_completed.append(skipped)
-                    state.stage_scores[skipped] = 0.0  # Skipped = 0 quality
+                    state.stage_scores[skipped] = 0.0
+                    if skipped not in state.skipped_stages:
+                        state.skipped_stages.append(skipped)
+                    # Skipped stages have zero duration / msgs — still record.
+                    state.stage_durations_sec[skipped] = 0.0
+                    state.stage_message_counts[skipped] = 0
                     newly_skipped.append(skipped)
 
-            # Advance to new stage
+            # Advance to new stage + record its start timestamp so we can
+            # compute duration when IT transitions next.
             state.current_stage = best_match_stage
             state.current_stage_name = STAGE_ORDER[best_match_stage - 1]
             state.last_detected_at = message_index
             state.confidence = min(1.0, best_score * 3)
+            state.stage_started_at_msg[best_match_stage] = message_index
+            state.stage_started_at_ts[best_match_stage] = _now
 
             await self._save_state(state)
             return state, True, newly_skipped
 
         # ── Auto-complete greeting after first few messages ──
-        # If we're still on greeting after 4+ messages with ANY content, auto-advance
+        # If we're still on greeting after 4+ messages with ANY content, auto-advance.
+        # With Sprint 2's softer HYSTERESIS_CONFIRMATIONS_BY_STAGE[1]=1 this
+        # path should fire much less often — most dialogues will naturally
+        # transition earlier.
         if (
             state.current_stage == 1
             and message_index >= STAGE_KEYWORDS["greeting"]["max_messages"]
             and state.current_stage not in state.stages_completed
         ):
+            import time as _time
+            _now = _time.time()
+            _started_ts = state.stage_started_at_ts.get(1)
+            if _started_ts is not None:
+                state.stage_durations_sec[1] = round(_now - _started_ts, 1)
+            state.stage_message_counts[1] = message_index
+
             state.stages_completed.append(1)
             if 1 not in state.stage_scores:
                 state.stage_scores[1] = 0.1  # Minimal credit
@@ -465,6 +630,8 @@ class StageTracker:
             state.current_stage_name = "contact"
             state.last_detected_at = message_index
             state.confidence = 0.5
+            state.stage_started_at_msg[2] = message_index
+            state.stage_started_at_ts[2] = _now
 
             await self._save_state(state)
             return state, True, []
@@ -500,10 +667,37 @@ class StageTracker:
         }
 
     def build_scoring_details(self, state: StageState) -> dict:
-        """Build data for session.scoring_details['_stage_progress']."""
+        """Build data for session.scoring_details['_stage_progress'].
+
+        2026-04-23 Sprint 2: extended with durations, message counts and
+        explicit skipped_stages list — consumed by /results
+        ScriptProgressReport to render the per-stage table with
+        ✓/✗/— states and time spent per stage.
+        """
+        # Ensure current stage has a rolling duration computed even if
+        # the session ends mid-stage (no transition triggered).
+        import time as _time
+        _now = _time.time()
+        _started_ts = state.stage_started_at_ts.get(state.current_stage)
+        durations = dict(state.stage_durations_sec)
+        if _started_ts is not None and state.current_stage not in durations:
+            durations[state.current_stage] = round(_now - _started_ts, 1)
+
+        msg_counts = dict(state.stage_message_counts)
+        if (
+            state.current_stage not in msg_counts
+            and state.stage_started_at_msg.get(state.current_stage) is not None
+        ):
+            msg_counts[state.current_stage] = max(
+                0, state.last_detected_at - state.stage_started_at_msg[state.current_stage],
+            )
+
         return {
             "stages_completed": sorted(state.stages_completed),
             "stage_scores": {str(k): round(v, 3) for k, v in state.stage_scores.items()},
+            "skipped_stages": sorted(state.skipped_stages),
+            "stage_durations_sec": {str(k): v for k, v in durations.items()},
+            "stage_message_counts": {str(k): v for k, v in msg_counts.items()},
             "final_stage": state.current_stage,
             "final_stage_name": state.current_stage_name,
             "total_stages": state.total_stages,
@@ -595,6 +789,10 @@ class StageTracker:
     # ── Redis persistence ──
 
     async def _save_state(self, state: StageState) -> None:
+        # Short keys kept for compactness + backward-compat with old Redis
+        # entries. New 2026-04-23 Sprint 2 fields get their own short keys
+        # (sk, sm, st, sd, mc) so a fresh writer + old reader just ignores
+        # unknown keys, and vice versa via .get() defaults.
         data = {
             "cs": state.current_stage,
             "cn": state.current_stage_name,
@@ -604,6 +802,11 @@ class StageTracker:
             "ld": state.last_detected_at,
             "cf": state.confidence,
             "tc": {str(k): v for k, v in state.transition_confirmations.items()},
+            "sk": state.skipped_stages,
+            "sm": {str(k): v for k, v in state.stage_started_at_msg.items()},
+            "st": {str(k): v for k, v in state.stage_started_at_ts.items()},
+            "sd": {str(k): v for k, v in state.stage_durations_sec.items()},
+            "mc": {str(k): v for k, v in state.stage_message_counts.items()},
         }
         try:
             await self.redis.set(self._state_key, json.dumps(data), ex=7200)
@@ -631,6 +834,11 @@ class StageTracker:
                 last_detected_at=data.get("ld", 0),
                 confidence=data.get("cf", 1.0),
                 transition_confirmations={int(k): v for k, v in data.get("tc", {}).items()},
+                skipped_stages=data.get("sk", []),
+                stage_started_at_msg={int(k): v for k, v in data.get("sm", {}).items()},
+                stage_started_at_ts={int(k): v for k, v in data.get("st", {}).items()},
+                stage_durations_sec={int(k): v for k, v in data.get("sd", {}).items()},
+                stage_message_counts={int(k): v for k, v in data.get("mc", {}).items()},
             )
         except (json.JSONDecodeError, TypeError, KeyError):
             logger.warning("Corrupted stage state for session %s, resetting", self.session_id)

@@ -100,7 +100,12 @@ from app.services.scoring import (
     generate_layer_explanations,
     layer_explanations_to_dict,
 )
-from app.services.stage_tracker import StageTracker
+from app.services.stage_tracker import (
+    STAGE_BEHAVIOR,
+    STAGE_LABELS,
+    STAGE_ORDER,
+    StageTracker,
+)
 from app.services.stt import STTError, transcribe_audio
 from app.services.stt_deepgram import DeepgramStreamingSTT
 from app.core.ws_rate_limiter import training_limiter
@@ -4332,6 +4337,28 @@ async def _handle_text_message(
             reactions = st.get_skip_reactions(stage_state, skipped)
             if reactions:
                 state["_pending_skip_reactions"] = reactions
+            # 2026-04-23 Sprint 2: emit stage.skipped so frontend ScriptPanel
+            # can flash a yellow border + show a hint ("вернитесь и
+            # установите раппорт"). Previously skip was silent — AI voiced
+            # a reaction phrase but user didn't see WHY.
+            for _sk_num in skipped:
+                if _sk_num < 1 or _sk_num > len(STAGE_ORDER):
+                    continue
+                _sk_name = STAGE_ORDER[_sk_num - 1]
+                _sk_label = STAGE_LABELS.get(_sk_name, _sk_name)
+                _sk_behavior = STAGE_BEHAVIOR.get(_sk_name, {})
+                await _send(ws, "stage.skipped", {
+                    "missed_stage_number": _sk_num,
+                    "missed_stage_name": _sk_name,
+                    "missed_stage_label": _sk_label,
+                    "current_stage_number": stage_state.current_stage,
+                    "current_stage_label": STAGE_LABELS.get(
+                        stage_state.current_stage_name, stage_state.current_stage_name,
+                    ),
+                    "hint": _sk_behavior.get("skip_reaction") or (
+                        f"Вы пропустили «{_sk_label}». Советуем вернуться."
+                    ),
+                })
     except Exception:
         logger.debug("Stage tracking failed for session %s", session_id, exc_info=True)
 
