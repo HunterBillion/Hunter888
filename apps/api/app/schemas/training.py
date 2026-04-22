@@ -177,6 +177,13 @@ class SessionResponse(BaseModel):
     client_story_id: uuid.UUID | None = None
     call_number_in_story: int | None = None
     custom_params: dict | None = None
+    # 2026-04-23 Sprint 4 — expose linkage fields so /results can route the
+    # «Повторить сценарий» button into the correct pit-stop (CRM card vs
+    # SavedTab vs direct clone). Already persisted on TrainingSession; used
+    # to be silently dropped by Pydantic.
+    real_client_id: uuid.UUID | None = None
+    custom_character_id: uuid.UUID | None = None
+    source_session_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
 

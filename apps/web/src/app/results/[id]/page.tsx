@@ -53,6 +53,7 @@ import ClientReveal from "@/components/results/ClientReveal";
 import AIRecommendations from "@/components/results/AIRecommendations";
 import CheckpointProgress from "@/components/results/CheckpointProgress";
 import StageBreakdown from "@/components/results/StageBreakdown";
+import ScriptProgressReport from "@/components/results/ScriptProgressReport";
 import AICoachSection from "@/components/results/AICoachSection";
 import ScoreLayersBreakdown from "@/components/results/ScoreLayersBreakdown";
 import ReplayModal from "@/components/results/ReplayModal";
@@ -270,7 +271,16 @@ export default function ResultsPage() {
 
   // Stage progress data (from stage tracker)
   const stageProgress = (result.score_breakdown as Record<string, unknown> | null)?._stage_progress as
-    { stages_completed?: number[]; stage_scores?: Record<string, number>; final_stage?: number; total_stages?: number } | undefined;
+    {
+      stages_completed?: number[];
+      stage_scores?: Record<string, number>;
+      skipped_stages?: number[];
+      stage_durations_sec?: Record<string, number>;
+      stage_message_counts?: Record<string, number>;
+      final_stage?: number;
+      total_stages?: number;
+      call_outcome?: string;
+    } | undefined;
 
   const timeline = session.emotion_timeline || [];
   const emotionJourney = (result.score_breakdown as Record<string, unknown> | null)?._emotion_journey as
@@ -773,6 +783,13 @@ export default function ResultsPage() {
           </div>
         )}
 
+        {/* Educational script progress report (Sprint 4) */}
+        {stageProgress && (
+          <div className="mt-6">
+            <ScriptProgressReport stageProgress={stageProgress} />
+          </div>
+        )}
+
         {/* AI-Coach Section (expanded analysis with citations) */}
         <div className="mt-6">
           <AICoachSection
@@ -1073,23 +1090,62 @@ export default function ResultsPage() {
             {copied ? "Скопировано" : "Поделиться"}
           </Button>
           <Button href="/home" icon={<Home size={16} />}>На главную</Button>
-          <Button
-            onClick={async () => {
-              if (repeating || !session.scenario_id) return;
-              setRepeating(true);
-              try {
-                const newSession = await api.post("/training/sessions", { scenario_id: session.scenario_id });
-                router.push(`/training/${newSession.id}`);
-              } catch {
-                setRepeating(false);
-              }
-            }}
-            disabled={repeating}
-            loading={repeating}
-            icon={<Repeat size={16} />}
-          >
-            Повторить сценарий
-          </Button>
+          {(() => {
+            const sessionLoose = session as unknown as {
+              scenario_id?: string | null;
+              real_client_id?: string | null;
+              custom_character_id?: string | null;
+              custom_params?: Record<string, unknown> | null;
+              id: string;
+            };
+            const oldMode =
+              (sessionLoose.custom_params?.session_mode as string) || "chat";
+            const realClientId = sessionLoose.real_client_id ?? null;
+            const customCharId = sessionLoose.custom_character_id ?? null;
+            const retrainLabel = oldMode === "call" ? "Повторить звонок" : "Повторить чат";
+            const canRetrain = !!(sessionLoose.scenario_id || realClientId || customCharId);
+
+            return (
+              <Button
+                onClick={async () => {
+                  if (repeating || !canRetrain) return;
+                  // Priority 1: real_client → CRM pit-stop
+                  if (realClientId) {
+                    router.push(
+                      `/clients/${realClientId}?retrain=${oldMode}&from=${sessionLoose.id}`,
+                    );
+                    return;
+                  }
+                  // Priority 2: custom_character → SavedTab pit-stop
+                  if (customCharId) {
+                    router.push(
+                      `/training?retrain_from=${sessionLoose.id}&char=${customCharId}`,
+                    );
+                    return;
+                  }
+                  // Priority 3: catalog scenario → direct POST clone (no pit-stop)
+                  setRepeating(true);
+                  try {
+                    const newSession = await api.post("/training/sessions", {
+                      clone_from_session_id: sessionLoose.id,
+                    });
+                    if (oldMode === "call") {
+                      router.push(`/training/${newSession.id}/call`);
+                    } else {
+                      router.push(`/training/${newSession.id}`);
+                    }
+                  } catch {
+                    setRepeating(false);
+                  }
+                }}
+                disabled={repeating || !canRetrain}
+                loading={repeating}
+                icon={<Repeat size={16} />}
+              >
+                {retrainLabel}
+              </Button>
+            );
+          })()}
           <Button href="/training" variant="primary" iconRight={<ArrowRight size={16} />}>
             Новая тренировка
           </Button>

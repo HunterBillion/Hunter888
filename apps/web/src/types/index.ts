@@ -374,6 +374,12 @@ export interface TrainingSession {
   client_story_id?: string | null;
   call_number_in_story?: number | null;
   custom_params?: Record<string, unknown> | null;
+  // 2026-04-23 Sprint 4 — linkage fields for «Повторить сценарий» pit-stop.
+  // Present on TrainingSession model but only exposed in SessionResponse
+  // from 2026-04-23 onward. Legacy sessions return null.
+  real_client_id?: string | null;
+  custom_character_id?: string | null;
+  source_session_id?: string | null;
 }
 
 export interface StoryCallSummary {
