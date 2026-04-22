@@ -257,13 +257,31 @@ export default function TrainingCallPage() {
           break;
         }
 
-        case "tts.audio":
-          // Real audio from backend (navy TTS or ElevenLabs). useTTS plays
-          // it and updates audioLevel for the avatar animation.
-          tts.playAudioMessage(
-            data.data as unknown as Parameters<typeof tts.playAudioMessage>[0],
-          );
+        case "tts.audio": {
+          // 2026-04-22 FIELD-NAME FIX: backend sends `audio_b64` but
+          // playAudioMessage expects `audio`. Previously this passed
+          // data.data directly, so msg.audio was undefined → atob('')
+          // → InvalidCharacterError → silent TTS. Chat page had the
+          // correct mapping; call page was missed during refactor.
+          tts.cancelFallback();
+          const audioB64 = data.data.audio_b64 as string | undefined;
+          if (audioB64 && typeof audioB64 === "string" && audioB64.length > 0) {
+            tts.playAudioMessage({
+              audio: audioB64,
+              emotion: data.data.emotion as EmotionState | undefined,
+              voice_params: data.data.voice_params as
+                | { stability: number; similarity_boost: number; style: number; speed: number }
+                | undefined,
+              duration_ms: data.data.duration_ms as number | undefined,
+            });
+          } else {
+            console.warn("[CALL] tts.audio received but audio_b64 missing/empty", {
+              has_field: "audio_b64" in (data.data as object),
+              len: typeof audioB64 === "string" ? audioB64.length : null,
+            });
+          }
           break;
+        }
 
         case "tts.audio_chunk": {
           // Sentence-level TTS streaming. Backend splits multi-sentence
