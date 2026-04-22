@@ -358,9 +358,11 @@ async def start_session(
             if getattr(body, body_attr, None) is None and cp_key in _src_cp:
                 setattr(body, body_attr, _src_cp[cp_key])
 
-        # Diagnostic source stamp (truncated hex for brevity in logs).
+        # Diagnostic source stamp. Kept short (≤20 chars) to fit the
+        # legacy String(20) column without needing an ALTER. Format
+        # «r_<8hex>» = 10 chars.
         if not body.source:
-            body.source = f"retrain_from_{_clone_source.id.hex[:8]}"
+            body.source = f"r_{_clone_source.id.hex[:8]}"
 
         logger.info(
             "clone_from_session_id resolved | user=%s | source=%s | mode=%s "

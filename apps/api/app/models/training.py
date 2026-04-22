@@ -115,10 +115,9 @@ class TrainingSession(Base):
         UUID(as_uuid=True), ForeignKey("custom_characters.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
-    # Session origin: "home", "training", "story", "crm_chat", "crm_voice",
-    # "retrain_from_<hex>", "constructor_chat", "constructor_call", None (legacy).
-    # 2026-04-23: widened to 40 chars to fit retrain_from_<8hex> stamps.
-    source: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Session origin (≤20 chars to fit existing column): "home", "training",
+    # "story", "crm_chat", "crm_voice", "r_<8hex>" (retrain stamp), None.
+    source: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # 2026-04-23 Zone 4: when this session was created by cloning another
     # (user clicked «Повторить» on /results), we store the origin session
