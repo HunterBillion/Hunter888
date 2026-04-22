@@ -39,7 +39,6 @@ const PixelGridBackground = dynamic(
   { ssr: false },
 );
 import { CrystalMic } from "@/components/training/CrystalMic";
-import TranscriptionIndicator from "@/components/training/TranscriptionIndicator";
 import VibeMeter from "@/components/training/VibeMeter";
 import { type CheckpointInfo } from "@/components/training/ScriptAdherence";
 import StageProgressBar from "@/components/training/StageProgress";
@@ -1207,6 +1206,21 @@ export default function TrainingSessionPage() {
         return;
       }
 
+      // 2026-04-22: explicit feedback when no STT path is available.
+      // Most common cause is browsers blocking mic permission silently —
+      // user kept tapping the button and "nothing happened". Show toast
+      // with actionable hint so they know to allow mic in browser settings.
+      try {
+        const { useNotificationStore } = await import("@/stores/useNotificationStore");
+        useNotificationStore.getState().addToast({
+          title: "Микрофон недоступен",
+          body: "Разрешите доступ к микрофону в настройках сайта (значок замка слева от адресной строки) или используйте текстовый ввод.",
+          type: "warning",
+        });
+      } catch {
+        /* notification store unavailable in this build — silent fallback */
+      }
+
       s.setTextMode(true);
       s.setSttAvailable(false);
     }
@@ -1659,7 +1673,11 @@ export default function TrainingSessionPage() {
               </motion.div>
             )}
 
-            {s.transcription.status !== "idle" && <TranscriptionIndicator state={s.transcription} />}
+            {/* 2026-04-22: TranscriptionIndicator REMOVED from inside the
+                scroll area — it was floating with the messages, making the
+                "Распознавание речи..." panel jump around. Live partial-
+                transcript is now shown above the input bar (see below),
+                anchored to the input area instead of the scroll content. */}
 
             {/* 2026-04-20: ScriptHints redesign — replaced the sticky bottom
                 banner with a floating FAB+popover (rendered as a sibling of
@@ -1696,11 +1714,26 @@ export default function TrainingSessionPage() {
                 </motion.div>
               )}
 
-              {/* Transcribing indicator */}
+              {/* Transcribing indicator + live partial transcript.
+                  2026-04-22: replaced the floating TranscriptionIndicator
+                  (which was rendered inside the message scroll area and
+                  jumped around) with this anchored band above the input.
+                  Shows partial recognition text live so the user can see
+                  what's being captured without it scrolling out of view. */}
               {s.transcription.status === "transcribing" && (
                 <div className="px-4 py-2 flex items-center gap-2">
-                  <Loader2 size={14} className="animate-spin" style={{ color: "var(--accent)" }} />
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>Распознаю речь...</span>
+                  <Loader2 size={14} className="animate-spin shrink-0" style={{ color: "var(--accent)" }} />
+                  <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>Распознаю:</span>
+                  {s.transcription.partial ? (
+                    <span
+                      className="text-xs truncate flex-1 italic"
+                      style={{ color: "var(--text-secondary)" }}
+                    >
+                      {s.transcription.partial}
+                    </span>
+                  ) : (
+                    <span className="text-xs flex-1" style={{ color: "var(--text-muted)" }}>речь...</span>
+                  )}
                 </div>
               )}
 
