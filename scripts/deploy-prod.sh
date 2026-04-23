@@ -22,8 +22,9 @@ if [[ "$(git rev-parse --abbrev-ref HEAD)" != "$BRANCH" ]]; then
   exit 1
 fi
 
-if [[ -n "$(git status --porcelain)" ]]; then
-  echo "Working tree is dirty; commit or stash changes before deploy" >&2
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+  echo "Working tree has modified tracked files; commit or stash them before deploy" >&2
+  git status --short --untracked-files=no >&2
   exit 1
 fi
 
