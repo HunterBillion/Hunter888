@@ -3,7 +3,7 @@ import uuid
 from collections import defaultdict
 
 from app.core.rate_limit import limiter
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +12,7 @@ from app.core import errors as err
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.core.deps import require_role
-from app.models.client import ClientInteraction, InteractionType, RealClient
+from app.models.client import Attachment, ClientInteraction, InteractionType, RealClient
 from app.models.roleplay import ClientStory
 from app.models.training import AssignedTraining, Message, MessageRole, SessionStatus, TrainingSession
 from app.models.scenario import Scenario, ScenarioTemplate, ScenarioType, ScenarioVersion
@@ -29,6 +29,13 @@ from app.schemas.training import (
     StoryCallSummary,
     StorySummaryResponse,
     TrapResultItem,
+)
+from app.schemas.client import AttachmentResponse
+from app.services.attachment_storage import (
+    MAX_ATTACHMENT_BYTES,
+    infer_document_type,
+    ocr_status_for,
+    store_attachment_bytes,
 )
 from app.services.gamification import check_and_award_achievements
 from app.services.scoring import calculate_scores, generate_recommendations
@@ -982,6 +989,114 @@ async def generate_script_hints(
                 {"text": "А что для вас сейчас важнее — снизить ежемесячный платёж или вообще закрыть долги?", "label": "Вопрос"},
             ]
         }
+
+
+@router.post("/sessions/{session_id}/attachments", response_model=AttachmentResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
+async def upload_session_attachment(
+    session_id: uuid.UUID,
+    request: Request,
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Attach a document/image to the current training session and its CRM client.
+
+    This closes the data-loss gap where a client could send documents during a
+    chat/call, but the file only existed outside the CRM timeline unless the
+    manager manually re-uploaded it from the client card.
+    """
+    session = (await db.execute(
+        select(TrainingSession).where(
+            TrainingSession.id == session_id,
+            TrainingSession.user_id == user.id,
+        )
+    )).scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.SESSION_NOT_FOUND)
+    if session.real_client_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Сессия не привязана к CRM-клиенту",
+        )
+
+    client = (await db.execute(
+        select(RealClient).where(
+            RealClient.id == session.real_client_id,
+            RealClient.manager_id == user.id,
+        )
+    )).scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CRM-клиент не найден")
+
+    data = await file.read(MAX_ATTACHMENT_BYTES + 1)
+    if not data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Файл пустой")
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Файл больше {MAX_ATTACHMENT_BYTES // (1024 * 1024)} МБ",
+        )
+
+    stored = store_attachment_bytes(client_id=str(client.id), filename=file.filename, data=data)
+    document_type = infer_document_type(stored.filename, file.content_type)
+
+    existing = (await db.execute(
+        select(Attachment)
+        .where(Attachment.client_id == client.id, Attachment.sha256 == stored.sha256)
+        .order_by(Attachment.created_at.asc())
+        .limit(1)
+    )).scalar_one_or_none()
+
+    session_mode = normalize_session_mode((session.custom_params or {}).get("session_mode")) or "chat"
+    attachment = Attachment(
+        uploaded_by=user.id,
+        client_id=client.id,
+        session_id=session.id,
+        message_id=None,
+        filename=stored.filename,
+        content_type=file.content_type,
+        file_size=stored.file_size,
+        sha256=stored.sha256,
+        storage_path=stored.storage_path,
+        public_url=stored.public_url,
+        document_type=document_type,
+        status="received",
+        ocr_status=ocr_status_for(document_type),
+        classification_status="pending",
+        metadata_={
+            "duplicate_of": str(existing.id) if existing else None,
+            "source": "training_session_upload",
+            "original_filename": file.filename,
+            "session_mode": session_mode,
+        },
+    )
+    db.add(attachment)
+    await db.flush()
+
+    interaction = ClientInteraction(
+        client_id=client.id,
+        manager_id=user.id,
+        interaction_type=InteractionType.system,
+        content=f"Получен файл в сессии {session_mode}: {stored.filename}",
+        result="attachment_received",
+        metadata_={
+            "attachment_id": str(attachment.id),
+            "training_session_id": str(session.id),
+            "session_mode": session_mode,
+            "sha256": stored.sha256,
+            "document_type": document_type,
+            "ocr_status": attachment.ocr_status,
+            "classification_status": attachment.classification_status,
+        },
+    )
+    db.add(interaction)
+    await db.flush()
+
+    attachment.interaction_id = interaction.id
+    await db.flush()
+    return attachment
 
 
 @router.get("/sessions/{session_id}", response_model=SessionResultResponse)
