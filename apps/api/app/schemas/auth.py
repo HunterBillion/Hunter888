@@ -50,6 +50,7 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     must_change_password: bool = False
+    needs_onboarding: bool = False  # New users should complete profile
 
 
 class RefreshRequest(BaseModel):

@@ -148,6 +148,7 @@ async def register(request: Request, body: RegisterRequest, db: AsyncSession = D
         email=body.email,
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
+        preferences={},  # Required: should be filled via onboarding
     )
     db.add(user)
     # Race-safe: if two concurrent requests pass the check above,
@@ -176,7 +177,10 @@ async def register(request: Request, body: RegisterRequest, db: AsyncSession = D
         request.client.host if request.client else "unknown",
     )
     tokens = await _create_tokens(str(user.id), user.role)
-    response = JSONResponse(content=tokens.model_dump(), status_code=201)
+    # New users need onboarding to fill required profile fields
+    response_data = tokens.model_dump()
+    response_data["needs_onboarding"] = True
+    response = JSONResponse(content=response_data, status_code=201)
     return _set_auth_cookies(response, tokens)
 
 
