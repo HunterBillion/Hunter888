@@ -481,6 +481,15 @@ _WS_ALLOWED_ORIGIN_RE = _re.compile(
 )
 
 
+def _normalize_origin_for_ws(origin: str) -> str:
+    """Normalize origin: strip www. prefix and trailing port for comparison."""
+    import re
+    origin = origin.strip().lower().rstrip("/")
+    origin = re.sub(r"^https?://(www\.)?", "", origin)
+    origin = re.sub(r":\d+$", "", origin)
+    return origin
+
+
 def _validate_ws_origin(websocket: WebSocket) -> bool:
     """Validate WebSocket Origin header to prevent cross-site WebSocket hijacking.
 
@@ -489,14 +498,7 @@ def _validate_ws_origin(websocket: WebSocket) -> bool:
     """
     origin = websocket.headers.get("origin", "")
     if not origin:
-        # Require Origin header. Non-browser clients (curl, etc.) must authenticate
-        # via JWT — Origin-less connections are rejected to prevent CSWSH attacks.
         return False
-
-    # TEMP: Allow all origins in production for now to debug WS issue
-    # TODO: Restore strict validation after fixing
-    if settings.app_env == "production":
-        return True
 
     # Normalize for matching
     origin_normalized = _normalize_origin_for_ws(origin)
@@ -510,6 +512,8 @@ def _validate_ws_origin(websocket: WebSocket) -> bool:
 
     # Check LAN pattern — ONLY outside production
     if settings.app_env != "production" and _WS_ALLOWED_ORIGIN_RE.match(origin):
+        return True
+    return False
         return True
     return False
 
