@@ -70,6 +70,7 @@ services:
       APP_DEBUG: "false"
       LOG_FORMAT: json
       LOG_LEVEL: info
+      CORS_ORIGINS: https://x-hunter.expert,https://www.x-hunter.expert
     # Don't expose API port directly — use nginx
     ports: !reset []
     # Graceful shutdown: gunicorn --graceful-timeout 30 + margin
