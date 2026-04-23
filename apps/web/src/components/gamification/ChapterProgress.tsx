@@ -112,7 +112,7 @@ export default function ChapterProgress() {
                 Wider tracking + 9px makes it look like a chapter subtitle in
                 a book (small caps vibe). */}
             <div
-              className="text-[10px] font-mono uppercase mb-1 flex items-center gap-1.5"
+              className="text-[11px] font-mono uppercase mb-1 flex items-center gap-1.5"
               style={{ color: epochColor, letterSpacing: "0.2em" }}
             >
               <span style={{ opacity: 0.7 }}>Эпоха</span>
@@ -127,7 +127,7 @@ export default function ChapterProgress() {
               className="font-display font-bold truncate"
               style={{
                 color: "var(--text-primary)",
-                fontSize: "18px",
+                fontSize: "22px",
                 lineHeight: "1.15",
                 letterSpacing: "-0.01em",
               }}

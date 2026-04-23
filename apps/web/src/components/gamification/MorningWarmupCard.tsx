@@ -512,7 +512,7 @@ export default function MorningWarmupCard() {
           className="font-pixel tracking-wider" 
           style={{ 
             color: "var(--accent)",
-            fontSize: "28px",
+            fontSize: "32px",
             lineHeight: "1.2"
           }}
         >
@@ -670,22 +670,6 @@ export default function MorningWarmupCard() {
                 <span className="font-semibold">
                   {fb.ok ? "✓ Ключевые идеи раскрыты" : "⚠ Разверни ответ"}
                 </span>
-                {typeof fb.ai_score === "number" && (
-                  <span
-                    className="text-[11px] font-pixel uppercase tracking-wider tabular-nums"
-                    style={{
-                      color: fb.ai_score >= 80
-                        ? "var(--success)"
-                        : fb.ai_score >= 60
-                        ? "var(--warning)"
-                        : "var(--text-muted)",
-                      letterSpacing: "0.12em",
-                    }}
-                    title={fb.ai_model ? `Оценка ${fb.ai_model}` : undefined}
-                  >
-                    AI {fb.ai_score}/100
-                  </span>
-                )}
               </div>
 
               {/* LLM feedback — replaces the 1-line hint when available. */}

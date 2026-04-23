@@ -30,8 +30,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.character import Character
 from app.models.scenario import Scenario
 from app.models.training import SessionStatus, TrainingSession
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
+
+
+async def get_user_profile_preferences(user_id: uuid.UUID, db: AsyncSession) -> dict:
+    """Get user profile preferences for personalized recommendations."""
+    from sqlalchemy import select
+    
+    result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        return {}
+    
+    prefs = {}
+    if user.preferences:
+        prefs = user.preferences if isinstance(user.preferences, dict) else {}
+    
+    return {
+        "gender": prefs.get("gender", ""),
+        "role_title": prefs.get("role_title", ""),
+        "specialization": prefs.get("specialization", ""),
+        "experience_level": prefs.get("experience_level", ""),
+        "team": prefs.get("team", ""),
+    }
 
 
 @dataclass
@@ -197,10 +222,12 @@ async def get_recommended_scenarios(
     4. CHALLENGE: push difficulty if in "push" band (growth)
     5. VARIETY: random from pool (exploration)
 
+    Profile-aware: gender, specialization, experience_level affect recommendations.
     Each recommendation gets a Russian-language reason explaining WHY.
     """
     profile = await get_difficulty_profile(user_id, db)
     usage = await get_archetype_usage(user_id, db)
+    user_profile = await get_user_profile_preferences(user_id, db)
 
     # Get all active scenarios with characters
     scenario_result = await db.execute(
@@ -278,6 +305,43 @@ async def get_recommended_scenarios(
         ))
 
     target = profile.target_level
+
+    # Profile-aware Priority: personalize based on user profile
+    profile_match_scenarios = []
+    if user_profile.get("specialization") or user_profile.get("experience_level"):
+        # Check for specialization/experience match in scenario tags or title
+        for sc, ch in all_scenarios:
+            if sc.id in used_ids:
+                continue
+            spec = user_profile.get("specialization", "").lower()
+            exp = user_profile.get("experience_level", "")
+            
+            # Match specialization in scenario (title/tags contain specialization)
+            spec_match = False
+            if spec:
+                title_lower = sc.title.lower()
+                desc_lower = sc.description.lower() if sc.description else ""
+                if spec in title_lower or spec in desc_lower:
+                    spec_match = True
+            
+            # Adjust difficulty based on experience level
+            exp_mod = 0
+            if exp == "beginner":
+                exp_mod = -1  # easier for beginners
+            elif exp == "advanced":
+                exp_mod = 1  # harder for advanced
+            
+            if spec_match:
+                match_difficulty = target + exp_mod
+                profile_match_scenarios.append((sc, ch, match_difficulty))
+    
+    # Add profile-matched scenarios first
+    for sc, ch, match_diff in profile_match_scenarios[:1]:
+        if len(recommendations) < count:
+            spec = user_profile.get("specialization", "")
+            _add(sc, ch,
+                 f"Специализация «{spec}» — подобран под ваш профиль.",
+                 0, ["Персонально", spec.capitalize()])
 
     # ── Priority 1: Untrained archetypes ──
     for slug in untrained:

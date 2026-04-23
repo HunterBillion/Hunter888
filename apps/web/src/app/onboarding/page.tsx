@@ -533,13 +533,13 @@ export default function OnboardingPage() {
       <div className="w-full max-w-lg">
         {/* D5: Visual stepper — centered with connecting line */}
         <div className="mb-10">
-          <div className="flex items-start justify-center relative">
-            {/* Connecting line (background) */}
+          <div className="flex items-start justify-center relative px-4">
+            {/* Connecting line - full width behind circles */}
             <div
               className="absolute top-5 h-[2px] rounded-full"
               style={{
-                left: "calc(33.33% + 20px)",
-                right: "calc(33.33% + 20px)",
+                left: "15%",
+                right: "15%",
                 background: "var(--border-color)",
               }}
             />
@@ -551,7 +551,7 @@ export default function OnboardingPage() {
               const isLast = idx === STEPS.length - 1;
 
               return (
-                <div key={s.id} className="flex flex-col items-center relative" style={{ width: "33.33%" }}>
+                <div key={s.id} className="flex flex-col items-center relative" style={{ width: `${100 / totalSteps}%` }}>
                   {/* Step circle */}
                   <motion.div
                     className="flex h-10 w-10 items-center justify-center rounded-full transition-all relative z-10"
@@ -893,7 +893,7 @@ export default function OnboardingPage() {
               </>
             )}
 
-            {/* Step 3: Demo training (chat-based) — 'Охота начинается' */}
+            {/* Step 3: Demo training (chat-based) */}
             {step === 3 && (
               <>
                 <h2 className="font-display text-xl font-bold tracking-wider mb-1 text-center" style={{ color: "var(--text-primary)" }}>Охота начинается</h2>
