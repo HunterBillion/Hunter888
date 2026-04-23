@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
+import { AvatarUpload } from "@/components/settings/AvatarUpload";
+import { UserAvatar } from "@/components/ui/UserAvatar";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { logger } from "@/lib/logger";
@@ -22,7 +24,7 @@ import { useAuthStore } from "@/stores/useAuthStore";
 const STEPS = [
   { id: 1, label: "Профиль", icon: User },
   { id: 2, label: "Архетип", icon: Crosshair },
-  { id: 3, label: "Пробная тренировка", icon: MessageCircle },
+  { id: 3, label: "Пробная", icon: MessageCircle },
 ];
 
 const TEAMS = ["Отдел продаж", "Отдел B2B", "Холодные звонки", "Сопровождение", "Другое"];
@@ -434,11 +436,13 @@ export default function OnboardingPage() {
   const [notifications, setNotifications] = useState(true);
   const [micOk, setMicOk] = useState<boolean | null>(null);
   const [trainingMode, setTrainingMode] = useState("structured");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     const prefs = (user.preferences as Record<string, unknown>) || {};
     if (user.full_name) setFullName(user.full_name);
+    if (user.avatar_url) setAvatarUrl(user.avatar_url);
     if (user.role === "manager" || user.role === "rop") setRole(user.role);
     if (typeof prefs.gender === "string") setGender(prefs.gender);
     if (typeof prefs.role_title === "string") setRoleTitle(prefs.role_title);
@@ -527,33 +531,36 @@ export default function OnboardingPage() {
       </div>
 
       <div className="w-full max-w-lg">
-        {/* D5: Visual stepper */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between relative">
-            {/* Line connecting steps */}
-            <div className="absolute top-5 left-[10%] right-[10%] h-[2px]" style={{ background: "var(--border-color)" }}>
-              <motion.div
-                className="h-full rounded-full"
-                style={{ background: "var(--accent)" }}
-                animate={{ width: `${progressPct}%` }}
-                transition={{ duration: 0.5 }}
-              />
-            </div>
+        {/* D5: Visual stepper — centered with connecting line */}
+        <div className="mb-10">
+          <div className="flex items-start justify-center relative">
+            {/* Connecting line (background) */}
+            <div
+              className="absolute top-5 h-[2px] rounded-full"
+              style={{
+                left: "calc(33.33% + 20px)",
+                right: "calc(33.33% + 20px)",
+                background: "var(--border-color)",
+              }}
+            />
 
-            {STEPS.map((s) => {
+            {STEPS.map((s, idx) => {
               const Icon = s.icon;
               const isActive = s.id === step;
               const isDone = s.id < step;
+              const isLast = idx === STEPS.length - 1;
+
               return (
-                <div key={s.id} className="flex flex-col items-center gap-1.5 relative z-10">
+                <div key={s.id} className="flex flex-col items-center relative" style={{ width: "33.33%" }}>
+                  {/* Step circle */}
                   <motion.div
-                    className="flex h-10 w-10 items-center justify-center rounded-full transition-all"
+                    className="flex h-10 w-10 items-center justify-center rounded-full transition-all relative z-10"
                     style={{
                       background: isDone ? "var(--accent)" : isActive ? "var(--bg-primary)" : "var(--bg-secondary)",
-                      border: `2px solid ${isDone ? "var(--accent)" : isActive ? "var(--accent)" : "var(--border-color)"}`,
-                      boxShadow: isActive ? "0 0 15px var(--accent-glow)" : "none",
+                      border: `2px solid ${isDone || isActive ? "var(--accent)" : "var(--border-color)"}`,
+                      boxShadow: isActive ? "0 0 20px var(--accent-glow)" : "none",
                     }}
-                    animate={{ scale: isActive ? 1.15 : 1 }}
+                    animate={isActive ? { scale: 1.1 } : { scale: 1 }}
                     transition={{ type: "spring", stiffness: 300 }}
                   >
                     {isDone ? (
@@ -562,12 +569,25 @@ export default function OnboardingPage() {
                       <Icon size={16} style={{ color: isActive ? "var(--accent)" : "var(--text-muted)" }} />
                     )}
                   </motion.div>
+
+                  {/* Step label */}
                   <span
-                    className="font-mono text-xs tracking-wider"
+                    className="mt-2 font-mono text-xs tracking-wide text-center"
                     style={{ color: isActive ? "var(--accent)" : isDone ? "var(--text-secondary)" : "var(--text-muted)" }}
                   >
                     {s.label}
                   </span>
+
+                  {/* Progress indicator for completed steps */}
+                  {isDone && !isLast && (
+                    <motion.div
+                      className="absolute top-5 right-0 w-[calc(100%-40px)] h-[2px]"
+                      style={{ background: "var(--accent)" }}
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: 1 }}
+                      transition={{ duration: 0.4 }}
+                    />
+                  )}
                 </div>
               );
             })}
@@ -590,12 +610,22 @@ export default function OnboardingPage() {
             {/* Step 1: Profile */}
             {step === 1 && (
               <>
-                <h2 className="font-display text-2xl font-bold tracking-wide mb-1 text-center" style={{ color: "var(--text-primary)" }}>
-                  Расскажите о себе
-                </h2>
-                <p className="text-sm mb-7 text-center" style={{ color: "var(--text-muted)" }}>
-                  Подберём оптимальные сценарии тренировок
-                </p>
+                {/* Avatar + Header section */}
+                <div className="flex flex-col items-center mb-8">
+                  <AvatarUpload
+                    currentUrl={avatarUrl}
+                    userName={fullName || "Новый пользователь"}
+                    size={80}
+                    onUploaded={(url) => setAvatarUrl(url)}
+                    onDeleted={() => setAvatarUrl(null)}
+                  />
+                  <h2 className="font-display text-2xl font-bold tracking-wide mt-4 mb-1 text-center" style={{ color: "var(--text-primary)" }}>
+                    Расскажите о себе
+                  </h2>
+                  <p className="text-sm text-center" style={{ color: "var(--text-muted)" }}>
+                    Подберём оптимальные сценарии тренировок
+                  </p>
+                </div>
 
                 <div className="space-y-6">
                   <div>
