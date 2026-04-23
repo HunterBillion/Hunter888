@@ -706,18 +706,6 @@ export default function HomePage() {
                   />
                   РЕКОМЕНДУЕМ НАЧАТЬ С
                 </h2>
-                <motion.button
-                  onClick={() => router.push("/training")}
-                  className="font-medium text-xs flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors"
-                  style={{
-                    color: "var(--accent)",
-                    background: "var(--accent-muted)",
-                  }}
-                  whileHover={{ scale: 1.04 }}
-                  whileTap={{ scale: 0.97 }}
-                >
-                  Все сценарии <ArrowRight size={12} />
-                </motion.button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {recommendations.slice(0, 3).map((rec, i) => {
