@@ -79,6 +79,13 @@ export default function LoginPage() {
       const data = await api.post("/auth/login", { email: trimmedEmail, password });
       setTokens(data.access_token, data.refresh_token, data.csrf_token);
       resetAuthCircuitBreaker(); // Allow API calls again after fresh login
+      
+      // Check if profile needs completion
+      if (data.needs_onboarding) {
+        router.push("/onboarding");
+        return;
+      }
+      
       try { sessionStorage.removeItem("vh-login-email"); } catch {}
       // router.push keeps tokens in memory (no page reload), middleware sees
       // vh_authenticated cookie set by setTokens above.

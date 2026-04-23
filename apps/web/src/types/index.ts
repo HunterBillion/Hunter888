@@ -211,6 +211,7 @@ export interface TokenResponse {
   refresh_token: string;
   token_type: string;
   must_change_password: boolean;
+  needs_onboarding?: boolean;
 }
 
 export interface PasswordChangeRequest {
