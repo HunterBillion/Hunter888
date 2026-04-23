@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { logger } from '../logger'
 
 describe('logger', () => {
@@ -6,10 +6,14 @@ describe('logger', () => {
     vi.clearAllMocks()
   })
 
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   describe('log', () => {
     it('should log messages in development', () => {
       const consoleSpy = vi.spyOn(console, 'log')
-      process.env.NODE_ENV = 'development'
+      vi.stubEnv('NODE_ENV', 'development')
 
       logger.log('test message')
 
@@ -19,7 +23,7 @@ describe('logger', () => {
 
     it('should not log messages in production', () => {
       const consoleSpy = vi.spyOn(console, 'log')
-      process.env.NODE_ENV = 'production'
+      vi.stubEnv('NODE_ENV', 'production')
 
       logger.log('test message')
 
@@ -29,7 +33,7 @@ describe('logger', () => {
 
     it('should handle multiple arguments', () => {
       const consoleSpy = vi.spyOn(console, 'log')
-      process.env.NODE_ENV = 'development'
+      vi.stubEnv('NODE_ENV', 'development')
 
       logger.log('msg', { data: 'value' }, 42)
 
@@ -41,7 +45,7 @@ describe('logger', () => {
   describe('warn', () => {
     it('should warn in development', () => {
       const consoleSpy = vi.spyOn(console, 'warn')
-      process.env.NODE_ENV = 'development'
+      vi.stubEnv('NODE_ENV', 'development')
 
       logger.warn('warning message')
 
@@ -51,7 +55,7 @@ describe('logger', () => {
 
     it('should not warn in production', () => {
       const consoleSpy = vi.spyOn(console, 'warn')
-      process.env.NODE_ENV = 'production'
+      vi.stubEnv('NODE_ENV', 'production')
 
       logger.warn('warning message')
 
@@ -63,7 +67,7 @@ describe('logger', () => {
   describe('error', () => {
     it('should error with full details in development', () => {
       const consoleSpy = vi.spyOn(console, 'error')
-      process.env.NODE_ENV = 'development'
+      vi.stubEnv('NODE_ENV', 'development')
 
       const error = new Error('test error')
       logger.error(error)
@@ -74,7 +78,7 @@ describe('logger', () => {
 
     it('should redact sensitive data in production', () => {
       const consoleSpy = vi.spyOn(console, 'error')
-      process.env.NODE_ENV = 'production'
+      vi.stubEnv('NODE_ENV', 'production')
 
       const error = new Error('test error')
       logger.error(error, { sensitive: 'data' })
@@ -85,7 +89,7 @@ describe('logger', () => {
 
     it('should handle string error messages in production', () => {
       const consoleSpy = vi.spyOn(console, 'error')
-      process.env.NODE_ENV = 'production'
+      vi.stubEnv('NODE_ENV', 'production')
 
       logger.error('simple error message')
 
@@ -95,7 +99,7 @@ describe('logger', () => {
 
     it('should redact objects in production but preserve Error messages', () => {
       const consoleSpy = vi.spyOn(console, 'error')
-      process.env.NODE_ENV = 'production'
+      vi.stubEnv('NODE_ENV', 'production')
 
       const error = new Error('api failed')
       logger.error('Failed:', error, { userId: 123 })

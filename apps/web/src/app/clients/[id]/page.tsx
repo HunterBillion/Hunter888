@@ -11,11 +11,12 @@ import {
 } from "lucide-react";
 import { BackButton } from "@/components/ui/BackButton";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { ClientTimeline } from "@/components/clients/ClientTimeline";
+import { ClientAttachments } from "@/components/clients/ClientAttachments";
 // 2026-04-23 Sprint 6 — «deja-vu» widget на CRM-карточке при открытии
 // через ?retrain=...&from=... (пришёл с /results → "Повторить с клиентом").
 import { RetrainWidget } from "@/components/clients/RetrainWidget";
@@ -24,7 +25,7 @@ import { ConsentForm } from "@/components/clients/ConsentForm";
 import { StatusTransition } from "@/components/clients/StatusTransition";
 import { InteractionCreateModal } from "@/components/clients/InteractionCreateModal";
 import { ReminderCreateModal } from "@/components/clients/ReminderCreateModal";
-import type { CRMClientDetail, ClientStatus } from "@/types";
+import type { ClientAttachment, CRMClientDetail, ClientStatus } from "@/types";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
 import { logger } from "@/lib/logger";
 
@@ -46,6 +47,7 @@ export default function ClientDetailPage() {
   const isReadOnly = user?.role === "methodologist";
 
   const [client, setClient] = useState<CRMClientDetail | null>(null);
+  const [attachments, setAttachments] = useState<ClientAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showConsentForm, setShowConsentForm] = useState(false);
   const [showInteractionModal, setShowInteractionModal] = useState(false);
@@ -66,9 +68,19 @@ export default function ClientDetailPage() {
     }
   };
 
+  const fetchAttachments = async () => {
+    try {
+      const data = await api.get<ClientAttachment[]>(`/clients/${id}/attachments`);
+      setAttachments(Array.isArray(data) ? data : []);
+    } catch (err) {
+      logger.error("Failed to load client attachments:", err);
+      setAttachments([]);
+    }
+  };
+
   useEffect(() => {
     setLoading(true);
-    fetchClient().finally(() => setLoading(false));
+    Promise.all([fetchClient(), fetchAttachments()]).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -109,6 +121,7 @@ export default function ClientDetailPage() {
         {
           scenario_id,
           real_client_id: client.id,
+          custom_session_mode: mode === "voice" ? "call" : "chat",
           // `source` — диагностический штамп: видно в аналитике, какие
           // сессии запущены из CRM-карточки и в каком режиме.
           source: mode === "voice" ? "crm_voice" : "crm_chat",
@@ -124,6 +137,10 @@ export default function ClientDetailPage() {
         router.push(`/training/${session.id}`);
       }
     } catch (err) {
+      if (err instanceof ApiError && err.detail?.code === "profile_incomplete") {
+        router.push("/onboarding");
+        return;
+      }
       const msg = err instanceof Error ? err.message : "Не удалось начать тренировку";
       setActionError(msg);
       logger.error("[ClientDetail] Start training failed:", err);
@@ -170,6 +187,10 @@ export default function ClientDetailPage() {
     } catch (err) {
       logger.error("[ClientDetail] Refresh failed:", err);
     }
+  };
+
+  const refreshClientArtifacts = async () => {
+    await Promise.all([refreshClient(), fetchAttachments()]);
   };
 
   const handleSendSmsLink = async (consentType: string) => {
@@ -616,6 +637,13 @@ export default function ClientDetailPage() {
                 )}
               </motion.div>
             )}
+
+            <ClientAttachments
+              clientId={id}
+              attachments={attachments}
+              readOnly={isReadOnly}
+              onUploaded={refreshClientArtifacts}
+            />
 
             {/* Tags */}
             {(client.tags?.length ?? 0) > 0 && (

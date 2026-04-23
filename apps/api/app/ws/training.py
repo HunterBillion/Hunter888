@@ -61,6 +61,8 @@ from app.services.emotion import (
     transition_emotion, transition_emotion_v3,
     get_fake_prompt, save_journey_snapshot,
 )
+from app.services.crm_followup import ensure_followup_for_session
+from app.services.session_state import normalize_session_outcome, validate_terminal_outcome
 from app.services.emotion_v6 import compute_intensity, detect_compound_emotion
 from app.services.session_manager import (
     RateLimitError,
@@ -4458,6 +4460,28 @@ async def _handle_session_end(
         await _send_error(ws, "No active session", "no_session")
         return
 
+    explicit_outcome = normalize_session_outcome(data.get("outcome") or data.get("result"))
+    if explicit_outcome:
+        state["call_outcome"] = explicit_outcome
+
+    state_mode = (
+        state.get("session_mode")
+        or (state.get("custom_params") or {}).get("session_mode")
+        or state.get("mode")
+        or "chat"
+    )
+    outcome_valid, _normalized_terminal_outcome = validate_terminal_outcome(
+        mode=state_mode,
+        outcome=state.get("call_outcome"),
+    )
+    if not outcome_valid:
+        await _send_error(
+            ws,
+            "Для режима Центр нужен исход: agreed, not_agreed или continue",
+            "terminal_outcome_required",
+        )
+        return
+
     # Save call_outcome + promises to session before scoring so L5/L9 can read it
     call_outcome = state.get("call_outcome")
     try:
@@ -4547,6 +4571,8 @@ async def _handle_session_end(
 
             # Inject v5 metadata into scoring_details for results page
             enriched_details = dict(scores.details) if scores.details else {}
+            if state.get("call_outcome"):
+                enriched_details["call_outcome"] = state["call_outcome"]
             enriched_details["_skill_radar"] = scores.skill_radar
             enriched_details["_scoring_version"] = "v5"
 
@@ -4809,7 +4835,7 @@ async def _handle_session_end(
                     manager_id=session.user_id,
                     interaction_type=_interaction_type,
                     duration_seconds=session.duration_seconds,
-                    notes=(
+                    content=(
                         f"Тренировка #{session.id.hex[:8]} "
                         f"({'звонок' if _mode == 'call' else 'чат'}) — "
                         f"{_score_int} баллов"
@@ -4829,6 +4855,18 @@ async def _handle_session_end(
             except Exception:
                 logger.warning(
                     "ClientInteraction auto-create failed (WS end) for session=%s real_client=%s",
+                    session_id, session.real_client_id, exc_info=True,
+                )
+
+            try:
+                await ensure_followup_for_session(
+                    db,
+                    session,
+                    outcome=state.get("call_outcome") or state.get("last_call_outcome"),
+                )
+            except Exception:
+                logger.warning(
+                    "CRM follow-up auto-create failed (WS end) for session=%s real_client=%s",
                     session_id, session.real_client_id, exc_info=True,
                 )
 

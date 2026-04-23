@@ -247,6 +247,9 @@ class RealClient(Base):
     reminders: Mapped[list["ManagerReminder"]] = relationship(
         back_populates="client", lazy="noload"
     )
+    attachments: Mapped[list["Attachment"]] = relationship(
+        back_populates="client", lazy="noload"
+    )
 
     def __repr__(self) -> str:
         return f"<RealClient {self.full_name} [{self.status.value}]>"
@@ -380,6 +383,62 @@ class ClientInteraction(Base):
 
     def __repr__(self) -> str:
         return f"<ClientInteraction {self.interaction_type.value} for {self.client_id}>"
+
+
+class Attachment(Base):
+    """
+    Файл клиента: документ, скан, изображение или подтверждающий материал.
+    Привязывается к карточке CRM и, если возможно, к конкретной сессии/сообщению/timeline-событию.
+    """
+
+    __tablename__ = "attachments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("real_clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="SET NULL"), index=True
+    )
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), index=True
+    )
+    interaction_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("client_interactions.id", ondelete="SET NULL"), index=True
+    )
+
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(120))
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    storage_path: Mapped[str] = mapped_column(String(1000), nullable=False)
+    public_url: Mapped[str | None] = mapped_column(String(1000))
+
+    document_type: Mapped[str | None] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="received", nullable=False, index=True)
+    ocr_status: Mapped[str] = mapped_column(String(30), default="not_required", nullable=False)
+    classification_status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    client: Mapped["RealClient"] = relationship(back_populates="attachments")
+    uploader: Mapped["User"] = relationship("User", foreign_keys=[uploaded_by], lazy="selectin")
+
+    __table_args__ = (
+        Index("ix_attachments_client_created", "client_id", "created_at"),
+        Index("ix_attachments_session_created", "session_id", "created_at"),
+        Index("ix_attachments_client_sha", "client_id", "sha256"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Attachment {self.filename} for {self.client_id}>"
 
 
 class ClientNotification(Base):

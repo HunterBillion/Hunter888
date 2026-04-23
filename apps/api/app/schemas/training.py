@@ -39,7 +39,7 @@ class SessionStartRequest(BaseModel):
     # Backend uses this to adapt LLM system prompt: call mode gets shorter,
     # more colloquial, interrupt-prone replies that feel like a real phone
     # conversation, not a drafted email.
-    custom_session_mode: str | None = None        # "chat" | "call"
+    custom_session_mode: str | None = None        # "chat" | "call" | "center"
     # Tone / vibe (2026-04-21) — "harsh" | "neutral" | "lively" | "friendly"
     custom_tone: str | None = None
     # Custom character link

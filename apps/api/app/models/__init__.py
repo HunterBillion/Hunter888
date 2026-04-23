@@ -1,6 +1,6 @@
 from app.models.user import User, Team, UserConsent, UserFriendship
 from app.models.character import Character, Objection
-from app.models.scenario import Scenario, ScenarioTemplate, ScenarioCode, ScenarioType
+from app.models.scenario import Scenario, ScenarioTemplate, ScenarioVersion, ScenarioCode, ScenarioType
 from app.models.script import Script, Checkpoint, ScriptEmbedding
 from app.models.training import TrainingSession, Message, AssignedTraining, CallRecord, SessionReport
 from app.models.analytics import Achievement, UserAchievement, LeaderboardSnapshot, ApiLog
@@ -52,6 +52,7 @@ from app.models.voice import (
 )
 from app.models.client import (
     RealClient,
+    Attachment,
     ClientConsent,
     ClientInteraction,
     ClientNotification,

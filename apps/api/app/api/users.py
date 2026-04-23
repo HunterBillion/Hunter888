@@ -21,6 +21,7 @@ from app.database import get_db
 from app.models.analytics import UserAchievement
 from app.models.training import TrainingSession
 from app.models.user import User, UserFriendship
+from app.services.profile_gate import is_profile_complete
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads" / "avatars"
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -789,9 +790,12 @@ async def update_preferences(
     update_data = body.model_dump(exclude_none=True, exclude={"team", "role"})
     current_prefs.update(update_data)
     user.preferences = current_prefs
-    user.onboarding_completed = True
+    user.onboarding_completed = is_profile_complete(user, preferences=current_prefs)
     db.add(user)
-    return {"preferences": current_prefs, "onboarding_completed": True}
+    return {
+        "preferences": current_prefs,
+        "onboarding_completed": user.onboarding_completed,
+    }
 
 
 @router.get("/me/team-stats", response_model=TeamStatsResponse)

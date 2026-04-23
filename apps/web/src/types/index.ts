@@ -1108,6 +1108,26 @@ export interface ClientInteraction {
   metadata?: ClientInteractionMetadata | null;
 }
 
+export interface ClientAttachment {
+  id: string;
+  uploaded_by: string | null;
+  client_id: string;
+  session_id: string | null;
+  message_id: string | null;
+  interaction_id: string | null;
+  filename: string;
+  content_type: string | null;
+  file_size: number;
+  sha256: string;
+  public_url: string | null;
+  document_type: string | null;
+  status: string;
+  ocr_status: string;
+  classification_status: string;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+}
+
 // 2026-04-23 Sprint 6 — GET /clients/{id} response includes the last
 // completed training session with this client, so /clients/[id]/page.tsx
 // can render the RetrainWidget with actual score/duration/stage data.

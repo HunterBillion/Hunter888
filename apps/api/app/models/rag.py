@@ -104,6 +104,8 @@ class LegalKnowledgeChunk(Base):
 
     # ── Versioning & metadata ─────────────────────────────────────────────────
     content_version: Mapped[int] = mapped_column(Integer, default=1)
+    knowledge_status: Mapped[str] = mapped_column(String(30), default="actual", nullable=False, index=True)
+    status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     embedding_model: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # Tracks which embedding model was used (e.g. "gemini-embedding-001")

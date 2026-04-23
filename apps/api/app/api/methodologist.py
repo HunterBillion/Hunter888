@@ -37,6 +37,135 @@ router = APIRouter()
 _require_methodologist = require_role("methodologist", "admin")
 
 
+def _scenario_template_fields_from_payload(data: dict, *, for_update: bool = False) -> dict:
+    """Map incoming methodologist payload to actual ScenarioTemplate ORM fields.
+
+    Keeps backward compatibility with legacy keys (`title`, `scenario_code`,
+    `scenario_type`, `archetype`, `client_brief`, `emotional_profile`, `traps`)
+    while writing only real columns of `scenario_templates`.
+    """
+    payload = data or {}
+
+    code = payload.get("code") or payload.get("scenario_code") or payload.get("scenario_type")
+    name = payload.get("name") or payload.get("title")
+    description = payload.get("description") or payload.get("client_brief")
+
+    fields: dict = {}
+    if code is not None:
+        normalized_code = str(code).strip().lower().replace(" ", "_")
+        if normalized_code:
+            fields["code"] = normalized_code
+    if name is not None:
+        fields["name"] = name
+    if description is not None:
+        fields["description"] = description
+
+    passthrough = (
+        "group_name",
+        "who_calls",
+        "funnel_stage",
+        "prior_contact",
+        "initial_emotion",
+        "initial_emotion_variants",
+        "client_awareness",
+        "client_motivation",
+        "typical_duration_minutes",
+        "max_duration_minutes",
+        "typical_reply_count_min",
+        "typical_reply_count_max",
+        "target_outcome",
+        "difficulty",
+        "archetype_weights",
+        "lead_sources",
+        "stages",
+        "recommended_chains",
+        "trap_pool_categories",
+        "traps_count_min",
+        "traps_count_max",
+        "cascades_count",
+        "scoring_modifiers",
+        "awareness_prompt",
+        "stage_skip_reactions",
+        "client_prompt_template",
+        "is_active",
+    )
+    for key in passthrough:
+        if key in payload:
+            fields[key] = payload[key]
+
+    # Legacy aliases
+    if "group" in payload and "group_name" not in fields:
+        fields["group_name"] = payload["group"]
+    if "emotional_profile" in payload and "initial_emotion_variants" not in fields:
+        fields["initial_emotion_variants"] = payload["emotional_profile"]
+    if "traps" in payload and "trap_pool_categories" not in fields:
+        fields["trap_pool_categories"] = payload["traps"]
+    if "archetype" in payload and "archetype_weights" not in fields:
+        fields["archetype_weights"] = {str(payload["archetype"]): 100.0}
+
+    if not for_update:
+        fields.setdefault("code", f"custom_{uuid.uuid4().hex[:8]}")
+        fields.setdefault("name", "New Scenario")
+        fields.setdefault("description", "")
+    return fields
+
+
+def _scenario_template_snapshot(scenario) -> dict:
+    return {
+        "code": scenario.code,
+        "name": scenario.name,
+        "description": scenario.description,
+        "group_name": scenario.group_name,
+        "who_calls": scenario.who_calls,
+        "funnel_stage": scenario.funnel_stage,
+        "prior_contact": scenario.prior_contact,
+        "initial_emotion": scenario.initial_emotion,
+        "initial_emotion_variants": scenario.initial_emotion_variants,
+        "client_awareness": scenario.client_awareness,
+        "client_motivation": scenario.client_motivation,
+        "typical_duration_minutes": scenario.typical_duration_minutes,
+        "max_duration_minutes": scenario.max_duration_minutes,
+        "typical_reply_count_min": scenario.typical_reply_count_min,
+        "typical_reply_count_max": scenario.typical_reply_count_max,
+        "target_outcome": scenario.target_outcome,
+        "difficulty": scenario.difficulty,
+        "archetype_weights": scenario.archetype_weights,
+        "lead_sources": scenario.lead_sources,
+        "stages": scenario.stages,
+        "recommended_chains": scenario.recommended_chains,
+        "trap_pool_categories": scenario.trap_pool_categories,
+        "traps_count_min": scenario.traps_count_min,
+        "traps_count_max": scenario.traps_count_max,
+        "cascades_count": scenario.cascades_count,
+        "scoring_modifiers": scenario.scoring_modifiers,
+        "awareness_prompt": scenario.awareness_prompt,
+        "stage_skip_reactions": scenario.stage_skip_reactions,
+        "client_prompt_template": scenario.client_prompt_template,
+        "is_active": scenario.is_active,
+    }
+
+
+async def _create_scenario_version(db: AsyncSession, scenario, user: User, *, status_value: str = "published"):
+    from app.models.scenario import ScenarioVersion
+
+    latest = (await db.execute(
+        select(func.max(ScenarioVersion.version_number)).where(
+            ScenarioVersion.template_id == scenario.id
+        )
+    )).scalar() or 0
+    version = ScenarioVersion(
+        template_id=scenario.id,
+        version_number=int(latest) + 1,
+        status=status_value,
+        snapshot=_scenario_template_snapshot(scenario),
+        created_by=user.id,
+        published_at=datetime.now(timezone.utc) if status_value == "published" else None,
+    )
+    db.add(version)
+    await db.flush()
+    return version
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # SESSION BROWSER
 # ═══════════════════════════════════════════════════════════════════════════
@@ -200,22 +329,14 @@ async def create_scenario(
     """Create a new scenario template."""
     from app.models.scenario import ScenarioTemplate
 
-    scenario = ScenarioTemplate(
-        title=data.get("title", "New Scenario"),
-        description=data.get("description", ""),
-        scenario_code=data.get("scenario_type", "in_website"),
-        archetype_code=data.get("archetype", "skeptic"),
-        difficulty=data.get("difficulty", 5),
-        client_brief=data.get("client_brief"),
-        emotional_profile=data.get("emotional_profile", {}),
-        traps=data.get("traps", []),
-        success_criteria=data.get("success_criteria", {}),
-    )
+    fields = _scenario_template_fields_from_payload(data, for_update=False)
+    scenario = ScenarioTemplate(**fields)
     db.add(scenario)
     await db.flush()
+    version = await _create_scenario_version(db, scenario, user)
     await db.commit()
 
-    return {"id": str(scenario.id), "message": "Scenario created"}
+    return {"id": str(scenario.id), "version_id": str(version.id), "message": "Scenario created"}
 
 
 @router.put("/scenarios/{scenario_id}")
@@ -237,13 +358,13 @@ async def update_scenario(
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
 
-    for field in ["title", "description", "difficulty", "client_brief",
-                  "emotional_profile", "traps", "success_criteria", "is_active"]:
-        if field in data:
-            setattr(scenario, field, data[field])
+    fields = _scenario_template_fields_from_payload(data, for_update=True)
+    for field, value in fields.items():
+        setattr(scenario, field, value)
 
+    version = await _create_scenario_version(db, scenario, user)
     await db.commit()
-    return {"id": str(scenario.id), "message": "Scenario updated"}
+    return {"id": str(scenario.id), "version_id": str(version.id), "message": "Scenario updated"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

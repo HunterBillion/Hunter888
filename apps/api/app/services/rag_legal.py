@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.rag import ChunkUsageLog, LegalCategory, LegalKnowledgeChunk
 from app.services.content_filter import filter_rag_context
+from app.services.knowledge_governance import can_use_for_recommendation, needs_source_warning
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +59,14 @@ class RAGResult:
     blitz_question: str | None = None
     blitz_answer: str | None = None
     tags: list[str] | None = None
+    knowledge_status: str = "actual"
 
     def to_dict(self) -> dict:
         return {"chunk_id": str(self.chunk_id), "category": self.category,
                 "fact_text": self.fact_text, "law_article": self.law_article,
                 "relevance_score": self.relevance_score, "difficulty_level": self.difficulty_level,
-                "is_court_practice": self.is_court_practice}
+                "is_court_practice": self.is_court_practice,
+                "knowledge_status": self.knowledge_status}
 
 @dataclass
 class RAGContext:
@@ -86,14 +89,20 @@ class RAGContext:
         if violations:
             logger.warning("RAG prompt context filtered: %d violation(s): %s", len(violations), violations[:10])
 
+        usable_results = [r for r in self.results if can_use_for_recommendation(r.knowledge_status)]
+        if not usable_results:
+            return ""
+
         lines = [
             "[DATA_START]",
             "### Правовая база (127-ФЗ «О несостоятельности (банкротстве)»):",
         ]
-        for i, r in enumerate(self.results, 1):
+        for i, r in enumerate(usable_results, 1):
             # Sanitize markers from chunk text to prevent prompt breakout
             safe_text = r.fact_text.replace("[DATA_START]", "").replace("[DATA_END]", "")
             lines.append(f"{i}. [{r.category}] {safe_text} (Основание: {r.law_article})")
+            if needs_source_warning(r.knowledge_status):
+                lines.append(f"   Статус источника: {r.knowledge_status}; использовать осторожно, нужна проверка.")
             if r.common_errors:
                 lines.append(f"   Частые ошибки: {'; '.join(r.common_errors[:3])}")
             if r.correct_response_hint:
@@ -111,7 +120,8 @@ class RAGContext:
                 "difficulty_level": r.difficulty_level, "is_court_practice": r.is_court_practice,
                 "court_case_reference": r.court_case_reference, "question_templates": r.question_templates,
                 "follow_up_questions": r.follow_up_questions, "blitz_question": r.blitz_question,
-                "blitz_answer": r.blitz_answer, "tags": r.tags} for r in self.results]}, ensure_ascii=False)
+                "blitz_answer": r.blitz_answer, "tags": r.tags,
+                "knowledge_status": r.knowledge_status} for r in self.results]}, ensure_ascii=False)
 
     @classmethod
     def from_json(cls, raw: str) -> "RAGContext":
@@ -127,7 +137,7 @@ class RAGContext:
                 question_templates=r.get("question_templates"),
                 follow_up_questions=r.get("follow_up_questions"),
                 blitz_question=r.get("blitz_question"), blitz_answer=r.get("blitz_answer"),
-                tags=r.get("tags")) for r in data.get("results", [])])
+                tags=r.get("tags"), knowledge_status=r.get("knowledge_status", "actual")) for r in data.get("results", [])])
 
 @dataclass
 class RetrievalConfig:
@@ -204,7 +214,7 @@ def _build_where_clauses(config: RetrievalConfig) -> tuple[str, dict]:
 
     Returns (where_sql, params_dict) for use with sa_text().bindparams().
     """
-    clauses = ["is_active = true"]
+    clauses = ["is_active = true", "COALESCE(knowledge_status, 'actual') != 'outdated'"]
     params: dict = {}
 
     if config.category:
@@ -246,7 +256,8 @@ def _chunk_to_rag_result(chunk: LegalKnowledgeChunk, relevance: float) -> RAGRes
         follow_up_questions=getattr(chunk, "follow_up_questions", None),
         blitz_question=getattr(chunk, "blitz_question", None),
         blitz_answer=getattr(chunk, "blitz_answer", None),
-        tags=getattr(chunk, "tags", None))
+        tags=getattr(chunk, "tags", None),
+        knowledge_status=getattr(chunk, "knowledge_status", "actual") or "actual")
 
 def _row_to_rag_result(row, relevance: float) -> RAGResult:
     cat = row.category
@@ -262,7 +273,8 @@ def _row_to_rag_result(row, relevance: float) -> RAGResult:
         follow_up_questions=getattr(row, "follow_up_questions", None),
         blitz_question=getattr(row, "blitz_question", None),
         blitz_answer=getattr(row, "blitz_answer", None),
-        tags=getattr(row, "tags", None))
+        tags=getattr(row, "tags", None),
+        knowledge_status=getattr(row, "knowledge_status", "actual") or "actual")
 
 def _keyword_score(text: str, keywords: list[str]) -> float:
     if not keywords:
@@ -292,7 +304,10 @@ async def _retrieve_by_keywords(query: str, db: AsyncSession, config: RetrievalC
     query_lower = query.lower()
     query_tokens = [t for t in re.findall(r"[а-яёa-z0-9]{2,}", query_lower) if len(t) >= 3]
 
-    stmt = select(LegalKnowledgeChunk).where(LegalKnowledgeChunk.is_active.is_(True))
+    stmt = select(LegalKnowledgeChunk).where(
+        LegalKnowledgeChunk.is_active.is_(True),
+        func.coalesce(LegalKnowledgeChunk.knowledge_status, "actual") != "outdated",
+    )
 
     # DB-level pre-filter: at least one query token must appear in fact_text or match_keywords
     # This replaces the old `.limit(500)` blanket load
@@ -393,7 +408,7 @@ async def _retrieve_by_embedding(query: str, db: AsyncSession, config: Retrieval
         SELECT id, category, fact_text, law_article, common_errors,
                correct_response_hint, difficulty_level, is_court_practice,
                court_case_reference, question_templates, follow_up_questions,
-               blitz_question, blitz_answer, tags,
+               blitz_question, blitz_answer, tags, knowledge_status,
                1 - (embedding <=> '{emb_literal}'::vector) AS similarity
         FROM legal_knowledge_chunks WHERE {where}
         ORDER BY embedding <=> '{emb_literal}'::vector LIMIT :top_k
@@ -694,6 +709,7 @@ class BlitzQuestionPool:
         result = await db.execute(
             select(LegalKnowledgeChunk).where(
                 LegalKnowledgeChunk.is_active.is_(True),
+                func.coalesce(LegalKnowledgeChunk.knowledge_status, "actual") != "outdated",
                 LegalKnowledgeChunk.blitz_question.isnot(None),
             )
         )

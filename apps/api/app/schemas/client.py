@@ -299,6 +299,33 @@ class InteractionSummaryResponse(BaseModel):
     last_interaction_at: datetime | None
 
 
+# ── Attachments ──────────────────────────────────────────────────────────────
+
+
+class AttachmentResponse(BaseModel):
+    """Файл, привязанный к CRM-клиенту и контексту события."""
+
+    id: uuid.UUID
+    uploaded_by: uuid.UUID | None
+    client_id: uuid.UUID
+    session_id: uuid.UUID | None
+    message_id: uuid.UUID | None
+    interaction_id: uuid.UUID | None
+    filename: str
+    content_type: str | None
+    file_size: int
+    sha256: str
+    public_url: str | None
+    document_type: str | None
+    status: str
+    ocr_status: str
+    classification_status: str
+    metadata: dict | None = Field(default=None, alias="metadata_")
+    created_at: datetime
+
+    model_config = {"from_attributes": True, "populate_by_name": True}
+
+
 # ── Notifications ────────────────────────────────────────────────────────────
 
 

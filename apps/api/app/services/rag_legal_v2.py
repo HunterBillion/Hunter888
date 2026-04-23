@@ -124,9 +124,11 @@ async def _retrieve_legal_kc_v2(
             blitz_question,
             blitz_answer,
             tags,
+            knowledge_status,
             1 - (embedding_v2 <=> '{emb_literal}'::vector) AS similarity
         FROM legal_knowledge_chunks
         WHERE is_active = true
+          AND COALESCE(knowledge_status, 'actual') != 'outdated'
           AND embedding_v2 IS NOT NULL
         ORDER BY embedding_v2 <=> '{emb_literal}'::vector
         LIMIT :top_k
@@ -160,6 +162,7 @@ async def _retrieve_legal_kc_v2(
             blitz_question=row.blitz_question,
             blitz_answer=row.blitz_answer,
             tags=row.tags,
+            knowledge_status=row.knowledge_status or "actual",
         ))
     return out
 

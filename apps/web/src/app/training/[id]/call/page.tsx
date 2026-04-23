@@ -100,6 +100,8 @@ export default function TrainingCallPage() {
   // that covers all intermediate states until the redirect lands.
   const [hangupInProgress, setHangupInProgress] = useState(false);
   const [hangupReason, setHangupReason] = useState<string>("");
+  const [sessionMode, setSessionMode] = useState<"chat" | "call" | "center">("call");
+  const [showCenterOutcome, setShowCenterOutcome] = useState(false);
   // 2026-04-22 fallback text input: call mode was voice-only and users
   // with broken mic / denied permission / unsupported browser had NO
   // way to send a message. Chat worked because you can type there.
@@ -150,6 +152,11 @@ export default function TrainingCallPage() {
           );
           if (!cancelled) router.replace(`/training/${id}`);
           return;
+        }
+        if (sessionMode === "center") {
+          setSessionMode("center");
+        } else {
+          setSessionMode("call");
         }
         if (cancelled) return;
         if (meta?.character_name) s.setCharacterName(meta.character_name);
@@ -629,9 +636,10 @@ export default function TrainingCallPage() {
   // Navigate first so the button always responds even if TTS/STT/backend
   // throw. Cleanup runs as fire-and-forget — the results page reloads
   // session state from the server anyway, so late-arriving errors are safe.
-  const onHangup = useCallback(() => {
+  const completeHangup = useCallback((outcome?: "agreed" | "not_agreed" | "continue") => {
     if (endInFlightRef.current) return;
     endInFlightRef.current = true;
+    setShowCenterOutcome(false);
     const sid = currentSessionIdRef.current || id;
     // 2026-04-23 UX: show the hangup overlay IMMEDIATELY so the user sees
     // responsive feedback (red spinner in button + "Завершаем…" label +
@@ -646,7 +654,7 @@ export default function TrainingCallPage() {
     // not after we land on /results.
     (async () => {
       try {
-        await api.post(`/training/sessions/${sid}/end`, {});
+        await api.post(`/training/sessions/${sid}/end`, outcome ? { outcome } : {});
       } catch (err) {
         logger.warn("[call] end POST failed (may already be ended)", err);
       }
@@ -656,6 +664,14 @@ export default function TrainingCallPage() {
       router.replace(`/results/${sid}`);
     }, 250);
   }, [id, router, tts, stt]);
+
+  const onHangup = useCallback(() => {
+    if (sessionMode === "center") {
+      setShowCenterOutcome(true);
+      return;
+    }
+    completeHangup();
+  }, [completeHangup, sessionMode]);
 
   // 2026-04-22 fallback sender: send current textInput as a plain text.message
   // with correct `content` key (same shape as chat page). Clears the box so
@@ -918,6 +934,31 @@ export default function TrainingCallPage() {
           </button>
         }
       />
+
+      {showCenterOutcome && !hangupInProgress && (
+        <div className="fixed inset-0 z-[160] flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm sm:items-center">
+          <div className="w-full max-w-md rounded-lg border border-white/10 bg-neutral-950 p-4 shadow-2xl">
+            <div className="mb-4">
+              <div className="text-sm font-semibold text-white">Выберите исход звонка</div>
+              <div className="mt-1 text-xs text-white/60">Зафиксируем результат, чтобы карточка клиента обновилась корректно.</div>
+            </div>
+            <div className="grid gap-2">
+              <button type="button" className="rounded-md bg-emerald-500 px-4 py-3 text-left text-sm font-semibold text-white" onClick={() => completeHangup("agreed")}>
+                Договор согласован
+              </button>
+              <button type="button" className="rounded-md bg-red-500 px-4 py-3 text-left text-sm font-semibold text-white" onClick={() => completeHangup("not_agreed")}>
+                Договор не согласован
+              </button>
+              <button type="button" className="rounded-md bg-sky-500 px-4 py-3 text-left text-sm font-semibold text-white" onClick={() => completeHangup("continue")}>
+                Продолжить в другом звонке
+              </button>
+              <button type="button" className="rounded-md border border-white/10 px-4 py-3 text-sm text-white/70" onClick={() => setShowCenterOutcome(false)}>
+                Вернуться к звонку
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/*
         Diagnostics banner (2026-04-22). Shows on-screen why the call

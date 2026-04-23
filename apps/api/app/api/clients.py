@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 
 from app.core.rate_limit import limiter
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,10 +18,12 @@ from app.core import errors as err
 from app.core.deps import get_current_user, require_role
 from app.database import get_db
 from app.models.client import (
+    Attachment,
     ClientConsent,
     ClientInteraction,
     ClientNotification,
     ClientStatus,
+    InteractionType,
     ManagerReminder,
     NotificationChannel,
     NotificationStatus,
@@ -52,12 +54,19 @@ from app.schemas.client import (
     InteractionCreateRequest,
     InteractionResponse,
     InteractionSummaryResponse,
+    AttachmentResponse,
     NotificationListResponse,
     NotificationResponse,
     PipelineResponse,
     ReminderCreateRequest,
     ReminderResponse,
     SendNotificationRequest,
+)
+from app.services.attachment_storage import (
+    MAX_ATTACHMENT_BYTES,
+    infer_document_type,
+    ocr_status_for,
+    store_attachment_bytes,
 )
 from app.services.audit import write_audit_log
 from app.services.recommendation_engine import RecommendationEngine, report_to_dict
@@ -80,6 +89,7 @@ from app.services.client_service import (
     update_client,
     verify_consent_token,
 )
+from app.services.next_best_action import build_next_best_action
 from app.ws.notifications import send_ws_notification
 
 router = APIRouter()
@@ -600,6 +610,140 @@ async def api_get_client(
     response = _client_to_response(client, include_details=True)
     response.last_training_session = last_training_session
     return response
+
+
+@router.get("/{client_id}/attachments", response_model=list[AttachmentResponse])
+async def api_list_attachments(
+    client_id: uuid.UUID,
+    user: User = Depends(require_role("manager", "rop", "admin", "methodologist")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Файлы клиента, привязанные к CRM-карточке и событиям."""
+    await get_client(db, client_id=client_id, user=user)
+    result = await db.execute(
+        select(Attachment)
+        .where(Attachment.client_id == client_id)
+        .order_by(Attachment.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+@router.get("/{client_id}/next-best-action")
+async def api_next_best_action(
+    client_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_role("manager", "rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Единый маршрутизатор следующего действия по CRM-клиенту."""
+    client = await get_client(db, client_id=client_id, user=user, request=request)
+    manager_id = client.manager_id if user.role in {UserRole.rop, UserRole.admin} else user.id
+    action = await build_next_best_action(db, client=client, manager_id=manager_id)
+    return action.to_dict()
+
+
+@router.post("/{client_id}/attachments", response_model=AttachmentResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
+async def api_upload_attachment(
+    client_id: uuid.UUID,
+    request: Request,
+    file: UploadFile = File(...),
+    session_id: uuid.UUID | None = Form(None),
+    message_id: uuid.UUID | None = Form(None),
+    user: User = Depends(require_role("manager", "rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Загрузить документ/скан/изображение и зафиксировать его в CRM timeline."""
+    client = await get_client(db, client_id=client_id, user=user, request=request)
+
+    session: TrainingSession | None = None
+    if session_id is not None:
+        session = (await db.execute(
+            select(TrainingSession).where(TrainingSession.id == session_id)
+        )).scalar_one_or_none()
+        if session is None:
+            raise HTTPException(status_code=404, detail="Сессия не найдена")
+        if session.real_client_id and session.real_client_id != client.id:
+            raise HTTPException(status_code=400, detail="Сессия привязана к другому клиенту")
+        if session.user_id != user.id and user.role not in {UserRole.rop, UserRole.admin}:
+            raise HTTPException(status_code=403, detail="Нет доступа к сессии")
+
+    data = await file.read(MAX_ATTACHMENT_BYTES + 1)
+    if not data:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status_code=413, detail=f"Файл больше {MAX_ATTACHMENT_BYTES // (1024 * 1024)} МБ")
+
+    stored = store_attachment_bytes(client_id=str(client.id), filename=file.filename, data=data)
+    document_type = infer_document_type(stored.filename, file.content_type)
+
+    existing = (await db.execute(
+        select(Attachment)
+        .where(Attachment.client_id == client.id, Attachment.sha256 == stored.sha256)
+        .order_by(Attachment.created_at.asc())
+        .limit(1)
+    )).scalar_one_or_none()
+
+    attachment = Attachment(
+        uploaded_by=user.id,
+        client_id=client.id,
+        session_id=session_id,
+        message_id=message_id,
+        filename=stored.filename,
+        content_type=file.content_type,
+        file_size=stored.file_size,
+        sha256=stored.sha256,
+        storage_path=stored.storage_path,
+        public_url=stored.public_url,
+        document_type=document_type,
+        status="received",
+        ocr_status=ocr_status_for(document_type),
+        classification_status="pending",
+        metadata_={
+            "duplicate_of": str(existing.id) if existing else None,
+            "source": "crm_attachment_upload",
+            "original_filename": file.filename,
+        },
+    )
+    db.add(attachment)
+    await db.flush()
+
+    interaction = ClientInteraction(
+        client_id=client.id,
+        manager_id=user.id,
+        interaction_type=InteractionType.system,
+        content=f"Получен файл: {stored.filename}",
+        result="attachment_received",
+        metadata_={
+            "attachment_id": str(attachment.id),
+            "session_id": str(session_id) if session_id else None,
+            "message_id": str(message_id) if message_id else None,
+            "sha256": stored.sha256,
+            "document_type": document_type,
+            "ocr_status": attachment.ocr_status,
+            "classification_status": attachment.classification_status,
+        },
+    )
+    db.add(interaction)
+    await db.flush()
+
+    attachment.interaction_id = interaction.id
+    await write_audit_log(
+        db,
+        actor=user,
+        action="upload_attachment",
+        entity_type="attachments",
+        entity_id=attachment.id,
+        new_values={
+            "client_id": str(client.id),
+            "session_id": str(session_id) if session_id else None,
+            "sha256": stored.sha256,
+            "filename": stored.filename,
+        },
+        request=request,
+    )
+    await db.flush()
+    return attachment
 
 
 @router.put("/{client_id}", response_model=ClientResponse)

@@ -3,7 +3,7 @@ import uuid
 from collections import defaultdict
 
 from app.core.rate_limit import limiter
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +15,7 @@ from app.core.deps import require_role
 from app.models.client import ClientInteraction, InteractionType, RealClient
 from app.models.roleplay import ClientStory
 from app.models.training import AssignedTraining, Message, MessageRole, SessionStatus, TrainingSession
-from app.models.scenario import Scenario, ScenarioTemplate, ScenarioType
+from app.models.scenario import Scenario, ScenarioTemplate, ScenarioType, ScenarioVersion
 from app.models.user import User
 from pydantic import BaseModel, Field, field_validator
 from app.schemas.training import (
@@ -38,6 +38,10 @@ from app.services.session_manager import (
     RateLimitError as SmRateLimitError,
 )
 from app.services.emotion import init_emotion as sm_init_emotion
+from app.services.crm_followup import ensure_followup_for_session
+from app.services.profile_gate import required_profile_missing
+from app.services.quality_audit import review_session_quality
+from app.services.session_state import normalize_session_mode, validate_terminal_outcome
 
 logger = logging.getLogger(__name__)
 
@@ -300,6 +304,17 @@ async def start_session(
     user: User = Depends(check_consent_accepted),
     db: AsyncSession = Depends(get_db),
 ):
+    missing_profile = required_profile_missing(user)
+    if missing_profile:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "profile_incomplete",
+                "missing_fields": missing_profile,
+                "message": "Заполните обязательный профиль перед началом тренировки",
+            },
+        )
+
     # ── 2026-04-23 Zone 4 — clone_from_session_id expansion ──────────────
     # When the user clicks «Повторить сценарий» on /results, frontend sends
     # ONLY `clone_from_session_id`. Backend copies scenario_id, real_client_id,
@@ -376,14 +391,15 @@ async def start_session(
     # "Написать" and "Позвонить". Without this check, a malicious user could
     # clone another manager's CRM card into their own training by forging
     # the request body. manager_id check catches it at schema-level.
+    real_client = None
     if body.real_client_id:
-        _rc = (await db.execute(
+        real_client = (await db.execute(
             select(RealClient).where(
                 RealClient.id == body.real_client_id,
                 RealClient.manager_id == user.id,
             )
         )).scalar_one_or_none()
-        if _rc is None:
+        if real_client is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="real_client_not_found",
@@ -458,9 +474,20 @@ async def start_session(
     # Session mode — "chat" (default) or "call". Persist so WS handlers +
     # LLM prompt builder can adapt behavior (call mode → phone-like short
     # replies, chat mode → normal text conversation).
-    if body.custom_session_mode in ("chat", "call"):
+    normalized_mode = normalize_session_mode(body.custom_session_mode)
+    if normalized_mode:
         custom_params = custom_params or {}
-        custom_params["session_mode"] = body.custom_session_mode
+        custom_params["session_mode"] = normalized_mode
+
+    if real_client is not None:
+        custom_params = custom_params or {}
+        custom_params["persona_snapshot"] = {
+            "client_id": str(real_client.id),
+            "full_name": real_client.full_name,
+            "source": real_client.source,
+            "debt_amount": str(real_client.debt_amount) if real_client.debt_amount is not None else None,
+            "captured_from": "real_client",
+        }
 
     # Validate that scenario exists and is active.
     # Check both legacy `scenarios` table and new `scenario_templates` table
@@ -514,6 +541,25 @@ async def start_session(
         )
         db.add(new_scenario)
         await db.flush()
+
+    scenario_version_id = None
+    try:
+        scenario_row = (await db.execute(
+            select(Scenario.template_id).where(Scenario.id == scenario_id)
+        )).scalar_one_or_none()
+        template_id = scenario_row or scenario_id
+        version_row = (await db.execute(
+            select(ScenarioVersion.id)
+            .where(
+                ScenarioVersion.template_id == template_id,
+                ScenarioVersion.status == "published",
+            )
+            .order_by(ScenarioVersion.version_number.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        scenario_version_id = version_row
+    except Exception:
+        logger.debug("Failed to resolve scenario version for %s", scenario_id, exc_info=True)
 
     # ── FIND-001 (2026-04-19): Idempotency-Key replay BEFORE rate-limit.
     # Retrying with the same key must NOT consume fresh quota — that would
@@ -664,8 +710,9 @@ async def start_session(
         # a fresh call request (the user clicks "звонок" but lands in chat UI
         # via existing_session_id redirect).
         _requested_mode = None
-        if body.custom_session_mode in ("chat", "call"):
-            _requested_mode = body.custom_session_mode
+        normalized_mode = normalize_session_mode(body.custom_session_mode)
+        if normalized_mode:
+            _requested_mode = normalized_mode
         try:
             _dup_q = await db.execute(
                 select(TrainingSession.id, TrainingSession.custom_params)
@@ -735,6 +782,7 @@ async def start_session(
     session = TrainingSession(
         user_id=user.id,
         scenario_id=scenario_id,
+        scenario_version_id=scenario_version_id,
         custom_params=custom_params,
         custom_character_id=body.custom_character_id,
         # 2026-04-23 Zone 1: persist CRM-card linkage so WS handler builds
@@ -954,6 +1002,30 @@ async def get_session(
     return await _build_session_result(session, user=user, db=db)
 
 
+@router.get("/sessions/{session_id}/quality-review")
+async def get_session_quality_review(
+    session_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rule-based trust/quality audit: repeats, verbosity, next-step and terminal guards."""
+    session = (await db.execute(
+        select(TrainingSession).where(
+            TrainingSession.id == session_id,
+            TrainingSession.user_id == user.id,
+        )
+    )).scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.SESSION_NOT_FOUND)
+
+    messages = list((await db.execute(
+        select(Message)
+        .where(Message.session_id == session.id)
+        .order_by(Message.sequence_number.asc(), Message.created_at.asc())
+    )).scalars().all())
+    return review_session_quality(session, messages).to_dict()
+
+
 @router.post("/sessions/{session_id}/decline", response_model=SessionResponse)
 async def decline_session(
     session_id: uuid.UUID,
@@ -996,7 +1068,7 @@ async def decline_session(
                     client_id=session.real_client_id,
                     manager_id=user.id,
                     interaction_type=InteractionType.note,
-                    notes=f"Отклонил входящий звонок (тренировка #{session.id.hex[:8]})",
+                    content=f"Отклонил входящий звонок (тренировка #{session.id.hex[:8]})",
                     metadata_={
                         "training_session_id": str(session.id),
                         "declined": True,
@@ -1017,6 +1089,7 @@ async def decline_session(
 @router.post("/sessions/{session_id}/end", response_model=SessionResponse)
 async def end_session(
     session_id: uuid.UUID,
+    body: dict | None = Body(default=None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1030,6 +1103,27 @@ async def end_session(
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.ACTIVE_SESSION_NOT_FOUND)
+
+    end_payload = body or {}
+    session_mode = (session.custom_params or {}).get("session_mode") or "chat"
+    outcome_valid, normalized_outcome = validate_terminal_outcome(
+        mode=session_mode,
+        outcome=end_payload.get("outcome") or end_payload.get("result"),
+    )
+    if not outcome_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "terminal_outcome_required",
+                "message": "Для режима Центр нужен исход: agreed, not_agreed или continue",
+                "allowed_outcomes": ["agreed", "not_agreed", "continue"],
+            },
+        )
+    if normalized_outcome:
+        details = dict(session.scoring_details or {})
+        details["call_outcome"] = normalized_outcome
+        session.scoring_details = details
+        await db.flush()
 
     # Retrieve emotion timeline from Redis BEFORE scoring (Wave 5 audit fix:
     # scoring layers L5, L8, L9 need the timeline for accurate computation)
@@ -1055,6 +1149,8 @@ async def end_session(
 
         # Enrich scoring_details with Wave 2 metadata
         enriched = dict(scores.details) if scores.details else {}
+        if normalized_outcome:
+            enriched["call_outcome"] = normalized_outcome
         try:
             from app.models.roleplay import ClientProfile
             from app.services.client_generator import get_full_reveal_card
@@ -1157,6 +1253,11 @@ async def end_session(
         await update_custom_character_stats(session, db)
     except Exception:
         logger.warning("custom_character_stats update failed for %s", session_id, exc_info=True)
+
+    try:
+        await ensure_followup_for_session(db, session)
+    except Exception:
+        logger.warning("CRM follow-up auto-create failed for %s", session_id, exc_info=True)
 
     # Emit event → EventBus handles achievements, goals, SRS seeding, notifications
     try:

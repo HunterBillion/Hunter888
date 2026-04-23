@@ -509,6 +509,14 @@ _avatars_dir = _Path(__file__).resolve().parent.parent / "uploads" / "avatars"
 _avatars_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/api/uploads/avatars", StaticFiles(directory=str(_avatars_dir)), name="avatars")
 
+_attachments_dir = _Path(__file__).resolve().parent.parent / "uploads" / "attachments"
+_attachments_dir.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/api/uploads/attachments",
+    StaticFiles(directory=str(_attachments_dir)),
+    name="attachments",
+)
+
 
 # T1 fix: top-level /health alias for external LB/healthcheck probes that
 # hit /health rather than /api/health. Mirrors the canonical endpoint.

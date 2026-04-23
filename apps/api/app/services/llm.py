@@ -23,6 +23,7 @@ import httpx
 import openai
 
 from app.config import settings
+from app.services.conversation_policy import conversation_policy_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -2190,6 +2191,7 @@ async def generate_response(
             "Ты НЕ обязан сносить хамство."
         )
         full_system = _roleplay_behavior + "\n\n" + full_system
+        full_system = full_system + conversation_policy_prompt(session_mode)
 
     # SAFETY NET: roleplay without character_prompt_path → inject minimal role
     # definition to prevent AI from playing the manager role (role reversal bug).
@@ -2232,7 +2234,7 @@ async def generate_response(
     # interjections, interruptions, handling of stupid questions, edge
     # cases for silence / meta-breaks / pressure. Difficulty is parsed from
     # the character prompt or passed via scenario_prompt; default=5.
-    if session_mode == "call":
+    if session_mode in ("call", "center"):
         # 2026-04-22: prefer explicit `difficulty` from caller; fall back to
         # regex-parsing scenario_prompt for legacy callers. For constructor-
         # created sessions scenario_prompt is empty so the regex always
@@ -2565,7 +2567,7 @@ async def generate_response_stream(
     # ── Call-mode modifier (parity with generate_response) ──
     # Without this the stream path (90% of actual traffic) ignored the
     # session_mode="call" and AI replied like chat mode.
-    if session_mode == "call":
+    if session_mode in ("call", "center"):
         # 2026-04-22: prefer explicit difficulty (see generate_response).
         _diff_s = difficulty if difficulty is not None else 5
         if difficulty is None:
@@ -2578,9 +2580,12 @@ async def generate_response_stream(
                 pass
         full_system = full_system + build_call_mode_modifier(_diff_s, tone=tone)
 
+    if task_type == "roleplay":
+        full_system = full_system + conversation_policy_prompt(session_mode)
+
     # ── Trim history — wider window in call mode (short replies, more turns matter) ──
     _history_cap = settings.llm_max_history_messages
-    if session_mode == "call":
+    if session_mode in ("call", "center"):
         _history_cap = max(_history_cap, 60)
     trimmed = _trim_history(messages, _history_cap)
     for msg in trimmed:
