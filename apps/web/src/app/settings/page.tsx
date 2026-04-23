@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import {
   Gear, SpeakerHigh, Bell, Palette, Envelope, ChatCircle, Clock,
-  GameController, Kanban, LinkSimple, Lightning, Terminal, Keyboard, Flame, User,
+  GameController, Kanban, LinkSimple, Lightning, Terminal, Keyboard, Flame, User as UserIcon,
 } from "@phosphor-icons/react";
 import { useTheme } from "next-themes";
 import { api } from "@/lib/api";
@@ -368,7 +368,7 @@ export default function SettingsPage() {
 
             {/* Required Profile - Medium card */}
             <BentoCard className={bentoMedium} delay={20} accentColor="var(--success)">
-              <BentoHeader icon={User} title="Обязательный профиль" subtitle="Для персонализации" />
+              <BentoHeader icon={UserIcon} title="Обязательный профиль" subtitle="Для персонализации" />
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
                   <label className="block text-xs font-mono uppercase tracking-wider mb-1.5" style={{ color: "var(--text-muted)" }}>Пол</label>
