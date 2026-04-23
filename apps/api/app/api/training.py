@@ -481,7 +481,18 @@ async def start_session(
     # Session mode — "chat" (default) or "call". Persist so WS handlers +
     # LLM prompt builder can adapt behavior (call mode → phone-like short
     # replies, chat mode → normal text conversation).
+    # P0.2: Mode integrity — if real_client_id provided (CRM start),
+    # custom_session_mode is REQUIRED to prevent "chat mode" for voice calls.
     normalized_mode = normalize_session_mode(body.custom_session_mode)
+    if real_client is not None and normalized_mode is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "session_mode_required_for_crm",
+                "message": "При тренировке на реальном клиенте укажите режим: chat или call",
+                "allowed_modes": ["chat", "call"],
+            },
+        )
     if normalized_mode:
         custom_params = custom_params or {}
         custom_params["session_mode"] = normalized_mode
