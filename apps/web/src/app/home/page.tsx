@@ -995,6 +995,7 @@ export default function HomePage() {
                     MorningWarmupCard уже показывает "✓ Разминка зачтена"
                     когда streak endpoint вернёт completed_today=true. */}
                 <MorningWarmupCard />
+                {false && <DailyDrillCard />}
                 {false && <DailyDrillCard drillStreak={dashboard?.gamification?.streak_days ?? 0} />}
 
                 {/* Right: Goals progress.

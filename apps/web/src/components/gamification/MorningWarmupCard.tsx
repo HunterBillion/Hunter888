@@ -508,7 +508,14 @@ export default function MorningWarmupCard() {
     >
       {/* Progress header */}
       <div className="flex items-center justify-between">
-        <div className="text-xs font-pixel uppercase tracking-wider" style={{ color: "var(--accent)" }}>
+        <div 
+          className="font-pixel tracking-wider" 
+          style={{ 
+            color: "var(--accent)",
+            fontSize: "28px",
+            lineHeight: "1.2"
+          }}
+        >
           Вопрос {state.index + 1} / {state.drill.questions.length}
         </div>
         {q.law_article && (
