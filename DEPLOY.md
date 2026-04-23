@@ -82,7 +82,27 @@ REDIS_PASSWORD=redis_secret_pass
 
 ## Шаг 3. Сборка и запуск
 
+Рекомендуемый production-деплой из актуальной ветки `main`:
+
 ```bash
+./scripts/deploy-prod.sh
+```
+
+Скрипт делает `git pull --ff-only`, проставляет `RELEASE_SHA`, пересобирает `api` и `web`, затем запускает production compose.
+
+Проверка, какой commit реально развернут:
+
+```bash
+curl https://x-hunter.expert/api/version
+```
+
+`release_sha` должен совпадать с `git rev-parse origin/main`.
+
+Ручной вариант:
+
+```bash
+export RELEASE_SHA=$(git rev-parse HEAD)
+export BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 docker compose build --no-cache web api
 docker compose up -d postgres redis api web
 ```

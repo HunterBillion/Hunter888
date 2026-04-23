@@ -162,6 +162,9 @@ jobs:
         with:
           context: ./apps/api
           push: true
+          build-args: |
+            RELEASE_SHA=${{ github.sha }}
+            BUILD_TIME=${{ github.run_id }}
           tags: |
             ${{ env.API_IMAGE }}:latest
             ${{ env.API_IMAGE }}:${{ github.sha }}
@@ -173,6 +176,8 @@ jobs:
         with:
           context: ./apps/web
           push: true
+          build-args: |
+            NEXT_PUBLIC_RELEASE_SHA=${{ github.sha }}
           tags: |
             ${{ env.WEB_IMAGE }}:latest
             ${{ env.WEB_IMAGE }}:${{ github.sha }}

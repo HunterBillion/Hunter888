@@ -18,6 +18,11 @@ FROM python:3.12-slim AS production
 # Security: install deps as root, then drop privileges
 WORKDIR /app
 
+ARG RELEASE_SHA=unknown
+ARG BUILD_TIME=unknown
+ENV RELEASE_SHA=$RELEASE_SHA
+ENV BUILD_TIME=$BUILD_TIME
+
 RUN pip install --no-cache-dir uv \
     && groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser \
     && mkdir -p /app/uploads && chown -R appuser:appuser /app

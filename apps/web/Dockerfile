@@ -18,8 +18,10 @@ WORKDIR /app
 # NEXT_PUBLIC_* vars are baked at build time by Next.js
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ARG NEXT_PUBLIC_WS_URL=ws://localhost:8000
+ARG NEXT_PUBLIC_RELEASE_SHA=unknown
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
+ENV NEXT_PUBLIC_RELEASE_SHA=$NEXT_PUBLIC_RELEASE_SHA
 
 COPY package.json package-lock.json* ./
 # npm ci requires 100% lockfile consistency.

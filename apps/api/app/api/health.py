@@ -5,6 +5,7 @@
 /monitoring/metrics — auth required, Prometheus format
 """
 
+import os
 import time
 
 from fastapi import APIRouter, Depends
@@ -17,6 +18,15 @@ from app.database import async_session
 from sqlalchemy import text
 
 router = APIRouter()
+
+
+def _release_info() -> dict[str, str]:
+    return {
+        "service": "ai-trainer-api",
+        "version": os.getenv("APP_VERSION", "0.2.0"),
+        "release_sha": os.getenv("RELEASE_SHA", "unknown"),
+        "build_time": os.getenv("BUILD_TIME", "unknown"),
+    }
 
 
 @router.get("/monitoring/health")
@@ -44,6 +54,12 @@ async def health_check_public():
 async def health_check_alias():
     """Shallow alias for /monitoring/health used by local dev and reverse proxies."""
     return await health_check_public()
+
+
+@router.get("/version")
+async def version_info():
+    """Public release marker used to verify that production runs the expected commit."""
+    return _release_info()
 
 
 @router.get("/monitoring/health/detail")
@@ -85,8 +101,7 @@ async def health_check_detail(_user=Depends(require_role("admin"))):
 
     return {
         "status": overall,
-        "service": "ai-trainer-api",
-        "version": "0.2.0",
+        **_release_info(),
         "checks": checks,
         "timestamp": time.time(),
     }
