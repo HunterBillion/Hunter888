@@ -269,6 +269,11 @@ export interface UserStatsResponse {
 
 export interface UserPreferences {
   team: string | null;
+  gender?: string | null;
+  role_title?: string | null;
+  lead_source?: string | null;
+  primary_contact?: string | null;
+  specialization?: string | null;
   experience_level: string | null;
   tts_enabled: boolean;
   notifications: boolean;

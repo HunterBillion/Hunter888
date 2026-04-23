@@ -14,6 +14,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { logger } from "@/lib/logger";
 import { PixelGridBackground } from "@/components/landing/PixelGridBackground";
+import { useAuthStore } from "@/stores/useAuthStore";
 
 // ── Steps config (3 steps per XHUNTER_PLAN_v2 §3.4) ──────
 // Old: 5 steps (Профиль, Настройки, Микрофон, Тренировка, Демо)
@@ -37,6 +38,18 @@ const EXP_LEVELS = [
   { value: "beginner", label: "Новичок", desc: "Менее 1 года", icon: "🌱" },
   { value: "intermediate", label: "Опытный", desc: "1-3 года", icon: "⚡" },
   { value: "advanced", label: "Профи", desc: "Более 3 лет", icon: "🏆" },
+];
+const GENDERS = [
+  { value: "male", label: "Мужской" },
+  { value: "female", label: "Женский" },
+  { value: "neutral", label: "Не указывать" },
+];
+const LEAD_SOURCES = [
+  { value: "sso_google", label: "Google / SSO" },
+  { value: "sso_yandex", label: "Yandex / SSO" },
+  { value: "website", label: "Сайт" },
+  { value: "referral", label: "Рекомендация" },
+  { value: "manual", label: "Вручную" },
 ];
 const MODES = [
   { value: "structured", label: "Структурированный", desc: "Пошаговые сценарии", icon: "📋" },
@@ -442,11 +455,18 @@ function TrialDialog() {
 // ── Main Onboarding Page ───────────────────────────────────
 export default function OnboardingPage() {
   const router = useRouter();
+  const { user, invalidate } = useAuthStore();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Form data
+  const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<"manager" | "rop">("manager");
+  const [gender, setGender] = useState("");
+  const [roleTitle, setRoleTitle] = useState("");
+  const [leadSource, setLeadSource] = useState("");
+  const [primaryContact, setPrimaryContact] = useState("");
   const [team, setTeam] = useState("");
   const [specialization, setSpecialization] = useState("");
   const [experience, setExperience] = useState("");
@@ -455,9 +475,34 @@ export default function OnboardingPage() {
   const [micOk, setMicOk] = useState<boolean | null>(null);
   const [trainingMode, setTrainingMode] = useState("structured");
 
+  useEffect(() => {
+    if (!user) return;
+    const prefs = (user.preferences as Record<string, unknown>) || {};
+    if (user.full_name) setFullName(user.full_name);
+    if (user.role === "manager" || user.role === "rop") setRole(user.role);
+    if (typeof prefs.gender === "string") setGender(prefs.gender);
+    if (typeof prefs.role_title === "string") setRoleTitle(prefs.role_title);
+    if (typeof prefs.lead_source === "string") setLeadSource(prefs.lead_source);
+    if (typeof prefs.primary_contact === "string") setPrimaryContact(prefs.primary_contact);
+    if (typeof prefs.specialization === "string") setSpecialization(prefs.specialization);
+    if (typeof prefs.experience_level === "string") setExperience(prefs.experience_level);
+    if (typeof prefs.training_mode === "string") setTrainingMode(prefs.training_mode);
+    if (typeof prefs.tts_enabled === "boolean") setTtsEnabled(prefs.tts_enabled);
+    if (typeof prefs.notifications === "boolean") setNotifications(prefs.notifications);
+  }, [user]);
+
   const canAdvance = () => {
-    // Step 1: Profile (name/role/specialization)
-    if (step === 1) return !!role && specialization !== "" && experience !== "";
+    // Step 1: canonical profile required by profile_gate.py
+    if (step === 1) {
+      return fullName.trim().length >= 2
+        && !!role
+        && gender !== ""
+        && roleTitle.trim().length >= 2
+        && leadSource !== ""
+        && primaryContact.trim().length >= 3
+        && specialization !== ""
+        && experience !== "";
+    }
     // Step 2: Archetype choice (pick first client type)
     if (step === 2) return trainingMode !== "";
     // Step 3: First call (demo) — always can finish
@@ -467,17 +512,31 @@ export default function OnboardingPage() {
 
   const handleFinish = async () => {
     setLoading(true);
+    setSubmitError(null);
     try {
+      if (fullName.trim() && fullName.trim() !== user?.full_name) {
+        await api.patch("/users/me/profile", { full_name: fullName.trim() });
+      }
       await api.post("/users/me/preferences", {
         role,
         team,
+        gender,
+        role_title: roleTitle,
+        lead_source: leadSource,
+        primary_contact: primaryContact,
         specialization,
         experience_level: experience,
         tts_enabled: ttsEnabled,
         notifications,
         training_mode: trainingMode,
       });
-    } catch (err) { logger.warn("Failed to save preferences, proceeding:", err); }
+      invalidate();
+    } catch (err) {
+      logger.warn("Failed to save onboarding profile:", err);
+      setSubmitError(err instanceof Error ? err.message : "Не удалось сохранить профиль");
+      setLoading(false);
+      return;
+    }
     router.push("/home");
   };
 
@@ -581,6 +640,18 @@ export default function OnboardingPage() {
 
                 <div className="space-y-6">
                   <div>
+                    <label className="vh-label">Имя</label>
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      maxLength={100}
+                      placeholder="Как к вам обращаться"
+                      className="vh-input w-full"
+                    />
+                  </div>
+
+                  <div>
                     <label className="vh-label">Ваша роль</label>
                     <div className="grid grid-cols-2 gap-3">
                       {[
@@ -615,6 +686,80 @@ export default function OnboardingPage() {
                       })}
                     </div>
                   </div>
+
+                  <div>
+                    <label className="vh-label">Пол для персонализации</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {GENDERS.map((g) => {
+                        const active = gender === g.value;
+                        return (
+                          <button
+                            key={g.value}
+                            type="button"
+                            onClick={() => setGender(g.value)}
+                            className="rounded-xl px-3 py-2.5 text-sm transition-colors"
+                            style={{
+                              background: active ? "var(--accent-muted)" : "var(--input-bg)",
+                              border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
+                              color: active ? "var(--accent)" : "var(--text-secondary)",
+                            }}
+                          >
+                            {g.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="vh-label">Должность</label>
+                      <input
+                        type="text"
+                        value={roleTitle}
+                        onChange={(e) => setRoleTitle(e.target.value)}
+                        maxLength={120}
+                        placeholder="Например: менеджер БФЛ"
+                        className="vh-input w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="vh-label">Контакт</label>
+                      <input
+                        type="text"
+                        value={primaryContact}
+                        onChange={(e) => setPrimaryContact(e.target.value)}
+                        maxLength={120}
+                        placeholder="Телефон или Telegram"
+                        className="vh-input w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="vh-label">Источник профиля</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {LEAD_SOURCES.map((source) => {
+                        const active = leadSource === source.value;
+                        return (
+                          <button
+                            key={source.value}
+                            type="button"
+                            onClick={() => setLeadSource(source.value)}
+                            className="rounded-xl px-3 py-2.5 text-sm text-left transition-colors"
+                            style={{
+                              background: active ? "var(--accent-muted)" : "var(--input-bg)",
+                              border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
+                              color: active ? "var(--accent)" : "var(--text-secondary)",
+                            }}
+                          >
+                            {source.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   <div>
                     <label className="vh-label">Команда</label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -788,6 +933,12 @@ export default function OnboardingPage() {
             </Button>
           )}
         </div>
+
+        {submitError && (
+          <p className="mt-3 text-center text-sm" style={{ color: "var(--danger)" }}>
+            {submitError}
+          </p>
+        )}
 
         {/* Step counter */}
         <p className="mt-4 text-center font-mono text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>

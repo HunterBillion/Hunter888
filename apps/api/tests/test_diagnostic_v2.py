@@ -1,7 +1,7 @@
 """Tests for Diagnostic v2 security fixes.
 
 Covers:
-- D2-01: POST /reviews requires auth + moderation queue
+- D2-01: POST /reviews is public + moderation queue
 - D2-02: Rate limiter uses proxy-aware get_client_ip
 - D2-03: middleware.ts dot-bypass restricted to static extensions
 - D2-04: Prompt injection sanitization in scoring.py + knowledge_quiz.py
@@ -18,20 +18,21 @@ import pytest
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# D2-01 — POST /reviews auth + moderation
+# D2-01 — POST /reviews public + moderation
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
 class TestReviewsSecurity:
-    """Verify /reviews requires auth, uses moderation, and has rate-limit."""
+    """Verify /reviews accepts public submissions, uses moderation, and has rate-limit."""
 
-    def test_create_review_requires_auth_dependency(self):
-        """create_review must use get_current_user dependency."""
+    def test_create_review_uses_optional_user_dependency(self):
+        """create_review may associate a user but must not require auth."""
         import inspect
         from app.api.reviews import create_review
         sig = inspect.signature(create_review)
         param_names = list(sig.parameters.keys())
-        assert "user" in param_names, "create_review must have a 'user' parameter (auth)"
+        assert "user" in param_names, "create_review should keep optional user attribution"
+        assert "get_optional_current_user" in str(sig.parameters["user"].default)
 
     def test_review_created_with_approved_false(self):
         """New reviews must have approved=False (moderation queue)."""

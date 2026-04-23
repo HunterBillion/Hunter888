@@ -256,7 +256,11 @@ export default function Home() {
             <p className="text-base md:text-lg" style={{ color: "var(--text-secondary)", lineHeight: 1.7 }}>
               Мы прослушали 60 000 переговоров и знаем, где он ломается.
               <br />
-              <strong style={{ color: "var(--text-primary)" }}>XHUNTER тренирует менеджеров БФЛ на реальных сценариях. Не теория — практика со скептиками, манипуляторами и агрессорами.</strong>
+              <strong style={{ color: "var(--text-primary)" }}>
+                XHUNTER тренирует менеджеров БФЛ на реальных сценариях.
+                <br />
+                <span style={{ hyphens: "none" }}>Не теория — практика со скептиками, манипуляторами и агрессорами.</span>
+              </strong>
             </p>
           </motion.div>
 
@@ -495,7 +499,7 @@ function ArcadeReviewModal({ onClose }: { onClose: () => void }) {
         setSent(true);
         setTimeout(onClose, 2500);
       } else {
-        setError("Требуется авторизация для отправки отзыва");
+        setError("Не удалось отправить отзыв. Проверьте поля и попробуйте ещё раз");
       }
     } catch {
       setError("Нет соединения с сервером");

@@ -77,6 +77,10 @@ class ChangePasswordRequest(BaseModel):
 class UserPreferencesRequest(BaseModel):
     team: str | None = Field(None, max_length=200)
     role: str | None = Field(None, pattern="^(manager|rop)$")
+    gender: str | None = Field(None, pattern="^(male|female|neutral)$")
+    role_title: str | None = Field(None, min_length=2, max_length=120)
+    lead_source: str | None = Field(None, max_length=100)
+    primary_contact: str | None = Field(None, min_length=3, max_length=120)
     specialization: str | None = Field(None, max_length=100)
     experience_level: str | None = Field(None, pattern="^(beginner|intermediate|advanced)$")
     tts_enabled: bool | None = None
@@ -90,6 +94,14 @@ class UserPreferencesRequest(BaseModel):
     accent_color: str | None = Field(None, pattern="^(violet|blue|emerald|amber|rose)$")
 
     model_config = {"from_attributes": True}
+
+    @field_validator("role_title", "lead_source", "primary_contact", "specialization", "training_mode")
+    @classmethod
+    def strip_optional_text(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
 
 class TeamStatsResponse(BaseModel):

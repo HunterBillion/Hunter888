@@ -52,6 +52,20 @@ const EXPERIENCE_LEVELS = [
   { key: "advanced", label: "Продвинутый" },
 ] as const;
 
+const GENDERS = [
+  { key: "male", label: "Мужской" },
+  { key: "female", label: "Женский" },
+  { key: "neutral", label: "Не указывать" },
+] as const;
+
+const LEAD_SOURCES = [
+  { key: "sso_google", label: "Google / SSO" },
+  { key: "sso_yandex", label: "Yandex / SSO" },
+  { key: "website", label: "Сайт" },
+  { key: "referral", label: "Рекомендация" },
+  { key: "manual", label: "Вручную" },
+] as const;
+
 const ACCENT_COLORS = [
   { key: "violet", label: "Violet", color: "#8A2BE2" },
   { key: "blue", label: "Blue", color: "var(--info)" },
@@ -92,6 +106,11 @@ export default function SettingsPage() {
   const [notifyFrequency, setNotifyFrequency] = useState<"realtime" | "daily" | "weekly">("realtime");
   const [trainingMode, setTrainingMode] = useState<string>("mixed");
   const [experienceLevel, setExperienceLevel] = useState<string>("beginner");
+  const [gender, setGender] = useState<string>("");
+  const [roleTitle, setRoleTitle] = useState<string>("");
+  const [leadSource, setLeadSource] = useState<string>("");
+  const [primaryContact, setPrimaryContact] = useState<string>("");
+  const [specialization, setSpecialization] = useState<string>("");
   const [pipelineColumns, setPipelineColumns] = useState<string[]>(PIPELINE_STATUSES as string[]);
   const [compactMode, setCompactMode] = useState(false);
   const [animatedBg, setAnimatedBg] = useState(true);
@@ -130,6 +149,11 @@ export default function SettingsPage() {
     if (typeof p.notify_frequency === "string") setNotifyFrequency(p.notify_frequency as "realtime" | "daily" | "weekly");
     if (typeof p.training_mode === "string") setTrainingMode(p.training_mode);
     if (typeof p.experience_level === "string") setExperienceLevel(p.experience_level);
+    if (typeof p.gender === "string") setGender(p.gender);
+    if (typeof p.role_title === "string") setRoleTitle(p.role_title);
+    if (typeof p.lead_source === "string") setLeadSource(p.lead_source);
+    if (typeof p.primary_contact === "string") setPrimaryContact(p.primary_contact);
+    if (typeof p.specialization === "string") setSpecialization(p.specialization);
     if (Array.isArray(p.pipeline_columns)) setPipelineColumns(p.pipeline_columns as string[]);
     if (typeof p.compact_mode === "boolean") setCompactMode(p.compact_mode);
     if (typeof p.accent_color === "string") setAccentColor(p.accent_color);
@@ -177,6 +201,11 @@ export default function SettingsPage() {
       const prefs = {
         tts_enabled: ttsEnabled,
         notifications,
+        gender,
+        role_title: roleTitle,
+        lead_source: leadSource,
+        primary_contact: primaryContact,
+        specialization,
         notify_email: notifyEmail,
         notify_push: notifyPush,
         notify_frequency: notifyFrequency,
@@ -353,6 +382,97 @@ export default function SettingsPage() {
               )}
               <div className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
                 Email: {user?.email} (не редактируется)
+              </div>
+            </motion.div>
+
+            {/* ── Required Profile ── */}
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: nextDelay() }}
+              className="glass-panel p-5 relative overflow-hidden"
+              style={{ borderLeft: "3px solid var(--accent)" }}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--accent-muted)" }}>
+                  <Terminal weight="duotone" size={20} style={{ color: "var(--accent)" }} />
+                </div>
+                <div>
+                  <div className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Обязательный профиль</div>
+                  <div className="text-sm" style={{ color: "var(--text-muted)" }}>Используется для подсказок, звонков и персонализации</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-mono uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Пол</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {GENDERS.map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => setGender(item.key)}
+                        className="rounded-xl px-2 py-2 text-xs transition-colors"
+                        style={{
+                          background: gender === item.key ? "var(--accent-muted)" : "var(--glass-bg)",
+                          border: `1px solid ${gender === item.key ? "var(--accent)" : "var(--glass-border)"}`,
+                          color: gender === item.key ? "var(--accent)" : "var(--text-secondary)",
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Источник</label>
+                  <select
+                    value={leadSource}
+                    onChange={(e) => setLeadSource(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                    style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", color: "var(--text-primary)" }}
+                  >
+                    <option value="">Выберите источник</option>
+                    {LEAD_SOURCES.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Должность</label>
+                  <input
+                    type="text"
+                    value={roleTitle}
+                    onChange={(e) => setRoleTitle(e.target.value)}
+                    maxLength={120}
+                    placeholder="Например: менеджер БФЛ"
+                    className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                    style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", color: "var(--text-primary)" }}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Контакт</label>
+                  <input
+                    type="text"
+                    value={primaryContact}
+                    onChange={(e) => setPrimaryContact(e.target.value)}
+                    maxLength={120}
+                    placeholder="Телефон или Telegram"
+                    className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                    style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", color: "var(--text-primary)" }}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-mono uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Специализация</label>
+                  <input
+                    type="text"
+                    value={specialization}
+                    onChange={(e) => setSpecialization(e.target.value)}
+                    maxLength={100}
+                    placeholder="Например: банкротство физических лиц"
+                    className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                    style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", color: "var(--text-primary)" }}
+                  />
+                </div>
               </div>
             </motion.div>
 

@@ -4,6 +4,10 @@ from typing import Any
 
 
 REQUIRED_ONBOARDING_PREFS = (
+    "gender",
+    "role_title",
+    "lead_source",
+    "primary_contact",
     "specialization",
     "experience_level",
     "training_mode",

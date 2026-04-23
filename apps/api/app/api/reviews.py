@@ -1,16 +1,17 @@
-"""Reviews API — authenticated submission with moderation, public read for approved."""
+"""Reviews API — public submission with moderation, public read for approved."""
 
 import logging
 import uuid
 from datetime import datetime
 
-from app.core.rate_limit import limiter
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_role
+from app.core.deps import get_current_user, require_role, security
+from app.core.rate_limit import limiter
 from app.database import get_db
 from app.models.review import Review
 from app.models.user import User
@@ -73,7 +74,29 @@ async def get_approved_reviews(
     return result.scalars().all()
 
 
-# ── Authenticated endpoints ────────────────────────────────────────────
+async def get_optional_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    db: AsyncSession = Depends(get_db),
+    access_token: str | None = Cookie(default=None),
+) -> User | None:
+    """Return the current user when a valid token is present, otherwise anonymous.
+
+    The landing review form is public. Invalid or expired visitor cookies must not
+    turn a moderated public submission into a 401.
+    """
+    try:
+        return await get_current_user(
+            request=request,
+            credentials=credentials,
+            db=db,
+            access_token=access_token,
+        )
+    except HTTPException:
+        return None
+
+
+# ── Public submission endpoint ─────────────────────────────────────────
 
 
 @router.post("/reviews", status_code=201)
@@ -82,21 +105,26 @@ async def create_review(
     request: Request,
     body: ReviewCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_optional_current_user),
 ):
-    """Submit a new review. Requires authentication; goes to moderation queue."""
+    """Submit a new review. Public endpoint; always goes to moderation queue."""
     filtered_text, violations = filter_user_input(body.text)
     if violations:
-        logger.warning("Review from user %s filtered: %s", user.id, violations)
+        logger.warning(
+            "Review from user %s filtered: %s",
+            user.id if user else "anonymous",
+            violations,
+        )
 
     filtered_name, _ = filter_user_input(body.name)
+    filtered_role, _ = filter_user_input(body.role)
 
     review = Review(
         name=filtered_name,
-        role=body.role,
+        role=filtered_role,
         text=filtered_text,
         rating=body.rating,
-        user_id=user.id,
+        user_id=user.id if user else None,
         approved=False,
     )
     db.add(review)
