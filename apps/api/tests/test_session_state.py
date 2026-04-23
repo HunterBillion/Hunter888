@@ -29,4 +29,3 @@ def test_center_terminal_outcome_guard():
 def test_non_center_terminal_outcome_is_not_blocking():
     assert validate_terminal_outcome(mode="call", outcome=None) == (True, None)
     assert normalize_session_outcome("continue later") == "continue_next_call"
-

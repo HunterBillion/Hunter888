@@ -52,6 +52,73 @@ def upgrade() -> None:
         op.create_index("ix_scenario_versions_created_by", "scenario_versions", ["created_by"])
         op.create_index("ix_scenario_versions_template_status", "scenario_versions", ["template_id", "status"])
 
+    # Backfill immutable v1 snapshots for already published templates. Without
+    # this, old templates would keep producing sessions with NULL
+    # scenario_version_id until someone edits them in the constructor.
+    op.execute(sa.text("""
+        INSERT INTO scenario_versions (
+            id,
+            template_id,
+            version_number,
+            status,
+            snapshot,
+            created_by,
+            published_at
+        )
+        SELECT
+            (
+                substr(md5(st.id::text || ':scenario_version:v1'), 1, 8) || '-' ||
+                substr(md5(st.id::text || ':scenario_version:v1'), 9, 4) || '-' ||
+                substr(md5(st.id::text || ':scenario_version:v1'), 13, 4) || '-' ||
+                substr(md5(st.id::text || ':scenario_version:v1'), 17, 4) || '-' ||
+                substr(md5(st.id::text || ':scenario_version:v1'), 21, 12)
+            )::uuid,
+            st.id,
+            1,
+            'published',
+            jsonb_build_object(
+                'code', st.code,
+                'name', st.name,
+                'description', st.description,
+                'group_name', st.group_name,
+                'who_calls', st.who_calls,
+                'funnel_stage', st.funnel_stage,
+                'prior_contact', st.prior_contact,
+                'initial_emotion', st.initial_emotion,
+                'initial_emotion_variants', st.initial_emotion_variants,
+                'client_awareness', st.client_awareness,
+                'client_motivation', st.client_motivation,
+                'typical_duration_minutes', st.typical_duration_minutes,
+                'max_duration_minutes', st.max_duration_minutes,
+                'typical_reply_count_min', st.typical_reply_count_min,
+                'typical_reply_count_max', st.typical_reply_count_max,
+                'target_outcome', st.target_outcome,
+                'difficulty', st.difficulty,
+                'archetype_weights', st.archetype_weights,
+                'lead_sources', st.lead_sources,
+                'stages', st.stages,
+                'recommended_chains', st.recommended_chains,
+                'trap_pool_categories', st.trap_pool_categories,
+                'traps_count_min', st.traps_count_min,
+                'traps_count_max', st.traps_count_max,
+                'cascades_count', st.cascades_count,
+                'scoring_modifiers', st.scoring_modifiers,
+                'awareness_prompt', st.awareness_prompt,
+                'stage_skip_reactions', st.stage_skip_reactions,
+                'client_prompt_template', st.client_prompt_template,
+                'is_active', st.is_active
+            ),
+            NULL,
+            COALESCE(st.updated_at, st.created_at, now())
+        FROM scenario_templates st
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM scenario_versions sv
+            WHERE sv.template_id = st.id
+              AND sv.version_number = 1
+        )
+    """))
+
     if not _column_exists("training_sessions", "scenario_version_id"):
         op.add_column(
             "training_sessions",
@@ -83,4 +150,3 @@ def downgrade() -> None:
         op.drop_index("ix_scenario_versions_created_by", table_name="scenario_versions")
         op.drop_index("ix_scenario_versions_template_id", table_name="scenario_versions")
         op.drop_table("scenario_versions")
-

@@ -8,7 +8,8 @@ from app.services.attachment_storage import (
 
 def test_safe_filename_strips_path_and_unsafe_chars():
     assert safe_filename("../passport scan.pdf") == "passport_scan.pdf"
-    assert safe_filename("folder/My File (1).png") == "My_File_1_.png"
+    assert safe_filename("folder/My File (1).png") == "My_File_1.png"
+    assert safe_filename("../паспорт скан.pdf") == "attachment.pdf"
     assert safe_filename("") == "attachment"
 
 

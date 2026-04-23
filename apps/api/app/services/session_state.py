@@ -50,4 +50,3 @@ def validate_terminal_outcome(*, mode: object, outcome: object) -> tuple[bool, s
     if normalized_mode != "center":
         return True, normalized_outcome
     return normalized_outcome in CENTER_TERMINAL_OUTCOMES, normalized_outcome
-

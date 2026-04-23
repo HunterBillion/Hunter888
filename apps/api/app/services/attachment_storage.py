@@ -23,9 +23,14 @@ class StoredAttachment:
 
 
 def safe_filename(filename: str | None) -> str:
-    name = (filename or "attachment").strip().replace("\\", "/").split("/")[-1]
-    name = _SAFE_FILENAME_RE.sub("_", name)[:180].strip("._")
-    return name or "attachment"
+    raw = (filename or "attachment").strip().replace("\\", "/").split("/")[-1]
+    suffix = Path(raw).suffix.lower()
+    stem = raw[: -len(suffix)] if suffix else raw
+    cleaned_stem = _SAFE_FILENAME_RE.sub("_", stem)[:160].strip("._")
+    cleaned_suffix = _SAFE_FILENAME_RE.sub("", suffix)[:20]
+    if not cleaned_stem:
+        cleaned_stem = "attachment"
+    return f"{cleaned_stem}{cleaned_suffix}" or "attachment"
 
 
 def attachment_sha256(data: bytes) -> str:

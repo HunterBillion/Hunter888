@@ -29,7 +29,7 @@ from app.models.client import (
     NotificationStatus,
     RealClient,
 )
-from app.models.training import SessionStatus, TrainingSession
+from app.models.training import Message, SessionStatus, TrainingSession
 from app.models.user import User, UserRole
 from app.schemas.client import (
     AuditLogListResponse,
@@ -663,10 +663,29 @@ async def api_upload_attachment(
         )).scalar_one_or_none()
         if session is None:
             raise HTTPException(status_code=404, detail="Сессия не найдена")
-        if session.real_client_id and session.real_client_id != client.id:
+        if session.real_client_id is None:
+            raise HTTPException(status_code=400, detail="Сессия не привязана к CRM-клиенту")
+        if session.real_client_id != client.id:
             raise HTTPException(status_code=400, detail="Сессия привязана к другому клиенту")
         if session.user_id != user.id and user.role not in {UserRole.rop, UserRole.admin}:
             raise HTTPException(status_code=403, detail="Нет доступа к сессии")
+
+    if message_id is not None:
+        message = (await db.execute(
+            select(Message).where(Message.id == message_id)
+        )).scalar_one_or_none()
+        if message is None:
+            raise HTTPException(status_code=404, detail="Сообщение не найдено")
+        if session_id is not None and message.session_id != session_id:
+            raise HTTPException(status_code=400, detail="Сообщение не относится к указанной сессии")
+        if session_id is None:
+            msg_session = (await db.execute(
+                select(TrainingSession).where(TrainingSession.id == message.session_id)
+            )).scalar_one_or_none()
+            if msg_session is None or msg_session.real_client_id != client.id:
+                raise HTTPException(status_code=400, detail="Сообщение не относится к клиенту")
+            if msg_session.user_id != user.id and user.role not in {UserRole.rop, UserRole.admin}:
+                raise HTTPException(status_code=403, detail="Нет доступа к сессии сообщения")
 
     data = await file.read(MAX_ATTACHMENT_BYTES + 1)
     if not data:
