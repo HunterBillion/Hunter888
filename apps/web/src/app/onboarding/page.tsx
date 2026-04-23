@@ -22,7 +22,7 @@ import { useAuthStore } from "@/stores/useAuthStore";
 const STEPS = [
   { id: 1, label: "Профиль", icon: User },
   { id: 2, label: "Архетип", icon: Crosshair },
-  { id: 3, label: "Первый звонок", icon: Target },
+  { id: 3, label: "Пробная тренировка", icon: MessageCircle },
 ];
 
 const TEAMS = ["Отдел продаж", "Отдел B2B", "Холодные звонки", "Сопровождение", "Другое"];
@@ -67,72 +67,32 @@ const DEMO_HINTS = [
   "Отлично! Теперь можете перейти к делу",
 ];
 
-// ── D1: Animated SVG illustrations ─────────────────────────
+// ── D1: Clean SVG illustrations (no animation artifacts) ──────────────
 function StepIllustration({ step }: { step: number }) {
   const illustrations: Record<number, React.ReactNode> = {
     1: (
-      <svg viewBox="0 0 120 120" className="w-24 h-24">
-        <motion.circle cx="60" cy="40" r="18" fill="none" stroke="var(--accent)" strokeWidth="2"
-          initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1 }} />
-        <motion.path d="M30 95 C30 70 90 70 90 95" fill="none" stroke="var(--accent)" strokeWidth="2"
-          initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1, delay: 0.3 }} />
-        <motion.circle cx="60" cy="40" r="5" fill="var(--accent)"
-          initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.8, type: "spring" }} />
-      </svg>
+      <div className="flex justify-center mb-4">
+        <div className="w-20 h-20 rounded-2xl flex items-center justify-center" style={{ background: "var(--accent-muted)", border: "2px solid var(--accent)" }}>
+          <User size={36} style={{ color: "var(--accent)" }} />
+        </div>
+      </div>
     ),
     2: (
-      <svg viewBox="0 0 120 120" className="w-24 h-24">
-        <motion.rect x="25" y="25" width="70" height="70" rx="12" fill="none" stroke="var(--accent)" strokeWidth="2"
-          initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1 }} />
-        <motion.circle cx="48" cy="55" r="4" fill="var(--accent)"
-          initial={{ scale: 0 }} animate={{ scale: [0, 1.3, 1] }} transition={{ delay: 0.5, duration: 0.5 }} />
-        <motion.circle cx="72" cy="55" r="4" fill="var(--accent)"
-          initial={{ scale: 0 }} animate={{ scale: [0, 1.3, 1] }} transition={{ delay: 0.7, duration: 0.5 }} />
-        <motion.path d="M45 72 Q60 82 75 72" fill="none" stroke="var(--accent)" strokeWidth="2"
-          initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.9, duration: 0.5 }} />
-      </svg>
+      <div className="flex justify-center mb-4">
+        <div className="w-20 h-20 rounded-2xl flex items-center justify-center" style={{ background: "var(--accent-muted)", border: "2px solid var(--accent)" }}>
+          <Crosshair size={36} style={{ color: "var(--accent)" }} />
+        </div>
+      </div>
     ),
     3: (
-      <svg viewBox="0 0 120 120" className="w-24 h-24">
-        <motion.rect x="50" y="20" width="20" height="45" rx="10" fill="none" stroke="var(--accent)" strokeWidth="2"
-          initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.8 }} />
-        <motion.path d="M35 55 Q35 80 60 80 Q85 80 85 55" fill="none" stroke="var(--accent)" strokeWidth="2"
-          initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.5, duration: 0.7 }} />
-        <motion.line x1="60" y1="80" x2="60" y2="100" stroke="var(--accent)" strokeWidth="2"
-          initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 1 }} />
-        {[0, 1, 2].map((i) => (
-          <motion.circle key={i} cx={60} cy={42} r={22 + i * 8} fill="none" stroke="var(--accent)" strokeWidth="1" opacity={0.2}
-            animate={{ scale: [1, 1.1, 1], opacity: [0.1, 0.3, 0.1] }}
-            transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.3 }} />
-        ))}
-      </svg>
-    ),
-    4: (
-      <svg viewBox="0 0 120 120" className="w-24 h-24">
-        <motion.path d="M60 20 L95 50 L80 95 L40 95 L25 50 Z" fill="none" stroke="var(--accent)" strokeWidth="2"
-          initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.2 }} />
-        <motion.circle cx="60" cy="60" r="8" fill="var(--accent)" opacity={0.3}
-          animate={{ r: [8, 12, 8], opacity: [0.2, 0.5, 0.2] }}
-          transition={{ duration: 2, repeat: Infinity }} />
-        <motion.circle cx="60" cy="60" r="3" fill="var(--accent)"
-          initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1, type: "spring" }} />
-      </svg>
-    ),
-    5: (
-      <svg viewBox="0 0 120 120" className="w-24 h-24">
-        <motion.rect x="15" y="25" width="55" height="35" rx="8" fill="none" stroke="var(--accent)" strokeWidth="2"
-          initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.6 }} />
-        <motion.rect x="50" y="60" width="55" height="35" rx="8" fill="none" stroke="var(--magenta)" strokeWidth="2"
-          initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.4, duration: 0.6 }} />
-        {[0, 1, 2].map((i) => (
-          <motion.circle key={i} cx={28 + i * 12} cy={42} r="2" fill="var(--accent)"
-            initial={{ scale: 0 }} animate={{ scale: [0, 1, 0] }}
-            transition={{ delay: 0.8 + i * 0.2, duration: 0.8, repeat: Infinity, repeatDelay: 1 }} />
-        ))}
-      </svg>
+      <div className="flex justify-center mb-4">
+        <div className="w-20 h-20 rounded-2xl flex items-center justify-center" style={{ background: "var(--accent-muted)", border: "2px solid var(--accent)" }}>
+          <MessageCircle size={36} style={{ color: "var(--accent)" }} />
+        </div>
+      </div>
     ),
   };
-  return <div className="flex justify-center mb-6">{illustrations[step]}</div>;
+  return illustrations[step] ?? null;
 }
 
 // ── D3: Mic test component ─────────────────────────────────
@@ -360,7 +320,7 @@ function TrialDialog() {
                     className="font-mono text-[10px] block mb-1 tracking-wider uppercase"
                     style={{ color: "var(--accent)", opacity: 0.7 }}
                   >
-                    СИСТЕМА
+                    АГИ
                   </span>
                 )}
                 {isBot && msg.typing ? (
@@ -499,7 +459,6 @@ export default function OnboardingPage() {
         && gender !== ""
         && roleTitle.trim().length >= 2
         && leadSource !== ""
-        && primaryContact.trim().length >= 3
         && specialization !== ""
         && experience !== "";
     }
@@ -640,7 +599,7 @@ export default function OnboardingPage() {
 
                 <div className="space-y-6">
                   <div>
-                    <label className="vh-label">Имя</label>
+                    <label className="vh-label">Имя <span style={{ color: "var(--danger)" }}>*</span></label>
                     <input
                       type="text"
                       value={fullName}
@@ -652,7 +611,7 @@ export default function OnboardingPage() {
                   </div>
 
                   <div>
-                    <label className="vh-label">Ваша роль</label>
+                    <label className="vh-label">Ваша роль <span style={{ color: "var(--danger)" }}>*</span></label>
                     <div className="grid grid-cols-2 gap-3">
                       {[
                         { value: "manager" as const, label: "Менеджер", desc: "Тренировки, звонки, рейтинг", icon: "🎯" },
@@ -688,7 +647,7 @@ export default function OnboardingPage() {
                   </div>
 
                   <div>
-                    <label className="vh-label">Пол для персонализации</label>
+                    <label className="vh-label">Пол для персонализации <span style={{ color: "var(--danger)" }}>*</span></label>
                     <div className="grid grid-cols-3 gap-2">
                       {GENDERS.map((g) => {
                         const active = gender === g.value;
@@ -713,7 +672,7 @@ export default function OnboardingPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="vh-label">Должность</label>
+                      <label className="vh-label">Должность <span style={{ color: "var(--danger)" }}>*</span></label>
                       <input
                         type="text"
                         value={roleTitle}
@@ -724,7 +683,7 @@ export default function OnboardingPage() {
                       />
                     </div>
                     <div>
-                      <label className="vh-label">Контакт</label>
+                      <label className="vh-label">Контакт <span className="text-xs opacity-60">(необязательно)</span></label>
                       <input
                         type="text"
                         value={primaryContact}
@@ -737,7 +696,7 @@ export default function OnboardingPage() {
                   </div>
 
                   <div>
-                    <label className="vh-label">Источник профиля</label>
+                    <label className="vh-label">Источник профиля <span style={{ color: "var(--danger)" }}>*</span></label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {LEAD_SOURCES.map((source) => {
                         const active = leadSource === source.value;
@@ -761,7 +720,7 @@ export default function OnboardingPage() {
                   </div>
 
                   <div>
-                    <label className="vh-label">Команда</label>
+                    <label className="vh-label">Команда <span style={{ color: "var(--danger)" }}>*</span></label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {TEAMS.map((t, i) => {
                         const active = team === t;
@@ -784,7 +743,7 @@ export default function OnboardingPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="vh-label">Специализация</label>
+                    <label className="vh-label">Специализация <span style={{ color: "var(--danger)" }}>*</span></label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {SPECIALIZATIONS.map((s, i) => {
                         const active = specialization === s.value;
@@ -813,7 +772,7 @@ export default function OnboardingPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="vh-label">Опыт</label>
+                    <label className="vh-label">Опыт <span style={{ color: "var(--danger)" }}>*</span></label>
                     <div className="space-y-2">
                       {EXP_LEVELS.map((e, i) => {
                         const active = experience === e.value;
@@ -904,11 +863,11 @@ export default function OnboardingPage() {
               </>
             )}
 
-            {/* Step 3: First call (60 sec demo) — 'Охота начинается' */}
+            {/* Step 3: Demo training (chat-based) — 'Охота начинается' */}
             {step === 3 && (
               <>
                 <h2 className="font-display text-xl font-bold tracking-wider mb-1 text-center" style={{ color: "var(--text-primary)" }}>Охота начинается</h2>
-                <p className="text-sm mb-6 text-center" style={{ color: "var(--text-muted)" }}>Твой первый звонок — 60 секунд</p>
+                <p className="text-sm mb-6 text-center" style={{ color: "var(--text-muted)" }}>Пробная тренировка — напиши ответ клиенту</p>
                 <TrialDialog />
               </>
             )}
