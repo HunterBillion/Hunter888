@@ -38,7 +38,7 @@ class ReviewOut(BaseModel):
     role: str
     text: str
     rating: int
-    approved: bool
+    deleted: bool
     created_at: datetime
 
     class Config:
@@ -65,9 +65,11 @@ async def get_approved_reviews(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
-    """Get approved reviews for the landing page carousel (paginated)."""
+    """Get visible reviews for the landing page carousel (paginated).
+    
+    All reviews are published immediately. Admin can hide by deleting."""
     result = await db.execute(
-        select(Review).where(Review.approved == True)  # noqa: E712
+        select(Review).where(Review.deleted == False)  # noqa: E712
         .order_by(Review.created_at.desc())
         .limit(limit).offset(offset)
     )
@@ -125,7 +127,6 @@ async def create_review(
         text=filtered_text,
         rating=body.rating,
         user_id=user.id if user else None,
-        approved=False,
     )
     db.add(review)
     await db.commit()
@@ -158,7 +159,7 @@ async def get_all_reviews(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ):
-    """Admin-only: list all reviews (approved + pending)."""
+    """Admin-only: list all reviews (including deleted)."""
     result = await db.execute(
         select(Review)
         .order_by(Review.created_at.desc())
@@ -167,37 +168,7 @@ async def get_all_reviews(
     return result.scalars().all()
 
 
-@router.patch("/reviews/{review_id}/approve", status_code=200)
-async def approve_review(
-    review_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_role("admin")),
-):
-    """Admin-only: approve a pending review."""
-    result = await db.execute(select(Review).where(Review.id == review_id))
-    review = result.scalar_one_or_none()
-    if not review:
-        raise HTTPException(status_code=404, detail="Review not found")
-    review.approved = True
-    await db.commit()
-    return {"status": "ok", "message": "Отзыв одобрен"}
-
-
-@router.patch("/reviews/{review_id}/reject", status_code=200)
-async def reject_review(
-    review_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_role("admin")),
-):
-    """Admin-only: reject (un-approve) a review."""
-    result = await db.execute(select(Review).where(Review.id == review_id))
-    review = result.scalar_one_or_none()
-    if not review:
-        raise HTTPException(status_code=404, detail="Review not found")
-    review.approved = False
-    await db.commit()
-    return {"status": "ok", "message": "Отзыв отклонён"}
-
+# ── Delete (hide) endpoint ───────────────────────────────────────────
 
 @router.delete("/reviews/{review_id}", status_code=200)
 async def delete_review(
@@ -205,11 +176,11 @@ async def delete_review(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_role("admin")),
 ):
-    """Admin-only: permanently delete a review."""
+    """Admin-only: hide a review (soft delete)."""
     result = await db.execute(select(Review).where(Review.id == review_id))
     review = result.scalar_one_or_none()
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
-    await db.delete(review)
+    review.deleted = True
     await db.commit()
-    return {"status": "ok", "message": "Отзыв удалён"}
+    return {"status": "ok", "message": "Отзыв скрыт"}
