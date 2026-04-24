@@ -183,6 +183,7 @@ from app.models.morning_drill import MorningDrillSession
 from app.models.lead_client import LeadClient
 from app.models.domain_event import DomainEvent
 from app.models.crm_projection import CrmTimelineProjectionState
+from app.models.persona_snapshot import PersonaSnapshot
 from app.services.web_push import PushSubscription
 
 __all__ = [
@@ -205,6 +206,7 @@ __all__ = [
     "LeadClient",
     "DomainEvent",
     "CrmTimelineProjectionState",
+    "PersonaSnapshot",
     "Achievement",
     "UserAchievement",
     "LeaderboardSnapshot",
