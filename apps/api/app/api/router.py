@@ -116,3 +116,8 @@ api_router.include_router(story_router, prefix="/story", tags=["story"])
 from app.api.client_domain_ops import router as client_domain_ops_router
 
 api_router.include_router(client_domain_ops_router, tags=["client-domain-ops"])
+
+# Phase 5 — WS Outbox polling fallback (Roadmap §10.3)
+from app.api.pending_events import router as pending_events_router
+
+api_router.include_router(pending_events_router, tags=["pending-events"])
