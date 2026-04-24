@@ -101,7 +101,12 @@ async def capture(
         if first is not None:
             voice_id = first.voice_id
             voice_provider = first.voice_provider
-            voice_params = first.voice_params
+            # F-L8-2 fix: deep-copy so a mutation on the new row's
+            # ``voice_params`` cannot flush back into the first
+            # snapshot's JSONB column (shared dict reference would
+            # violate §8.2 insert-only invariant via SQLAlchemy's
+            # default attribute tracking on mutable types).
+            voice_params = dict(first.voice_params or {})
             gender = first.gender
             archetype_code = first.archetype_code
 

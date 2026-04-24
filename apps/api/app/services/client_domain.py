@@ -295,6 +295,43 @@ async def emit_domain_event(
         return event
 
 
+def is_event_persisted(event: DomainEvent | None) -> bool:
+    """Return True iff the event is a real, DB-persisted row.
+
+    F-L7-3/F-L7-4 fix. ``emit_domain_event`` can return three flavours:
+
+      * fully-persisted happy-path event — attached to a session, has a
+        db-assigned ``created_at``;
+      * "disabled" stub when ``client_domain_dual_write_enabled=False``;
+      * transient no-flush event when a generic exception was swallowed
+        under ``client_domain_strict_emit=False``.
+
+    Prior to this helper, every caller blindly wrote ``event.id`` into
+    ``ClientInteraction.metadata.domain_event_id``, producing a UUID
+    that didn't exist in ``domain_events``. Parity counters then *under*
+    reported drift because the interaction looked linked.
+
+    Callers now gate every projection/metadata write on this predicate.
+    """
+    if event is None:
+        return False
+    if event.idempotency_key == "disabled":
+        return False
+    from sqlalchemy.inspection import inspect as _insp
+
+    try:
+        state = _insp(event, raiseerr=False)
+    except Exception:  # pragma: no cover — defensive
+        return False
+    if state is None:
+        return False
+    # A truly-persisted row is either ``persistent`` (alive in the
+    # session) or has a DB-assigned created_at (flushed at least once).
+    if state.transient or state.detached:
+        return getattr(event, "created_at", None) is not None
+    return True
+
+
 async def _projection_interaction_for_event(
     db: AsyncSession,
     *,
@@ -397,8 +434,15 @@ async def create_crm_interaction_with_event(
         correlation_id=str(session_id) if session_id else str(interaction.id),
     )
 
-    interaction.metadata_ = {**meta, **interaction_metadata_patch(event)}
-    await record_projection(db, event=event, interaction=interaction)
+    # F-L7-3/F-L7-4 guard: only stamp metadata + build projection when the
+    # event actually made it into ``domain_events``. ``emit_domain_event``
+    # may return a transient stub when dual-write is disabled or when a
+    # non-strict emit failure happens; writing ``event.id`` into the
+    # interaction metadata in those cases produces a fake
+    # ``domain_event_id`` that parity counters then undercount as drift.
+    if is_event_persisted(event):
+        interaction.metadata_ = {**meta, **interaction_metadata_patch(event)}
+        await record_projection(db, event=event, interaction=interaction)
     return interaction, event
 
 
@@ -498,6 +542,15 @@ async def log_training_real_case_summary(
         idempotency_key=f"training-real-case:{session.id}",
         correlation_id=str(session.id),
     )
+    # F-L7-4 guard: if the DomainEvent was not persisted (dual-write
+    # disabled OR non-strict emit error), skip the CRM interaction +
+    # projection bookkeeping entirely. Legacy producers still write to
+    # ``client_interactions`` via their own paths; we just don't manufacture
+    # a fake ``domain_event_id``. The caller receives ``(None, event)`` so
+    # it can log the dropped case without mistaking it for success.
+    if not is_event_persisted(event):
+        return None, event
+
     existing_interaction = await _projection_interaction_for_event(db, domain_event_id=event.id)
     if existing_interaction is not None:
         return existing_interaction, event
@@ -541,6 +594,7 @@ __all__ = [
     "emit_client_event",
     "emit_domain_event",
     "ensure_lead_client",
+    "is_event_persisted",
     "log_training_real_case_summary",
     "map_legacy_client_status",
 ]
