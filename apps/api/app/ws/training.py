@@ -5570,6 +5570,9 @@ async def _handle_story_next_call(
                 total_calls=total_calls,
                 archetype_code=archetype_code,
                 client_name=state.get("client_name", "Клиент"),
+                # H4 (Roadmap Phase 0 §5.1): pass client gender so the
+                # narrator picks grammatically agreed adjectives.
+                gender=(state.get("client_gender") or "unknown"),
                 last_outcome=state.get("last_call_outcome", "unknown"),
                 last_emotion=state.get("last_call_emotion", "cold"),
                 last_score=state.get("last_score_total", 0.0),

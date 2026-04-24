@@ -882,19 +882,14 @@ async def daily_drill_reply(
     if not user_message:
         raise HTTPException(400, "user_message is required")
 
-    # Build a compact system prompt tailored to drill context
-    archetype_traits = {
-        "skeptic": "скептик, недоверчив, всё ставит под сомнение",
-        "lawyer": "юрист-должник, ссылается на законы, проверяет некомпетентность",
-        "aggressor": "агрессивный, грубит, провоцирует",
-        "anxious": "тревожный, боится всего, просит гарантий",
-        "crying": "эмоциональный, на грани срыва, плачет",
-        "manipulator": "манипулятор, пытается играть на жалости",
-        "overwhelmed": "подавлен обстоятельствами, не может думать",
-        "desperate": "в отчаянии, готов на всё, ждёт спасения",
-        "grateful": "благодарный, но нерешительный",
-    }
-    trait = archetype_traits.get(archetype, "обычный клиент-должник")
+    # H4 (Roadmap Phase 0 §5.1): был inline-дубликат с 9 архетипами из
+    # 15, несовпадающими кодами ("lawyer"/"aggressor" vs "know_it_all"/
+    # "aggressive" в between_call_narrator) и без gender-variants.
+    # Переводим на общий каталог ``trait_for`` — один источник истины,
+    # согласованная грамматика по гендеру клиента.
+    from app.services.between_call_narrator import trait_for
+    gender = (body.get("client_gender") or "unknown").lower()
+    trait = trait_for(archetype, gender if gender in ("male", "female") else None)
 
     system_prompt = (
         f"Ты — КЛИЕНТ-ДОЛЖНИК в коротком тренировочном упражнении. Архетип: {archetype} ({trait}). "

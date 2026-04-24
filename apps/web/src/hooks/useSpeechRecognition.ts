@@ -204,18 +204,33 @@ export function useSpeechRecognition(
   }, [isSupported, lang, startAudioMonitor, stopAudioMonitor]);
 
   const stopListening = useCallback(() => {
+    // Pilot symptom #2 — микрофон оставался активным после конца сессии,
+    // браузер продолжал показывать индикатор в трее. Корни было два:
+    //   а) ``recognition.stop()`` — это "graceful" stop, он ждёт онэнд
+    //      и только потом отпускает внутренний mic-stream Web Speech API.
+    //      На практике в Chrome tray-icon висит 1-3 секунды. ``abort()``
+    //      освобождает немедленно.
+    //   б) если юзер стартовал recognition ДО getUserMedia (например,
+    //      разрешения ещё не выданы), то ``streamRef`` мог остаться в
+    //      null, но Web Speech API свой внутренний поток всё равно
+    //      открыл — его закрывает только abort/stop на recognition.
+    // Плюс явный порядок: сначала выключаем auto-restart флаг, потом
+    // abort, потом analyzer-stream tracks через stopAudioMonitor.
     isListeningRef.current = false;
     setInterimText("");
 
     if (recognitionRef.current) {
       try {
-        recognitionRef.current.stop();
+        recognitionRef.current.abort();
       } catch {
-        // Already stopped
+        // Already aborted / detached — nothing to clean on this side.
       }
       recognitionRef.current = null;
     }
 
+    // Belt-and-braces: even if stopAudioMonitor already runs on unmount,
+    // calling it here ensures the analyser stream/audio-context/anim
+    // loop are released synchronously before the caller navigates away.
     stopAudioMonitor();
     setStatus("idle");
   }, [stopAudioMonitor]);

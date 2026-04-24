@@ -37,6 +37,10 @@ class NarratorContext:
     # Character
     archetype_code: str = "skeptic"
     client_name: str = "Клиент"
+    # H4 (Roadmap Phase 0 §5.1): gender-aware persona label. "unknown"
+    # (a.k.a. data we haven't collected) falls back to a neutral noun
+    # phrase so the prompt doesn't mix masculine and feminine forms.
+    gender: str = "unknown"  # "male" | "female" | "unknown"
 
     # Previous call
     last_outcome: str = "unknown"
@@ -74,23 +78,105 @@ class NarratorResult:
 # Archetype personality hints for LLM prompt
 # ---------------------------------------------------------------------------
 
-_ARCHETYPE_TRAITS: dict[str, str] = {
-    "skeptic": "скептичный, требует доказательств, не верит на слово",
-    "anxious": "тревожный, боится последствий, нервничает при упоминании суда",
-    "aggressive": "агрессивный, давит, перебивает, повышает голос",
-    "passive": "пассивный, молчит, отвечает односложно, не инициирует",
-    "pragmatic": "прагматичный, считает деньги, сравнивает варианты",
-    "manipulator": "манипулятивный, давит на жалость, перекручивает слова",
-    "paranoid": "параноидальный, подозревает мошенничество, не доверяет",
-    "ashamed": "стыдится ситуации, избегает темы долгов",
-    "desperate": "отчаянный, готов на всё, торопит процесс",
-    "sarcastic": "саркастичный, язвит, провоцирует, подшучивает",
-    "know_it_all": "всезнайка, читал в интернете, спорит с юристом",
-    "negotiator": "переговорщик, торгуется по каждому пункту",
-    "overwhelmed": "подавленный, растерянный, не может сосредоточиться",
-    "hostile": "враждебный, озлоблен, обвиняет менеджера",
-    "grateful": "благодарный, вежливый, ценит помощь",
+# H4 (Roadmap Phase 0 §5.1): grammatical gender matters in Russian —
+# ``agrsеsивн[ый/ая]`` differs by ending, and an AI client labelled with
+# the wrong one breaks immersion immediately. Store the root adjective
+# per archetype plus the gendered agreement; ``trait_for`` stitches them
+# at render time. ``unknown`` gender uses a noun-phrase fallback
+# ("клиент с <свойство>") that works regardless of grammatical gender.
+_ARCHETYPE_TRAITS: dict[str, dict[str, str]] = {
+    "skeptic": {
+        "male": "скептичный, требует доказательств, не верит на слово",
+        "female": "скептичная, требует доказательств, не верит на слово",
+        "neutral": "клиент со скептическим настроем, требует доказательств, не верит на слово",
+    },
+    "anxious": {
+        "male": "тревожный, боится последствий, нервничает при упоминании суда",
+        "female": "тревожная, боится последствий, нервничает при упоминании суда",
+        "neutral": "клиент с тревожностью, боится последствий, нервничает при упоминании суда",
+    },
+    "aggressive": {
+        "male": "агрессивный, давит, перебивает, повышает голос",
+        "female": "агрессивная, давит, перебивает, повышает голос",
+        "neutral": "клиент с агрессивным настроем, давит, перебивает, повышает голос",
+    },
+    "passive": {
+        "male": "пассивный, молчит, отвечает односложно, не инициирует",
+        "female": "пассивная, молчит, отвечает односложно, не инициирует",
+        "neutral": "клиент пассивного склада, молчит, отвечает односложно, не инициирует",
+    },
+    "pragmatic": {
+        "male": "прагматичный, считает деньги, сравнивает варианты",
+        "female": "прагматичная, считает деньги, сравнивает варианты",
+        "neutral": "клиент с прагматичным подходом, считает деньги, сравнивает варианты",
+    },
+    "manipulator": {
+        "male": "манипулятивный, давит на жалость, перекручивает слова",
+        "female": "манипулятивная, давит на жалость, перекручивает слова",
+        "neutral": "клиент со склонностью к манипуляции, давит на жалость, перекручивает слова",
+    },
+    "paranoid": {
+        "male": "параноидальный, подозревает мошенничество, не доверяет",
+        "female": "параноидальная, подозревает мошенничество, не доверяет",
+        "neutral": "клиент с параноидальным настроем, подозревает мошенничество, не доверяет",
+    },
+    "ashamed": {
+        "male": "стыдится ситуации, избегает темы долгов",
+        "female": "стыдится ситуации, избегает темы долгов",
+        "neutral": "клиент стыдится ситуации, избегает темы долгов",
+    },
+    "desperate": {
+        "male": "отчаянный, готов на всё, торопит процесс",
+        "female": "отчаянная, готова на всё, торопит процесс",
+        "neutral": "клиент в отчаянии, готов на всё, торопит процесс",
+    },
+    "sarcastic": {
+        "male": "саркастичный, язвит, провоцирует, подшучивает",
+        "female": "саркастичная, язвит, провоцирует, подшучивает",
+        "neutral": "клиент с саркастичной подачей, язвит, провоцирует, подшучивает",
+    },
+    "know_it_all": {
+        "male": "всезнайка, читал в интернете, спорит с юристом",
+        "female": "всезнайка, читала в интернете, спорит с юристом",
+        "neutral": "клиент-всезнайка, читал в интернете, спорит с юристом",
+    },
+    "negotiator": {
+        "male": "переговорщик, торгуется по каждому пункту",
+        "female": "переговорщица, торгуется по каждому пункту",
+        "neutral": "клиент-переговорщик, торгуется по каждому пункту",
+    },
+    "overwhelmed": {
+        "male": "подавленный, растерянный, не может сосредоточиться",
+        "female": "подавленная, растерянная, не может сосредоточиться",
+        "neutral": "клиент в подавленном состоянии, растерян, не может сосредоточиться",
+    },
+    "hostile": {
+        "male": "враждебный, озлоблен, обвиняет менеджера",
+        "female": "враждебная, озлоблена, обвиняет менеджера",
+        "neutral": "клиент с враждебным настроем, озлоблен, обвиняет менеджера",
+    },
+    "grateful": {
+        "male": "благодарный, вежливый, ценит помощь",
+        "female": "благодарная, вежливая, ценит помощь",
+        "neutral": "клиент благодарного склада, вежливый, ценит помощь",
+    },
 }
+
+_NEUTRAL_FALLBACK = "клиент с нейтральной подачей"
+
+
+def trait_for(archetype_code: str, gender: str | None = None) -> str:
+    """Return the gender-agreed trait string for ``archetype_code``.
+
+    ``gender`` accepts ``"male"``/``"female"``; any other value (including
+    ``None``, ``"unknown"``) maps to the gender-neutral noun-phrase
+    variant so the output never mixes forms.
+    """
+    variants = _ARCHETYPE_TRAITS.get(archetype_code)
+    if not variants:
+        return _NEUTRAL_FALLBACK
+    key = gender if gender in ("male", "female") else "neutral"
+    return variants.get(key) or variants.get("neutral") or _NEUTRAL_FALLBACK
 
 # Storylet narrative hints for context enrichment
 _STORYLET_CONTEXT: dict[str, str] = {
@@ -122,7 +208,7 @@ async def generate_client_message_llm(ctx: NarratorContext) -> str | None:
         return None
 
     # Build compact system prompt
-    trait = _ARCHETYPE_TRAITS.get(ctx.archetype_code, "нейтральный")
+    trait = trait_for(ctx.archetype_code, ctx.gender)
     storylet_hints = " ".join(
         _STORYLET_CONTEXT.get(s, "") for s in ctx.active_storylets[:3]
     ).strip()
@@ -189,7 +275,7 @@ async def generate_coaching_tips_llm(ctx: NarratorContext) -> list[str] | None:
         return None
 
     weak_str = ", ".join(ctx.manager_weak_points[:3]) if ctx.manager_weak_points else "не определены"
-    trait = _ARCHETYPE_TRAITS.get(ctx.archetype_code, "нейтральный")
+    trait = trait_for(ctx.archetype_code, ctx.gender)
 
     system_prompt = f"""Ты — AI-коуч для менеджеров по банкротству.
 Менеджер готовится к звонку #{ctx.call_number + 1} с клиентом ({trait}).
@@ -255,7 +341,7 @@ async def generate_narrative_summary_llm(ctx: NarratorContext) -> str | None:
 Между звонками с клиентом прошло время. Произошли события:
 {chr(10).join(f'- {e}' for e in all_events)}
 
-Клиент: {ctx.client_name}, {_ARCHETYPE_TRAITS.get(ctx.archetype_code, 'нейтральный')}.
+Клиент: {ctx.client_name}, {trait_for(ctx.archetype_code, ctx.gender)}.
 Доверие: {ctx.relationship_score:.0f}/100.
 {chapter_line}
 Напиши КРАТКОЕ (2-3 предложения) повествование от третьего лица о том,
@@ -288,7 +374,7 @@ async def generate_suggested_opener_llm(ctx: NarratorContext) -> str | None:
     except ImportError:
         return None
 
-    trait = _ARCHETYPE_TRAITS.get(ctx.archetype_code, "нейтральный")
+    trait = trait_for(ctx.archetype_code, ctx.gender)
 
     system_prompt = f"""Ты — AI-коуч. Менеджер начинает звонок #{ctx.call_number + 1} с клиентом.
 Клиент: {trait}. Доверие: {ctx.relationship_score:.0f}/100.
