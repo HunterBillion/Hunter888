@@ -252,6 +252,149 @@ async def test_emit_domain_event_returns_existing_on_duplicate_key(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_emit_client_event_fills_correlation_from_client_id(monkeypatch):
+    """A3: lifecycle events (lead_client.created/archived/profile_updated) never
+    carry a session_id. emit_client_event must still produce a non-NULL
+    correlation_id so §15.1 timeline-join invariants hold.
+    """
+    from app.services import client_domain
+
+    monkeypatch.setattr(
+        client_domain.settings, "client_domain_dual_write_enabled", False, raising=False
+    )
+
+    client_id = uuid.uuid4()
+    client_row = SimpleNamespace(
+        id=client_id,
+        lead_client_id=client_id,
+        manager_id=uuid.uuid4(),
+        status=None,
+    )
+    lead = SimpleNamespace(
+        id=client_id,
+        lifecycle_stage="new",
+        work_state="active",
+        source_system="real_clients",
+        source_ref=str(client_id),
+    )
+    db = SimpleNamespace(
+        get=AsyncMock(return_value=lead),
+        execute=AsyncMock(),
+        add=MagicMock(),
+        flush=AsyncMock(),
+    )
+
+    ev = await client_domain.emit_client_event(
+        db,
+        client=client_row,
+        event_type="lead_client.created",
+        actor_type="user",
+        actor_id=uuid.uuid4(),
+        source="client_service",
+        aggregate_type="real_client",
+        aggregate_id=client_id,
+    )
+    # Fallback chain: no session_id → aggregate_id; no aggregate → client.id.
+    # Must never be None (the whole point of A3).
+    assert ev.correlation_id is not None
+    assert ev.correlation_id == str(client_id)
+
+
+@pytest.mark.asyncio
+async def test_emit_client_event_prefers_session_id_over_aggregate(monkeypatch):
+    from app.services import client_domain
+
+    monkeypatch.setattr(
+        client_domain.settings, "client_domain_dual_write_enabled", False, raising=False
+    )
+    client_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+    agg_id = uuid.uuid4()
+    client_row = SimpleNamespace(
+        id=client_id, lead_client_id=client_id, manager_id=uuid.uuid4(), status=None,
+    )
+    lead = SimpleNamespace(
+        id=client_id,
+        lifecycle_stage="new",
+        work_state="active",
+        source_system="real_clients",
+        source_ref=str(client_id),
+    )
+    db = SimpleNamespace(
+        get=AsyncMock(return_value=lead),
+        execute=AsyncMock(),
+        add=MagicMock(),
+        flush=AsyncMock(),
+    )
+
+    ev = await client_domain.emit_client_event(
+        db,
+        client=client_row,
+        event_type="crm.interaction_logged",
+        actor_type="user",
+        actor_id=None,
+        source="test",
+        session_id=session_id,
+        aggregate_id=agg_id,
+    )
+    assert ev.correlation_id == str(session_id)
+
+
+@pytest.mark.asyncio
+async def test_ensure_lead_client_recovers_from_concurrent_insert(monkeypatch):
+    """A9: two workers that both see `lead is None` must not both crash —
+    the loser of the INSERT race catches IntegrityError on the SAVEPOINT,
+    re-SELECTs, and returns the winner's row instead of poisoning the outer txn.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models.client import RealClient
+    from app.models.lead_client import LeadClient
+    from app.services import client_domain
+
+    client_id = uuid.uuid4()
+    client_row = SimpleNamespace(
+        id=client_id,
+        lead_client_id=None,
+        manager_id=uuid.uuid4(),
+        status=None,
+    )
+    winner_row = LeadClient(
+        id=client_id,
+        owner_user_id=client_row.manager_id,
+        lifecycle_stage="new",
+        work_state="active",
+        status_tags=[],
+        source_system="real_clients",
+        source_ref=str(client_id),
+    )
+
+    # First db.get: nothing there yet. Second (after rollback): winner's row.
+    gets = iter([None, winner_row])
+    exec_result = SimpleNamespace(scalar_one_or_none=lambda: None)
+
+    # begin_nested() returns an async context manager whose __aexit__ raises
+    # IntegrityError — the savepoint rolls back and the caller re-SELECTs.
+    class _Savepoint:
+        async def __aenter__(self): return self
+        async def __aexit__(self, et, ev, tb):
+            raise IntegrityError("insert", {}, Exception("duplicate"))
+
+    db = SimpleNamespace()
+    db.get = AsyncMock(side_effect=lambda *_a, **_kw: next(gets))
+    db.execute = AsyncMock(return_value=exec_result)
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.begin_nested = MagicMock(return_value=_Savepoint())
+
+    result = await client_domain.ensure_lead_client(db, client=client_row)
+
+    assert result is winner_row
+    # client.lead_client_id must still be wired to the (now-resolved) lead id.
+    assert client_row.lead_client_id == winner_row.id
+
+
+@pytest.mark.asyncio
 async def test_emit_domain_event_noop_when_flag_disabled(monkeypatch):
     from app.services import client_domain
 
