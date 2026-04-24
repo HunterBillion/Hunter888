@@ -249,7 +249,9 @@ export default function DashboardPage() {
               />
             </div>
             <p className="mt-2 font-medium text-sm tracking-wide" style={{ color: "var(--text-muted)" }}>
-              {data?.team.name ? `КОМАНДА: ${data.team.name.toUpperCase()}` : "АНАЛИТИКА КОМАНДЫ"}
+              {data?.team.is_admin_view 
+                ? "ВСЕ ПОЛЬЗОВАТЕЛИ СИСТЕМЫ" 
+                : (data?.team.name ? `КОМАНДА: ${data.team.name.toUpperCase()}` : "АНАЛИТИКА КОМАНДЫ")}
             </p>
           </motion.div>
 

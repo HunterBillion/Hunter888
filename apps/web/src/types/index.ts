@@ -866,6 +866,7 @@ export interface DashboardROP {
     name: string;
     total_members: number;
     active_members: number;
+    is_admin_view?: boolean;
   };
   stats: {
     total_sessions: number;

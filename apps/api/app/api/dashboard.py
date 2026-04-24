@@ -269,13 +269,28 @@ async def rop_dashboard(
 ):
     """Complete ROP dashboard in one request.
 
+    - admin: sees ALL users from ALL teams
+    - rop: sees only their own team
+    
     Returns: team stats, all members with scores, leaderboard, tournament.
-    Cached for 30 seconds per team.
+    Cached for 30 seconds per team (or 60s for admin who sees all).
     """
-    if not user.team_id:
+    # admin sees ALL users, rop sees only their team
+    is_admin = user.role.value == "admin"
+    
+    if is_admin:
+        # admin: show all users from all teams
+        cache_key = "dashboard:rop:admin:all"
+        filter_team_id = None
+    elif not user.team_id:
         return {"error": err.NO_TEAM_ASSIGNED}
-
-    cache_key = f"dashboard:rop:{user.team_id}"
+    else:
+        # rop: show only their team
+        cache_key = f"dashboard:rop:{user.team_id}"
+        filter_team_id = user.team_id
+    
+    # Use cached if not admin (admin cache is longer to reduce DB load)
+    cache_ttl = 60 if is_admin else 30
     cached = await _cache_get(cache_key)
     if cached:
         return cached
@@ -284,15 +299,29 @@ async def rop_dashboard(
     week_ago = now - timedelta(days=7)
 
     # ── Team + Members in ONE query (join avoids N+1) ──
-    members_result = await db.execute(
-        select(User, Team.name)
-        .outerjoin(Team, User.team_id == Team.id)
-        .where(User.team_id == user.team_id)
-        .order_by(User.full_name)
-    )
+    if is_admin:
+        # Admin: get ALL users from ALL teams
+        members_result = await db.execute(
+            select(User, Team.name)
+            .outerjoin(Team, User.team_id == Team.id)
+            .order_by(Team.name, User.full_name)
+        )
+    else:
+        # ROP: get only their team
+        members_result = await db.execute(
+            select(User, Team.name)
+            .outerjoin(Team, User.team_id == Team.id)
+            .where(User.team_id == user.team_id)
+            .order_by(User.full_name)
+        )
     rows = members_result.all()
     members = [row[0] for row in rows]
-    team_name = rows[0][1] if rows else "Команда"
+    
+    # Get team name(s) for display
+    if is_admin:
+        team_name = "Все команды" if not user.team_id else (rows[0][1] if rows else "Команда")
+    else:
+        team_name = rows[0][1] if rows else "Команда"
 
     team_user_ids = [m.id for m in members]
 
@@ -374,6 +403,7 @@ async def rop_dashboard(
             "name": team_name,
             "total_members": len(members),
             "active_members": sum(1 for m in members if m.is_active),
+            "is_admin_view": is_admin,  # Frontend uses this to show "Все команды"
         },
         "stats": {
             "total_sessions": total_sessions,
