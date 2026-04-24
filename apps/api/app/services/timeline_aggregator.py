@@ -304,7 +304,13 @@ async def create_game_event(
     payload: dict | None = None,
     severity: float | None = None,
 ) -> GameClientEvent:
-    """Создать новое событие таймлайна и вернуть его."""
+    """Создать новое событие таймлайна и вернуть его.
+
+    Side effect (TZ-1 §11.3): если ``story`` связана с реальным CRM-клиентом
+    через хотя бы одну ``TrainingSession`` с ``real_client_id``, параллельно
+    появится ``DomainEvent`` ``game.<event_type>``. Для чисто синтетических
+    историй (нет real_client) продолжает работать только старый путь.
+    """
     event = GameClientEvent(
         id=uuid.uuid4(),
         story_id=story_id,
@@ -320,4 +326,32 @@ async def create_game_event(
     )
     db.add(event)
     await db.flush()
+
+    try:
+        story = await db.get(ClientStory, story_id)
+        if story is not None:
+            # Import inside function to avoid circular import at module load.
+            from app.services.client_story_projector import record_story_game_event
+
+            await record_story_game_event(
+                db,
+                story=story,
+                game_event_type=event_type.value if hasattr(event_type, "value") else str(event_type),
+                game_event_id=event.id,
+                payload={
+                    "title": title,
+                    "content": content,
+                    "narrative_date": narrative_date,
+                    "session_id": str(session_id) if session_id else None,
+                    "severity": severity,
+                    "raw_payload": payload,
+                },
+                actor_id=user_id,
+                source="timeline_aggregator",
+            )
+    except Exception:
+        # Dual-write best-effort: never break game-event creation because
+        # CRM mirror failed. Strict mode is available via config.
+        logger.warning("create_game_event: domain mirror failed", exc_info=True)
+
     return event

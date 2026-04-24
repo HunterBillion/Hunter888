@@ -386,6 +386,9 @@ export interface TrainingSession {
   real_client_id?: string | null;
   custom_character_id?: string | null;
   source_session_id?: string | null;
+  // TZ-1: canonical client domain link. Null while legacy-only sessions
+  // have not yet been backfilled by the foundation migration.
+  lead_client_id?: string | null;
 }
 
 export interface StoryCallSummary {
@@ -1056,6 +1059,10 @@ export const CONSENT_CHANNEL_LABELS: Record<ConsentChannel, string> = {
 
 export interface CRMClient {
   id: string;
+  // TZ-1: canonical client domain id. Equals `id` during Phase 1 physical
+  // anchor; once the cutover flag flips, the canonical entity is tracked
+  // via this field and `id` becomes a legacy alias for compatibility.
+  lead_client_id?: string | null;
   manager_id: string | null;
   manager_name: string | null;
   full_name: string;
@@ -1098,12 +1105,21 @@ export interface ClientInteractionMetadata {
   session_mode?: "call" | "chat" | null;
   scores?: Record<string, number>;
   declined?: boolean;
+  // TZ-1 projection metadata — every timeline row is built from a
+  // DomainEvent once dual-write runs end-to-end.
+  domain_event_id?: string;
+  schema_version?: number;
+  projection_name?: string;
+  projection_version?: number;
+  correlation_id?: string;
   [k: string]: unknown;
 }
 
 export interface ClientInteraction {
   id: string;
   client_id: string;
+  // TZ-1: canonical client domain link. Nullable during expand phase.
+  lead_client_id?: string | null;
   manager_id: string | null;
   manager_name: string | null;
   interaction_type: InteractionType;
@@ -1120,6 +1136,8 @@ export interface ClientAttachment {
   id: string;
   uploaded_by: string | null;
   client_id: string;
+  // TZ-1: canonical client domain link. Nullable during expand phase.
+  lead_client_id?: string | null;
   session_id: string | null;
   message_id: string | null;
   interaction_id: string | null;

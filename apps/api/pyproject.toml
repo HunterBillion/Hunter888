@@ -31,7 +31,8 @@ dependencies = [
     "slowapi>=0.1.9,<1.0.0",
     "aiosmtplib>=3.0.0,<4.0.0",
     "socksio>=1.0.0,<2.0.0",
-    "Pillow>=10.0.0,<12.0.0",
+    # CVE-2026-25990 (OOB write) + CVE-2026-40192 (decompression DoS) fixed in 12.1.1/12.2.0.
+    "Pillow>=12.2.0,<13.0.0",
     "gunicorn>=22.0.0,<24.0.0",
     # PDF generation (lightweight, pure Python)
     "fpdf2>=2.8.0,<3.0.0",
@@ -51,6 +52,18 @@ dev = [
     "ruff>=0.8.0",
     "aiosqlite>=0.20.0",
 ]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+# Explicit package list so setuptools stops trying to auto-discover
+# top-level dirs like ``data``, ``uploads``, ``alembic``, ``prompts``
+# (they are runtime/asset folders, not Python packages).
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app", "app.*"]
+exclude = ["tests", "tests.*", "scripts", "scripts.*", "alembic", "alembic.*", "prompts*", "data*", "uploads*"]
 
 [tool.ruff]
 target-version = "py311"

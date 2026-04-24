@@ -111,3 +111,8 @@ api_router.include_router(subscription_router, prefix="/subscription", tags=["su
 from app.api.story import router as story_router
 
 api_router.include_router(story_router, prefix="/story", tags=["story"])
+
+# TZ-1 — Unified Client Domain ops (parity + repair; admin-only)
+from app.api.client_domain_ops import router as client_domain_ops_router
+
+api_router.include_router(client_domain_ops_router, tags=["client-domain-ops"])

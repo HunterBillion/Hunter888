@@ -643,6 +643,45 @@ async def _handle_home_session_to_crm(event: GameEvent) -> None:
         session.call_number_in_story = 1
         await db.flush()
 
+        # TZ-1 §11.2: if the session is linked to a real CRM client, mirror
+        # the story-creation as a canonical ``story.lifecycle_changed``
+        # event. Synthetic home sessions without a real client stay out of
+        # the canonical stream.
+        if session.real_client_id is not None:
+            try:
+                from app.models.client import RealClient
+                from app.services.client_domain import emit_client_event, ensure_lead_client
+
+                client = await db.get(RealClient, session.real_client_id)
+                if client is not None:
+                    await ensure_lead_client(db, client=client)
+                    await emit_client_event(
+                        db,
+                        client=client,
+                        event_type="story.lifecycle_changed",
+                        actor_type="system",
+                        actor_id=session.user_id,
+                        source="event_bus.home_to_crm",
+                        payload={
+                            "story_id": str(story.id),
+                            "session_id": str(session.id),
+                            "old_state": None,
+                            "new_state": lifecycle_state,
+                            "relationship_score": story.relationship_score,
+                            "total_calls": 1,
+                        },
+                        aggregate_type="client_story",
+                        aggregate_id=story.id,
+                        session_id=session.id,
+                        idempotency_key=f"story-bootstrap:{story.id}",
+                        correlation_id=str(story.id),
+                    )
+            except Exception:
+                logger.warning(
+                    "home_to_crm domain mirror failed for session %s",
+                    session.id, exc_info=True,
+                )
+
         logger.info(
             "Home session %s → CRM story %s (lifecycle=%s)",
             session_id, story.id, lifecycle_state,
