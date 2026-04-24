@@ -119,8 +119,15 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
       {/* Score Layers */}
       <div className="space-y-2">
         {LAYER_DEFS.map((layer, i) => {
-          const raw = scoreBreakdown[layer.key] ?? 0;
-          const value = layer.isModifier ? raw : Math.round(raw);
+          // H5 (Roadmap Phase 0 §5.1): raw score can be null when the
+          // backend has not scored a layer yet (e.g. session aborted
+          // before judge ran). Pass through null so the bar renders as
+          // a skeleton instead of "0" — otherwise the user sees a
+          // confidently wrong "0/100" that looks like a failure.
+          const rawValue = scoreBreakdown[layer.key];
+          const isMissing = rawValue === null || rawValue === undefined;
+          const raw = rawValue ?? 0;
+          const value = isMissing ? null : layer.isModifier ? raw : Math.round(raw);
           const pct = layer.isModifier
             ? Math.max(0, Math.min(100, (Math.abs(raw) / layer.maxValue) * 100))
             : Math.max(0, Math.min(100, (raw / layer.maxValue) * 100));
@@ -167,13 +174,21 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
                         )}
                       </span>
                       <span className="text-sm font-mono font-semibold shrink-0" style={{ color: barColor }}>
-                        {layer.isModifier ? (
+                        {isMissing ? (
+                          <span
+                            className="inline-block h-3 w-8 rounded animate-pulse"
+                            style={{ background: "rgba(255,255,255,0.08)" }}
+                            aria-label="Баллы ещё считаются"
+                          />
+                        ) : layer.isModifier ? (
                           <span>
-                            {value >= 0 ? "+" : ""}{typeof value === "number" ? value.toFixed(1) : value}
+                            {(value as number) >= 0 ? "+" : ""}
+                            {typeof value === "number" ? value.toFixed(1) : value}
                           </span>
                         ) : (
                           <span>
-                            {value}<span className="text-xs font-normal" style={{ color: "var(--text-muted)" }}>/{layer.maxValue}</span>
+                            {value}
+                            <span className="text-xs font-normal" style={{ color: "var(--text-muted)" }}>/{layer.maxValue}</span>
                           </span>
                         )}
                       </span>
@@ -181,17 +196,34 @@ export default function ScoreLayersBreakdown({ scoreBreakdown, totalScore, layer
                     <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{layer.description}</p>
                   </div>
                 </div>
-                <div className="ml-10 h-2.5 rounded-full" style={{ background: "rgba(255,255,255,0.12)" }}>
-                  <motion.div
-                    className="h-full rounded-full"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${pct}%` }}
-                    transition={{ duration: 0.6, delay: i * 0.05 }}
-                    style={{
-                      background: barColor,
-                      boxShadow: `0 0 6px ${colorAlpha(barColor, 25)}`,
-                    }}
-                  />
+                {/* H5 (Roadmap Phase 0 §5.1):
+                    - ml-4 на мобилке / ml-10 на десктопе — иконка + индент
+                      не должны слипаться на 320px-экране.
+                    - overflow:hidden + min-width:2px на inner bar — чтобы
+                      нули/низкие значения всё равно отрисовались пикселем
+                      и не было пустого контейнера (выглядело как баг).
+                    - Пропускаем анимацию если score отсутствует — просто
+                      dashed skeleton без движения. */}
+                <div
+                  className="ml-4 md:ml-10 h-2.5 rounded-full overflow-hidden"
+                  style={{
+                    background: "rgba(255,255,255,0.12)",
+                    border: isMissing ? "1px dashed rgba(255,255,255,0.2)" : undefined,
+                  }}
+                >
+                  {!isMissing && (
+                    <motion.div
+                      className="h-full rounded-full"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      transition={{ duration: 0.6, delay: i * 0.05 }}
+                      style={{
+                        background: barColor,
+                        boxShadow: `0 0 6px ${colorAlpha(barColor, 25)}`,
+                        minWidth: pct > 0 ? "2px" : "0",
+                      }}
+                    />
+                  )}
                 </div>
               </button>
 

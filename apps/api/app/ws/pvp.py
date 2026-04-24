@@ -1108,6 +1108,39 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
             logger.warning("Duel %s already finalized (status=%s), skipping", duel_id, duel.status.value)
             return
 
+        # H2 (Roadmap Phase 0 §5.1): if both rounds carry no messages we
+        # cannot score the duel — judge_full_duel would still return a
+        # verdict based on empty transcripts, falsely assigning a winner.
+        # Cancel the duel instead, leave stats untouched, and notify
+        # both players with a specific reason so the UI doesn't animate
+        # a "победа" badge on an empty match.
+        if not round1_messages and not round2_messages:
+            duel.status = DuelStatus.cancelled
+            duel.winner_id = None
+            duel.completed_at = datetime.now(timezone.utc)
+            duel.round_1_data = {"messages": [], "cancelled_reason": "no_round_data"}
+            duel.round_2_data = {"messages": [], "cancelled_reason": "no_round_data"}
+            db.add(duel)
+            await db.commit()
+            for uid in [session["player1_id"], session["player2_id"]]:
+                if uid != BOT_ID:
+                    await _send_to_user(
+                        uid,
+                        "pvp.duel_cancelled",
+                        {
+                            "duel_id": str(duel_id),
+                            "reason": "no_round_data",
+                            "detail": "Дуэль отменена: ни один раунд не получил сообщений",
+                        },
+                    )
+            await matchmaker.cleanup_duel_state(duel_id)
+            await _cleanup_duel_runtime(duel_id)
+            logger.warning(
+                "Duel %s cancelled — both rounds empty, no scoring performed",
+                duel_id,
+            )
+            return
+
         duel.status = DuelStatus.judging
         db.add(duel)
         await db.flush()

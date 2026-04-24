@@ -59,7 +59,11 @@ export default function RegisterPage() {
       });
       setTokens(data.access_token, data.refresh_token, data.csrf_token);
       resetAuthCircuitBreaker();
-      router.push("/onboarding");
+      // H6 (Roadmap Phase 0 §5.1): раньше после register юзер сразу
+      // получал ``/onboarding``, а оттуда сервер возвращал 403 потому
+      // что consent ещё не принят. Получался чёрный экран. Правильный
+      // порядок — register → consent (с next=/onboarding) → onboarding.
+      router.push("/consent?next=/onboarding");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Ошибка регистрации";
       if (msg.includes("недоступен") || msg.includes("fetch")) {

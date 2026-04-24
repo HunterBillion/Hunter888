@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Shield, AlertTriangle, Check, X, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -12,6 +12,11 @@ import { toast } from "sonner";
 
 export default function ConsentPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // H6 (Roadmap Phase 0 §5.1): респектим ``?next=`` от register-флоу.
+  // Safelist локальных путей — никаких внешних редиректов.
+  const rawNext = searchParams?.get("next") ?? null;
+  const nextPath = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/home";
   const [accepted, setAccepted] = useState(false);
   const [declined, setDeclined] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -57,7 +62,7 @@ export default function ConsentPage() {
         consent_type: "personal_data_processing",
         version: "1.0",
       });
-      router.replace("/home");
+      router.replace(nextPath);
       toast.success("Согласие принято");
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : "";
@@ -65,7 +70,7 @@ export default function ConsentPage() {
       // 409 = consent already accepted — treat as success
       if (status === 409 || raw.toLowerCase().includes("already")) {
         toast.info("Согласие уже было принято");
-        router.replace("/home");
+        router.replace(nextPath);
         return;
       }
       // CSRF 403 — session expired, re-login needed

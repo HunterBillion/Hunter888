@@ -11,6 +11,7 @@ from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Query, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -788,15 +789,30 @@ async def update_preferences(
             from app.core.security import bump_role_version
             await bump_role_version(str(user.id))
 
-    # Handle team assignment
+    # Handle team assignment. Two writers racing on the same team name
+    # would otherwise both INSERT (select-then-insert is not atomic under
+    # asyncpg with REPEATABLE READ isolation), tripping the unique
+    # constraint. Catch the collision, rollback the nested scope, then
+    # re-read the now-existing team.
     if body.team:
         team_result = await db.execute(select(Team).where(Team.name == body.team))
         team = team_result.scalar_one_or_none()
         if not team:
             team = Team(name=body.team)
             db.add(team)
-            await db.flush()
-        user.team_id = team.id
+            try:
+                await db.flush()
+            except IntegrityError:
+                await db.rollback()
+                team_result = await db.execute(
+                    select(Team).where(Team.name == body.team)
+                )
+                team = team_result.scalar_one_or_none()
+                # User is expired after rollback — reattach by id so
+                # subsequent mutations hit the live session.
+                user = await db.get(User, user.id)
+        if team is not None:
+            user.team_id = team.id
 
     current_prefs = dict(user.preferences or {})
     update_data = body.model_dump(exclude_none=True, exclude={"team", "role"})
@@ -804,6 +820,10 @@ async def update_preferences(
     user.preferences = current_prefs
     user.onboarding_completed = is_profile_complete(user, preferences=current_prefs)
     db.add(user)
+    # RC-6: previously this handler returned without commit, so a parallel
+    # GET /me from another connection still saw the old preferences and
+    # the onboarding gate re-fired. Commit before we answer the client.
+    await db.commit()
     return {
         "preferences": current_prefs,
         "onboarding_completed": user.onboarding_completed,

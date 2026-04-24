@@ -713,12 +713,19 @@ export default function OnboardingPage() {
                       />
                     </div>
                     <div>
-                      <label className="vh-label">Контакт <span className="text-xs opacity-60">(необязательно)</span></label>
+                      {/* H7 (Roadmap Phase 0 §5.1): backend profile_gate
+                          требует primary_contact в ``REQUIRED_ONBOARDING_PREFS``,
+                          а UI указывал "необязательно" — рассинхрон, из-за
+                          которого юзер мог нажать "Сохранить" и получить
+                          403 без подсказки какое поле. Решение — согласовать
+                          оба источника на "required". */}
+                      <label className="vh-label">Контакт <span style={{ color: "var(--danger)" }}>*</span></label>
                       <input
                         type="text"
                         value={primaryContact}
                         onChange={(e) => setPrimaryContact(e.target.value)}
                         maxLength={120}
+                        required
                         placeholder="Телефон или Telegram"
                         className="vh-input w-full"
                       />
