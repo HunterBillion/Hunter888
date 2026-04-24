@@ -115,6 +115,8 @@ jobs:
             tests/test_client_domain_repair.py \
             tests/test_client_domain_invariants.py \
             tests/test_client_domain_parity.py \
+            tests/test_client_domain_replay.py \
+            tests/test_auth_refresh_concurrency.py \
             tests/test_training_session_attachments.py \
             tests/test_event_bus_outbox.py \
             tests/test_crm_followup.py \

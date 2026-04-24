@@ -161,7 +161,11 @@ async def ensure_lead_client(
                 await db.execute(select(User.team_id).where(User.id == owner_id))
             ).scalar_one_or_none()
         lifecycle_stage, work_state = map_legacy_client_status(client.status)
-        lead = LeadClient(
+        # SAVEPOINT-wrapped INSERT so two concurrent workers creating the
+        # same LeadClient collapse to one row: the loser catches
+        # IntegrityError, rolls back just the savepoint (outer txn intact),
+        # and re-reads the winner's row.
+        candidate = LeadClient(
             id=target_id,
             owner_user_id=owner_id,
             team_id=team_id,
@@ -171,8 +175,15 @@ async def ensure_lead_client(
             source_system="real_clients",
             source_ref=str(client.id),
         )
-        db.add(lead)
-        await db.flush()
+        try:
+            async with db.begin_nested():
+                db.add(candidate)
+                await db.flush()
+            lead = candidate
+        except IntegrityError:
+            lead = await db.get(LeadClient, target_id)
+            if lead is None:
+                raise
     else:
         if lead.source_system is None:
             lead.source_system = "real_clients"
@@ -431,6 +442,7 @@ async def create_crm_interaction_with_event(
         aggregate_id=interaction.id,
         session_id=session_id,
         idempotency_key=idempotency_key,
+        causation_id=str(interaction.id),
         correlation_id=str(session_id) if session_id else str(interaction.id),
     )
 
@@ -459,9 +471,19 @@ async def emit_client_event(
     aggregate_id: uuid.UUID | None = None,
     session_id: uuid.UUID | None = None,
     idempotency_key: str | None = None,
+    causation_id: str | None = None,
     correlation_id: str | None = None,
 ) -> DomainEvent:
     lead = await ensure_lead_client(db, client=client)
+    # §15.1 correlation chain must be non-null. Prefer the most specific
+    # anchor available: session > aggregate > client. The client.id fallback
+    # ties orphan lifecycle events back to the canonical case so timeline
+    # joins still work for events with no inherent session/aggregate.
+    resolved_correlation_id = correlation_id or (
+        str(session_id)
+        if session_id
+        else (str(aggregate_id) if aggregate_id else str(client.id))
+    )
     return await emit_domain_event(
         db,
         lead_client_id=lead.id,
@@ -474,7 +496,8 @@ async def emit_client_event(
         aggregate_id=aggregate_id,
         session_id=session_id,
         idempotency_key=idempotency_key,
-        correlation_id=correlation_id or (str(session_id) if session_id else None),
+        causation_id=causation_id,
+        correlation_id=resolved_correlation_id,
     )
 
 

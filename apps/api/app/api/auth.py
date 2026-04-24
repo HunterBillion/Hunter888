@@ -305,15 +305,24 @@ async def refresh(request: Request, body: RefreshRequest | None = None, db: Asyn
     # refresh token in a single Redis call.  This eliminates the TOCTOU race
     # where two concurrent refresh requests could both pass a separate
     # _is_token_revoked() check before either writes the revocation key.
+    #
+    # Concurrent-refresh grace window: multi-tab browsers, mobile background
+    # fetches, and service-worker prefetch can legitimately race two refreshes
+    # with the same refresh_token within a few hundred ms. To avoid blacklisting
+    # a legitimate user in that case, the winner of SETNX caches its reissued
+    # pair for `refresh_concurrent_grace_seconds`; losers within the window
+    # read the cache and return the same pair. Outside the window, SETNX loss
+    # is a true replay and the user is blacklisted.
+    r = None
+    ttl = settings.jwt_refresh_token_expire_days * 86400
+    grace = settings.refresh_concurrent_grace_seconds
+    reissued_key = f"token:reissued:{old_jti}" if old_jti else None
+
     if old_jti:
         try:
             r = get_redis()
-            ttl = settings.jwt_refresh_token_expire_days * 86400
-            # SET NX returns True only if the key did NOT exist (first caller wins).
             was_set = await r.set(f"token:revoked:{old_jti}", "1", nx=True, ex=ttl)
         except aioredis.RedisError as exc:
-            # Fail closed: if Redis is unavailable we cannot guarantee
-            # single-use semantics, so reject the request.
             _logger.error(
                 "auth.refresh.redis_error jti=%s: %s — denying refresh (fail closed)",
                 old_jti, exc,
@@ -324,9 +333,32 @@ async def refresh(request: Request, body: RefreshRequest | None = None, db: Asyn
             )
 
         if not was_set:
-            # Key already existed → this refresh token was already consumed.
-            # A revoked token is being replayed → possible theft.
-            # Blacklist the user entirely to force re-login.
+            # SETNX lost: either a concurrent legitimate refresh inside the
+            # grace window, or a true replay after the window has closed.
+            cached = None
+            try:
+                cached = await r.get(reissued_key)
+            except aioredis.RedisError:
+                cached = None
+
+            if cached:
+                try:
+                    cached_str = cached.decode() if isinstance(cached, (bytes, bytearray)) else cached
+                    cached_tokens = TokenResponse.model_validate_json(cached_str)
+                except Exception as exc:
+                    _logger.warning(
+                        "auth.refresh.cache_decode_fail jti=%s: %s",
+                        old_jti, exc,
+                    )
+                    cached_tokens = None
+                if cached_tokens is not None:
+                    _logger.info(
+                        "auth.refresh.concurrent_grace_hit user_id=%s jti=%s",
+                        user_id, old_jti,
+                    )
+                    response = JSONResponse(content=cached_tokens.model_dump())
+                    return _set_auth_cookies(response, cached_tokens)
+
             _logger.warning(
                 "auth.refresh.replay_detected user_id=%s jti=%s — blacklisting user",
                 user_id, old_jti,
@@ -349,6 +381,13 @@ async def refresh(request: Request, body: RefreshRequest | None = None, db: Asyn
 
     tokens = await _create_tokens(user_id, user_role)
     tokens.must_change_password = must_change
+
+    if r is not None and reissued_key:
+        try:
+            await r.setex(reissued_key, grace, tokens.model_dump_json())
+        except aioredis.RedisError:
+            pass
+
     response = JSONResponse(content=tokens.model_dump())
     return _set_auth_cookies(response, tokens)
 

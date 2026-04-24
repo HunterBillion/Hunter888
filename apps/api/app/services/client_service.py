@@ -38,7 +38,12 @@ from app.services.audit import (
     model_to_audit_dict,
     write_audit_log,
 )
-from app.services.client_domain import create_crm_interaction_with_event, emit_client_event, ensure_lead_client
+from app.services.client_domain import (
+    create_crm_interaction_with_event,
+    emit_client_event,
+    ensure_lead_client,
+    map_legacy_client_status,
+)
 from app.ws.notifications import send_ws_notification, send_ws_to_rop_team
 
 logger = logging.getLogger(__name__)
@@ -418,6 +423,35 @@ async def change_client_status(
             "reason": reason,
         },
     )
+
+    # §9 catalog: lifecycle_stage and work_state are independent dimensions
+    # of the canonical lattice (§8). A status change can move only the
+    # work_state (e.g. paused/consent_revoked) without touching the lifecycle.
+    # Emit a separate `lead_client.work_state_changed` so analytics can tell
+    # "client paused" from "client moved through pipeline".
+    old_lifecycle, old_work_state = map_legacy_client_status(old_status)
+    new_lifecycle, new_work_state = map_legacy_client_status(target_status)
+    if new_work_state != old_work_state:
+        await emit_client_event(
+            db,
+            client=client,
+            event_type="lead_client.work_state_changed",
+            actor_type="user",
+            actor_id=user.id,
+            source="client_service",
+            payload={
+                "old_work_state": old_work_state,
+                "new_work_state": new_work_state,
+                "trigger_status": target_status.value,
+                "reason": reason,
+            },
+            aggregate_type="lead_client",
+            aggregate_id=client.id,
+            idempotency_key=(
+                f"lead_client.work_state:{client.id}:"
+                f"{int(client.last_status_change_at.timestamp())}"
+            ),
+        )
 
     # ── Audit ──
     await write_audit_log(

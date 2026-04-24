@@ -733,8 +733,10 @@ class GameDirectorEngine:
 
                 # Apply effects to the in-memory story object
                 effects = tpl["effects"]
+                _forced_new_state: str | None = None
                 if "force_state" in effects:
-                    story.lifecycle_state = effects["force_state"]
+                    _forced_new_state = effects["force_state"]
+                    story.lifecycle_state = _forced_new_state
                 if "relationship_delta" in effects:
                     story.relationship_score = max(0, min(100,
                         (story.relationship_score or 50) + effects["relationship_delta"]
@@ -750,6 +752,24 @@ class GameDirectorEngine:
                             title=tpl["code"].replace("_", " ").title(),
                             content=tpl["narrative"],
                         )
+                        # A6: mirror storylet-forced lifecycle transition into
+                        # the canonical DomainEvent log. Without this, storylets
+                        # that skip the game_director._determine_next_state path
+                        # mutate story.lifecycle_state silently and the §11.2
+                        # bridge loses the transition.
+                        if _forced_new_state is not None and _prev_lifecycle != _forced_new_state:
+                            from app.services.client_story_projector import (
+                                record_story_lifecycle_change,
+                            )
+                            await record_story_lifecycle_change(
+                                db,
+                                story=story,
+                                old_state=_prev_lifecycle,
+                                new_state=_forced_new_state,
+                                actor_id=None,
+                                source="game_director.storylet",
+                                extra={"storylet_code": tpl["code"]},
+                            )
                         await db.flush()
                 except Exception as exc:
                     logger.warning(

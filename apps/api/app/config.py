@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     # keeping the security window within OWASP recommendation (<30 min).
     jwt_access_token_expire_minutes: int = 15
     jwt_refresh_token_expire_days: int = 7
+    # Concurrent refresh grace window: when two tabs / mobile burst fire
+    # /auth/refresh with the same refresh_token within this many seconds,
+    # the second caller gets the same reissued pair instead of being
+    # treated as a replay attack. Outside the window, SETNX loss is
+    # replay and the user is blacklisted. 30s covers normal multi-tab
+    # and SW prefetch races without widening the attack surface.
+    refresh_concurrent_grace_seconds: int = 30
 
     # CSRF
     csrf_secret: str = ""
