@@ -17,12 +17,13 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { LayoutGrid, ListChecks, ArrowLeft } from "lucide-react";
+import { LayoutGrid, ListChecks, ArrowLeft, Activity } from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
 
 const TABS = [
   { href: "/admin", label: "Разделы", icon: LayoutGrid, exact: true },
   { href: "/admin/audit-log", label: "Журнал аудита", icon: ListChecks, exact: false },
+  { href: "/admin/client-domain", label: "Клиентский домен", icon: Activity, exact: false },
 ] as const;
 
 export default function AdminLayout({

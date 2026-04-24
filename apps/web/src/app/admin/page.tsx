@@ -24,6 +24,7 @@ import {
   FlaskConical,
   FileText,
   ShieldAlert,
+  Activity,
 } from "lucide-react";
 
 type IconComp = React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
@@ -61,6 +62,13 @@ const TILES: Tile[] = [
     label: "Сессии (browse)",
     sub: "Все сессии юзеров для ревью",
     icon: Users,
+    available: true,
+  },
+  {
+    href: "/admin/client-domain",
+    label: "Клиентский домен (TZ-1)",
+    sub: "Parity · репейр · self-test · события",
+    icon: Activity,
     available: true,
   },
   {
