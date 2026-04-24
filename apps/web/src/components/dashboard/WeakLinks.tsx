@@ -29,7 +29,7 @@ export function WeakLinks() {
 
   useEffect(() => {
     api.get("/dashboard/rop/weak-links")
-      .then((res) => setData(res.data))
+      .then((res) => setData(res))
       .catch((err) => logger.error("[WeakLinks] Failed to load weak links:", err))
       .finally(() => setLoading(false));
   }, []);

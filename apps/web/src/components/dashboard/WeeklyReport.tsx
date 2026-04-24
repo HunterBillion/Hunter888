@@ -67,7 +67,7 @@ export function WeeklyReport() {
 
   useEffect(() => {
     api.get("/dashboard/weekly-report")
-      .then((res) => setData(res.data))
+      .then((res) => setData(res))
       .catch((err) => logger.error("[WeeklyReport] Failed to load report:", err))
       .finally(() => setLoading(false));
   }, []);

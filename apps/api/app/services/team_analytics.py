@@ -53,6 +53,20 @@ async def _get_team_members(team_id: uuid.UUID, db: AsyncSession) -> list[User]:
     return list(result.scalars().all())
 
 
+async def _get_scope_members(team_id: uuid.UUID | None, db: AsyncSession) -> tuple[list[User], str]:
+    """Get active members for a team scope, or all active users for admin scope."""
+    if team_id is None:
+        result = await db.execute(
+            select(User).where(User.is_active == True).order_by(User.full_name)  # noqa: E712
+        )
+        return list(result.scalars().all()), "Все команды"
+
+    members = await _get_team_members(team_id, db)
+    team_result = await db.execute(select(Team).where(Team.id == team_id))
+    team = team_result.scalar_one_or_none()
+    return members, (team.name if team else "Team")
+
+
 async def _get_member_skills(user_id: uuid.UUID, db: AsyncSession) -> dict[str, float]:
     """Get 6 skills for a user from ManagerProgress."""
     result = await db.execute(
@@ -282,16 +296,12 @@ async def _get_last_session_time(user_id: uuid.UUID, db: AsyncSession) -> dateti
 # TEAM HEATMAP
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def get_team_heatmap(team_id: uuid.UUID, db: AsyncSession) -> dict:
+async def get_team_heatmap(team_id: uuid.UUID | None, db: AsyncSession) -> dict:
     """Build skill heatmap for team: rows=managers, cols=6 skills.
 
     S2-07b: Uses batch queries — 4 total instead of 3×N.
     """
-    members = await _get_team_members(team_id, db)
-
-    team_result = await db.execute(select(Team).where(Team.id == team_id))
-    team = team_result.scalar_one_or_none()
-    team_name = team.name if team else "Team"
+    members, team_name = await _get_scope_members(team_id, db)
 
     member_ids = [m.id for m in members]
 
@@ -325,6 +335,7 @@ async def get_team_heatmap(team_id: uuid.UUID, db: AsyncSession) -> dict:
             "user_id": str(member.id),
             "full_name": member.full_name,
             "avatar_url": getattr(member, "avatar_url", None),
+            "role": member.role.value,
             "skills": cells,
             "avg_score": round(avg_score, 1),
             "sessions_this_week": sessions_week,
@@ -345,12 +356,12 @@ async def get_team_heatmap(team_id: uuid.UUID, db: AsyncSession) -> dict:
 # WEAK LINKS
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def get_weak_links(team_id: uuid.UUID, db: AsyncSession) -> dict:
+async def get_weak_links(team_id: uuid.UUID | None, db: AsyncSession) -> dict:
     """Identify managers needing attention.
 
     S2-07b: Uses batch queries — 4 total instead of 5×N.
     """
-    members = await _get_team_members(team_id, db)
+    members, _ = await _get_scope_members(team_id, db)
     manager_members = [m for m in members if m.role == UserRole.manager]
     member_ids = [m.id for m in manager_members]
 
@@ -402,16 +413,12 @@ async def get_weak_links(team_id: uuid.UUID, db: AsyncSession) -> dict:
 # MANAGER BENCHMARK
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def compare_managers(team_id: uuid.UUID, db: AsyncSession) -> dict:
+async def compare_managers(team_id: uuid.UUID | None, db: AsyncSession) -> dict:
     """Compare each manager's skills against team average.
 
     S2-07b: Uses batch queries — 2 total instead of 2×N.
     """
-    members = await _get_team_members(team_id, db)
-
-    team_result = await db.execute(select(Team).where(Team.id == team_id))
-    team = team_result.scalar_one_or_none()
-    team_name = team.name if team else "Team"
+    members, team_name = await _get_scope_members(team_id, db)
 
     member_ids = [m.id for m in members]
     all_skills = await _batch_member_skills(member_ids, db)
@@ -485,12 +492,12 @@ async def compare_managers(team_id: uuid.UUID, db: AsyncSession) -> dict:
 # ROI TRAINING
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def get_team_roi(team_id: uuid.UUID, db: AsyncSession, weeks: int = 8) -> dict:
+async def get_team_roi(team_id: uuid.UUID | None, db: AsyncSession, weeks: int = 8) -> dict:
     """Calculate ROI: correlation between training hours and score improvement.
 
     S2-07b: Single aggregated query instead of 4×N_weeks.
     """
-    members = await _get_team_members(team_id, db)
+    members, _ = await _get_scope_members(team_id, db)
     member_ids = [m.id for m in members]
 
     if not member_ids:
@@ -627,35 +634,31 @@ async def get_platform_benchmark(db: AsyncSession) -> dict[str, float]:
     }
 
 
-async def get_team_vs_platform(team_id: uuid.UUID, db: AsyncSession) -> dict:
+async def get_team_vs_platform(team_id: uuid.UUID | None, db: AsyncSession) -> dict:
     """Compare team skills against platform average with percentiles."""
-    team_result = await db.execute(select(Team).where(Team.id == team_id))
-    team = team_result.scalar_one_or_none()
-    team_name = team.name if team else "Team"
+    members, team_name = await _get_scope_members(team_id, db)
+    member_ids = [m.id for m in members]
 
-    # Team averages
-    team_avg_result = await db.execute(
-        select(
-            func.avg(ManagerProgress.skill_empathy),
-            func.avg(ManagerProgress.skill_knowledge),
-            func.avg(ManagerProgress.skill_objection_handling),
-            func.avg(ManagerProgress.skill_stress_resistance),
-            func.avg(ManagerProgress.skill_closing),
-            func.avg(ManagerProgress.skill_qualification),
-        ).join(User, User.id == ManagerProgress.user_id).where(User.team_id == team_id)
-    )
-    team_row = team_avg_result.one()
+    if not member_ids:
+        return {
+            "team_name": team_name,
+            "skills": [],
+            "team_sessions_per_week": 0,
+            "platform_sessions_per_week": 0,
+            "team_avg_score": 0,
+            "platform_avg_score": 0,
+        }
+
+    all_skills = await _batch_member_skills(member_ids, db)
+    scope_skills = {
+        skill: round(
+            sum(all_skills[member_id].get(skill, 50.0) for member_id in member_ids) / max(len(member_ids), 1),
+            1,
+        )
+        for skill in SKILL_NAMES
+    }
 
     platform_avg = await get_platform_benchmark(db)
-
-    team_skills = {
-        "empathy": float(team_row[0] or 50),
-        "knowledge": float(team_row[1] or 50),
-        "objection_handling": float(team_row[2] or 50),
-        "stress_resistance": float(team_row[3] or 50),
-        "closing": float(team_row[4] or 50),
-        "qualification": float(team_row[5] or 50),
-    }
 
     # S2-07b: Calculate percentiles in ONE query instead of 6 × N_teams
     # Get per-team skill averages for ALL teams in a single query
@@ -683,21 +686,19 @@ async def get_team_vs_platform(team_id: uuid.UUID, db: AsyncSession) -> dict:
             1 for row in all_team_avgs
             if row.team_id != team_id
             and getattr(row, s) is not None
-            and float(getattr(row, s)) < team_skills[s]
+            and float(getattr(row, s)) < scope_skills[s]
         )
         percentile = int(lower_count / total_teams * 100)
 
         skills_data.append({
             "skill": s,
-            "team_avg": round(team_skills[s], 1),
+            "team_avg": round(scope_skills[s], 1),
             "platform_avg": round(platform_avg[s], 1),
             "percentile": percentile,
         })
 
     # Sessions per week
     since = datetime.now(timezone.utc) - timedelta(days=7)
-    member_ids = [m.id for m in await _get_team_members(team_id, db)]
-
     team_sessions_r = await db.execute(
         select(func.count(TrainingSession.id)).where(
             TrainingSession.user_id.in_(member_ids) if member_ids else False,
@@ -716,7 +717,7 @@ async def get_team_vs_platform(team_id: uuid.UUID, db: AsyncSession) -> dict:
     total_platform_sessions = platform_sessions_r.scalar() or 0
     total_teams = max(len(all_team_avgs), 1)
 
-    team_avg_score = sum(team_skills.values()) / len(team_skills)
+    team_avg_score = sum(scope_skills.values()) / len(scope_skills)
     platform_avg_score = sum(platform_avg.values()) / len(platform_avg)
 
     return {
@@ -734,7 +735,7 @@ async def get_team_vs_platform(team_id: uuid.UUID, db: AsyncSession) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 
 async def get_team_trends(
-    team_id: uuid.UUID,
+    team_id: uuid.UUID | None,
     db: AsyncSession,
     period: str = "month",
 ) -> dict:
@@ -746,7 +747,7 @@ async def get_team_trends(
     weeks_map = {"week": 4, "month": 12, "all": 26}
     num_weeks = weeks_map.get(period, 12)
 
-    members = await _get_team_members(team_id, db)
+    members, _ = await _get_scope_members(team_id, db)
     member_ids = [m.id for m in members]
 
     if not member_ids:
@@ -816,12 +817,12 @@ async def get_team_trends(
 # ═══════════════════════════════════════════════════════════════════════════
 
 async def get_daily_activity(
-    team_id: uuid.UUID,
+    team_id: uuid.UUID | None,
     db: AsyncSession,
     days: int = 14,
 ) -> dict:
     """Daily session counts for team over the last N days."""
-    members = await _get_team_members(team_id, db)
+    members, _ = await _get_scope_members(team_id, db)
     member_ids = [m.id for m in members]
 
     if not member_ids:

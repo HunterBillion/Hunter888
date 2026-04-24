@@ -57,7 +57,7 @@ export function TeamHeatmap() {
 
   useEffect(() => {
     api.get("/dashboard/rop/heatmap")
-      .then((res) => setData(res.data))
+      .then((res) => setData(res))
       .catch((err) => logger.error("[TeamHeatmap] Failed to load heatmap:", err))
       .finally(() => setLoading(false));
   }, []);

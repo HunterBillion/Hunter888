@@ -232,7 +232,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <LayoutDashboard size={24} style={{ color: "var(--accent)" }} />
                 <h1 className="font-display text-3xl font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
-                  ПАНЕЛЬ РОП
+                  {user?.role === "admin" ? "АДМИН-ПАНЕЛЬ" : "ПАНЕЛЬ РОП"}
                 </h1>
               </div>
               <PixelInfoButton
@@ -447,6 +447,11 @@ export default function DashboardPage() {
                             <thead>
                               <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
                                 <SortHeader label="Имя" sortField="full_name" />
+                                {data.team.is_admin_view && (
+                                  <th className="px-5 py-4 text-left font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+                                    Команда
+                                  </th>
+                                )}
                                 <th className="px-5 py-4 text-left font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                                   Роль
                                 </th>
@@ -489,6 +494,16 @@ export default function DashboardPage() {
                                         </div>
                                       </div>
                                     </td>
+                                    {data.team.is_admin_view && (
+                                      <td className="px-5 py-4">
+                                        <span
+                                          className="rounded-full px-3 py-1 text-sm font-medium"
+                                          style={{ background: "var(--glass-bg)", color: "var(--text-secondary)" }}
+                                        >
+                                          {m.team_name || "Без команды"}
+                                        </span>
+                                      </td>
+                                    )}
                                     <td className="px-5 py-4">
                                       <span
                                         className="rounded-full px-3 py-1 text-sm font-medium"

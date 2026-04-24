@@ -514,8 +514,6 @@ def _validate_ws_origin(websocket: WebSocket) -> bool:
     if settings.app_env != "production" and _WS_ALLOWED_ORIGIN_RE.match(origin):
         return True
     return False
-        return True
-    return False
 
 # Serve uploaded avatars
 from fastapi.staticfiles import StaticFiles

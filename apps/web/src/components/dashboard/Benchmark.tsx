@@ -38,7 +38,7 @@ export function Benchmark() {
 
   useEffect(() => {
     api.get("/dashboard/benchmark")
-      .then((res) => setData(res.data))
+      .then((res) => setData(res))
       .catch((err) => logger.error("[Benchmark] Failed to load benchmark:", err))
       .finally(() => setLoading(false));
   }, []);

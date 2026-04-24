@@ -55,6 +55,10 @@ async def _cache_set(key: str, data: dict) -> None:
         logger.debug("Dashboard cache set failed for key %s", key, exc_info=True)
 
 
+def _is_admin_dashboard_view(user: User) -> bool:
+    return user.role.value == "admin"
+
+
 @router.get("/manager")
 @limiter.limit("30/minute")
 async def manager_dashboard(
@@ -271,26 +275,19 @@ async def rop_dashboard(
 
     - admin: sees ALL users from ALL teams
     - rop: sees only their own team
-    
+
     Returns: team stats, all members with scores, leaderboard, tournament.
-    Cached for 30 seconds per team (or 60s for admin who sees all).
+    Cached for 30 seconds per scope.
     """
-    # admin sees ALL users, rop sees only their team
-    is_admin = user.role.value == "admin"
-    
+    is_admin = _is_admin_dashboard_view(user)
+
     if is_admin:
-        # admin: show all users from all teams
         cache_key = "dashboard:rop:admin:all"
-        filter_team_id = None
     elif not user.team_id:
         return {"error": err.NO_TEAM_ASSIGNED}
     else:
-        # rop: show only their team
         cache_key = f"dashboard:rop:{user.team_id}"
-        filter_team_id = user.team_id
-    
-    # Use cached if not admin (admin cache is longer to reduce DB load)
-    cache_ttl = 60 if is_admin else 30
+
     cached = await _cache_get(cache_key)
     if cached:
         return cached
@@ -300,28 +297,22 @@ async def rop_dashboard(
 
     # ── Team + Members in ONE query (join avoids N+1) ──
     if is_admin:
-        # Admin: get ALL users from ALL teams
         members_result = await db.execute(
-            select(User, Team.name)
+            select(User, Team.name.label("team_name"))
             .outerjoin(Team, User.team_id == Team.id)
             .order_by(Team.name, User.full_name)
         )
     else:
-        # ROP: get only their team
         members_result = await db.execute(
-            select(User, Team.name)
+            select(User, Team.name.label("team_name"))
             .outerjoin(Team, User.team_id == Team.id)
             .where(User.team_id == user.team_id)
             .order_by(User.full_name)
         )
     rows = members_result.all()
     members = [row[0] for row in rows]
-    
-    # Get team name(s) for display
-    if is_admin:
-        team_name = "Все команды" if not user.team_id else (rows[0][1] if rows else "Команда")
-    else:
-        team_name = rows[0][1] if rows else "Команда"
+    team_names_by_user = {row[0].id: row[1] for row in rows}
+    team_name = "Все команды" if is_admin else (rows[0][1] if rows else "Команда")
 
     team_user_ids = [m.id for m in members]
 
@@ -365,6 +356,7 @@ async def rop_dashboard(
             "full_name": m.full_name,
             "email": m.email,
             "role": m.role.value,
+            "team_name": team_names_by_user.get(m.id),
             "is_active": m.is_active,
             "total_sessions": s["total"],
             "avg_score": s["avg"] if s["total"] > 0 else None,
@@ -672,16 +664,18 @@ async def rop_heatmap(
     db: AsyncSession = Depends(get_db),
 ):
     """Team skill heatmap: managers x 6 skills matrix with trends."""
-    if not user.team_id:
+    is_admin = _is_admin_dashboard_view(user)
+    if not user.team_id and not is_admin:
         return {"team_name": "—", "skill_names": [], "rows": [], "team_avg": {}}
 
     from app.services.team_analytics import get_team_heatmap
-    cache_key = f"dashboard:rop_heatmap:{user.team_id}"
+    scope_key = "all" if is_admin else str(user.team_id)
+    cache_key = f"dashboard:rop_heatmap:{scope_key}"
     cached = await _cache_get(cache_key)
     if cached:
         return cached
 
-    data = await get_team_heatmap(user.team_id, db)
+    data = await get_team_heatmap(None if is_admin else user.team_id, db)
     await _cache_set(cache_key, data)
     return data
 
@@ -694,16 +688,18 @@ async def rop_weak_links(
     db: AsyncSession = Depends(get_db),
 ):
     """Managers needing attention: declining scores, inactivity, low performance."""
-    if not user.team_id:
+    is_admin = _is_admin_dashboard_view(user)
+    if not user.team_id and not is_admin:
         return {"needs_attention": [], "total_team": 0, "attention_count": 0}
 
     from app.services.team_analytics import get_weak_links
-    cache_key = f"dashboard:rop_weak_links:{user.team_id}"
+    scope_key = "all" if is_admin else str(user.team_id)
+    cache_key = f"dashboard:rop_weak_links:{scope_key}"
     cached = await _cache_get(cache_key)
     if cached:
         return cached
 
-    data = await get_weak_links(user.team_id, db)
+    data = await get_weak_links(None if is_admin else user.team_id, db)
     await _cache_set(cache_key, data)
     return data
 
@@ -716,16 +712,18 @@ async def rop_benchmark(
     db: AsyncSession = Depends(get_db),
 ):
     """Compare managers within team: each vs team average with percentiles."""
-    if not user.team_id:
+    is_admin = _is_admin_dashboard_view(user)
+    if not user.team_id and not is_admin:
         return {"team_name": "—", "entries": [], "team_avg_score": 0}
 
     from app.services.team_analytics import compare_managers
-    cache_key = f"dashboard:rop_benchmark:{user.team_id}"
+    scope_key = "all" if is_admin else str(user.team_id)
+    cache_key = f"dashboard:rop_benchmark:{scope_key}"
     cached = await _cache_get(cache_key)
     if cached:
         return cached
 
-    data = await compare_managers(user.team_id, db)
+    data = await compare_managers(None if is_admin else user.team_id, db)
     await _cache_set(cache_key, data)
     return data
 
@@ -755,16 +753,18 @@ async def platform_benchmark(
     db: AsyncSession = Depends(get_db),
 ):
     """Team vs platform benchmark with percentiles."""
-    if not user.team_id:
+    is_admin = _is_admin_dashboard_view(user)
+    if not user.team_id and not is_admin:
         return {"team_name": "—", "skills": [], "team_avg_score": 0, "platform_avg_score": 0}
 
     from app.services.team_analytics import get_team_vs_platform
-    cache_key = f"dashboard:benchmark:{user.team_id}"
+    scope_key = "all" if is_admin else str(user.team_id)
+    cache_key = f"dashboard:benchmark:{scope_key}"
     cached = await _cache_get(cache_key)
     if cached:
         return cached
 
-    data = await get_team_vs_platform(user.team_id, db)
+    data = await get_team_vs_platform(None if is_admin else user.team_id, db)
     await _cache_set(cache_key, data)
     return data
 
@@ -945,16 +945,18 @@ async def rop_trends(
     db: AsyncSession = Depends(get_db),
 ):
     """Weekly trend data: avg score, sessions, active managers over time."""
-    if not user.team_id:
+    is_admin = _is_admin_dashboard_view(user)
+    if not user.team_id and not is_admin:
         return {"weeks": [], "period": period}
 
     from app.services.team_analytics import get_team_trends
-    cache_key = f"dashboard:rop_trends:{user.team_id}:{period}"
+    scope_key = "all" if is_admin else str(user.team_id)
+    cache_key = f"dashboard:rop_trends:{scope_key}:{period}"
     cached = await _cache_get(cache_key)
     if cached:
         return cached
 
-    data = await get_team_trends(user.team_id, db, period)
+    data = await get_team_trends(None if is_admin else user.team_id, db, period)
     await _cache_set(cache_key, data)
     return data
 
@@ -968,16 +970,18 @@ async def rop_activity(
     db: AsyncSession = Depends(get_db),
 ):
     """Daily session counts for the team over the last N days."""
-    if not user.team_id:
+    is_admin = _is_admin_dashboard_view(user)
+    if not user.team_id and not is_admin:
         return {"days": [], "total_sessions": 0}
 
     from app.services.team_analytics import get_daily_activity
-    cache_key = f"dashboard:rop_activity:{user.team_id}:{days}"
+    scope_key = "all" if is_admin else str(user.team_id)
+    cache_key = f"dashboard:rop_activity:{scope_key}:{days}"
     cached = await _cache_get(cache_key)
     if cached:
         return cached
 
-    data = await get_daily_activity(user.team_id, db, days)
+    data = await get_daily_activity(None if is_admin else user.team_id, db, days)
     await _cache_set(cache_key, data)
     return data
 

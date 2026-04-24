@@ -12,6 +12,7 @@ interface ReviewItem {
   text: string;
   rating: number;
   approved: boolean;
+  deleted: boolean;
   created_at: string;
 }
 
@@ -90,13 +91,15 @@ export function ReviewsAdmin() {
     }
   }, []);
 
-  const filtered = reviews.filter((r) => {
+  const visibleReviews = reviews.filter((r) => !r.deleted);
+
+  const filtered = visibleReviews.filter((r) => {
     if (filter === "pending") return !r.approved;
     if (filter === "approved") return r.approved;
     return true;
   });
 
-  const pendingCount = reviews.filter((r) => !r.approved).length;
+  const pendingCount = visibleReviews.filter((r) => !r.approved).length;
 
   if (loading) {
     return (
@@ -121,7 +124,7 @@ export function ReviewsAdmin() {
             Отзывы
           </h2>
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            {reviews.length} всего · {pendingCount} на модерации
+            {visibleReviews.length} всего · {pendingCount} на модерации
           </p>
         </div>
 

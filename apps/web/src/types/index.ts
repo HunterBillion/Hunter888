@@ -853,6 +853,7 @@ export interface TeamMember {
   full_name: string;
   email: string;
   role: UserRole;
+  team_name?: string | null;
   is_active: boolean;
   avatar_url?: string | null;
   total_sessions: number;
