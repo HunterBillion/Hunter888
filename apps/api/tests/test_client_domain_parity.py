@@ -12,7 +12,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-
 APP_DIR = Path(__file__).resolve().parent.parent / "app"
 REST_TRAINING_PATH = APP_DIR / "api" / "training.py"
 WS_TRAINING_PATH = APP_DIR / "ws" / "training.py"
@@ -85,6 +84,4 @@ def test_both_training_endings_call_ensure_followup():
     assert "ensure_followup_for_session" in rest, (
         "REST training-end forgot ensure_followup_for_session"
     )
-    assert "ensure_followup_for_session" in ws, (
-        "WS training-end forgot ensure_followup_for_session"
-    )
+    assert "ensure_followup_for_session" in ws, "WS training-end forgot ensure_followup_for_session"

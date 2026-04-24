@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.database import async_session as AsyncSessionLocal  # noqa: E402
+from app.database import async_session  # noqa: E402
 from app.services.client_domain_repair import (  # noqa: E402
     parity_report,
     repair_missing_events_for_interactions,
@@ -43,14 +43,14 @@ def _print_report(title: str, report: dict) -> None:
 
 
 async def _cmd_parity() -> int:
-    async with AsyncSessionLocal() as db:
+    async with async_session() as db:
         report = await parity_report(db)
         _print_report("Parity report", report)
     return 0
 
 
 async def _cmd_repair_events(limit: int) -> int:
-    async with AsyncSessionLocal() as db:
+    async with async_session() as db:
         repaired = await repair_missing_events_for_interactions(db, limit=limit)
         await db.commit()
     print(f"repaired events: {repaired}")
@@ -58,7 +58,7 @@ async def _cmd_repair_events(limit: int) -> int:
 
 
 async def _cmd_repair_projections(limit: int) -> int:
-    async with AsyncSessionLocal() as db:
+    async with async_session() as db:
         repaired = await repair_missing_projections(db, limit=limit)
         await db.commit()
     print(f"repaired projections: {repaired}")
@@ -66,16 +66,16 @@ async def _cmd_repair_projections(limit: int) -> int:
 
 
 async def _cmd_full_sweep(limit: int) -> int:
-    async with AsyncSessionLocal() as db:
+    async with async_session() as db:
         before = await parity_report(db)
         _print_report("Parity BEFORE", before)
-    async with AsyncSessionLocal() as db:
+    async with async_session() as db:
         events_repaired = await repair_missing_events_for_interactions(db, limit=limit)
         await db.commit()
-    async with AsyncSessionLocal() as db:
+    async with async_session() as db:
         projections_repaired = await repair_missing_projections(db, limit=limit)
         await db.commit()
-    async with AsyncSessionLocal() as db:
+    async with async_session() as db:
         after = await parity_report(db)
         _print_report("Parity AFTER", after)
     print(
@@ -94,9 +94,7 @@ def main() -> int:
     p_events = sub.add_parser("repair-events", help="Backfill missing DomainEvents")
     p_events.add_argument("--limit", type=int, default=1000)
 
-    p_proj = sub.add_parser(
-        "repair-projections", help="Backfill missing projection rows"
-    )
+    p_proj = sub.add_parser("repair-projections", help="Backfill missing projection rows")
     p_proj.add_argument("--limit", type=int, default=1000)
 
     p_full = sub.add_parser("full-sweep", help="Parity + repair both + parity again")

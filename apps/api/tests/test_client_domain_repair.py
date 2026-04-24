@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -31,10 +30,10 @@ async def test_parity_report_aggregates_counts(monkeypatch):
         10,  # total_interactions
         12,  # total_events
         11,  # total_projections
-        2,   # interactions_without_event
-        1,   # events_without_projection
-        0,   # projections_without_interaction
-        0,   # events_without_lead_client_id
+        2,  # interactions_without_event
+        1,  # events_without_projection
+        0,  # projections_without_interaction
+        0,  # events_without_lead_client_id
     ]
 
     def _next_result(*_args, **_kwargs):

@@ -52,6 +52,18 @@ dev = [
     "aiosqlite>=0.20.0",
 ]
 
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+# Explicit package list so setuptools stops trying to auto-discover
+# top-level dirs like ``data``, ``uploads``, ``alembic``, ``prompts``
+# (they are runtime/asset folders, not Python packages).
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app", "app.*"]
+exclude = ["tests", "tests.*", "scripts", "scripts.*", "alembic", "alembic.*", "prompts*", "data*", "uploads*"]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100

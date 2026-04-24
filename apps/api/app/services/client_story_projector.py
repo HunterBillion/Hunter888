@@ -38,15 +38,17 @@ async def resolve_real_client_for_story(
     (no session with ``real_client_id``) yield None — that's the signal to
     skip domain emission.
     """
-    real_client_id = (await db.execute(
-        select(TrainingSession.real_client_id)
-        .where(
-            TrainingSession.client_story_id == story.id,
-            TrainingSession.real_client_id.isnot(None),
+    real_client_id = (
+        await db.execute(
+            select(TrainingSession.real_client_id)
+            .where(
+                TrainingSession.client_story_id == story.id,
+                TrainingSession.real_client_id.isnot(None),
+            )
+            .order_by(TrainingSession.started_at.desc())
+            .limit(1)
         )
-        .order_by(TrainingSession.started_at.desc())
-        .limit(1)
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if real_client_id is None:
         return None
     return await db.get(RealClient, real_client_id)

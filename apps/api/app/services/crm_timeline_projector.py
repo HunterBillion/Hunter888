@@ -25,7 +25,9 @@ PROJECTION_NAME = "crm_timeline"
 PROJECTION_VERSION = 1
 
 
-def interaction_metadata_patch(event: DomainEvent, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+def interaction_metadata_patch(
+    event: DomainEvent, extra: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Canonical metadata payload every projected ClientInteraction must carry."""
     patch: dict[str, Any] = {
         "domain_event_id": str(event.id),
@@ -52,11 +54,13 @@ async def record_projection(
 
     Idempotent on ``domain_event_id`` — re-running replay does not duplicate.
     """
-    existing = (await db.execute(
-        select(CrmTimelineProjectionState).where(
-            CrmTimelineProjectionState.domain_event_id == event.id
+    existing = (
+        await db.execute(
+            select(CrmTimelineProjectionState).where(
+                CrmTimelineProjectionState.domain_event_id == event.id
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if existing is not None:
         if interaction is not None and existing.interaction_id != interaction.id:
             existing.interaction_id = interaction.id
@@ -108,11 +112,13 @@ async def project_event_to_interaction(
     extra_metadata: dict[str, Any] | None = None,
 ) -> ClientInteraction:
     """Build a ClientInteraction from a DomainEvent, idempotent via projection state."""
-    existing_state = (await db.execute(
-        select(CrmTimelineProjectionState).where(
-            CrmTimelineProjectionState.domain_event_id == event.id
+    existing_state = (
+        await db.execute(
+            select(CrmTimelineProjectionState).where(
+                CrmTimelineProjectionState.domain_event_id == event.id
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if existing_state is not None and existing_state.interaction_id is not None:
         existing_interaction = await db.get(ClientInteraction, existing_state.interaction_id)
         if existing_interaction is not None:
@@ -132,7 +138,9 @@ async def project_event_to_interaction(
         interaction_type=interaction_type,
         content=content,
         result=payload.get("result"),
-        duration_seconds=duration_seconds if duration_seconds is not None else payload.get("duration_seconds"),
+        duration_seconds=duration_seconds
+        if duration_seconds is not None
+        else payload.get("duration_seconds"),
         old_status=payload.get("old_status"),
         new_status=payload.get("new_status"),
         metadata_=interaction_metadata_patch(event, extra_metadata),

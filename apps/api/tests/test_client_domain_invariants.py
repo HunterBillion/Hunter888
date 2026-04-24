@@ -17,7 +17,6 @@ from pathlib import Path
 
 import pytest
 
-
 APP_DIR = Path(__file__).resolve().parent.parent / "app"
 
 
@@ -35,11 +34,7 @@ ALLOWED_CLIENT_INTERACTION_WRITERS = {
 
 
 def _iter_python_files(root: Path) -> list[Path]:
-    return sorted(
-        p
-        for p in root.rglob("*.py")
-        if "__pycache__" not in p.parts
-    )
+    return sorted(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
 
 
 def _file_constructs(path: Path, class_name: str) -> list[int]:
@@ -79,8 +74,7 @@ def test_client_interaction_writes_are_gated_through_client_domain():
             offenders.append(f"{rel}: {lines}")
     assert not offenders, (
         "Raw ClientInteraction(...) construction found outside allowed "
-        "writers. Route the write through client_domain helpers:\n"
-        + "\n".join(offenders)
+        "writers. Route the write through client_domain helpers:\n" + "\n".join(offenders)
     )
 
 
@@ -131,13 +125,14 @@ def test_projection_metadata_keys_are_stable():
     still produces them — if this breaks, update
     apps/web/src/types/index.ts first.
     """
+    import uuid as _uuid
+
+    from app.models.domain_event import DomainEvent
     from app.services.crm_timeline_projector import (
         PROJECTION_NAME,
         PROJECTION_VERSION,
         interaction_metadata_patch,
     )
-    from app.models.domain_event import DomainEvent
-    import uuid as _uuid
 
     event = DomainEvent(
         id=_uuid.uuid4(),

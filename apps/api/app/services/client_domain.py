@@ -22,7 +22,7 @@ import hashlib
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -31,7 +31,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models.client import Attachment, ClientInteraction, ClientStatus, InteractionType, RealClient
+from app.models.client import (
+    Attachment,
+    ClientInteraction,
+    ClientStatus,
+    InteractionType,
+    RealClient,
+)
 from app.models.crm_projection import CrmTimelineProjectionState
 from app.models.domain_event import DomainEvent
 from app.models.lead_client import LeadClient
@@ -151,9 +157,9 @@ async def ensure_lead_client(
         owner_id = owner_user.id if owner_user is not None else client.manager_id
         team_id = owner_user.team_id if owner_user is not None else None
         if team_id is None:
-            team_id = (await db.execute(
-                select(User.team_id).where(User.id == owner_id)
-            )).scalar_one_or_none()
+            team_id = (
+                await db.execute(select(User.team_id).where(User.id == owner_id))
+            ).scalar_one_or_none()
         lifecycle_stage, work_state = map_legacy_client_status(client.status)
         lead = LeadClient(
             id=target_id,
@@ -231,9 +237,9 @@ async def emit_domain_event(
         session_id=session_id,
     )
 
-    existing = (await db.execute(
-        select(DomainEvent).where(DomainEvent.idempotency_key == key)
-    )).scalar_one_or_none()
+    existing = (
+        await db.execute(select(DomainEvent).where(DomainEvent.idempotency_key == key))
+    ).scalar_one_or_none()
     if existing is not None:
         return existing
 
@@ -247,7 +253,7 @@ async def emit_domain_event(
         actor_type=actor_type,
         actor_id=actor_id,
         source=source[:30],
-        occurred_at=occurred_at or datetime.now(timezone.utc),
+        occurred_at=occurred_at or datetime.now(UTC),
         payload_json=_json_safe(payload or {}),
         idempotency_key=key,
         schema_version=1,
@@ -270,9 +276,9 @@ async def emit_domain_event(
         )
         return event
     except IntegrityError:
-        existing = (await db.execute(
-            select(DomainEvent).where(DomainEvent.idempotency_key == key)
-        )).scalar_one()
+        existing = (
+            await db.execute(select(DomainEvent).where(DomainEvent.idempotency_key == key))
+        ).scalar_one()
         return existing
     except Exception as exc:
         if settings.client_domain_strict_emit:
@@ -294,11 +300,13 @@ async def _projection_interaction_for_event(
     *,
     domain_event_id: uuid.UUID,
 ) -> ClientInteraction | None:
-    projection = (await db.execute(
-        select(CrmTimelineProjectionState).where(
-            CrmTimelineProjectionState.domain_event_id == domain_event_id
+    projection = (
+        await db.execute(
+            select(CrmTimelineProjectionState).where(
+                CrmTimelineProjectionState.domain_event_id == domain_event_id
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if projection is None or projection.interaction_id is None:
         return None
     return await db.get(ClientInteraction, projection.interaction_id)
@@ -329,9 +337,11 @@ async def create_crm_interaction_with_event(
 ) -> tuple[ClientInteraction, DomainEvent]:
     """Write a ClientInteraction row + paired DomainEvent in the same txn."""
     if idempotency_key:
-        existing_event = (await db.execute(
-            select(DomainEvent).where(DomainEvent.idempotency_key == idempotency_key)
-        )).scalar_one_or_none()
+        existing_event = (
+            await db.execute(
+                select(DomainEvent).where(DomainEvent.idempotency_key == idempotency_key)
+            )
+        ).scalar_one_or_none()
         if existing_event is not None:
             existing_interaction = await _projection_interaction_for_event(
                 db, domain_event_id=existing_event.id
@@ -473,10 +483,14 @@ async def log_training_real_case_summary(
         payload={
             "training_session_id": str(session.id),
             "scenario_id": str(session.scenario_id) if session.scenario_id else None,
-            "scenario_version_id": str(session.scenario_version_id) if session.scenario_version_id else None,
+            "scenario_version_id": str(session.scenario_version_id)
+            if session.scenario_version_id
+            else None,
             "session_mode": session_mode,
             "score_total": session.score_total,
-            "status": session.status.value if hasattr(session.status, "value") else str(session.status),
+            "status": session.status.value
+            if hasattr(session.status, "value")
+            else str(session.status),
         },
         aggregate_type="training_session",
         aggregate_id=session.id,
@@ -488,7 +502,9 @@ async def log_training_real_case_summary(
     if existing_interaction is not None:
         return existing_interaction, event
 
-    interaction_type = InteractionType.outbound_call if session_mode == "call" else InteractionType.note
+    interaction_type = (
+        InteractionType.outbound_call if session_mode == "call" else InteractionType.note
+    )
     score_value = int(session.score_total) if session.score_total is not None else 0
     interaction = ClientInteraction(
         id=uuid.uuid4(),

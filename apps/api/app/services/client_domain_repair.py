@@ -30,8 +30,6 @@ from app.models.crm_projection import CrmTimelineProjectionState
 from app.models.domain_event import DomainEvent
 from app.services.client_domain import emit_domain_event, ensure_lead_client
 from app.services.crm_timeline_projector import (
-    PROJECTION_NAME,
-    PROJECTION_VERSION,
     interaction_metadata_patch,
     record_projection,
 )
@@ -41,48 +39,63 @@ logger = logging.getLogger(__name__)
 
 async def parity_report(db: AsyncSession) -> dict[str, Any]:
     """Return counts the ops team uses to gate cutover (TZ §17, §20)."""
-    total_interactions = (await db.execute(
-        select(func.count()).select_from(ClientInteraction)
-    )).scalar_one()
-    total_events = (await db.execute(
-        select(func.count()).select_from(DomainEvent)
-    )).scalar_one()
-    total_projections = (await db.execute(
-        select(func.count()).select_from(CrmTimelineProjectionState)
-    )).scalar_one()
+    total_interactions = (
+        await db.execute(select(func.count()).select_from(ClientInteraction))
+    ).scalar_one()
+    total_events = (await db.execute(select(func.count()).select_from(DomainEvent))).scalar_one()
+    total_projections = (
+        await db.execute(select(func.count()).select_from(CrmTimelineProjectionState))
+    ).scalar_one()
 
-    interactions_without_event = (await db.execute(
-        select(func.count()).select_from(ClientInteraction).where(
-            (ClientInteraction.metadata_.is_(None))
-            | (~ClientInteraction.metadata_.has_key("domain_event_id"))  # noqa: W504
+    interactions_without_event = (
+        await db.execute(
+            select(func.count())
+            .select_from(ClientInteraction)
+            .where(
+                (ClientInteraction.metadata_.is_(None))
+                | (~ClientInteraction.metadata_.has_key("domain_event_id"))  # noqa: W504
+            )
         )
-    )).scalar_one()
+    ).scalar_one()
 
-    events_without_projection = (await db.execute(
-        select(func.count()).select_from(DomainEvent)
-        .outerjoin(
-            CrmTimelineProjectionState,
-            CrmTimelineProjectionState.domain_event_id == DomainEvent.id,
+    events_without_projection = (
+        await db.execute(
+            select(func.count())
+            .select_from(DomainEvent)
+            .outerjoin(
+                CrmTimelineProjectionState,
+                CrmTimelineProjectionState.domain_event_id == DomainEvent.id,
+            )
+            .where(CrmTimelineProjectionState.id.is_(None))
+            .where(
+                DomainEvent.event_type.in_(
+                    [
+                        "crm.interaction_logged",
+                        "lead_client.lifecycle_changed",
+                        "consent.updated",
+                        "training.real_case_logged",
+                        "session.attachment_linked",
+                    ]
+                )
+            )
         )
-        .where(CrmTimelineProjectionState.id.is_(None))
-        .where(DomainEvent.event_type.in_([
-            "crm.interaction_logged",
-            "lead_client.lifecycle_changed",
-            "consent.updated",
-            "training.real_case_logged",
-            "session.attachment_linked",
-        ]))
-    )).scalar_one()
+    ).scalar_one()
 
-    projections_orphaned = (await db.execute(
-        select(func.count()).select_from(CrmTimelineProjectionState)
-        .where(CrmTimelineProjectionState.interaction_id.is_(None))
-    )).scalar_one()
+    projections_orphaned = (
+        await db.execute(
+            select(func.count())
+            .select_from(CrmTimelineProjectionState)
+            .where(CrmTimelineProjectionState.interaction_id.is_(None))
+        )
+    ).scalar_one()
 
-    events_without_lead = (await db.execute(
-        select(func.count()).select_from(DomainEvent)
-        .where(DomainEvent.lead_client_id.is_(None))
-    )).scalar_one()
+    events_without_lead = (
+        await db.execute(
+            select(func.count())
+            .select_from(DomainEvent)
+            .where(DomainEvent.lead_client_id.is_(None))
+        )
+    ).scalar_one()
 
     return {
         "total_interactions": int(total_interactions),
@@ -95,9 +108,7 @@ async def parity_report(db: AsyncSession) -> dict[str, Any]:
     }
 
 
-async def repair_missing_projections(
-    db: AsyncSession, *, limit: int = 500
-) -> int:
+async def repair_missing_projections(db: AsyncSession, *, limit: int = 500) -> int:
     """Create CrmTimelineProjectionState rows for events that lack one.
 
     We only attach a projection row (marked ``status='repaired'``) — we do
@@ -105,14 +116,22 @@ async def repair_missing_projections(
     payload here, because the producer path already wrote it. This repair
     closes the bookkeeping gap, not the CRM-side data gap.
     """
-    orphan_events = (await db.execute(
-        select(DomainEvent).outerjoin(
-            CrmTimelineProjectionState,
-            CrmTimelineProjectionState.domain_event_id == DomainEvent.id,
-        ).where(CrmTimelineProjectionState.id.is_(None))
-        .order_by(DomainEvent.occurred_at.asc())
-        .limit(limit)
-    )).scalars().all()
+    orphan_events = (
+        (
+            await db.execute(
+                select(DomainEvent)
+                .outerjoin(
+                    CrmTimelineProjectionState,
+                    CrmTimelineProjectionState.domain_event_id == DomainEvent.id,
+                )
+                .where(CrmTimelineProjectionState.id.is_(None))
+                .order_by(DomainEvent.occurred_at.asc())
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     repaired = 0
     for event in orphan_events:
@@ -129,9 +148,7 @@ async def repair_missing_projections(
     return repaired
 
 
-async def repair_missing_events_for_interactions(
-    db: AsyncSession, *, limit: int = 500
-) -> int:
+async def repair_missing_events_for_interactions(db: AsyncSession, *, limit: int = 500) -> int:
     """Backfill DomainEvent + projection for legacy interactions that still
     miss ``metadata.domain_event_id``. Idempotent on the derived key.
     """
@@ -152,7 +169,11 @@ async def repair_missing_events_for_interactions(
         if client is None:
             continue
         lead = await ensure_lead_client(db, client=client)
-        event_type = "lead_client.lifecycle_changed" if interaction.interaction_type.value == "status_change" else "crm.interaction_logged"
+        event_type = (
+            "lead_client.lifecycle_changed"
+            if interaction.interaction_type.value == "status_change"
+            else "crm.interaction_logged"
+        )
         payload = {
             "interaction_id": str(interaction.id),
             "client_id": str(client.id),

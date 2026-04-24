@@ -15,7 +15,7 @@ trend to zero once dual-write covers every producer.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import PlainTextResponse
@@ -48,13 +48,15 @@ async def get_event_type_distribution(
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_role("admin")),
 ) -> dict:
-    since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    rows = (await db.execute(
-        select(DomainEvent.event_type, func.count().label("cnt"))
-        .where(DomainEvent.occurred_at >= since)
-        .group_by(DomainEvent.event_type)
-        .order_by(func.count().desc())
-    )).all()
+    since = datetime.now(UTC) - timedelta(hours=hours)
+    rows = (
+        await db.execute(
+            select(DomainEvent.event_type, func.count().label("cnt"))
+            .where(DomainEvent.occurred_at >= since)
+            .group_by(DomainEvent.event_type)
+            .order_by(func.count().desc())
+        )
+    ).all()
     return {
         "since_hours": hours,
         "total": sum(int(r.cnt) for r in rows),
@@ -94,8 +96,10 @@ async def get_prometheus_metrics(
     total_interactions = int(report.get("total_interactions", 0)) or 1
     without = int(report.get("interactions_without_domain_event_id", 0))
     parity_ratio = 1.0 - (without / total_interactions)
-    lines.append("# HELP client_domain_timeline_parity_ratio "
-                 "1 - (interactions_without_domain_event_id / total_interactions)")
+    lines.append(
+        "# HELP client_domain_timeline_parity_ratio "
+        "1 - (interactions_without_domain_event_id / total_interactions)"
+    )
     lines.append("# TYPE client_domain_timeline_parity_ratio gauge")
     lines.append(f"client_domain_timeline_parity_ratio {parity_ratio:.6f}")
 
