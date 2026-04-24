@@ -1120,6 +1120,24 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
             duel.completed_at = datetime.now(timezone.utc)
             duel.round_1_data = {"messages": [], "cancelled_reason": "no_round_data"}
             duel.round_2_data = {"messages": [], "cancelled_reason": "no_round_data"}
+            # Phase 1 — canonical terminal columns for the cancelled path.
+            try:
+                from app.services.completion_policy import (
+                    TerminalOutcome,
+                    TerminalReason,
+                    finalize_pvp_duel,
+                )
+                await finalize_pvp_duel(
+                    db,
+                    duel=duel,
+                    outcome=TerminalOutcome.pvp_abandoned,
+                    reason=TerminalReason.matchmaking_timeout,
+                )
+            except Exception:
+                logger.warning(
+                    "completion_policy stamp failed (pvp cancelled) for duel %s",
+                    duel.id, exc_info=True,
+                )
             db.add(duel)
             await db.commit()
             for uid in [session["player1_id"], session["player2_id"]]:
@@ -1186,6 +1204,37 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
                 int((duel.completed_at - duel.created_at).total_seconds()),
             )
         duel.status = DuelStatus.completed
+
+        # Phase 1 (Roadmap §6.3 path 7) — stamp canonical PvP terminal
+        # contract. Maps judge_result to {pvp_win, pvp_loss, pvp_draw}
+        # from the perspective of player1 (player2 row gets mirrored
+        # later via the per-player event emit loop). Bookkeeping only;
+        # rating/points/events stay in this function until a later
+        # phase rewrites them through the policy.
+        try:
+            from app.services.completion_policy import (
+                TerminalOutcome,
+                TerminalReason,
+                finalize_pvp_duel,
+            )
+
+            if judge_result.is_draw:
+                _pvp_outcome = TerminalOutcome.pvp_draw
+            elif judge_result.winner_id == duel.player1_id:
+                _pvp_outcome = TerminalOutcome.pvp_win
+            else:
+                _pvp_outcome = TerminalOutcome.pvp_loss
+            await finalize_pvp_duel(
+                db,
+                duel=duel,
+                outcome=_pvp_outcome,
+                reason=TerminalReason.judge_completed,
+            )
+        except Exception:
+            logger.warning(
+                "completion_policy stamp failed (pvp) for duel %s",
+                duel.id, exc_info=True,
+            )
 
         p1_delta = 0.0
         p2_delta = 0.0

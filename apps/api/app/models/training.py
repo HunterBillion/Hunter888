@@ -142,6 +142,15 @@ class TrainingSession(Base):
     # {"temperature": 0.55, "script_threshold": 0.58, "ocean_shift": {...}, ...}.
     difficulty_params_snapshot: Mapped[dict | None] = mapped_column(NormalizedJSONB, nullable=True)
 
+    # Phase 1 (Roadmap §6) ConversationCompletionPolicy columns. Populated by
+    # ``services.completion_policy.finalize_training_session``. Historical
+    # rows (written before 20260424_004) stay NULL and are backfilled from
+    # ``scoring_details["call_outcome"]`` only when accessed — never
+    # wholesale.
+    terminal_outcome: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    terminal_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    completed_via: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

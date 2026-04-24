@@ -1931,6 +1931,13 @@ async def _generate_character_reply(
     )
     if _can_ai_end:
         state["ai_initiated_farewell"] = True
+        # Phase 1 (Roadmap §6.3 path 4): previously this branch didn't stamp
+        # ``call_outcome`` before delegating to ``_handle_session_end``, so
+        # the downstream outcome fell back to whatever was in ``state``
+        # (often ``last_call_outcome`` from a prior call in the story).
+        # Force the explicit "hangup" fact so follow-up + finalize see the
+        # right outcome.
+        state["call_outcome"] = "hangup"
         logger.info(
             "AI-initiated farewell detected (session=%s, content snippet=%r) — "
             "auto-firing session.end after current TTS plays.",
@@ -2461,6 +2468,38 @@ async def _silence_watchdog(
 
             async with async_session() as db:
                 await end_session(session_id, db, status=SessionStatus.abandoned)
+                # Phase 1 (Roadmap §6.3 path 5): silence watchdog used to
+                # skip the completion tail entirely — no follow-up reminder,
+                # no CRM row, no ``EVENT_TRAINING_COMPLETED``. Managers
+                # literally couldn't tell a silent-timeout session happened.
+                # Load the row fresh and run the policy so terminal columns +
+                # canonical DomainEvent land. Wrapped in try/except because
+                # the legacy timeout behaviour must survive even if policy
+                # raises.
+                try:
+                    from app.models.training import TrainingSession
+                    from app.services.completion_policy import (
+                        CompletedVia,
+                        TerminalOutcome,
+                        TerminalReason,
+                        finalize_training_session,
+                    )
+
+                    _sess = await db.get(TrainingSession, session_id)
+                    if _sess is not None:
+                        await finalize_training_session(
+                            db,
+                            session=_sess,
+                            outcome=TerminalOutcome.timeout,
+                            reason=TerminalReason.silence_timeout,
+                            completed_via=CompletedVia.timeout,
+                            manager_id=_sess.user_id,
+                        )
+                except Exception:
+                    logger.warning(
+                        "completion_policy stamp failed (silence) for %s",
+                        session_id, exc_info=True,
+                    )
                 await db.commit()
             # CRITICAL: notify the client so the "loading" modal can clear and
             # the page can redirect. Without this the UI hangs forever.
@@ -4842,6 +4881,46 @@ async def _handle_session_end(
                     session_id, session.real_client_id, exc_info=True,
                 )
 
+        # Phase 1 (Roadmap §6.3) — stamp canonical terminal contract
+        # regardless of whether the session had a real_client. Producer
+        # legacy blocks above still own follow-up/CRM/gamification in
+        # shadow mode; policy will take over when
+        # ``completion_policy_strict`` flips.
+        if session is not None:
+            try:
+                from app.services.completion_policy import (
+                    CompletedVia,
+                    TerminalReason,
+                    finalize_training_session,
+                    outcome_from_raw,
+                )
+
+                _raw_outcome = (
+                    state.get("call_outcome")
+                    or state.get("last_call_outcome")
+                    or (session.scoring_details or {}).get("call_outcome")
+                )
+                _reason = (
+                    TerminalReason.client_farewell_detected
+                    if state.get("ai_initiated_farewell") or _raw_outcome == "hangup"
+                    else TerminalReason.user_ended
+                )
+                await finalize_training_session(
+                    db,
+                    session=session,
+                    outcome=outcome_from_raw(_raw_outcome),
+                    reason=_reason,
+                    completed_via=CompletedVia.ws,
+                    manager_id=session.user_id,
+                    emit_followup=False,
+                    emit_crm=False,
+                    emit_gamification=False,
+                )
+            except Exception:
+                logger.warning(
+                    "completion_policy stamp failed (ws) for %s", session_id, exc_info=True,
+                )
+
         await db.commit()
 
     # ── C4 fix: Send results to client NOW (critical path done) ──
@@ -6347,6 +6426,37 @@ async def training_websocket(websocket: WebSocket) -> None:
                     await end_session(
                         _err_session_id, db, status=SessionStatus.error
                     )
+                    # Phase 1 (Roadmap §6.3 path 6): disconnect/error path
+                    # used to only flip ``status=error``. The session
+                    # effectively vanished from CRM timeline and manager
+                    # analytics — terminal event never surfaced. Finalize
+                    # through the policy so the row gets a proper
+                    # ``technical_failed`` outcome + ``session.completed``
+                    # DomainEvent for observability.
+                    try:
+                        from app.models.training import TrainingSession
+                        from app.services.completion_policy import (
+                            CompletedVia,
+                            TerminalOutcome,
+                            TerminalReason,
+                            finalize_training_session,
+                        )
+
+                        _sess = await db.get(TrainingSession, _err_session_id)
+                        if _sess is not None:
+                            await finalize_training_session(
+                                db,
+                                session=_sess,
+                                outcome=TerminalOutcome.technical_failed,
+                                reason=TerminalReason.ws_disconnect,
+                                completed_via=CompletedVia.disconnect,
+                                manager_id=_sess.user_id,
+                            )
+                    except Exception:
+                        logger.warning(
+                            "completion_policy stamp failed (disconnect) for %s",
+                            _err_session_id, exc_info=True,
+                        )
                     await db.commit()
             except Exception:
                 logger.error("Failed to mark session %s as error", _err_session_id)
