@@ -566,14 +566,12 @@ async def api_get_client(
         .where(ClientConsent.client_id == client.id)
         .order_by(ClientConsent.created_at.desc())
     )
-    interactions_result = await db.execute(
-        select(ClientInteraction)
-        .where(ClientInteraction.client_id == client.id)
-        .order_by(ClientInteraction.created_at.desc())
-        .limit(200)
-    )
+    from app.services.client_timeline_reader import read_client_interactions
+
     client.consents = list(consents_result.scalars().all())
-    client.interactions = list(interactions_result.scalars().all())
+    client.interactions = await read_client_interactions(
+        db, client_id=client.id, limit=200
+    )
 
     # 2026-04-23 Zone 4: load last completed training session for this real
     # client. Used by RetrainWidget (when /clients/[id] is reached with
@@ -1114,16 +1112,17 @@ async def api_list_interactions(
     db: AsyncSession = Depends(get_db),
 ):
     """Таймлайн всех взаимодействий с клиентом."""
+    from app.services.client_timeline_reader import read_client_interactions
+
     await get_client(db, client_id=client_id, user=user)
 
-    result = await db.execute(
-        select(ClientInteraction)
-        .where(ClientInteraction.client_id == client_id)
-        .order_by(ClientInteraction.created_at.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
+    interactions = await read_client_interactions(
+        db,
+        client_id=client_id,
+        limit=per_page,
+        offset=(page - 1) * per_page,
     )
-    return [_interaction_to_response(i) for i in result.scalars().all()]
+    return [_interaction_to_response(i) for i in interactions]
 
 
 @router.get("/{client_id}/interactions/summary", response_model=InteractionSummaryResponse)
