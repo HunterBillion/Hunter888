@@ -26,15 +26,18 @@ keep visibility without blocking delivery.
 
 ## Hard guards that DO block
 
-- `pytest` runs and every TZ-1 test must pass.
 - `npx tsc --noEmit` — type safety is strictly enforced.
-- `tests/test_client_domain_invariants.py` — any new raw
-  `ClientInteraction(...)` or `DomainEvent(lead_client_id=...)` outside
-  the canonical helper fails the test suite. This is the invariant that
-  matters for TZ-1 correctness.
-- `tests/test_client_domain_parity.py` — REST and WS end-session paths
-  must stay in sync on the training event shape.
 - Alembic `upgrade head` must succeed.
+- **TZ-1 scope pytest** (the "Test — TZ-1 scope (blocking)" CI step) —
+  `test_client_domain.py`, `test_client_domain_repair.py`,
+  `test_client_domain_invariants.py`, `test_client_domain_parity.py`,
+  `test_training_session_attachments.py`, `test_event_bus_outbox.py`,
+  `test_crm_followup.py`, `test_game_crm_chat.py`. All 53 tests must
+  pass. The invariant test inside this scope protects the TZ-1 contract
+  from any new code path trying to bypass the canonical helper.
+- The full suite still runs alongside (advisory) so coverage numbers
+  stay visible; hard-gating it would require paying down the ~116
+  pre-existing failures first.
 
 ## Follow-up plan
 
