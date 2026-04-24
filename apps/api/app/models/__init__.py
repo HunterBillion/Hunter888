@@ -184,6 +184,7 @@ from app.models.lead_client import LeadClient
 from app.models.domain_event import DomainEvent
 from app.models.crm_projection import CrmTimelineProjectionState
 from app.models.persona_snapshot import PersonaSnapshot
+from app.models.ws_outbox import WsOutboxEvent, WsOutboxStatus
 from app.services.web_push import PushSubscription
 
 __all__ = [
@@ -207,6 +208,8 @@ __all__ = [
     "DomainEvent",
     "CrmTimelineProjectionState",
     "PersonaSnapshot",
+    "WsOutboxEvent",
+    "WsOutboxStatus",
     "Achievement",
     "UserAchievement",
     "LeaderboardSnapshot",
