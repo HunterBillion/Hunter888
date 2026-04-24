@@ -206,7 +206,18 @@ async def test_finalize_strict_mode_calls_tail_helpers(monkeypatch):
     from app.models.training import SessionStatus
 
     session = _fake_session(status=SessionStatus.active, real_client_id=uuid.uuid4())
+
+    # F-L7-2 fix uses ``async with db.begin_nested():`` around each tail
+    # step — the mock must expose that as an async context manager.
+    class _NestedCtx:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
     db = AsyncMock()
+    db.begin_nested = lambda: _NestedCtx()
 
     followup = AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4()))
     log_crm = AsyncMock(return_value=(SimpleNamespace(id=uuid.uuid4()), SimpleNamespace(id=uuid.uuid4())))

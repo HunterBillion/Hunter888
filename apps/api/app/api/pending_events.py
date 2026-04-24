@@ -14,11 +14,12 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
+from app.core.rate_limit import limiter
 from app.database import get_db
 from app.models.user import User
 from app.services import ws_delivery
@@ -48,7 +49,12 @@ class AckResponse(BaseModel):
 
 
 @router.get("/me/pending-events", response_model=PendingEventsResponse)
+# F-L6-3 fix: a buggy client hot-looping on reconnect could DOS the
+# endpoint; 30 req/min per IP is ample for the WS-reconnect use case
+# (frontend polls at most every few seconds during disconnect).
+@limiter.limit("30/minute")
 async def get_pending_events(
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> PendingEventsResponse:
@@ -69,7 +75,9 @@ async def get_pending_events(
 
 
 @router.post("/me/pending-events/ack", response_model=AckResponse)
+@limiter.limit("60/minute")
 async def ack_pending_events(
+    request: Request,
     body: AckRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

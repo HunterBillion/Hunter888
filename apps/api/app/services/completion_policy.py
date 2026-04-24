@@ -177,6 +177,10 @@ class CompletionResult:
     already_completed: bool
     events_emitted: tuple[str, ...]
     followup_id: uuid.UUID | None
+    # F-L7-2 fix: explicit record of tail-step failures so callers can
+    # alert/retry instead of treating a silently-caught exception as
+    # success. Empty tuple = all steps either ran or were not requested.
+    failures: tuple[str, ...] = ()
 
 
 # ── Validation ───────────────────────────────────────────────────────────
@@ -311,36 +315,57 @@ async def finalize_training_session(
     do_gamification = emit_gamification if emit_gamification is not None else strict
 
     events_emitted: list[str] = []
+    failures: list[str] = []
     followup_id: uuid.UUID | None = None
 
+    # F-L7-2 fix: each tail step runs in a SAVEPOINT so a failure rolls
+    # back its partial writes instead of leaking half-applied state into
+    # the caller's transaction. The outer stamp ``terminal_outcome/reason/
+    # completed_via`` stays applied — that is intentional, the session
+    # IS terminal regardless of whether the CRM bookkeeping succeeded —
+    # but partial rows from a crashed follow-up/CRM/gamification step
+    # are now discarded instead of being committed by the caller. The
+    # failure is recorded in ``CompletionResult.failures`` so observers
+    # (admin panel, alerts) can act on it.
     if do_followup and session.real_client_id is not None:
         try:
-            from app.services.crm_followup import ensure_followup_for_session
+            async with db.begin_nested():
+                from app.services.crm_followup import ensure_followup_for_session
 
-            reminder = await ensure_followup_for_session(
-                db, session, outcome=outcome.value
-            )
-            if reminder is not None:
-                followup_id = reminder.id
-                events_emitted.append("crm.reminder_created")
-        except Exception:
+                reminder = await ensure_followup_for_session(
+                    db, session, outcome=outcome.value
+                )
+                if reminder is not None:
+                    followup_id = reminder.id
+                    events_emitted.append("crm.reminder_created")
+        except Exception as exc:
+            failures.append(f"followup:{type(exc).__name__}")
             logger.warning(
                 "completion_policy.followup_failed session=%s", session.id, exc_info=True
             )
 
     if do_crm and session.real_client_id is not None:
         try:
-            from app.services.client_domain import log_training_real_case_summary
+            async with db.begin_nested():
+                from app.services.client_domain import log_training_real_case_summary
 
-            interaction, event = await log_training_real_case_summary(
-                db,
-                session=session,
-                source=f"completion_policy.{completed_via.value}",
-                manager_id=manager_id,
-            )
-            if event is not None:
-                events_emitted.append("training.real_case_logged")
-        except Exception:
+                interaction, event = await log_training_real_case_summary(
+                    db,
+                    session=session,
+                    source=f"completion_policy.{completed_via.value}",
+                    manager_id=manager_id,
+                )
+                if event is not None and interaction is not None:
+                    events_emitted.append("training.real_case_logged")
+                elif event is not None and interaction is None:
+                    # ``log_training_real_case_summary`` returned (None,
+                    # event) because the emit path was disabled/failed
+                    # — this is a recognised shadow-mode outcome, not a
+                    # failure. Record it for visibility without
+                    # classifying as an error.
+                    failures.append("crm:event_not_persisted")
+        except Exception as exc:
+            failures.append(f"crm:{type(exc).__name__}")
             logger.warning(
                 "completion_policy.crm_dual_write_failed session=%s",
                 session.id, exc_info=True,
@@ -382,7 +407,8 @@ async def finalize_training_session(
                 idempotency_key=f"training_completed:{session.id}",
             )
             events_emitted.append("training_completed")
-        except Exception:
+        except Exception as exc:
+            failures.append(f"gamification:{type(exc).__name__}")
             logger.warning(
                 "completion_policy.gamification_emit_failed session=%s",
                 session.id, exc_info=True,
@@ -390,36 +416,40 @@ async def finalize_training_session(
 
     # Canonical session.completed DomainEvent — always emitted so that
     # observability/parity dashboards can count finalizations regardless
-    # of strict mode. Idempotent via deterministic key.
+    # of strict mode. Idempotent via deterministic key. Runs in its own
+    # savepoint so a DomainEvent emit failure doesn't corrupt the
+    # caller's transaction.
     if settings.completion_policy_emit_event and session.real_client_id is not None:
         try:
-            from app.models.client import RealClient
-            from app.services.client_domain import emit_client_event
+            async with db.begin_nested():
+                from app.models.client import RealClient
+                from app.services.client_domain import emit_client_event
 
-            client = await db.get(RealClient, session.real_client_id)
-            if client is not None:
-                await emit_client_event(
-                    db,
-                    client=client,
-                    event_type="session.completed",
-                    actor_type="user",
-                    actor_id=manager_id,
-                    source=f"completion_policy.{completed_via.value}",
-                    payload={
-                        "training_session_id": str(session.id),
-                        "outcome": outcome.value,
-                        "reason": reason.value,
-                        "completed_via": completed_via.value,
-                        "strict_mode": strict,
-                    },
-                    aggregate_type="training_session",
-                    aggregate_id=session.id,
-                    session_id=session.id,
-                    idempotency_key=f"session-completed:{session.id}",
-                    correlation_id=str(session.id),
-                )
-                events_emitted.append("session.completed")
-        except Exception:
+                client = await db.get(RealClient, session.real_client_id)
+                if client is not None:
+                    await emit_client_event(
+                        db,
+                        client=client,
+                        event_type="session.completed",
+                        actor_type="user",
+                        actor_id=manager_id,
+                        source=f"completion_policy.{completed_via.value}",
+                        payload={
+                            "training_session_id": str(session.id),
+                            "outcome": outcome.value,
+                            "reason": reason.value,
+                            "completed_via": completed_via.value,
+                            "strict_mode": strict,
+                        },
+                        aggregate_type="training_session",
+                        aggregate_id=session.id,
+                        session_id=session.id,
+                        idempotency_key=f"session-completed:{session.id}",
+                        correlation_id=str(session.id),
+                    )
+                    events_emitted.append("session.completed")
+        except Exception as exc:
+            failures.append(f"session_completed_event:{type(exc).__name__}")
             logger.warning(
                 "completion_policy.session_completed_event_failed session=%s",
                 session.id, exc_info=True,
@@ -434,6 +464,7 @@ async def finalize_training_session(
             "completed_via": completed_via.value,
             "strict_mode": strict,
             "events_emitted": events_emitted,
+            "failures": failures,
         },
     )
 
@@ -446,6 +477,7 @@ async def finalize_training_session(
         already_completed=False,
         events_emitted=tuple(events_emitted),
         followup_id=followup_id,
+        failures=tuple(failures),
     )
 
 

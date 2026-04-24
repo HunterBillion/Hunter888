@@ -340,23 +340,37 @@ export default function ClientDomainAdminPage() {
   const roleReady = user !== undefined;
   const hasAccess = !!user && isAdmin(user);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true);
       setLoadError(null);
-      const d = await api.get<DashboardResponse>("/admin/client-domain/dashboard");
+      const d = await api.get<DashboardResponse>(
+        "/admin/client-domain/dashboard",
+        signal ? { signal } : undefined,
+      );
+      if (signal?.aborted) return;
       setData(d);
     } catch (err) {
+      if (signal?.aborted) return;
+      // Ignore aborts triggered by unmount/refetch — they are not user-
+      // visible failures.
+      if (err instanceof DOMException && err.name === "AbortError") return;
       const msg = err instanceof ApiError ? err.message : String(err);
       setLoadError(msg);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []);
 
+  // F-L12-1 fix: abort the in-flight request when either the user
+  // navigates away or the effect re-runs (e.g. ``hasAccess`` flip).
+  // Without this, a late response resolves after unmount → setState on
+  // a dead component → React warns + memory leak.
   useEffect(() => {
     if (!hasAccess) return;
-    load();
+    const controller = new AbortController();
+    load(controller.signal);
+    return () => controller.abort();
   }, [hasAccess, load]);
 
   const refresh = useCallback(async () => {
