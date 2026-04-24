@@ -1460,6 +1460,34 @@ async def end_session(
         except Exception:
             logger.warning("CRM training summary dual-write failed for %s", session_id, exc_info=True)
 
+    # Phase 1 (Roadmap §6.3) — stamp canonical terminal contract on the
+    # session row. Legacy side effects above still own follow-up/CRM/
+    # gamification; policy runs with ``emit_*=False`` so it doesn't
+    # double-write. When ``completion_policy_strict`` flips the strict
+    # branch removes those legacy blocks and policy takes over.
+    try:
+        from app.services.completion_policy import (
+            CompletedVia,
+            TerminalReason,
+            finalize_training_session,
+            outcome_from_raw,
+        )
+
+        _policy_outcome = outcome_from_raw(normalized_outcome)
+        await finalize_training_session(
+            db,
+            session=session,
+            outcome=_policy_outcome,
+            reason=TerminalReason.user_ended,
+            completed_via=CompletedVia.rest,
+            manager_id=user.id,
+            emit_followup=False,
+            emit_crm=False,
+            emit_gamification=False,
+        )
+    except Exception:
+        logger.warning("completion_policy stamp failed (rest) for %s", session_id, exc_info=True)
+
     # Emit event → EventBus handles achievements, goals, SRS seeding, notifications
     try:
         from app.services.event_bus import event_bus, GameEvent, EVENT_TRAINING_COMPLETED

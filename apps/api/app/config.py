@@ -141,6 +141,19 @@ class Settings(BaseSettings):
     # emit failures are logged and the legacy write still commits.
     client_domain_strict_emit: bool = False
 
+    # ── Phase 1 (Roadmap) ConversationCompletionPolicy flags ──────────────
+    # When False (default during rollout): legacy terminal side-effect
+    # blocks still own the writes; policy only VALIDATES + stamps the new
+    # columns. When True (post-parity): policy is authoritative and legacy
+    # producers must short-circuit (they will, once strict mode is on).
+    # Off initially so every PR pushing wiring is a no-op behavioural
+    # change — you can always revert by flipping one env var.
+    completion_policy_strict: bool = False
+    # Emits a ``DomainEvent`` ``session.completed`` for every finalize()
+    # so observability/alerts can track completion cadence even when
+    # strict mode is off. Free to keep on — volume is 1 event per session.
+    completion_policy_emit_event: bool = True
+
     # RAG retrieval
     rag_min_similarity: float = 0.40  # Min cosine similarity for RAG retrieval (standard mode)
     rag_min_similarity_blitz: float = 0.35  # Min cosine similarity for blitz mode

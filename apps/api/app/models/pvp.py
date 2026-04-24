@@ -269,6 +269,14 @@ class PvPDuel(Base):
     breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     turning_point: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Phase 1 (Roadmap §6) ConversationCompletionPolicy — unified terminal
+    # contract shared with TrainingSession. Values are from the
+    # ``TerminalOutcome``/``TerminalReason`` enums in
+    # ``services.completion_policy``. PvP uses a subset
+    # (``pvp_win``/``pvp_loss``/``pvp_draw``/``pvp_abandoned``).
+    terminal_outcome: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    terminal_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
 
 class PvPRating(Base):
     """Glicko-2 rating state per user.
