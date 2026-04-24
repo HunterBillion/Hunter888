@@ -161,7 +161,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.28.0
+        # 0.28.0 was yanked from the marketplace. Use the stable major tag
+        # so Dependabot keeps it up to date automatically.
+        uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
           scan-ref: '.'
