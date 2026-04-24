@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.client import ManagerReminder, RealClient
 from app.models.training import TrainingSession
+from app.services.client_domain import emit_client_event
 from app.services.session_state import normalize_session_outcome
 
 
@@ -121,4 +122,26 @@ async def ensure_followup_for_session(
         auto_generated=True,
     )
     db.add(reminder)
+
+    await emit_client_event(
+        db,
+        client=client,
+        event_type="crm.reminder_created",
+        actor_type="system",
+        actor_id=session.user_id,
+        source="crm_followup",
+        payload={
+            "reminder_id": str(reminder.id),
+            "remind_at": planned_at.isoformat(),
+            "session_id": str(session.id),
+            "outcome": effective_outcome,
+            "auto_generated": True,
+            "next_contact_at": planned_at.isoformat(),
+        },
+        aggregate_type="manager_reminder",
+        aggregate_id=reminder.id,
+        session_id=session.id,
+        idempotency_key=f"crm-followup:{session.id}:{session_marker}",
+        correlation_id=str(session.id),
+    )
     return reminder

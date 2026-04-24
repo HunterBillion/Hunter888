@@ -1,16 +1,26 @@
-"""Canonical client-domain helpers for TZ-1 dual-write migration.
+"""Canonical client-domain helpers (TZ-1 Фаза 2: dual-write).
 
-This module keeps existing CRM read/write flows alive while adding:
-- canonical LeadClient bootstrap
-- immutable DomainEvent journal writes
-- CRM timeline projection bookkeeping
+Responsibilities:
+- bootstrap a canonical ``LeadClient`` per ``RealClient`` (1:1 physical anchor);
+- append immutable ``DomainEvent`` rows;
+- delegate CRM-timeline materialization to ``crm_timeline_projector``;
+- bind ``Attachment`` / ``TrainingSession`` to a ``lead_client_id``.
 
-Read paths stay on existing tables for now. New writes go through these helpers
-to avoid further schema drift.
+Design notes
+------------
+* Read paths stay on legacy tables until ``client_domain_cutover_read_enabled``.
+* Writes that change lifecycle/work_state must go through one of the helpers
+  here — anything else is an architectural defect per TZ §10.3.
+* ``idempotency_key`` is **mandatory** on event producers. We still accept a
+  ``None`` for fire-and-forget notes, but that path will never dedupe retries
+  and logs a warning so we can catch it in audits.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -20,12 +30,24 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.client import Attachment, ClientInteraction, ClientStatus, InteractionType, RealClient
 from app.models.crm_projection import CrmTimelineProjectionState
 from app.models.domain_event import DomainEvent
 from app.models.lead_client import LeadClient
 from app.models.training import TrainingSession
 from app.models.user import User
+from app.services.crm_timeline_projector import (
+    PROJECTION_NAME,
+    PROJECTION_VERSION,
+    interaction_metadata_patch,
+    record_projection,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
 
 
 def _json_safe(value: Any) -> Any:
@@ -39,12 +61,44 @@ def _json_safe(value: Any) -> Any:
         return value.isoformat()
     if isinstance(value, Decimal):
         return str(value)
-    if hasattr(value, "value") and not isinstance(value, str):
+    if hasattr(value, "value") and not isinstance(value, (str, bytes, bytearray)):
         try:
             return value.value
         except Exception:
             return str(value)
     return value
+
+
+def _hash_payload(payload: dict[str, Any] | None) -> str:
+    if not payload:
+        return "0"
+    blob = json.dumps(_json_safe(payload), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+def _derive_idempotency_key(
+    event_type: str,
+    *,
+    aggregate_id: uuid.UUID | None,
+    actor_id: uuid.UUID | None,
+    payload: dict[str, Any] | None,
+    session_id: uuid.UUID | None,
+) -> str:
+    """Deterministic fallback when caller did not pass a key explicitly.
+
+    TZ §9.1.4 mandates an idempotency_key on every producer. Rather than a
+    pure random UUID (which silently defeats dedup on retries), we derive one
+    from the event's natural keys so the same business action produces the
+    same key. Callers that can craft a stronger key should still do so.
+    """
+    parts = [
+        event_type,
+        str(aggregate_id or "0"),
+        str(actor_id or "0"),
+        str(session_id or "0"),
+        _hash_payload(payload),
+    ]
+    return ":".join(parts)
 
 
 def map_legacy_client_status(status: ClientStatus | str | None) -> tuple[str, str]:
@@ -70,12 +124,26 @@ def map_legacy_client_status(status: ClientStatus | str | None) -> tuple[str, st
     return lifecycle, work_state
 
 
+# ── LeadClient bootstrap ────────────────────────────────────────────────────
+
+
 async def ensure_lead_client(
     db: AsyncSession,
     *,
     client: RealClient,
     owner_user: User | None = None,
 ) -> LeadClient:
+    """Create-or-attach the canonical LeadClient for a RealClient.
+
+    Safety:
+    - Does NOT overwrite owner/team on an existing record (prevents churn when
+      called from read paths or unrelated owners). Update is explicit —
+      callers that really want to reassign ownership should mutate the
+      LeadClient directly.
+    - Lifecycle/work_state are backfilled ONLY if the LeadClient has the
+      default ("new"/"active") — otherwise direct changes to the canonical
+      record are preserved.
+    """
     target_id = client.lead_client_id or client.id
     lead = await db.get(LeadClient, target_id)
 
@@ -100,20 +168,24 @@ async def ensure_lead_client(
         db.add(lead)
         await db.flush()
     else:
-        lifecycle_stage, work_state = map_legacy_client_status(client.status)
-        lead.owner_user_id = owner_user.id if owner_user is not None else client.manager_id
-        if owner_user is not None:
-            lead.team_id = owner_user.team_id
         if lead.source_system is None:
             lead.source_system = "real_clients"
         if lead.source_ref is None:
             lead.source_ref = str(client.id)
-        lead.lifecycle_stage = lifecycle_stage
-        lead.work_state = work_state
+        # Only backfill lifecycle/work_state while they still sit at defaults
+        # AND legacy status disagrees — avoids clobbering canonical updates.
+        if lead.lifecycle_stage == "new" and lead.work_state == "active":
+            lifecycle_stage, work_state = map_legacy_client_status(client.status)
+            if (lifecycle_stage, work_state) != ("new", "active"):
+                lead.lifecycle_stage = lifecycle_stage
+                lead.work_state = work_state
 
     if client.lead_client_id != lead.id:
         client.lead_client_id = lead.id
     return lead
+
+
+# ── DomainEvent emit ────────────────────────────────────────────────────────
 
 
 async def emit_domain_event(
@@ -134,7 +206,31 @@ async def emit_domain_event(
     causation_id: str | None = None,
     correlation_id: str | None = None,
 ) -> DomainEvent:
-    key = idempotency_key or f"{event_type}:{uuid.uuid4()}"
+    if not settings.client_domain_dual_write_enabled:
+        # Return a transient DomainEvent that is NOT persisted. Callers that
+        # need the ID for projection bookkeeping should check
+        # ``settings.client_domain_dual_write_enabled`` themselves.
+        return DomainEvent(
+            id=uuid.uuid4(),
+            lead_client_id=lead_client_id,
+            event_type=event_type,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            source=source[:30],
+            payload_json=_json_safe(payload or {}),
+            idempotency_key=idempotency_key or "disabled",
+            schema_version=1,
+            correlation_id=correlation_id,
+        )
+
+    key = idempotency_key or _derive_idempotency_key(
+        event_type,
+        aggregate_id=aggregate_id,
+        actor_id=actor_id,
+        payload=payload,
+        session_id=session_id,
+    )
+
     existing = (await db.execute(
         select(DomainEvent).where(DomainEvent.idempotency_key == key)
     )).scalar_one_or_none()
@@ -162,12 +258,35 @@ async def emit_domain_event(
         async with db.begin_nested():
             db.add(event)
             await db.flush()
+        logger.info(
+            "domain_event.emitted",
+            extra={
+                "event_type": event_type,
+                "lead_client_id": str(lead_client_id),
+                "domain_event_id": str(event.id),
+                "correlation_id": correlation_id,
+                "source": source,
+            },
+        )
         return event
     except IntegrityError:
         existing = (await db.execute(
             select(DomainEvent).where(DomainEvent.idempotency_key == key)
         )).scalar_one()
         return existing
+    except Exception as exc:
+        if settings.client_domain_strict_emit:
+            raise
+        logger.warning(
+            "domain_event.emit_failed",
+            extra={
+                "event_type": event_type,
+                "lead_client_id": str(lead_client_id),
+                "error": str(exc),
+            },
+            exc_info=True,
+        )
+        return event
 
 
 async def _projection_interaction_for_event(
@@ -183,6 +302,9 @@ async def _projection_interaction_for_event(
     if projection is None or projection.interaction_id is None:
         return None
     return await db.get(ClientInteraction, projection.interaction_id)
+
+
+# ── Dual-write helpers used by producers ────────────────────────────────────
 
 
 async def create_crm_interaction_with_event(
@@ -205,6 +327,7 @@ async def create_crm_interaction_with_event(
     session_id: uuid.UUID | None = None,
     idempotency_key: str | None = None,
 ) -> tuple[ClientInteraction, DomainEvent]:
+    """Write a ClientInteraction row + paired DomainEvent in the same txn."""
     if idempotency_key:
         existing_event = (await db.execute(
             select(DomainEvent).where(DomainEvent.idempotency_key == idempotency_key)
@@ -261,26 +384,11 @@ async def create_crm_interaction_with_event(
         aggregate_id=interaction.id,
         session_id=session_id,
         idempotency_key=idempotency_key,
-        correlation_id=str(session_id) if session_id else None,
+        correlation_id=str(session_id) if session_id else str(interaction.id),
     )
 
-    interaction.metadata_ = {
-        **meta,
-        "domain_event_id": str(event.id),
-        "schema_version": event.schema_version,
-        "projection_name": "crm_timeline",
-        "projection_version": 1,
-    }
-    projection = CrmTimelineProjectionState(
-        domain_event_id=event.id,
-        lead_client_id=lead.id,
-        interaction_id=interaction.id,
-        projection_name="crm_timeline",
-        projection_version=1,
-        status="projected",
-    )
-    db.add(projection)
-    await db.flush()
+    interaction.metadata_ = {**meta, **interaction_metadata_patch(event)}
+    await record_projection(db, event=event, interaction=interaction)
     return interaction, event
 
 
@@ -297,6 +405,7 @@ async def emit_client_event(
     aggregate_id: uuid.UUID | None = None,
     session_id: uuid.UUID | None = None,
     idempotency_key: str | None = None,
+    correlation_id: str | None = None,
 ) -> DomainEvent:
     lead = await ensure_lead_client(db, client=client)
     return await emit_domain_event(
@@ -311,7 +420,7 @@ async def emit_client_event(
         aggregate_id=aggregate_id,
         session_id=session_id,
         idempotency_key=idempotency_key,
-        correlation_id=str(session_id) if session_id else None,
+        correlation_id=correlation_id or (str(session_id) if session_id else None),
     )
 
 
@@ -337,6 +446,9 @@ async def bind_session_to_lead_client(
     return lead.id
 
 
+# ── Training real-case bridge ───────────────────────────────────────────────
+
+
 async def log_training_real_case_summary(
     db: AsyncSession,
     *,
@@ -350,6 +462,7 @@ async def log_training_real_case_summary(
     if client is None:
         return None, None
     lead = await ensure_lead_client(db, client=client)
+    session_mode = ((session.custom_params or {}).get("session_mode") or "chat").lower()
     event = await emit_domain_event(
         db,
         lead_client_id=lead.id,
@@ -361,7 +474,7 @@ async def log_training_real_case_summary(
             "training_session_id": str(session.id),
             "scenario_id": str(session.scenario_id) if session.scenario_id else None,
             "scenario_version_id": str(session.scenario_version_id) if session.scenario_version_id else None,
-            "session_mode": ((session.custom_params or {}).get("session_mode") or "chat").lower(),
+            "session_mode": session_mode,
             "score_total": session.score_total,
             "status": session.status.value if hasattr(session.status, "value") else str(session.status),
         },
@@ -375,7 +488,6 @@ async def log_training_real_case_summary(
     if existing_interaction is not None:
         return existing_interaction, event
 
-    session_mode = ((session.custom_params or {}).get("session_mode") or "chat").lower()
     interaction_type = InteractionType.outbound_call if session_mode == "call" else InteractionType.note
     score_value = int(session.score_total) if session.score_total is not None else 0
     interaction = ClientInteraction(
@@ -395,22 +507,24 @@ async def log_training_real_case_summary(
             "session_mode": session_mode,
             "total_score": session.score_total,
             "source": session.source,
-            "domain_event_id": str(event.id),
-            "schema_version": event.schema_version,
-            "projection_name": "crm_timeline",
-            "projection_version": 1,
+            **interaction_metadata_patch(event),
         },
     )
     db.add(interaction)
     await db.flush()
-    projection = CrmTimelineProjectionState(
-        domain_event_id=event.id,
-        lead_client_id=lead.id,
-        interaction_id=interaction.id,
-        projection_name="crm_timeline",
-        projection_version=1,
-        status="projected",
-    )
-    db.add(projection)
-    await db.flush()
+    await record_projection(db, event=event, interaction=interaction)
     return interaction, event
+
+
+__all__ = [
+    "PROJECTION_NAME",
+    "PROJECTION_VERSION",
+    "bind_attachment_to_lead_client",
+    "bind_session_to_lead_client",
+    "create_crm_interaction_with_event",
+    "emit_client_event",
+    "emit_domain_event",
+    "ensure_lead_client",
+    "log_training_real_case_summary",
+    "map_legacy_client_status",
+]

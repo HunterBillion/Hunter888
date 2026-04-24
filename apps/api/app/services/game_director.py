@@ -505,6 +505,26 @@ class GameDirectorEngine:
                     content=f"После звонка #{story.total_calls}",
                 )
 
+                # TZ-1 §11.2: mirror story lifecycle into canonical DomainEvent
+                # when the story is linked to a real CRM client.
+                try:
+                    from app.services.client_story_projector import record_story_lifecycle_change
+
+                    await record_story_lifecycle_change(
+                        db,
+                        story=story,
+                        old_state=old_state,
+                        new_state=new_state,
+                        actor_id=story.user_id,
+                        source="game_director",
+                        extra={"call_number": story.total_calls},
+                    )
+                except Exception:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "advance_story: domain mirror of lifecycle change failed", exc_info=True
+                    )
+
             # 4. Save promises and key moments to memory
             memory = story.memory or {}
             for p in result.promises_made:
@@ -1047,8 +1067,12 @@ class GameDirectorEngine:
         self, story: ClientStory, event_type: str, db: AsyncSession,
         title: str = "", content: str = "", payload: dict | None = None,
     ) -> None:
-        """Create a GameClientEvent for the CRM timeline (Agent 7)."""
-        # Map string event_type to GameEventType enum
+        """Create a GameClientEvent for the CRM timeline (Agent 7).
+
+        TZ-1 §11.3 dual-write: also mirrors into the canonical DomainEvent log
+        via the shared helper. Going through ``timeline_aggregator.create_game_event``
+        keeps the mirror logic in one place.
+        """
         _type_map = {
             "call": GameEventType.call,
             "message": GameEventType.message,
@@ -1059,16 +1083,18 @@ class GameDirectorEngine:
         }
         _evt_type = _type_map.get(event_type, GameEventType.consequence)
 
-        event = GameClientEvent(
+        from app.services.timeline_aggregator import create_game_event as _create_game_event_shared
+
+        await _create_game_event_shared(
+            db,
             story_id=story.id,
             user_id=story.user_id,
             event_type=_evt_type,
-            source="game_director",
             title=title or "Событие",
+            source="game_director",
             content=content,
             payload=payload or {},
         )
-        db.add(event)
 
     # ─── CONVERGENCE ────────────────────────────────────
 

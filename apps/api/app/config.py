@@ -131,6 +131,16 @@ class Settings(BaseSettings):
     lorebook_max_examples: int = 3  # Max few-shot RAG examples per turn
     lorebook_history_messages: int = 10  # Sliding window size for local LLM
 
+    # ── TZ-1 Unified Client Domain (foundation flags) ─────────────────────
+    # Phase 2 (dual-write) is ON by default once the migration is applied.
+    # Phase 5 (cutover read path) stays OFF until parity is confirmed.
+    client_domain_dual_write_enabled: bool = True
+    client_domain_cutover_read_enabled: bool = False
+    # Strictness during rollout: when True, any DomainEvent emit failure
+    # rolls the whole business transaction back. When False (pilot default),
+    # emit failures are logged and the legacy write still commits.
+    client_domain_strict_emit: bool = False
+
     # RAG retrieval
     rag_min_similarity: float = 0.40  # Min cosine similarity for RAG retrieval (standard mode)
     rag_min_similarity_blitz: float = 0.35  # Min cosine similarity for blitz mode
