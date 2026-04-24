@@ -187,6 +187,27 @@ async def lifespan(application: FastAPI):
     setup_default_handlers()
     event_bus.start_worker(poll_interval=1.0)
 
+    # TZ-1 §17 observability — print a parity snapshot on boot so ops can
+    # see drift immediately in logs without hitting the admin endpoint.
+    # Best-effort: a DB issue at boot must not block startup.
+    try:
+        from app.services.client_domain_repair import parity_report
+        async with async_session() as db:
+            report = await parity_report(db)
+        logger.info(
+            "client_domain.parity_snapshot",
+            extra={"report": report},
+        )
+        missing = report.get("interactions_without_domain_event_id", 0)
+        if missing > 0:
+            logger.warning(
+                "client_domain.parity_drift interactions_without_domain_event_id=%d "
+                "— run scripts/client_domain_ops.py repair-events to backfill",
+                missing,
+            )
+    except Exception as exc:
+        logger.warning("Lifespan: client_domain parity snapshot failed: %s", exc)
+
     # Auto-seed Season 1 content (idempotent)
     try:
         from app.services.content_season import seed_first_season
