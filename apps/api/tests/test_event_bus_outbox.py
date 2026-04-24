@@ -215,8 +215,9 @@ class TestHandlerSetup:
         eb_module.event_bus = bus
         try:
             setup_default_handlers()
-            # Training should have 4 handlers
-            assert len(bus._handlers.get(EVENT_TRAINING_COMPLETED, [])) == 4
+            # Training now fans out into achievements, goals, SRS, league XP,
+            # home-session CRM sync and tournament points.
+            assert len(bus._handlers.get(EVENT_TRAINING_COMPLETED, [])) == 6
             # Achievement earned → notification
             assert len(bus._handlers.get(EVENT_ACHIEVEMENT_EARNED, [])) == 1
             # Goal completed → notification

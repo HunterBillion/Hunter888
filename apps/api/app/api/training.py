@@ -46,6 +46,13 @@ from app.services.session_manager import (
 )
 from app.services.emotion import init_emotion as sm_init_emotion
 from app.services.crm_followup import ensure_followup_for_session
+from app.services.client_domain import (
+    bind_attachment_to_lead_client,
+    bind_session_to_lead_client,
+    create_crm_interaction_with_event,
+    emit_client_event,
+    log_training_real_case_summary,
+)
 from app.services.profile_gate import required_profile_missing
 from app.services.quality_audit import review_session_quality
 from app.services.session_state import normalize_session_mode, validate_terminal_outcome
@@ -816,6 +823,29 @@ async def start_session(
     db.add(session)
     await db.flush()
 
+    if real_client is not None:
+        lead_client_id = await bind_session_to_lead_client(db, session=session, client=real_client)
+        await emit_client_event(
+            db,
+            client=real_client,
+            event_type="session.linked_to_client",
+            actor_type="user",
+            actor_id=user.id,
+            source="api.training",
+            payload={
+                "session_id": str(session.id),
+                "scenario_id": str(scenario_id) if scenario_id else None,
+                "mode": normalized_mode or "chat",
+                "source": body.source,
+                "real_client_id": str(real_client.id),
+                "lead_client_id": str(lead_client_id),
+            },
+            aggregate_type="training_session",
+            aggregate_id=session.id,
+            session_id=session.id,
+            idempotency_key=f"session-linked:{session.id}",
+        )
+
     # Initialize Redis state and emotion (mirrors session_manager.start_session)
     try:
         from app.models.character import EmotionState
@@ -1084,15 +1114,17 @@ async def upload_session_attachment(
         },
     )
     db.add(attachment)
+    await bind_attachment_to_lead_client(db, attachment=attachment, client=client)
     await db.flush()
 
-    interaction = ClientInteraction(
-        client_id=client.id,
+    interaction, event = await create_crm_interaction_with_event(
+        db,
+        client=client,
         manager_id=user.id,
         interaction_type=InteractionType.system,
         content=f"Получен файл в сессии {session_mode}: {stored.filename}",
         result="attachment_received",
-        metadata_={
+        metadata={
             "attachment_id": str(attachment.id),
             "training_session_id": str(session.id),
             "session_mode": session_mode,
@@ -1101,11 +1133,29 @@ async def upload_session_attachment(
             "ocr_status": attachment.ocr_status,
             "classification_status": attachment.classification_status,
         },
+        payload={
+            "attachment_id": str(attachment.id),
+            "training_session_id": str(session.id),
+            "session_mode": session_mode,
+            "sha256": stored.sha256,
+            "document_type": document_type,
+            "ocr_status": attachment.ocr_status,
+            "classification_status": attachment.classification_status,
+            "duplicate_of": str(existing.id) if existing else None,
+        },
+        event_type="session.attachment_linked",
+        source="api.training",
+        actor_type="user",
+        actor_id=user.id,
+        session_id=session.id,
+        idempotency_key=f"session-attachment:{attachment.id}",
     )
-    db.add(interaction)
-    await db.flush()
 
     attachment.interaction_id = interaction.id
+    attachment.metadata_ = {
+        **(attachment.metadata_ or {}),
+        "domain_event_id": str(event.id),
+    }
     await db.flush()
     return attachment
 
@@ -1190,17 +1240,31 @@ async def decline_session(
         # Log as CRM interaction if linked to real client (for timeline).
         if session.real_client_id:
             try:
-                db.add(ClientInteraction(
-                    client_id=session.real_client_id,
-                    manager_id=user.id,
-                    interaction_type=InteractionType.note,
-                    content=f"Отклонил входящий звонок (тренировка #{session.id.hex[:8]})",
-                    metadata_={
-                        "training_session_id": str(session.id),
-                        "declined": True,
-                        "session_mode": (session.custom_params or {}).get("session_mode"),
-                    },
-                ))
+                client = await db.get(RealClient, session.real_client_id)
+                if client is not None:
+                    await create_crm_interaction_with_event(
+                        db,
+                        client=client,
+                        manager_id=user.id,
+                        interaction_type=InteractionType.note,
+                        content=f"Отклонил входящий звонок (тренировка #{session.id.hex[:8]})",
+                        metadata={
+                            "training_session_id": str(session.id),
+                            "declined": True,
+                            "session_mode": (session.custom_params or {}).get("session_mode"),
+                        },
+                        payload={
+                            "training_session_id": str(session.id),
+                            "declined": True,
+                            "session_mode": (session.custom_params or {}).get("session_mode"),
+                        },
+                        event_type="training.real_case_declined",
+                        source="api.training",
+                        actor_type="user",
+                        actor_id=user.id,
+                        session_id=session.id,
+                        idempotency_key=f"training-declined:{session.id}",
+                    )
             except Exception:
                 logger.warning(
                     "decline_session: ClientInteraction create failed for %s",
@@ -1384,6 +1448,17 @@ async def end_session(
         await ensure_followup_for_session(db, session)
     except Exception:
         logger.warning("CRM follow-up auto-create failed for %s", session_id, exc_info=True)
+
+    if session.real_client_id:
+        try:
+            await log_training_real_case_summary(
+                db,
+                session=session,
+                source="api.training.end",
+                manager_id=user.id,
+            )
+        except Exception:
+            logger.warning("CRM training summary dual-write failed for %s", session_id, exc_info=True)
 
     # Emit event → EventBus handles achievements, goals, SRS seeding, notifications
     try:

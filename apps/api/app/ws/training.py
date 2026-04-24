@@ -62,6 +62,7 @@ from app.services.emotion import (
     get_fake_prompt, save_journey_snapshot,
 )
 from app.services.crm_followup import ensure_followup_for_session
+from app.services.client_domain import log_training_real_case_summary
 from app.services.session_state import normalize_session_outcome, validate_terminal_outcome
 from app.services.emotion_v6 import compute_intensity, detect_compound_emotion
 from app.services.session_manager import (
@@ -4815,42 +4816,13 @@ async def _handle_session_end(
                     session_id, exc_info=True,
                 )
 
-        # 2026-04-23 Zone 4: auto-register training in ClientInteraction
-        # timeline. When session is linked to a CRM RealClient, create a
-        # matching interaction row so the /clients/[id] timeline shows
-        # "Тренировка (звонок/чат)" card with score + duration + retrain
-        # mini-button. Without this the training history was invisible on
-        # the client card — every session looked "new".
         if session is not None and session.real_client_id:
             try:
-                _mode = (session.custom_params or {}).get("session_mode") or "chat"
-                _interaction_type = (
-                    InteractionType.outbound_call
-                    if _mode == "call"
-                    else InteractionType.note
-                )
-                _score_int = int(session.score_total) if session.score_total else 0
-                db.add(ClientInteraction(
-                    client_id=session.real_client_id,
+                await log_training_real_case_summary(
+                    db,
+                    session=session,
+                    source="ws.training.end",
                     manager_id=session.user_id,
-                    interaction_type=_interaction_type,
-                    duration_seconds=session.duration_seconds,
-                    content=(
-                        f"Тренировка #{session.id.hex[:8]} "
-                        f"({'звонок' if _mode == 'call' else 'чат'}) — "
-                        f"{_score_int} баллов"
-                    ),
-                    metadata_={
-                        "training_session_id": str(session.id),
-                        "scenario_id": str(session.scenario_id) if session.scenario_id else None,
-                        "session_mode": _mode,
-                        "total_score": session.score_total,
-                        "source": session.source,
-                    },
-                ))
-                logger.info(
-                    "ClientInteraction auto-created | session=%s | client=%s | mode=%s | score=%s",
-                    session.id, session.real_client_id, _mode, _score_int,
                 )
             except Exception:
                 logger.warning(

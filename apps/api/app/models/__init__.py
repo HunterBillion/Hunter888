@@ -180,6 +180,9 @@ from app.models.team_challenge import (
 from app.models.subscription import UserSubscription, PlanType as SubscriptionPlanType
 from app.models.story_state import UserStoryState
 from app.models.morning_drill import MorningDrillSession
+from app.models.lead_client import LeadClient
+from app.models.domain_event import DomainEvent
+from app.models.crm_projection import CrmTimelineProjectionState
 from app.services.web_push import PushSubscription
 
 __all__ = [
@@ -199,6 +202,9 @@ __all__ = [
     "TrainingSession",
     "Message",
     "AssignedTraining",
+    "LeadClient",
+    "DomainEvent",
+    "CrmTimelineProjectionState",
     "Achievement",
     "UserAchievement",
     "LeaderboardSnapshot",

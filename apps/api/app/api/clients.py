@@ -89,6 +89,7 @@ from app.services.client_service import (
     update_client,
     verify_consent_token,
 )
+from app.services.client_domain import bind_attachment_to_lead_client, create_crm_interaction_with_event
 from app.services.next_best_action import build_next_best_action
 from app.ws.notifications import send_ws_notification
 
@@ -725,15 +726,17 @@ async def api_upload_attachment(
         },
     )
     db.add(attachment)
+    await bind_attachment_to_lead_client(db, attachment=attachment, client=client)
     await db.flush()
 
-    interaction = ClientInteraction(
-        client_id=client.id,
+    interaction, event = await create_crm_interaction_with_event(
+        db,
+        client=client,
         manager_id=user.id,
         interaction_type=InteractionType.system,
         content=f"Получен файл: {stored.filename}",
         result="attachment_received",
-        metadata_={
+        metadata={
             "attachment_id": str(attachment.id),
             "session_id": str(session_id) if session_id else None,
             "message_id": str(message_id) if message_id else None,
@@ -742,11 +745,29 @@ async def api_upload_attachment(
             "ocr_status": attachment.ocr_status,
             "classification_status": attachment.classification_status,
         },
+        payload={
+            "attachment_id": str(attachment.id),
+            "session_id": str(session_id) if session_id else None,
+            "message_id": str(message_id) if message_id else None,
+            "sha256": stored.sha256,
+            "document_type": document_type,
+            "ocr_status": attachment.ocr_status,
+            "classification_status": attachment.classification_status,
+            "duplicate_of": str(existing.id) if existing else None,
+        },
+        event_type="session.attachment_linked",
+        source="api.clients",
+        actor_type="user",
+        actor_id=user.id,
+        session_id=session_id,
+        idempotency_key=f"attachment-link:{attachment.id}",
     )
-    db.add(interaction)
-    await db.flush()
 
     attachment.interaction_id = interaction.id
+    attachment.metadata_ = {
+        **(attachment.metadata_ or {}),
+        "domain_event_id": str(event.id),
+    }
     await write_audit_log(
         db,
         actor=user,
@@ -1517,6 +1538,7 @@ def _client_to_response(client: RealClient, include_details: bool = False) -> Cl
 
     resp = ClientResponse(
         id=client.id,
+        lead_client_id=client.lead_client_id,
         manager_id=client.manager_id,
         manager_name=client.manager.full_name if client.manager else None,
         full_name=client.full_name,
@@ -1574,6 +1596,7 @@ def _consent_to_response(consent: ClientConsent) -> ConsentResponse:
 def _interaction_to_response(interaction: ClientInteraction) -> InteractionResponse:
     return InteractionResponse(
         id=interaction.id,
+        lead_client_id=interaction.lead_client_id,
         client_id=interaction.client_id,
         manager_id=interaction.manager_id,
         manager_name=interaction.manager.full_name if interaction.manager else None,
@@ -1584,6 +1607,7 @@ def _interaction_to_response(interaction: ClientInteraction) -> InteractionRespo
         old_status=interaction.old_status,
         new_status=interaction.new_status,
         created_at=interaction.created_at,
+        metadata_=interaction.metadata_,
     )
 
 

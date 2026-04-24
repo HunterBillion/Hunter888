@@ -185,6 +185,11 @@ class RealClient(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    # TZ-1 compatibility bridge: physical anchor for canonical LeadClient.
+    # During expand/dual-write phase may stay equal to real_clients.id.
+    lead_client_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("lead_clients.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     manager_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
     )
@@ -347,6 +352,10 @@ class ClientInteraction(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    # TZ-1 canonical link for replayable CRM timeline projection.
+    lead_client_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("lead_clients.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     client_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("real_clients.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -395,6 +404,10 @@ class Attachment(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    # TZ-1 canonical link for session.attachment_linked projection path.
+    lead_client_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("lead_clients.id", ondelete="SET NULL"), nullable=True, index=True
     )
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True

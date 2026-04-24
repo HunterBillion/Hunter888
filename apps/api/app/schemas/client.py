@@ -65,6 +65,7 @@ class ClientResponse(BaseModel):
     """Ответ с карточкой клиента"""
 
     id: uuid.UUID
+    lead_client_id: uuid.UUID | None = None
     manager_id: uuid.UUID
     manager_name: str | None = None
     full_name: str
@@ -266,6 +267,7 @@ class InteractionResponse(BaseModel):
     """Ответ с данными взаимодействия"""
 
     id: uuid.UUID
+    lead_client_id: uuid.UUID | None = None
     client_id: uuid.UUID
     manager_id: uuid.UUID | None
     manager_name: str | None = None
@@ -306,6 +308,7 @@ class AttachmentResponse(BaseModel):
     """Файл, привязанный к CRM-клиенту и контексту события."""
 
     id: uuid.UUID
+    lead_client_id: uuid.UUID | None = None
     uploaded_by: uuid.UUID | None
     client_id: uuid.UUID
     session_id: uuid.UUID | None

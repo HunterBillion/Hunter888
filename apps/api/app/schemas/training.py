@@ -154,6 +154,7 @@ class PreviewDossierResponse(BaseModel):
 class SessionResponse(BaseModel):
     id: uuid.UUID
     scenario_id: uuid.UUID | None = None
+    lead_client_id: uuid.UUID | None = None
     status: str
     started_at: datetime
     ended_at: datetime | None = None

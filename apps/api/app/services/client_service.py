@@ -38,6 +38,7 @@ from app.services.audit import (
     model_to_audit_dict,
     write_audit_log,
 )
+from app.services.client_domain import create_crm_interaction_with_event, emit_client_event, ensure_lead_client
 from app.ws.notifications import send_ws_notification, send_ws_to_rop_team
 
 logger = logging.getLogger(__name__)
@@ -118,6 +119,7 @@ async def create_client(
         last_status_change_at=datetime.now(timezone.utc),
     )
     db.add(client)
+    await ensure_lead_client(db, client=client, owner_user=manager)
 
     # ── Audit ──
     await write_audit_log(
@@ -140,6 +142,27 @@ async def create_client(
             recorded_by=manager,
             request=request,
         )
+
+    await emit_client_event(
+        db,
+        client=client,
+        event_type="lead_client.created",
+        actor_type="user",
+        actor_id=manager.id,
+        source="client_service",
+        payload={
+            "client_id": str(client.id),
+            "manager_id": str(manager.id),
+            "full_name": client.full_name,
+            "phone": client.phone,
+            "email": client.email,
+            "status": client.status.value,
+            "source": client.source,
+        },
+        aggregate_type="real_client",
+        aggregate_id=client.id,
+        idempotency_key=f"lead-client:create:{client.id}",
+    )
 
     await db.flush()
     return client, duplicate_warning, duplicate_ids
@@ -276,6 +299,7 @@ async def update_client(
             setattr(client, field, value)
 
     client.updated_at = datetime.now(timezone.utc)
+    await ensure_lead_client(db, client=client, owner_user=user)
 
     new_values = model_to_audit_dict(client, CLIENT_AUDIT_FIELDS)
 
@@ -288,6 +312,26 @@ async def update_client(
         old_values=old_values,
         new_values=new_values,
         request=request,
+    )
+
+    await emit_client_event(
+        db,
+        client=client,
+        event_type="lead_client.profile_updated",
+        actor_type="user",
+        actor_id=user.id,
+        source="client_service",
+        payload={
+            "client_id": str(client.id),
+            "updated_fields": {
+                key: value for key, value in updates.items()
+                if key != "status" and value is not None
+            },
+            "old_values": old_values,
+            "new_values": new_values,
+        },
+        aggregate_type="real_client",
+        aggregate_id=client.id,
     )
 
     await db.flush()
@@ -355,16 +399,25 @@ async def change_client_status(
     new_values = {"status": target_status.value, "lost_reason": client.lost_reason}
 
     # ── Interaction запись ──
-    interaction = ClientInteraction(
-        id=uuid.uuid4(),
-        client_id=client.id,
+    await create_crm_interaction_with_event(
+        db,
+        client=client,
         manager_id=user.id,
         interaction_type=InteractionType.status_change,
         content=reason or f"Смена статуса: {old_status.value} → {target_status.value}",
         old_status=old_status.value,
         new_status=target_status.value,
+        event_type="lead_client.lifecycle_changed",
+        source="client_service",
+        actor_type="user",
+        actor_id=user.id,
+        payload={
+            "client_id": str(client.id),
+            "old_status": old_status.value,
+            "new_status": target_status.value,
+            "reason": reason,
+        },
     )
-    db.add(interaction)
 
     # ── Audit ──
     await write_audit_log(
@@ -433,6 +486,18 @@ async def soft_delete_client(
         request=request,
     )
 
+    await emit_client_event(
+        db,
+        client=client,
+        event_type="lead_client.archived",
+        actor_type="user",
+        actor_id=user.id,
+        source="client_service",
+        payload={"client_id": str(client.id), "is_active": False},
+        aggregate_type="real_client",
+        aggregate_id=client.id,
+    )
+
     await db.flush()
 
 
@@ -469,15 +534,25 @@ async def grant_consent(
     )
     db.add(consent)
 
-    # Interaction
-    interaction = ClientInteraction(
-        id=uuid.uuid4(),
-        client_id=client.id,
+    await create_crm_interaction_with_event(
+        db,
+        client=client,
         manager_id=recorded_by.id,
         interaction_type=InteractionType.consent_event,
         content=f"Согласие получено: {consent_type} (канал: {channel})",
+        event_type="consent.updated",
+        source="client_service",
+        actor_type="user",
+        actor_id=recorded_by.id,
+        payload={
+            "client_id": str(client.id),
+            "consent_id": str(consent.id),
+            "consent_type": consent_type,
+            "channel": channel,
+            "state": "granted",
+        },
+        idempotency_key=f"consent-granted:{consent.id}",
     )
-    db.add(interaction)
 
     # Audit
     await write_audit_log(
@@ -517,6 +592,28 @@ async def revoke_consent(
 
     consent.revoked_at = datetime.now(timezone.utc)
     consent.revoked_reason = reason
+    client = await db.get(RealClient, consent.client_id)
+    if client is not None:
+        await create_crm_interaction_with_event(
+            db,
+            client=client,
+            manager_id=user.id,
+            interaction_type=InteractionType.consent_event,
+            content=f"Согласие отозвано: {consent.consent_type}",
+            result=reason,
+            event_type="consent.updated",
+            source="client_service",
+            actor_type="user",
+            actor_id=user.id,
+            payload={
+                "client_id": str(consent.client_id),
+                "consent_id": str(consent.id),
+                "consent_type": consent.consent_type,
+                "state": "revoked",
+                "reason": reason,
+            },
+            idempotency_key=f"consent-revoked:{consent.id}",
+        )
 
     # Audit
     await write_audit_log(
@@ -684,17 +781,23 @@ async def create_interaction(
     duration_seconds: int | None = None,
 ) -> ClientInteraction:
     """Записать взаимодействие менеджер ↔ клиент."""
-    interaction = ClientInteraction(
-        id=uuid.uuid4(),
-        client_id=client_id,
+    client = await db.get(RealClient, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Клиент не найден")
+    interaction, _event = await create_crm_interaction_with_event(
+        db,
+        client=client,
         manager_id=manager.id,
         interaction_type=InteractionType(interaction_type),
         content=content,
         result=result,
         duration_seconds=duration_seconds,
+        event_type="crm.interaction_logged",
+        source="client_service",
+        actor_type="user",
+        actor_id=manager.id,
+        payload={"client_id": str(client.id)},
     )
-    db.add(interaction)
-    await db.flush()
     return interaction
 
 

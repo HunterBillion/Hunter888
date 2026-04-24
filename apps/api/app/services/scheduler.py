@@ -33,6 +33,7 @@ from app.models.client import (
     STATUS_TIMEOUTS,
 )
 from app.models.user import User
+from app.services.client_domain import create_crm_interaction_with_event
 
 logger = logging.getLogger(__name__)
 
@@ -538,16 +539,26 @@ class ReminderScheduler:
         client.last_status_change_at = datetime.now(timezone.utc)
         client.lost_count += 1
 
-        # Interaction
-        interaction = ClientInteraction(
-            id=uuid.uuid4(),
-            client_id=client.id,
+        await create_crm_interaction_with_event(
+            db,
+            client=client,
+            manager_id=None,
             interaction_type=InteractionType.system,
             content=f"Автоматический перевод в «потерян»: {days} дней без контакта",
             old_status=old_status,
             new_status="lost",
+            event_type="lead_client.lifecycle_changed",
+            source="scheduler",
+            actor_type="system",
+            actor_id=None,
+            payload={
+                "client_id": str(client.id),
+                "old_status": old_status,
+                "new_status": "lost",
+                "reason": f"auto_timeout_{days}d",
+            },
+            idempotency_key=f"auto-lost:{client.id}:{days}:{client.last_status_change_at.date().isoformat() if client.last_status_change_at else 'na'}",
         )
-        db.add(interaction)
 
         # Уведомления
         await self._create_reminder(

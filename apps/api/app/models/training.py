@@ -112,6 +112,10 @@ class TrainingSession(Base):
     real_client_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("real_clients.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # TZ-1 canonical bridge for unified client-domain projections.
+    lead_client_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("lead_clients.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     # Constructor v2 (migration 20260404_006): link to saved custom character
     custom_character_id: Mapped[uuid.UUID | None] = mapped_column(

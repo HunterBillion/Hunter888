@@ -74,6 +74,41 @@ async def test_upload_session_attachment_creates_attachment_and_timeline(monkeyp
 
     monkeypatch.setattr("app.api.training.store_attachment_bytes", fake_store_attachment_bytes)
 
+    async def fake_bind_attachment_to_lead_client(db, *, attachment, client):
+        attachment.lead_client_id = client.id
+        return client.id
+
+    async def fake_create_crm_interaction_with_event(
+        db,
+        *,
+        client,
+        manager_id,
+        interaction_type,
+        content,
+        result=None,
+        duration_seconds=None,
+        metadata=None,
+        payload=None,
+        **_,
+    ):
+        interaction = ClientInteraction(
+            client_id=client.id,
+            lead_client_id=client.id,
+            manager_id=manager_id,
+            interaction_type=interaction_type,
+            content=content,
+            result=result,
+            duration_seconds=duration_seconds,
+            metadata_=metadata,
+        )
+        db.add(interaction)
+        await db.flush()
+        event = SimpleNamespace(id=uuid.uuid4(), schema_version=1)
+        return interaction, event
+
+    monkeypatch.setattr("app.api.training.bind_attachment_to_lead_client", fake_bind_attachment_to_lead_client)
+    monkeypatch.setattr("app.api.training.create_crm_interaction_with_event", fake_create_crm_interaction_with_event)
+
     attachment = await upload_session_attachment(
         session_id=session.id,
         request=SimpleNamespace(),
@@ -91,7 +126,10 @@ async def test_upload_session_attachment_creates_attachment_and_timeline(monkeyp
     assert created_attachment.document_type == "pdf"
     assert created_attachment.ocr_status == "pending"
     assert created_attachment.metadata_["source"] == "training_session_upload"
+    assert created_attachment.lead_client_id == client.id
+    assert "domain_event_id" in created_attachment.metadata_
     assert timeline_event.client_id == client.id
+    assert timeline_event.lead_client_id == client.id
     assert timeline_event.result == "attachment_received"
     assert timeline_event.content == "Получен файл в сессии call: passport.pdf"
     assert timeline_event.metadata_["attachment_id"] == str(created_attachment.id)
