@@ -227,12 +227,13 @@ const triggerAutosave = useCallback(async () => {
     if (!mountedRef.current || !user) return;
     setSaving(true);
     try {
-      const prefs = {
+      // Backend rejects blank/short strings on gender/role_title/primary_contact
+      // (Pydantic pattern + min_length). Drop fields the user hasn't filled yet
+      // so autosave doesn't 422-spam while they're still typing.
+      const trimmedRoleTitle = roleTitle.trim();
+      const trimmedContact = primaryContact.trim();
+      const prefs: Record<string, unknown> = {
         tts_enabled: ttsEnabled,
-        gender,
-        role_title: roleTitle,
-        primary_contact: primaryContact,
-        specialization,
         notify_email: notifyEmail,
         notify_push: notifyPush,
         notify_frequency: notifyFrequency,
@@ -242,6 +243,10 @@ const triggerAutosave = useCallback(async () => {
         compact_mode: compactMode,
         accent_color: accentColor,
       };
+      if (gender) prefs.gender = gender;
+      if (trimmedRoleTitle.length >= 2) prefs.role_title = trimmedRoleTitle;
+      if (trimmedContact.length >= 3) prefs.primary_contact = trimmedContact;
+      if (specialization) prefs.specialization = specialization;
       await api.post("/users/me/preferences", prefs);
       useAuthStore.getState().updatePreferences(prefs);
       setSaved(true);
