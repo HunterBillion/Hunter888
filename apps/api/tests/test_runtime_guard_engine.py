@@ -17,6 +17,7 @@ from app.services.runtime_guard_engine import (
     GUARD_MODE_INVALID,
     GUARD_PROFILE_INCOMPLETE,
     GUARD_RUNTIME_TYPE_INVALID,
+    GUARD_SESSION_MODE_REQUIRED_FOR_CRM,
     GUARD_TERMINAL_OUTCOME_REQUIRED,
     evaluate_end_guards,
     evaluate_start_guards,
@@ -152,6 +153,44 @@ def test_missing_mode_does_not_break_evaluation():
     not crash on mode=None — it just skips the mode-dependent checks."""
     v = evaluate_start_guards(user=_complete_user(), mode=None)
     assert v == []  # profile complete, no mode → no other complaints
+
+
+# ── session_mode_required_for_crm guard (Phase 3B) ──
+
+
+def test_crm_start_without_mode_emits_session_mode_violation():
+    """CRM-card start (real_client_id present) without an explicit mode
+    must surface the canonical session_mode_required_for_crm code so the
+    pre-existing FE handler at clients/[id]/page.tsx keeps working."""
+    v = evaluate_start_guards(
+        user=_complete_user(),
+        mode=None,
+        real_client_id=uuid.uuid4(),
+        source="crm_voice",
+    )
+    assert GUARD_SESSION_MODE_REQUIRED_FOR_CRM in [x.code for x in v]
+
+
+def test_crm_start_with_explicit_mode_passes_session_mode_guard():
+    v = evaluate_start_guards(
+        user=_complete_user(),
+        mode="call",
+        real_client_id=uuid.uuid4(),
+        source="crm_voice",
+    )
+    assert GUARD_SESSION_MODE_REQUIRED_FOR_CRM not in [x.code for x in v]
+
+
+def test_simulation_start_without_mode_does_not_require_session_mode():
+    """No real_client_id → simulation path → mode optional (legacy /home
+    quick-start sends nothing)."""
+    v = evaluate_start_guards(
+        user=_complete_user(),
+        mode=None,
+        real_client_id=None,
+        source="home",
+    )
+    assert GUARD_SESSION_MODE_REQUIRED_FOR_CRM not in [x.code for x in v]
 
 
 # ── end guards ──
