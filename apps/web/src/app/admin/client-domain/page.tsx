@@ -30,6 +30,7 @@ import {
   Inbox,
   Loader2,
   RefreshCw,
+  ShieldAlert,
   Wrench,
   XCircle,
 } from "lucide-react";
