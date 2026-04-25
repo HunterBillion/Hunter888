@@ -20,7 +20,7 @@ export function Skeleton({ className = "", width, height, rounded = "8px" }: Ske
         background: "var(--input-bg)",
       }}
       animate={{ opacity: [0.4, 0.7, 0.4] }}
-      transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+      transition={{ duration: 1.0, repeat: Infinity, ease: "easeInOut" }}
     >
       <motion.div
         className="absolute inset-0"
@@ -28,7 +28,7 @@ export function Skeleton({ className = "", width, height, rounded = "8px" }: Ske
           background: "linear-gradient(90deg, transparent 0%, var(--accent-muted) 50%, transparent 100%)",
         }}
         animate={{ x: ["-100%", "100%"] }}
-        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+        transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
       />
     </motion.div>
   );
