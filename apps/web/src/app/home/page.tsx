@@ -14,7 +14,7 @@ import {
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/Button";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { NavigatorBlock } from "@/components/ui/NavigatorBlock";
@@ -349,6 +349,14 @@ export default function HomePage() {
       router.push(`/training/${session.id}`);
       setTimeout(() => setStarting(false), 1000);
     } catch (err) {
+      if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        err.detail?.code === "profile_incomplete"
+      ) {
+        router.push("/onboarding");
+        return;
+      }
       useNotificationStore.getState().addToast({
         title: "Ошибка запуска",
         body: "Не удалось начать тренировку. Попробуйте ещё раз.",
@@ -750,6 +758,14 @@ export default function HomePage() {
                           router.push(`/training/${session.id}`);
                         } catch (err) {
                           logger.error("Failed to start training session:", err);
+                          if (
+                            err instanceof ApiError &&
+                            err.status === 409 &&
+                            err.detail?.code === "profile_incomplete"
+                          ) {
+                            router.push("/onboarding");
+                            return;
+                          }
                           useNotificationStore.getState().addToast({
                             title: "Ошибка",
                             body: "Не удалось начать тренировку",

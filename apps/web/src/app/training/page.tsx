@@ -143,6 +143,14 @@ function TrainingPageContent() {
       if (
         err instanceof ApiError &&
         err.status === 409 &&
+        err.detail?.code === "profile_incomplete"
+      ) {
+        router.push("/onboarding");
+        return;
+      }
+      if (
+        err instanceof ApiError &&
+        err.status === 409 &&
         err.detail &&
         err.detail.code === "session_already_active"
       ) {
@@ -873,6 +881,14 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
       if (
         err instanceof ApiError &&
         err.status === 409 &&
+        err.detail?.code === "profile_incomplete"
+      ) {
+        router.push("/onboarding");
+        return;
+      }
+      if (
+        err instanceof ApiError &&
+        err.status === 409 &&
         err.detail &&
         err.detail.code === "session_already_active"
       ) {
@@ -1109,6 +1125,14 @@ function RetrainBadge({ character, sessionId, onDismiss }: RetrainBadgeProps) {
       router.push(`/training/${session.id}`);
     } catch (e) {
       logger.error("[RetrainBadge] clone failed:", e);
+      if (
+        e instanceof ApiError &&
+        e.status === 409 &&
+        e.detail?.code === "profile_incomplete"
+      ) {
+        router.push("/onboarding");
+        return;
+      }
       useNotificationStore.getState().addToast({
         title: "Не удалось повторить сеанс",
         body: e instanceof Error ? e.message : "Попробуйте ещё раз",
