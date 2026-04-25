@@ -8,8 +8,11 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  API_IMAGE: ghcr.io/${{ github.repository }}/api
-  WEB_IMAGE: ghcr.io/${{ github.repository }}/web
+  # ghcr.io rejects mixed-case repo names ("HunterBillion/Hunter888"
+  # → "repository name must be lowercase"). github.repository keeps the
+  # canonical case, so hardcode the lowercase form for the image tags.
+  API_IMAGE: ghcr.io/hunterbillion/hunter888/api
+  WEB_IMAGE: ghcr.io/hunterbillion/hunter888/web
 
 jobs:
   backend:
