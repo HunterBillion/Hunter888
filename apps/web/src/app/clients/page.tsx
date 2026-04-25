@@ -113,7 +113,7 @@ export default function ClientsPage() {
   // Load managers list for admin/rop
   useEffect(() => {
     if (!isAdminOrRop) return;
-    api.get("/users?role=manager&limit=100")
+    api.get("/users/?role=manager&limit=100")
       .then((data: ManagerOption[]) => setManagers(Array.isArray(data) ? data : []))
       .catch((err) => { logger.error("Failed to load managers:", err); });
   }, [isAdminOrRop]);
