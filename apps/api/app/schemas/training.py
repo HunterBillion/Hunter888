@@ -63,11 +63,22 @@ class SessionStartRequest(BaseModel):
     # and avoids the bug where frontend partially forgets parameters.
     clone_from_session_id: uuid.UUID | None = None
 
+    # ── TZ-2 §6.2/6.3 canonical mode + runtime_type (Phase 4) ──
+    # Frontend pages can now send these explicitly. When present, they
+    # take precedence over the legacy ``custom_session_mode`` derivation;
+    # missing values fall back to the Phase 0 derive_runtime_type rules
+    # so older FE pages keep working unchanged.
+    # Validation against MODES / RUNTIME_TYPES catalog happens in the
+    # handler (via runtime_guard_engine when wired in Phase 3B); the
+    # schema accepts free strings here so a typo gives a structured 400
+    # GuardViolation instead of a generic 422 type error.
+    mode: str | None = None
+    runtime_type: str | None = None
+
     # TZ-2 §16.1 — strict schema. Unknown fields used to be silently
-    # dropped, so any future canonical field (mode, runtime_type,
-    # lead_client_id) added on the frontend before the backend would
-    # vanish into the void with no log. extra="forbid" surfaces the
-    # drift as a 422 immediately.
+    # dropped, so any future canonical field (lead_client_id) added on
+    # the frontend before the backend would vanish into the void with
+    # no log. extra="forbid" surfaces the drift as a 422 immediately.
     model_config = {"extra": "forbid"}
 
 
