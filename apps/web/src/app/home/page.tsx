@@ -195,6 +195,10 @@ export default function HomePage() {
     lead_source: string;
     gender: string;
   } | null>(null);
+  // Gate the "Быстрая охота" CTA behind the /home/waiting-client probe so we
+  // don't flash the fallback button before the API answers (the card and the
+  // button are mutually exclusive — render neither until we know which).
+  const [waitingClientLoaded, setWaitingClientLoaded] = useState(false);
 
 
   const fetchDashboard = () => {
@@ -217,7 +221,8 @@ export default function HomePage() {
       .catch(() => { /* optional — story not blocking */ });
     api.get<{ client: typeof waitingClient }>("/home/waiting-client")
       .then((data) => setWaitingClient(data.client))
-      .catch(() => { /* optional — fallback to old quickStart */ });
+      .catch(() => { /* optional — fallback to old quickStart */ })
+      .finally(() => setWaitingClientLoaded(true));
     api.get("/gamification/goals")
       .then((data: unknown) => {
         if (data && typeof data === "object") {
@@ -516,8 +521,10 @@ export default function HomePage() {
               </div>
 
               {/* Right: Quick Start CTA — hidden when waiting client card below is shown,
-                  since both do the same thing (start a session). */}
-              {!waitingClient && (
+                  since both do the same thing (start a session). Gated on
+                  `waitingClientLoaded` so we don't flash this button before the
+                  /home/waiting-client probe answers. */}
+              {waitingClientLoaded && !waitingClient && (
                 <motion.button
                   onClick={quickStart}
                   disabled={starting}
