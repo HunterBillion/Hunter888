@@ -38,7 +38,7 @@ from app.core.deps import require_role
 from app.database import get_db
 from app.models.crm_projection import CrmTimelineProjectionState
 from app.models.domain_event import DomainEvent
-from app.models.lead_client import LeadClient
+from app.models.lead_client import LeadClient, TaskFollowUp
 from app.services.audit import write_audit_log
 from app.services.client_domain import emit_domain_event, get_emit_counters
 from app.services.client_domain_repair import (
@@ -46,6 +46,7 @@ from app.services.client_domain_repair import (
     repair_missing_events_for_interactions,
     repair_missing_projections,
 )
+from app.services.task_followup_policy import REASONS, STATUSES
 
 router = APIRouter()
 
@@ -410,3 +411,119 @@ async def post_repair_events(
     )
     await db.commit()
     return {"repaired_events": repaired}
+
+
+# ── TZ-2 §12 — Task follow-ups observability (read-only) ───────────────────
+
+
+@router.get("/admin/task-followups")
+async def get_task_followups(
+    status_filter: str | None = Query(default=None, alias="status"),
+    reason: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=50, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(require_role("admin")),
+) -> dict[str, Any]:
+    """List TaskFollowUp rows for the admin observability panel.
+
+    Returns the canonical follow-up rows (NOT the legacy ManagerReminder)
+    so admins can verify the §12 policy is firing as expected and spot
+    overdue / stuck follow-ups across all managers. Read-only — admins
+    do not create or close follow-ups from here (managers do that on
+    their CRM card via the existing reminder UI).
+    """
+    if status_filter is not None and status_filter not in STATUSES:
+        return {
+            "items": [],
+            "total": 0,
+            "page": page,
+            "per_page": per_page,
+            "by_status": {},
+            "by_reason": {},
+            "error": f"unknown status: {status_filter} (allowed: {sorted(STATUSES)})",
+        }
+    if reason is not None and reason not in REASONS:
+        return {
+            "items": [],
+            "total": 0,
+            "page": page,
+            "per_page": per_page,
+            "by_status": {},
+            "by_reason": {},
+            "error": f"unknown reason: {reason} (allowed: {sorted(REASONS)})",
+        }
+
+    # Base filter (status + reason as supplied)
+    base_q = select(TaskFollowUp)
+    if status_filter is not None:
+        base_q = base_q.where(TaskFollowUp.status == status_filter)
+    if reason is not None:
+        base_q = base_q.where(TaskFollowUp.reason == reason)
+
+    # Total under the active filter — drives FE pagination footer
+    total = (
+        await db.execute(
+            select(func.count()).select_from(base_q.subquery())
+        )
+    ).scalar_one()
+
+    # Page slice — newest pending first to surface recent + overdue items
+    rows = (
+        await db.execute(
+            base_q.order_by(TaskFollowUp.due_at.asc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+        )
+    ).scalars().all()
+
+    # Distributions across the WHOLE table (not just the page) so the
+    # admin can see "how many pending overall, how many done last 24h"
+    # without paging through everything. Two cheap GROUP BY queries.
+    status_counts_rows = (
+        await db.execute(
+            select(TaskFollowUp.status, func.count())
+            .group_by(TaskFollowUp.status)
+        )
+    ).all()
+    by_status = {s: int(n) for s, n in status_counts_rows}
+
+    reason_counts_rows = (
+        await db.execute(
+            select(TaskFollowUp.reason, func.count())
+            .where(TaskFollowUp.status == "pending")
+            .group_by(TaskFollowUp.reason)
+        )
+    ).all()
+    by_reason = {r: int(n) for r, n in reason_counts_rows}
+
+    now = datetime.now(UTC)
+    overdue = sum(
+        1 for r in rows
+        if r.status == "pending" and r.due_at and r.due_at < now
+    )
+
+    return {
+        "items": [
+            {
+                "id": str(r.id),
+                "lead_client_id": str(r.lead_client_id),
+                "session_id": str(r.session_id) if r.session_id else None,
+                "domain_event_id": str(r.domain_event_id) if r.domain_event_id else None,
+                "reason": r.reason,
+                "channel": r.channel,
+                "due_at": r.due_at.isoformat() if r.due_at else None,
+                "status": r.status,
+                "auto_generated": r.auto_generated,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            }
+            for r in rows
+        ],
+        "total": int(total),
+        "page": page,
+        "per_page": per_page,
+        "by_status": by_status,
+        "by_reason": by_reason,
+        "overdue_in_page": overdue,
+    }
