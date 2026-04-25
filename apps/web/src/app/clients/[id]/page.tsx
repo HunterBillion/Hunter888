@@ -336,7 +336,7 @@ export default function ClientDetailPage() {
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
+          transition={{ duration: 0.25 }}
           className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6"
         >
           {/* Debt */}
@@ -406,7 +406,7 @@ export default function ClientDetailPage() {
           {/* Left: Info + Consents */}
           <div className="md:col-span-1 space-y-4">
             {/* Financial */}
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
               className="glass-panel p-4"
             >
               <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--accent)" }}>ФИНАНСЫ</h3>
@@ -438,7 +438,7 @@ export default function ClientDetailPage() {
             </motion.div>
 
             {/* Next contact + Reminder */}
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
               className="glass-panel p-4"
             >
               <div className="flex items-center justify-between mb-2">
@@ -469,7 +469,7 @@ export default function ClientDetailPage() {
             </motion.div>
 
             {/* Consents */}
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
               className="glass-panel p-4"
             >
               <div className="flex items-center justify-between mb-3">
@@ -534,7 +534,7 @@ export default function ClientDetailPage() {
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.24 }}
+                transition={{ duration: 0.25 }}
                 className="glass-panel p-4"
                 style={{
                   borderLeft: "3px solid var(--accent)",
@@ -657,7 +657,7 @@ export default function ClientDetailPage() {
 
             {/* Tags */}
             {(client.tags?.length ?? 0) > 0 && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
                 className="glass-panel p-4"
               >
                 <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>ТЕГИ</span>
@@ -681,7 +681,7 @@ export default function ClientDetailPage() {
             ref={historyRef}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
+            transition={{ duration: 0.25 }}
             className="md:col-span-2 glass-panel p-5"
           >
             <div className="flex items-center justify-between mb-4">

@@ -549,7 +549,7 @@ export default function HomePage() {
               className="relative z-10 mt-5"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
+              transition={{ duration: 0.3 }}
             >
               {/* 2026-04-18: увеличена высота 6px → 10px (≈1.67×),
                   добавлен 3-стоповый градиент (deep → accent → light),
@@ -619,7 +619,7 @@ export default function HomePage() {
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15, duration: 0.5, ease: EASE_SNAP }}
+              transition={{ duration: 0.35, ease: EASE_SNAP }}
               className="relative rounded-2xl overflow-hidden p-5 sm:p-6 mb-6 glass-panel"
               style={{ border: "1px solid var(--accent-muted)" }}
             >
@@ -708,7 +708,7 @@ export default function HomePage() {
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.18, duration: 0.4, ease: EASE_SNAP }}
+              transition={{ duration: 0.3, ease: EASE_SNAP }}
               className="mt-4"
             >
               <div className="flex items-center justify-between mb-3">
@@ -741,8 +741,8 @@ export default function HomePage() {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{
-                        delay: 0.22 + i * TIMING.staggerStep,
-                        duration: 0.35,
+                        delay: i * TIMING.staggerStep,
+                        duration: 0.3,
                         ease: EASE_SNAP,
                       }}
                       className="glass-panel p-4 cursor-pointer group relative overflow-hidden"
@@ -849,7 +849,7 @@ export default function HomePage() {
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.12 }}
+              transition={{ duration: 0.3 }}
               className="mt-4 rounded-xl p-4 flex items-center gap-4 cursor-pointer transition-all"
               style={{ background: RANK.goldRgba(0.06), border: `1px solid ${RANK.goldRgba(0.15)}` }}
               whileHover={{ y: -1, boxShadow: `0 4px 20px ${RANK.goldRgba(0.1)}` }}
@@ -887,7 +887,7 @@ export default function HomePage() {
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 }}
+              transition={{ duration: 0.3 }}
               className="mt-4 glass-panel p-4 flex items-center gap-4 cursor-pointer transition-all"
               whileHover={{ y: -1, boxShadow: "0 4px 20px var(--accent-glow)" }}
               onClick={() => router.push(`/results/${lastSession.id}`)}
@@ -912,7 +912,7 @@ export default function HomePage() {
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            transition={{ duration: 0.3 }}
             className="mt-5"
           >
             <NavigatorBlock />
@@ -975,7 +975,7 @@ export default function HomePage() {
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
+              transition={{ duration: 0.3 }}
               className="mt-5 pixel-border glass-panel rounded-2xl p-6 sm:p-7"
               style={{
                 "--pixel-border-color": "color-mix(in srgb, var(--accent) 40%, var(--border-color))",
@@ -1101,7 +1101,7 @@ export default function HomePage() {
 
           {/* F6.1: Training recommendations based on client losses */}
           {!loading && user?.role && ["manager", "rop", "admin"].includes(user.role) && (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }} className="mt-6">
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="mt-6">
               <TrainingRecommendations />
             </motion.div>
           )}
@@ -1167,7 +1167,7 @@ function StatCard({ card, i }: StatCardProps) {
       key={card.label}
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ delay: 0.05 + i * 0.06, duration: 0.3, ease: EASE_SNAP }}
+      transition={{ delay: i * 0.04, duration: 0.25, ease: EASE_SNAP }}
       whileHover={{ y: -3, boxShadow: `0 8px 32px color-mix(in srgb, ${card.color} 15%, transparent)`, transition: { duration: 0.1 } }}
       whileTap={{ scale: 0.96, transition: { duration: 0.08 } }}
       className="glass-panel p-4 sm:p-5 group cursor-default relative overflow-hidden"
