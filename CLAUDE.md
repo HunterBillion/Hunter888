@@ -151,7 +151,103 @@ that touches `ClientInteraction`, `DomainEvent`, or session completion.
 
 ---
 
-## 4. Testing discipline
+## 4. Verification gaps to avoid (lessons paid in production)
+
+When you say "this works" you are making a claim. Each failure mode below
+is a real time we said "OK" and then production proved otherwise. None of
+them are exotic — they are gaps in **how** we test, not in **what** we
+test. Read this list before declaring any task done.
+
+### 4.1 "Tests passed" ≠ "concurrency works"
+
+**Symptom:** PR #10 A10 unit tests were green, CI green, deploy green,
+prod `/health` OK. First real 5-parallel `/auth/refresh` from a user gave
+`401 401 401 401 200` and blacklisted them.
+
+**Why:** the unit tests ran `await call(); await call();` — sequentially.
+The second await always saw the cache the first await had finished
+writing. A genuine race needs `asyncio.gather`.
+
+**Rule:** any code that interacts with locks, SETNX, idempotency keys,
+WAL, savepoint conflicts, or generally "two requests at the same time"
+**must** be tested with `asyncio.gather(...)` (or threads), not
+sequential awaits. The test must reproduce the symptom on pre-fix code.
+Pattern in `apps/api/tests/test_auth_refresh_concurrency.py::test_genuinely_parallel_refresh_burst_no_blacklist`.
+
+### 4.2 "PR CI green" ≠ "post-merge CI green"
+
+**Symptom:** PR #12 merged, all PR-CI jobs were green. Post-merge CI on
+`main` turned red because the `docker push to ghcr.io` job is gated on
+`if: push && main` — it never runs on a PR. The image-name had a
+hard-coded uppercase repo path (`HunterBillion/Hunter888`) which ghcr
+rejects. Fix shipped as PR #13.
+
+**Rule:** after merging anything, verify post-merge CI on main:
+```
+gh run list --repo HunterBillion/Hunter888 --workflow CI --branch main --limit 3
+```
+Watch for any job that's gated `if: push && main` (build-push-image,
+deploy, release-tagging, smoke tests). If they go red, the PR isn't
+truly done.
+
+### 4.3 "Tests passed" ≠ "migration runs"
+
+**Symptom:** PR #12 lattice-check migration passed all unit tests
+(they don't touch Postgres). CI failed on `alembic upgrade head` because
+`bind.execute(raw_string)` was rejected by SQLAlchemy 2.x — the unit
+tests ran the model, not the migration script.
+
+**Rule:** before claiming a migration is ready, run it against a real
+PG locally (or at minimum let CI's `alembic upgrade head` pass before
+calling the PR ready). Always wrap raw SQL in `sa.text(...)`. Migration
+scripts are runtime code, not declarative — treat them like any other
+async code path.
+
+### 4.4 "API answers /health" ≠ "user feature works"
+
+**Symptom:** I declared "deploy successful" after `/api/health → 200`
+and `release_sha` matched. The actual user-facing scenario (concurrent
+refresh) was broken.
+
+**Rule:** "deploy verified" requires running **the user-facing scenario
+that motivated the change**. For A10 the verification is "5 parallel
+`/auth/refresh` with one token return 5×200 and the user is not
+blacklisted" — not just `release_sha=X`. Write this verification
+checklist into the PR body before merging.
+
+### 4.5 "Cache write happens" ≠ "cache write happens before reader"
+
+**Symptom:** A10 v1 wrote the reissued cache **after** the slow DB
+lookup. Concurrent losers landed before the write, saw an empty cache,
+fell through to blacklist. Fixed in v2 by reserving the slot with a
+`PENDING` sentinel **before** the DB call, so losers see "in flight"
+and poll instead of "missing" and blacklisting.
+
+**Rule:** when a fast operation depends on a slow one publishing a
+result, the fast operation needs either a sentinel ("in flight") or a
+lock with timeout. Plain "I will publish at the end" loses the race.
+
+### 4.6 Self-checklist before declaring a task done
+
+For any non-trivial change, before saying "done":
+
+1. Did I run the failing pre-fix test on the pre-fix code? (proves the
+   test catches the bug)
+2. Does the test cover **the symptom**, not just the implementation?
+   (e.g. "5 parallel returns 5×200" — not "the cache key is set")
+3. If the change touches concurrency, is there an `asyncio.gather`
+   test in the blocking scope?
+4. If the change touches a migration, did `alembic upgrade head`
+   actually run somewhere?
+5. After merge, did I check post-merge CI on `main`?
+6. After deploy, did I run the user-facing scenario, not just
+   `/health`?
+
+If any answer is "no", the task is not done.
+
+---
+
+## 5. Testing discipline
 
 - Tests in the blocking CI scope must survive a real DB. Prefer
   `pytest`'s async session fixtures over `AsyncMock(db)` for anything
@@ -168,7 +264,7 @@ that touches `ClientInteraction`, `DomainEvent`, or session completion.
 
 ---
 
-## 5. What to do when these rules conflict with a task
+## 6. What to do when these rules conflict with a task
 
 Stop and surface the conflict in your turn's text. Do not work around a
 rule silently. The human maintainer may grant a one-off exemption (and
