@@ -63,6 +63,13 @@ class SessionStartRequest(BaseModel):
     # and avoids the bug where frontend partially forgets parameters.
     clone_from_session_id: uuid.UUID | None = None
 
+    # TZ-2 §16.1 — strict schema. Unknown fields used to be silently
+    # dropped, so any future canonical field (mode, runtime_type,
+    # lead_client_id) added on the frontend before the backend would
+    # vanish into the void with no log. extra="forbid" surfaces the
+    # drift as a 422 immediately.
+    model_config = {"extra": "forbid"}
+
 
 class CustomCharacterCreate(BaseModel):
     name: str

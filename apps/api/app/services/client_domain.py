@@ -21,7 +21,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 import uuid
+from collections import defaultdict
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -51,6 +53,26 @@ from app.services.crm_timeline_projector import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# In-process Prometheus-style counter for DomainEvent emissions. Exposed in
+# text format via /admin/client-domain/metrics. Lives in the module so
+# every worker reports its own slice; aggregation happens at the scraper
+# level. Thread-safe to keep gunicorn workers + asyncio safe under load.
+_emit_counter_lock = threading.Lock()
+_emit_counter: dict[tuple[str, str, str, str], int] = defaultdict(int)
+
+
+def _record_emit(event_type: str, source: str, actor_type: str, outcome: str) -> None:
+    """Bump the in-process emit counter. ``outcome`` ∈ {emitted, deduped, skipped, failed}."""
+    with _emit_counter_lock:
+        _emit_counter[(event_type, source, actor_type, outcome)] += 1
+
+
+def get_emit_counters() -> dict[tuple[str, str, str, str], int]:
+    """Snapshot of the emit counter for /metrics rendering."""
+    with _emit_counter_lock:
+        return dict(_emit_counter)
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -105,6 +127,33 @@ def _derive_idempotency_key(
         _hash_payload(payload),
     ]
     return ":".join(parts)
+
+
+LIFECYCLE_STAGES: frozenset[str] = frozenset({
+    "new",
+    "contacted",
+    "interested",
+    "consultation",
+    "thinking",
+    "consent_received",
+    "contract_signed",
+    "documents_in_progress",
+    "case_in_progress",
+    "completed",
+    "lost",
+})
+
+WORK_STATES: frozenset[str] = frozenset({
+    "active",
+    "callback_scheduled",
+    "waiting_client",
+    "waiting_documents",
+    "consent_pending",
+    "paused",
+    "consent_revoked",
+    "duplicate_review",
+    "archived",
+})
 
 
 def map_legacy_client_status(status: ClientStatus | str | None) -> tuple[str, str]:
@@ -227,6 +276,7 @@ async def emit_domain_event(
         # Return a transient DomainEvent that is NOT persisted. Callers that
         # need the ID for projection bookkeeping should check
         # ``settings.client_domain_dual_write_enabled`` themselves.
+        _record_emit(event_type, source[:30], actor_type, "skipped")
         return DomainEvent(
             id=uuid.uuid4(),
             lead_client_id=lead_client_id,
@@ -252,6 +302,7 @@ async def emit_domain_event(
         await db.execute(select(DomainEvent).where(DomainEvent.idempotency_key == key))
     ).scalar_one_or_none()
     if existing is not None:
+        _record_emit(event_type, source[:30], actor_type, "deduped")
         return existing
 
     event = DomainEvent(
@@ -275,6 +326,7 @@ async def emit_domain_event(
         async with db.begin_nested():
             db.add(event)
             await db.flush()
+        _record_emit(event_type, source[:30], actor_type, "emitted")
         logger.info(
             "domain_event.emitted",
             extra={
@@ -290,8 +342,10 @@ async def emit_domain_event(
         existing = (
             await db.execute(select(DomainEvent).where(DomainEvent.idempotency_key == key))
         ).scalar_one()
+        _record_emit(event_type, source[:30], actor_type, "deduped")
         return existing
     except Exception as exc:
+        _record_emit(event_type, source[:30], actor_type, "failed")
         if settings.client_domain_strict_emit:
             raise
         logger.warning(

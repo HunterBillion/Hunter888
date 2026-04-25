@@ -72,6 +72,26 @@ NEXT_PUBLIC_WS_URL=wss://your-domain.com
 | `FRONTEND_URL` | URL вашего фронтенда (например `https://your-domain.com`) |
 | `CORS_ORIGINS` | То же, что FRONTEND_URL |
 
+### TZ-1 Client Domain (включить на проде после parity ≥ 0.99)
+
+| Переменная | Для production | Default |
+|------------|----------------|---------|
+| `CLIENT_DOMAIN_DUAL_WRITE_ENABLED` | `true` (включает запись DomainEvent параллельно с легаси-таблицами) | `true` |
+| `CLIENT_DOMAIN_CUTOVER_READ_ENABLED` | `false` пока parity < 0.99; затем `true` | `false` |
+| `CLIENT_DOMAIN_STRICT_EMIT` | **`true` на пилоте** — emit-ошибки роняют транзакцию вместо тихого warning. По умолчанию `false`, чтобы не ломать legacy-paths во время cutover. После переключения cutover_read должен быть `true`. | `false` |
+| `REFRESH_CONCURRENT_GRACE_SECONDS` | `30` — окно в которое concurrent-refresh из multi-tab/SW prefetch получают одну и ту же reissued пару вместо blacklist user. Не повышать выше 60. | `30` |
+
+Проверить включение:
+```bash
+docker compose exec api env | grep CLIENT_DOMAIN
+```
+
+Метрики emit-counter и parity-ratio:
+```bash
+curl -H "Authorization: Bearer <admin-jwt>" \
+  https://x-hunter.expert/api/admin/client-domain/metrics
+```
+
 ### Redis (для Docker Compose)
 
 Добавьте в `.env`, если хотите свой пароль:
