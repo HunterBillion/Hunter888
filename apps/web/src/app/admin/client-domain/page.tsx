@@ -25,7 +25,9 @@ import {
   ChevronUp,
   Clock,
   FlaskConical,
+  HeartPulse,
   Info,
+  Inbox,
   Loader2,
   RefreshCw,
   ShieldAlert,
@@ -34,9 +36,16 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { useAuth } from "@/hooks/useAuth";
-import { isAdmin } from "@/lib/guards";
 import { api, ApiError } from "@/lib/api";
+
+type ClientDomainView = "health" | "ops" | "events" | "followups";
+
+const SUB_TABS: { id: ClientDomainView; label: string; icon: typeof Activity }[] = [
+  { id: "health", label: "Здоровье", icon: HeartPulse },
+  { id: "ops", label: "Операции", icon: Wrench },
+  { id: "events", label: "События", icon: Activity },
+  { id: "followups", label: "Follow-ups", icon: Inbox },
+];
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -354,20 +363,16 @@ interface TaskFollowUpsResponse {
 // ── Page ─────────────────────────────────────────────────────────────────
 
 export default function ClientDomainAdminPage() {
-  const { user } = useAuth();
-
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "refresh" | "self-test" | "repair-events" | "repair-projections">(null);
   const [selfTest, setSelfTest] = useState<SelfTestResult | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [view, setView] = useState<ClientDomainView>("health");
   // TZ-2 §12 — read-only observability of task_followups (canonical
   // alongside the legacy manager_reminders that managers see in CRM).
   const [followups, setFollowups] = useState<TaskFollowUpsResponse | null>(null);
-
-  const roleReady = user !== undefined;
-  const hasAccess = !!user && isAdmin(user);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -402,16 +407,13 @@ export default function ClientDomainAdminPage() {
     }
   }, []);
 
-  // F-L12-1 fix: abort the in-flight request when either the user
-  // navigates away or the effect re-runs (e.g. ``hasAccess`` flip).
-  // Without this, a late response resolves after unmount → setState on
-  // a dead component → React warns + memory leak.
+  // F-L12-1 fix: abort the in-flight request on unmount/remount so a
+  // late response can't setState on a dead component.
   useEffect(() => {
-    if (!hasAccess) return;
     const controller = new AbortController();
     load(controller.signal);
     return () => controller.abort();
-  }, [hasAccess, load]);
+  }, [load]);
 
   const refresh = useCallback(async () => {
     setBusy("refresh");
@@ -472,39 +474,6 @@ export default function ClientDomainAdminPage() {
     },
     [load],
   );
-
-  // ── guards ────────────────────────────────────────────────────────────
-
-  if (!roleReady) {
-    return (
-      <div className="flex items-center gap-2 p-6" style={{ color: "var(--text-muted)" }}>
-        <Loader2 size={16} className="animate-spin" />
-        Проверка прав…
-      </div>
-    );
-  }
-
-  if (!hasAccess) {
-    return (
-      <div
-        className="rounded-xl p-6 flex items-start gap-3"
-        style={{
-          background: "var(--bg-panel)",
-          border: "1px solid rgba(239,68,68,0.35)",
-        }}
-      >
-        <ShieldAlert size={20} style={{ color: "#ef4444" }} />
-        <div>
-          <div className="font-semibold" style={{ color: "var(--text-primary)" }}>
-            Доступ ограничен
-          </div>
-          <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            Эта страница доступна только роли <code>admin</code>.
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // ── render ────────────────────────────────────────────────────────────
 
@@ -610,10 +579,48 @@ export default function ClientDomainAdminPage() {
         </div>
       ) : null}
 
-      {health && <HealthBadge health={health} />}
+      {/* Sub-tab strip — splits the previously-monolithic page into four
+          focused views so admins don't have to scroll past 1100 lines to
+          find one button. The action buttons in the header (Refresh,
+          Self-test) stay always-visible because they're cross-cutting. */}
+      <div
+        className="flex items-center gap-1 rounded-lg p-1 overflow-x-auto"
+        style={{
+          background: "var(--bg-secondary)",
+          border: "1px solid var(--border-color)",
+        }}
+        role="tablist"
+        aria-label="Разделы клиентского домена"
+      >
+        {SUB_TABS.map(({ id, label, icon: Icon }) => {
+          const active = view === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setView(id)}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md whitespace-nowrap transition"
+              style={{
+                color: active ? "white" : "var(--text-secondary)",
+                background: active ? "var(--accent)" : "transparent",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Health view ── */}
+      {view === "health" && health && <HealthBadge health={health} />}
 
       {/* Parity counters */}
-      {parity && (
+      {view === "health" && parity && (
         <div>
           <div
             className="text-[11px] font-semibold uppercase tracking-widest mb-2 flex items-center gap-1"
@@ -677,8 +684,9 @@ export default function ClientDomainAdminPage() {
         </div>
       )}
 
+      {/* ── Ops view ── */}
       {/* Repair actions */}
-      {parity && (
+      {view === "ops" && parity && (
         <div
           className="rounded-xl p-4"
           style={{
@@ -740,8 +748,8 @@ export default function ClientDomainAdminPage() {
         </div>
       )}
 
-      {/* Self-test result */}
-      {selfTest && (
+      {/* Self-test result — appears in Ops view (where you triggered it). */}
+      {view === "ops" && selfTest && (
         <div
           className="rounded-xl p-4"
           style={{
@@ -784,8 +792,9 @@ export default function ClientDomainAdminPage() {
         </div>
       )}
 
+      {/* ── Events view ── */}
       {/* Event types */}
-      {eventTypes && (
+      {view === "events" && eventTypes && (
         <div>
           <div
             className="text-[11px] font-semibold uppercase tracking-widest mb-2 flex items-center gap-1"
@@ -808,8 +817,9 @@ export default function ClientDomainAdminPage() {
         </div>
       )}
 
+      {/* ── Follow-ups view ── */}
       {/* TZ-2 §12 — TaskFollowUp observability */}
-      {followups && (
+      {view === "followups" && followups && (
         <div>
           <div
             className="text-[11px] font-semibold uppercase tracking-widest mb-2 flex items-center gap-1"
@@ -949,8 +959,8 @@ export default function ClientDomainAdminPage() {
         </div>
       )}
 
-      {/* Flags */}
-      {flags && (
+      {/* Flags — health-status info, lives in Health tab. */}
+      {view === "health" && flags && (
         <div>
           <div
             className="text-[11px] font-semibold uppercase tracking-widest mb-2 flex items-center gap-1"
@@ -989,7 +999,7 @@ export default function ClientDomainAdminPage() {
       )}
 
       {/* Recent events */}
-      {data?.recent_events && (
+      {view === "events" && data?.recent_events && (
         <div>
           <div
             className="text-[11px] font-semibold uppercase tracking-widest mb-2 flex items-center gap-1"
