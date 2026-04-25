@@ -123,6 +123,7 @@ jobs:
             tests/test_attachment_security.py \
             tests/test_runtime_catalog.py \
             tests/test_runtime_finalizer.py \
+            tests/test_task_followup_policy.py \
             tests/test_training_session_attachments.py \
             tests/test_event_bus_outbox.py \
             tests/test_crm_followup.py \
