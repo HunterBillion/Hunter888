@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -42,7 +42,24 @@ class LeadClient(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
+    # TZ-1 §8 status lattice — enforced at DB level so the canonical model
+    # cannot accept free-text values from any code path. Sync these lists
+    # with `LIFECYCLE_STAGES` / `WORK_STATES` in app.services.client_domain.
     __table_args__ = (
         Index("ix_lead_clients_owner_stage", "owner_user_id", "lifecycle_stage"),
         Index("ix_lead_clients_team_state", "team_id", "work_state"),
+        CheckConstraint(
+            "lifecycle_stage IN ("
+            "'new','contacted','interested','consultation','thinking',"
+            "'consent_received','contract_signed','documents_in_progress',"
+            "'case_in_progress','completed','lost')",
+            name="ck_lead_clients_lifecycle_stage",
+        ),
+        CheckConstraint(
+            "work_state IN ("
+            "'active','callback_scheduled','waiting_client','waiting_documents',"
+            "'consent_pending','paused','consent_revoked','duplicate_review',"
+            "'archived')",
+            name="ck_lead_clients_work_state",
+        ),
     )

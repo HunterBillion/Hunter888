@@ -252,6 +252,103 @@ async def test_emit_domain_event_returns_existing_on_duplicate_key(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_emit_counter_increments_on_each_branch(monkeypatch):
+    """Prometheus counter exposes emit attempts so /admin/client-domain/metrics
+    can show emit volume in real time. Each branch (skipped / deduped / emitted)
+    must bump its own slot.
+    """
+    from app.services import client_domain
+
+    # Snapshot baseline so parallel test runs don't contaminate the assertion.
+    baseline = dict(client_domain._emit_counter)
+
+    def delta(*labels) -> int:
+        return client_domain._emit_counter.get(labels, 0) - baseline.get(labels, 0)
+
+    # 1) skipped path — flag off
+    monkeypatch.setattr(
+        client_domain.settings, "client_domain_dual_write_enabled", False, raising=False
+    )
+    db = SimpleNamespace(
+        execute=AsyncMock(),
+        add=MagicMock(),
+        flush=AsyncMock(),
+    )
+    await client_domain.emit_domain_event(
+        db,
+        lead_client_id=uuid.uuid4(),
+        event_type="crm.interaction_logged",
+        actor_type="user",
+        actor_id=None,
+        source="test",
+        idempotency_key="k1",
+    )
+    assert delta("crm.interaction_logged", "test", "user", "skipped") == 1
+
+    # 2) deduped path — pre-existing event returned
+    monkeypatch.setattr(
+        client_domain.settings, "client_domain_dual_write_enabled", True, raising=False
+    )
+    existing_event = DomainEvent(
+        id=uuid.uuid4(),
+        lead_client_id=uuid.uuid4(),
+        event_type="crm.interaction_logged",
+        actor_type="user",
+        source="test",
+        payload_json={},
+        idempotency_key="k2",
+        schema_version=1,
+    )
+    db.execute = AsyncMock(return_value=_FakeResult(existing_event))
+    await client_domain.emit_domain_event(
+        db,
+        lead_client_id=uuid.uuid4(),
+        event_type="crm.interaction_logged",
+        actor_type="user",
+        actor_id=None,
+        source="test",
+        idempotency_key="k2",
+    )
+    assert delta("crm.interaction_logged", "test", "user", "deduped") == 1
+
+
+def test_lattice_constants_match_tz1_spec():
+    """TZ-1 §8 catalog. If anyone adds a value to the runtime constant
+    without updating the matching CHECK constraint in
+    20260425_003_lead_clients_lattice_check.py, the DB will reject
+    legitimate writes — keep them in lockstep.
+    """
+    from app.services.client_domain import LIFECYCLE_STAGES, WORK_STATES
+
+    assert LIFECYCLE_STAGES == frozenset({
+        "new", "contacted", "interested", "consultation", "thinking",
+        "consent_received", "contract_signed", "documents_in_progress",
+        "case_in_progress", "completed", "lost",
+    })
+    assert WORK_STATES == frozenset({
+        "active", "callback_scheduled", "waiting_client", "waiting_documents",
+        "consent_pending", "paused", "consent_revoked", "duplicate_review",
+        "archived",
+    })
+
+
+def test_map_legacy_status_only_returns_lattice_values():
+    """A schema-level guard: the legacy → canonical mapper must NEVER
+    produce a value the CHECK constraint will reject."""
+    from app.models.client import ClientStatus
+    from app.services.client_domain import (
+        LIFECYCLE_STAGES,
+        WORK_STATES,
+        map_legacy_client_status,
+    )
+
+    for status in list(ClientStatus) + [None, "garbage", ""]:
+        lifecycle, work_state = map_legacy_client_status(status)
+        assert lifecycle in LIFECYCLE_STAGES, (status, lifecycle)
+        assert work_state in WORK_STATES, (status, work_state)
+
+
+@pytest.mark.asyncio
 async def test_emit_client_event_fills_correlation_from_client_id(monkeypatch):
     """A3: lifecycle events (lead_client.created/archived/profile_updated) never
     carry a session_id. emit_client_event must still produce a non-NULL

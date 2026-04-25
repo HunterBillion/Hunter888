@@ -39,7 +39,7 @@ from app.database import get_db
 from app.models.crm_projection import CrmTimelineProjectionState
 from app.models.domain_event import DomainEvent
 from app.models.lead_client import LeadClient
-from app.services.client_domain import emit_domain_event
+from app.services.client_domain import emit_domain_event, get_emit_counters
 from app.services.client_domain_repair import (
     parity_report,
     repair_missing_events_for_interactions,
@@ -243,6 +243,24 @@ async def get_prometheus_metrics(
     )
     lines.append("# TYPE client_domain_timeline_parity_ratio gauge")
     lines.append(f"client_domain_timeline_parity_ratio {parity_ratio:.6f}")
+
+    # Per-emit counters (in-process, per worker). Aggregation across workers
+    # happens at the Prometheus scraper level. Outcome label distinguishes
+    # emitted / deduped (idempotency hit) / skipped (dual-write disabled) /
+    # failed (caught exception) so dashboards can spot drift instantly.
+    counters = get_emit_counters()
+    if counters:
+        lines.append(
+            "# HELP client_domain_events_emitted_total "
+            "DomainEvent emit attempts by event_type, source, actor_type, outcome"
+        )
+        lines.append("# TYPE client_domain_events_emitted_total counter")
+        for (event_type, source_lbl, actor_type, outcome), count in sorted(counters.items()):
+            labels = (
+                f'event_type="{event_type}",source="{source_lbl}",'
+                f'actor_type="{actor_type}",outcome="{outcome}"'
+            )
+            lines.append(f"client_domain_events_emitted_total{{{labels}}} {count}")
 
     return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain")
 
