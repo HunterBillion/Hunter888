@@ -364,6 +364,15 @@ async def start_session(
             body.real_client_id = _clone_source.real_client_id
         if body.custom_character_id is None:
             body.custom_character_id = _clone_source.custom_character_id
+        # TZ-2 §6.2/6.3 canonical fields — copy from source so retrain
+        # keeps the original mode + runtime_type. Without this, clone of
+        # a crm_call session would lose the canonical labels and the
+        # downstream finalizer would write training_simulation by
+        # default. Explicit body wins (allows «retrain in chat»).
+        if body.mode is None:
+            body.mode = _clone_source.mode
+        if body.runtime_type is None:
+            body.runtime_type = _clone_source.runtime_type
 
         # Flat custom_* fields — copy from source custom_params if body empty.
         # Note: schema flattens these into body.custom_* and start_session

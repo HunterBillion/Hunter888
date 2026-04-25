@@ -152,6 +152,7 @@ async def test_missing_scores_returns_noop_result():
     assert result == {
         "session_history_created": False,
         "xp_earned": None,
+        "mp_result": None,
         "coach_report_generated": False,
         "rag_feedback_count": 0,
     }
@@ -188,6 +189,69 @@ async def test_state_none_uses_session_defaults():
     # The synthesized SessionHistory.outcome came from scoring_details fallback.
     sh_added = db.add.call_args[0][0]
     assert sh_added.outcome == "needs_followup"
+
+
+@pytest.mark.asyncio
+async def test_helper_returns_mp_result_for_ws_xp_update_event():
+    """Phase 1B contract: WS handler emits `session.xp_update` to the
+    real-time WS client by reading `mp_result` from the helper return.
+    Without `mp_result` in the return dict, WS would have no way to
+    push the level-up popup to the FE without re-querying the DB."""
+    db = _make_db()
+    session = _make_session()
+    scores = _make_scores()
+
+    fake_svc = MagicMock()
+    full_mp = {
+        "xp_breakdown": {"grand_total": 80, "base": 50, "bonus": 30},
+        "level_up": True,
+        "new_level": 4,
+        "new_level_name": "Hunter",
+    }
+    fake_svc.update_after_session = AsyncMock(return_value=full_mp)
+
+    with (
+        patch(
+            "app.services.manager_progress.ManagerProgressService",
+            return_value=fake_svc,
+        ),
+        patch("app.services.scenario_engine.generate_session_report", new_callable=AsyncMock),
+        patch("app.services.session_manager.get_message_history", new=AsyncMock(return_value=[])),
+        patch("app.services.session_manager.get_message_history_db", new=AsyncMock(return_value=[])),
+    ):
+        result = await apply_post_finalize_enrichment(
+            db, session=session, scores=scores, state=None
+        )
+
+    # mp_result must be the FULL ManagerProgress return value so WS can
+    # forward level_up + new_level + new_level_name to the FE.
+    assert result["mp_result"] == full_mp
+    assert result["mp_result"]["level_up"] is True
+    assert result["mp_result"]["new_level"] == 4
+
+
+@pytest.mark.asyncio
+async def test_helper_mp_result_is_none_on_idempotent_skip():
+    """When the second writer hits the SessionHistory UNIQUE conflict and
+    short-circuits, mp_result MUST be None — otherwise the caller might
+    push a duplicate level-up popup to the WS client."""
+    existing = SimpleNamespace(xp_earned=42)
+    db = _make_db(integrity_error=True, existing_row=existing)
+
+    fake_svc = MagicMock()
+    fake_svc.update_after_session = AsyncMock()
+
+    with patch(
+        "app.services.manager_progress.ManagerProgressService",
+        return_value=fake_svc,
+    ):
+        result = await apply_post_finalize_enrichment(
+            db, session=_make_session(), scores=_make_scores(), state=None
+        )
+
+    assert result["mp_result"] is None
+    assert result["xp_earned"] == 42  # taken from existing row, not awarded
+    fake_svc.update_after_session.assert_not_called()
 
 
 @pytest.mark.asyncio

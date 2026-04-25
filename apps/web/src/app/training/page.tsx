@@ -126,9 +126,13 @@ function TrainingPageContent() {
     setStarting({ scenarioId });
     setStartError(null);
     try {
+      // TZ-2 §6.2/6.3 — canonical mode + legacy fallback. No real_client →
+      // training_simulation runtime_type.
       const session = await api.post("/training/sessions", {
         scenario_id: scenarioId,
-        custom_session_mode: mode,
+        mode,
+        runtime_type: "training_simulation",
+        custom_session_mode: mode, // legacy compat
       });
       const target = mode === "call"
         ? `/training/${session.id}/call`
@@ -841,9 +845,14 @@ function SavedTab({ storyCalls }: { storyCalls: number }) {
       // 2026-04-21: send the full CustomCharacter payload + the FK so the
       // session links to the saved row (and end_session can then update
       // play_count/best_score/avg_score/last_played_at).
+      // TZ-2 §6.2/6.3: CharacterBuilder always starts a chat-mode
+      // simulation (no real client linkage at this entry point).
       const session = await api.post("/training/sessions", {
         ...(scenarioId ? { scenario_id: scenarioId } : {}),
         ...(char.id ? { custom_character_id: char.id } : {}),
+        mode: "chat",
+        runtime_type: "training_simulation",
+        custom_session_mode: "chat", // legacy compat
         custom_archetype: char.archetype,
         custom_profession: char.profession,
         custom_lead_source: char.lead_source,
