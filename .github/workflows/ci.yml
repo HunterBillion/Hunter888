@@ -125,6 +125,7 @@ jobs:
             tests/test_runtime_finalizer.py \
             tests/test_runtime_guard_engine.py \
             tests/test_session_start_canonical_fields.py \
+            tests/test_rest_ws_finalize_parity.py \
             tests/test_task_followup_policy.py \
             tests/test_training_session_attachments.py \
             tests/test_event_bus_outbox.py \
