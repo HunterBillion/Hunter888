@@ -17,7 +17,6 @@ import { AutoBreadcrumbs } from "./AutoBreadcrumbs";
 import { KeyboardShortcutsOverlay } from "@/components/ui/KeyboardShortcutsOverlay";
 import { CommandPalette } from "@/components/ui/CommandPalette";
 import { PlanLimitModal } from "@/components/billing/PlanLimitModal";
-import { PageTransition } from "@/components/layout/PageTransition";
 import { ScreenShakeProvider } from "@/components/ui/ScreenShake";
 import { LLMDegradationBanner } from "@/components/ui/LLMDegradationBanner";
 import { CelebrationListener } from "@/components/gamification/CelebrationListener";
@@ -333,7 +332,7 @@ export default function AuthLayout({
             <div className="app-page pt-3">
               <AutoBreadcrumbs />
             </div>
-            <PageTransition>{children}</PageTransition>
+            {children}
           </main>
           <KeyboardShortcutsOverlay />
           <CommandPalette />

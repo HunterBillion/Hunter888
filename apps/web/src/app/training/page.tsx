@@ -35,6 +35,7 @@ import { ARCHETYPES, getDifficultyColor } from "@/lib/archetypes";
 import { ArchetypeCard } from "@/components/training/ArchetypeCard";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import type { Scenario } from "@/types";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 // 2026-04-18: вкладка "Рекомендуемые" убрана из /training — она сбивала
 // пользователя с главного flow. Из /home кнопка "Рекомендуемые" теперь
@@ -393,28 +394,28 @@ function ScenariosTab({
     return (
       <div className="mt-6 grid gap-5 sm:grid-cols-2">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="glass-panel p-6 space-y-4 animate-pulse relative overflow-hidden rounded-2xl">
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-[var(--input-bg)]" />
+          <div key={i} className="glass-panel p-6 space-y-4 relative overflow-hidden rounded-2xl">
+            <Skeleton height={6} width="100%" rounded="0" className="absolute top-0 left-0 right-0" />
             <div className="flex items-start gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-[var(--input-bg)]" />
+              <Skeleton width={56} height={56} rounded="16px" />
               <div className="flex-1 space-y-2">
-                <div className="h-5 w-2/3 rounded bg-[var(--input-bg)]" />
-                <div className="h-3 w-full rounded bg-[var(--input-bg)]" />
+                <Skeleton height={20} width="66%" />
+                <Skeleton height={12} width="100%" />
               </div>
-              <div className="h-6 w-12 rounded-lg bg-[var(--input-bg)]" />
+              <Skeleton width={48} height={24} rounded="8px" />
             </div>
-            <div className="h-4 w-3/4 rounded bg-[var(--input-bg)]" />
+            <Skeleton height={16} width="75%" />
             <div className="flex gap-1">
-              {[...Array(10)].map((_, j) => <div key={j} className="h-2 flex-1 rounded-full bg-[var(--input-bg)]" />)}
+              {[...Array(10)].map((_, j) => <Skeleton key={j} height={8} className="flex-1" rounded="999px" />)}
             </div>
             <div className="flex gap-2">
-              <div className="h-6 w-20 rounded-lg bg-[var(--input-bg)]" />
-              <div className="h-6 w-20 rounded-lg bg-[var(--input-bg)]" />
-              <div className="h-6 w-16 rounded-lg bg-[var(--input-bg)]" />
+              <Skeleton width={80} height={24} rounded="8px" />
+              <Skeleton width={80} height={24} rounded="8px" />
+              <Skeleton width={64} height={24} rounded="8px" />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="h-12 rounded-xl bg-[var(--input-bg)]" />
-              <div className="h-12 rounded-xl bg-[var(--input-bg)]" />
+              <Skeleton height={48} rounded="12px" />
+              <Skeleton height={48} rounded="12px" />
             </div>
           </div>
         ))}

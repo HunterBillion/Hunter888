@@ -37,6 +37,7 @@ import {
 import { toast } from "sonner";
 
 import { api, ApiError } from "@/lib/api";
+import { DashboardSkeleton } from "@/components/ui/Skeleton";
 
 type ClientDomainView = "health" | "ops" | "events" | "followups";
 
@@ -565,19 +566,7 @@ export default function ClientDomainAdminPage() {
         </div>
       )}
 
-      {loading && !data ? (
-        <div
-          className="rounded-xl p-6 flex items-center gap-3"
-          style={{
-            background: "var(--bg-panel)",
-            border: "1px solid var(--border-color)",
-            color: "var(--text-muted)",
-          }}
-        >
-          <Loader2 size={16} className="animate-spin" />
-          Загружаю dashboard…
-        </div>
-      ) : null}
+      {loading && !data ? <DashboardSkeleton /> : null}
 
       {/* Sub-tab strip — splits the previously-monolithic page into four
           focused views so admins don't have to scroll past 1100 lines to
