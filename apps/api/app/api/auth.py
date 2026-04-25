@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -302,21 +303,24 @@ async def refresh(request: Request, body: RefreshRequest | None = None, db: Asyn
         )
 
     # Atomic revocation gate: use SETNX to atomically check-and-revoke the old
-    # refresh token in a single Redis call.  This eliminates the TOCTOU race
+    # refresh token in a single Redis call. This eliminates the TOCTOU race
     # where two concurrent refresh requests could both pass a separate
     # _is_token_revoked() check before either writes the revocation key.
     #
-    # Concurrent-refresh grace window: multi-tab browsers, mobile background
-    # fetches, and service-worker prefetch can legitimately race two refreshes
-    # with the same refresh_token within a few hundred ms. To avoid blacklisting
-    # a legitimate user in that case, the winner of SETNX caches its reissued
-    # pair for `refresh_concurrent_grace_seconds`; losers within the window
-    # read the cache and return the same pair. Outside the window, SETNX loss
-    # is a true replay and the user is blacklisted.
+    # Concurrent-refresh grace window (A10 v2): multi-tab browsers, mobile
+    # background fetches, and SW prefetch can legitimately race two refreshes
+    # with the same refresh_token within a few hundred ms. To avoid
+    # blacklisting a legitimate user the winner reserves the cache slot
+    # IMMEDIATELY with a "PENDING" sentinel (before the slow DB lookup +
+    # token creation) so concurrent losers see it and poll, instead of
+    # racing past an empty cache and triggering replay-detect. Once the
+    # winner finishes it overwrites the slot with the real reissued pair.
+    # Outside the grace window SETNX loss remains a true replay.
     r = None
     ttl = settings.jwt_refresh_token_expire_days * 86400
     grace = settings.refresh_concurrent_grace_seconds
     reissued_key = f"token:reissued:{old_jti}" if old_jti else None
+    _PENDING = "PENDING"
 
     if old_jti:
         try:
@@ -332,18 +336,25 @@ async def refresh(request: Request, body: RefreshRequest | None = None, db: Asyn
                 detail=err.SERVICE_TEMPORARILY_UNAVAILABLE,
             )
 
-        if not was_set:
-            # SETNX lost: either a concurrent legitimate refresh inside the
-            # grace window, or a true replay after the window has closed.
-            cached = None
+        if was_set:
+            # Winner — reserve the cache slot BEFORE doing the slow DB lookup
+            # so concurrent losers can poll instead of falling through to
+            # blacklist when they read an empty cache.
             try:
-                cached = await r.get(reissued_key)
+                await r.setex(reissued_key, grace, _PENDING)
             except aioredis.RedisError:
-                cached = None
+                # Cache reservation failure is non-critical — losers within
+                # the same Redis-down window will see _is_user_blacklisted
+                # check fail closed earlier and not reach here.
+                pass
+        else:
+            # Loser — SETNX failed. Either a concurrent legitimate refresh
+            # is in flight (cache holds PENDING or final payload), or this
+            # is a true replay after the grace window expired (cache empty).
+            cached_str = await _wait_for_reissued_pair(r, reissued_key)
 
-            if cached:
+            if cached_str is not None and cached_str != _PENDING:
                 try:
-                    cached_str = cached.decode() if isinstance(cached, (bytes, bytearray)) else cached
                     cached_tokens = TokenResponse.model_validate_json(cached_str)
                 except Exception as exc:
                     _logger.warning(
@@ -382,6 +393,8 @@ async def refresh(request: Request, body: RefreshRequest | None = None, db: Asyn
     tokens = await _create_tokens(user_id, user_role)
     tokens.must_change_password = must_change
 
+    # Winner publishes the real reissued pair so any in-flight losers
+    # finish their poll loop and return it.
     if r is not None and reissued_key:
         try:
             await r.setex(reissued_key, grace, tokens.model_dump_json())
@@ -390,6 +403,39 @@ async def refresh(request: Request, body: RefreshRequest | None = None, db: Asyn
 
     response = JSONResponse(content=tokens.model_dump())
     return _set_auth_cookies(response, tokens)
+
+
+async def _wait_for_reissued_pair(
+    r,
+    reissued_key: str,
+    *,
+    max_attempts: int = 25,
+    sleep_seconds: float = 0.08,
+) -> str | None:
+    """Poll the reissued cache slot for up to ~2s, waiting for the SETNX
+    winner to publish its token pair.
+
+    Returns the cached JSON payload, the literal "PENDING" sentinel
+    (caller should treat as "no payload yet"), or None on Redis failure
+    / true cache-miss (true replay).
+
+    25 × 80ms ≈ 2s is shorter than the network round-trip for most
+    real refreshes from mobile, and bounded so a slow winner doesn't
+    pin a request thread forever.
+    """
+    cached_str: str | None = None
+    for _ in range(max_attempts):
+        try:
+            raw = await r.get(reissued_key)
+        except aioredis.RedisError:
+            return None
+        if raw is None:
+            return cached_str
+        cached_str = raw.decode() if isinstance(raw, (bytes, bytearray)) else raw
+        if cached_str != "PENDING":
+            return cached_str
+        await asyncio.sleep(sleep_seconds)
+    return cached_str
 
 
 @router.get("/me", response_model=UserResponse)
