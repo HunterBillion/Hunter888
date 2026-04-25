@@ -3330,7 +3330,30 @@ async def _handle_session_start(
                 custom_params = dict(custom_params)
                 custom_params["difficulty"] = state["current_call_difficulty"]
             session.custom_params = custom_params
-            await db.flush()
+
+        # TZ-2 §6.2/6.3: stamp canonical mode + runtime_type on the WS-created
+        # session too. WS path always emits a synthetic training session so
+        # there is no real_client_id at this point — runtime_type is always
+        # `training_simulation`. Mode comes from custom_params.session_mode
+        # (set earlier by the FE start payload), defaulting to chat.
+        from app.services.runtime_catalog import (
+            MODES,
+            RUNTIME_TYPES,
+            derive_runtime_type,
+        )
+        _ws_mode = ((session.custom_params or {}).get("session_mode") or "chat").lower()
+        if _ws_mode not in MODES:
+            _ws_mode = None
+        _ws_runtime_type = derive_runtime_type(
+            mode=_ws_mode,
+            has_real_client=session.real_client_id is not None,
+            source=session.source,
+        )
+        if _ws_runtime_type not in RUNTIME_TYPES:
+            _ws_runtime_type = None
+        session.mode = _ws_mode
+        session.runtime_type = _ws_runtime_type
+        await db.flush()
 
         # ── Generate unique client profile (Roleplay v2) ──
         try:
