@@ -62,7 +62,8 @@ from app.schemas.client import (
     ReminderResponse,
     SendNotificationRequest,
 )
-from app.services.attachment_storage import (
+from app.services.attachment_storage import (  # noqa: I001
+    UnsupportedAttachmentType,
     MAX_ATTACHMENT_BYTES,
     infer_document_type,
     ocr_status_for,
@@ -692,7 +693,10 @@ async def api_upload_attachment(
     if len(data) > MAX_ATTACHMENT_BYTES:
         raise HTTPException(status_code=413, detail=f"Файл больше {MAX_ATTACHMENT_BYTES // (1024 * 1024)} МБ")
 
-    stored = store_attachment_bytes(client_id=str(client.id), filename=file.filename, data=data)
+    try:
+        stored = store_attachment_bytes(client_id=str(client.id), filename=file.filename, data=data)
+    except UnsupportedAttachmentType as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
     document_type = infer_document_type(stored.filename, file.content_type)
 
     existing = (await db.execute(

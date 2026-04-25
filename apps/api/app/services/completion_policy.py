@@ -98,6 +98,59 @@ class TerminalOutcome(str, enum.Enum):
     pvp_abandoned = "pvp_abandoned"
 
 
+# TZ-2 §6.5 canonical outcome catalog. Internal TerminalOutcome values
+# above predate the spec — they are kept for backward compatibility, but
+# anything written to a CRM-facing surface (DomainEvent payload, follow-up
+# policy lookup, dashboards) must speak the canonical names below.
+# `to_tz2_outcome()` is the single mapper.
+TZ2_CANONICAL_OUTCOMES: frozenset[str] = frozenset({
+    "deal_agreed",
+    "deal_not_agreed",
+    "continue_next_call",
+    "needs_followup",
+    "documents_required",
+    "callback_requested",
+    "client_unreachable",
+    "user_cancelled",
+    "timeout",
+    "error",
+})
+
+# Legacy → TZ-2 §6.5 mapping. Anything not in this map (e.g. PvP outcomes)
+# is **not** a CRM-relevant outcome and to_tz2_outcome returns None for
+# them so callers can decide to skip the CRM-facing emit instead of
+# stamping a non-canonical value into a canonical column.
+_LEGACY_TO_TZ2: dict[str, str] = {
+    "success": "deal_agreed",
+    "hard_reject": "deal_not_agreed",
+    "needs_followup": "needs_followup",
+    "need_documents": "documents_required",
+    "callback_requested": "callback_requested",
+    "no_answer": "client_unreachable",
+    "hangup": "continue_next_call",
+    "timeout": "timeout",
+    "technical_failed": "error",
+    "operator_aborted": "user_cancelled",
+}
+
+
+def to_tz2_outcome(value) -> str | None:
+    """Normalize any legacy/canonical outcome string to the TZ-2 §6.5 catalog.
+
+    Returns None if the value is not a CRM-relevant training outcome
+    (e.g. PvP outcomes, unknown strings) — callers should skip the
+    canonical-column write in that case rather than stamp a non-canonical
+    value, which would defeat the lattice.
+    """
+    if value is None:
+        return None
+    raw = value.value if isinstance(value, enum.Enum) else str(value)
+    raw = raw.strip().lower()
+    if raw in TZ2_CANONICAL_OUTCOMES:
+        return raw
+    return _LEGACY_TO_TZ2.get(raw)
+
+
 class TerminalReason(str, enum.Enum):
     """How the terminal event was triggered (diagnostic/analytics)."""
 

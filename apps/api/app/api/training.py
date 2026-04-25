@@ -33,6 +33,7 @@ from app.schemas.training import (
 from app.schemas.client import AttachmentResponse
 from app.services.attachment_storage import (
     MAX_ATTACHMENT_BYTES,
+    UnsupportedAttachmentType,
     infer_document_type,
     ocr_status_for,
     store_attachment_bytes,
@@ -1080,7 +1081,13 @@ async def upload_session_attachment(
             detail=f"Файл больше {MAX_ATTACHMENT_BYTES // (1024 * 1024)} МБ",
         )
 
-    stored = store_attachment_bytes(client_id=str(client.id), filename=file.filename, data=data)
+    try:
+        stored = store_attachment_bytes(client_id=str(client.id), filename=file.filename, data=data)
+    except UnsupportedAttachmentType as exc:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=str(exc),
+        ) from exc
     document_type = infer_document_type(stored.filename, file.content_type)
 
     existing = (await db.execute(
