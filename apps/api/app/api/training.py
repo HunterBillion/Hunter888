@@ -805,6 +805,20 @@ async def start_session(
     # column has existed since migration 20260404_006 but nothing on the
     # write side filled it — it stayed NULL for every session, making the
     # saved-characters statistics permanently dead.
+    # TZ-2 §6.2/6.3: stamp canonical mode + runtime_type at session start
+    # so analytics + finalizer can read them without re-deriving. Mode comes
+    # from the (Phase 4 still-legacy) custom_session_mode; runtime_type is
+    # derived from (mode, has-real-client, source) — see runtime_catalog.
+    from app.services.runtime_catalog import derive_runtime_type, MODES, RUNTIME_TYPES
+    _canonical_mode = (normalized_mode or "chat") if (normalized_mode or "chat") in MODES else None
+    _canonical_runtime_type = derive_runtime_type(
+        mode=_canonical_mode,
+        has_real_client=real_client is not None,
+        source=body.source,
+    )
+    if _canonical_runtime_type not in RUNTIME_TYPES:
+        _canonical_runtime_type = None  # belt-and-braces — CHECK would fail otherwise
+
     session = TrainingSession(
         user_id=user.id,
         scenario_id=scenario_id,
@@ -820,6 +834,8 @@ async def start_session(
         # retrain_from_xxx / constructor_* / None). Column existed but
         # nothing wrote to it before.
         source=body.source,
+        mode=_canonical_mode,
+        runtime_type=_canonical_runtime_type,
     )
     db.add(session)
     await db.flush()

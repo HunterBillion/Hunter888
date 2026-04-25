@@ -120,6 +120,8 @@ jobs:
             tests/test_client_domain_parity.py \
             tests/test_client_domain_replay.py \
             tests/test_auth_refresh_concurrency.py \
+            tests/test_attachment_security.py \
+            tests/test_runtime_catalog.py \
             tests/test_training_session_attachments.py \
             tests/test_event_bus_outbox.py \
             tests/test_crm_followup.py \
