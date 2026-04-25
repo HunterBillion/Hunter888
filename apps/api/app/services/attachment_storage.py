@@ -12,6 +12,23 @@ MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 ATTACHMENTS_DIR = Path(__file__).resolve().parents[2] / "uploads" / "attachments"
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
+# Whitelist of accepted upload extensions. Anything outside this set is
+# rejected — content_type from the browser is spoofable, but the on-disk
+# extension drives how StaticFiles serves the file later, so blocking
+# .html/.svg/.exe here closes the XSS / drive-by surface even with
+# nginx X-Content-Type-Options: nosniff.
+ALLOWED_EXTENSIONS: frozenset[str] = frozenset({
+    ".pdf",
+    ".jpg", ".jpeg", ".png", ".webp", ".heic", ".tiff",
+    ".doc", ".docx", ".rtf", ".odt",
+    ".xls", ".xlsx", ".csv",
+    ".txt",
+})
+
+
+class UnsupportedAttachmentType(ValueError):
+    """Raised when an upload uses an extension outside ALLOWED_EXTENSIONS."""
+
 
 @dataclass(frozen=True)
 class StoredAttachment:
@@ -55,8 +72,23 @@ def ocr_status_for(document_type: str) -> str:
     return "pending" if document_type in {"pdf", "image"} else "not_required"
 
 
-def store_attachment_bytes(*, client_id: str, filename: str | None, data: bytes) -> StoredAttachment:
+def reject_disallowed_extension(filename: str | None) -> str:
+    """Validate the upload's extension against ALLOWED_EXTENSIONS and return
+    the cleaned filename. Raises UnsupportedAttachmentType on mismatch so
+    the API layer can map it to a 415 — ``content_type`` from the browser
+    is intentionally not used here (spoofable)."""
     cleaned = safe_filename(filename)
+    suffix = Path(cleaned).suffix.lower()
+    if not suffix or suffix not in ALLOWED_EXTENSIONS:
+        raise UnsupportedAttachmentType(
+            f"Unsupported attachment extension: {suffix or '<none>'}. "
+            f"Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+        )
+    return cleaned
+
+
+def store_attachment_bytes(*, client_id: str, filename: str | None, data: bytes) -> StoredAttachment:
+    cleaned = reject_disallowed_extension(filename)
     digest = attachment_sha256(data)
     client_dir = ATTACHMENTS_DIR / str(client_id)
     client_dir.mkdir(parents=True, exist_ok=True)

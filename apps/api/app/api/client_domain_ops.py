@@ -28,7 +28,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +39,7 @@ from app.database import get_db
 from app.models.crm_projection import CrmTimelineProjectionState
 from app.models.domain_event import DomainEvent
 from app.models.lead_client import LeadClient
+from app.services.audit import write_audit_log
 from app.services.client_domain import emit_domain_event, get_emit_counters
 from app.services.client_domain_repair import (
     parity_report,
@@ -270,6 +271,7 @@ async def get_prometheus_metrics(
 
 @router.post("/admin/client-domain/self-test")
 async def post_self_test(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user=Depends(require_role("admin")),
 ) -> dict:
@@ -345,6 +347,19 @@ async def post_self_test(
             "finished_at": datetime.now(UTC).isoformat(),
         }
 
+    # Audit even successful self-tests so we can trace who/when ran them.
+    await write_audit_log(
+        db,
+        actor=user,
+        action="client_domain.self_test",
+        entity_type="admin_op",
+        entity_id=None,
+        old_values=None,
+        new_values={"marker": marker, "passed": True, "step_count": len(steps)},
+        request=request,
+    )
+    await db.commit()
+
     return {
         "passed": True,
         "steps": steps,
@@ -355,21 +370,43 @@ async def post_self_test(
 
 @router.post("/admin/client-domain/repair/projections")
 async def post_repair_projections(
+    request: Request,
     limit: int = Query(500, ge=1, le=5000),
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_role("admin")),
+    user=Depends(require_role("admin")),
 ) -> dict:
     repaired = await repair_missing_projections(db, limit=limit)
+    await write_audit_log(
+        db,
+        actor=user,
+        action="client_domain.repair_projections",
+        entity_type="admin_op",
+        entity_id=None,
+        old_values=None,
+        new_values={"limit": limit, "repaired_projections": repaired},
+        request=request,
+    )
     await db.commit()
     return {"repaired_projections": repaired}
 
 
 @router.post("/admin/client-domain/repair/events")
 async def post_repair_events(
+    request: Request,
     limit: int = Query(500, ge=1, le=5000),
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_role("admin")),
+    user=Depends(require_role("admin")),
 ) -> dict:
     repaired = await repair_missing_events_for_interactions(db, limit=limit)
+    await write_audit_log(
+        db,
+        actor=user,
+        action="client_domain.repair_events",
+        entity_type="admin_op",
+        entity_id=None,
+        old_values=None,
+        new_values={"limit": limit, "repaired_events": repaired},
+        request=request,
+    )
     await db.commit()
     return {"repaired_events": repaired}

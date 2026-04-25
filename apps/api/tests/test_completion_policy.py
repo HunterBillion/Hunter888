@@ -18,11 +18,13 @@ import pytest
 from app.services.completion_policy import (
     CompletedVia,
     InvalidTerminalOutcome,
+    TZ2_CANONICAL_OUTCOMES,
     TerminalOutcome,
     TerminalReason,
     finalize_pvp_duel,
     finalize_training_session,
     outcome_from_raw,
+    to_tz2_outcome,
     validate,
 )
 
@@ -39,6 +41,70 @@ def test_terminal_outcome_covers_training_and_pvp():
     pvp = {"pvp_win", "pvp_loss", "pvp_draw", "pvp_abandoned"}
     values = {o.value for o in TerminalOutcome}
     assert training | pvp == values
+
+
+def test_tz2_canonical_outcome_catalog_matches_spec():
+    """TZ-2 §6.5 catalog of 10 canonical outcomes must be exactly this set —
+    drift here means dashboards / follow-up policy / CRM projection
+    silently mis-route."""
+    assert TZ2_CANONICAL_OUTCOMES == frozenset({
+        "deal_agreed",
+        "deal_not_agreed",
+        "continue_next_call",
+        "needs_followup",
+        "documents_required",
+        "callback_requested",
+        "client_unreachable",
+        "user_cancelled",
+        "timeout",
+        "error",
+    })
+
+
+@pytest.mark.parametrize(
+    "legacy, canonical",
+    [
+        ("success", "deal_agreed"),
+        ("hard_reject", "deal_not_agreed"),
+        ("needs_followup", "needs_followup"),
+        ("need_documents", "documents_required"),
+        ("callback_requested", "callback_requested"),
+        ("no_answer", "client_unreachable"),
+        ("hangup", "continue_next_call"),
+        ("timeout", "timeout"),
+        ("technical_failed", "error"),
+        ("operator_aborted", "user_cancelled"),
+    ],
+)
+def test_to_tz2_outcome_maps_legacy_to_canonical(legacy, canonical):
+    assert to_tz2_outcome(legacy) == canonical
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["deal_agreed", "needs_followup", "timeout", "error"],
+)
+def test_to_tz2_outcome_passes_canonical_through(value):
+    """Already-canonical values must round-trip unchanged."""
+    assert to_tz2_outcome(value) == value
+
+
+def test_to_tz2_outcome_returns_none_for_pvp():
+    """PvP outcomes are not training CRM outcomes — caller should skip the
+    canonical-column write rather than stamp something non-canonical."""
+    for v in ("pvp_win", "pvp_loss", "pvp_draw", "pvp_abandoned"):
+        assert to_tz2_outcome(v) is None
+
+
+def test_to_tz2_outcome_handles_enum_input():
+    assert to_tz2_outcome(TerminalOutcome.success) == "deal_agreed"
+    assert to_tz2_outcome(TerminalOutcome.timeout) == "timeout"
+
+
+def test_to_tz2_outcome_returns_none_for_unknown():
+    assert to_tz2_outcome("garbage") is None
+    assert to_tz2_outcome(None) is None
+    assert to_tz2_outcome("") is None
 
 
 def test_terminal_reason_catalog_matches_roadmap():
