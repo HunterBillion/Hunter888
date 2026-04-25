@@ -339,7 +339,12 @@ export default function HomePage() {
         if (!scenarios.length) { setStarting(false); return; }
         scenarioId = scenarios[Math.floor(Math.random() * scenarios.length)].id;
       }
-      const session = await api.post("/training/sessions", { scenario_id: scenarioId });
+      // TZ-2 §6.2/6.3 — quick-start defaults to chat simulation.
+      const session = await api.post("/training/sessions", {
+        scenario_id: scenarioId,
+        mode: "chat",
+        runtime_type: "training_simulation",
+      });
       if (!session?.id) throw new Error("Invalid session response");
       router.push(`/training/${session.id}`);
       setTimeout(() => setStarting(false), 1000);
@@ -732,9 +737,15 @@ export default function HomePage() {
                       }}
                       onClick={async () => {
                         try {
+                          // TZ-2 §6.2/6.3 — recommendation cards launch
+                          // chat-mode simulations (no real client linkage).
                           const session = await api.post(
                             "/training/sessions",
-                            { scenario_id: rec.scenario_id },
+                            {
+                              scenario_id: rec.scenario_id,
+                              mode: "chat",
+                              runtime_type: "training_simulation",
+                            },
                           );
                           router.push(`/training/${session.id}`);
                         } catch (err) {

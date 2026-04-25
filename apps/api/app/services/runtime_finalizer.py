@@ -72,15 +72,24 @@ async def apply_post_finalize_enrichment(
     scenario_name). REST callers pass ``None``; the helper synthesises
     defaults from the session row.
 
-    Returns ``{"session_history_created": bool, "xp_earned": int|None,
-    "coach_report_generated": bool, "rag_feedback_count": int}`` for
-    test assertions and audit logging.
+    Returns a dict with:
+      * ``session_history_created`` bool — True if THIS call created the
+        SessionHistory row, False if it already existed (idempotent skip)
+      * ``xp_earned`` int|None — total XP awarded (whether by this call or
+        the prior creator)
+      * ``coach_report_generated`` bool
+      * ``rag_feedback_count`` int
+      * ``mp_result`` dict|None — full ``ManagerProgressService.update_after_session``
+        return value when this call awarded XP. WS handler uses this to emit
+        the ``session.xp_update`` real-time WS message; REST callers ignore it.
+        None when SessionHistory was already created (caller should not double-emit).
     """
     result: dict[str, Any] = {
         "session_history_created": False,
         "xp_earned": None,
         "coach_report_generated": False,
         "rag_feedback_count": 0,
+        "mp_result": None,
     }
 
     if scores is None:
@@ -150,6 +159,7 @@ async def apply_post_finalize_enrichment(
         sh.xp_earned = mp_result.get("xp_breakdown", {}).get("grand_total", 0)
         sh.xp_breakdown = mp_result.get("xp_breakdown", {})
         result["xp_earned"] = sh.xp_earned
+        result["mp_result"] = mp_result
     except Exception:
         logger.warning(
             "runtime_finalizer.xp_award_failed session=%s",

@@ -4758,82 +4758,37 @@ async def _handle_session_end(
 
             session.scoring_details = enriched_details
 
-            # ── RAG Feedback Loop: capture legal validation outcomes ──
+        # ── TZ-2 Phase 1B: post-finalize enrichment via shared helper ──
+        # Replaces three formerly-inline blocks (RAG feedback capture,
+        # SessionHistory creation, ManagerProgress XP award) with a single
+        # call. Helper is also called from the REST end-handler — both
+        # paths converge on the same logic with SessionHistory.session_id
+        # UNIQUE acting as the idempotency lock so XP is awarded once even
+        # when both paths fire (multi-tab race, REST after WS, etc).
+        #
+        # The AI-coach generation block above (4674-4740) is intentionally
+        # kept inline because it builds richer enriched_details fields
+        # (_cited_moments, _stage_analysis, _historical_patterns) that the
+        # helper does not produce. By the time the helper runs Step 3, it
+        # sees session.feedback_text already populated and short-circuits.
+        mp_result = None
+        if scores is not None and session is not None:
             try:
-                from app.services.rag_feedback import record_training_feedback
-                legal_data = enriched_details.get("legal_accuracy", {})
-                vector_checks = legal_data.get("vector", {}).get("vector_checks", [])
-                if vector_checks and state.get("user_id"):
-                    validation_results = []
-                    for vc in vector_checks:
-                        chunk_id = vc.get("chunk_id")
-                        if not chunk_id:
-                            continue
-                        is_error = vc.get("type") == "error"
-                        validation_results.append({
-                            "chunk_id": chunk_id,
-                            "accuracy": "incorrect" if is_error else "correct",
-                            "manager_statement": vc.get("fact", "")[:200],
-                            "score_delta": -2.0 if is_error else 0.5,
-                            "explanation": vc.get("matched_error", ""),
-                        })
-                    if validation_results:
-                        await record_training_feedback(
-                            db,
-                            session_id=session_id,
-                            user_id=state["user_id"],
-                            validation_results=validation_results,
-                        )
-            except Exception:
-                logger.debug("RAG feedback capture failed for session %s", session_id, exc_info=True)
-
-        # ── GAP-1 fix: Update ManagerProgress (XP, level, skills) — merged into same txn ──
-        _uid = state.get("user_id")
-        if _uid and scores and session:
-            try:
-                from app.services.manager_progress import ManagerProgressService
-                from app.models.progress import SessionHistory
-
-                # Create SessionHistory record
-                _trap_details = (scores.details or {}).get("trap_handling", {})
-                sh = SessionHistory(
-                    user_id=_uid,
-                    session_id=session.id,
-                    scenario_code=state.get("scenario_code", "unknown"),
-                    archetype_code=state.get("archetype_code", "unknown"),
-                    difficulty=state.get("base_difficulty", 5),
-                    duration_seconds=session.duration_seconds or 0,
-                    score_total=int(scores.total or 0),
-                    outcome=state.get("call_outcome", "timeout"),
-                    score_breakdown={
-                        "script_adherence": scores.script_adherence,
-                        "objection_handling": scores.objection_handling,
-                        "communication": scores.communication,
-                        "anti_patterns": scores.anti_patterns,
-                        "result": scores.result,
-                        "chain_traversal": scores.chain_traversal,
-                        "trap_handling": scores.trap_handling,
-                    },
-                    emotion_peak=state.get("emotion_peak", "cold"),
-                    traps_fell=_trap_details.get("fell_count", 0),
-                    traps_dodged=_trap_details.get("dodged_count", 0),
-                    chain_completed=bool((scores.details or {}).get("chain_completed")),
-                    had_comeback=bool(state.get("had_comeback")),
+                from app.services.runtime_finalizer import apply_post_finalize_enrichment
+                _enrich_result = await apply_post_finalize_enrichment(
+                    db, session=session, scores=scores, state=state,
                 )
-                db.add(sh)
-                await db.flush()
+                mp_result = _enrich_result.get("mp_result")
+            except Exception as e:
+                logger.warning("apply_post_finalize_enrichment failed: %s", e, exc_info=True)
 
-                svc = ManagerProgressService(db)
-                mp_result = await svc.update_after_session(_uid, sh)
-
-                sh.xp_earned = mp_result.get("xp_breakdown", {}).get("grand_total", 0)
-                sh.xp_breakdown = mp_result.get("xp_breakdown", {})
-
-                # Emit EVENT_TRAINING_COMPLETED in SAME transaction as XP award (outbox pattern).
-                # Journal: dedup by session_id so this emit and the parallel
-                # REST /training/sessions/{id}/end emit are collapsed into
-                # one. UNIQUE(OutboxEvent.idempotency_key) handles it and
-                # event_bus.emit silently skips on duplicate.
+            # Emit EVENT_TRAINING_COMPLETED here (NOT in the helper) so the
+            # outbox idempotency_key collapses with the parallel REST emit
+            # if both paths fire for the same session. Helper is intentionally
+            # event-bus-agnostic (single responsibility: write SessionHistory
+            # + award XP); event emission is the WS/REST handler's job.
+            _uid = state.get("user_id")
+            if _uid:
                 try:
                     from app.services.event_bus import event_bus, GameEvent, EVENT_TRAINING_COMPLETED
                     await event_bus.emit(
@@ -4845,7 +4800,7 @@ async def _handle_session_end(
                                 "session_id": str(session_id),
                                 "score": scores.total,
                                 "scenario_id": str(state.get("scenario_id", "")),
-                                "xp_earned": sh.xp_earned,
+                                "xp_earned": _enrich_result.get("xp_earned") if mp_result else 0,
                                 "weak_legal_categories": (scores.details or {}).get("legal_accuracy", {}).get("weak_categories", []),
                             },
                         ),
@@ -4853,15 +4808,7 @@ async def _handle_session_end(
                         idempotency_key=f"training_completed:{session_id}",
                     )
                 except Exception as emit_exc:
-                    logger.warning("Failed to emit training_completed event in txn: %s", emit_exc)
-
-                logger.info(
-                    "ManagerProgress updated: user=%s xp=+%d level_up=%s",
-                    _uid, sh.xp_earned, mp_result.get("level_up"),
-                )
-
-            except Exception as e:
-                logger.warning("Failed to create SessionHistory/update ManagerProgress in txn: %s", e)
+                    logger.warning("Failed to emit training_completed event: %s", emit_exc)
 
         # 2026-04-21: reconcile CustomCharacter stats for constructor-born
         # sessions before we commit. update_custom_character_stats is a
@@ -5020,8 +4967,9 @@ async def _handle_session_end(
     except Exception:
         logger.debug("Auto-complete assignment check failed for session %s", session_id)
 
-    # NOTE: ManagerProgress (SessionHistory, XP, event emission) is now handled
-    # inside the main scoring transaction above — single commit, no split-brain.
+    # NOTE: ManagerProgress (SessionHistory + XP + EVENT_TRAINING_COMPLETED
+    # emission) and RAG feedback capture run in the shared
+    # apply_post_finalize_enrichment helper above — same code path REST uses.
 
     # --- S3-01: Update team challenge progress ---
     try:
@@ -5135,7 +5083,12 @@ async def _handle_session_end(
     except Exception:
         logger.debug("Cross-module notification failed for session %s", session_id)
 
-    # Generate AI recommendations (rule-based + LLM if available)
+    # Generate AI recommendations as a fallback feedback_text. Phase 1B
+    # makes this strictly subordinate to the AI-coach summary written by
+    # the inline block: if the coach already populated feedback_text, the
+    # recommendations are NOT written (would overwrite richer text with
+    # rule-based one). Race fix for the long-standing bug where a slow
+    # AI-coach call let recommendations win silently.
     try:
         from app.services.scoring import generate_recommendations
         if scores:
@@ -5146,7 +5099,7 @@ async def _handle_session_end(
                     async with async_session() as upd_db:
                         from app.models.training import TrainingSession as TS
                         sess_rec = await upd_db.get(TS, session_id)
-                        if sess_rec:
+                        if sess_rec and not sess_rec.feedback_text:
                             sess_rec.feedback_text = feedback
                             await upd_db.commit()
     except Exception as e:
