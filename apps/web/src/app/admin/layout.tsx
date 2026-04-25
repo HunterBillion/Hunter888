@@ -1,29 +1,28 @@
 "use client";
 
-/**
- * Admin section layout — adds a shared tab bar above /admin and
- * /admin/audit-log so they feel like two tabs of one "panel" (the way
- * the "КОМАНДА" section already does on /dashboard).
- *
- * The tabs live HERE, not inside each page, so both pages keep their
- * original content untouched. Adding a new admin page is just a matter
- * of adding one line to TABS below.
- *
- * Back-to-team link: admins often flip between team analytics and
- * admin actions — the "← К команде" affordance in the top-right keeps
- * that flow one click.
- */
-
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { LayoutGrid, ListChecks, ArrowLeft, Activity } from "lucide-react";
+import {
+  LayoutGrid,
+  ListChecks,
+  ArrowLeft,
+  Activity,
+  BookOpen,
+  Users,
+  Loader2,
+  ShieldAlert,
+} from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { useAuth } from "@/hooks/useAuth";
+import { isAdmin } from "@/lib/guards";
 
 const TABS = [
-  { href: "/admin", label: "Разделы", icon: LayoutGrid, exact: true },
-  { href: "/admin/audit-log", label: "Журнал аудита", icon: ListChecks, exact: false },
+  { href: "/admin", label: "Обзор", icon: LayoutGrid, exact: true },
+  { href: "/admin/users", label: "Пользователи", icon: Users, exact: false },
   { href: "/admin/client-domain", label: "Клиентский домен", icon: Activity, exact: false },
+  { href: "/admin/audit-log", label: "Журнал аудита", icon: ListChecks, exact: false },
+  { href: "/admin/wiki", label: "Wiki", icon: BookOpen, exact: false },
 ] as const;
 
 export default function AdminLayout({
@@ -33,11 +32,11 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { user, loading } = useAuth();
 
   return (
     <AuthLayout>
       <div className="app-page">
-        {/* Section header + tab bar */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
             <div>
@@ -69,8 +68,6 @@ export default function AdminLayout({
             </button>
           </div>
 
-          {/* Tab bar — same visual weight as dashboard's tabs so users read
-              them as the same pattern. */}
           <div
             className="flex items-center gap-1 rounded-lg p-1 overflow-x-auto"
             style={{
@@ -112,8 +109,36 @@ export default function AdminLayout({
           </div>
         </div>
 
-        {/* Active tab content */}
-        {children}
+        {/* Centralized role-guard. Children no longer need their own guard
+            — the layout shows ONE consistent denial UI for the whole admin
+            section instead of three different patterns scattered across
+            /admin/wiki, /admin/audit-log, and /admin/client-domain. */}
+        {loading ? (
+          <div className="flex items-center gap-2 p-6" style={{ color: "var(--text-muted)" }}>
+            <Loader2 size={16} className="animate-spin" />
+            Проверка прав…
+          </div>
+        ) : !user || !isAdmin(user) ? (
+          <div
+            className="rounded-xl p-6 flex items-start gap-3"
+            style={{
+              background: "var(--bg-panel)",
+              border: "1px solid rgba(239,68,68,0.35)",
+            }}
+          >
+            <ShieldAlert size={20} style={{ color: "#ef4444" }} />
+            <div>
+              <div className="font-semibold" style={{ color: "var(--text-primary)" }}>
+                Доступ ограничен
+              </div>
+              <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
+                Эти разделы доступны только роли <code>admin</code>.
+              </div>
+            </div>
+          </div>
+        ) : (
+          children
+        )}
       </div>
     </AuthLayout>
   );
