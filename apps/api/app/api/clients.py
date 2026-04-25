@@ -142,6 +142,13 @@ async def api_create_client(
         initial_consent_channel=body.initial_consent_channel,
         request=request,
     )
+    # Force-load every column the response serializer touches, BEFORE the
+    # request leaves async context. Without this, server-default columns
+    # (created_at, updated_at) trip lazy-load inside Pydantic and asyncpg
+    # raises MissingGreenlet — the user gets a 500 even though the row
+    # was committed. Triggered by the ensure_lead_client db.get() call
+    # inside create_client expiring the freshly-flushed instance.
+    await db.refresh(client)
     return ClientCreateResponse(
         client=_client_to_response(client),
         duplicate_warning=warning,
