@@ -325,6 +325,32 @@ function EventTypeBar({ total, by_type }: EventTypes) {
   );
 }
 
+// ── TZ-2 §12 TaskFollowUp observability types ───────────────────────────
+
+interface TaskFollowUpRow {
+  id: string;
+  lead_client_id: string;
+  session_id: string | null;
+  domain_event_id: string | null;
+  reason: string;
+  channel: string | null;
+  due_at: string | null;
+  status: string;
+  auto_generated: boolean;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+interface TaskFollowUpsResponse {
+  items: TaskFollowUpRow[];
+  total: number;
+  page: number;
+  per_page: number;
+  by_status: Record<string, number>;
+  by_reason: Record<string, number>;
+  overdue_in_page: number;
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────
 
 export default function ClientDomainAdminPage() {
@@ -336,6 +362,9 @@ export default function ClientDomainAdminPage() {
   const [busy, setBusy] = useState<null | "refresh" | "self-test" | "repair-events" | "repair-projections">(null);
   const [selfTest, setSelfTest] = useState<SelfTestResult | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  // TZ-2 §12 — read-only observability of task_followups (canonical
+  // alongside the legacy manager_reminders that managers see in CRM).
+  const [followups, setFollowups] = useState<TaskFollowUpsResponse | null>(null);
 
   const roleReady = user !== undefined;
   const hasAccess = !!user && isAdmin(user);
@@ -344,12 +373,23 @@ export default function ClientDomainAdminPage() {
     try {
       setLoading(true);
       setLoadError(null);
-      const d = await api.get<DashboardResponse>(
-        "/admin/client-domain/dashboard",
-        signal ? { signal } : undefined,
-      );
+      // Two parallel reads — dashboard remains the primary source of truth
+      // for the page; task-followups is a sibling observability call. Failure
+      // of the followups call is non-fatal: the existing dashboard renders
+      // unchanged and the section just shows an empty state.
+      const [d, fu] = await Promise.all([
+        api.get<DashboardResponse>(
+          "/admin/client-domain/dashboard",
+          signal ? { signal } : undefined,
+        ),
+        api.get<TaskFollowUpsResponse>(
+          "/admin/task-followups?per_page=20",
+          signal ? { signal } : undefined,
+        ).catch(() => null),
+      ]);
       if (signal?.aborted) return;
       setData(d);
+      setFollowups(fu);
     } catch (err) {
       if (signal?.aborted) return;
       // Ignore aborts triggered by unmount/refetch — they are not user-
@@ -765,6 +805,147 @@ export default function ClientDomainAdminPage() {
           >
             <EventTypeBar {...eventTypes} />
           </div>
+        </div>
+      )}
+
+      {/* TZ-2 §12 — TaskFollowUp observability */}
+      {followups && (
+        <div>
+          <div
+            className="text-[11px] font-semibold uppercase tracking-widest mb-2 flex items-center gap-1"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <Clock size={12} /> §12 TaskFollowUp · pending
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+            <StatCard
+              label="всего"
+              value={followups.total}
+              hint="строк под текущим фильтром"
+            />
+            <StatCard
+              label="pending"
+              value={followups.by_status.pending ?? 0}
+              accent="#3b82f6"
+              hint="ожидают касания"
+            />
+            <StatCard
+              label="done"
+              value={followups.by_status.done ?? 0}
+              accent="var(--accent)"
+            />
+            <StatCard
+              label="overdue (на странице)"
+              value={followups.overdue_in_page}
+              alert={followups.overdue_in_page > 0}
+              hint="due_at в прошлом"
+            />
+          </div>
+          {followups.items.length === 0 ? (
+            <div
+              className="rounded-xl p-4 text-sm"
+              style={{
+                background: "var(--bg-panel)",
+                border: "1px solid var(--border-color)",
+                color: "var(--text-muted)",
+              }}
+            >
+              Список пуст — policy не создавала follow-up&apos;ов в недавних
+              сессиях. Это норма пока ни один CRM-клиент не дошёл до исхода
+              «callback_requested» или «needs_followup».
+            </div>
+          ) : (
+            <div
+              className="rounded-xl overflow-hidden"
+              style={{
+                background: "var(--bg-panel)",
+                border: "1px solid var(--border-color)",
+              }}
+            >
+              <table className="w-full text-sm">
+                <thead>
+                  <tr
+                    style={{
+                      borderBottom: "1px solid var(--border-color)",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    <th className="text-left px-3 py-2 font-medium">due_at</th>
+                    <th className="text-left px-3 py-2 font-medium">reason</th>
+                    <th className="text-left px-3 py-2 font-medium">channel</th>
+                    <th className="text-left px-3 py-2 font-medium">status</th>
+                    <th className="text-left px-3 py-2 font-medium">lead</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {followups.items.map((row) => {
+                    const overdueRow =
+                      row.status === "pending" &&
+                      row.due_at !== null &&
+                      new Date(row.due_at) < new Date();
+                    return (
+                      <tr
+                        key={row.id}
+                        style={{
+                          borderBottom: "1px solid var(--border-color)",
+                          color: overdueRow
+                            ? "#ef4444"
+                            : "var(--text-primary)",
+                        }}
+                      >
+                        <td className="px-3 py-2">{formatTimestamp(row.due_at)}</td>
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {row.reason}
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          {row.channel ?? "—"}
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          <span
+                            className="rounded px-2 py-0.5"
+                            style={{
+                              background:
+                                row.status === "pending"
+                                  ? "rgba(59,130,246,0.15)"
+                                  : row.status === "done"
+                                  ? "rgba(34,197,94,0.15)"
+                                  : "rgba(148,163,184,0.15)",
+                              color:
+                                row.status === "pending"
+                                  ? "#3b82f6"
+                                  : row.status === "done"
+                                  ? "var(--accent)"
+                                  : "var(--text-muted)",
+                            }}
+                          >
+                            {row.status}
+                          </span>
+                        </td>
+                        <td
+                          className="px-3 py-2 font-mono text-xs"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          {row.lead_client_id.slice(0, 8)}…
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {followups.total > followups.items.length && (
+                <div
+                  className="px-3 py-2 text-xs text-center"
+                  style={{
+                    color: "var(--text-muted)",
+                    borderTop: "1px solid var(--border-color)",
+                  }}
+                >
+                  Показано {followups.items.length} из {followups.total}.
+                  Пагинация — следующая итерация.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
