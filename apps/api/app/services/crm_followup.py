@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -11,6 +12,8 @@ from app.models.client import ManagerReminder, RealClient
 from app.models.training import TrainingSession
 from app.services.client_domain import emit_client_event
 from app.services.session_state import normalize_session_outcome
+
+logger = logging.getLogger(__name__)
 
 
 FOLLOW_UP_OUTCOMES = {
@@ -123,7 +126,7 @@ async def ensure_followup_for_session(
     )
     db.add(reminder)
 
-    await emit_client_event(
+    domain_event = await emit_client_event(
         db,
         client=client,
         event_type="crm.reminder_created",
@@ -144,4 +147,25 @@ async def ensure_followup_for_session(
         idempotency_key=f"crm-followup:{session.id}:{session_marker}",
         correlation_id=str(session.id),
     )
+
+    # TZ-2 §12 dual-write: also create the canonical TaskFollowUp row,
+    # linked to the same domain_event for the timeline join. Failure here
+    # is logged but doesn't block the legacy ManagerReminder write — the
+    # canonical table is still in adoption phase.
+    try:
+        from app.services.task_followup_policy import ensure_task_followup_for_session
+
+        await ensure_task_followup_for_session(
+            db,
+            session=session,
+            outcome=effective_outcome,
+            domain_event_id=getattr(domain_event, "id", None),
+            delay_hours=int((planned_at - now).total_seconds() // 3600) or 24,
+        )
+    except Exception:
+        logger.warning(
+            "task_followup dual-write failed for session %s — legacy reminder kept",
+            session.id, exc_info=True,
+        )
+
     return reminder

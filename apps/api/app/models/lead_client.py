@@ -1,9 +1,13 @@
-"""Canonical LeadClient aggregate for unified client domain (TZ-1)."""
+"""Canonical LeadClient aggregate for unified client domain (TZ-1).
+
+Also hosts the canonical TaskFollowUp aggregate (TZ-2 §12) — it shares
+the lead_clients FK contract and naturally lives next to LeadClient.
+"""
 
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -61,5 +65,73 @@ class LeadClient(Base):
             "'consent_pending','paused','consent_revoked','duplicate_review',"
             "'archived')",
             name="ck_lead_clients_work_state",
+        ),
+    )
+
+
+class TaskFollowUp(Base):
+    """Canonical follow-up task linked to a LeadClient (TZ-2 §12).
+
+    Distinct from the legacy ``manager_reminders`` table:
+      * FK to ``lead_clients`` (the canonical aggregate), not ``real_clients``
+      * Typed ``reason`` enum instead of free-text ``message``
+      * Linked to the originating ``training_sessions`` and ``domain_events``
+      * Status as enum (pending/done/cancelled) instead of boolean ``is_completed``
+
+    Coexists with ``ManagerReminder`` during the migration window —
+    ``crm_followup.ensure_followup_for_session`` writes to BOTH so legacy
+    UI continues to work and new analytics can read the canonical table.
+    """
+
+    __tablename__ = "task_followups"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("lead_clients.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("training_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    domain_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("domain_events.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    reason: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    channel: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", index=True)
+    auto_generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # TZ-2 §12 catalogs — enforced at DB level.
+    __table_args__ = (
+        Index("ix_task_followups_lead_due", "lead_client_id", "due_at"),
+        CheckConstraint(
+            "reason IN ("
+            "'callback_requested','client_requests_later','need_documents_or_time',"
+            "'continue_next_call','needs_followup','documents_required',"
+            "'consent_pending','manual')",
+            name="ck_task_followups_reason",
+        ),
+        CheckConstraint(
+            "channel IS NULL OR channel IN ('phone','chat','email','meeting','sms')",
+            name="ck_task_followups_channel",
+        ),
+        CheckConstraint(
+            "status IN ('pending','in_progress','done','cancelled')",
+            name="ck_task_followups_status",
         ),
     )
