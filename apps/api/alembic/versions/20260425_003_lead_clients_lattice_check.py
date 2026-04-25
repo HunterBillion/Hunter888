@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from typing import Sequence, Union
 
+import sqlalchemy as sa
 from alembic import op
 
 
@@ -52,17 +53,19 @@ def _quoted(values: Sequence[str]) -> str:
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
-
     # Coerce drifted rows to safe defaults so VALIDATE won't fail. This is
     # idempotent — clean rows are untouched.
-    bind.execute(
-        f"UPDATE lead_clients SET lifecycle_stage = 'new' "
-        f"WHERE lifecycle_stage NOT IN ({_quoted(_LIFECYCLE_VALUES)})"
+    op.execute(
+        sa.text(
+            f"UPDATE lead_clients SET lifecycle_stage = 'new' "
+            f"WHERE lifecycle_stage NOT IN ({_quoted(_LIFECYCLE_VALUES)})"
+        )
     )
-    bind.execute(
-        f"UPDATE lead_clients SET work_state = 'active' "
-        f"WHERE work_state NOT IN ({_quoted(_WORK_STATE_VALUES)})"
+    op.execute(
+        sa.text(
+            f"UPDATE lead_clients SET work_state = 'active' "
+            f"WHERE work_state NOT IN ({_quoted(_WORK_STATE_VALUES)})"
+        )
     )
 
     # NOT VALID first → no full-table scan / lock. Then VALIDATE picks up
