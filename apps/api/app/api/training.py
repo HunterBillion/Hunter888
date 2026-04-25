@@ -1511,6 +1511,31 @@ async def end_session(
     except Exception:
         logger.warning("completion_policy stamp failed (rest) for %s", session_id, exc_info=True)
 
+    # TZ-2 Phase 1: REST path historically diverged from WS — it never
+    # created SessionHistory, never awarded XP, never produced an AI-coach
+    # report, never fed RAG. The user who ended a session via the call-page
+    # hangup (POST /end) lost all of that.
+    #
+    # apply_post_finalize_enrichment runs the missing pieces with idempotency
+    # via SessionHistory.session_id UNIQUE: if WS already ran (typical
+    # case — explicit end goes WS), the second writer hits IntegrityError
+    # on flush and the helper short-circuits with the existing row, so XP
+    # is awarded exactly once regardless of which path arrives first.
+    try:
+        from app.services.runtime_finalizer import apply_post_finalize_enrichment
+
+        await apply_post_finalize_enrichment(
+            db,
+            session=session,
+            scores=scores,
+            state=None,  # REST has no Redis state dict; helper synthesises defaults
+        )
+    except Exception:
+        logger.warning(
+            "runtime_finalizer enrichment failed (rest) for %s",
+            session_id, exc_info=True,
+        )
+
     # Emit event → EventBus handles achievements, goals, SRS seeding, notifications
     try:
         from app.services.event_bus import event_bus, GameEvent, EVENT_TRAINING_COMPLETED
