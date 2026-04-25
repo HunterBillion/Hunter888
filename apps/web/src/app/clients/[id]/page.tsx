@@ -116,12 +116,22 @@ export default function ClientDetailPage() {
       }
       const scenario_id = active[0].id;
 
+      // TZ-2 §6.2/6.3 — send canonical `mode` + `runtime_type` in addition
+      // to the legacy `custom_session_mode`. Backend prefers the canonical
+      // fields when present and falls back to the legacy field for older
+      // FE callers. Once all start sites are migrated the legacy field
+      // will be dropped.
+      const canonicalMode = mode === "voice" ? "call" : "chat";
+      const canonicalRuntimeType =
+        mode === "voice" ? "crm_call" : "crm_chat";
       const session = await api.post<{ id: string }>(
         "/training/sessions",
         {
           scenario_id,
           real_client_id: client.id,
-          custom_session_mode: mode === "voice" ? "call" : "chat",
+          mode: canonicalMode,
+          runtime_type: canonicalRuntimeType,
+          custom_session_mode: canonicalMode, // legacy compat
           // `source` — диагностический штамп: видно в аналитике, какие
           // сессии запущены из CRM-карточки и в каком режиме.
           source: mode === "voice" ? "crm_voice" : "crm_chat",

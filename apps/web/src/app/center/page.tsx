@@ -44,9 +44,12 @@ export default function CenterPage() {
     setStartingId(scenarioId);
     setError(null);
     try {
+      // TZ-2 §6.2/6.3 — canonical mode + runtime_type + legacy fallback
       const session = await api.post<{ id: string }>("/training/sessions", {
         scenario_id: scenarioId,
-        custom_session_mode: "center",
+        mode: "center",
+        runtime_type: "center_single_call",
+        custom_session_mode: "center", // legacy compat
         source: "center",
       });
       router.push(`/training/${session.id}/call`);

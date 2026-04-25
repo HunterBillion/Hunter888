@@ -806,16 +806,29 @@ async def start_session(
     # write side filled it — it stayed NULL for every session, making the
     # saved-characters statistics permanently dead.
     # TZ-2 §6.2/6.3: stamp canonical mode + runtime_type at session start
-    # so analytics + finalizer can read them without re-deriving. Mode comes
-    # from the (Phase 4 still-legacy) custom_session_mode; runtime_type is
-    # derived from (mode, has-real-client, source) — see runtime_catalog.
+    # so analytics + finalizer can read them without re-deriving.
+    #
+    # Phase 4 precedence:
+    #   1. body.mode (FE explicitly sends it)            ← strongest
+    #   2. normalized_mode (legacy custom_session_mode)
+    #   3. derive default ("chat")
+    # Same 3-step precedence for runtime_type — body.runtime_type wins,
+    # else derive from (mode, has_real_client, source). Anything outside
+    # the catalog falls back to NULL so the DB CHECK can't reject the
+    # row (the value will never be valid anyway and a guard upstream
+    # should reject the request, but we don't want to crash mid-INSERT).
     from app.services.runtime_catalog import derive_runtime_type, MODES, RUNTIME_TYPES
-    _canonical_mode = (normalized_mode or "chat") if (normalized_mode or "chat") in MODES else None
-    _canonical_runtime_type = derive_runtime_type(
-        mode=_canonical_mode,
-        has_real_client=real_client is not None,
-        source=body.source,
-    )
+    _supplied_mode = (body.mode or normalized_mode or "chat").lower()
+    _canonical_mode = _supplied_mode if _supplied_mode in MODES else None
+    _supplied_runtime_type = (body.runtime_type or "").lower() or None
+    if _supplied_runtime_type and _supplied_runtime_type in RUNTIME_TYPES:
+        _canonical_runtime_type = _supplied_runtime_type
+    else:
+        _canonical_runtime_type = derive_runtime_type(
+            mode=_canonical_mode,
+            has_real_client=real_client is not None,
+            source=body.source,
+        )
     if _canonical_runtime_type not in RUNTIME_TYPES:
         _canonical_runtime_type = None  # belt-and-braces — CHECK would fail otherwise
 
