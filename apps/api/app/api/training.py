@@ -54,9 +54,10 @@ from app.services.client_domain import (
     emit_client_event,
     log_training_real_case_summary,
 )
-from app.services.profile_gate import required_profile_missing
+# profile_gate.required_profile_missing is now invoked indirectly via
+# runtime_guard_engine.evaluate_start_guards. No direct import needed.
 from app.services.quality_audit import review_session_quality
-from app.services.session_state import normalize_session_mode, validate_terminal_outcome
+from app.services.session_state import normalize_session_mode
 
 logger = logging.getLogger(__name__)
 
@@ -319,16 +320,51 @@ async def start_session(
     user: User = Depends(check_consent_accepted),
     db: AsyncSession = Depends(get_db),
 ):
-    missing_profile = required_profile_missing(user)
-    if missing_profile:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "profile_incomplete",
-                "missing_fields": missing_profile,
-                "message": "Заполните обязательный профиль перед началом тренировки",
-            },
+    # TZ-2 Phase 3B — start guards routed through runtime_guard_engine.
+    # The engine returns the same `code` strings the FE has handled for
+    # months (`profile_incomplete`, `session_mode_required_for_crm`),
+    # plus newer ones (`mode_invalid`, `runtime_type_invalid`,
+    # `lead_client_required`) that fall back to a generic toast on the
+    # FE side without breaking the flow.
+    #
+    # First violation wins → matches the historical 409/400 raise pattern
+    # and lets the user fix one issue at a time. The engine's full list is
+    # discarded here (only used by bulk-validation tooling).
+    from app.services.runtime_guard_engine import (
+        GUARD_PROFILE_INCOMPLETE,
+        evaluate_start_guards,
+    )
+    # Unify canonical body.mode with the legacy custom_session_mode so the
+    # session_mode_required_for_crm guard fires consistently across new FE
+    # callers (sending body.mode) and any pre-canonical caller still using
+    # custom_session_mode only.
+    _engine_mode = body.mode or normalize_session_mode(body.custom_session_mode)
+    _start_violations = evaluate_start_guards(
+        user=user,
+        mode=_engine_mode,
+        runtime_type=body.runtime_type,
+        real_client_id=body.real_client_id,
+        source=body.source,
+    )
+    if _start_violations:
+        v = _start_violations[0]
+        # profile_incomplete historically raised 409 (it's a precondition,
+        # not a malformed request); the other guards are 400 (the body is
+        # well-formed but logically inconsistent).
+        _status = (
+            status.HTTP_409_CONFLICT if v.code == GUARD_PROFILE_INCOMPLETE
+            else status.HTTP_400_BAD_REQUEST
         )
+        # Detail shape preserved for FE backward-compat — `missing_fields`
+        # lives at the top level for the existing
+        # `err.detail.missing_fields` reader.
+        _detail: dict[str, object] = {
+            "code": v.code,
+            "message": v.message,
+        }
+        if v.details:
+            _detail.update(v.details)
+        raise HTTPException(status_code=_status, detail=_detail)
 
     # ── 2026-04-23 Zone 4 — clone_from_session_id expansion ──────────────
     # When the user clicks «Повторить сценарий» on /results, frontend sends
@@ -498,18 +534,10 @@ async def start_session(
     # Session mode — "chat" (default) or "call". Persist so WS handlers +
     # LLM prompt builder can adapt behavior (call mode → phone-like short
     # replies, chat mode → normal text conversation).
-    # P0.2: Mode integrity — if real_client_id provided (CRM start),
-    # custom_session_mode is REQUIRED to prevent "chat mode" for voice calls.
+    # P0.2 mode-integrity check (CRM start without mode → 400) was moved
+    # to runtime_guard_engine.GUARD_SESSION_MODE_REQUIRED_FOR_CRM at the
+    # top of this handler.
     normalized_mode = normalize_session_mode(body.custom_session_mode)
-    if real_client is not None and normalized_mode is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "session_mode_required_for_crm",
-                "message": "При тренировке на реальном клиенте укажите режим: chat или call",
-                "allowed_modes": ["chat", "call"],
-            },
-        )
     if normalized_mode:
         custom_params = custom_params or {}
         custom_params["session_mode"] = normalized_mode
@@ -1340,20 +1368,28 @@ async def end_session(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.ACTIVE_SESSION_NOT_FOUND)
 
     end_payload = body or {}
-    session_mode = (session.custom_params or {}).get("session_mode") or "chat"
-    outcome_valid, normalized_outcome = validate_terminal_outcome(
-        mode=session_mode,
-        outcome=end_payload.get("outcome") or end_payload.get("result"),
-    )
-    if not outcome_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "terminal_outcome_required",
-                "message": "Для режима Центр нужен исход: agreed, not_agreed или continue",
-                "allowed_outcomes": ["agreed", "not_agreed", "continue"],
-            },
-        )
+    session_mode = session.mode or (session.custom_params or {}).get("session_mode") or "chat"
+    raw_outcome = end_payload.get("outcome") or end_payload.get("result")
+
+    # TZ-2 Phase 3B — end guards routed through runtime_guard_engine.
+    # The engine delegates to the same validate_terminal_outcome that
+    # was used inline so the contract for `terminal_outcome_required`
+    # stays bit-identical (FE branches on `code` only, no shape change).
+    from app.services.runtime_guard_engine import evaluate_end_guards
+    _end_violations = evaluate_end_guards(mode=session_mode, raw_outcome=raw_outcome)
+    if _end_violations:
+        v = _end_violations[0]
+        _detail: dict[str, object] = {"code": v.code, "message": v.message}
+        if v.details:
+            _detail.update(v.details)
+        # Preserve historical hint that listed the 3 center outcomes — the
+        # FE call-page modal renders three buttons whose ids match.
+        _detail.setdefault("allowed_outcomes", ["agreed", "not_agreed", "continue"])
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_detail)
+
+    # Persist normalized outcome on the session for the finalizer to read.
+    from app.services.session_state import normalize_session_outcome
+    normalized_outcome = normalize_session_outcome(raw_outcome)
     if normalized_outcome:
         details = dict(session.scoring_details or {})
         details["call_outcome"] = normalized_outcome

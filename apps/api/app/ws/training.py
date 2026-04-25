@@ -63,7 +63,7 @@ from app.services.emotion import (
 )
 from app.services.crm_followup import ensure_followup_for_session
 from app.services.client_domain import log_training_real_case_summary
-from app.services.session_state import normalize_session_outcome, validate_terminal_outcome
+from app.services.session_state import normalize_session_outcome
 from app.services.emotion_v6 import compute_intensity, detect_compound_emotion
 from app.services.session_manager import (
     RateLimitError,
@@ -4533,16 +4533,18 @@ async def _handle_session_end(
         or state.get("mode")
         or "chat"
     )
-    outcome_valid, _normalized_terminal_outcome = validate_terminal_outcome(
-        mode=state_mode,
-        outcome=state.get("call_outcome"),
+
+    # TZ-2 Phase 3B — end guards routed through runtime_guard_engine.
+    # Engine delegates to validate_terminal_outcome internally so the WS
+    # `terminal_outcome_required` error code (used by the call-page modal
+    # to highlight the missing outcome) stays unchanged.
+    from app.services.runtime_guard_engine import evaluate_end_guards
+    _end_violations = evaluate_end_guards(
+        mode=state_mode, raw_outcome=state.get("call_outcome"),
     )
-    if not outcome_valid:
-        await _send_error(
-            ws,
-            "Для режима Центр нужен исход: agreed, not_agreed или continue",
-            "terminal_outcome_required",
-        )
+    if _end_violations:
+        v = _end_violations[0]
+        await _send_error(ws, v.message, v.code)
         return
 
     # Save call_outcome + promises to session before scoring so L5/L9 can read it

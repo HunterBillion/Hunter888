@@ -41,12 +41,21 @@ class GuardViolation:
 
 
 # Stable error codes — frontend can branch on these without parsing
-# the human-readable message (which is i18n-bound).
+# the human-readable message (which is i18n-bound). Some are pre-existing
+# codes the FE has handled for months (profile_incomplete, session_mode_…);
+# Phase 3B preserves them when migrating the inline checks into the engine.
 GUARD_PROFILE_INCOMPLETE = "profile_incomplete"
 GUARD_MODE_INVALID = "mode_invalid"
 GUARD_RUNTIME_TYPE_INVALID = "runtime_type_invalid"
 GUARD_LEAD_CLIENT_REQUIRED = "lead_client_required"
 GUARD_TERMINAL_OUTCOME_REQUIRED = "terminal_outcome_required"
+# Pre-existing code: api/training.py:504-512 used to raise this inline
+# when a CRM-link session was requested without an explicit session_mode.
+# Phase 3B moves the check here so it lives next to the related mode/
+# runtime guards. FE doesn't currently branch on it — it's an internal
+# contract violation (FE always sends mode now) but kept stable for
+# backward compatibility with any non-canonical caller.
+GUARD_SESSION_MODE_REQUIRED_FOR_CRM = "session_mode_required_for_crm"
 
 
 def evaluate_start_guards(
@@ -159,6 +168,23 @@ def evaluate_start_guards(
                     details={"runtime_type": runtime_for_check},
                 )
             )
+
+    # 5. session_mode_required_for_crm — CRM-card start (`real_client_id`
+    # present in the request) MUST carry an explicit mode so the backend
+    # doesn't silently default to chat for a voice-call entry. Pre-existing
+    # check at api/training.py:504-512 — moved here so the start-handler
+    # has one place to look for "what's wrong with this payload".
+    if real_client_id is not None and mode is None:
+        violations.append(
+            GuardViolation(
+                code=GUARD_SESSION_MODE_REQUIRED_FOR_CRM,
+                message=(
+                    "Для запуска тренировки из карточки клиента необходимо "
+                    "указать режим (call/chat/center)."
+                ),
+                details={"real_client_id": str(real_client_id)},
+            )
+        )
 
     return violations
 
