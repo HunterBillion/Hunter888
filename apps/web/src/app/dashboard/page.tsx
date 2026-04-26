@@ -70,15 +70,21 @@ const ReviewsAdmin = dynamic(
   { loading: () => <WikiFallback />, ssr: false }
 );
 
+const AuditLogPanel = dynamic(
+  () => import("@/components/dashboard/AuditLogPanel").then((m) => m.AuditLogPanel),
+  { loading: () => <WikiFallback />, ssr: false }
+);
+
 /* ─── Constants ──────────────────────────────────────────────────────────── */
 
-type TabId = "overview" | "analytics" | "team" | "tournament" | "wiki" | "reports" | "reviews";
+type TabId = "overview" | "analytics" | "team" | "tournament" | "activity" | "wiki" | "reports" | "reviews";
 
 const TABS: { id: TabId; label: string; icon: any; adminOnly?: boolean }[] = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
   { id: "analytics", label: "Аналитика", icon: ChartBar },
   { id: "team", label: "Команда", icon: UsersThree },
   { id: "tournament", label: "Турнир", icon: Trophy },
+  { id: "activity", label: "Активность", icon: ShieldWarning },
   { id: "wiki", label: "Wiki", icon: BookOpen },
   { id: "reports", label: "Отчёты", icon: FileBarChart },
   { id: "reviews", label: "Отзывы", icon: Star, adminOnly: true },
@@ -686,6 +692,13 @@ export default function DashboardPage() {
                           </motion.div>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {/* ═══════════ TAB: ACTIVITY ══════════════════════════════ */}
+                  {activeTab === "activity" && (
+                    <div>
+                      <AuditLogPanel scope={user?.role === "admin" ? "all" : "team"} />
                     </div>
                   )}
 
