@@ -558,6 +558,31 @@ class ClientStory(Base):
 
     personality_profile JSONB stores the full OCEAN/PAD snapshot for this story,
     correlated with archetype but randomized within ranges per TZ-01.
+
+    Projection contract (TZ-1 §11.2)
+    --------------------------------
+    `ClientStory` is **NOT** a source of truth for the canonical client
+    domain anymore — it is an AI/continuity projection over `RealClient`
+    + `DomainEvent`. Concretely:
+
+    * `lifecycle_state` / `relationship_score` / `director_state` mutations
+      that affect a real CRM client MUST go through
+      `client_story_projector.record_story_lifecycle_change` so a
+      `DomainEvent` (story.lifecycle_changed) is emitted in the same
+      transaction. Direct mutation of these fields without the projector
+      hook re-opens the §11.2 hole the spec closed.
+    * Game-only continuity (story without a `RealClient` link via
+      `TrainingSession.real_client_id`) keeps living here alone — the
+      projector no-ops when no real client is reachable.
+    * Constructing a `ClientStory(...)` is allowed for the game system
+      that creates new arcs (game_director, ws/training new-session path,
+      event_bus story-spawner). New writers should still use the
+      projector hooks for any subsequent state change.
+
+    If you find yourself adding a new lifecycle/relationship-score writer
+    and reaching for `ClientStory.lifecycle_state = ...` directly, route it
+    through `record_story_lifecycle_change` instead — that is the only
+    way the canonical CRM timeline stays in sync.
     """
     __tablename__ = "client_stories"
 

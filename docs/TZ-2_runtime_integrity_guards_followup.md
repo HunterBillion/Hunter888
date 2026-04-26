@@ -485,6 +485,17 @@ Outcome не может быть свободным текстом.
 
 Допускается объединение `runtime_outcome_policy` и `followup_policy` на первом шаге, если это уменьшает сложность, но `runtime_finalizer` и `runtime_guard_engine` должны остаться отдельными.
 
+> **Note (2026-04-26 implementation status).** На момент реализации факт расхождения с этим именованием:
+>
+> | Спека (§15.1) | Реальный файл | Статус |
+> |---|---|---|
+> | `runtime_outcome_policy.py` | `apps/api/app/services/completion_policy.py` | покрывает всю outcome/finalize policy для training + PvP |
+> | `followup_policy.py` | `apps/api/app/services/task_followup_policy.py` | TaskFollowUp создание + idempotency |
+> | `runtime_guard_engine.py` | `apps/api/app/services/runtime_guard_engine.py` | как в спеке |
+> | `runtime_finalizer.py` | `apps/api/app/services/runtime_finalizer.py` | как в спеке |
+>
+> Текущие имена выбраны как более информативные (`completion_policy` отражает консолидацию 7 терминальных путей; `task_followup_policy` явно отделяет канонический `TaskFollowUp` от legacy `ManagerReminder`). Переименование не требуется; при будущих ссылках в коде использовать фактические имена.
+
 ### 15.2 Обновить backend entrypoints
 
 - `apps/api/app/api/training.py`
