@@ -9,6 +9,7 @@ import enum
 import uuid
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlalchemy import (
     Boolean,
     DateTime,
@@ -269,6 +270,27 @@ class ScenarioTemplate(Base):
 
     # ── Meta ──
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # ── TZ-3 lifecycle (added 2026-04-26 in alembic 20260426_003) ──
+    # `status` is the source-of-truth for "can this template be edited /
+    # started / hidden". `draft_revision` is the optimistic-concurrency
+    # token consulted by the publisher (§15.1 of TZ-3 spec). `current_
+    # published_version_id` is the runtime resolution pointer — when the
+    # training start handler asks "give me the snapshot for template X",
+    # the resolver follows this FK rather than re-reading the mutable
+    # template fields below (which may be mid-edit).
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="published"
+    )
+    draft_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    current_published_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scenario_versions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -278,7 +300,15 @@ class ScenarioTemplate(Base):
 
 
 class ScenarioVersion(Base):
-    """Immutable snapshot of a ScenarioTemplate at publish/update time."""
+    """Immutable snapshot of a ScenarioTemplate at publish time.
+
+    Contract (TZ-3 §8 invariant 2): once a row's ``status='published'``
+    is committed, ``snapshot`` and ``content_hash`` are NEVER modified.
+    Editors that need to change behaviour create a NEW ScenarioVersion
+    row via ``services/scenario_publisher.py`` (PR C2) — the previous
+    row is marked ``superseded`` but kept for historical session
+    reproducibility.
+    """
 
     __tablename__ = "scenario_versions"
 
@@ -298,6 +328,31 @@ class ScenarioVersion(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # ── TZ-3 metadata (added 2026-04-26 in alembic 20260426_003) ──
+    # `schema_version` lets future shape changes coexist (the validator
+    # picks the rule-set keyed on this number). `content_hash` is the
+    # SHA256-hex of `snapshot::text` at publish time — used to detect
+    # accidental snapshot mutation (would change the hash) and to
+    # de-duplicate publish requests that produce identical content.
+    # `validation_report` is the `scenario_validator.py` output saved
+    # alongside the publish for audit + UI display.
+    schema_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="1"
+    )
+    content_hash: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )
+    validation_report: Mapped[dict] = mapped_column(
+        JSONB, nullable=False,
+        # Empty JSONB default — real values come from the publisher
+        # (PR C2) or from the migration backfill UPDATE (20260426_003).
+        # We don't put the full `{"backfilled":true,...}` literal here
+        # because sqlalchemy.text() interprets `:true` as a bind-param
+        # marker and substitutes NULL → invalid JSON. Backfill writes
+        # the real flag.
+        server_default=sa.text("'{}'::jsonb"),
+    )
 
     __table_args__ = (
         UniqueConstraint("template_id", "version_number", name="uq_scenario_versions_template_version"),
