@@ -62,10 +62,17 @@ from app.api.knowledge import router as knowledge_router
 
 api_router.include_router(knowledge_router, prefix="/knowledge", tags=["knowledge"])
 
-# Module 5 — Methodologist Tools
-from app.api.methodologist import router as methodologist_router
+# Module 5 — ROP Tools (formerly Methodologist).
+# Mounted at TWO prefixes during the migration window:
+#   * `/rop/*`           — canonical destination for new FE code.
+#   * `/methodologist/*` — backward-compat alias kept until the FE pages
+#     under apps/web/src/app/methodologist/ migrate to the dashboard
+#     MethodologyPanel (PR B2). After that lands in prod, drop the alias
+#     in PR B3 alongside enum-value removal.
+from app.api.rop import router as rop_router
 
-api_router.include_router(methodologist_router, prefix="/methodologist", tags=["methodologist"])
+api_router.include_router(rop_router, prefix="/rop", tags=["rop"])
+api_router.include_router(rop_router, prefix="/methodologist", tags=["rop", "deprecated"])
 
 # Module 5 — CRM Integrations
 from app.api.integrations import router as integrations_router

@@ -15,7 +15,7 @@ Aggregation:
   Recalculates effectiveness_score, discovers new common_errors from logs.
 
 Analytics:
-  get_feedback_summary() — overview for admin/methodologist dashboard
+  get_feedback_summary() — overview for admin/ROP dashboard
   get_category_stats() — per-category breakdown of error rates
 """
 
@@ -274,7 +274,7 @@ async def record_blitz_feedback(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Analytics — for admin dashboard and methodologist review
+# Analytics — for admin dashboard and ROP review
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def get_feedback_summary(db: AsyncSession, days: int = 30) -> dict:

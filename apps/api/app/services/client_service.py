@@ -225,7 +225,7 @@ async def list_clients(
 ) -> tuple[list[RealClient], int]:
     """
     Список клиентов с фильтрацией (ТЗ v2, раздел 5.2).
-    Видимость: manager — свои, rop — команда, admin/methodologist — все.
+    Видимость: manager — свои, rop — команда, admin — все.
     """
     query = select(RealClient).where(RealClient.is_active == True)  # noqa: E712
 
@@ -239,7 +239,7 @@ async def list_clients(
             # РОП видит клиентов своей команды
             team_members = select(User.id).where(User.team_id == user.team_id)
             query = query.where(RealClient.manager_id.in_(team_members))
-    # admin и methodologist видят всех
+    # admin видит всех
 
     # ── Фильтры ──
     if status_filter:
@@ -1124,11 +1124,13 @@ async def _check_client_access(
     - admin → всё
     - manager → только свои клиенты
     - rop → клиенты своей команды (join к users.team_id)
-    - methodologist → read-only доступ ко всем клиентам
+
+    NB: methodologist role retired 2026-04-26. Ex-methodologist users
+    were migrated to rop in alembic 20260426_002 — they now follow the
+    team-scoped rule above. If a former methodologist needs cross-team
+    visibility, promote them to admin explicitly (no implicit bypass).
     """
     if user.role == UserRole.admin:
-        return
-    if user.role == UserRole.methodologist:
         return
     if user.role == UserRole.manager:
         if client.manager_id != user.id:

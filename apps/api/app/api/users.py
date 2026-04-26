@@ -779,7 +779,7 @@ async def update_preferences(
     """
     from app.models.user import Team
 
-    # Handle role change (only allowed during onboarding, not for admin/methodologist)
+    # Handle role change (only allowed during onboarding, not for admin/rop change post-onboarding)
     if body.role and not user.onboarding_completed:
         from app.models.user import UserRole
         allowed_roles = {"manager", "rop"}

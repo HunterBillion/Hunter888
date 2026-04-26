@@ -568,7 +568,7 @@ async def create_team_challenge(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a team challenge (ROP only)."""
-    if user.role.value not in ("rop", "admin", "methodologist"):
+    if user.role.value not in ("rop", "admin"):
         raise HTTPException(403, "Only ROP/Admin can create team challenges")
 
     if not user.team_id:
@@ -785,7 +785,7 @@ async def get_hunter_leaderboard_endpoint(
 
     if scope not in ("team", "company"):
         raise HTTPException(400, "scope must be 'team' or 'company'")
-    if scope == "company" and user.role.value not in ("admin", "rop", "methodologist"):
+    if scope == "company" and user.role.value not in ("admin", "rop"):
         scope = "team"  # Managers see only team scope
 
     entries = await get_hunter_leaderboard(
@@ -806,7 +806,7 @@ async def get_weekly_tp_leaderboard_endpoint(
 
     if scope not in ("team", "company"):
         raise HTTPException(400, "scope must be 'team' or 'company'")
-    if scope == "company" and user.role.value not in ("admin", "rop", "methodologist"):
+    if scope == "company" and user.role.value not in ("admin", "rop"):
         scope = "team"
 
     return await get_weekly_tp_ranking(
