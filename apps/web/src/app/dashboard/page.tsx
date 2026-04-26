@@ -10,6 +10,7 @@ import {
   ChevronUp,
   ChevronDown,
   FileBarChart,
+  Database,
 } from "lucide-react";
 import {
   UsersThree,
@@ -69,9 +70,14 @@ const AuditLogPanel = dynamic(
   { loading: () => <WikiFallback />, ssr: false }
 );
 
+const SystemPanel = dynamic(
+  () => import("@/components/dashboard/SystemPanel").then((m) => m.SystemPanel),
+  { loading: () => <WikiFallback />, ssr: false }
+);
+
 /* ─── Constants ──────────────────────────────────────────────────────────── */
 
-type TabId = "overview" | "analytics" | "team" | "tournament" | "activity" | "methodology" | "reports";
+type TabId = "overview" | "analytics" | "team" | "tournament" | "activity" | "methodology" | "reports" | "system";
 
 const TABS: { id: TabId; label: string; icon: any; adminOnly?: boolean }[] = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
@@ -81,6 +87,7 @@ const TABS: { id: TabId; label: string; icon: any; adminOnly?: boolean }[] = [
   { id: "activity", label: "Активность", icon: ShieldWarning },
   { id: "methodology", label: "Методология", icon: BookOpen },
   { id: "reports", label: "Отчёты", icon: FileBarChart },
+  { id: "system", label: "Система", icon: Database, adminOnly: true },
 ];
 
 const AVATAR_COLORS = [
@@ -712,6 +719,13 @@ export default function DashboardPage() {
                           name: m.full_name || m.email,
                         }))}
                       />
+                    </div>
+                  )}
+
+                  {/* ═══════════ TAB: SYSTEM (admin only) ══════════════════ */}
+                  {activeTab === "system" && isAdmin(user) && (
+                    <div>
+                      <SystemPanel />
                     </div>
                   )}
 
