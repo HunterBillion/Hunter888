@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Database, Users as UsersIcon } from "lucide-react";
+import { Activity, Database, Users as UsersIcon } from "lucide-react";
 import dynamic from "next/dynamic";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
 
@@ -26,11 +26,17 @@ const ClientDomainPanel = dynamic(
   { loading: () => <DashboardSkeleton />, ssr: false }
 );
 
-type SubTab = "users" | "client_domain";
+const RuntimeMetricsPanel = dynamic(
+  () => import("@/components/dashboard/RuntimeMetricsPanel").then((m) => m.RuntimeMetricsPanel),
+  { loading: () => <DashboardSkeleton />, ssr: false }
+);
+
+type SubTab = "users" | "client_domain" | "runtime";
 
 const SUB_TABS: { id: SubTab; label: string; icon: typeof UsersIcon }[] = [
   { id: "users", label: "Пользователи", icon: UsersIcon },
   { id: "client_domain", label: "Client Domain", icon: Database },
+  { id: "runtime", label: "Runtime", icon: Activity },
 ];
 
 export function SystemPanel() {
@@ -80,6 +86,7 @@ export function SystemPanel() {
         >
           {active === "users" && <UsersAdminPanel />}
           {active === "client_domain" && <ClientDomainPanel />}
+          {active === "runtime" && <RuntimeMetricsPanel />}
         </motion.div>
       </AnimatePresence>
     </div>
