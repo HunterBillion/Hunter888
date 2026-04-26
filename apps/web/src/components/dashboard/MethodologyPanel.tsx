@@ -50,6 +50,11 @@ const ArenaContentEditor = dynamic(
   { loading: () => <DashboardSkeleton />, ssr: false }
 );
 
+const ScenariosEditor = dynamic(
+  () => import("@/components/dashboard/methodology/ScenariosEditor").then((m) => m.ScenariosEditor),
+  { loading: () => <DashboardSkeleton />, ssr: false }
+);
+
 interface UserListItem {
   id: string;
   email: string;
@@ -231,7 +236,7 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
           {active === "rops" && <RopList />}
           {active === "sessions" && <SessionsBrowser />}
           {active === "arena" && <ArenaContentEditor />}
-          {active === "scenarios" && <PlaceholderTab title="Сценарии" subtitle="Конструктор будет реализован в TZ-3 (draft → publish lifecycle, immutable versions)." />}
+          {active === "scenarios" && <ScenariosEditor />}
           {active === "scoring" && <PlaceholderTab title="Скоринг" subtitle="Управление весами скоринговых слоёв (L1–L10) — в дорожной карте." />}
           {active === "wiki" && <WikiDashboard />}
           {active === "reviews" && isAdminCaller && <ReviewsAdmin />}
