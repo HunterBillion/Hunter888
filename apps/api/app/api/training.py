@@ -675,24 +675,45 @@ async def start_session(
         db.add(new_scenario)
         await db.flush()
 
+    # TZ-3 §10 — resolve the scenario snapshot through the canonical
+    # runtime resolver instead of grepping ScenarioVersion ad-hoc here.
+    # The resolver follows ScenarioTemplate.current_published_version_id
+    # (set by the publisher in C2) and falls back to the latest
+    # published version if the pointer is stale. Returns the
+    # scenario_version_id we stamp on the new TrainingSession so
+    # historical sessions reproduce on their original snapshot.
     scenario_version_id = None
     try:
-        scenario_row = (await db.execute(
+        from app.services.scenario_runtime_resolver import (
+            ScenarioNotFound,
+            resolve_for_runtime,
+        )
+        # First try the legacy bridge: scenario_id often points at a
+        # legacy `scenarios` row that mirrors a `scenario_templates.id`
+        # via the auto-create adapter above. Walk through to template_id.
+        legacy_template_id = (await db.execute(
             select(Scenario.template_id).where(Scenario.id == scenario_id)
         )).scalar_one_or_none()
-        template_id = scenario_row or scenario_id
-        version_row = (await db.execute(
-            select(ScenarioVersion.id)
-            .where(
-                ScenarioVersion.template_id == template_id,
-                ScenarioVersion.status == "published",
+        try:
+            resolved = await resolve_for_runtime(
+                db, template_id=(legacy_template_id or scenario_id),
             )
-            .order_by(ScenarioVersion.version_number.desc())
-            .limit(1)
-        )).scalar_one_or_none()
-        scenario_version_id = version_row
+            scenario_version_id = resolved.scenario_version_id
+        except ScenarioNotFound:
+            # Template not in scenario_templates either — leave version
+            # unset. The session still starts on the legacy Scenario
+            # row created above (per §13.5 retention).
+            logger.warning(
+                "training.start: scenario %s has no template/version pair",
+                scenario_id,
+            )
     except Exception:
-        logger.debug("Failed to resolve scenario version for %s", scenario_id, exc_info=True)
+        # Any unexpected resolver failure must not block session start.
+        # Fall through with scenario_version_id=None.
+        logger.exception(
+            "training.start: scenario_runtime_resolver crashed for %s",
+            scenario_id,
+        )
 
     # ── FIND-001 (2026-04-19): Idempotency-Key replay BEFORE rate-limit.
     # Retrying with the same key must NOT consume fresh quota — that would
