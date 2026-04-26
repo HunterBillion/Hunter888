@@ -33,20 +33,19 @@ export function isROP(user: User | null | undefined): boolean {
 }
 
 /**
- * Check if user is methodologist.
- */
-export function isMethodologist(user: User | null | undefined): boolean {
-  return hasRole(user, ["methodologist"]);
-}
-
-/**
  * Role display names in Russian.
+ *
+ * Note: the `methodologist` role was retired 2026-04-26. Stale JWT
+ * tokens issued before that date may still claim it; the case branch
+ * keeps stale tokens displaying "РОП" (their post-migration role)
+ * until the token rolls over on next refresh. Drops in B3.2 with the
+ * alias + enum-value cleanup.
  */
 export function roleName(role: string): string {
   switch (role) {
     case "admin": return "Администратор";
     case "rop": return "РОП";
-    case "methodologist": return "Методолог";
+    case "methodologist": return "РОП";
     case "manager": return "Менеджер";
     default: return role;
   }

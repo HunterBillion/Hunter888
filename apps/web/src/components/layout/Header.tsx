@@ -154,11 +154,9 @@ export default function Header() {
   const roleLabel =
     user?.role === "admin"
       ? "Администратор"
-      : user?.role === "rop"
-        ? "РОП"
-        : user?.role === "methodologist"
-          ? "Методолог"
-          : "Менеджер";
+      : user?.role === "rop" || user?.role === "methodologist"
+        ? "РОП"  // legacy methodologist tokens display as ROP (role retired 2026-04-26)
+        : "Менеджер";
   const userMenuOpen = openPanel === "user";
   const notificationOpen = openPanel === "notifications";
   const mobileOpen = openPanel === "mobile";

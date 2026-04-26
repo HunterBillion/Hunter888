@@ -52,7 +52,7 @@ const LABEL_MAP: Record<string, string> = {
   notifications: "Уведомления",
   stories: "Истории",
   dashboard: "Дашборд",
-  methodologist: "Методолог",
+  // methodologist breadcrumb removed — /methodologist/* URLs deleted 2026-04-26
   scenarios: "Сценарии",
   "arena-content": "Контент Арены",
   scoring: "Скоринг",

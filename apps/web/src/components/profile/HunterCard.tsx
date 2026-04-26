@@ -23,7 +23,7 @@ const ROLE_LABELS: Record<string, string> = {
   manager: "Менеджер",
   rop: "РОП",
   admin: "Администратор",
-  methodologist: "Методолог",
+  methodologist: "РОП",  // legacy enum — retired 2026-04-26, displays as ROP for stale tokens
 };
 
 export function HunterCard({ user, stats, gamification, teamName }: HunterCardProps) {

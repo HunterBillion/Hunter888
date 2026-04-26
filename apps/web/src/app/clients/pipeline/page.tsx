@@ -298,9 +298,9 @@ export default function PipelinePage() {
   const totalDebt = clients.reduce((sum, c) => sum + (c.debt_amount ?? 0), 0);
   const scopeLabel = useMemo(() => {
     if (userRole === "admin") return "Администратор: все команды и все менеджеры.";
-    if (userRole === "rop") return "РОП: только ваша команда и нижестоящие менеджеры.";
+    // methodologist retired 2026-04-26 → display same as rop for stale tokens.
+    if (userRole === "rop" || userRole === "methodologist") return "РОП: только ваша команда и нижестоящие менеджеры.";
     if (userRole === "manager") return "Менеджер: только ваши клиенты и ваши действия.";
-    if (userRole === "methodologist") return "Методолог: read-only, без смены статусов и без записи данных.";
     return "";
   }, [userRole]);
 

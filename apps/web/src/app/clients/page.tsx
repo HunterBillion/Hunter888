@@ -46,18 +46,19 @@ export default function ClientsPage() {
   const router = useRouter();
   const userRole = user?.role as UserRole | undefined;
   const isAdminOrRop = userRole === "admin" || userRole === "rop";
-  const isReadOnly = userRole === "methodologist";
-  const canExportSelected = userRole === "admin" || userRole === "rop" || userRole === "methodologist";
+  // methodologist role retired 2026-04-26 — ex-methodologists were
+  // migrated to rop (team-scoped) so the read-only branch is unreachable
+  // for any new login. Keeping the value off the new code paths.
+  const isReadOnly = false;
+  const canExportSelected = userRole === "admin" || userRole === "rop";
   const scopeLabel =
     userRole === "admin"
       ? "Администратор: все команды, все менеджеры и РОП."
-      : userRole === "rop"
+      : userRole === "rop" || userRole === "methodologist"
         ? "РОП: только ваша команда и нижестоящие менеджеры."
         : userRole === "manager"
           ? "Менеджер: только ваши реальные клиенты."
-          : userRole === "methodologist"
-            ? "Методолог: read-only по реальным данным и статистике."
-            : "";
+          : "";
 
   // URL-backed filters — survive F5 and can be shared via link
   const searchParams = useSearchParams();

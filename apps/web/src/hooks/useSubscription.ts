@@ -134,5 +134,8 @@ export function useSubscription(): {
 export function isElevatedRole(
   role: string | null | undefined,
 ): boolean {
+  // `methodologist` retired 2026-04-26 — kept here so any stale JWT token
+  // issued before the cutover keeps Master plan exemption until refresh.
+  // B3.2 will drop it after token rotation completes.
   return role === "admin" || role === "rop" || role === "methodologist";
 }
