@@ -7,6 +7,20 @@ const nextConfig: NextConfig = {
   // Hide dev overlay indicators (build error button)
   devIndicators: false,
 
+  // 2026-04-26 — /admin route deleted, all surfaces moved into /dashboard.
+  // These permanent redirects keep existing bookmarks and the few legacy
+  // links inside the app working without 404s. Remove after a release or
+  // two once analytics confirm no traffic.
+  async redirects() {
+    return [
+      { source: "/admin", destination: "/dashboard?tab=system", permanent: true },
+      { source: "/admin/audit-log", destination: "/dashboard?tab=activity", permanent: true },
+      { source: "/admin/users", destination: "/dashboard?tab=system", permanent: true },
+      { source: "/admin/client-domain", destination: "/dashboard?tab=system", permanent: true },
+      { source: "/admin/wiki", destination: "/dashboard?tab=methodology", permanent: true },
+    ];
+  },
+
   // Security headers (non-CSP).
   // Content-Security-Policy is set by middleware.ts with a per-request nonce.
   async headers() {
