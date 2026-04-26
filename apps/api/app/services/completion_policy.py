@@ -1,5 +1,12 @@
 """ConversationCompletionPolicy — unified terminal contract (Roadmap §6).
 
+Spec ref: TZ-2 §15.1 names this service `runtime_outcome_policy.py`. The
+actual file is named `completion_policy.py` because it covers the full
+policy surface (training + PvP, validate + finalize + follow-up gating)
+rather than only outcome mapping. See the implementation-status table in
+docs/TZ-2_runtime_integrity_guards_followup.md §15.1 for the naming
+alignment between spec and code.
+
 Before this module the platform had **seven** independent terminal paths
 (REST end, WS end, emotion-fsm hangup, AI farewell, silence watchdog, WS
 disconnect handler, PvP finalize). Each did a subset of the work:
