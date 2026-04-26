@@ -68,7 +68,7 @@ async def _auth_websocket(ws: WebSocket) -> User | None:
 
 
 def _resolve_owner_id(user: User) -> uuid.UUID | None:
-    if user.role.value in ("admin", "methodologist", "rop"):
+    if user.role.value in ("admin", "rop"):
         return None
     return user.id
 

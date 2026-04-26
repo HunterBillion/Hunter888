@@ -2409,8 +2409,8 @@ async def generate_ideal_response(
     if session.user_id != user.id:
         if user.role.value == "admin":
             pass  # admins can access any session
-        elif user.role.value in ("rop", "methodologist"):
-            # ROP/methodologist can only view sessions from their team
+        elif user.role.value == "rop":
+            # ROP can only view sessions from their team
             target_user = (await db.execute(
                 select(User).where(User.id == session.user_id)
             )).scalar_one_or_none()

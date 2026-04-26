@@ -48,7 +48,7 @@ class PromptUpdateResponse(BaseModel):
 async def get_active_prompt(
     prompt_type: str,
     prompt_key: str,
-    _user: User = Depends(require_role("methodologist", "admin")),
+    _user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the currently active prompt by type and key."""
@@ -84,10 +84,10 @@ async def upsert_prompt(
     prompt_type: str,
     prompt_key: str,
     body: PromptUpdateRequest,
-    _user: User = Depends(require_role("methodologist", "admin")),
+    _user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create or update a prompt version. Methodologist/Admin only."""
+    """Create or update a prompt version. ROP/Admin only."""
     if prompt_type not in PROMPT_TYPES:
         raise HTTPException(status_code=400, detail=f"Invalid prompt_type. Valid: {PROMPT_TYPES}")
 

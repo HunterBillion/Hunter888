@@ -37,7 +37,7 @@ async def get_behavior_profile(
 
     Returns composite scores, OCEAN traits, archetype performance.
     """
-    target_id = user_id if (user_id and user.role in ("rop", "admin", "methodologist")) else user.id
+    target_id = user_id if (user_id and user.role in ("rop", "admin")) else user.id
 
     profile = await get_or_create_profile(target_id, db)
     recent_snapshots = await get_user_behavior_history(target_id, db, limit=5)
@@ -179,7 +179,7 @@ async def get_team_alerts_endpoint(
     unseen_only: bool = Query(True),
 ):
     """Get behavioral alerts for ROP — team members needing attention."""
-    if user.role not in ("rop", "admin", "methodologist"):
+    if user.role not in ("rop", "admin"):
         raise HTTPException(403, "Only ROP/Admin can view team alerts")
 
     # Get team member IDs

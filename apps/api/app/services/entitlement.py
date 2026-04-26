@@ -7,8 +7,8 @@ Plans:
   Master (Enterprise) → Unlimited everything, dedicated LLM, custom tournaments
 
 Role-based exemptions:
-  Existing seed accounts (admin, rop, methodologist) get automatic Master access
-  regardless of subscription status. This ensures pilot users always have full access.
+  Existing seed accounts (admin, rop) get automatic Master access regardless of
+  subscription status. This ensures pilot users always have full access.
 
 Feature gate checks are O(1) — plan limits are hardcoded dicts, subscription
 is fetched once per request and cached in the dependency injection chain.
@@ -138,8 +138,11 @@ SEED_ACCOUNT_EMAILS = frozenset({
     "manager4@trainer.local",
 })
 
-# Roles that automatically get elevated access (admin/rop/methodologist → Master)
-ELEVATED_ROLES = frozenset({"admin", "rop", "methodologist"})
+# Roles that automatically get elevated access (admin/rop → Master).
+# Methodologist retired 2026-04-26 — ex-methodologists were migrated to rop
+# in alembic 20260426_002 and continue to receive Master access via the rop
+# entry above. Do not re-add the methodologist literal here.
+ELEVATED_ROLES = frozenset({"admin", "rop"})
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -164,7 +167,7 @@ def _resolve_plan_for_user(user, subscription) -> tuple[PlanType, bool]:
 
     Priority:
     1. Seed account email → Master (always)
-    2. Elevated role (admin/rop/methodologist) → Master
+    2. Elevated role (admin/rop) → Master
     3. Active subscription → subscription plan
     4. Default → Scout
     """

@@ -1,19 +1,31 @@
-"""REST API for Methodologist tools.
+"""REST API for ROP tools (formerly Methodologist).
 
-Access: role == methodologist | admin only.
+Access: role == rop | admin only.
 
-Endpoints:
-  GET    /methodologist/sessions                  -- browse all training sessions
-  GET    /methodologist/sessions/{id}/details     -- full session details
-  GET    /methodologist/scenarios                  -- list scenario templates
-  POST   /methodologist/scenarios                  -- create scenario
-  PUT    /methodologist/scenarios/{id}             -- update scenario
-  GET    /methodologist/scoring-config             -- get scoring weights
-  PUT    /methodologist/scoring-config             -- update scoring weights
-  GET    /methodologist/arena/chunks               -- list legal knowledge chunks
-  POST   /methodologist/arena/chunks               -- create chunk
-  PUT    /methodologist/arena/chunks/{id}          -- update chunk
-  DELETE /methodologist/arena/chunks/{id}          -- delete chunk
+The methodologist role was retired 2026-04-26 — ROPs inherited all
+former methodologist permissions (scenario CRUD, scoring config, arena
+knowledge chunks, sessions overview). The router is mounted at TWO
+prefixes during the migration window:
+
+  * `/rop/*`           — canonical, new clients should use this.
+  * `/methodologist/*` — backward-compat alias kept until the FE pages
+    under `apps/web/src/app/methodologist/` are migrated to the
+    dashboard MethodologyPanel (PR B2). After B2 lands and old URLs
+    are no longer requested, the alias is dropped in PR B3.
+
+Endpoints (paths shown without prefix — both `/rop/*` and
+`/methodologist/*` resolve here):
+  GET    /sessions                  -- browse all training sessions
+  GET    /sessions/{id}/details     -- full session details
+  GET    /scenarios                  -- list scenario templates
+  POST   /scenarios                  -- create scenario
+  PUT    /scenarios/{id}             -- update scenario
+  GET    /scoring-config             -- get scoring weights
+  PUT    /scoring-config             -- update scoring weights
+  GET    /arena/chunks               -- list legal knowledge chunks
+  POST   /arena/chunks               -- create chunk
+  PUT    /arena/chunks/{id}          -- update chunk
+  DELETE /arena/chunks/{id}          -- delete chunk
 """
 
 import logging
@@ -33,8 +45,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# All endpoints require methodologist or admin role
-_require_methodologist = require_role("methodologist", "admin")
+# All endpoints require rop or admin role. The dependency name is kept
+# as `_require_methodologist` ONLY because every endpoint already binds
+# to it via Depends — renaming would touch ~16 sites in this file with
+# zero behaviour change. The functional check is rop+admin from this
+# point on; ex-methodologist users were migrated to rop in alembic
+# revision 20260426_002.
+_require_methodologist = require_role("rop", "admin")
 
 
 def _scenario_template_fields_from_payload(data: dict, *, for_update: bool = False) -> dict:

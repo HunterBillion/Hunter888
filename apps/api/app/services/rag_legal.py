@@ -980,7 +980,7 @@ async def get_chunk_analytics(db: AsyncSession, chunk_id: uuid.UUID) -> dict:
 
 
 async def get_weak_chunks(db: AsyncSession, limit: int = 20) -> list[dict]:
-    """Find chunks with lowest effectiveness (most errors). For methodologist review."""
+    """Find chunks with lowest effectiveness (most errors). For ROP review."""
     result = await db.execute(
         select(LegalKnowledgeChunk)
         .where(

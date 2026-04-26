@@ -169,7 +169,7 @@ async def api_list_clients(
     sort_order: str = "desc",
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    user: User = Depends(require_role("manager", "rop", "admin", "methodologist")),
+    user: User = Depends(require_role("manager", "rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
     """Список клиентов с фильтрацией и пагинацией."""
@@ -199,7 +199,7 @@ async def api_list_clients(
 
 @router.get("/pipeline", response_model=list[PipelineResponse])
 async def api_get_pipeline(
-    user: User = Depends(require_role("manager", "rop", "admin", "methodologist")),
+    user: User = Depends(require_role("manager", "rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
     """Воронка: count по статусам для канбан-доски."""
@@ -209,7 +209,7 @@ async def api_get_pipeline(
 
 @router.get("/pipeline/stats")
 async def api_get_pipeline_stats(
-    user: User = Depends(require_role("manager", "rop", "admin", "methodologist")),
+    user: User = Depends(require_role("manager", "rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -231,7 +231,7 @@ async def api_get_stats(
 
 @router.get("/stats/anonymized", response_model=ClientStatsAnonymizedResponse)
 async def api_get_stats_anonymized(
-    user: User = Depends(require_role("methodologist", "admin")),
+    user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
     """Анонимизированная статистика для методолога."""
@@ -247,7 +247,7 @@ async def api_get_stats_anonymized(
 
 @router.get("/pipeline/analytics")
 async def api_get_pipeline_analytics(
-    user: User = Depends(require_role("rop", "admin", "methodologist")),
+    user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -456,7 +456,7 @@ async def api_bulk_reassign(
 @limiter.limit("3/minute")
 async def api_bulk_export(
     body: ClientExportRequest | None = None,
-    user: User = Depends(require_role("rop", "admin", "methodologist")),
+    user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
@@ -471,7 +471,7 @@ async def api_bulk_export(
                 continue
     else:
         # Cap export at 500 clients per request to prevent OOM on large datasets.
-        # Admin/methodologist can use selected_ids for targeted exports.
+        # Admin/ROP can use selected_ids for targeted exports.
         _EXPORT_MAX = 500
         clients, _ = await list_clients(db, user=user, per_page=_EXPORT_MAX)
     total = len(clients)
@@ -578,7 +578,7 @@ async def api_get_audit_log(
 async def api_get_client(
     client_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_role("manager", "rop", "admin", "methodologist")),
+    user: User = Depends(require_role("manager", "rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
     """Детали клиента + история + согласия + last_training_session."""
@@ -636,7 +636,7 @@ async def api_get_client(
 @router.get("/{client_id}/attachments", response_model=list[AttachmentResponse])
 async def api_list_attachments(
     client_id: uuid.UUID,
-    user: User = Depends(require_role("manager", "rop", "admin", "methodologist")),
+    user: User = Depends(require_role("manager", "rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
     """Файлы клиента, привязанные к CRM-карточке и событиям."""
@@ -1749,7 +1749,7 @@ _GRAPH_MAX_CLIENTS = 5000  # Hard cap to prevent unbounded memory usage
 async def api_get_graph_data(
     limit: int = Query(default=_GRAPH_MAX_CLIENTS, ge=1, le=_GRAPH_MAX_CLIENTS),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("manager", "admin", "rop", "methodologist")),
+    current_user: User = Depends(require_role("manager", "admin", "rop")),
 ):
     """
     Данные для lifecycle-графа клиентов и статусных переходов.
@@ -1768,7 +1768,7 @@ async def api_get_graph_data(
         team_members = select(User.id).where(User.team_id == current_user.team_id)
         role_filter = RealClient.manager_id.in_(team_members)
     else:
-        role_filter = True  # admin / methodologist see all
+        role_filter = True  # admin sees all
 
     # ── Status counts via DB aggregate (no full load) ──
     count_query = (

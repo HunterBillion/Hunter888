@@ -48,7 +48,7 @@ router = APIRouter(tags=["progress"])
 
 def _check_ownership(user_id: uuid.UUID, user: User) -> None:
     """Raise 403 if the authenticated user does not own the resource and is not privileged."""
-    if str(user_id) != str(user.id) and user.role.value not in ("admin", "rop", "methodologist"):
+    if str(user_id) != str(user.id) and user.role.value not in ("admin", "rop"):
         raise HTTPException(status_code=403, detail="Access denied: you can only access your own data")
 
 

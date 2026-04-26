@@ -229,11 +229,16 @@ async def _seed_users(db: AsyncSession, teams: dict[str, Team]):
             role=UserRole.rop,
             team_id=teams["b2b"].id,
         ),
+        # Was role=methodologist before 2026-04-26 retirement of that role.
+        # Now seeded as ROP attached to the b2b team. Keeps the email
+        # method@trainer.local stable so any pilot tester scripts that
+        # reference it still log in (now with elevated rop+admin perms).
         User(
             email="method@trainer.local",
             hashed_password=hash_password(_seed_password("SEED_METHOD_PASSWORD", "Method!1")),
             full_name="Анна Методист",
-            role=UserRole.methodologist,
+            role=UserRole.rop,
+            team_id=teams["b2b"].id,
         ),
         User(
             email="manager1@trainer.local",
@@ -266,7 +271,7 @@ async def _seed_users(db: AsyncSession, teams: dict[str, Team]):
     ]
     db.add_all(users)
     await db.flush()
-    print(f"  Users: {len(users)} (1 admin, 2 rop, 1 methodologist, 4 managers)")
+    print(f"  Users: {len(users)} (1 admin, 3 rop, 4 managers)")
 
 
 # ── Scripts (3 types with unique checkpoints) ──────────────────────

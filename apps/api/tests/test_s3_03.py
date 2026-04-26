@@ -120,7 +120,10 @@ class TestS303cExemptions:
         from app.services.entitlement import ELEVATED_ROLES
         assert "admin" in ELEVATED_ROLES
         assert "rop" in ELEVATED_ROLES
-        assert "methodologist" in ELEVATED_ROLES
+        # methodologist retired 2026-04-26 — must NOT be in ELEVATED_ROLES.
+        # Ex-methodologist users were migrated to rop in alembic 20260426_002
+        # and continue to receive Master via the rop entry.
+        assert "methodologist" not in ELEVATED_ROLES
         assert "manager" not in ELEVATED_ROLES
 
     def test_resolve_plan_seed_account(self):

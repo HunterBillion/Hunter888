@@ -225,11 +225,11 @@ async def portfolio_stats(
 async def portfolio_stats_by_manager(
     manager_id: uuid.UUID,
     period: str = Query("all", pattern="^(week|month|all)$"),
-    user: User = Depends(require_role("admin", "rop", "methodologist")),
+    user: User = Depends(require_role("admin", "rop")),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Статистика портфеля конкретного менеджера (для РОП/админа/методолога).
+    Статистика портфеля конкретного менеджера (для РОП/админа).
     """
     service = GameCRMService(db)
     return await service.get_portfolio_stats(manager_id, period=period)
@@ -242,11 +242,11 @@ async def portfolio_stats_by_manager(
 async def _resolve_owner(user: User, story_id: uuid.UUID, db: AsyncSession) -> uuid.UUID | None:
     """
     Access control: определяем чей user_id использовать для фильтрации.
-    - admin/methodologist: None (все), но story_detail проверит по story_id
+    - admin: None (все), но story_detail проверит по story_id
     - manager: свой user_id
     - rop: None, но проверяем что story принадлежит менеджеру из команды
     """
-    if user.role.value in ("admin", "methodologist"):
+    if user.role.value == "admin":
         return None
 
     if user.role.value == "rop":

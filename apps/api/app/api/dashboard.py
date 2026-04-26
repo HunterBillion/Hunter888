@@ -445,8 +445,8 @@ async def knowledge_dashboard_stats(
     """
     # ROP/admin can view another user; others see only themselves
     target_id = user.id
-    if user_id and user.role.value in ("rop", "admin", "methodologist"):
-        # Admin can view anyone; ROP/methodologist must be on same team
+    if user_id and user.role.value in ("rop", "admin"):
+        # Admin can view anyone; ROP must be on same team
         if user.role.value == "admin":
             target_id = user_id
         else:
@@ -563,14 +563,14 @@ async def knowledge_dashboard_stats(
 @limiter.limit("30/minute")
 async def team_knowledge_stats(
     request: Request,
-    user: User = Depends(require_role("rop", "admin", "methodologist")),
+    user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
     """Team knowledge stats for ROP dashboard.
 
     Returns per-member: accuracy, quiz sessions this week, needs_attention flag.
     """
-    if not user.team_id and user.role.value not in ("admin", "methodologist"):
+    if not user.team_id and user.role.value != "admin":
         return {"error": err.NO_TEAM_ASSIGNED}
 
     cache_key = f"dashboard:team_knowledge:{user.team_id or 'all'}"
@@ -581,7 +581,7 @@ async def team_knowledge_stats(
     from app.models.knowledge import KnowledgeAnswer, KnowledgeQuizSession, QuizSessionStatus
 
     # Get team members
-    if user.role.value in ("admin", "methodologist"):
+    if user.role.value == "admin":
         team_filter = User.is_active == True  # noqa: E712
     else:
         team_filter = (User.team_id == user.team_id) & (User.is_active == True)  # noqa: E712
@@ -749,7 +749,7 @@ async def rop_roi(
 @limiter.limit("30/minute")
 async def platform_benchmark(
     request: Request,
-    user: User = Depends(require_role("rop", "admin", "methodologist")),
+    user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
     """Team vs platform benchmark with percentiles."""
@@ -1119,7 +1119,7 @@ async def rag_weak_chunks(
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Chunks with lowest effectiveness (most user errors). For methodologist review."""
+    """Chunks with lowest effectiveness (most user errors). For ROP review."""
     from app.services.rag_legal import get_weak_chunks
     return await get_weak_chunks(db, limit=limit)
 
