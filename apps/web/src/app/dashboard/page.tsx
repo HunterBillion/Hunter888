@@ -11,7 +11,6 @@ import {
   ChevronDown,
   FileBarChart,
   Star,
-  ShieldAlert,
 } from "lucide-react";
 import {
   UsersThree,
@@ -27,6 +26,7 @@ import {
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import { isManager } from "@/lib/guards";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { BackButton } from "@/components/ui/BackButton";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
@@ -166,8 +166,7 @@ export default function DashboardPage() {
   // Data fetching
   useEffect(() => {
     if (!user) return;
-    const allowed = user.role === "rop" || user.role === "admin";
-    if (!allowed) { setError("Доступ ограничен"); setLoading(false); return; }
+    if (!isManager(user)) { setError("Доступ ограничен"); setLoading(false); return; }
 
     api.get("/dashboard/rop")
       .then((resp: DashboardROP) => setData(resp))
@@ -232,7 +231,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <LayoutDashboard size={24} style={{ color: "var(--accent)" }} />
                 <h1 className="font-display text-3xl font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
-                  {user?.role === "admin" ? "АДМИН-ПАНЕЛЬ" : "ПАНЕЛЬ РОП"}
+                  КОМАНДА
                 </h1>
               </div>
               <PixelInfoButton
@@ -304,25 +303,6 @@ export default function DashboardPage() {
                     );
                   })}
                 </div>
-                {/* 2026-04-20: admin-only shortcut to /admin section.
-                    Sits next to the tab bar (not inside it) because admin
-                    pages live on a separate route with their own layout. */}
-                {user?.role === "admin" && (
-                  <Link
-                    href="/admin"
-                    className="hidden md:inline-flex items-center gap-2 px-4 rounded-xl font-medium text-sm uppercase tracking-wide whitespace-nowrap transition hover:brightness-110"
-                    style={{
-                      background: "color-mix(in srgb, #fbbf24 14%, var(--glass-bg))",
-                      border: "1px solid color-mix(in srgb, #fbbf24 40%, transparent)",
-                      color: "#fbbf24",
-                      backdropFilter: "blur(20px)",
-                    }}
-                    title="Панель администратора"
-                  >
-                    <ShieldAlert size={16} />
-                    <span>Админка</span>
-                  </Link>
-                )}
               </div>
 
               {/* ─── Tab Content ──────────────────────────────────────────── */}

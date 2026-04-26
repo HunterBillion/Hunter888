@@ -24,6 +24,22 @@ export function isAdmin(user: User | null | undefined): boolean {
 }
 
 /**
+ * Check if user is rop (team lead). Distinct from `isManager` which
+ * confusingly returns true for admin+rop ("management roles") — the
+ * literal `manager` user role is the rank-and-file sales manager.
+ */
+export function isROP(user: User | null | undefined): boolean {
+  return hasRole(user, ["rop"]);
+}
+
+/**
+ * Check if user is methodologist.
+ */
+export function isMethodologist(user: User | null | undefined): boolean {
+  return hasRole(user, ["methodologist"]);
+}
+
+/**
  * Role display names in Russian.
  */
 export function roleName(role: string): string {
