@@ -28,6 +28,7 @@ def test_is_event_persisted_rejects_disabled_stub():
         payload_json={},
         idempotency_key="disabled",
         schema_version=1,
+        correlation_id="test",
     )
     assert is_event_persisted(stub) is False
 
@@ -47,6 +48,7 @@ def test_is_event_persisted_rejects_transient_no_created_at():
         payload_json={},
         idempotency_key="real-key",
         schema_version=1,
+        correlation_id="test",
     )
     # no ``db.add`` → SQLAlchemy state is ``transient`` and
     # ``created_at`` is None.

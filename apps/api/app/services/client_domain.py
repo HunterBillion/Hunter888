@@ -272,6 +272,21 @@ async def emit_domain_event(
     causation_id: str | None = None,
     correlation_id: str | None = None,
 ) -> DomainEvent:
+    # TZ-1 §15.1 invariant 4 — correlation_id is required for timeline joins.
+    # The helper guarantees it instead of relying on every caller to remember:
+    # session_id → aggregate_id → lead_client_id are all valid anchors per the
+    # spec; whichever is present wins. The DB column is NOT NULL so a None
+    # leak here would only surface as an IntegrityError at flush, which is a
+    # production incident — defaulting at the helper boundary keeps the
+    # invariant cheap to maintain even if a future caller forgets.
+    if not correlation_id:
+        if session_id is not None:
+            correlation_id = str(session_id)
+        elif aggregate_id is not None:
+            correlation_id = str(aggregate_id)
+        else:
+            correlation_id = str(lead_client_id)
+
     if not settings.client_domain_dual_write_enabled:
         # Return a transient DomainEvent that is NOT persisted. Callers that
         # need the ID for projection bookkeeping should check

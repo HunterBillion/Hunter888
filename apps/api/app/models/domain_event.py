@@ -33,7 +33,12 @@ class DomainEvent(Base):
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     causation_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    correlation_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    # TZ-1 §15.1 invariant 4 — every event must carry a correlation_id so the
+    # timeline / replay tooling can join sessions, aggregate ranges, and chain
+    # reissues. Helper ``client_domain.emit_domain_event`` defaults this from
+    # session_id → aggregate_id → lead_client_id when the caller omits it, so
+    # the column is safely NOT NULL at the DB layer (migration 20260426_001).
+    correlation_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 

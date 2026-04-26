@@ -119,6 +119,52 @@ def test_domain_event_table_kept_in_canonical_module():
     )
 
 
+def test_game_client_event_writes_are_gated_through_timeline_aggregator():
+    """``GameClientEvent`` is the legacy continuity-layer event log
+    (TZ-1 §11.3). New writes belong in the canonical event log via
+    ``client_story_projector.record_story_game_event`` — the only sanctioned
+    bridge. The single allowed direct construction site is
+    ``timeline_aggregator.create_game_event`` which both writes the legacy
+    row AND fans out to the canonical mirror in the same transaction.
+
+    Adding another writer here would re-open the dual-history hole TZ-1
+    closed: a GameClientEvent visible to the frontend that no DomainEvent
+    knows about. If you must add a new producer, route it through
+    ``create_game_event`` instead of constructing the row inline.
+    """
+    allowed = {
+        "app/services/timeline_aggregator.py",
+    }
+    offenders: list[str] = []
+    for file_path in _iter_python_files(APP_DIR):
+        rel = file_path.relative_to(APP_DIR.parent).as_posix()
+        if rel in allowed:
+            continue
+        lines = _file_constructs(file_path, "GameClientEvent")
+        if lines:
+            offenders.append(f"{rel}: {lines}")
+    assert not offenders, (
+        "Direct GameClientEvent(...) construction found outside the canonical "
+        "timeline_aggregator. Use timeline_aggregator.create_game_event so the "
+        "DomainEvent mirror is also emitted (TZ §11.3):\n" + "\n".join(offenders)
+    )
+
+
+def test_domain_event_carries_correlation_id_in_orm():
+    """``DomainEvent.correlation_id`` must be NOT NULL in the ORM (TZ §15.1
+    invariant 4). The helper defaults the value when callers omit it; the
+    DB-level NOT NULL is the safety net for any future caller that bypasses
+    the helper."""
+    from app.models.domain_event import DomainEvent
+
+    column = DomainEvent.__table__.c.correlation_id
+    assert column.nullable is False, (
+        "domain_events.correlation_id must be NOT NULL — TZ §15.1 invariant 4. "
+        "If you need to make it nullable again, first decide how timeline joins "
+        "should handle NULL anchors and update the spec."
+    )
+
+
 def test_projection_metadata_keys_are_stable():
     """Frontend types rely on ``domain_event_id``/``schema_version``/
     ``projection_name``/``projection_version`` keys. Make sure the projector
@@ -143,6 +189,7 @@ def test_projection_metadata_keys_are_stable():
         payload_json={},
         idempotency_key="x",
         schema_version=1,
+        correlation_id="test-correlation",
     )
     patch = interaction_metadata_patch(event)
     assert set(patch.keys()) >= {
