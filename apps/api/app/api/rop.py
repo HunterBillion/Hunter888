@@ -163,20 +163,39 @@ def _scenario_template_snapshot(scenario) -> dict:
 
 
 async def _create_scenario_version(db: AsyncSession, scenario, user: User, *, status_value: str = "published"):
+    """Create a ScenarioVersion row.
+
+    Used today only by ``create_scenario`` to mint v1 of a brand-new
+    template. The full publish pipeline (validate + lock + supersede +
+    pointer update) lives in ``services/scenario_publisher.publish_
+    template`` — DON'T add new callers here without going through the
+    publisher first (TZ-3 §7.3.1).
+
+    NB: After PR C1 (alembic 20260426_003) ``content_hash`` is NOT NULL
+    on scenario_versions. We reuse the publisher's deterministic hash
+    helper so create-vs-publish writes produce identical hashes for
+    identical snapshots.
+    """
     from app.models.scenario import ScenarioVersion
+    from app.services.scenario_publisher import _content_hash
 
     latest = (await db.execute(
         select(func.max(ScenarioVersion.version_number)).where(
             ScenarioVersion.template_id == scenario.id
         )
     )).scalar() or 0
+    snapshot = _scenario_template_snapshot(scenario)
     version = ScenarioVersion(
         template_id=scenario.id,
         version_number=int(latest) + 1,
         status=status_value,
-        snapshot=_scenario_template_snapshot(scenario),
+        snapshot=snapshot,
         created_by=user.id,
         published_at=datetime.now(timezone.utc) if status_value == "published" else None,
+        content_hash=_content_hash(snapshot),
+        # validation_report uses the column server_default '{}'::jsonb;
+        # explicit publish via publish_template overwrites it with the
+        # real validator output.
     )
     db.add(version)
     await db.flush()
@@ -351,6 +370,11 @@ async def create_scenario(
     db.add(scenario)
     await db.flush()
     version = await _create_scenario_version(db, scenario, user)
+    # Point the freshly-created template at its v1 immediately so the
+    # runtime resolver (PR C3) doesn't have to fall back through legacy
+    # paths for newly-created templates. update_scenario doesn't touch
+    # the pointer — only publish_scenario does — so this is safe.
+    scenario.current_published_version_id = version.id
     await db.commit()
 
     return {"id": str(scenario.id), "version_id": str(version.id), "message": "Scenario created"}
@@ -365,7 +389,23 @@ async def update_scenario(
     user: User = Depends(_require_methodologist),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update an existing scenario template."""
+    """Update an existing scenario template (draft-only).
+
+    TZ-3 §7.3.1 (load-bearing fix of PR C2): this handler **MUST NOT
+    create a ScenarioVersion**. Before this PR every save auto-published
+    a new version, directly violating §8 invariant 2 ("ScenarioVersion.
+    snapshot after publish never changes" — we were creating noise, not
+    protecting immutability). Now save only:
+
+      * mutates the editable ScenarioTemplate fields,
+      * bumps ``draft_revision`` so concurrent editors notice each other
+        on the next publish (optimistic-concurrency token, §15.1),
+      * returns the new revision so the FE can pin it as
+        ``expected_draft_revision`` for the eventual Publish action.
+
+    A new published version is created **only** by ``POST
+    /rop/scenarios/{id}/publish`` (handler below).
+    """
     from app.models.scenario import ScenarioTemplate
 
     result = await db.execute(
@@ -379,9 +419,122 @@ async def update_scenario(
     for field, value in fields.items():
         setattr(scenario, field, value)
 
-    version = await _create_scenario_version(db, scenario, user)
+    # Bump the optimistic-concurrency cursor. None case keeps backwards
+    # compat with rows that haven't been touched since the C1 backfill
+    # set draft_revision=0 (server_default).
+    scenario.draft_revision = int(scenario.draft_revision or 0) + 1
+
     await db.commit()
-    return {"id": str(scenario.id), "version_id": str(version.id), "message": "Scenario updated"}
+    return {
+        "id": str(scenario.id),
+        "draft_revision": scenario.draft_revision,
+        "message": "Scenario draft updated (not yet published)",
+    }
+
+
+@router.post("/scenarios/{scenario_id}/publish")
+@limiter.limit("10/minute")
+async def publish_scenario(
+    request: Request,
+    scenario_id: uuid.UUID,
+    body: dict | None = None,
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    """Atomically publish the current draft as a new immutable
+    ScenarioVersion.
+
+    Body (optional):
+        {"expected_draft_revision": int}
+
+    Behaviour (TZ-3 §15.1):
+      * If ``expected_draft_revision`` matches the actual value on the
+        template — proceed (validate → freeze → create version → update
+        pointer → mark previous as superseded).
+      * If it doesn't match — return 409 with ``{expected, actual}`` so
+        the FE can show "another user edited this" and let the operator
+        decide.
+      * If the validator returns any error-level issue — return 422 with
+        the full report so the FE can highlight failing fields.
+      * If absent — log a warning and proceed in trust-last-writer mode
+        (legacy clients before C4 frontend work).
+
+    Concurrency guarantee: two simultaneous calls with the same
+    ``expected_draft_revision`` produce exactly one 200 + one 409 (the
+    publisher uses ``SELECT ... FOR UPDATE`` to serialise — see
+    ``test_scenario_publisher.test_concurrent_publish_only_one_succeeds``).
+    """
+    from app.services.scenario_publisher import (
+        PublishConflict,
+        PublishValidationFailed,
+        TemplateNotFound,
+        publish_template,
+    )
+
+    payload = body or {}
+    expected = payload.get("expected_draft_revision")
+    expected_int: int | None = None
+    if expected is not None:
+        try:
+            expected_int = int(expected)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "scenario_publish_bad_revision",
+                    "message": "expected_draft_revision must be an integer.",
+                },
+            )
+
+    try:
+        result = await publish_template(
+            db,
+            template_id=scenario_id,
+            expected_draft_revision=expected_int,
+            actor_id=user.id,
+        )
+    except TemplateNotFound:
+        await db.rollback()
+        raise HTTPException(status_code=404, detail="Scenario not found or archived")
+    except PublishConflict as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "scenario_publish_conflict",
+                "message": (
+                    "Шаблон был изменён другим пользователем. Обновите "
+                    "редактор и опубликуйте заново."
+                ),
+                "expected": exc.expected,
+                "actual": exc.actual,
+            },
+        )
+    except PublishValidationFailed as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "scenario_publish_invalid",
+                "message": "Сценарий не прошёл валидацию — исправьте ошибки и повторите.",
+                "validation_report": exc.report.to_jsonb(),
+            },
+        )
+
+    await db.commit()
+    return {
+        "template_id": str(result.template_id),
+        "version_id": str(result.new_version_id),
+        "version_number": result.new_version_number,
+        "content_hash": result.content_hash,
+        "superseded_version_id": (
+            str(result.superseded_version_id)
+            if result.superseded_version_id
+            else None
+        ),
+        "validation_report": result.validation_report,
+        "message": "Scenario published",
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
