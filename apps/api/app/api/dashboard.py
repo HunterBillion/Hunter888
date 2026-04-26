@@ -1147,5 +1147,134 @@ async def rag_user_weak_areas(
     db: AsyncSession = Depends(get_db),
 ):
     """Individual manager's weak legal categories based on answer history."""
+    # Team-scope: ROP can only inspect own team. Admin can inspect anyone.
+    if user.role.value != "admin":
+        target = (await db.execute(
+            select(User).where(User.id == user_id)
+        )).scalar_one_or_none()
+        if not target or target.team_id != user.team_id:
+            raise HTTPException(status_code=403, detail="Member not in your team")
     from app.services.rag_feedback import get_user_weak_areas
     return await get_user_weak_areas(db, user_id=user_id, days=days)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Team member deep-dive — single bundle endpoint for /dashboard/team/[id]
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/team/member/{member_id}")
+@limiter.limit("30/minute")
+async def team_member_bundle(
+    request: Request,
+    member_id: uuid.UUID,
+    user: User = Depends(require_role("rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Methodologist-style deep dive on a single team member.
+
+    Bundles member info, behavior + OCEAN profile, weak spots, recent
+    sessions, and recommendations into one round-trip so the FE doesn't
+    fan out 5 calls. ROP can only inspect own-team members; admin can
+    inspect anyone.
+    """
+    # ── Lookup + permission gate ──────────────────────────────────────────
+    member = (await db.execute(
+        select(User).options(selectinload(User.team)).where(User.id == member_id)
+    )).scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    if user.role.value != "admin" and member.team_id != user.team_id:
+        raise HTTPException(status_code=403, detail="Member not in your team")
+
+    # ── Stats (sessions count, avg, best, week) ───────────────────────────
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    stats_row = (await db.execute(
+        select(
+            func.count(TrainingSession.id),
+            func.avg(TrainingSession.score_total),
+            func.max(TrainingSession.score_total),
+            func.sum(case((TrainingSession.started_at >= week_ago, 1), else_=0)),
+        ).where(
+            TrainingSession.user_id == member_id,
+            TrainingSession.status == SessionStatus.completed,
+        )
+    )).one()
+    total_sessions, avg_score, best_score, week_sessions = stats_row
+
+    # ── Behavior profile + OCEAN ──────────────────────────────────────────
+    from app.services.manager_emotion_profiler import (
+        get_or_create_profile,
+        get_ocean_profile,
+    )
+    profile = await get_or_create_profile(member_id, db)
+    ocean = await get_ocean_profile(member_id, db)
+
+    # ── Weak spots (top 5) ────────────────────────────────────────────────
+    from app.services.analytics import analyze_weak_spots
+    weak_spots_raw = await analyze_weak_spots(member_id, db, last_n=15)
+    weak_spots = [
+        {
+            "skill": w.skill,
+            "sub_skill": w.sub_skill,
+            "pct": round(w.pct, 1),
+            "trend": w.trend,
+            "trend_delta": round(w.trend_delta, 1),
+            "archetype": w.archetype,
+            "recommendation": w.recommendation,
+        }
+        for w in weak_spots_raw[:5]
+    ]
+
+    # ── Recent sessions (last 10 completed) ───────────────────────────────
+    sessions_r = await db.execute(
+        select(TrainingSession).where(
+            TrainingSession.user_id == member_id,
+            TrainingSession.status == SessionStatus.completed,
+        ).order_by(TrainingSession.started_at.desc()).limit(10)
+    )
+    recent_sessions = [
+        {
+            "id": str(s.id),
+            "scenario_id": str(s.scenario_id) if s.scenario_id else None,
+            "score_total": round(float(s.score_total or 0), 1),
+            "duration_seconds": s.duration_seconds,
+            "started_at": s.started_at.isoformat() if s.started_at else None,
+        }
+        for s in sessions_r.scalars().all()
+    ]
+
+    return {
+        "member": {
+            "id": str(member.id),
+            "full_name": member.full_name,
+            "email": member.email,
+            "role": member.role.value if hasattr(member.role, "value") else str(member.role),
+            "team_id": str(member.team_id) if member.team_id else None,
+            "team_name": member.team.name if member.team else None,
+            "is_active": member.is_active,
+        },
+        "stats": {
+            "total_sessions": int(total_sessions or 0),
+            "avg_score": round(float(avg_score or 0), 1),
+            "best_score": round(float(best_score or 0), 1),
+            "sessions_this_week": int(week_sessions or 0),
+        },
+        "behavior": {
+            "composite": {
+                "confidence": round(profile.overall_confidence, 1),
+                "stress_resistance": round(profile.overall_stress_resistance, 1),
+                "adaptability": round(profile.overall_adaptability, 1),
+                "empathy": round(profile.overall_empathy, 1),
+            },
+            "performance": {
+                "under_hostility": profile.performance_under_hostility,
+                "under_stress": profile.performance_under_stress,
+                "with_empathy": profile.performance_with_empathy,
+            },
+            "archetype_scores": profile.archetype_scores or {},
+            "sessions_analyzed": profile.sessions_analyzed,
+        },
+        "ocean": ocean,
+        "weak_spots": weak_spots,
+        "recent_sessions": recent_sessions,
+    }
