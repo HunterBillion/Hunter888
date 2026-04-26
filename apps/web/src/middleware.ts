@@ -119,7 +119,8 @@ type UserRole = "manager" | "rop" | "methodologist" | "admin";
  * Any authenticated user NOT in the allowed list gets redirected to /home.
  */
 const ROLE_PROTECTED_ROUTES: Record<string, UserRole[]> = {
-  "/admin": ["admin"],
+  // /admin removed 2026-04-26 — все админские поверхности живут в
+  // /dashboard как табы. Старые пути редиректятся в next.config.ts.
   "/test": ["admin"],  // S1-03: QA test page — admin only
   "/methodologist": ["admin", "methodologist"],
   "/dashboard": ["admin", "rop"],

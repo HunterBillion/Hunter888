@@ -24,7 +24,6 @@ import {
   Gavel,
   Sliders,
   FlaskConical,
-  ShieldAlert,
   FileText,
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
@@ -85,16 +84,16 @@ function buildNavForRole(role: UserRole | undefined): NavItem[] {
   if (role === "admin") {
     return [
       HOME,
+      // 2026-04-26 — /admin route deleted. Все админские поверхности
+      // переехали внутрь /dashboard как табы «Активность» / «Методология»
+      // (с подвкладкой Reviews) / «Система» (Пользователи + Client
+      // Domain). Один вход в управление для и admin, и rop — отличается
+      // только scope и наличие admin-only табов.
       { href: "/dashboard", label: "Команда", icon: LayoutDashboard, group: "main" },
       { href: "/training", label: "Тренировка", icon: Crosshair, group: "main" },
       { href: "/pvp", label: "Арена", icon: Swords, group: "main" },
       { href: "/leaderboard", label: "Лидерборд", icon: Trophy, group: "main" },
       { href: "/clients", label: "Клиенты", icon: Users, group: "main" },
-      // Phase F (2026-04-20) — владелец: «почему два пункта в nav и ещё
-      // карточка Аудит внутри Админки?». Убрано дублирование. Теперь
-      // ОДИН вход в систему — «Админка» (`/admin`), внутри tabs:
-      // Аудит / Здоровье / Промпты.
-      { href: "/admin", label: "Админка", icon: ShieldAlert, group: "manage" },
     ];
   }
 
