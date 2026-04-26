@@ -4544,6 +4544,13 @@ async def _handle_session_end(
     )
     if _end_violations:
         v = _end_violations[0]
+        from app.services.runtime_metrics import record_blocked_start
+        record_blocked_start(
+            guard_code=v.code,
+            mode=state_mode,
+            runtime_type=(state.get("runtime_type") if isinstance(state, dict) else None),
+            phase="end",
+        )
         await _send_error(ws, v.message, v.code)
         return
 

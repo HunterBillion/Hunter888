@@ -348,6 +348,15 @@ async def start_session(
     )
     if _start_violations:
         v = _start_violations[0]
+        # TZ-2 §18 observability — record every blocked start so SRE
+        # dashboards see WHICH guard fires, not just the per-user 4xx.
+        from app.services.runtime_metrics import record_blocked_start
+        record_blocked_start(
+            guard_code=v.code,
+            mode=_engine_mode,
+            runtime_type=body.runtime_type,
+            phase="start",
+        )
         # profile_incomplete historically raised 409 (it's a precondition,
         # not a malformed request); the other guards are 400 (the body is
         # well-formed but logically inconsistent).
@@ -1379,6 +1388,13 @@ async def end_session(
     _end_violations = evaluate_end_guards(mode=session_mode, raw_outcome=raw_outcome)
     if _end_violations:
         v = _end_violations[0]
+        from app.services.runtime_metrics import record_blocked_start
+        record_blocked_start(
+            guard_code=v.code,
+            mode=session_mode,
+            runtime_type=getattr(session, "runtime_type", None),
+            phase="end",
+        )
         _detail: dict[str, object] = {"code": v.code, "message": v.message}
         if v.details:
             _detail.update(v.details)

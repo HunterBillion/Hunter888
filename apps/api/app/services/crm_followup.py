@@ -81,12 +81,28 @@ async def ensure_followup_for_session(
     delay_hours: int = 24,
 ) -> ManagerReminder | None:
     """Create one CRM follow-up reminder when a linked session needs continuation."""
+    from app.services.runtime_metrics import record_followup_gap
+
     if not session.real_client_id:
+        record_followup_gap(
+            reason="no_real_client",
+            outcome=outcome,
+            helper="crm_followup",
+        )
         return None
 
     explicit_outcome = normalize_session_outcome(outcome)
     effective_outcome = explicit_outcome or infer_followup_outcome(session)
     if not should_create_followup(effective_outcome):
+        # Outcome doesn't request a follow-up by policy — expected for
+        # `deal_agreed`/`hard_reject`/etc. Counter is the early-warning
+        # for cases where policy is wrong (e.g. a future outcome added to
+        # the catalogue but forgotten in FOLLOW_UP_OUTCOMES).
+        record_followup_gap(
+            reason="outcome_does_not_require",
+            outcome=effective_outcome,
+            helper="crm_followup",
+        )
         return None
 
     session_marker = session.id.hex[:8]

@@ -267,6 +267,65 @@ async def get_prometheus_metrics(
     return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain")
 
 
+@router.get("/admin/runtime/metrics")
+async def get_runtime_metrics(
+    _user=Depends(require_role("admin")),
+) -> PlainTextResponse:
+    """Prometheus-formatted observability for the TZ-2 runtime (§18).
+
+    Exposes three counter families wired by ``runtime_metrics``:
+      * ``runtime_blocked_starts_total`` — guard violations on start/end.
+      * ``runtime_finalize_total``       — completion_policy entries
+        (already_completed=true singles out double-finalize attempts).
+      * ``runtime_followup_gap_total``   — follow-up helper drops with
+        a ``reason`` label so SRE can tell expected (no_real_client on
+        a simulation session) from drift (no_lead_resolution after
+        cutover).
+
+    Counts are in-process per worker — Prometheus scrape aggregates
+    across workers. Restart resets the counters; this is intentional
+    to keep the module dependency-free.
+    """
+    from app.services.runtime_metrics import (
+        get_blocked_starts,
+        get_finalize_counters,
+        get_followup_gap_counters,
+    )
+
+    lines: list[str] = []
+
+    blocked = get_blocked_starts()
+    lines.append("# HELP runtime_blocked_starts_total Guard violations by code/mode/runtime_type/phase")
+    lines.append("# TYPE runtime_blocked_starts_total counter")
+    for (guard_code, mode, runtime_type, phase), count in sorted(blocked.items()):
+        labels = (
+            f'guard="{guard_code}",mode="{mode}",'
+            f'runtime_type="{runtime_type}",phase="{phase}"'
+        )
+        lines.append(f"runtime_blocked_starts_total{{{labels}}} {count}")
+
+    finalize = get_finalize_counters()
+    lines.append("# HELP runtime_finalize_total completion_policy.finalize_* invocations")
+    lines.append("# TYPE runtime_finalize_total counter")
+    for (completed_via, outcome, mode_label, freshness), count in sorted(finalize.items()):
+        labels = (
+            f'completed_via="{completed_via}",outcome="{outcome}",'
+            f'policy_mode="{mode_label}",freshness="{freshness}"'
+        )
+        lines.append(f"runtime_finalize_total{{{labels}}} {count}")
+
+    gap = get_followup_gap_counters()
+    lines.append("# HELP runtime_followup_gap_total Follow-up helper drops by reason")
+    lines.append("# TYPE runtime_followup_gap_total counter")
+    for (reason, outcome, helper), count in sorted(gap.items()):
+        labels = (
+            f'reason="{reason}",outcome="{outcome}",helper="{helper}"'
+        )
+        lines.append(f"runtime_followup_gap_total{{{labels}}} {count}")
+
+    return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain")
+
+
 # ── Write endpoints ─────────────────────────────────────────────────────────
 
 

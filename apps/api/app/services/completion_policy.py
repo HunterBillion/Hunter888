@@ -328,6 +328,16 @@ async def finalize_training_session(
             cached_via = CompletedVia(session.completed_via or completed_via.value)
         except ValueError:
             cached_via = completed_via
+        # TZ-2 §18 — count idempotent re-entry. Spike on this dimension
+        # signals a producer double-finalizing (REST end firing after WS
+        # end already won, or vice versa).
+        from app.services.runtime_metrics import record_finalize
+        record_finalize(
+            completed_via=cached_via.value,
+            outcome=cached_outcome.value,
+            strict_mode=bool(settings.completion_policy_strict),
+            already_completed=True,
+        )
         return CompletionResult(
             session_id=session.id,
             outcome=cached_outcome,
@@ -521,6 +531,18 @@ async def finalize_training_session(
         },
     )
 
+    # TZ-2 §18 — count fresh finalizations. Combined with the
+    # already_completed bucket above, this is the REST↔WS parity signal:
+    # the ratio of `completed_via` labels here should track the ratio of
+    # entry channels on starts.
+    from app.services.runtime_metrics import record_finalize
+    record_finalize(
+        completed_via=completed_via.value,
+        outcome=outcome.value,
+        strict_mode=strict,
+        already_completed=False,
+    )
+
     return CompletionResult(
         session_id=session.id,
         outcome=outcome,
@@ -568,6 +590,13 @@ async def finalize_pvp_duel(
             cached_reason = TerminalReason(duel.terminal_reason or reason.value)
         except ValueError:
             cached_reason = reason
+        from app.services.runtime_metrics import record_finalize
+        record_finalize(
+            completed_via=CompletedVia.pvp.value,
+            outcome=cached_outcome.value,
+            strict_mode=bool(settings.completion_policy_strict),
+            already_completed=True,
+        )
         return CompletionResult(
             session_id=duel.id,
             outcome=cached_outcome,
@@ -589,6 +618,14 @@ async def finalize_pvp_duel(
             "outcome": outcome.value,
             "reason": reason.value,
         },
+    )
+
+    from app.services.runtime_metrics import record_finalize
+    record_finalize(
+        completed_via=CompletedVia.pvp.value,
+        outcome=outcome.value,
+        strict_mode=bool(settings.completion_policy_strict),
+        already_completed=False,
     )
 
     return CompletionResult(

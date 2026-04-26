@@ -104,7 +104,16 @@ async def ensure_task_followup_for_session(
       * outcome maps to 'manual' AND there is no explicit reason to
         create one (caller should pass an explicit reason then)
     """
+    from app.services.runtime_metrics import record_followup_gap
+
     if session.real_client_id is None and session.lead_client_id is None:
+        # Simulation path — expected, not an alert; counted so dashboards
+        # can confirm gap-rate matches simulation/real_case ratio.
+        record_followup_gap(
+            reason="no_real_client",
+            outcome=outcome,
+            helper="task_followup_policy",
+        )
         return None
 
     lead_id = session.lead_client_id
@@ -113,6 +122,11 @@ async def ensure_task_followup_for_session(
         # during the migration window.
         existing_lead = await db.get(LeadClient, session.real_client_id)
         if existing_lead is None:
+            record_followup_gap(
+                reason="no_lead_resolution",
+                outcome=outcome,
+                helper="task_followup_policy",
+            )
             return None
         lead_id = existing_lead.id
 
@@ -120,6 +134,11 @@ async def ensure_task_followup_for_session(
     if reason == "manual":
         # Don't auto-create generic follow-ups; let an explicit caller
         # do it with their own context.
+        record_followup_gap(
+            reason="manual_outcome",
+            outcome=outcome,
+            helper="task_followup_policy",
+        )
         return None
 
     # Idempotency: existing pending row for the same (lead, session)?
