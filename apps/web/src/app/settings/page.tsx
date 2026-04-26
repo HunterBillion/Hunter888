@@ -30,7 +30,7 @@ function invalidateUserCache() {
 const roleLabels: Record<string, string> = {
   manager: "Менеджер",
   rop: "Руководитель ОП",
-  methodologist: "Методолог",
+  methodologist: "РОП",  // legacy enum — retired 2026-04-26, displays as ROP for stale tokens
   admin: "Администратор",
 };
 

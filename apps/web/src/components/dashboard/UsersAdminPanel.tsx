@@ -32,14 +32,15 @@ const ROLE_FILTERS: { value: string; label: string }[] = [
   { value: "", label: "Все" },
   { value: "manager", label: "Менеджеры" },
   { value: "rop", label: "РОПы" },
-  { value: "methodologist", label: "Методологи" },
+  // methodologist filter removed 2026-04-26 — role retired, ex-methodologists
+  // were migrated to rop in alembic 20260426_002. Filter by "rop" instead.
   { value: "admin", label: "Админы" },
 ];
 
 const ROLE_BADGE_COLOR: Record<string, string> = {
   admin: "#ef4444",
   rop: "#a78bfa",
-  methodologist: "#fbbf24",
+  methodologist: "#a78bfa",  // same as rop — stale tokens display identically
   manager: "#22c55e",
 };
 

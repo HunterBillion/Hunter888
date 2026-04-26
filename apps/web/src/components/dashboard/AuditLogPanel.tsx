@@ -85,7 +85,7 @@ const ROLE_LABELS: Record<string, string> = {
   admin:        "Админ",
   rop:          "РОП",
   manager:      "Менеджер",
-  methodologist:"Методолог",
+  methodologist:"РОП",  // legacy enum — retired 2026-04-26, displays as ROP for stale tokens
   system:       "Система",
 };
 
