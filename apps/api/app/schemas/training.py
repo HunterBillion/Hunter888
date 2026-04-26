@@ -174,6 +174,13 @@ class SessionResponse(BaseModel):
     scenario_id: uuid.UUID | None = None
     lead_client_id: uuid.UUID | None = None
     status: str
+    # TZ-2 §6.2/6.3 canonical runtime fields. ORM already persists them
+    # (training.py:159-160) but the schema dropped them, so the FE could
+    # only read the legacy `custom_params.session_mode`. Surfacing them
+    # here lets `training/[id]/call/page.tsx` fail-closed on a stale
+    # legacy `session_mode` and trust the canonical `mode` instead.
+    mode: str | None = None
+    runtime_type: str | None = None
     started_at: datetime
     ended_at: datetime | None = None
     duration_seconds: int | None = None

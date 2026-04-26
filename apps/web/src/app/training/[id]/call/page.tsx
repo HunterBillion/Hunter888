@@ -40,6 +40,14 @@ import type { EmotionState, WSMessage } from "@/types";
 import type { ClientCardData } from "@/components/training/ClientCard";
 
 interface SessionMetaInner {
+  // TZ-2 §6.2/6.3 canonical runtime fields. The backend stamps these on
+  // every session (api/training.py start path) so the FE no longer has to
+  // peek at custom_params.session_mode to decide between call/chat/center.
+  // The legacy `custom_params.session_mode` stays in the type for fallback
+  // — pilot data created before the canonical fields landed only carries
+  // the legacy shape.
+  mode?: "chat" | "call" | "center" | string | null;
+  runtime_type?: string | null;
   custom_params?: { bg_noise?: string | null; session_mode?: string } | null;
   client_story_id?: string | null;
 }
@@ -51,6 +59,10 @@ interface SessionMeta {
   character_name?: string;
   scenario_title?: string;
   custom_bg_noise?: string | null;
+  // TZ-2 §6.2 — accept canonical mode at top level too (some legacy
+  // callers flattened the session record before the wrapper landed).
+  mode?: "chat" | "call" | "center" | string | null;
+  runtime_type?: string | null;
   custom_params?: { bg_noise?: string | null; session_mode?: string } | null;
 }
 
@@ -137,24 +149,31 @@ export default function TrainingCallPage() {
         const meta = await api.get<SessionMeta>(`/training/sessions/${id}`);
         // eslint-disable-next-line no-console
         console.log("[CALL] meta fetched", meta);
-        // The endpoint returns SessionResultResponse with the real session
-        // nested under `session.custom_params`. Some legacy paths inline
-        // the same fields at top level — tolerate both.
+        // TZ-2 §6.2 — read the canonical `mode` field first. The backend
+        // schema (SessionResponse) now exposes it directly; legacy
+        // `custom_params.session_mode` stays as a fallback so any pilot
+        // session created before the canonical column was surfaced still
+        // routes correctly. Accept both top-level (legacy flat shape) and
+        // nested-under-session (canonical SessionResultResponse wrapper).
+        const canonicalMode =
+          meta?.session?.mode || meta?.mode || null;
         const cp =
           meta?.session?.custom_params || meta?.custom_params || null;
-        const sessionMode = cp?.session_mode;
-        // Fail-OPEN: only redirect when we have an EXPLICIT "chat" signal.
-        // If session_mode is missing/undefined we render the call UI —
-        // previous fail-closed logic broke freshly-created call sessions
-        // whose response shape didn't include session_mode at top level.
-        if (sessionMode === "chat") {
+        const legacyMode = cp?.session_mode;
+        const resolvedMode = canonicalMode || legacyMode;
+        // Fail-OPEN on missing data (new sessions whose response is in
+        // flight) but FAIL-CLOSED on an explicit "chat" / "center" signal
+        // so the user lands on the right surface. The previous logic only
+        // reacted to "chat"; with the canonical field we can also pivot
+        // to /center when the runtime says so.
+        if (resolvedMode === "chat") {
           logger.warn(
             `[call] session ${id} is mode="chat", redirecting to chat view`,
           );
           if (!cancelled) router.replace(`/training/${id}`);
           return;
         }
-        if (sessionMode === "center") {
+        if (resolvedMode === "center") {
           setSessionMode("center");
         } else {
           setSessionMode("call");
