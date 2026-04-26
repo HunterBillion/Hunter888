@@ -53,6 +53,101 @@ def test_map_legacy_client_status_accepts_strings_and_none():
     assert map_legacy_client_status("unknown_value") == ("new", "active")
 
 
+# ── correlation_id fallback (TZ §15.1 invariant 4) ──────────────────────
+
+
+@pytest.mark.asyncio
+async def test_emit_domain_event_falls_back_to_session_id_for_correlation(monkeypatch):
+    """Helper-side defense: when caller omits correlation_id, the session_id
+    becomes the anchor. Without this, the upcoming NOT NULL migration would
+    crash any forgetful caller; with it, the DB constraint is just a safety
+    net for code that bypasses the helper entirely."""
+    from app.services import client_domain
+
+    # Disable persistence so we exercise the transient-stub branch which is
+    # also subject to the same default.
+    monkeypatch.setattr(
+        client_domain.settings, "client_domain_dual_write_enabled", False, raising=False
+    )
+
+    lead_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+    ev = await client_domain.emit_domain_event(
+        db=SimpleNamespace(),
+        lead_client_id=lead_id,
+        event_type="test.ping",
+        actor_type="system",
+        actor_id=None,
+        source="unit_test",
+        session_id=session_id,
+    )
+    assert ev.correlation_id == str(session_id)
+
+
+@pytest.mark.asyncio
+async def test_emit_domain_event_falls_back_to_aggregate_id_when_no_session(monkeypatch):
+    from app.services import client_domain
+
+    monkeypatch.setattr(
+        client_domain.settings, "client_domain_dual_write_enabled", False, raising=False
+    )
+
+    lead_id = uuid.uuid4()
+    aggregate_id = uuid.uuid4()
+    ev = await client_domain.emit_domain_event(
+        db=SimpleNamespace(),
+        lead_client_id=lead_id,
+        event_type="test.ping",
+        actor_type="system",
+        actor_id=None,
+        source="unit_test",
+        aggregate_id=aggregate_id,
+    )
+    assert ev.correlation_id == str(aggregate_id)
+
+
+@pytest.mark.asyncio
+async def test_emit_domain_event_falls_back_to_lead_client_when_no_session_or_aggregate(monkeypatch):
+    from app.services import client_domain
+
+    monkeypatch.setattr(
+        client_domain.settings, "client_domain_dual_write_enabled", False, raising=False
+    )
+
+    lead_id = uuid.uuid4()
+    ev = await client_domain.emit_domain_event(
+        db=SimpleNamespace(),
+        lead_client_id=lead_id,
+        event_type="test.ping",
+        actor_type="system",
+        actor_id=None,
+        source="unit_test",
+    )
+    assert ev.correlation_id == str(lead_id)
+
+
+@pytest.mark.asyncio
+async def test_emit_domain_event_preserves_explicit_correlation_id(monkeypatch):
+    """Explicit caller-supplied correlation wins over all fallbacks."""
+    from app.services import client_domain
+
+    monkeypatch.setattr(
+        client_domain.settings, "client_domain_dual_write_enabled", False, raising=False
+    )
+
+    ev = await client_domain.emit_domain_event(
+        db=SimpleNamespace(),
+        lead_client_id=uuid.uuid4(),
+        event_type="test.ping",
+        actor_type="system",
+        actor_id=None,
+        source="unit_test",
+        session_id=uuid.uuid4(),
+        correlation_id="explicit-trace-id",
+    )
+    assert ev.correlation_id == "explicit-trace-id"
+
+
 # ── _json_safe ───────────────────────────────────────────────────────────
 
 
@@ -231,6 +326,7 @@ async def test_emit_domain_event_returns_existing_on_duplicate_key(monkeypatch):
         payload_json={},
         idempotency_key=key,
         schema_version=1,
+        correlation_id="corr-existing",
     )
     db = SimpleNamespace()
     db.execute = AsyncMock(return_value=_FakeResult(existing))
@@ -298,6 +394,7 @@ async def test_emit_counter_increments_on_each_branch(monkeypatch):
         payload_json={},
         idempotency_key="k2",
         schema_version=1,
+        correlation_id="corr-k2",
     )
     db.execute = AsyncMock(return_value=_FakeResult(existing_event))
     await client_domain.emit_domain_event(
