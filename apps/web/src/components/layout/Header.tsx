@@ -57,9 +57,11 @@ type NavItem = { href: string; label: string; icon: typeof Home; group: NavGroup
  * Product decisions locked by owner (2026-04-20):
  *   • manager  — Центр / Тренировка / Арена / История / Лидерборд / Клиенты
  *   • rop      — + «Команда» (≡ /dashboard) left of Тренировка
- *   • methodologist — свой набор: Сценарии / Контент Арены / Скоринг /
- *                      Сессии / Wiki (без Арены/Истории/Лидерборда — не
- *                      его персона)
+ *   • methodologist — РЕТАЯН 2026-04-26. Existing tokens may still claim
+ *                      this role until they refresh; the branch below
+ *                      treats them as ROP. New users cannot be created
+ *                      with this role (apps/api/app/api/users.py:786
+ *                      allowlist is {manager, rop}).
  *   • admin    — всё от ROP + Аудит / Промпты / Система
  *
  * Leaderboard остаётся глобальной страницей в top-nav (не ныряет в /pvp).
@@ -69,17 +71,6 @@ function buildNavForRole(role: UserRole | undefined): NavItem[] {
   // All roles land on /home as the common ground. From there the menu
   // diverges per persona.
   const HOME: NavItem = { href: "/home", label: "Центр", icon: Home, group: "main" };
-
-  if (role === "methodologist") {
-    return [
-      HOME,
-      { href: "/methodologist/scenarios", label: "Сценарии", icon: FileText, group: "main" },
-      { href: "/methodologist/arena-content", label: "Контент Арены", icon: FlaskConical, group: "main" },
-      { href: "/methodologist/scoring", label: "Скоринг", icon: Sliders, group: "main" },
-      { href: "/methodologist/sessions", label: "Сессии", icon: History, group: "main" },
-      { href: "/wiki", label: "Wiki", icon: BookOpen, group: "main" },
-    ];
-  }
 
   if (role === "admin") {
     return [
@@ -97,7 +88,9 @@ function buildNavForRole(role: UserRole | undefined): NavItem[] {
     ];
   }
 
-  if (role === "rop") {
+  // Treat the legacy `methodologist` role as `rop` — same nav until B3
+  // drops the enum value entirely. This keeps stale JWT tokens working.
+  if (role === "rop" || role === "methodologist") {
     return [
       HOME,
       { href: "/dashboard", label: "Команда", icon: LayoutDashboard, group: "main" },

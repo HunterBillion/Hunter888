@@ -121,11 +121,15 @@ type UserRole = "manager" | "rop" | "methodologist" | "admin";
 const ROLE_PROTECTED_ROUTES: Record<string, UserRole[]> = {
   // /admin removed 2026-04-26 — все админские поверхности живут в
   // /dashboard как табы. Старые пути редиректятся в next.config.ts.
+  // /methodologist removed 2026-04-26 — surfaces moved into the
+  // dashboard Methodology tab; old URLs are 308-redirected by Next.js.
   "/test": ["admin"],  // S1-03: QA test page — admin only
-  "/methodologist": ["admin", "methodologist"],
-  "/dashboard": ["admin", "rop"],
+  // ROP-and-up — `methodologist` kept in the allowlist for stale JWT
+  // tokens issued before the role migration (2026-04-26). After B3
+  // drops the enum value, all live tokens will reroll on next refresh.
+  "/dashboard": ["admin", "rop", "methodologist"],
   // "/reports" removed — consolidated into /dashboard?tab=reports
-  "/wiki": ["admin", "rop", "manager"],
+  "/wiki": ["admin", "rop", "manager", "methodologist"],
   "/clients": ["admin", "rop", "manager", "methodologist"],
 };
 
