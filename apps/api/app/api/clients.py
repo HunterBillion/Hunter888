@@ -506,12 +506,26 @@ async def api_get_audit_log(
     date_from: datetime | None = Query(None, description="Начало периода (ISO 8601)"),
     date_to: datetime | None = Query(None, description="Конец периода (ISO 8601)"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "rop")),
 ):
     """
-    Просмотр audit log (152-ФЗ compliance). Доступ: только admin.
+    Просмотр audit log (152-ФЗ compliance).
+
+    - admin: видит всё
+    - rop: видит только записи, где actor.team_id == own team_id
+      (i.e. что делали члены его команды). Это нужно для tab «Активность»
+      внутри панели «Команда» — РОП должен следить за своими.
     """
     query = select(AuditLog).order_by(AuditLog.created_at.desc())
+
+    # ── Team scope для ROP ────────────────────────────────────────────
+    if current_user.role.value == "rop":
+        if not current_user.team_id:
+            return AuditLogListResponse(items=[], total=0, page=page, per_page=per_page)
+        team_actors_subq = (
+            select(User.id).where(User.team_id == current_user.team_id).scalar_subquery()
+        )
+        query = query.where(AuditLog.actor_id.in_(team_actors_subq))
 
     if actor_id:
         query = query.where(AuditLog.actor_id == actor_id)
