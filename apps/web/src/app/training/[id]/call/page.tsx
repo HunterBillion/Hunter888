@@ -613,6 +613,13 @@ export default function TrainingCallPage() {
   }, [connectionState, id, sendMessage, callAccepted]);
 
   // --- STT start/stop bound to mute state + mode readiness ---------------
+  // 2026-04-26: removed the `!tts.speaking` gate. Previously, if TTS got
+  // stuck (audio queue jammed, autoplay deferred, late chunk), `tts.speaking`
+  // never went false → STT never started → user thought microphone was
+  // dead even though the device was perfectly working. Web Speech API
+  // ships its own VAD + the audio path uses echoCancellation, so leaving
+  // STT live during TTS playback doesn't actually create a feedback loop
+  // in practice. Mute remains the user's explicit pause.
   useEffect(() => {
     if (modeOk !== true) return;
     if (connectionState !== "connected") return;
@@ -621,12 +628,23 @@ export default function TrainingCallPage() {
       return;
     }
     if (!stt.isSupported) return;
-    // Start listening when TTS is idle — prevents feedback loop where mic
-    // picks up the character's own voice from the speaker.
-    if (!tts.speaking) stt.startListening();
-    else stt.stopListening();
+    stt.startListening();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modeOk, connectionState, muted, tts.speaking]);
+  }, [modeOk, connectionState, muted]);
+
+  // Watchdog: if STT remains idle for ~3s after we asked to listen, retry
+  // once. Covers transient SpeechRecognition.start() races (Chrome will
+  // sometimes silently no-op if a previous instance hadn't fully torn down).
+  useEffect(() => {
+    if (modeOk !== true) return;
+    if (connectionState !== "connected") return;
+    if (muted) return;
+    if (!stt.isSupported) return;
+    if (stt.status !== "idle") return;
+    const t = setTimeout(() => stt.startListening(), 3000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modeOk, connectionState, muted, stt.status]);
 
   // --- Speaker toggle — pauses/resumes TTS playback ----------------------
   useEffect(() => {
@@ -970,14 +988,25 @@ export default function TrainingCallPage() {
         Positioned below the teleprompter so it doesn't fight the avatar.
       */}
       {(wsDead || sttError || !sttSupported) && (
-        <div className="pointer-events-none fixed top-[130px] left-0 right-0 z-30 flex justify-center px-4">
-          <div className="rounded-full bg-amber-500/90 px-4 py-1.5 text-xs font-medium text-black shadow-lg">
-            {wsDead
-              ? "Нет связи с сервером — переподключаемся…"
-              : !sttSupported
-              ? "Этот браузер не поддерживает голос. Пишите текстом ниже."
-              : "Микрофон недоступен. Нажмите значок ниже или печатайте текстом."}
-          </div>
+        <div className="fixed top-[130px] left-0 right-0 z-30 flex justify-center px-4">
+          {sttError && sttSupported && !wsDead ? (
+            // 2026-04-26: actionable retry button on stt error. Earlier
+            // this banner was pointer-events-none → user with denied mic
+            // had no obvious recovery path beyond the small mic icon.
+            <button
+              type="button"
+              onClick={() => stt.startListening()}
+              className="rounded-full bg-amber-500/90 px-4 py-1.5 text-xs font-medium text-black shadow-lg transition hover:bg-amber-400"
+            >
+              Микрофон недоступен — нажмите чтобы включить
+            </button>
+          ) : (
+            <div className="pointer-events-none rounded-full bg-amber-500/90 px-4 py-1.5 text-xs font-medium text-black shadow-lg">
+              {wsDead
+                ? "Нет связи с сервером — переподключаемся…"
+                : "Этот браузер не поддерживает голос. Пишите текстом ниже."}
+            </div>
+          )}
         </div>
       )}
 
