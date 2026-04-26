@@ -1,23 +1,31 @@
 "use client";
 
 /**
- * MethodologyPanel — three sub-tabs for /dashboard "Методология":
- *   1. Методологи — list of methodologists scoped to the caller's team
- *      (ROP) or all teams (admin). Server enforces scope via
- *      apps/api/app/api/users.py::list_users.
- *   2. Wiki — corporate knowledge base, reuses <WikiDashboard>.
- *   3. Reviews — admin-only moderation queue, reuses <ReviewsAdmin>.
+ * MethodologyPanel — sub-tabs for /dashboard "Методология":
+ *   1. РОПы          — list of users with role=rop scoped to the caller's
+ *                      team (ROP sees own team, admin sees all teams).
+ *                      Server enforces scope via apps/api/app/api/users.py.
+ *   2. Сессии        — paginated browse of every training session in scope.
+ *                      Migrated 2026-04-26 from /methodologist/sessions
+ *                      standalone page.
+ *   3. Контент арены — CRUD for ФЗ-127 knowledge chunks. Migrated from
+ *                      /methodologist/arena-content standalone page.
+ *   4. Сценарии      — placeholder for the constructor (TZ-3 will fill it
+ *                      with draft-publish lifecycle UI).
+ *   5. Скоринг       — placeholder for scoring weights config.
+ *   6. Wiki          — corporate knowledge base, reuses <WikiDashboard>.
+ *   7. Отзывы        — admin-only moderation queue.
  *
- * Replaces the standalone "Wiki" and "Reviews" tabs in /dashboard so
- * the panel shape matches the owner's mental model: methodology stuff
- * lives in one place.
+ * URL deep-link via `?sub=...` query param so a permanent redirect from
+ * the retired /methodologist/* pages can land on the right sub-tab.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail } from "lucide-react";
-import { BookOpen, Brain, Star } from "@phosphor-icons/react";
+import { BookOpen, Brain, Star, FileText, Database, Sliders, Stack } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { roleName } from "@/lib/guards";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
@@ -32,6 +40,16 @@ const ReviewsAdmin = dynamic(
   { loading: () => <DashboardSkeleton />, ssr: false }
 );
 
+const SessionsBrowser = dynamic(
+  () => import("@/components/dashboard/methodology/SessionsBrowser").then((m) => m.SessionsBrowser),
+  { loading: () => <DashboardSkeleton />, ssr: false }
+);
+
+const ArenaContentEditor = dynamic(
+  () => import("@/components/dashboard/methodology/ArenaContentEditor").then((m) => m.ArenaContentEditor),
+  { loading: () => <DashboardSkeleton />, ssr: false }
+);
+
 interface UserListItem {
   id: string;
   email: string;
@@ -43,19 +61,22 @@ interface UserListItem {
   created_at: string;
 }
 
-type SubTab = "methodologists" | "wiki" | "reviews";
+type SubTab = "rops" | "sessions" | "arena" | "scenarios" | "scoring" | "wiki" | "reviews";
 
 interface Props {
   isAdminCaller: boolean;
 }
 
-function MethodologistsList() {
+function RopList() {
   const [items, setItems] = useState<UserListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.get<UserListItem[]>("/users/?role=methodologist&limit=200")
+    // Methodologist role retired 2026-04-26 — ROPs inherited the methodology
+    // surface. We list rop role here (server scopes to caller's team for rop
+    // viewers, returns all teams for admin viewers).
+    api.get<UserListItem[]>("/users/?role=rop&limit=200")
       .then((data) => setItems(Array.isArray(data) ? data : []))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Ошибка загрузки"))
       .finally(() => setLoading(false));
@@ -74,7 +95,7 @@ function MethodologistsList() {
       <div className="glass-panel rounded-xl p-8 text-center">
         <Brain size={32} weight="duotone" style={{ color: "var(--text-muted)", margin: "0 auto 12px", opacity: 0.5 }} />
         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-          В вашей команде пока нет методологов. Назначить может администратор.
+          В вашей команде пока нет РОПов. Назначить может администратор.
         </p>
       </div>
     );
@@ -114,28 +135,70 @@ function MethodologistsList() {
   );
 }
 
+function PlaceholderTab({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div className="glass-panel rounded-xl p-8 text-center">
+      <Stack size={32} weight="duotone" style={{ color: "var(--text-muted)", margin: "0 auto 12px", opacity: 0.5 }} />
+      <h3 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
+        {title}
+      </h3>
+      <p className="mt-2 text-sm max-w-md mx-auto" style={{ color: "var(--text-muted)" }}>
+        {subtitle}
+      </p>
+    </div>
+  );
+}
+
 const SUB_TABS: { id: SubTab; label: string; icon: typeof BookOpen; adminOnly?: boolean }[] = [
-  { id: "methodologists", label: "Методологи", icon: Brain },
+  { id: "rops", label: "РОПы", icon: Brain },
+  { id: "sessions", label: "Сессии", icon: FileText },
+  { id: "arena", label: "Контент арены", icon: Database },
+  { id: "scenarios", label: "Сценарии", icon: Stack },
+  { id: "scoring", label: "Скоринг", icon: Sliders },
   { id: "wiki", label: "Wiki", icon: BookOpen },
   { id: "reviews", label: "Отзывы", icon: Star, adminOnly: true },
 ];
 
 export function MethodologyPanel({ isAdminCaller }: Props) {
-  const [active, setActive] = useState<SubTab>("methodologists");
+  const searchParams = useSearchParams();
+
+  // Deep-link: /dashboard?tab=methodology&sub=arena lands on the right
+  // sub-tab. Used by the Next.js redirects from the retired
+  // /methodologist/* paths (next.config.ts) and by the ROP nav menu.
+  const initialSub = useMemo<SubTab>(() => {
+    const raw = searchParams.get("sub");
+    const allowed: SubTab[] = ["rops", "sessions", "arena", "scenarios", "scoring", "wiki", "reviews"];
+    return (allowed.includes(raw as SubTab) ? (raw as SubTab) : "rops") as SubTab;
+  }, [searchParams]);
+
+  const [active, setActive] = useState<SubTab>(initialSub);
+
+  // Re-sync when ?sub= changes (e.g. browser back/forward)
+  useEffect(() => {
+    setActive(initialSub);
+  }, [initialSub]);
 
   const visibleTabs = SUB_TABS.filter((t) => !t.adminOnly || isAdminCaller);
 
   return (
     <div className="space-y-4">
       {/* Sub-tab bar */}
-      <div className="flex items-center gap-2 rounded-xl p-1.5" style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)" }}>
+      <div className="flex items-center gap-2 rounded-xl p-1.5 overflow-x-auto" style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)" }}>
         {visibleTabs.map((t) => {
           const Icon = t.icon;
           const isActive = active === t.id;
           return (
             <button
               key={t.id}
-              onClick={() => setActive(t.id)}
+              onClick={() => {
+                setActive(t.id);
+                // Reflect sub-tab in URL so links/refresh stay deterministic
+                if (typeof window !== "undefined") {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("sub", t.id);
+                  window.history.replaceState(null, "", url.toString());
+                }
+              }}
               className="relative flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
               style={{
                 color: isActive ? "var(--text-primary)" : "var(--text-muted)",
@@ -165,7 +228,11 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
         >
-          {active === "methodologists" && <MethodologistsList />}
+          {active === "rops" && <RopList />}
+          {active === "sessions" && <SessionsBrowser />}
+          {active === "arena" && <ArenaContentEditor />}
+          {active === "scenarios" && <PlaceholderTab title="Сценарии" subtitle="Конструктор будет реализован в TZ-3 (draft → publish lifecycle, immutable versions)." />}
+          {active === "scoring" && <PlaceholderTab title="Скоринг" subtitle="Управление весами скоринговых слоёв (L1–L10) — в дорожной карте." />}
           {active === "wiki" && <WikiDashboard />}
           {active === "reviews" && isAdminCaller && <ReviewsAdmin />}
         </motion.div>
