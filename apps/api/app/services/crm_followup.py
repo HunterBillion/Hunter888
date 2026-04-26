@@ -31,17 +31,6 @@ FOLLOW_UP_EMOTIONS = {
     "negotiating",
 }
 
-TERMINAL_OUTCOMES = {
-    "deal",
-    "deal_agreed",
-    "deal_not_agreed",
-    "hangup",
-    "hostile",
-    "lost",
-    "rejected",
-    "timeout",
-}
-
 def _last_emotion_state(emotion_timeline: Any) -> str | None:
     timeline = emotion_timeline
     if isinstance(timeline, dict):
