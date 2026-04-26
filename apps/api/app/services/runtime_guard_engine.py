@@ -1,4 +1,4 @@
-"""TZ-2 §8 runtime guard engine — Phase 3 minimum.
+"""TZ-2 §8 runtime guard engine — Phase 3 + 4 (deferred guards).
 
 Centralises the start-of-session and end-of-session checks that the
 spec lists as guards. Existing handlers in ``api/training.py`` and
@@ -11,10 +11,31 @@ single ``evaluate_start_guards`` / ``evaluate_end_guards`` pair so:
   * Tests can assert one row per guard instead of grepping the handler
   * Future guards land here without growing the handler
 
-Phase 3 ships 5 of the 12 spec guards — the ones that block real pilot
-traffic. The remaining 7 (scenario_version_guard, session_uniqueness_guard,
-runtime_status_guard etc.) are not currently failing in production and
-can be added incrementally.
+Phase 3 shipped 5 spec guards (profile_complete, mode_integrity,
+runtime_type, lead_client_presence, session_mode_required_for_crm)
+plus terminal_outcome_required at end. Phase 4 adds the remaining 4
+deferred guards — each behind a feature flag (default OFF) so they
+can be rolled out one-at-a-time on staging/prod without redeploying:
+
+  * ``lead_client_access_guard``    — RBAC: user must own the linked
+    real_client (or be admin). Formalises the inline check at
+    ``api/training.py:464-475``; flagged so behaviour is byte-identical
+    until the flag flips, then the inline raise is removed.
+  * ``session_uniqueness_guard``    — refuses to start a second active
+    training session for the same (user, lead_client) pair. Catches
+    duplicate-tab races + accidental re-clicks on /clients/[id].
+  * ``runtime_status_guard``        — refuses to finalize a session
+    that is already terminal (completed / abandoned / error). Belt-and-
+    suspenders to the idempotent skip in completion_policy.
+  * ``projection_safe_commit_guard``— refuses to finalize when the
+    LeadClient projection target is missing or archived. Without this
+    the projector raises mid-finalize and we stamp terminal columns
+    on a session that no projection will ever pick up.
+
+Each Phase 4 guard is a separate function (``evaluate_*_guard``) so the
+caller picks which to invoke and can pass already-loaded entities (e.g.
+the REST start handler already loaded ``RealClient`` for the inline RBAC
+check — passing it in avoids a second SELECT).
 """
 
 from __future__ import annotations
@@ -56,6 +77,16 @@ GUARD_TERMINAL_OUTCOME_REQUIRED = "terminal_outcome_required"
 # contract violation (FE always sends mode now) but kept stable for
 # backward compatibility with any non-canonical caller.
 GUARD_SESSION_MODE_REQUIRED_FOR_CRM = "session_mode_required_for_crm"
+
+# Phase 4 codes — added 2026-04-26. Each guard is opt-in via a feature
+# flag in ``settings`` (see config.py ``tz2_guard_*_enabled``). Flag
+# default OFF so the wired callsite is a no-op until a human flips it
+# on staging, observes ``runtime_blocked_starts_total{guard="..."}`` for
+# 24h, then promotes to prod.
+GUARD_LEAD_CLIENT_ACCESS_DENIED = "lead_client_access_denied"
+GUARD_SESSION_UNIQUENESS_VIOLATED = "session_uniqueness_violated"
+GUARD_RUNTIME_STATUS_NOT_FINALIZABLE = "runtime_status_not_finalizable"
+GUARD_PROJECTION_TARGET_MISSING = "projection_target_missing"
 
 
 def evaluate_start_guards(
@@ -218,3 +249,205 @@ def evaluate_end_guards(
             )
         )
     return violations
+
+
+# ── Phase 4 guards (deferred) — each opt-in via settings flag ─────────────
+
+
+def evaluate_lead_client_access_guard(
+    *,
+    user: Any,
+    real_client: Any | None,
+) -> GuardViolation | None:
+    """RBAC: the user requesting a session against ``real_client`` must
+    own it. Admin role passes through.
+
+    Mirrors the inline check at ``api/training.py:464-475``. Caller
+    passes the already-loaded ``real_client`` so we don't issue a
+    second SELECT — this guard is pure validation.
+
+    Returns a violation if access is denied; None when access is OK
+    (including the simulation case where ``real_client`` is None — no
+    client to gate against).
+
+    Why a separate function (not a member of ``evaluate_start_guards``):
+    the engine signature accepts only ids, not loaded entities, by
+    design (cheap pure validation). RBAC needs the loaded entity to
+    avoid a second SELECT on the hot path.
+    """
+    if real_client is None:
+        return None
+    user_role = (getattr(user, "role", None) or "").lower()
+    if user_role == "admin":
+        return None
+    owner_id = getattr(real_client, "manager_id", None)
+    user_id = getattr(user, "id", None)
+    if owner_id is not None and owner_id == user_id:
+        return None
+    return GuardViolation(
+        code=GUARD_LEAD_CLIENT_ACCESS_DENIED,
+        message=(
+            "У вас нет прав на запуск сессии с этим клиентом — "
+            "клиент принадлежит другому менеджеру."
+        ),
+        details={
+            "real_client_id": str(getattr(real_client, "id", "")),
+            "owner_id": str(owner_id) if owner_id else None,
+        },
+    )
+
+
+async def evaluate_session_uniqueness_guard(
+    db,
+    *,
+    user_id: uuid.UUID,
+    real_client_id: uuid.UUID | str | None,
+) -> GuardViolation | None:
+    """Refuse to start a second active training session for the same
+    (user, real_client) pair.
+
+    Catches:
+      * duplicate-tab race (user clicks "Позвонить" twice in 200ms)
+      * accidental re-click on /clients/[id] after the page state didn't
+        re-render the existing-call indicator yet
+
+    Skipped when ``real_client_id`` is None (simulation sessions are
+    legitimately concurrent — user can run multiple practice scenarios).
+
+    Async because it issues a DB SELECT. Returns None when no other
+    active session exists, otherwise a violation with the conflicting
+    session id in details so the FE can offer "resume the existing
+    call" instead of starting a new one.
+    """
+    if real_client_id is None:
+        return None
+    from sqlalchemy import select
+    from app.models.training import SessionStatus, TrainingSession
+
+    existing = (
+        await db.execute(
+            select(TrainingSession.id)
+            .where(
+                TrainingSession.user_id == user_id,
+                TrainingSession.real_client_id == real_client_id,
+                TrainingSession.status == SessionStatus.active,
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        return None
+    return GuardViolation(
+        code=GUARD_SESSION_UNIQUENESS_VIOLATED,
+        message=(
+            "У вас уже есть активная сессия с этим клиентом. "
+            "Завершите её или возобновите вместо запуска новой."
+        ),
+        details={
+            "active_session_id": str(existing),
+            "real_client_id": str(real_client_id),
+        },
+    )
+
+
+def evaluate_runtime_status_guard(
+    *,
+    session: Any,
+) -> GuardViolation | None:
+    """Refuse to finalize a session that is already terminal.
+
+    ``completion_policy.finalize_training_session`` already short-
+    circuits on ``terminal_outcome != None`` (idempotent skip), but
+    that path returns the cached ``CompletionResult`` silently — useful
+    for the genuine REST↔WS race, not great for catching a buggy
+    producer that calls finalize on a long-completed session.
+
+    This guard makes the failure explicit at the entrypoint (4xx with
+    a stable code) so the operator sees it in
+    ``runtime_blocked_starts_total{phase="end"}`` instead of just a
+    flat ``finalize_total{freshness="idempotent"}`` bump.
+
+    Returns None when the session is in a finalize-able state
+    (active or ending). Otherwise a violation with current status.
+    """
+    from app.models.training import SessionStatus
+
+    status_attr = getattr(session, "status", None)
+    if status_attr is None:
+        # No session loaded — treat as finalize-able; the downstream
+        # finalizer will 404 on its own.
+        return None
+    # SessionStatus enum or raw string — coerce to comparable string.
+    raw = status_attr.value if hasattr(status_attr, "value") else str(status_attr)
+    finalizeable = {SessionStatus.active.value}
+    # ``ending`` is a TZ-2 §6.4 status value not yet on the enum (the ORM
+    # column is the legacy 4-value enum). When it lands, accept it too.
+    if raw in finalizeable or raw == "ending":
+        return None
+    return GuardViolation(
+        code=GUARD_RUNTIME_STATUS_NOT_FINALIZABLE,
+        message=(
+            f"Сессия уже завершена со статусом '{raw}'. "
+            "Повторное завершение не выполнено."
+        ),
+        details={
+            "session_id": str(getattr(session, "id", "")),
+            "current_status": raw,
+        },
+    )
+
+
+async def evaluate_projection_safe_commit_guard(
+    db,
+    *,
+    session: Any,
+) -> GuardViolation | None:
+    """Refuse to finalize when the LeadClient projection target is
+    missing or archived.
+
+    The completion_policy emits ``session.completed`` and dual-writes a
+    timeline projection if ``session.real_client_id`` is set. If the
+    LeadClient row is gone (data corruption, manual delete) or archived
+    (work_state == archived), the projector raises mid-finalize and we
+    end up with terminal columns stamped on a session whose CRM card
+    will never see the event.
+
+    Skipped for simulation sessions (no real_client_id → no projection
+    target needed).
+
+    Returns None when the projection can safely commit, otherwise a
+    violation with the missing/archived state in details.
+    """
+    real_client_id = getattr(session, "real_client_id", None)
+    if real_client_id is None:
+        return None
+    from app.models.lead_client import LeadClient
+
+    lead = await db.get(LeadClient, real_client_id)
+    if lead is None:
+        return GuardViolation(
+            code=GUARD_PROJECTION_TARGET_MISSING,
+            message=(
+                "Проекция CRM не может быть сохранена — карточка клиента "
+                "удалена или ещё не создана. Завершение сессии отменено "
+                "во избежание несогласованного состояния."
+            ),
+            details={
+                "real_client_id": str(real_client_id),
+                "reason": "lead_client_not_found",
+            },
+        )
+    work_state = getattr(lead, "work_state", None)
+    if work_state == "archived":
+        return GuardViolation(
+            code=GUARD_PROJECTION_TARGET_MISSING,
+            message=(
+                "Карточка клиента находится в архиве. Восстановите её "
+                "перед завершением сессии."
+            ),
+            details={
+                "lead_client_id": str(lead.id),
+                "reason": "lead_client_archived",
+            },
+        )
+    return None

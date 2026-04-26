@@ -460,19 +460,80 @@ async def start_session(
     # "Написать" and "Позвонить". Without this check, a malicious user could
     # clone another manager's CRM card into their own training by forging
     # the request body. manager_id check catches it at schema-level.
+    #
+    # 2026-04-26 Phase 4 — when ``tz2_guard_lead_client_access_enabled`` is
+    # on, the engine guard runs after this load and returns a stable
+    # ``lead_client_access_denied`` code instead of the legacy 404. Both
+    # paths block; the flag controls which error contract the FE sees.
     real_client = None
     if body.real_client_id:
-        real_client = (await db.execute(
-            select(RealClient).where(
-                RealClient.id == body.real_client_id,
-                RealClient.manager_id == user.id,
-            )
+        # Lookup by id only — RBAC is checked separately so the guard
+        # engine path can produce a structured violation. Existing inline
+        # 404 stays for the not-found case.
+        real_client_lookup = (await db.execute(
+            select(RealClient).where(RealClient.id == body.real_client_id)
         )).scalar_one_or_none()
-        if real_client is None:
+        if real_client_lookup is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="real_client_not_found",
             )
+        # Phase 4 guard (off by default — falls back to legacy inline RBAC).
+        if settings.tz2_guard_lead_client_access_enabled:
+            from app.services.runtime_guard_engine import evaluate_lead_client_access_guard
+            from app.services.runtime_metrics import record_blocked_start
+            access_violation = evaluate_lead_client_access_guard(
+                user=user, real_client=real_client_lookup,
+            )
+            if access_violation is not None:
+                record_blocked_start(
+                    guard_code=access_violation.code,
+                    mode=_engine_mode,
+                    runtime_type=body.runtime_type,
+                    phase="start",
+                )
+                _detail_acc: dict[str, object] = {
+                    "code": access_violation.code,
+                    "message": access_violation.message,
+                }
+                if access_violation.details:
+                    _detail_acc.update(access_violation.details)
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, detail=_detail_acc,
+                )
+            real_client = real_client_lookup
+        else:
+            # Legacy inline path: enforce manager_id == user.id with a 404
+            # response (not 403 — historical behaviour the FE handles).
+            if real_client_lookup.manager_id != user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="real_client_not_found",
+                )
+            real_client = real_client_lookup
+        # Phase 4 — session uniqueness guard. Catches duplicate-tab races.
+        if settings.tz2_guard_session_uniqueness_enabled:
+            from app.services.runtime_guard_engine import evaluate_session_uniqueness_guard
+            from app.services.runtime_metrics import record_blocked_start
+            uniq_violation = await evaluate_session_uniqueness_guard(
+                db, user_id=user.id, real_client_id=body.real_client_id,
+            )
+            if uniq_violation is not None:
+                record_blocked_start(
+                    guard_code=uniq_violation.code,
+                    mode=_engine_mode,
+                    runtime_type=body.runtime_type,
+                    phase="start",
+                )
+                _detail_uniq: dict[str, object] = {
+                    "code": uniq_violation.code,
+                    "message": uniq_violation.message,
+                }
+                if uniq_violation.details:
+                    _detail_uniq.update(uniq_violation.details)
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT, detail=_detail_uniq,
+                )
         # real_client passed — scenario becomes optional (we have a client
         # profile source). Fall-back scenario picker below still runs if
         # nothing provided.
@@ -1402,6 +1463,51 @@ async def end_session(
         # FE call-page modal renders three buttons whose ids match.
         _detail.setdefault("allowed_outcomes", ["agreed", "not_agreed", "continue"])
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_detail)
+
+    # Phase 4 — runtime_status_guard. Refuse to finalize a session that is
+    # already terminal (defense-in-depth on top of completion_policy's
+    # idempotent skip). Behind a flag, default OFF.
+    if settings.tz2_guard_runtime_status_enabled:
+        from app.services.runtime_guard_engine import evaluate_runtime_status_guard
+        from app.services.runtime_metrics import record_blocked_start
+        rs_violation = evaluate_runtime_status_guard(session=session)
+        if rs_violation is not None:
+            record_blocked_start(
+                guard_code=rs_violation.code,
+                mode=session_mode,
+                runtime_type=getattr(session, "runtime_type", None),
+                phase="end",
+            )
+            _detail_rs: dict[str, object] = {
+                "code": rs_violation.code,
+                "message": rs_violation.message,
+            }
+            if rs_violation.details:
+                _detail_rs.update(rs_violation.details)
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_detail_rs)
+
+    # Phase 4 — projection_safe_commit_guard. Refuse to finalize when the
+    # LeadClient projection target is missing/archived. Behind a flag.
+    if settings.tz2_guard_projection_safe_commit_enabled:
+        from app.services.runtime_guard_engine import evaluate_projection_safe_commit_guard
+        from app.services.runtime_metrics import record_blocked_start
+        proj_violation = await evaluate_projection_safe_commit_guard(db, session=session)
+        if proj_violation is not None:
+            record_blocked_start(
+                guard_code=proj_violation.code,
+                mode=session_mode,
+                runtime_type=getattr(session, "runtime_type", None),
+                phase="end",
+            )
+            _detail_proj: dict[str, object] = {
+                "code": proj_violation.code,
+                "message": proj_violation.message,
+            }
+            if proj_violation.details:
+                _detail_proj.update(proj_violation.details)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=_detail_proj,
+            )
 
     # Persist normalized outcome on the session for the finalizer to read.
     from app.services.session_state import normalize_session_outcome
