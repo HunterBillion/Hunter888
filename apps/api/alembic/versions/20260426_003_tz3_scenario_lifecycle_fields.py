@@ -208,12 +208,18 @@ def upgrade() -> None:
                 server_default=sa.text("'{}'::jsonb"),
             ),
         )
-        op.execute(sa.text("""
-            UPDATE scenario_versions
-            SET validation_report = '{"backfilled":true,"issues":[]}'::jsonb
-            WHERE validation_report IS NULL
-               OR validation_report = '{}'::jsonb
-        """))
+        # Bind the JSON via a parameter so the parser doesn't trip on
+        # `:true` inside the literal (caught by CI on PR #50 attempts
+        # 1 and 2). asyncpg sends the value as a real bytea parameter,
+        # bypassing JSON-in-SQL-literal entirely.
+        op.execute(
+            sa.text("""
+                UPDATE scenario_versions
+                SET validation_report = CAST(:report AS jsonb)
+                WHERE validation_report IS NULL
+                   OR validation_report = '{}'::jsonb
+            """).bindparams(report='{"backfilled":true,"issues":[]}')
+        )
         op.alter_column(
             "scenario_versions",
             "validation_report",
