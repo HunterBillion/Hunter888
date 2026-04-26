@@ -192,16 +192,33 @@ def upgrade() -> None:
         )
 
     if not _column_exists("scenario_versions", "validation_report"):
+        # Two-step add: nullable + server_default '{}' (cannot use the
+        # full literal here — sqlalchemy.text() parses `:key` inside the
+        # JSON as a bind-parameter, which silently substitutes NULL and
+        # crashes alembic with "invalid input syntax for type json"
+        # — caught by CI on PR #50 attempt 1, see commit message).
+        # Real default is set by the UPDATE below; column is then SET
+        # NOT NULL so future inserts must supply a value.
         op.add_column(
             "scenario_versions",
             sa.Column(
                 "validation_report",
                 postgresql.JSONB(astext_type=sa.Text()),
-                nullable=False,
-                server_default=sa.text(
-                    "'{\"backfilled\":true,\"issues\":[]}'::jsonb"
-                ),
+                nullable=True,
+                server_default=sa.text("'{}'::jsonb"),
             ),
+        )
+        op.execute(sa.text("""
+            UPDATE scenario_versions
+            SET validation_report = '{"backfilled":true,"issues":[]}'::jsonb
+            WHERE validation_report IS NULL
+               OR validation_report = '{}'::jsonb
+        """))
+        op.alter_column(
+            "scenario_versions",
+            "validation_report",
+            existing_type=postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
         )
 
     if not _column_exists("scenario_versions", "content_hash"):

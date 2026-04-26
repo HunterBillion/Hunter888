@@ -345,7 +345,13 @@ class ScenarioVersion(Base):
     )
     validation_report: Mapped[dict] = mapped_column(
         JSONB, nullable=False,
-        server_default=sa.text("'{\"backfilled\":true,\"issues\":[]}'::jsonb"),
+        # Empty JSONB default — real values come from the publisher
+        # (PR C2) or from the migration backfill UPDATE (20260426_003).
+        # We don't put the full `{"backfilled":true,...}` literal here
+        # because sqlalchemy.text() interprets `:true` as a bind-param
+        # marker and substitutes NULL → invalid JSON. Backfill writes
+        # the real flag.
+        server_default=sa.text("'{}'::jsonb"),
     )
 
     __table_args__ = (
