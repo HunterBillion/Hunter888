@@ -506,10 +506,11 @@ export default function DashboardPage() {
                                     </td>
                                     <td className="px-5 py-4">
                                       <motion.button
-                                        onClick={() => router.push(`/profile?user=${m.id}`)}
+                                        onClick={() => router.push(`/dashboard/team/${m.id}`)}
                                         className="flex items-center gap-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                                         style={{ color: "var(--accent)" }}
                                         whileHover={{ x: 3 }}
+                                        title="Изучить как методолог"
                                       >
                                         <ArrowRight size={14} />
                                       </motion.button>

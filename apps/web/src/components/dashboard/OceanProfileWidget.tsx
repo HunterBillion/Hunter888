@@ -69,17 +69,29 @@ function TraitBar({ traitKey, trait }: { traitKey: string; trait: OceanTrait }) 
   );
 }
 
-export function OceanProfileWidget() {
-  const [data, setData] = useState<OceanData | null>(null);
-  const [loading, setLoading] = useState(true);
+interface Props {
+  /** When provided, the widget renders this OCEAN payload directly and
+   * skips its own fetch. Lets callers (e.g. /dashboard/team/[id]) pass
+   * already-bundled data to avoid duplicate round-trips. */
+  initialData?: OceanData | null;
+}
+
+export function OceanProfileWidget({ initialData }: Props = {}) {
+  const [data, setData] = useState<OceanData | null>(initialData ?? null);
+  const [loading, setLoading] = useState(initialData === undefined);
 
   useEffect(() => {
+    if (initialData !== undefined) {
+      setData(initialData);
+      setLoading(false);
+      return;
+    }
     api
       .get("/gamification/me/ocean-profile")
       .then((resp) => setData(resp as OceanData))
       .catch(() => null)
       .finally(() => setLoading(false));
-  }, []);
+  }, [initialData]);
 
   if (loading) {
     return (
