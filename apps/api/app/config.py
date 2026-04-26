@@ -148,6 +148,27 @@ class Settings(BaseSettings):
     # emit failures are logged and the legacy write still commits.
     client_domain_strict_emit: bool = False
 
+    # ── TZ-2 §8 Phase 4 deferred guard flags (default OFF) ────────────────
+    # Each guard ships dark, then is enabled per-environment after 24h of
+    # observing ``runtime_blocked_starts_total`` on staging. Flip to True
+    # via env var (TZ2_GUARD_*_ENABLED=1) → restart api container.
+    #
+    # * lead_client_access — RBAC on session start. Already enforced inline
+    #   at api/training.py:464-475 today; the guard formalises it through
+    #   the engine + metrics. Keep OFF here (would double-check); flip ON
+    #   only after the inline check is removed.
+    # * session_uniqueness — refuses a 2nd active session on the same
+    #   (user, real_client). Catches duplicate-tab races. Default OFF
+    #   because pilot users sometimes legitimately reopen a hung tab.
+    # * runtime_status — refuses to finalize a session that is already
+    #   terminal. Belt-and-suspenders to completion_policy idempotent skip.
+    # * projection_safe_commit — refuses to finalize when the LeadClient
+    #   target is missing/archived (would crash projector mid-finalize).
+    tz2_guard_lead_client_access_enabled: bool = False
+    tz2_guard_session_uniqueness_enabled: bool = False
+    tz2_guard_runtime_status_enabled: bool = False
+    tz2_guard_projection_safe_commit_enabled: bool = False
+
     # ── Phase 1 (Roadmap) ConversationCompletionPolicy flags ──────────────
     # When False (default during rollout): legacy terminal side-effect
     # blocks still own the writes; policy only VALIDATES + stamps the new

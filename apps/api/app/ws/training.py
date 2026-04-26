@@ -4554,6 +4554,55 @@ async def _handle_session_end(
         await _send_error(ws, v.message, v.code)
         return
 
+    # Phase 4 end-guards (deferred). Each behind a feature flag (default
+    # OFF); when enabled, refuse the WS finalize on the same conditions
+    # the REST end handler refuses (status not active, projection target
+    # missing/archived). Same record_blocked_start call so the SRE
+    # dashboard counts both transports under one bucket per guard.
+    from app.config import settings as _ws_settings
+    if (
+        _ws_settings.tz2_guard_runtime_status_enabled
+        or _ws_settings.tz2_guard_projection_safe_commit_enabled
+    ):
+        from app.services.runtime_metrics import record_blocked_start
+        async with async_session() as guard_db:
+            guard_session = await guard_db.get(TrainingSession, session_id)
+            if guard_session is not None:
+                if _ws_settings.tz2_guard_runtime_status_enabled:
+                    from app.services.runtime_guard_engine import evaluate_runtime_status_guard
+                    rs_v = evaluate_runtime_status_guard(session=guard_session)
+                    if rs_v is not None:
+                        record_blocked_start(
+                            guard_code=rs_v.code,
+                            mode=state_mode,
+                            runtime_type=(
+                                state.get("runtime_type")
+                                if isinstance(state, dict) else None
+                            ),
+                            phase="end",
+                        )
+                        await _send_error(ws, rs_v.message, rs_v.code)
+                        return
+                if _ws_settings.tz2_guard_projection_safe_commit_enabled:
+                    from app.services.runtime_guard_engine import (
+                        evaluate_projection_safe_commit_guard,
+                    )
+                    proj_v = await evaluate_projection_safe_commit_guard(
+                        guard_db, session=guard_session,
+                    )
+                    if proj_v is not None:
+                        record_blocked_start(
+                            guard_code=proj_v.code,
+                            mode=state_mode,
+                            runtime_type=(
+                                state.get("runtime_type")
+                                if isinstance(state, dict) else None
+                            ),
+                            phase="end",
+                        )
+                        await _send_error(ws, proj_v.message, proj_v.code)
+                        return
+
     # Save call_outcome + promises to session before scoring so L5/L9 can read it
     call_outcome = state.get("call_outcome")
     try:
