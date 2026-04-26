@@ -10,7 +10,6 @@ import {
   ChevronUp,
   ChevronDown,
   FileBarChart,
-  Star,
 } from "lucide-react";
 import {
   UsersThree,
@@ -26,7 +25,7 @@ import {
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { isManager } from "@/lib/guards";
+import { isAdmin, isManager } from "@/lib/guards";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { BackButton } from "@/components/ui/BackButton";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
@@ -55,18 +54,13 @@ import { logger } from "@/lib/logger";
 import dynamic from "next/dynamic";
 import { DashboardSkeleton as WikiFallback } from "@/components/ui/Skeleton";
 
-const WikiDashboard = dynamic(
-  () => import("@/components/dashboard/WikiDashboard").then((m) => m.WikiDashboard),
-  { loading: () => <WikiFallback />, ssr: false }
-);
-
 const ReportsDashboard = dynamic(
   () => import("@/components/dashboard/ReportsDashboard").then((m) => m.ReportsDashboard),
   { loading: () => <WikiFallback />, ssr: false }
 );
 
-const ReviewsAdmin = dynamic(
-  () => import("@/components/dashboard/ReviewsAdmin").then((m) => m.ReviewsAdmin),
+const MethodologyPanel = dynamic(
+  () => import("@/components/dashboard/MethodologyPanel").then((m) => m.MethodologyPanel),
   { loading: () => <WikiFallback />, ssr: false }
 );
 
@@ -77,7 +71,7 @@ const AuditLogPanel = dynamic(
 
 /* ─── Constants ──────────────────────────────────────────────────────────── */
 
-type TabId = "overview" | "analytics" | "team" | "tournament" | "activity" | "wiki" | "reports" | "reviews";
+type TabId = "overview" | "analytics" | "team" | "tournament" | "activity" | "methodology" | "reports";
 
 const TABS: { id: TabId; label: string; icon: any; adminOnly?: boolean }[] = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
@@ -85,9 +79,8 @@ const TABS: { id: TabId; label: string; icon: any; adminOnly?: boolean }[] = [
   { id: "team", label: "Команда", icon: UsersThree },
   { id: "tournament", label: "Турнир", icon: Trophy },
   { id: "activity", label: "Активность", icon: ShieldWarning },
-  { id: "wiki", label: "Wiki", icon: BookOpen },
+  { id: "methodology", label: "Методология", icon: BookOpen },
   { id: "reports", label: "Отчёты", icon: FileBarChart },
-  { id: "reviews", label: "Отзывы", icon: Star, adminOnly: true },
 ];
 
 const AVATAR_COLORS = [
@@ -702,10 +695,10 @@ export default function DashboardPage() {
                     </div>
                   )}
 
-                  {/* ═══════════ TAB: WIKI ══════════════════════════════════ */}
-                  {activeTab === "wiki" && (
+                  {/* ═══════════ TAB: METHODOLOGY (Методологи + Wiki + Reviews) ═══ */}
+                  {activeTab === "methodology" && (
                     <div>
-                      <WikiDashboard />
+                      <MethodologyPanel isAdminCaller={isAdmin(user)} />
                     </div>
                   )}
 
@@ -719,13 +712,6 @@ export default function DashboardPage() {
                           name: m.full_name || m.email,
                         }))}
                       />
-                    </div>
-                  )}
-
-                  {/* ═══════════ TAB: REVIEWS (admin only) ═════════════════ */}
-                  {activeTab === "reviews" && user?.role === "admin" && (
-                    <div>
-                      <ReviewsAdmin />
                     </div>
                   )}
 
