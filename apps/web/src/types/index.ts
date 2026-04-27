@@ -1150,8 +1150,100 @@ export interface ClientAttachment {
   status: string;
   ocr_status: string;
   classification_status: string;
+  // TZ-4 D1 lifecycle / pipeline fields (alembic 20260427_001).
+  // See spec §6.1.1 — four state machines; columns are NOT NULL on
+  // the DB but rendered optional here so older API responses
+  // (pre-D1 deploy) don't crash type-narrowing in components that
+  // already touch this type.
+  verification_status?: string | null;
+  duplicate_of?: string | null;
+  domain_event_id?: string | null;
+  call_attempt_id?: string | null;
   metadata?: Record<string, unknown> | null;
   created_at: string;
+}
+
+/** TZ-4 §7.3 — nine attachment Domain Events emitted by the
+ * `attachment_pipeline` service. Used by FE renderers that subscribe
+ * to the canonical event log (currently the timeline, future the
+ * sidebar live feed in D7). */
+export type AttachmentEventType =
+  | "attachment.uploaded"
+  | "attachment.linked"
+  | "attachment.duplicate_detected"
+  | "attachment.av_passed"
+  | "attachment.av_rejected"
+  | "attachment.ocr_completed"
+  | "attachment.classified"
+  | "attachment.verified"
+  | "attachment.rejected";
+
+/** TZ-4 §9.3 — four persona Domain Events emitted by `persona_memory`. */
+export type PersonaEventType =
+  | "persona.snapshot_captured"
+  | "persona.updated"
+  | "persona.slot_locked"
+  | "persona.conflict_detected";
+
+/** TZ-4 §8.4 — five knowledge Domain Events emitted by
+ * `knowledge_review_policy`. */
+export type KnowledgeEventType =
+  | "knowledge_item.created"
+  | "knowledge_item.updated"
+  | "knowledge_item.expired"
+  | "knowledge_item.reviewed"
+  | "knowledge_item.status_changed";
+
+/** TZ-4 §10 — single conversation policy event emitted per audit
+ * violation by `conversation_policy_engine`. Warn-only by default. */
+export type ConversationPolicyEventType = "conversation.policy_violation_detected";
+
+/** Exhaustive union of TZ-4 event types. Used by reducers that
+ * branch on `event_type` from a WS frame or REST event-list response. */
+export type Tz4DomainEventType =
+  | AttachmentEventType
+  | PersonaEventType
+  | KnowledgeEventType
+  | ConversationPolicyEventType;
+
+/** TZ-4 §6.4 — immutable per-session persona snapshot, exposed by
+ * future `/training/sessions/:id/snapshot` endpoint (not yet wired in
+ * D6 — type lives here so consumers can adopt it without editing
+ * this file later). */
+export interface SessionPersonaSnapshotView {
+  session_id: string;
+  lead_client_id: string | null;
+  persona_version: number;
+  address_form: "вы" | "ты" | "formal" | "informal" | "auto";
+  full_name: string;
+  gender: "male" | "female" | "other" | "unknown";
+  role_title: string | null;
+  tone: "neutral" | "friendly" | "formal" | "cautious" | "hostile";
+  captured_at: string;
+  captured_from: "real_client" | "home_preview" | "training_simulation" | "pvp" | "center";
+  mutation_blocked_count: number;
+}
+
+/** TZ-4 §8 admin review queue row, returned by
+ * `GET /admin/knowledge/queue`. Mirrors the backend
+ * `ReviewQueueItemResponse` schema. */
+export interface KnowledgeReviewQueueItem {
+  id: string;
+  title: string | null;
+  knowledge_status: "actual" | "disputed" | "outdated" | "needs_review";
+  expires_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  source_ref: string | null;
+}
+
+/** Response shape from `POST /admin/knowledge/{id}/review`. */
+export interface KnowledgeReviewActionResponse {
+  chunk_id: string;
+  knowledge_status: "actual" | "disputed" | "outdated" | "needs_review";
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  events_emitted: KnowledgeEventType[];
 }
 
 // 2026-04-23 Sprint 6 — GET /clients/{id} response includes the last

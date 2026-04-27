@@ -12,8 +12,11 @@ import {
   FileText,
   ArrowRightLeft,
   Shield,
+  ShieldCheck,
   Settings,
   Clock,
+  Copy,
+  Paperclip,
   Target,
   RotateCcw,
   Loader2,
@@ -165,9 +168,27 @@ export function ClientTimeline({ interactions }: ClientTimelineProps) {
                 item.metadata?.session_mode === "call" ? "call" : "chat";
               const declined = item.metadata?.declined === true;
 
-              const Icon = isTraining
-                ? Target
-                : ICON_MAP[item.interaction_type] || FileText;
+              // TZ-4 §13.4.1 — attachment system rows carry
+              // `metadata.attachment_id` (set by `attachment_pipeline.
+              // ingest_upload`). Detect them so the row can render
+              // a Paperclip + filename + duplicate/verified chip
+              // instead of a generic ⚙ Settings icon.
+              const attachmentId =
+                typeof item.metadata?.attachment_id === "string"
+                  ? (item.metadata.attachment_id as string)
+                  : null;
+              const isAttachment = !!attachmentId;
+              const attachmentFilename =
+                typeof item.metadata?.filename === "string"
+                  ? (item.metadata.filename as string)
+                  : null;
+              const isDuplicate = item.metadata?.duplicate_of != null;
+
+              const Icon = isAttachment
+                ? Paperclip
+                : isTraining
+                  ? Target
+                  : ICON_MAP[item.interaction_type] || FileText;
               const dateStr = new Date(item.created_at).toLocaleTimeString("ru-RU", {
                 hour: "2-digit",
                 minute: "2-digit",
@@ -179,13 +200,17 @@ export function ClientTimeline({ interactions }: ClientTimelineProps) {
                 item.duration_seconds &&
                 item.duration_seconds > 0;
 
-              const typeLabel = isTraining
-                ? declined
-                  ? "Отклонён звонок"
-                  : trainingMode === "call"
-                    ? "Тренировка (звонок)"
-                    : "Тренировка (чат)"
-                : TYPE_LABELS[item.interaction_type];
+              const typeLabel = isAttachment
+                ? isDuplicate
+                  ? "Документ (повтор)"
+                  : "Документ"
+                : isTraining
+                  ? declined
+                    ? "Отклонён звонок"
+                    : trainingMode === "call"
+                      ? "Тренировка (звонок)"
+                      : "Тренировка (чат)"
+                  : TYPE_LABELS[item.interaction_type];
 
               return (
                 <motion.div
@@ -247,6 +272,50 @@ export function ClientTimeline({ interactions }: ClientTimelineProps) {
                       <p className="text-xs mt-0.5 italic" style={{ color: "var(--text-muted)" }}>
                         Результат: {sanitizeText(item.result)}
                       </p>
+                    )}
+
+                    {/* TZ-4 §13.4.1 — attachment row badges. Render
+                        the filename + dedup/verification chips so the
+                        manager can scan the timeline without opening
+                        the attachments panel. */}
+                    {isAttachment && (
+                      <div className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
+                        {attachmentFilename && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono"
+                            style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}
+                            title={attachmentFilename}
+                          >
+                            <FileText size={9} />
+                            {sanitizeText(attachmentFilename)}
+                          </span>
+                        )}
+                        {isDuplicate && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5"
+                            style={{
+                              background: "color-mix(in srgb, var(--warning) 14%, transparent)",
+                              color: "var(--warning)",
+                            }}
+                            title="Файл с тем же sha256 уже был получен ранее"
+                          >
+                            <Copy size={9} />
+                            дубликат
+                          </span>
+                        )}
+                        {item.metadata?.verification_status === "verified" && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5"
+                            style={{
+                              background: "color-mix(in srgb, var(--success) 14%, transparent)",
+                              color: "var(--success)",
+                            }}
+                          >
+                            <ShieldCheck size={9} />
+                            проверен
+                          </span>
+                        )}
+                      </div>
                     )}
 
                     {item.manager_name && (
