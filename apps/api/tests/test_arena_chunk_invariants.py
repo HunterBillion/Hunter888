@@ -55,6 +55,13 @@ CANONICAL_CHUNK_COLUMNS: frozenset[str] = frozenset({
     "effectiveness_score", "last_used_at",
     # Timestamps
     "created_at", "updated_at",
+    # TZ-4 D1 KnowledgeItem extension (alembic 20260427_001) — see
+    # TZ-4 spec rev 2 §6.2.1. Added to allow-list so test_no_legal_
+    # chunk_drift_kwargs_in_app_code accepts these column names when
+    # D2/D4 services start writing them.
+    "source_type", "title", "jurisdiction",
+    "effective_from", "expires_at",
+    "reviewed_by", "reviewed_at", "source_ref",
 })
 
 

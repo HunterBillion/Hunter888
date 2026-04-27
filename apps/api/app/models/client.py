@@ -441,6 +441,50 @@ class Attachment(Base):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
 
+    # ── TZ-4 D1 lifecycle / pipeline fields (alembic 20260427_001) ──
+    # See TZ-4 spec rev 2 §6.1.1 for full field shape table.
+    #
+    # `call_attempt_id` — link to call_attempts when the file was
+    #   uploaded during a specific call. Nullable for chat / CRM card
+    #   uploads (no call context).
+    # `domain_event_id` — TZ-4 §6.1 mandatory linkage to canonical
+    #   event log. NULLable in this PR (D1) — orphan rows without a
+    #   lead_client_id can't get an event yet. D2's repair job links
+    #   them or hard-deletes; only after that promote to NOT NULL.
+    # `verification_status` — TZ-4 §7.1.1 separate state machine
+    #   (unverified → pending_review → verified | rejected_review).
+    #   Distinct from `status` — the four status fields don't mix
+    #   (§7.2 #3).
+    # `duplicate_of` — self-FK; non-null = this row is a duplicate
+    #   of another original. UNIQUE partial index on
+    #   (lead_client_id, sha256) WHERE duplicate_of IS NULL enforces
+    #   "one original per file per client" at the SQL layer (§7.2.6),
+    #   while still recording duplicates so the timeline doesn't lose
+    #   the resend (§7.2 #2).
+    # NB: no FK constraint on call_attempts — that table doesn't exist yet
+    # (TZ-1 §7.1 reserves the field, but the model lands later). When
+    # CallAttempt ships, add the FK via a follow-up alembic migration.
+    # Until then we store the UUID directly so the column is forward-
+    # compatible without a hard cross-table dependency.
+    call_attempt_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
+    domain_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("domain_events.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    verification_status: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default="unverified",
+    )
+    duplicate_of: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("attachments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     client: Mapped["RealClient"] = relationship(back_populates="attachments")
     uploader: Mapped["User"] = relationship("User", foreign_keys=[uploaded_by], lazy="selectin")
 

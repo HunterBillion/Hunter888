@@ -184,6 +184,17 @@ from app.models.lead_client import LeadClient
 from app.models.domain_event import DomainEvent
 from app.models.crm_projection import CrmTimelineProjectionState
 from app.models.persona_snapshot import PersonaSnapshot
+# TZ-4 D1 — canonical persona memory (alembic 20260427_001).
+# Coexists with the older PersonaSnapshot above (which is the TZ-1
+# PersonaSnapshot — different scope; see TZ-4 §6.6 coexistence rules).
+from app.models.persona import (
+    MemoryPersona,
+    SessionPersonaSnapshot,
+    ADDRESS_FORMS,
+    GENDERS,
+    TONES,
+    PERSONA_CAPTURED_FROM,
+)
 from app.models.ws_outbox import WsOutboxEvent, WsOutboxStatus
 from app.services.web_push import PushSubscription
 
@@ -380,4 +391,11 @@ __all__ = [
     "MorningDrillSession",
     # RAG v2 (Phase 3.10): legal_document was missing from Base.metadata
     "LegalDocument",
+    # TZ-4 D1 — persona memory (alembic 20260427_001)
+    "MemoryPersona",
+    "SessionPersonaSnapshot",
+    "ADDRESS_FORMS",
+    "GENDERS",
+    "TONES",
+    "PERSONA_CAPTURED_FROM",
 ]
