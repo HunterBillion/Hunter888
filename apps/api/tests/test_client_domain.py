@@ -56,6 +56,106 @@ def test_map_legacy_client_status_accepts_strings_and_none():
 # ── correlation_id fallback (TZ §15.1 invariant 4) ──────────────────────
 
 
+# ── ALLOWED_EVENT_TYPES catalog + runtime guard (TZ-4 §22 D1.1) ──────────
+
+
+def test_allowed_event_types_includes_tz4_canonical_set():
+    """TZ-4 spec §6/§22 enumerates 19 new event types across attachment,
+    knowledge_item, persona, and conversation namespaces. The frozenset must
+    carry every one — D2/D4/D5 producers depend on the runtime guard accepting
+    these literals.
+    """
+    from app.services.client_domain import ALLOWED_EVENT_TYPES
+
+    tz4_required = {
+        # §6.1 / §7 attachment pipeline (D2)
+        "attachment.uploaded",
+        "attachment.linked",
+        "attachment.duplicate_detected",
+        "attachment.av_passed",
+        "attachment.av_rejected",
+        "attachment.ocr_completed",
+        "attachment.classified",
+        "attachment.verified",
+        "attachment.rejected",
+        # §6.2 / §8 knowledge review (D4)
+        "knowledge_item.created",
+        "knowledge_item.updated",
+        "knowledge_item.expired",
+        "knowledge_item.status_changed",
+        "knowledge_item.reviewed",
+        # §6.3 / §6.4 persona (D3)
+        "persona.snapshot_captured",
+        "persona.updated",
+        "persona.conflict_detected",
+        "persona.slot_locked",
+        # §12 conversation policy (D5)
+        "conversation.policy_violation_detected",
+    }
+    missing = tz4_required - ALLOWED_EVENT_TYPES
+    assert not missing, (
+        "TZ-4 canonical event types missing from ALLOWED_EVENT_TYPES — "
+        "downstream PRs (D2/D3/D4/D5) will fail to emit:\n"
+        + "\n".join(sorted(missing))
+    )
+
+
+def test_allowed_event_types_rejects_known_typo():
+    """The whole point of the catalog is to catch ``attachements.uploaded``
+    (extra ``e``) — the spec calls this typo out by name in §22 footgun #5.
+    """
+    from app.services.client_domain import ALLOWED_EVENT_TYPES
+
+    assert "attachements.uploaded" not in ALLOWED_EVENT_TYPES
+    assert "attachment.uploaded" in ALLOWED_EVENT_TYPES
+
+
+@pytest.mark.asyncio
+async def test_emit_domain_event_raises_on_unknown_event_type(monkeypatch):
+    """Runtime guard for event_type variables that the AST scanner can't see
+    (forwarders, dynamic dispatch). A typo or an unregistered new type raises
+    ``UnknownDomainEventType`` instead of silently writing an orphan row.
+    """
+    from app.services import client_domain
+
+    # Even with persistence disabled, the check fires before any branch.
+    monkeypatch.setattr(
+        client_domain.settings, "client_domain_dual_write_enabled", False, raising=False
+    )
+
+    with pytest.raises(client_domain.UnknownDomainEventType) as excinfo:
+        await client_domain.emit_domain_event(
+            db=SimpleNamespace(),
+            lead_client_id=uuid.uuid4(),
+            event_type="attachements.uploaded",  # the typo from spec §22
+            actor_type="system",
+            actor_id=None,
+            source="unit_test",
+        )
+    assert "attachements.uploaded" in str(excinfo.value)
+    assert "ALLOWED_EVENT_TYPES" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_emit_domain_event_accepts_registered_type(monkeypatch):
+    """Sanity counterpart — a registered TZ-4 event type passes the guard."""
+    from app.services import client_domain
+
+    monkeypatch.setattr(
+        client_domain.settings, "client_domain_dual_write_enabled", False, raising=False
+    )
+
+    ev = await client_domain.emit_domain_event(
+        db=SimpleNamespace(),
+        lead_client_id=uuid.uuid4(),
+        event_type="attachment.uploaded",
+        actor_type="system",
+        actor_id=None,
+        source="unit_test",
+    )
+    assert ev.event_type == "attachment.uploaded"
+
+
 @pytest.mark.asyncio
 async def test_emit_domain_event_falls_back_to_session_id_for_correlation(monkeypatch):
     """Helper-side defense: when caller omits correlation_id, the session_id
