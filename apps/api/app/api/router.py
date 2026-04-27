@@ -128,3 +128,8 @@ api_router.include_router(client_domain_ops_router, tags=["client-domain-ops"])
 from app.api.pending_events import router as pending_events_router
 
 api_router.include_router(pending_events_router, tags=["pending-events"])
+
+# TZ-4 §8 — Knowledge review queue + manual review action (rop|admin)
+from app.api.admin_knowledge import router as admin_knowledge_router
+
+api_router.include_router(admin_knowledge_router)
