@@ -619,7 +619,15 @@ async def list_chunks(
     user: User = Depends(_require_methodologist),
     db: AsyncSession = Depends(get_db),
 ):
-    """List legal knowledge chunks with filters."""
+    """List legal knowledge chunks with filters.
+
+    Response keeps the legacy `title` / `content` / `article_reference`
+    aliases for the FE ArenaContentEditor (PR #47). Internally these
+    map to canonical ORM columns `law_article` / `fact_text` /
+    `law_article` (so a Pydantic schema would round-trip cleanly).
+    Once the FE migrates to canonical names (planned C5.1), drop the
+    aliases from the response shape.
+    """
     from app.models.rag import LegalKnowledgeChunk
 
     base = select(LegalKnowledgeChunk)
@@ -629,7 +637,13 @@ async def list_chunks(
     if difficulty:
         base = base.where(LegalKnowledgeChunk.difficulty_level == difficulty)
     if search:
-        base = base.where(LegalKnowledgeChunk.content.ilike(f"%{search}%"))
+        # Search the canonical column (`fact_text`) — the legacy code
+        # tried `LegalKnowledgeChunk.content.ilike(...)` which would
+        # raise AttributeError because the model has no `content` column.
+        # That code path was unreachable on the previous deploy because
+        # callers never sent ?search=…; now the bug is fixed and the
+        # endpoint works for search queries too.
+        base = base.where(LegalKnowledgeChunk.fact_text.ilike(f"%{search}%"))
 
     total_r = await db.execute(select(func.count()).select_from(base.subquery()))
     total = total_r.scalar() or 0
@@ -646,15 +660,24 @@ async def list_chunks(
         "items": [
             {
                 "id": str(c.id),
-                "title": getattr(c, "law_article", None) or str(c.id),
-                "content": (c.fact_text[:200] + "..." if len(c.fact_text) > 200 else c.fact_text) if c.fact_text else "",
+                # Canonical fields
+                "fact_text": c.fact_text,
+                "law_article": c.law_article,
+                # Legacy aliases for backward-compat with FE
+                # ArenaContentEditor (PR #47). Map to canonical columns.
+                "title": c.law_article or str(c.id),
+                "content": (c.fact_text[:200] + "...") if c.fact_text and len(c.fact_text) > 200 else (c.fact_text or ""),
+                "article_reference": c.law_article,
+                # Other canonical fields
                 "category": c.category.value if hasattr(c.category, 'value') else str(c.category),
-                "article_reference": getattr(c, "law_article", None),
+                "common_errors": list(c.common_errors or []),
+                "match_keywords": list(c.match_keywords or []),
+                "correct_response_hint": c.correct_response_hint,
                 "difficulty_level": getattr(c, "difficulty_level", 3),
                 "is_court_practice": getattr(c, "is_court_practice", False),
                 "court_case_reference": getattr(c, "court_case_reference", None),
-                "question_templates": getattr(c, "question_templates", []) or [],
-                "tags": getattr(c, "tags", []) or [],
+                "question_templates": list(c.question_templates or []),
+                "tags": list(c.tags or []),
                 "created_at": c.created_at.isoformat() if c.created_at else None,
             }
             for c in chunks
@@ -671,20 +694,32 @@ async def create_chunk(
     user: User = Depends(_require_methodologist),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new legal knowledge chunk."""
-    from app.models.rag import LegalKnowledgeChunk
+    """Create a new legal knowledge chunk.
 
-    chunk = LegalKnowledgeChunk(
-        title=data["title"],
-        content=data["content"],
-        category=data["category"],
-        article_reference=data.get("article_reference"),
-        difficulty_level=data.get("difficulty_level", 3),
-        is_court_practice=data.get("is_court_practice", False),
-        court_case_reference=data.get("court_case_reference"),
-        question_templates=data.get("question_templates", []),
-        tags=data.get("tags", []),
-    )
+    TZ-3 §12 / §14.5 fix: the previous implementation passed
+    `title=...` / `content=...` / `article_reference=...` kwargs to
+    the LegalKnowledgeChunk constructor — fields that DON'T EXIST on
+    the model. SQLAlchemy raised TypeError on every call. Now we
+    validate via the canonical `ArenaChunkCreateRequest` schema (which
+    accepts the legacy aliases as fallbacks but always emits canonical
+    column names via `.to_orm_kwargs()`).
+    """
+    from app.models.rag import LegalKnowledgeChunk
+    from app.schemas.rop import ArenaChunkCreateRequest
+
+    try:
+        payload = ArenaChunkCreateRequest.model_validate(data)
+        kwargs = payload.to_orm_kwargs()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "arena_chunk_invalid_payload",
+                "message": f"Некорректный payload: {exc}",
+            },
+        )
+
+    chunk = LegalKnowledgeChunk(**kwargs)
     db.add(chunk)
     await db.flush()
     await db.commit()
@@ -701,8 +736,17 @@ async def update_chunk(
     user: User = Depends(_require_methodologist),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a legal knowledge chunk."""
+    """Update a legal knowledge chunk.
+
+    Same canonical-vs-alias normalization as create. The previous
+    implementation iterated over `["title", "content", ...]` and
+    `setattr`'d those names onto the ORM row — silently no-op for the
+    fields that don't exist on the model (SQLAlchemy adds attribute
+    but doesn't persist). Drift was invisible until first read tried
+    to use the missing column.
+    """
     from app.models.rag import LegalKnowledgeChunk
+    from app.schemas.rop import ArenaChunkUpdateRequest
 
     result = await db.execute(
         select(LegalKnowledgeChunk).where(LegalKnowledgeChunk.id == chunk_id)
@@ -711,11 +755,20 @@ async def update_chunk(
     if not chunk:
         raise HTTPException(status_code=404, detail="Chunk not found")
 
-    for field in ["title", "content", "category", "article_reference",
-                  "difficulty_level", "is_court_practice", "court_case_reference",
-                  "question_templates", "tags"]:
-        if field in data:
-            setattr(chunk, field, data[field])
+    try:
+        payload = ArenaChunkUpdateRequest.model_validate(data)
+        updates = payload.to_orm_kwargs()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "arena_chunk_invalid_payload",
+                "message": f"Некорректный payload: {exc}",
+            },
+        )
+
+    for canonical_name, value in updates.items():
+        setattr(chunk, canonical_name, value)
 
     await db.commit()
     return {"id": str(chunk.id), "message": "Chunk updated"}
