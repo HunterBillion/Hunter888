@@ -27,6 +27,9 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Mic, MicOff } from "lucide-react";
 import { useSessionStore } from "@/stores/useSessionStore";
 import { PhoneCallMode } from "@/components/training/phone/PhoneCallMode";
+import { PersonaConflictBadge } from "@/components/persona/PersonaConflictBadge";
+import { PolicyViolationCounter } from "@/components/policy/PolicyViolationCounter";
+import { usePolicyStore } from "@/stores/usePolicyStore";
 import IncomingCallScreen from "@/components/training/phone/IncomingCallScreen";
 import ScriptDrawer from "@/components/training/ScriptDrawer";
 import { SessionAttachmentButton } from "@/components/training/SessionAttachmentButton";
@@ -73,6 +76,14 @@ export default function TrainingCallPage() {
   const id = (Array.isArray(params?.id) ? params?.id[0] : params?.id) as string;
 
   const s = useSessionStore();
+
+  // TZ-4 §13.4.1 — per-session audit state for the badge strip near
+  // the top of the call view. The store is fed by NotificationWS-
+  // Provider; this read subscribes to changes for *this* session id
+  // only (Zustand selector returns the same reference until the
+  // bucket actually changes), so other sessions in other tabs don't
+  // re-render this component.
+  const policySession = usePolicyStore((st) => (id ? st.bySession[id] : undefined));
 
   const [sceneBg, setSceneBg] = useState<string | null>(
     searchParams?.get("bg") || null,
@@ -1006,6 +1017,29 @@ export default function TrainingCallPage() {
           - tts still speaking: "Клиент говорит…" (info)
         Positioned below the teleprompter so it doesn't fight the avatar.
       */}
+      {/* TZ-4 §13.4.1 — audit signal badges. The PolicyViolationCounter
+          and PersonaConflictBadge components self-hide at zero, so
+          warn-only sessions with no violations look identical to the
+          legacy UI. The policy session state is hoisted into a
+          top-level hook (``policySession`` const above) to satisfy
+          the React Rules-of-Hooks. */}
+      {policySession && (
+        <div className="fixed top-[78px] left-0 right-0 z-30 flex justify-center gap-2 px-4 pointer-events-none">
+          <div className="pointer-events-auto">
+            <PolicyViolationCounter
+              severityCounts={policySession.bySeverity}
+              enforceActive={policySession.enforceActive}
+            />
+          </div>
+          <div className="pointer-events-auto">
+            <PersonaConflictBadge
+              count={policySession.personaConflicts}
+              lastAttemptedField={policySession.lastPersonaAttemptedField}
+            />
+          </div>
+        </div>
+      )}
+
       {(wsDead || sttError || !sttSupported) && (
         <div className="fixed top-[130px] left-0 right-0 z-30 flex justify-center px-4">
           {sttError && sttSupported && !wsDead ? (
