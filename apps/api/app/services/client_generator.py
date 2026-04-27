@@ -1627,6 +1627,65 @@ async def generate_client(
 # ══════════════════════════════════════════════════════════════════════
 
 
+async def persist_client_profile_from_dict(
+    *,
+    session_id: uuid.UUID,
+    profile_dict: dict,
+    db,
+):
+    """Persist a ClientProfile row from a dict (e.g. cached GeneratedProfile).
+
+    Used by `/home/start` (and any other start path that already holds a
+    pre-generated profile in some side cache) to make sure the persona
+    the user previewed is the persona the WS handler picks up. Without
+    this, the ws handler at apps/api/app/ws/training.py:3091-3105 falls
+    through to `generate_client_profile()` and invents a fresh client
+    from scratch, producing the visible "name on /home is Макаров,
+    name on /training is Васильев" drift the product owner reported.
+
+    Mirrors the field mapping used by `generate_client_profile` so both
+    code paths produce identical row shapes. Only the immediately-
+    relevant ClientProfile columns are populated; computed/optional
+    columns (profession_id, chain_id, etc.) stay at default.
+
+    Args:
+        session_id: UUID of the parent TrainingSession.
+        profile_dict: dict produced by ``dataclasses.asdict(generated_
+            profile)``. Missing keys fall back to ClientProfile column
+            defaults so the row inserts cleanly even with a partial
+            cache.
+        db: AsyncSession; flush() called but not commit().
+
+    Returns:
+        ClientProfile ORM instance (persisted, flushed but not committed).
+    """
+    from app.models.roleplay import ClientProfile
+
+    profile = ClientProfile(
+        session_id=session_id,
+        full_name=profile_dict.get("full_name", "Аноним"),
+        age=int(profile_dict.get("age", 30)),
+        gender=profile_dict.get("gender", "male"),
+        city=profile_dict.get("city", "Москва"),
+        archetype_code=profile_dict.get("archetype_code", "skeptic"),
+        education_level=profile_dict.get("education", "средне-специальное"),
+        total_debt=int(profile_dict.get("total_debt", 500_000)),
+        creditors=list(profile_dict.get("creditors") or []),
+        income=profile_dict.get("income"),
+        income_type=profile_dict.get("income_type", "official"),
+        property_list=list(profile_dict.get("property_list") or []),
+        fears=list(profile_dict.get("fears") or []),
+        soft_spot=profile_dict.get("soft_spot") or None,
+        breaking_point=profile_dict.get("breaking_point") or None,
+        trust_level=int(profile_dict.get("trust_level", 5)),
+        resistance_level=int(profile_dict.get("resistance_level", 5)),
+        lead_source=profile_dict.get("lead_source", "cold_base"),
+    )
+    db.add(profile)
+    await db.flush()
+    return profile
+
+
 async def generate_client_profile(
     *,
     session_id: uuid.UUID,
