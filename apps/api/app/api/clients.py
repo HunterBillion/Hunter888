@@ -62,12 +62,10 @@ from app.schemas.client import (
     ReminderResponse,
     SendNotificationRequest,
 )
+from app.services.attachment_pipeline import SOURCE_CRM_UPLOAD, ingest_upload
 from app.services.attachment_storage import (  # noqa: I001
     UnsupportedAttachmentType,
     MAX_ATTACHMENT_BYTES,
-    infer_document_type,
-    ocr_status_for,
-    store_attachment_bytes,
 )
 from app.services.audit import write_audit_log
 from app.services.recommendation_engine import RecommendationEngine, report_to_dict
@@ -90,7 +88,6 @@ from app.services.client_service import (
     update_client,
     verify_consent_token,
 )
-from app.services.client_domain import bind_attachment_to_lead_client, create_crm_interaction_with_event
 from app.services.next_best_action import build_next_best_action
 from app.ws.notifications import send_ws_notification
 
@@ -715,82 +712,21 @@ async def api_upload_attachment(
         raise HTTPException(status_code=413, detail=f"Файл больше {MAX_ATTACHMENT_BYTES // (1024 * 1024)} МБ")
 
     try:
-        stored = store_attachment_bytes(client_id=str(client.id), filename=file.filename, data=data)
+        result = await ingest_upload(
+            db,
+            client=client,
+            uploaded_by=user.id,
+            raw_bytes=data,
+            raw_filename=file.filename,
+            content_type=file.content_type,
+            source=SOURCE_CRM_UPLOAD,
+            session=session,
+            message_id=message_id,
+        )
     except UnsupportedAttachmentType as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
-    document_type = infer_document_type(stored.filename, file.content_type)
 
-    existing = (await db.execute(
-        select(Attachment)
-        .where(Attachment.client_id == client.id, Attachment.sha256 == stored.sha256)
-        .order_by(Attachment.created_at.asc())
-        .limit(1)
-    )).scalar_one_or_none()
-
-    attachment = Attachment(
-        uploaded_by=user.id,
-        client_id=client.id,
-        session_id=session_id,
-        message_id=message_id,
-        filename=stored.filename,
-        content_type=file.content_type,
-        file_size=stored.file_size,
-        sha256=stored.sha256,
-        storage_path=stored.storage_path,
-        public_url=stored.public_url,
-        document_type=document_type,
-        status="received",
-        ocr_status=ocr_status_for(document_type),
-        classification_status="pending",
-        metadata_={
-            "duplicate_of": str(existing.id) if existing else None,
-            "source": "crm_attachment_upload",
-            "original_filename": file.filename,
-        },
-    )
-    db.add(attachment)
-    await bind_attachment_to_lead_client(db, attachment=attachment, client=client)
-    await db.flush()
-
-    interaction, event = await create_crm_interaction_with_event(
-        db,
-        client=client,
-        manager_id=user.id,
-        interaction_type=InteractionType.system,
-        content=f"Получен файл: {stored.filename}",
-        result="attachment_received",
-        metadata={
-            "attachment_id": str(attachment.id),
-            "session_id": str(session_id) if session_id else None,
-            "message_id": str(message_id) if message_id else None,
-            "sha256": stored.sha256,
-            "document_type": document_type,
-            "ocr_status": attachment.ocr_status,
-            "classification_status": attachment.classification_status,
-        },
-        payload={
-            "attachment_id": str(attachment.id),
-            "session_id": str(session_id) if session_id else None,
-            "message_id": str(message_id) if message_id else None,
-            "sha256": stored.sha256,
-            "document_type": document_type,
-            "ocr_status": attachment.ocr_status,
-            "classification_status": attachment.classification_status,
-            "duplicate_of": str(existing.id) if existing else None,
-        },
-        event_type="session.attachment_linked",
-        source="api.clients",
-        actor_type="user",
-        actor_id=user.id,
-        session_id=session_id,
-        idempotency_key=f"attachment-link:{attachment.id}",
-    )
-
-    attachment.interaction_id = interaction.id
-    attachment.metadata_ = {
-        **(attachment.metadata_ or {}),
-        "domain_event_id": str(event.id),
-    }
+    attachment = result.attachment
     await write_audit_log(
         db,
         actor=user,
@@ -800,8 +736,9 @@ async def api_upload_attachment(
         new_values={
             "client_id": str(client.id),
             "session_id": str(session_id) if session_id else None,
-            "sha256": stored.sha256,
-            "filename": stored.filename,
+            "sha256": attachment.sha256,
+            "filename": attachment.filename,
+            "duplicate": result.is_duplicate,
         },
         request=request,
     )
