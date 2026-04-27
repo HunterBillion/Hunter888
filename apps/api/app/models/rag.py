@@ -145,6 +145,33 @@ class LegalKnowledgeChunk(Base):
         DateTime(timezone=True), onupdate=func.now(), nullable=True
     )
 
+    # ── TZ-4 D1 KnowledgeItem extension (alembic 20260427_001) ──
+    # See TZ-4 spec rev 2 §6.2.1. New fields nullable in D1; D4
+    # backfill populates `title` from `law_article` and sets defaults
+    # for source_type/jurisdiction. Cron in §8.3.1 reads `expires_at`
+    # to flip `actual → needs_review` (NEVER auto-flips to outdated —
+    # that requires manual reviewed_by per spec §8.3.1 critical rule).
+    source_type: Mapped[str | None] = mapped_column(
+        String(40), nullable=True, server_default="manual"
+    )
+    title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    jurisdiction: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, server_default="RU"
+    )
+    effective_from: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    source_ref: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+
 
 class ChunkUsageLog(Base):
     """Log of every RAG chunk retrieval and its outcome.
