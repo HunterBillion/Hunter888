@@ -31,6 +31,7 @@ from app.schemas.training import (
     TrapResultItem,
 )
 from app.schemas.client import AttachmentResponse
+from app.services import persona_memory
 from app.services.attachment_pipeline import SOURCE_TRAINING_UPLOAD, ingest_upload
 from app.services.attachment_storage import (
     MAX_ATTACHMENT_BYTES,
@@ -609,15 +610,14 @@ async def start_session(
         custom_params = custom_params or {}
         custom_params["session_mode"] = normalized_mode
 
-    if real_client is not None:
-        custom_params = custom_params or {}
-        custom_params["persona_snapshot"] = {
-            "client_id": str(real_client.id),
-            "full_name": real_client.full_name,
-            "source": real_client.source,
-            "debt_amount": str(real_client.debt_amount) if real_client.debt_amount is not None else None,
-            "captured_from": "real_client",
-        }
+    # NB: the legacy ``custom_params["persona_snapshot"]`` write that lived
+    # here was the root cause behind hotfix PR #55 — runtime read this dict
+    # for prompt assembly while ClientProfile was generated independently,
+    # so the session preview and the AI's perception of the client could
+    # diverge mid-flight. TZ-4 §9.1/§9.2 replaces it with
+    # ``SessionPersonaSnapshot`` populated by
+    # ``persona_memory.capture_for_session`` after the session row is in
+    # the DB (further down this handler, after ``db.flush()``).
 
     # Validate that scenario exists and is active.
     # Check both legacy `scenarios` table and new `scenario_templates` table
@@ -1000,6 +1000,37 @@ async def start_session(
             session_id=session.id,
             idempotency_key=f"session-linked:{session.id}",
         )
+
+        # TZ-4 §9 persona snapshot capture. Upserts the cross-session
+        # MemoryPersona (creates one on first contact, updates identity if
+        # the CRM card name changed since last session) and freezes the
+        # snapshot for this session. Failures are non-fatal: the FE
+        # already started the session and we don't want a snapshot bug
+        # to block sales work. Real failures fire the regression alarm
+        # via the missing snapshot row in monitoring.
+        try:
+            persona, _persona_event = await persona_memory.upsert_for_lead(
+                db,
+                lead_client_id=lead_client_id,
+                full_name=real_client.full_name or "Аноним",
+                actor_id=user.id,
+                source="api.training.session_start",
+            )
+            await persona_memory.capture_for_session(
+                db,
+                session=session,
+                captured_from=persona_memory.CAPTURED_FROM_REAL_CLIENT,
+                persona=persona,
+                actor_id=user.id,
+                source="api.training.session_start",
+            )
+        except Exception:  # pragma: no cover — defensive monitoring path
+            logger.exception(
+                "training.start: persona snapshot capture failed for "
+                "session=%s lead_client_id=%s — runtime will fall back to "
+                "real_client.full_name and the snapshot row will be missing",
+                session.id, lead_client_id,
+            )
 
     # Initialize Redis state and emotion (mirrors session_manager.start_session)
     try:
