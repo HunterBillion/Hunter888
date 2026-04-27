@@ -12,7 +12,7 @@ from app.core import errors as err
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.core.deps import require_role
-from app.models.client import Attachment, ClientInteraction, InteractionType, RealClient
+from app.models.client import ClientInteraction, InteractionType, RealClient
 from app.models.roleplay import ClientStory
 from app.models.training import AssignedTraining, Message, MessageRole, SessionStatus, TrainingSession
 from app.models.scenario import Scenario, ScenarioTemplate, ScenarioType, ScenarioVersion
@@ -31,12 +31,10 @@ from app.schemas.training import (
     TrapResultItem,
 )
 from app.schemas.client import AttachmentResponse
+from app.services.attachment_pipeline import SOURCE_TRAINING_UPLOAD, ingest_upload
 from app.services.attachment_storage import (
     MAX_ATTACHMENT_BYTES,
     UnsupportedAttachmentType,
-    infer_document_type,
-    ocr_status_for,
-    store_attachment_bytes,
 )
 from app.services.gamification import check_and_award_achievements
 from app.services.scoring import calculate_scores, generate_recommendations
@@ -48,7 +46,6 @@ from app.services.session_manager import (
 from app.services.emotion import init_emotion as sm_init_emotion
 from app.services.crm_followup import ensure_followup_for_session
 from app.services.client_domain import (
-    bind_attachment_to_lead_client,
     bind_session_to_lead_client,
     create_crm_interaction_with_event,
     emit_client_event,
@@ -1238,90 +1235,25 @@ async def upload_session_attachment(
             detail=f"Файл больше {MAX_ATTACHMENT_BYTES // (1024 * 1024)} МБ",
         )
 
+    session_mode = normalize_session_mode((session.custom_params or {}).get("session_mode")) or "chat"
     try:
-        stored = store_attachment_bytes(client_id=str(client.id), filename=file.filename, data=data)
+        result = await ingest_upload(
+            db,
+            client=client,
+            uploaded_by=user.id,
+            raw_bytes=data,
+            raw_filename=file.filename,
+            content_type=file.content_type,
+            source=SOURCE_TRAINING_UPLOAD,
+            session=session,
+            extra_metadata={"session_mode": session_mode},
+        )
     except UnsupportedAttachmentType as exc:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=str(exc),
         ) from exc
-    document_type = infer_document_type(stored.filename, file.content_type)
-
-    existing = (await db.execute(
-        select(Attachment)
-        .where(Attachment.client_id == client.id, Attachment.sha256 == stored.sha256)
-        .order_by(Attachment.created_at.asc())
-        .limit(1)
-    )).scalar_one_or_none()
-
-    session_mode = normalize_session_mode((session.custom_params or {}).get("session_mode")) or "chat"
-    attachment = Attachment(
-        uploaded_by=user.id,
-        client_id=client.id,
-        session_id=session.id,
-        message_id=None,
-        filename=stored.filename,
-        content_type=file.content_type,
-        file_size=stored.file_size,
-        sha256=stored.sha256,
-        storage_path=stored.storage_path,
-        public_url=stored.public_url,
-        document_type=document_type,
-        status="received",
-        ocr_status=ocr_status_for(document_type),
-        classification_status="pending",
-        metadata_={
-            "duplicate_of": str(existing.id) if existing else None,
-            "source": "training_session_upload",
-            "original_filename": file.filename,
-            "session_mode": session_mode,
-        },
-    )
-    db.add(attachment)
-    await bind_attachment_to_lead_client(db, attachment=attachment, client=client)
-    await db.flush()
-
-    interaction, event = await create_crm_interaction_with_event(
-        db,
-        client=client,
-        manager_id=user.id,
-        interaction_type=InteractionType.system,
-        content=f"Получен файл в сессии {session_mode}: {stored.filename}",
-        result="attachment_received",
-        metadata={
-            "attachment_id": str(attachment.id),
-            "training_session_id": str(session.id),
-            "session_mode": session_mode,
-            "sha256": stored.sha256,
-            "document_type": document_type,
-            "ocr_status": attachment.ocr_status,
-            "classification_status": attachment.classification_status,
-        },
-        payload={
-            "attachment_id": str(attachment.id),
-            "training_session_id": str(session.id),
-            "session_mode": session_mode,
-            "sha256": stored.sha256,
-            "document_type": document_type,
-            "ocr_status": attachment.ocr_status,
-            "classification_status": attachment.classification_status,
-            "duplicate_of": str(existing.id) if existing else None,
-        },
-        event_type="session.attachment_linked",
-        source="api.training",
-        actor_type="user",
-        actor_id=user.id,
-        session_id=session.id,
-        idempotency_key=f"session-attachment:{attachment.id}",
-    )
-
-    attachment.interaction_id = interaction.id
-    attachment.metadata_ = {
-        **(attachment.metadata_ or {}),
-        "domain_event_id": str(event.id),
-    }
-    await db.flush()
-    return attachment
+    return result.attachment
 
 
 @router.get("/sessions/{session_id}", response_model=SessionResultResponse)
