@@ -23,7 +23,7 @@ import httpx
 import openai
 
 from app.config import settings
-from app.services.conversation_policy import conversation_policy_prompt
+from app.services.conversation_policy_engine import render_prompt as _render_policy_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -2191,7 +2191,7 @@ async def generate_response(
             "Ты НЕ обязан сносить хамство."
         )
         full_system = _roleplay_behavior + "\n\n" + full_system
-        full_system = full_system + conversation_policy_prompt(session_mode)
+        full_system = full_system + _render_policy_prompt(mode=session_mode)
 
     # SAFETY NET: roleplay without character_prompt_path → inject minimal role
     # definition to prevent AI from playing the manager role (role reversal bug).
@@ -2581,7 +2581,7 @@ async def generate_response_stream(
         full_system = full_system + build_call_mode_modifier(_diff_s, tone=tone)
 
     if task_type == "roleplay":
-        full_system = full_system + conversation_policy_prompt(session_mode)
+        full_system = full_system + _render_policy_prompt(mode=session_mode)
 
     # ── Trim history — wider window in call mode (short replies, more turns matter) ──
     _history_cap = settings.llm_max_history_messages
