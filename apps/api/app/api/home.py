@@ -18,6 +18,7 @@ from app.database import get_db
 from app.models.scenario import Scenario
 from app.models.training import SessionStatus, TrainingSession
 from app.models.user import User
+from app.services import persona_memory
 from app.services.home_client_rotation import consume_waiting_client, get_waiting_client
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,12 @@ async def start_home_session(
     # (lines 3064-3076) picks it up and the persona stays consistent end-
     # to-end (the previewed persona == the persona shown in pre-training
     # screen == the persona the AI plays).
+    #
+    # TZ-4 §6.6 coexistence: ClientProfile holds AI-character behaviour
+    # (objections / traps / fears). Identity is also captured into a
+    # SessionPersonaSnapshot below so the prompt assembler reads identity
+    # from the snapshot, not from ClientProfile (closes the §9.2
+    # invariant 1 hole at the architectural level).
     profile_dict = client_data.get("profile") or {}
     if profile_dict:
         try:
@@ -133,6 +140,35 @@ async def start_home_session(
                 "for session=%s — runtime will fall back to "
                 "generate_client_profile and the previewed persona "
                 "will be lost",
+                session.id,
+            )
+
+    # TZ-4 §6.4 / §9 — freeze identity at session start so the prompt
+    # assembler cannot drift mid-session. ``home_preview`` sessions have
+    # no real CRM client, so we don't have a ``MemoryPersona`` to copy
+    # from — pass the previewed identity as ``fallback`` instead.
+    if profile_dict:
+        try:
+            await persona_memory.capture_for_session(
+                db,
+                session=session,
+                captured_from=persona_memory.CAPTURED_FROM_HOME_PREVIEW,
+                fallback=persona_memory.PersonaIdentity(
+                    full_name=str(profile_dict.get("full_name") or "Аноним"),
+                    gender=str(profile_dict.get("gender") or "unknown"),
+                    role_title=profile_dict.get("role_title"),
+                    address_form="auto",
+                    tone="neutral",
+                ),
+                actor_id=user.id,
+                source="api.home.session_start",
+            )
+        except Exception:
+            # Same regression-alarm strategy as the ClientProfile path
+            # above: log loudly, do not 500 the start.
+            logger.exception(
+                "home.start: persona snapshot capture failed for "
+                "session=%s — runtime will fall back to ClientProfile",
                 session.id,
             )
 
