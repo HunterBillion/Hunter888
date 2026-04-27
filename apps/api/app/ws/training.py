@@ -1627,6 +1627,38 @@ async def _generate_character_reply(
         db.add(api_log)
         await db.commit()
 
+        # TZ-4 D7.6 — conversation policy audit hook. Runs after the
+        # message is durably saved so a policy-engine outage cannot
+        # roll back the user's reply. Side-channel only: writes
+        # ``conversation.policy_violation_detected`` events + WS
+        # outbox frames + bumps SessionPersonaSnapshot.mutation_
+        # blocked_count when the audit catches an identity drift.
+        # Never raises into this handler — the hook catches its own
+        # exceptions and logs them.
+        try:
+            from app.services.conversation_audit_hook import (
+                audit_and_publish_assistant_reply,
+                previous_assistant_replies_from_history,
+            )
+            _session_mode = (state.get("session_mode") or "chat")
+            _user_id = state.get("user_id")
+            if _user_id is not None:
+                await audit_and_publish_assistant_reply(
+                    db,
+                    session_id=session_id,
+                    user_id=_user_id,
+                    reply=llm_result.content,
+                    previous_assistant_replies=
+                        previous_assistant_replies_from_history(messages, limit=5),
+                    mode=_session_mode,
+                )
+                await db.commit()
+        except Exception:
+            logger.exception(
+                "conversation_audit_hook crashed for session %s — swallowing",
+                session_id,
+            )
+
     # ─── V3 Emotion Engine with Trigger Detection ───
     new_emotion = current_emotion
     emotion_meta = {}

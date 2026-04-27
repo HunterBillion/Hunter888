@@ -4,6 +4,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { getToken } from "@/lib/auth";
 import { getWsBaseUrl } from "@/lib/public-origin";
 import { useNotificationStore, type NotificationItem } from "@/stores/useNotificationStore";
+import { usePolicyStore, type PolicySeverity } from "@/stores/usePolicyStore";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
 
@@ -157,6 +158,43 @@ export function NotificationWSProvider({ children }: { children: React.ReactNode
                 });
               }
               break;
+
+            // TZ-4 §10 / §13.4.1 — conversation policy audit fan-out.
+            // The hook in ws/training.py emits one frame per violation
+            // alongside a paired persona frame for identity-class
+            // codes; the store fans out per-session so multiple open
+            // tabs (e.g. PvP + CRM call) keep their counters separate.
+            case "conversation.policy_violation_detected": {
+              const sessionId = msg.data?.session_id;
+              const severity = msg.data?.severity as PolicySeverity | undefined;
+              if (typeof sessionId === "string" && severity) {
+                usePolicyStore
+                  .getState()
+                  .recordPolicyViolation(
+                    sessionId,
+                    severity,
+                    Boolean(msg.data?.enforce_active),
+                  );
+              }
+              break;
+            }
+
+            // TZ-4 §9.3 — paired persona conflict frame; bumps the
+            // dedicated badge counter and stashes the
+            // ``attempted_field`` for tooltip consumption.
+            case "persona.conflict_detected": {
+              const sessionId = msg.data?.session_id;
+              if (typeof sessionId === "string") {
+                const af = msg.data?.attempted_field;
+                usePolicyStore
+                  .getState()
+                  .recordPersonaConflict(
+                    sessionId,
+                    typeof af === "string" ? af : null,
+                  );
+              }
+              break;
+            }
 
             case "pong":
               break;
