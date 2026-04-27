@@ -104,6 +104,38 @@ async def start_home_session(
     db.add(session)
     await db.flush()
 
+    # Persist the previewed client persona as the session's ClientProfile.
+    # Without this, the WS handler at apps/api/app/ws/training.py:3091-3105
+    # falls into its "first connection — generate from scratch" branch and
+    # invents a NEW client (different name/city/debt) that overwrites what
+    # the user saw on /home. Reproducible on prod 2026-04-27. The fix mints
+    # a ClientProfile row so the WS handler's `existing_profile` branch
+    # (lines 3064-3076) picks it up and the persona stays consistent end-
+    # to-end (the previewed persona == the persona shown in pre-training
+    # screen == the persona the AI plays).
+    profile_dict = client_data.get("profile") or {}
+    if profile_dict:
+        try:
+            from app.services.client_generator import persist_client_profile_from_dict
+            await persist_client_profile_from_dict(
+                session_id=session.id,
+                profile_dict=profile_dict,
+                db=db,
+            )
+        except Exception:
+            # Defensive: if persistence fails (schema drift, FK race), log
+            # loudly but don't 500 the start — WS handler will generate-
+            # from-scratch as before. This branch is the regression alarm
+            # if it ever fires (zero ClientProfile rows for source=home
+            # sessions in monitoring = the fix is alive).
+            logger.exception(
+                "home.start: failed to persist previewed ClientProfile "
+                "for session=%s — runtime will fall back to "
+                "generate_client_profile and the previewed persona "
+                "will be lost",
+                session.id,
+            )
+
     # Initialize Redis state (same pattern as POST /training/sessions)
     try:
         from app.core.redis_pool import get_redis
