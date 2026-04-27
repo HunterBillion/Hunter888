@@ -165,6 +165,59 @@ def test_domain_event_carries_correlation_id_in_orm():
     )
 
 
+def test_emit_domain_event_event_types_are_allowlisted():
+    """Every literal ``event_type="…"`` passed to ``emit_domain_event`` must
+    appear in :data:`app.services.client_domain.ALLOWED_EVENT_TYPES`.
+
+    Why this exists: the DB column is plain TEXT and SQLAlchemy will happily
+    write ``"attachements.uploaded"`` (typo) — the row lands but no reader
+    knows to fetch it. Catching the typo at the call site (literal string)
+    is cheap; catching it after a deploy is expensive (silent data loss for
+    timeline / parity / NBA).
+
+    Dynamic call sites (``event_type=event_type`` forwarders, the typed-map
+    in ``game_director.py``) are intentionally skipped — they pass through
+    the runtime check inside ``emit_domain_event`` instead.
+    """
+    from app.services.client_domain import ALLOWED_EVENT_TYPES
+
+    offenders: list[str] = []
+    for file_path in _iter_python_files(APP_DIR):
+        rel = file_path.relative_to(APP_DIR.parent).as_posix()
+        try:
+            tree = ast.parse(file_path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = None
+            if isinstance(func, ast.Name):
+                name = func.id
+            elif isinstance(func, ast.Attribute):
+                name = func.attr
+            if name != "emit_domain_event":
+                continue
+            for kw in node.keywords:
+                if kw.arg != "event_type":
+                    continue
+                # Only validate string literals — variables / f-strings get
+                # the runtime check inside emit_domain_event.
+                if isinstance(kw.value, ast.Constant) and isinstance(
+                    kw.value.value, str
+                ):
+                    if kw.value.value not in ALLOWED_EVENT_TYPES:
+                        offenders.append(
+                            f"{rel}:{node.lineno} → {kw.value.value!r}"
+                        )
+    assert not offenders, (
+        "emit_domain_event called with an event_type not in "
+        "client_domain.ALLOWED_EVENT_TYPES — register the type there first:\n"
+        + "\n".join(offenders)
+    )
+
+
 def test_projection_metadata_keys_are_stable():
     """Frontend types rely on ``domain_event_id``/``schema_version``/
     ``projection_name``/``projection_version`` keys. Make sure the projector

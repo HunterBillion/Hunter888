@@ -55,6 +55,99 @@ from app.services.crm_timeline_projector import (
 logger = logging.getLogger(__name__)
 
 
+# ── Canonical event_type catalog (TZ-1 §15.1 + TZ-4 §6 / §22) ────────────────
+#
+# Every ``emit_domain_event`` call validates ``event_type`` against this
+# frozenset at runtime. New producers MUST register here before going live —
+# typos like ``"attachements.uploaded"`` (extra ``e``) would otherwise pass
+# string-typing untouched and silently produce orphan rows that timeline /
+# parity readers ignore.
+#
+# The AST guard ``test_emit_domain_event_event_types_are_allowlisted`` walks
+# every ``emit_domain_event(event_type="…")`` literal in the codebase and fails
+# the build if any string is missing from the set, so the catalog and the
+# call sites cannot drift.
+#
+# Categories:
+#   * lead_client.* / client.* — TZ-1 anchor lifecycle
+#   * crm.*, consent.*, reminder.*, notification.* — CRM timeline producers
+#   * session.*, training.*, story.* — training/PvP/scenario producers
+#   * game_crm.* — legacy game-CRM mirror via timeline_aggregator
+#   * persona.* — TZ-4 §6.3 / §6.4 (persona_memory + snapshot)
+#   * attachment.* — TZ-4 §6.1 / §7 (attachment_pipeline)
+#   * knowledge_item.* — TZ-4 §6.2 / §8 (knowledge_review_policy)
+#   * conversation.* — TZ-4 §12 (conversation_policy_engine)
+#   * arena.*, match.*, wiki.*, self_test.*, test.* — observability + arena
+ALLOWED_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        # ── TZ-1 anchor + CRM ─────────────────────────────────────────────
+        "lead_client.created",
+        "lead_client.archived",
+        "lead_client.lifecycle_changed",
+        "lead_client.work_state_changed",
+        "lead_client.profile_updated",
+        "client.status_changed",
+        "crm.interaction_logged",
+        "crm.reminder_created",
+        "consent.updated",
+        "consent.revoked",
+        "reminder.due",
+        "notification.new",
+        # ── Training / PvP / story ────────────────────────────────────────
+        "session.completed",
+        "session.ended",
+        "session.linked_to_client",
+        "session.attachment_linked",
+        "training.assigned",
+        "training.completed",
+        "training.real_case_logged",
+        "training.real_case_declined",
+        "story.lifecycle_changed",
+        # ── Legacy game-CRM mirror via timeline_aggregator ────────────────
+        "game_crm.callback_scheduled",
+        "game_crm.message_sent",
+        "game_crm.status_changed",
+        # ── Arena / matchmaking / wiki ────────────────────────────────────
+        "arena.weekly_digest",
+        "match.found",
+        "wiki.pattern_confirmed",
+        # ── Observability self-tests ──────────────────────────────────────
+        "self_test.ping",
+        "test.ping",
+        # ── TZ-4 §6.3/§6.4 persona ────────────────────────────────────────
+        "persona.snapshot_captured",
+        "persona.updated",
+        "persona.conflict_detected",
+        "persona.slot_locked",
+        # ── TZ-4 §6.1/§7 attachment pipeline (D2 producers) ───────────────
+        "attachment.uploaded",
+        "attachment.linked",
+        "attachment.duplicate_detected",
+        "attachment.av_passed",
+        "attachment.av_rejected",
+        "attachment.ocr_completed",
+        "attachment.classified",
+        "attachment.verified",
+        "attachment.rejected",
+        # ── TZ-4 §6.2/§8 knowledge review (D4 producers) ──────────────────
+        "knowledge_item.created",
+        "knowledge_item.updated",
+        "knowledge_item.expired",
+        "knowledge_item.status_changed",
+        "knowledge_item.reviewed",
+        # ── TZ-4 §12 conversation policy engine (D5 producer) ─────────────
+        "conversation.policy_violation_detected",
+    }
+)
+
+
+class UnknownDomainEventType(ValueError):
+    """Raised by ``emit_domain_event`` when the ``event_type`` is not in
+    :data:`ALLOWED_EVENT_TYPES`. Distinct exception class so call sites
+    (and tests) can catch it without swallowing real ``ValueError``s.
+    """
+
+
 # In-process Prometheus-style counter for DomainEvent emissions. Exposed in
 # text format via /admin/client-domain/metrics. Lives in the module so
 # every worker reports its own slice; aggregation happens at the scraper
@@ -272,6 +365,17 @@ async def emit_domain_event(
     causation_id: str | None = None,
     correlation_id: str | None = None,
 ) -> DomainEvent:
+    # TZ-1 §15.1 + TZ-4 §22 — guard against typo'd event_type strings. The DB
+    # column is plain TEXT, so a producer that writes ``"attachements.uploaded"``
+    # silently lands an orphan row that nothing reads. Raising here surfaces
+    # the typo at the call site instead. Register new types in
+    # ``ALLOWED_EVENT_TYPES`` (and update the AST guard catalog if needed).
+    if event_type not in ALLOWED_EVENT_TYPES:
+        raise UnknownDomainEventType(
+            f"event_type {event_type!r} is not registered in "
+            "client_domain.ALLOWED_EVENT_TYPES — add it before emitting."
+        )
+
     # TZ-1 §15.1 invariant 4 — correlation_id is required for timeline joins.
     # The helper guarantees it instead of relying on every caller to remember:
     # session_id → aggregate_id → lead_client_id are all valid anchors per the
