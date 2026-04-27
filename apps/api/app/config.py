@@ -169,6 +169,15 @@ class Settings(BaseSettings):
     tz2_guard_runtime_status_enabled: bool = False
     tz2_guard_projection_safe_commit_enabled: bool = False
 
+    # ── TZ-4 §10 / §12.3.1 Conversation Policy Engine ─────────────────────
+    # The engine ships in WARN-ONLY mode by default — every check produces
+    # a `conversation.policy_violation_detected` event for observability,
+    # but no message is blocked. The D7 cutover (after 7 days of warn-only
+    # data + FP rate < 5%) flips this flag to True per spec §12.3.1.
+    #
+    # Flip via env var CONVERSATION_POLICY_ENFORCE_ENABLED=1 + restart api.
+    conversation_policy_enforce_enabled: bool = False
+
     # ── Phase 1 (Roadmap) ConversationCompletionPolicy flags ──────────────
     # When False (default during rollout): legacy terminal side-effect
     # blocks still own the writes; policy only VALIDATES + stamps the new

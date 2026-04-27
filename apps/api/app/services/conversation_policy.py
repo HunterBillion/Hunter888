@@ -1,12 +1,42 @@
-"""Conversation policy rules shared by chat, call and center modes."""
+"""DEPRECATED — see :mod:`app.services.conversation_policy_engine`.
 
+Per TZ-4 §13.2.1 forbidden list, this module is preserved only as a
+thin deprecated facade for the duration of the warn-only window. The
+canonical implementation lives in
+``app.services.conversation_policy_engine`` and ships the full §10.2
+six-check surface; this module retains the legacy ``audit_assistant_
+reply`` signature so existing tests that import from here keep working
+during D5 → D7 migration.
+
+Removed in D5
+-------------
+
+* ``conversation_policy_prompt(mode)`` — DELETED. Spec §13.2.1
+  explicitly forbids the hard-coded RU prompt-text helper. Use
+  :func:`app.services.conversation_policy_engine.render_prompt`
+  instead, which accepts both ``mode`` and an optional ``snapshot``.
+
+Kept as wrapper
+---------------
+
+* :func:`audit_assistant_reply` — delegates to
+  :func:`engine.audit_assistant_reply` and downgrades the result to
+  the legacy :class:`ConversationPolicyResult` shape. Behaviour is
+  identical for the three legacy checks (``too_long_for_mode``,
+  ``near_repeat``, ``missing_next_step``) — the persona-aware checks
+  added in D5 don't fire from this entry point because the wrapper
+  doesn't accept a snapshot. Callers that need persona-aware checks
+  must import the engine directly.
+
+D7 cutover removes this module entirely.
+"""
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
-from difflib import SequenceMatcher
 
-from app.services.session_state import normalize_session_mode
+from app.services.conversation_policy_engine import (
+    audit_assistant_reply as _engine_audit,
+)
 
 
 @dataclass(frozen=True)
@@ -25,79 +55,40 @@ class ConversationPolicyResult:
         return not self.violations
 
 
-def conversation_policy_prompt(mode: object = None) -> str:
-    normalized_mode = normalize_session_mode(mode) or "chat"
-    length_rule = (
-        "Звонок/центр: отвечай 1-2 короткими фразами, без лекций."
-        if normalized_mode in {"call", "center"}
-        else "Чат: отвечай кратко, максимум 4 предложения, если пользователь не просит подробности."
-    )
-    terminal_rule = (
-        "В центре нельзя завершать без одного из исходов: договор согласован, договор не согласован, продолжить в другом звонке."
-        if normalized_mode == "center"
-        else "Не закрывай сценарий, если следующий шаг бизнес-логики ещё не зафиксирован."
-    )
-    return (
-        "\n\n## Conversation Policy Engine\n"
-        f"- {length_rule}\n"
-        "- Не повторяй вопрос, если факт уже был получен в предыдущих сообщениях.\n"
-        "- Каждая существенная реплика должна фиксировать один факт или вести к одному следующему шагу.\n"
-        "- Если не хватает данных, спроси только минимально нужный следующий вопрос.\n"
-        "- Не меняй имя, пол, роль или обращение клиента без явного обновления профиля.\n"
-        f"- {terminal_rule}\n"
-    )
-
-
-def _normalize_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text.strip().lower())
-
-
-def is_near_repeat(current: str, previous: str, *, threshold: float = 0.86) -> bool:
-    cur = _normalize_text(current)
-    prev = _normalize_text(previous)
-    if not cur or not prev:
-        return False
-    if cur == prev:
-        return True
-    return SequenceMatcher(None, cur, prev).ratio() >= threshold
-
-
 def audit_assistant_reply(
     *,
     reply: str,
     previous_assistant_replies: list[str] | None = None,
     mode: object = None,
 ) -> ConversationPolicyResult:
-    violations: list[PolicyViolation] = []
-    normalized_mode = normalize_session_mode(mode) or "chat"
-    text = _normalize_text(reply)
+    """Deprecated wrapper. Use
+    :func:`app.services.conversation_policy_engine.audit_assistant_reply`
+    instead — the engine version supports the three persona-aware
+    checks added in D5 (``persona_conflict``,
+    ``asked_known_slot_again``, ``unjustified_identity_change``) when
+    a snapshot/persona is supplied.
 
-    max_sentences = 3 if normalized_mode in {"call", "center"} else 5
-    sentence_count = len([s for s in re.split(r"[.!?]+", reply) if s.strip()])
-    if sentence_count > max_sentences:
-        violations.append(PolicyViolation(
-            code="too_long",
-            severity="medium",
-            message=f"Ответ слишком длинный для режима {normalized_mode}",
-        ))
+    The shim keeps callers compiling during the warn-only window;
+    behaviour is identical for the three legacy checks.
+    """
+    result = _engine_audit(
+        reply=reply,
+        previous_assistant_replies=previous_assistant_replies,
+        mode=mode,
+    )
+    legacy = [
+        PolicyViolation(
+            code=str(v.code),
+            severity=v.severity,
+            message=v.message,
+        )
+        for v in result.violations
+    ]
+    return ConversationPolicyResult(violations=legacy)
 
-    for previous in previous_assistant_replies or []:
-        if is_near_repeat(reply, previous):
-            violations.append(PolicyViolation(
-                code="near_repeat",
-                severity="high",
-                message="Ответ почти повторяет предыдущую реплику AI",
-            ))
-            break
 
-    if normalized_mode in {"chat", "center"} and text and not re.search(
-        r"(следующ|дальше|пришл|уточн|провер|созвон|перезвон|договор|решим|зафиксир)",
-        text,
-    ):
-        violations.append(PolicyViolation(
-            code="missing_next_step",
-            severity="low",
-            message="В ответе нет явного следующего шага",
-        ))
-
-    return ConversationPolicyResult(violations=violations)
+__all__ = [
+    "ConversationPolicyResult",
+    "PolicyViolation",
+    "audit_assistant_reply",
+]

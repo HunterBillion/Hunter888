@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Sequence
 
-from app.services.conversation_policy import audit_assistant_reply
+from app.services.conversation_policy_engine import (
+    audit_assistant_reply as _engine_audit,
+)
 from app.services.session_state import normalize_session_mode, normalize_session_outcome
 
 
@@ -62,21 +64,28 @@ def review_session_quality(session: Any, messages: Sequence[Any]) -> QualityRevi
             user_count += 1
         if role.endswith("assistant"):
             assistant_count += 1
-            audit = audit_assistant_reply(
+            audit = _engine_audit(
                 reply=content,
                 previous_assistant_replies=assistant_replies[-5:],
                 mode=mode,
             )
             assistant_replies.append(content)
             for violation in audit.violations:
+                # ``violation.code`` is a ``ViolationCode`` (str enum); the
+                # comparisons below work both pre and post D5 because the
+                # ``str`` mixin compares equal to the bare string. The
+                # ``too_long_for_mode`` code is the canonical TZ-4 §10.2
+                # name (legacy was ``too_long``); both forms are accepted
+                # here so a future fan-out doesn't silently miss the
+                # metric again.
                 if violation.code == "near_repeat":
                     repeat_count += 1
-                elif violation.code == "too_long":
+                elif violation.code in ("too_long_for_mode", "too_long"):
                     too_long_count += 1
                 elif violation.code == "missing_next_step":
                     missing_next_step_count += 1
                 findings.append(QualityFinding(
-                    code=violation.code,
+                    code=str(violation.code),
                     severity=violation.severity,
                     message=violation.message,
                     evidence={"message_index": idx},
