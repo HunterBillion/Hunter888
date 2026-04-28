@@ -470,3 +470,50 @@ async def test_record_conflict_attempt_emits_event_without_mutating_snapshot(mon
     assert captured[0]["payload"]["attempted_field"] == "full_name"
     assert captured[0]["payload"]["snapshot_value"] == "Каноничное Имя"
     assert "Подменное Имя" in captured[0]["payload"]["attempted_value_repr"]
+
+
+@pytest.mark.asyncio
+async def test_record_conflict_attempt_concurrent_calls_each_emit(monkeypatch):
+    """Audit-2026-04-28: two concurrent ``record_conflict_attempt``
+    callers should EACH emit a separate event (no idempotency dedup,
+    each "blocked mutation attempt" is a distinct datapoint per
+    §9.3). The counter UPDATE is composed via SQL ``+ 1`` so PG
+    handles concurrency at the row level.
+
+    The test mocks the DB so we're verifying the Python-side path:
+    no shared state collision, no double-counting in the captured
+    list, distinct idempotency_keys (UUID4 mixed in by the helper).
+    """
+    import asyncio
+
+    snapshot = SessionPersonaSnapshot(
+        session_id=uuid.uuid4(),
+        lead_client_id=uuid.uuid4(),
+        full_name="Конкурентный Тест",
+        gender="male",
+        captured_from="real_client",
+        persona_version=1,
+        mutation_blocked_count=0,
+    )
+    db = _make_db()
+    captured = _patch_emit(monkeypatch)
+
+    # Five gather'd calls — same shape as the §4.1 lesson test pattern.
+    results = await asyncio.gather(
+        *[
+            persona_memory.record_conflict_attempt(
+                db,
+                snapshot=snapshot,
+                attempted_field="full_name",
+                attempted_value=f"Подмена{i}",
+            )
+            for i in range(5)
+        ]
+    )
+
+    assert len(results) == 5
+    assert len(captured) == 5
+    # Each event must have a distinct idempotency_key — otherwise
+    # 4 of 5 would dedupe and the counter would lose datapoints.
+    keys = {c["idempotency_key"] for c in captured}
+    assert len(keys) == 5, "idempotency keys must be distinct across concurrent calls"

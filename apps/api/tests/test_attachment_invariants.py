@@ -52,6 +52,14 @@ STATUS_COLUMNS = frozenset(
         "ocr_status",
         "classification_status",
         "verification_status",
+        # Audit-2026-04-28 expansion: ``document_type`` is mutated only
+        # inside ``mark_classified``; ``duplicate_of`` + ``domain_event_id``
+        # are set by ``_emit_and_insert``. Adding them here makes a future
+        # PR that bypasses the pipeline fail the build instead of silently
+        # corrupting the dedup contract or the FK invariant.
+        "document_type",
+        "duplicate_of",
+        "domain_event_id",
     }
 )
 

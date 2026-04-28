@@ -5,11 +5,13 @@ from __future__ import annotations
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
+from typing import Iterable
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.client import Attachment, ClientInteraction, ClientStatus, ManagerReminder, RealClient
+from app.services.knowledge_review_policy import is_recommendation_safe
 
 
 @dataclass(frozen=True)
@@ -20,9 +22,54 @@ class NextBestAction:
     mode: str
     due_at: str | None = None
     payload: dict = field(default_factory=dict)
+    # TZ-4 §11.2.1 — when this NBA's reasoning leans on a knowledge
+    # chunk whose status is anything other than 'actual', the decision
+    # is still served (so managers don't see "no recommendation" if the
+    # whole legal base is mid-review) but flagged so the FE can render
+    # a "источник требует проверки" warning chip. Empty list = no
+    # knowledge dependency. ``outdated`` chunks are filtered out
+    # entirely upstream by :func:`filter_safe_knowledge_refs`.
+    requires_warning: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+# TZ-4 §11.2.1 layer 2 — NBA decision boundary filter
+def filter_safe_knowledge_refs(
+    chunks: Iterable[object],
+    *,
+    needs_warning_status: Iterable[str] = ("disputed", "needs_review"),
+) -> tuple[list[object], bool]:
+    """Filter a list of knowledge chunks for NBA consumption.
+
+    Per spec §11.2.1 the NBA decision boundary must drop ``outdated``
+    chunks entirely (parity with the SQL filter at
+    ``rag_legal.py:217``) AND surface a warning when surviving chunks
+    are in ``disputed`` / ``needs_review`` so the recommendation can
+    annotate ``requires_warning=True``.
+
+    Returns ``(safe_chunks, requires_warning)``. The caller decides
+    what to do with the warning flag — typical pattern is to set
+    ``NextBestAction(requires_warning=True)`` so the FE chip renders.
+
+    Today no NBA path actually consumes legal knowledge (verified
+    2026-04-28); this filter ships ready so the next PR that wires
+    knowledge refs into a recommendation has a single import target
+    instead of re-deriving §11.2.1 inline.
+    """
+    safe: list[object] = []
+    needs_warning = False
+    warning_set = set(needs_warning_status)
+    for chunk in chunks:
+        status = getattr(chunk, "knowledge_status", None) or "actual"
+        if not is_recommendation_safe(status):
+            # outdated → dropped
+            continue
+        if status in warning_set:
+            needs_warning = True
+        safe.append(chunk)
+    return safe, needs_warning
 
 
 def _iso(dt: datetime | None) -> str | None:

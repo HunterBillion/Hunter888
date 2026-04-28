@@ -117,13 +117,15 @@ async def get_client_persona_memory(
 
     persona_view: MemoryPersonaView | None = None
     if lead_client_id is not None:
-        persona = (
-            await db.execute(
-                select(MemoryPersona).where(
-                    MemoryPersona.lead_client_id == lead_client_id
-                )
-            )
-        ).scalar_one_or_none()
+        # Audit-2026-04-28 dedup: re-use the canonical lookup from
+        # ``persona_memory.get_for_lead`` instead of re-implementing
+        # the SELECT inline. Three different callsites used to do the
+        # same query; consolidating to one helper means a future filter
+        # (soft-delete column, schema-version filter, ...) lands once.
+        from app.services import persona_memory
+        persona = await persona_memory.get_for_lead(
+            db, lead_client_id=lead_client_id
+        )
         if persona is not None:
             persona_view = MemoryPersonaView(
                 id=persona.id,

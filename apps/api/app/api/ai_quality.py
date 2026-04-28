@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import uuid
 from collections import Counter, defaultdict
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
@@ -144,14 +145,7 @@ async def get_ai_quality_summary(
 
     severity_counts: Counter[str] = Counter()
     code_counts: Counter[str] = Counter()
-    by_manager_raw: dict[
-        uuid.UUID | None, dict[str, object]
-    ] = defaultdict(lambda: {
-        "total": 0,
-        "persona_conflicts": 0,
-        "by_severity": Counter(),
-        "manager_name": None,
-    })
+    by_manager_raw: dict[uuid.UUID | None, _ManagerBucket] = defaultdict(_ManagerBucket)
     recent: list[RecentEvent] = []
 
     policy_total = 0
@@ -187,13 +181,13 @@ async def get_ai_quality_summary(
         # signal, doesn't belong in a "watch list" rollup).
         if ev.event_type != "persona.slot_locked":
             bucket = by_manager_raw[manager_id]
-            bucket["total"] = int(bucket["total"]) + 1  # type: ignore[arg-type]
+            bucket.total += 1
             if ev.event_type == "persona.conflict_detected":
-                bucket["persona_conflicts"] = int(bucket["persona_conflicts"]) + 1  # type: ignore[arg-type]
+                bucket.persona_conflicts += 1
             if isinstance(severity, str):
-                bucket["by_severity"][severity] += 1  # type: ignore[index]
+                bucket.by_severity[severity] += 1
             if manager_name:
-                bucket["manager_name"] = manager_name
+                bucket.manager_name = manager_name
 
         # Recent feed — bounded slice so the response stays small.
         if len(recent) < recent_limit:
@@ -214,14 +208,14 @@ async def get_ai_quality_summary(
     by_manager = [
         ManagerBreakdown(
             manager_id=mid,
-            manager_name=str(b["manager_name"]) if b["manager_name"] else None,
-            total=int(b["total"]),  # type: ignore[arg-type]
-            persona_conflicts=int(b["persona_conflicts"]),  # type: ignore[arg-type]
+            manager_name=b.manager_name,
+            total=b.total,
+            persona_conflicts=b.persona_conflicts,
             by_severity=SeverityBreakdown(
-                low=b["by_severity"].get("low", 0),  # type: ignore[union-attr]
-                medium=b["by_severity"].get("medium", 0),  # type: ignore[union-attr]
-                high=b["by_severity"].get("high", 0),  # type: ignore[union-attr]
-                critical=b["by_severity"].get("critical", 0),  # type: ignore[union-attr]
+                low=b.by_severity.get("low", 0),
+                medium=b.by_severity.get("medium", 0),
+                high=b.by_severity.get("high", 0),
+                critical=b.by_severity.get("critical", 0),
             ),
         )
         for mid, b in by_manager_raw.items()
@@ -252,6 +246,24 @@ async def get_ai_quality_summary(
         by_manager=by_manager,
         recent=recent,
     )
+
+
+@dataclass
+class _ManagerBucket:
+    """Internal aggregation accumulator for the per-manager rollup.
+
+    Replaced the previous ``dict[uuid.UUID | None, dict[str, object]]``
+    shape that needed nine ``# type: ignore`` comments because the
+    union type inhibited inference. Typed dataclass eliminates them
+    AND makes the eventual SQL-side ``GROUP BY`` migration a
+    straight one-line replacement (build the dataclass from the row
+    tuple instead of folding in Python).
+    """
+
+    total: int = 0
+    persona_conflicts: int = 0
+    by_severity: Counter[str] = field(default_factory=Counter)
+    manager_name: str | None = None
 
 
 def _empty_summary(
