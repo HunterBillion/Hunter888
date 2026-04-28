@@ -118,7 +118,11 @@ services:
       - frontend
       - backend
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80/health"]
+      # Use 127.0.0.1 explicitly — `localhost` resolves to ::1 in this
+      # image and nginx only listens on 0.0.0.0:80, so wget fails with
+      # "Connection refused" → the container shows "unhealthy" forever
+      # despite serving real traffic correctly.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:80/health"]
       interval: 10s
       timeout: 5s
       retries: 3
