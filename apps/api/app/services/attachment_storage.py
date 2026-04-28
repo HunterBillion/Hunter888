@@ -69,7 +69,11 @@ def infer_document_type(filename: str, content_type: str | None) -> str:
 
 
 def ocr_status_for(document_type: str) -> str:
-    return "pending" if document_type in {"pdf", "image"} else "not_required"
+    """B1 — return spec §7.1.1-canonical ``ocr_pending`` instead of the
+    legacy ``pending`` (which was ambiguous with ``classification_pending``
+    when readers looked at both columns). Existing rows are migrated by
+    alembic ``20260427_004``."""
+    return "ocr_pending" if document_type in {"pdf", "image"} else "not_required"
 
 
 def reject_disallowed_extension(filename: str | None) -> str:

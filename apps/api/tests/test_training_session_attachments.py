@@ -85,8 +85,9 @@ async def test_upload_session_attachment_delegates_to_pipeline(monkeypatch):
         storage_path="/tmp/x",
         document_type="pdf",
         status="received",
-        ocr_status="pending",
-        classification_status="pending",
+        # B1 §7.1.1 canonical naming.
+        ocr_status="ocr_pending",
+        classification_status="classification_pending",
         verification_status="unverified",
     )
 

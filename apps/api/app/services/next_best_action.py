@@ -138,7 +138,13 @@ async def build_next_best_action(
         .where(
             Attachment.client_id == client.id,
             Attachment.status == "received",
-            (Attachment.ocr_status == "pending") | (Attachment.classification_status == "pending"),
+            # B1 — accept BOTH spec-canonical (`ocr_pending` /
+            # `classification_pending`) and legacy (`pending`) forms
+            # during the migration window. Migration 20260427_004
+            # updates rows in place; this OR keeps NBA correct even if
+            # the migration runs after this code is deployed.
+            (Attachment.ocr_status.in_(["ocr_pending", "pending"]))
+            | (Attachment.classification_status.in_(["classification_pending", "pending"])),
         )
     )).scalar_one() or 0
 
