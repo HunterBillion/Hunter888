@@ -82,7 +82,13 @@ services:
       WHISPER__MODEL: Systran/faster-whisper-small
       WHISPER__LANGUAGE: ru
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      # The faster-whisper-server image is python-slim and ships
+      # without curl/wget. Probe via the bundled python interpreter.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3) or sys.exit(0)"
       interval: 10s
       timeout: 10s
       retries: 3
