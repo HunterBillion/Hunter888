@@ -23,7 +23,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail } from "lucide-react";
-import { BookOpen, Brain, Star, FileText, Database, Sliders, Stack, Shield } from "@phosphor-icons/react";
+import { BookOpen, Brain, Star, FileText, Database, Sliders, Stack, Shield, Sparkle } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
@@ -60,6 +60,11 @@ const KnowledgeReviewQueue = dynamic(
   { loading: () => <DashboardSkeleton />, ssr: false }
 );
 
+const AiQualityPanel = dynamic(
+  () => import("@/components/dashboard/methodology/AiQualityPanel").then((m) => m.AiQualityPanel),
+  { loading: () => <DashboardSkeleton />, ssr: false }
+);
+
 interface UserListItem {
   id: string;
   email: string;
@@ -77,6 +82,7 @@ type SubTab =
   | "arena"
   | "scenarios"
   | "knowledge_review"
+  | "ai_quality"
   | "scoring"
   | "wiki"
   | "reviews";
@@ -177,6 +183,11 @@ const SUB_TABS: { id: SubTab; label: string; icon: typeof BookOpen; adminOnly?: 
   // roles, so a pilot manager seeing the tab gets a 403 anyway —
   // hiding it preemptively keeps the nav uncluttered).
   { id: "knowledge_review", label: "Ревью знаний", icon: Shield },
+  // TZ-4 §13.4.1 — aggregate AI quality oversight. Lives here
+  // because the failure modes are about AI craft (policy violations,
+  // persona drift), not people-management (Команда tab keeps that
+  // focus). Backend gate: rop|admin.
+  { id: "ai_quality", label: "Качество AI", icon: Sparkle },
   { id: "scoring", label: "Скоринг", icon: Sliders },
   { id: "wiki", label: "Wiki", icon: BookOpen },
   { id: "reviews", label: "Отзывы", icon: Star, adminOnly: true },
@@ -196,6 +207,7 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
       "arena",
       "scenarios",
       "knowledge_review",
+      "ai_quality",
       "scoring",
       "wiki",
       "reviews",
@@ -265,6 +277,7 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
           {active === "arena" && <ArenaContentEditor />}
           {active === "scenarios" && <ScenariosEditor />}
           {active === "knowledge_review" && <KnowledgeReviewQueue />}
+          {active === "ai_quality" && <AiQualityPanel />}
           {active === "scoring" && <PlaceholderTab title="Скоринг" subtitle="Управление весами скоринговых слоёв (L1–L10) — в дорожной карте." />}
           {active === "wiki" && <WikiDashboard />}
           {active === "reviews" && isAdminCaller && <ReviewsAdmin />}

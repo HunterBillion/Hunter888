@@ -1246,6 +1246,57 @@ export interface KnowledgeReviewActionResponse {
   events_emitted: KnowledgeEventType[];
 }
 
+/** TZ-4 §13.4.1 — AI quality dashboard rollup, returned by
+ * `GET /admin/ai-quality/summary`. Powers the "Качество AI"
+ * sub-tab inside Методология. Mirrors the backend Pydantic model
+ * in `api/ai_quality.py`. */
+export interface AiQualitySeverity {
+  low: number;
+  medium: number;
+  high: number;
+  critical: number;
+}
+
+export interface AiQualityCodeCount {
+  code: string;
+  count: number;
+}
+
+export interface AiQualityManagerBreakdown {
+  manager_id: string | null;
+  manager_name: string | null;
+  total: number;
+  persona_conflicts: number;
+  by_severity: AiQualitySeverity;
+}
+
+export interface AiQualityRecentEvent {
+  event_id: string;
+  event_type: PersonaEventType | ConversationPolicyEventType;
+  code: string | null;
+  severity: "low" | "medium" | "high" | "critical" | null;
+  session_id: string | null;
+  manager_id: string | null;
+  manager_name: string | null;
+  occurred_at: string;
+  summary: string | null;
+}
+
+export interface AiQualitySummary {
+  window_days: number;
+  window_from: string;
+  window_to: string;
+  totals: {
+    policy_violations: number;
+    persona_conflicts: number;
+    slot_locked: number;
+  };
+  by_severity: AiQualitySeverity;
+  by_code: AiQualityCodeCount[];
+  by_manager: AiQualityManagerBreakdown[];
+  recent: AiQualityRecentEvent[];
+}
+
 // 2026-04-23 Sprint 6 — GET /clients/{id} response includes the last
 // completed training session with this client, so /clients/[id]/page.tsx
 // can render the RetrainWidget with actual score/duration/stage data.
