@@ -393,8 +393,8 @@ async def test_state_transitions_emit_canonical_events(monkeypatch):
         file_size=1,
         storage_path="/tmp/x.pdf",
         status="received",
-        ocr_status="pending",
-        classification_status="pending",
+        ocr_status="ocr_pending",
+        classification_status="classification_pending",
         verification_status="unverified",
     )
 
@@ -402,14 +402,16 @@ async def test_state_transitions_emit_canonical_events(monkeypatch):
     assert att.status == "received"  # unchanged — av_passed does not flip lifecycle
 
     await attachment_pipeline.mark_ocr_completed(_make_db(), attachment=att, extracted_chars=42)
-    assert att.ocr_status == "completed"
+    # B1 §7.1.1 canonical: terminal OCR state = ``ocr_done``.
+    assert att.ocr_status == "ocr_done"
     assert att.status == "received"  # still independent
 
     await attachment_pipeline.mark_classified(
         _make_db(), attachment=att, document_type="passport", confidence=0.9
     )
     assert att.document_type == "passport"
-    assert att.classification_status == "completed"
+    # B1 §7.1.1 canonical: terminal classification state = ``classified``.
+    assert att.classification_status == "classified"
     assert att.verification_status == "unverified"  # untouched
 
     await attachment_pipeline.mark_verified(_make_db(), attachment=att, reviewer_id=uuid.uuid4())
@@ -453,7 +455,7 @@ async def test_mark_av_rejected_writes_status_terminal(monkeypatch):
         storage_path="/tmp/virus",
         status="received",
         ocr_status="not_required",
-        classification_status="pending",
+        classification_status="classification_pending",  # B1 §7.1.1
         verification_status="unverified",
     )
 

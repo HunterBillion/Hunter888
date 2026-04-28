@@ -17,7 +17,10 @@ def test_document_type_and_ocr_status():
     assert infer_document_type("scan.pdf", "application/pdf") == "pdf"
     assert infer_document_type("photo.jpg", "image/jpeg") == "image"
     assert infer_document_type("creditors.xlsx", None) == "spreadsheet"
-    assert ocr_status_for("pdf") == "pending"
+    # B1 — ``ocr_status_for`` returns spec §7.1.1 canonical
+    # ``ocr_pending`` for OCR-eligible types and ``not_required`` for
+    # the rest.
+    assert ocr_status_for("pdf") == "ocr_pending"
     assert ocr_status_for("spreadsheet") == "not_required"
 
 

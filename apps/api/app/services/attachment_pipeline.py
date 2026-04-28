@@ -477,7 +477,9 @@ def _build_attachment_row(
         document_type=document_type,
         status="received",
         ocr_status=ocr_status_for(document_type),
-        classification_status="pending",
+        # B1 — spec §7.1.1 canonical ``classification_pending`` (was
+        # ``pending``). Migration ``20260427_004`` updates legacy rows.
+        classification_status="classification_pending",
         verification_status="unverified",
         duplicate_of=duplicate_of,
         domain_event_id=domain_event_id,
@@ -699,10 +701,10 @@ async def mark_ocr_completed(
     actor_id: uuid.UUID | None = None,
     source: str = SOURCE_OCR_WORKER,
 ) -> DomainEvent:
-    """OCR worker reports completion. ``ocr_status`` flips to ``completed``
-    even if zero characters were extracted — empty OCR is a valid result,
-    distinct from ``failed``."""
-    attachment.ocr_status = "completed"
+    """OCR worker reports completion. ``ocr_status`` flips to ``ocr_done``
+    (spec §7.1.1 canonical) even if zero characters were extracted —
+    empty OCR is a valid result, distinct from ``ocr_failed``."""
+    attachment.ocr_status = "ocr_done"
     payload: dict[str, Any] = {"attachment_id": str(attachment.id)}
     if extracted_chars is not None:
         payload["extracted_chars"] = extracted_chars
@@ -731,9 +733,12 @@ async def mark_classified(
 ) -> DomainEvent:
     """Classifier produced a ``document_type``. We update the row column
     too because downstream readers (NBA, ClientAttachments) join on
-    ``document_type`` rather than chasing the latest event payload."""
+    ``document_type`` rather than chasing the latest event payload.
+
+    B1 — terminal value is ``classified`` per spec §7.1.1 (replaces the
+    legacy ``completed`` token shared with ocr/lifecycle status)."""
     attachment.document_type = document_type
-    attachment.classification_status = "completed"
+    attachment.classification_status = "classified"
     payload: dict[str, Any] = {
         "attachment_id": str(attachment.id),
         "document_type": document_type,
