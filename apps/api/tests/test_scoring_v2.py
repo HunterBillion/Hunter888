@@ -28,32 +28,42 @@ class TestCommunication:
 
 
 class TestObjectionHandling:
-    def test_no_objections_full_score(self):
+    def test_no_objections_half_credit(self):
+        """When the conversation has no objections at all the scorer
+        awards half credit (the scenario was easy, not perfectly
+        handled). Pre-V3_RESCALE this branch returned full 25.0;
+        the V3_RESCALE = 0.75 + half-credit logic at scoring.py:349
+        sets the value to 9.375."""
         score, details = _score_objection_handling(
             user_messages=["Здравствуйте"],
             assistant_messages=["Добрый день"],
         )
-        assert score == 25.0
+        assert score == 9.375
         assert details["objections_found"] == 0
 
     def test_acknowledged_objection(self):
+        """``Я вас понимаю`` matches ACKNOWLEDGE_PATTERNS, setting
+        both ``heard`` and ``acknowledged``. Raw score = 10, after
+        V3_RESCALE = 0.75 → final 7.5."""
         score, details = _score_objection_handling(
             user_messages=["Я вас понимаю, давайте разберёмся"],
             assistant_messages=["Зачем мне это, у меня уже есть кредит"],
         )
-        assert score >= 10
+        assert score == 7.5
         assert details["heard"] is True
 
 
 class TestResult:
     def test_agreed_conversation(self):
+        """``Ладно, присылайте`` triggers ``consultation_agreed``.
+        Raw score 5 (agreed) × V3_RESCALE 0.75 = 3.75."""
         assistant_msgs = [
             "У меня строительная компания",
             "Какие условия?",
             "Ладно, присылайте предложение",
         ]
         score, details = _score_result(assistant_msgs, [])
-        assert score >= 5
+        assert score >= 3.75
         assert details["consultation_agreed"] is True
 
     def test_empty_scores_zero(self):
