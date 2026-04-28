@@ -73,12 +73,18 @@ const ACTION_META: Record<string, { label: string; icon: typeof Eye; color: stri
   change_status:     { label: "Смена статуса",      icon: Activity,  color: "var(--warning)" },
   merge_clients:     { label: "Объединение",        icon: GitMerge,  color: "var(--accent-hover)" },
   bulk_reassign:     { label: "Перераспределение",  icon: Shuffle,   color: "#F472B6" },
+  // TZ-4 D2 — attachment pipeline writes audit log on every upload
+  // (apps/api/app/api/clients.py:733). Surface here so the activity
+  // tab can filter document uploads alongside CRM actions.
+  upload_attachment: { label: "Загружен документ",  icon: FileCheck, color: "var(--accent)" },
 };
 
 const ENTITY_LABELS: Record<string, string> = {
   real_clients:        "Клиенты",
   client_consents:     "Согласия",
   client_interactions: "Взаимодействия",
+  // TZ-4 D2 entity surface — attachment pipeline write-audit rows.
+  attachments:         "Документы",
 };
 
 const ROLE_LABELS: Record<string, string> = {
