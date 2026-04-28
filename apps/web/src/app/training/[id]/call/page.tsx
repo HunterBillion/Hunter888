@@ -152,14 +152,12 @@ export default function TrainingCallPage() {
   // --- Mount guard: verify session_mode, hydrate store --------------------
   useEffect(() => {
     if (!id) return;
-    // eslint-disable-next-line no-console
-    console.log("[CALL] mount — id=", id);
+    logger.log("[CALL] mount — id=", id);
     let cancelled = false;
     (async () => {
       try {
         const meta = await api.get<SessionMeta>(`/training/sessions/${id}`);
-        // eslint-disable-next-line no-console
-        console.log("[CALL] meta fetched", meta);
+        logger.log("[CALL] meta fetched", meta);
         // TZ-2 §6.2 — read the canonical `mode` field first. The backend
         // schema (SessionResponse) now exposes it directly; legacy
         // `custom_params.session_mode` stays as a fallback so any pilot
@@ -356,8 +354,7 @@ export default function TrainingCallPage() {
     autoConnect: modeOk === true,
     onMessage: (data: WSMessage) => {
       if (!data.data || typeof data.data !== "object") data.data = {};
-      // eslint-disable-next-line no-console
-      console.log("[CALL]", data.type, data.data);
+      logger.log("[CALL]", data.type, data.data);
       switch (data.type) {
         case "auth.success":
         case "session.ready":
@@ -400,7 +397,7 @@ export default function TrainingCallPage() {
               duration_ms: data.data.duration_ms as number | undefined,
             });
           } else {
-            console.warn("[CALL] tts.audio received but audio_b64 missing/empty", {
+            logger.warn("[CALL] tts.audio received but audio_b64 missing/empty", {
               has_field: "audio_b64" in (data.data as object),
               len: typeof audioB64 === "string" ? audioB64.length : null,
             });
@@ -549,7 +546,7 @@ export default function TrainingCallPage() {
 
         case "client.hangup": {
           const canContinue = Boolean(data.data.call_can_continue);
-          console.log("[CALL] client.hangup received", {
+          logger.log("[CALL] client.hangup received", {
             reason: data.data.reason,
             canContinue,
           });
@@ -637,8 +634,7 @@ export default function TrainingCallPage() {
     if (sessionStartSentRef.current) return;
     if (!id) return;
     sessionStartSentRef.current = true;
-    // eslint-disable-next-line no-console
-    console.log("[CALL] sending session.start");
+    logger.log("[CALL] sending session.start");
     sendMessage({ type: "session.start", data: { session_id: id } });
   }, [connectionState, id, sendMessage, callAccepted]);
 
@@ -772,7 +768,7 @@ export default function TrainingCallPage() {
         onAccept={async () => {
           if (accepting || declining) return;
           setAccepting(true);
-          console.log("[CALL] accept-click: running unlock sequence");
+          logger.log("[CALL] accept-click: running unlock sequence");
           // Stop looping ringback + play one final pickup click.
           try { ringbackStopRef.current?.(); } catch { /* */ }
           // Re-run the 3-vector unlock — proven gesture-handler sequence.
@@ -792,7 +788,7 @@ export default function TrainingCallPage() {
               src.buffer = buf;
               src.connect(ctx.destination);
               src.start(0);
-              console.log("[CALL] unlock: AudioContext state =", ctx.state);
+              logger.log("[CALL] unlock: AudioContext state =", ctx.state);
               setTimeout(() => { try { ctx.close(); } catch { /* */ } }, 500);
             }
             // Vector 2: HTMLAudioElement via blob URL (CSP-safe).
@@ -808,15 +804,15 @@ export default function TrainingCallPage() {
             a.volume = 0.001;
             try {
               await a.play();
-              console.log("[CALL] unlock: HTMLAudio play() succeeded");
+              logger.log("[CALL] unlock: HTMLAudio play() succeeded");
             } catch (e) {
-              console.warn("[CALL] unlock: HTMLAudio play() failed:", e);
+              logger.warn("[CALL] unlock: HTMLAudio play() failed:", e);
             }
             URL.revokeObjectURL(url);
             // Vector 3: also poke tts.unlock() if pending.
             try { tts.unlock(); } catch { /* */ }
           } catch (e) {
-            console.warn("[CALL] unlock sequence error:", e);
+            logger.warn("[CALL] unlock sequence error:", e);
           }
           // Persist across refresh so F5 doesn't bounce back to incoming.
           try {
