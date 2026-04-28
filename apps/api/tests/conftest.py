@@ -14,11 +14,34 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY, JSONB, UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
 
-from app.database import Base, get_db
-from app.main import app
+# ─── Postgres → SQLite type shims ──────────────────────────────────────────
+# Models reference Postgres-only types (JSONB / ARRAY / UUID). Tests run
+# against in-memory SQLite, which can't compile those. Register dialect
+# overrides BEFORE app.main is imported so create_all() emits SQLite-safe
+# DDL — JSON for JSONB/ARRAY, CHAR(36) for UUID.
+
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_sqlite(type_, compiler, **kw):  # noqa: ARG001
+    return "JSON"
+
+
+@compiles(PG_ARRAY, "sqlite")
+def _compile_array_sqlite(type_, compiler, **kw):  # noqa: ARG001
+    return "JSON"
+
+
+@compiles(PG_UUID, "sqlite")
+def _compile_uuid_sqlite(type_, compiler, **kw):  # noqa: ARG001
+    return "CHAR(36)"
+
+
+from app.database import Base, get_db  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -28,9 +51,35 @@ from app.main import app
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 
+def _strip_pg_casts_from_defaults(metadata) -> None:
+    """Rewrite ``'<lit>'::jsonb`` server_defaults to plain SQL literals.
+
+    Models declare ``server_default=text("'{}'::jsonb")`` for Postgres.
+    SQLite doesn't know the ``::jsonb`` cast and rejects the DDL with
+    a syntax error. We strip the cast in-place on the metadata so
+    ``create_all`` emits ``DEFAULT '{}'`` — same effective value, just
+    untyped, which SQLite stores in a JSON column without complaint.
+    """
+    import re
+    from sqlalchemy import text as _sa_text
+    from sqlalchemy.sql.elements import TextClause
+
+    cast_re = re.compile(r"::\s*(jsonb|json|uuid|text|integer|boolean|timestamp(?:tz)?)", re.IGNORECASE)
+    for table in metadata.tables.values():
+        for col in table.columns:
+            sd = col.server_default
+            if sd is None:
+                continue
+            arg = getattr(sd, "arg", None)
+            if isinstance(arg, TextClause):
+                stripped = cast_re.sub("", str(arg))
+                col.server_default.arg = _sa_text(stripped)
+
+
 @pytest.fixture
 async def db_engine():
     """Create a fresh in-memory SQLite engine for each test."""
+    _strip_pg_casts_from_defaults(Base.metadata)
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
