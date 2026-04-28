@@ -17,6 +17,7 @@ import AuthLayout from "@/components/layout/AuthLayout";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { ClientTimeline } from "@/components/clients/ClientTimeline";
 import { ClientAttachments } from "@/components/clients/ClientAttachments";
+import { ClientMemorySection } from "@/components/clients/ClientMemorySection";
 // 2026-04-23 Sprint 6 — «deja-vu» widget на CRM-карточке при открытии
 // через ?retrain=...&from=... (пришёл с /results → "Повторить с клиентом").
 import { RetrainWidget } from "@/components/clients/RetrainWidget";
@@ -654,6 +655,12 @@ export default function ClientDetailPage() {
               readOnly={isReadOnly}
               onUploaded={refreshClientArtifacts}
             />
+
+            {/* TZ-4 §6.3 / §6.4 — persona memory + last snapshot +
+                event counts. Self-hides when there's nothing to show
+                (no lead anchor + no events) so the section doesn't
+                clutter the layout for fresh clients. */}
+            <ClientMemorySection clientId={id} />
 
             {/* Tags */}
             {(client.tags?.length ?? 0) > 0 && (

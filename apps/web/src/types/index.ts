@@ -1297,6 +1297,50 @@ export interface AiQualitySummary {
   recent: AiQualityRecentEvent[];
 }
 
+/** TZ-4 §6.3 / §6.4 — per-client persona memory read shape served
+ * by `GET /clients/{id}/persona-memory`. Drives the "Память клиента"
+ * card on the client detail page. */
+export interface MemoryPersonaView {
+  id: string;
+  lead_client_id: string;
+  full_name: string;
+  gender: string;
+  role_title: string | null;
+  address_form: string;
+  tone: string;
+  do_not_ask_again_slots: string[];
+  confirmed_facts: Record<
+    string,
+    { value: unknown; source?: string | null; confirmed_at?: string | null }
+  >;
+  version: number;
+  last_confirmed_at: string;
+  updated_at: string;
+}
+
+export interface SessionPersonaSnapshotPreview {
+  session_id: string;
+  full_name: string;
+  address_form: string;
+  captured_from: string;
+  captured_at: string;
+  mutation_blocked_count: number;
+}
+
+export interface ClientPersonaMemoryResponse {
+  real_client_id: string;
+  lead_client_id: string | null;
+  persona: MemoryPersonaView | null;
+  last_snapshot: SessionPersonaSnapshotPreview | null;
+  event_counts_window_days: number;
+  event_counts: {
+    snapshot_captured: number;
+    updated: number;
+    slot_locked: number;
+    conflict_detected: number;
+  };
+}
+
 // 2026-04-23 Sprint 6 — GET /clients/{id} response includes the last
 // completed training session with this client, so /clients/[id]/page.tsx
 // can render the RetrainWidget with actual score/duration/stage data.
