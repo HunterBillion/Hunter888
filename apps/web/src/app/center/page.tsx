@@ -44,13 +44,27 @@ export default function CenterPage() {
     setStartingId(scenarioId);
     setError(null);
     try {
-      // TZ-2 §6.2/6.3 — canonical mode + runtime_type + legacy fallback
+      // C1 fix: Центр-страница — это тренировочный сценарий ("одиночный
+      // звонок с фиксированным исходом"), не реальный CRM-call. Раньше
+      // FE отправлял source="center" + runtime_type="center_single_call"
+      // — это в backend через `derive_runtime_type` обязательно
+      // требовало `real_client_id` (см. `runtime_guard_engine.py:190`,
+      // guard `lead_client_required`). Без клиента кнопка валилась 400.
+      //
+      // Теперь шлём `source="training"` чтобы backend дерайвил
+      // `training_simulation` (симуляция без CRM-привязки), при этом
+      // `mode="center"` сохраняется — completion policy всё равно
+      // применит правила Центра (terminal outcome required, см.
+      // session_state.validate_terminal_outcome).
+      //
+      // Если в будущем сюда добавится client selector, тогда вернём
+      // source="center" + real_client_id, и derive вернёт
+      // `center_single_call` корректно.
       const session = await api.post<{ id: string }>("/training/sessions", {
         scenario_id: scenarioId,
         mode: "center",
-        runtime_type: "center_single_call",
         custom_session_mode: "center", // legacy compat
-        source: "center",
+        source: "training",
       });
       router.push(`/training/${session.id}/call`);
     } catch (err) {
