@@ -306,26 +306,31 @@ def _check_asked_known_slot(
         # appears, it's likely confirmation/recap, not a fresh ask.
         return None
 
-    triggers: dict[str, tuple[str, ...]] = {
-        "full_name": ("как вас зовут", "ваше им", "представьтес"),
-        "phone": ("ваш телефон", "номер телефона", "по какому номеру"),
-        "email": ("ваш e-mail", "ваша почта", "электронн"),
-        "city": ("в каком городе", "ваш город", "из какого города"),
-        "age": ("сколько вам лет", "ваш возраст"),
-        "gender": ("вы мужчина", "вы женщина"),
-        "role_title": ("кем вы прихо", "ваша роль"),
-        "total_debt": ("сколько вы должн", "размер долга", "ваш долг"),
-        "creditors": ("кому вы должн", "перед каким", "ваши кредитор"),
-        "income": ("ваш доход", "сколько зарабат"),
-        "income_type": ("официально работ", "ваш доход офиц"),
-        "family_status": ("вы женат", "вы замуж", "вы в браке"),
-        "children_count": ("сколько у вас детей"),
-        "property_status": ("ваше имущество", "у вас квартира"),
+    # Each value is a frozenset of question-phrase fragments. Frozenset
+    # (not tuple) eliminates the missing-trailing-comma footgun the
+    # previous tuple form had — a single-string tuple needs ``("foo",)``
+    # but a typo of ``("foo")`` made the entire entry a bare string.
+    # The previous code papered over it with an isinstance(str) → tuple
+    # promotion at the call site; using ``frozenset`` makes the typo
+    # impossible (a single-string set is still iterable).
+    triggers: dict[str, frozenset[str]] = {
+        "full_name": frozenset({"как вас зовут", "ваше им", "представьтес"}),
+        "phone": frozenset({"ваш телефон", "номер телефона", "по какому номеру"}),
+        "email": frozenset({"ваш e-mail", "ваша почта", "электронн"}),
+        "city": frozenset({"в каком городе", "ваш город", "из какого города"}),
+        "age": frozenset({"сколько вам лет", "ваш возраст"}),
+        "gender": frozenset({"вы мужчина", "вы женщина"}),
+        "role_title": frozenset({"кем вы прихо", "ваша роль"}),
+        "total_debt": frozenset({"сколько вы должн", "размер долга", "ваш долг"}),
+        "creditors": frozenset({"кому вы должн", "перед каким", "ваши кредитор"}),
+        "income": frozenset({"ваш доход", "сколько зарабат"}),
+        "income_type": frozenset({"официально работ", "ваш доход офиц"}),
+        "family_status": frozenset({"вы женат", "вы замуж", "вы в браке"}),
+        "children_count": frozenset({"сколько у вас детей"}),
+        "property_status": frozenset({"ваше имущество", "у вас квартира"}),
     }
     for slot_code in locked:
-        triggers_for_slot = triggers.get(slot_code, ())
-        if isinstance(triggers_for_slot, str):
-            triggers_for_slot = (triggers_for_slot,)
+        triggers_for_slot = triggers.get(slot_code, frozenset())
         if any(t in text for t in triggers_for_slot):
             return _violation(
                 ViolationCode.ASKED_KNOWN_SLOT_AGAIN,

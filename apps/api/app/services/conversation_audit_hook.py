@@ -189,13 +189,12 @@ async def _load_persona(
 ) -> MemoryPersona | None:
     if snapshot is None or snapshot.lead_client_id is None:
         return None
-    return (
-        await db.execute(
-            select(MemoryPersona).where(
-                MemoryPersona.lead_client_id == snapshot.lead_client_id
-            )
-        )
-    ).scalar_one_or_none()
+    # Re-use the canonical lookup from the persona service so a future
+    # filter (e.g. soft-delete column, schema-version filter) only
+    # needs to land in one place. Audit-2026-04-28 dedup pass.
+    return await persona_memory.get_for_lead(
+        db, lead_client_id=snapshot.lead_client_id
+    )
 
 
 async def _push_violations_to_ws(

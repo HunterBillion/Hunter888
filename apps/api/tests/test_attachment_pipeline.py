@@ -467,3 +467,48 @@ async def test_mark_av_rejected_writes_status_terminal(monkeypatch):
     assert att.verification_status == "unverified"  # not touched
     assert captured[0]["event_type"] == "attachment.av_rejected"
     assert captured[0]["payload"]["reason"] == "signature match: trojan"
+
+
+# ── mark_classified validation (audit-2026-04-28) ───────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mark_classified_rejects_empty_document_type(monkeypatch):
+    """A classifier worker that returned an empty string would
+    silently corrupt the row's ``document_type`` (replacing whatever
+    the intake heuristic guessed) and flag classification terminal.
+    The helper must refuse so the worker retries with a real value.
+    """
+    captured: list[dict] = []
+
+    async def _emit(db, **kwargs):
+        captured.append(kwargs)
+        return _make_event("attachment.classified")
+
+    monkeypatch.setattr(attachment_pipeline, "emit_domain_event", _emit)
+
+    att = Attachment(
+        id=uuid.uuid4(),
+        client_id=uuid.uuid4(),
+        lead_client_id=uuid.uuid4(),
+        filename="x.pdf",
+        sha256="a" * 64,
+        file_size=1,
+        storage_path="/tmp/x.pdf",
+        status="received",
+        ocr_status="ocr_pending",
+        classification_status="classification_pending",
+        verification_status="unverified",
+        document_type="image",
+    )
+
+    with pytest.raises(ValueError, match="document_type"):
+        await attachment_pipeline.mark_classified(
+            _make_db(),
+            attachment=att,
+            document_type="",
+        )
+
+    assert att.document_type == "image"
+    assert att.classification_status == "classification_pending"
+    assert captured == []

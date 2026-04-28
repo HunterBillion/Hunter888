@@ -736,7 +736,20 @@ async def mark_classified(
     ``document_type`` rather than chasing the latest event payload.
 
     B1 — terminal value is ``classified`` per spec §7.1.1 (replaces the
-    legacy ``completed`` token shared with ocr/lifecycle status)."""
+    legacy ``completed`` token shared with ocr/lifecycle status).
+
+    Audit-2026-04-28: refuse empty / blank ``document_type`` outright.
+    A classifier returning a blank string would silently overwrite the
+    row's previously-known ``document_type`` (from intake) and then
+    flag classification as terminal — downstream readers would see a
+    "classified" row with no class. Better to fail fast at the helper
+    so the worker retries instead.
+    """
+    if not document_type or not document_type.strip():
+        raise ValueError(
+            "mark_classified requires a non-empty document_type "
+            "(empty / blank values would corrupt downstream reads)"
+        )
     attachment.document_type = document_type
     attachment.classification_status = "classified"
     payload: dict[str, Any] = {

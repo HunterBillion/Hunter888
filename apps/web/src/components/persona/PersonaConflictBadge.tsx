@@ -21,6 +21,7 @@
  * D7 cutover wires the actual event source.
  */
 
+import { memo } from "react";
 import { ShieldAlert } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -42,7 +43,7 @@ interface PersonaConflictBadgeProps {
   onClick?: () => void;
 }
 
-export function PersonaConflictBadge({
+function PersonaConflictBadgeImpl({
   count,
   lastAttemptedField,
   compact = false,
@@ -75,3 +76,13 @@ export function PersonaConflictBadge({
     </Wrapper>
   );
 }
+
+/**
+ * Memoized export — props are primitive values (count + string |
+ * null + bool + onClick reference), so React.memo's default
+ * shallow compare keeps re-renders at zero unless the actual
+ * count/field/handler changes. Audit-2026-04-28: paired with
+ * ``useShallow`` selector in the call page so a WS frame for a
+ * different session in another tab doesn't bounce this badge.
+ */
+export const PersonaConflictBadge = memo(PersonaConflictBadgeImpl);

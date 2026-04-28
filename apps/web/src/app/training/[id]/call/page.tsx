@@ -30,6 +30,7 @@ import { PhoneCallMode } from "@/components/training/phone/PhoneCallMode";
 import { PersonaConflictBadge } from "@/components/persona/PersonaConflictBadge";
 import { PolicyViolationCounter } from "@/components/policy/PolicyViolationCounter";
 import { usePolicyStore } from "@/stores/usePolicyStore";
+import { useShallow } from "zustand/react/shallow";
 import IncomingCallScreen from "@/components/training/phone/IncomingCallScreen";
 import ScriptDrawer from "@/components/training/ScriptDrawer";
 import { SessionAttachmentButton } from "@/components/training/SessionAttachmentButton";
@@ -80,10 +81,26 @@ export default function TrainingCallPage() {
   // TZ-4 §13.4.1 — per-session audit state for the badge strip near
   // the top of the call view. The store is fed by NotificationWS-
   // Provider; this read subscribes to changes for *this* session id
-  // only (Zustand selector returns the same reference until the
-  // bucket actually changes), so other sessions in other tabs don't
-  // re-render this component.
-  const policySession = usePolicyStore((st) => (id ? st.bySession[id] : undefined));
+  // only. Audit-2026-04-28: project to a flat object via ``useShallow``
+  // so the call page only re-renders when THIS session's counters
+  // actually change. The naive ``state.bySession[id]`` selector
+  // returned the same reference across calls but didn't help when
+  // ``recordPolicyViolation`` rebuilt the bucket via spread —
+  // ``useShallow`` compares by primitive fields instead.
+  const policySession = usePolicyStore(
+    useShallow((st) => {
+      if (!id) return null;
+      const bucket = st.bySession[id];
+      if (!bucket) return null;
+      return {
+        total: bucket.total,
+        bySeverity: bucket.bySeverity,
+        personaConflicts: bucket.personaConflicts,
+        lastPersonaAttemptedField: bucket.lastPersonaAttemptedField,
+        enforceActive: bucket.enforceActive,
+      };
+    }),
+  );
 
   const [sceneBg, setSceneBg] = useState<string | null>(
     searchParams?.get("bg") || null,

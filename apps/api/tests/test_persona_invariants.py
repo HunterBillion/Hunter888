@@ -149,6 +149,59 @@ def _snapshot_attribute_assignments(path: Path) -> list[tuple[int, str]]:
     return hits
 
 
+def _memory_persona_attribute_assignments(path: Path) -> list[tuple[int, str]]:
+    """Find ``persona.<slot_or_version> = ...`` writes that bypass the
+    ``persona_memory`` service. The audit hook touched these fields
+    directly in some draft code; this guard makes sure no future PR
+    writes them outside the canonical helpers (``upsert_for_lead`` /
+    ``lock_slot``) which bump ``version`` + emit the right event.
+    """
+    mutable_fields = {
+        "do_not_ask_again_slots",
+        "confirmed_facts",
+        "version",
+        "source_profile_version",
+        "last_confirmed_at",
+    }
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except SyntaxError:
+        return []
+    hits: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if not isinstance(target, ast.Attribute):
+                continue
+            if target.attr not in mutable_fields:
+                continue
+            if isinstance(target.value, ast.Name) and target.value.id == "persona":
+                hits.append((node.lineno, target.attr))
+    return hits
+
+
+def test_memory_persona_slot_writes_are_gated_through_service():
+    """``persona.do_not_ask_again_slots`` / ``confirmed_facts`` /
+    ``version`` are only mutated by ``persona_memory.lock_slot`` /
+    ``upsert_for_lead``. Any other writer would bypass the §9.2.5
+    optimistic-concurrency token bump or the event emission contract.
+    """
+    offenders: list[str] = []
+    for file_path in _iter_python_files(APP_DIR):
+        rel = file_path.relative_to(APP_DIR.parent).as_posix()
+        if rel in ALLOWED_PERSONA_WRITERS:
+            continue
+        for line, attr in _memory_persona_attribute_assignments(file_path):
+            offenders.append(f"{rel}:{line} → persona.{attr} = ...")
+    assert not offenders, (
+        "Direct mutation of MemoryPersona slot / version field outside "
+        "the canonical service. Use persona_memory.lock_slot or "
+        "upsert_for_lead so the version bump + canonical event emit "
+        "happens atomically:\n" + "\n".join(offenders)
+    )
+
+
 def test_session_persona_snapshot_has_no_update_sites():
     """No code outside the service may write to a snapshot's identity
     fields after INSERT — that would defeat §9.2 invariant 1.

@@ -382,3 +382,69 @@ def test_previous_assistant_replies_skips_empty_strings():
     ]
     out = hook.previous_assistant_replies_from_history(history)
     assert out == ["Реальная реплика"]
+
+
+@pytest.mark.asyncio
+async def test_audit_hook_home_preview_snapshot_no_persona(monkeypatch):
+    """Audit-2026-04-28: home_preview sessions have a snapshot but
+    ``snapshot.lead_client_id IS NULL`` so MemoryPersona lookup
+    returns None. Snapshot-aware checks fire; persona-aware skip.
+    """
+    snapshot = SessionPersonaSnapshot(
+        session_id=uuid.uuid4(),
+        lead_client_id=None,
+        full_name="Превью Имя",
+        gender="female",
+        address_form="вы",
+        tone="neutral",
+        captured_from="home_preview",
+        persona_version=1,
+        mutation_blocked_count=0,
+    )
+    db = _make_db(snapshot=snapshot, persona=None)
+    captured = _capture_outbound(monkeypatch)
+
+    await hook.audit_and_publish_assistant_reply(
+        db,
+        session_id=snapshot.session_id,
+        user_id=uuid.uuid4(),
+        reply="Скажи, ты в каком городе живёшь?",
+        mode="chat",
+    )
+
+    codes = [e["payload"]["code"] for e in captured["events"]]
+    assert "unjustified_identity_change" in codes
+    assert "asked_known_slot_again" not in codes
+
+
+@pytest.mark.asyncio
+async def test_audit_hook_swallow_drift_record_failure(monkeypatch):
+    """Audit-2026-04-28: if record_conflict_attempt raises, the
+    policy event MUST still emit + WS push goes — drift counter is
+    observability, losing it must not propagate to WS handler."""
+    snapshot = _snapshot(address_form="вы")
+    db = _make_db(snapshot=snapshot)
+    captured = _capture_outbound(monkeypatch)
+
+    async def _boom(*_a, **_kw):
+        raise RuntimeError("simulated drift counter failure")
+
+    from app.services import persona_memory
+    monkeypatch.setattr(persona_memory, "record_conflict_attempt", _boom)
+
+    n = await hook.audit_and_publish_assistant_reply(
+        db,
+        session_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        reply="Скажи, ты будешь платить?",
+        mode="chat",
+    )
+
+    # The reply triggers >=1 violation; what matters for this test is
+    # that the drift-recorder failure didn't propagate to the caller.
+    assert n >= 1
+    assert captured["conflicts"] == []
+    codes = [e["payload"]["code"] for e in captured["events"]]
+    assert "unjustified_identity_change" in codes
+    outbox_types = [o["event_type"] for o in captured["outbox"]]
+    assert "conversation.policy_violation_detected" in outbox_types

@@ -19,6 +19,7 @@
  *     visual placement and the D7 cutover wires the event source.
  */
 
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, Bell } from "lucide-react";
 
@@ -54,7 +55,7 @@ interface PolicyViolationCounterProps {
   onClick?: () => void;
 }
 
-export function PolicyViolationCounter({
+function PolicyViolationCounterImpl({
   severityCounts,
   enforceActive = false,
   onClick,
@@ -110,3 +111,11 @@ export function PolicyViolationCounter({
     </Wrapper>
   );
 }
+
+/**
+ * Memoized export. ``severityCounts`` is an object so the default
+ * shallow compare won't help if a new dict is built every render —
+ * the call page uses ``useShallow`` upstream to flatten the bucket
+ * into stable primitives, which keeps this memo effective.
+ */
+export const PolicyViolationCounter = memo(PolicyViolationCounterImpl);
