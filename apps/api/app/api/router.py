@@ -139,3 +139,9 @@ api_router.include_router(admin_knowledge_router)
 from app.api.ai_quality import router as ai_quality_router
 
 api_router.include_router(ai_quality_router)
+
+# TZ-4 §6.3/§6.4 — per-client persona memory read endpoint, drives
+# the "Память клиента" card on the client detail page.
+from app.api.persona_view import router as persona_view_router
+
+api_router.include_router(persona_view_router)
