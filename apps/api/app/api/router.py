@@ -133,3 +133,9 @@ api_router.include_router(pending_events_router, tags=["pending-events"])
 from app.api.admin_knowledge import router as admin_knowledge_router
 
 api_router.include_router(admin_knowledge_router)
+
+# TZ-4 §13.4.1 — AI quality dashboard (rop|admin); aggregates
+# conversation_policy / persona_conflict signals over a rolling window.
+from app.api.ai_quality import router as ai_quality_router
+
+api_router.include_router(ai_quality_router)
