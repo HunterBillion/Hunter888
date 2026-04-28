@@ -470,10 +470,15 @@ class Attachment(Base):
         UUID(as_uuid=True),
         nullable=True,
     )
-    domain_event_id: Mapped[uuid.UUID | None] = mapped_column(
+    # Promoted to NOT NULL in alembic 20260427_003 (D7.3) once the
+    # pipeline was refactored to emit-first + insert-with-FK-pre-set.
+    # The annotation reflects the post-D7.3 state; the migration
+    # backfills any residual orphans from older deploy paths
+    # (e.g. dev environments seeded before D1).
+    domain_event_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("domain_events.id", ondelete="RESTRICT"),
-        nullable=True,
+        nullable=False,
         index=True,
     )
     verification_status: Mapped[str] = mapped_column(

@@ -199,7 +199,14 @@ async def ingest_upload(
     if extra_metadata:
         base_metadata.update(extra_metadata)
 
-    attachment, is_duplicate, original_id = await _insert_with_dedup(
+    # D7.3 emit-first refactor: the upload event is emitted INSIDE
+    # ``_insert_with_dedup`` and the attachment is INSERTed with
+    # ``domain_event_id`` already set, so the row never sits with
+    # NULL FK in the DB. The savepoint that wraps emit + insert
+    # rolls both back together on a dedup-race ``IntegrityError``,
+    # so we never leave an orphan event referring to an attachment
+    # that didn't make it.
+    attachment, is_duplicate, original_id, upload_event = await _insert_with_dedup(
         db,
         client=client,
         lead_id=lead.id,
@@ -211,21 +218,13 @@ async def ingest_upload(
         content_type=content_type,
         document_type=document_type,
         base_metadata=base_metadata,
-    )
-
-    upload_event = await _emit_upload_event(
-        db,
-        attachment=attachment,
-        lead_id=lead.id,
-        uploaded_by=uploaded_by,
         source=source,
-        session=session,
-        message_id=message_id,
-        is_duplicate=is_duplicate,
-        original_id=original_id,
     )
+    # The post-insert metadata patch keeps the legacy shape that
+    # previous PRs encoded into payloads + audit logs. The FK is
+    # already set; this is just bookkeeping for downstream readers
+    # that look at metadata.domain_event_id directly.
     if is_event_persisted(upload_event):
-        attachment.domain_event_id = upload_event.id
         if attachment.metadata_ is None:
             attachment.metadata_ = {}
         attachment.metadata_ = {
@@ -276,19 +275,124 @@ async def _insert_with_dedup(
     content_type: str | None,
     document_type: str,
     base_metadata: dict[str, Any],
-) -> tuple[Attachment, bool, uuid.UUID | None]:
-    """Insert the attachment row, resolving the dedup race with a single
-    re-select on IntegrityError.
+    source: str,
+) -> tuple[Attachment, bool, uuid.UUID | None, DomainEvent]:
+    """Emit upload event + INSERT attachment as a single atomic unit.
 
-    Returns ``(attachment, is_duplicate, original_id)`` where
-    ``original_id`` is the id of the existing original when the new row is
-    a duplicate, otherwise ``None``.
+    D7.3 emit-first refactor: the attachment row is INSERTed with
+    ``domain_event_id`` already pointing at the freshly-emitted
+    ``attachment.uploaded`` (or ``attachment.duplicate_detected``)
+    event. The row therefore never sits with a NULL FK in the DB,
+    which lets D7.3's migration promote ``attachments.domain_event_id``
+    to NOT NULL.
+
+    Both writes happen inside a single ``begin_nested()`` savepoint.
+    On a dedup-race ``IntegrityError`` (the partial UNIQUE index
+    ``uq_attachments_client_sha256_orig`` rejected our INSERT because
+    another writer became the original first) the savepoint rolls
+    BOTH the event AND the attachment INSERT back together — no
+    orphan event in the canonical log.
+
+    Returns ``(attachment, is_duplicate, original_id, upload_event)``.
+    The event is the persisted one (or a transient stub when
+    ``client_domain_dual_write_enabled`` is False — the ``is_event_
+    persisted`` check downstream still applies).
     """
     existing_original = await _find_original(db, lead_id=lead_id, sha256=stored.sha256)
-
     duplicate_of: uuid.UUID | None = (
         existing_original.id if existing_original is not None else None
     )
+
+    try:
+        async with db.begin_nested():
+            attachment, upload_event = await _emit_and_insert(
+                db,
+                client=client,
+                lead_id=lead_id,
+                uploaded_by=uploaded_by,
+                session=session,
+                message_id=message_id,
+                call_attempt_id=call_attempt_id,
+                stored=stored,
+                content_type=content_type,
+                document_type=document_type,
+                duplicate_of=duplicate_of,
+                base_metadata=base_metadata,
+                source=source,
+            )
+    except IntegrityError:
+        # Race: another writer won the partial UNIQUE index while we
+        # were between SELECT and INSERT. Re-fetch the now-committed
+        # original and emit + insert a duplicate row instead. The
+        # outer business txn is still alive because the savepoint
+        # rolled both the event AND the failed INSERT back together.
+        original = await _find_original(db, lead_id=lead_id, sha256=stored.sha256)
+        if original is None:
+            # The partial-unique index can only raise when an original
+            # exists — surface the inconsistency instead of silently
+            # losing the upload.
+            raise
+        async with db.begin_nested():
+            attachment, upload_event = await _emit_and_insert(
+                db,
+                client=client,
+                lead_id=lead_id,
+                uploaded_by=uploaded_by,
+                session=session,
+                message_id=message_id,
+                call_attempt_id=call_attempt_id,
+                stored=stored,
+                content_type=content_type,
+                document_type=document_type,
+                duplicate_of=original.id,
+                base_metadata=base_metadata,
+                source=source,
+            )
+        return attachment, True, original.id, upload_event
+
+    is_duplicate = duplicate_of is not None
+    return attachment, is_duplicate, duplicate_of, upload_event
+
+
+async def _emit_and_insert(
+    db: AsyncSession,
+    *,
+    client: RealClient,
+    lead_id: uuid.UUID,
+    uploaded_by: uuid.UUID | None,
+    session: TrainingSession | None,
+    message_id: uuid.UUID | None,
+    call_attempt_id: uuid.UUID | None,
+    stored: StoredAttachment,
+    content_type: str | None,
+    document_type: str,
+    duplicate_of: uuid.UUID | None,
+    base_metadata: dict[str, Any],
+    source: str,
+) -> tuple[Attachment, DomainEvent]:
+    """Inside-savepoint helper: emit the upload event with the future
+    attachment id baked in, then INSERT the attachment with
+    ``domain_event_id`` pre-set. Caller is responsible for the
+    surrounding savepoint and IntegrityError handling.
+    """
+    attachment_id = uuid.uuid4()
+    is_duplicate = duplicate_of is not None
+    upload_event = await _emit_upload_event(
+        db,
+        attachment_id=attachment_id,
+        lead_id=lead_id,
+        uploaded_by=uploaded_by,
+        source=source,
+        session=session,
+        message_id=message_id,
+        is_duplicate=is_duplicate,
+        original_id=duplicate_of,
+        sha256=stored.sha256,
+        filename=stored.filename,
+        document_type=document_type,
+        file_size=stored.file_size,
+    )
+    domain_event_id = upload_event.id if is_event_persisted(upload_event) else None
 
     attachment = _build_attachment_row(
         client=client,
@@ -302,43 +406,12 @@ async def _insert_with_dedup(
         document_type=document_type,
         duplicate_of=duplicate_of,
         base_metadata=base_metadata,
+        attachment_id=attachment_id,
+        domain_event_id=domain_event_id,
     )
     db.add(attachment)
-    try:
-        async with db.begin_nested():
-            await db.flush()
-    except IntegrityError:
-        # Race: another writer won ``uq_attachments_client_sha256_orig``
-        # while we were between the SELECT and the INSERT. The savepoint
-        # context manager rolled the failed INSERT back automatically,
-        # so the outer transaction is still alive — we re-SELECT the
-        # now-committed original and insert ourselves as a duplicate.
-        original = await _find_original(db, lead_id=lead_id, sha256=stored.sha256)
-        if original is None:
-            # Should not happen: the only way the partial-unique index
-            # raises is when an original exists. Surface anyway so the
-            # caller learns about the inconsistency instead of silently
-            # losing the upload.
-            raise
-        attachment = _build_attachment_row(
-            client=client,
-            lead_id=lead_id,
-            uploaded_by=uploaded_by,
-            session=session,
-            message_id=message_id,
-            call_attempt_id=call_attempt_id,
-            stored=stored,
-            content_type=content_type,
-            document_type=document_type,
-            duplicate_of=original.id,
-            base_metadata=base_metadata,
-        )
-        db.add(attachment)
-        await db.flush()
-        return attachment, True, original.id
-
-    is_duplicate = duplicate_of is not None
-    return attachment, is_duplicate, duplicate_of
+    await db.flush()
+    return attachment, upload_event
 
 
 async def _find_original(
@@ -371,10 +444,24 @@ def _build_attachment_row(
     document_type: str,
     duplicate_of: uuid.UUID | None,
     base_metadata: dict[str, Any],
+    attachment_id: uuid.UUID | None = None,
+    domain_event_id: uuid.UUID | None = None,
 ) -> Attachment:
+    """Construct an Attachment ORM row.
+
+    D7.3 added ``attachment_id`` + ``domain_event_id`` kwargs so the
+    pipeline can pre-emit the canonical event and INSERT the row
+    with the FK pre-set, making
+    ``attachments.domain_event_id NOT NULL`` a hard constraint.
+    Both kwargs default to None to keep the helper usable from
+    legacy / repair paths during the migration window.
+    """
     metadata: dict[str, Any] = dict(base_metadata)
     metadata["duplicate_of"] = str(duplicate_of) if duplicate_of else None
+    if domain_event_id is not None:
+        metadata["domain_event_id"] = str(domain_event_id)
     return Attachment(
+        id=attachment_id if attachment_id is not None else uuid.uuid4(),
         uploaded_by=uploaded_by,
         client_id=client.id,
         lead_client_id=lead_id,
@@ -393,6 +480,7 @@ def _build_attachment_row(
         classification_status="pending",
         verification_status="unverified",
         duplicate_of=duplicate_of,
+        domain_event_id=domain_event_id,
         metadata_=metadata,
     )
 
@@ -403,7 +491,7 @@ def _build_attachment_row(
 async def _emit_upload_event(
     db: AsyncSession,
     *,
-    attachment: Attachment,
+    attachment_id: uuid.UUID,
     lead_id: uuid.UUID,
     uploaded_by: uuid.UUID | None,
     source: str,
@@ -411,16 +499,26 @@ async def _emit_upload_event(
     message_id: uuid.UUID | None,
     is_duplicate: bool,
     original_id: uuid.UUID | None,
+    sha256: str,
+    filename: str,
+    document_type: str,
+    file_size: int,
 ) -> DomainEvent:
+    """D7.3 — accepts the future ``attachment_id`` (UUID) instead of
+    a constructed Attachment object so the canonical event can be
+    emitted BEFORE the attachment row is INSERTed. Lets us land the
+    attachment with ``domain_event_id`` pre-filled and the
+    ``NOT NULL`` constraint becomes safe."""
     event_type = "attachment.duplicate_detected" if is_duplicate else "attachment.uploaded"
     payload: dict[str, Any] = {
-        "attachment_id": str(attachment.id),
-        "client_id": str(attachment.client_id),
-        "sha256": attachment.sha256,
-        "filename": attachment.filename,
-        "document_type": attachment.document_type,
-        "file_size": attachment.file_size,
-        "status": attachment.status,
+        "attachment_id": str(attachment_id),
+        "sha256": sha256,
+        "filename": filename,
+        "document_type": document_type,
+        "file_size": file_size,
+        # Status is always 'received' at intake; the four state
+        # machines fan out from here via the ``mark_*`` helpers.
+        "status": "received",
     }
     if is_duplicate and original_id is not None:
         payload["duplicate_of"] = str(original_id)
@@ -429,11 +527,11 @@ async def _emit_upload_event(
     if message_id is not None:
         payload["message_id"] = str(message_id)
 
-    # Idempotency key includes the row id so a retry inside the same txn
-    # converges on the same DomainEvent. The two distinct event types
-    # never share a key so a duplicate row's emit can't be deduped against
-    # an original's emit (or vice versa).
-    idempotency_key = f"{event_type}:{attachment.id}"
+    # Idempotency key includes the row id so a retry inside the same
+    # txn converges on the same DomainEvent. The two distinct event
+    # types never share a key so a duplicate row's emit can't be
+    # deduped against an original's emit (or vice versa).
+    idempotency_key = f"{event_type}:{attachment_id}"
 
     return await emit_domain_event(
         db,
@@ -443,7 +541,7 @@ async def _emit_upload_event(
         actor_id=uploaded_by,
         source=source,
         aggregate_type="attachment",
-        aggregate_id=attachment.id,
+        aggregate_id=attachment_id,
         session_id=session.id if session is not None else None,
         payload=payload,
         idempotency_key=idempotency_key,
