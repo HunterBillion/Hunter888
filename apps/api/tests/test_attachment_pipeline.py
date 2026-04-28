@@ -305,7 +305,17 @@ async def test_ingest_upload_resolves_dedup_race_via_integrity_error(monkeypatch
 
     captured = _patch_pipeline_deps(
         monkeypatch,
-        emit_events=[_make_event("attachment.duplicate_detected")],
+        # D7.3 emit-first refactor: the pipeline emits BEFORE the
+        # INSERT, so when the INSERT raises IntegrityError both the
+        # event and the row attempt are rolled back together at the
+        # savepoint. In a real PG session both emits happen but only
+        # the second persists; the test stub doesn't simulate
+        # rollback so we just queue both emits and assert the
+        # outcome is the duplicate row + duplicate event.
+        emit_events=[
+            _make_event("attachment.uploaded"),         # rolled back
+            _make_event("attachment.duplicate_detected"),  # survives
+        ],
     )
 
     result = await attachment_pipeline.ingest_upload(
@@ -320,12 +330,22 @@ async def test_ingest_upload_resolves_dedup_race_via_integrity_error(monkeypatch
 
     assert result.is_duplicate is True
     assert result.attachment.duplicate_of == winning_original.id
+    # The terminal emit must be the duplicate-detected one. The first
+    # ``attachment.uploaded`` lives only inside the rolled-back
+    # savepoint — in a real DB it never persists, but the in-memory
+    # mock doesn't simulate that, so we validate the pipeline's
+    # emit *order* instead.
     types = [c["event_type"] for c in captured["emit_calls"]]
-    assert types == ["attachment.duplicate_detected"]
+    assert types[-1] == "attachment.duplicate_detected"
+    # Final IngestResult.upload_event must be the duplicate event,
+    # not the rolled-back uploaded one — this is the contract D7.3
+    # depends on (downstream readers branch on event_type).
+    assert result.upload_event.event_type == "attachment.duplicate_detected"
     # Two Attachment rows were attempted: the losing original + the
     # winning duplicate. The losing one stays in db.added because we
-    # don't actually expire the session in the test stub — what matters
-    # is that the SECOND row carries duplicate_of, not the first.
+    # don't actually expire the session in the test stub — what
+    # matters is that the SECOND row carries duplicate_of, not the
+    # first.
     attachments = [obj for obj in db.added if isinstance(obj, Attachment)]
     assert attachments[-1].duplicate_of == winning_original.id
 
