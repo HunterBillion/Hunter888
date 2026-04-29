@@ -18,6 +18,9 @@ import { AppIcon } from "@/components/ui/AppIcon";
 import { logger } from "@/lib/logger";
 // Phase B (2026-04-20): Duolingo-style weekly league hero widget
 import { LeagueHeroCard } from "@/components/pvp/LeagueHeroCard";
+// 2026-04-29: pixel unification — единый формат карточек режимов + pixel-иконки.
+import { PixelModeCard } from "@/components/pvp/PixelModeCard";
+import { PixelIcon, type PixelIconName } from "@/components/pvp/PixelIcon";
 
 const DUEL_STATUS_LABELS: Record<string, string> = {
   pending: "Ожидание",
@@ -482,98 +485,101 @@ function PvPLobbyContent() {
                 {tab === "arena" && (
                   <motion.div key="arena" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
                     <div className="space-y-4">
-                      {/* PvP Mode Selection — arcade level select */}
+                      {/* PvP Mode Selection — pixel unified (2026-04-29) */}
                       <div>
                         <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>SELECT MODE — PVP</p>
                         <div className="grid grid-cols-2 gap-2">
                           {([
-                            { code: "classic", name: "Классическая дуэль", desc: "2 раунда, смена ролей", icon: "⚔️", level: 1 },
-                            { code: "rapid", name: "Скоростной бой", desc: "5 мини-раундов по 2 мин", icon: "⚡", level: 5 },
-                            { code: "gauntlet", name: "Испытание", desc: "3-5 дуэлей подряд", icon: "🏰", level: 8 },
-                            { code: "team2v2", name: "Командный 2v2", desc: "Команда из 2 продавцов", icon: "👥", level: 12 },
+                            { code: "classic", name: "Классическая дуэль", desc: "2 раунда, смена ролей", icon: "sword" as PixelIconName, level: 1 },
+                            { code: "rapid", name: "Скоростной бой", desc: "5 мини-раундов по 2 мин", icon: "bolt" as PixelIconName, level: 5 },
+                            { code: "gauntlet", name: "Испытание", desc: "3-5 дуэлей подряд", icon: "castle" as PixelIconName, level: 8 },
+                            { code: "team2v2", name: "Командный 2v2", desc: "Команда из 2 продавцов", icon: "group" as PixelIconName, level: 12 },
                           ] as const).map((mode) => {
                             const userLevel = store.rating ? Math.max(1, Math.floor(store.rating.total_duels / 2) + 1) : 1;
                             const locked = userLevel < mode.level;
                             return (
-                              <motion.div
+                              <PixelModeCard
                                 key={mode.code}
-                                whileHover={locked ? {} : { y: -2, transition: { type: "tween", duration: 0.1 } }}
-                                className="pixel-border p-3 text-left relative"
-                                style={{
-                                  "--pixel-border-color": locked ? "var(--border-color)" : "var(--accent)",
-                                  background: "var(--bg-panel)",
-                                  opacity: locked ? 0.45 : 1,
-                                  cursor: locked ? "not-allowed" : "pointer",
-                                } as React.CSSProperties}
-                              >
-                                {locked && <span className="absolute top-2 right-2 font-pixel text-xs" style={{ color: "var(--text-muted)" }}>🔒</span>}
-                                <span className="text-xl">{mode.icon}</span>
-                                <p className="mt-1 font-pixel text-sm uppercase" style={{ color: "var(--text-primary)" }}>{mode.name}</p>
-                                <p className="text-xs" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
-                                {locked && <p className="font-pixel text-xs mt-1" style={{ color: "var(--warning)" }}>LVL {mode.level}</p>}
-                              </motion.div>
+                                iconName={mode.icon}
+                                name={mode.name}
+                                desc={mode.desc}
+                                accent="var(--accent)"
+                                locked={locked}
+                                lockLevel={mode.level}
+                              />
                             );
                           })}
                         </div>
                       </div>
 
-                      {/* PvE Mode Selection — arcade level select */}
+                      {/* PvE Mode Selection — pixel unified */}
                       <div>
                         <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>SELECT MODE — PVE</p>
                         <div className="grid grid-cols-2 gap-2">
                           {([
-                            { code: "standard", name: "Стандартный бот", desc: "Обычная PvE дуэль", icon: "🤖", level: 1 },
-                            { code: "ladder", name: "Лестница ботов", desc: "5 ботов, рост сложности", icon: "📶", level: 5 },
-                            { code: "boss", name: "Штурм боссов", desc: "3 уникальных босса", icon: "💀", level: 8 },
-                            { code: "mirror", name: "Зеркальный матч", desc: "Играй против себя", icon: "🪞", level: 12 },
+                            { code: "standard", name: "Стандартный бот", desc: "Обычная PvE дуэль", icon: "robot" as PixelIconName, level: 1 },
+                            { code: "ladder", name: "Лестница ботов", desc: "5 ботов, рост сложности", icon: "ladder" as PixelIconName, level: 5 },
+                            { code: "boss", name: "Штурм боссов", desc: "3 уникальных босса", icon: "skull" as PixelIconName, level: 8 },
+                            { code: "mirror", name: "Зеркальный матч", desc: "Играй против себя", icon: "mirror" as PixelIconName, level: 12 },
                           ] as const).map((mode) => {
                             const userLevel = store.rating ? Math.max(1, Math.floor(store.rating.total_duels / 2) + 1) : 1;
                             const locked = userLevel < mode.level;
                             return (
-                              <motion.div
+                              <PixelModeCard
                                 key={mode.code}
-                                whileHover={locked ? {} : { y: -2, transition: { type: "tween", duration: 0.1 } }}
-                                className="pixel-border p-3 text-left relative"
-                                style={{
-                                  "--pixel-border-color": locked ? "var(--border-color)" : "var(--success, #28c840)",
-                                  background: "var(--bg-panel)",
-                                  opacity: locked ? 0.45 : 1,
-                                  cursor: locked ? "not-allowed" : "pointer",
-                                } as React.CSSProperties}
-                              >
-                                {locked && <span className="absolute top-2 right-2 font-pixel text-xs" style={{ color: "var(--text-muted)" }}>🔒</span>}
-                                <span className="text-xl">{mode.icon}</span>
-                                <p className="mt-1 font-pixel text-sm uppercase" style={{ color: "var(--text-primary)" }}>{mode.name}</p>
-                                <p className="text-xs" style={{ color: "var(--text-muted)" }}>{mode.desc}</p>
-                                {locked && <p className="font-pixel text-xs mt-1" style={{ color: "var(--warning)" }}>LVL {mode.level}</p>}
-                              </motion.div>
+                                iconName={mode.icon}
+                                name={mode.name}
+                                desc={mode.desc}
+                                accent="var(--success)"
+                                locked={locked}
+                                lockLevel={mode.level}
+                              />
                             );
                           })}
                         </div>
                       </div>
 
-                      {/* Quick info */}
-                      <div className="glass-panel p-4 flex items-center gap-3">
-                        <Sword weight="duotone" size={18} style={{ color: "var(--accent)" }} />
+                      {/* Quick info — pixel card (was glass-panel) */}
+                      <div
+                        className="flex items-center gap-3 p-4"
+                        style={{
+                          background: "var(--bg-panel)",
+                          outline: "2px solid var(--accent)",
+                          outlineOffset: -2,
+                          boxShadow: "3px 3px 0 0 var(--accent)",
+                          borderRadius: 0,
+                        }}
+                      >
+                        <PixelIcon name="sword" size={28} color="var(--accent)" />
                         <div>
-                          <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Голосовая дуэль</p>
-                          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                          <p className="font-pixel text-sm uppercase" style={{ color: "var(--text-primary)", letterSpacing: "0.1em" }}>Голосовая дуэль</p>
+                          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
                             Два раунда · смена ролей · Glicko-2 рейтинг
                           </p>
                         </div>
                       </div>
 
-                      {/* How it works */}
+                      {/* How it works — pixel cards (was glass-panel) */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {[
                           { step: "01", title: "Подбор", desc: "Система находит соперника по рейтингу" },
                           { step: "02", title: "2 раунда", desc: "Вы и соперник по очереди продаёте и оцениваете" },
                           { step: "03", title: "Результат", desc: "ИИ-судья выносит вердикт, рейтинг обновляется" },
                         ].map((item) => (
-                          <div key={item.step} className="glass-panel p-4 flex flex-col">
-                            <span className="font-mono text-xs tracking-wide" style={{ color: "var(--accent)" }}>{item.step}</span>
-                            <p className="text-sm font-medium mt-1" style={{ color: "var(--text-primary)" }}>{item.title}</p>
-                            <p className="text-xs mt-0.5 flex-1" style={{ color: "var(--text-muted)" }}>{item.desc}</p>
+                          <div
+                            key={item.step}
+                            className="flex flex-col p-4"
+                            style={{
+                              background: "var(--bg-panel)",
+                              outline: "2px solid var(--border-color)",
+                              outlineOffset: -2,
+                              boxShadow: "3px 3px 0 0 var(--border-color)",
+                              borderRadius: 0,
+                            }}
+                          >
+                            <span className="font-pixel text-xs tracking-widest" style={{ color: "var(--accent)", letterSpacing: "0.18em" }}>{item.step}</span>
+                            <p className="font-pixel text-sm uppercase mt-1.5" style={{ color: "var(--text-primary)", letterSpacing: "0.1em" }}>{item.title}</p>
+                            <p className="text-xs mt-1 flex-1" style={{ color: "var(--text-muted)" }}>{item.desc}</p>
                           </div>
                         ))}
                       </div>
@@ -592,47 +598,25 @@ function PvPLobbyContent() {
                 {tab === "knowledge" && (
                   <motion.div key="knowledge" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
                     <div className="space-y-4">
-                      {/* ═══ Mode selection — pixel arcade ═══ */}
+                      {/* Quiz mode selection — pixel unified (2026-04-29) */}
                       <div>
                         <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>SELECT MODE — QUIZ</p>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           {([
-                            { mode: "free_dialog" as const, icon: "📖", label: "Свободный диалог", desc: "Без ограничений", color: "var(--accent)" },
-                            { mode: "blitz" as const, icon: "⚡", label: "Блиц", desc: "20 × 60 сек", color: "var(--warning)" },
-                            { mode: "themed" as const, icon: "🎯", label: "По теме", desc: "10 категорий", color: "var(--success)" },
-                          ] as const).map(({ mode, icon, label, desc, color }) => {
-                            const active = quizMode === mode;
-                            return (
-                              <motion.button
-                                key={mode}
-                                whileHover={{ y: -1 }}
-                                whileTap={{ y: 2 }}
-                                onClick={() => { setQuizMode(mode); setQuizCategory(null); }}
-                                className="p-3 text-left relative"
-                                style={{
-                                  background: active ? "var(--accent-muted)" : "var(--bg-panel)",
-                                  border: `2px solid ${active ? color : "var(--border-color)"}`,
-                                  borderRadius: 0,
-                                  boxShadow: active
-                                    ? `3px 3px 0 0 ${color}, 3px 3px 0 2px rgba(0,0,0,0.2)`
-                                    : "2px 2px 0 0 rgba(0,0,0,0.15)",
-                                  transition: "box-shadow 120ms",
-                                }}
-                              >
-                                {active && (
-                                  <span
-                                    className="absolute top-1 right-1 font-pixel text-[9px] uppercase tracking-wider"
-                                    style={{ color, textShadow: `0 0 6px ${color}` }}
-                                  >
-                                    ▶ OK
-                                  </span>
-                                )}
-                                <span className="text-2xl">{icon}</span>
-                                <p className="mt-1 font-pixel text-xs uppercase tracking-wide" style={{ color: active ? color : "var(--text-primary)" }}>{label}</p>
-                                <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{desc}</p>
-                              </motion.button>
-                            );
-                          })}
+                            { mode: "free_dialog" as const, icon: "book" as PixelIconName, label: "Свободный диалог", desc: "Без ограничений", color: "var(--accent)" },
+                            { mode: "blitz" as const, icon: "bolt" as PixelIconName, label: "Блиц", desc: "20 × 60 сек", color: "var(--warning)" },
+                            { mode: "themed" as const, icon: "target" as PixelIconName, label: "По теме", desc: "10 категорий", color: "var(--success)" },
+                          ] as const).map(({ mode, icon, label, desc, color }) => (
+                            <PixelModeCard
+                              key={mode}
+                              iconName={icon}
+                              name={label}
+                              desc={desc}
+                              accent={color}
+                              active={quizMode === mode}
+                              onClick={() => { setQuizMode(mode); setQuizCategory(null); }}
+                            />
+                          ))}
                         </div>
                       </div>
 
