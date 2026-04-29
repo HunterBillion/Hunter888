@@ -927,20 +927,26 @@ async def run_extraction(
         confidence = 0.0
         status = "failed"
     else:
+        # PR #102: prefer LLM classifier+extractor; fall back to heuristic
+        # automatically inside the LLM helpers when API key is missing or
+        # the call fails. Same dataclass contract; callers don't change.
+        from app.services.scenario_extractor_llm import (
+            llm_classify_material,
+            llm_extract_for_route,
+        )
+
         if forced_route_type and forced_route_type in ROUTE_TYPES:
             chosen_route = forced_route_type
         else:
-            classification = classify_material(source_text)
+            classification = await llm_classify_material(source_text)
             chosen_route = classification.route_type
-            # Stash classifier reasoning into the payload so the FE can
-            # show "почему ИИ выбрал эту ветку" without a separate request.
             logger.info(
                 "scenario_extractor: classified attachment %s as %s (%.2f) — %s",
                 attachment.id, chosen_route, classification.confidence,
                 classification.reasoning,
             )
         try:
-            extracted_blob = extract_for_route(source_text, chosen_route)
+            extracted_blob = await llm_extract_for_route(source_text, chosen_route)
             confidence = float(extracted_blob.get("confidence", 0.0))
             status = "ready"
         except ValueError as exc:

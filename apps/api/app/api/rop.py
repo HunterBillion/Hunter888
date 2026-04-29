@@ -1581,9 +1581,11 @@ async def re_extract_draft(
     from app.models.scenario import ScenarioDraft
     from app.services.scenario_extractor import (
         ROUTE_TYPES,
-        classify_material,
-        extract_for_route,
         extract_text_from_bytes,
+    )
+    from app.services.scenario_extractor_llm import (
+        llm_classify_material,
+        llm_extract_for_route,
     )
 
     payload = body or {}
@@ -1636,9 +1638,9 @@ async def re_extract_draft(
 
     chosen_route = forced
     if not chosen_route:
-        chosen_route = classify_material(source_text).route_type
+        chosen_route = (await llm_classify_material(source_text)).route_type
 
-    extracted = extract_for_route(source_text, chosen_route)
+    extracted = await llm_extract_for_route(source_text, chosen_route)
     new_confidence = float(extracted.get("confidence", 0.0))
 
     draft.route_type = chosen_route
