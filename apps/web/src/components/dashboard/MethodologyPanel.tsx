@@ -29,6 +29,7 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { roleName } from "@/lib/guards";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
+import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 
 const WikiDashboard = dynamic(
   () => import("@/components/dashboard/WikiDashboard").then((m) => m.WikiDashboard),
@@ -226,6 +227,26 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
 
   return (
     <div className="space-y-4">
+      {/* Tab title with i-tooltip */}
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-base tracking-wider" style={{ color: "var(--text-secondary)" }}>
+          МЕТОДОЛОГИЯ
+        </h2>
+        <PixelInfoButton
+          title="Методология"
+          sections={[
+            { label: "Сценарии", text: "Шаблоны разговоров для тренировок. Версионирование (TZ-3): правки попадают к менеджерам только после кнопки «Опубликовать»." },
+            { label: "Контент Арены", text: "База знаний для квизов: вопросы, варианты ответов, цитаты из 127-ФЗ. Что менеджер видит в режиме «Арена знаний»." },
+            { label: "Скоринг", text: "Веса L1-L10 для оценки сессии. Изменения вступают в силу для НОВЫХ сессий — старые остаются на старых весах." },
+            { label: "Сессии", text: "Просмотр любой сессии любого менеджера команды. Можно ревьюить, оставлять комментарии, отмечать как кейс." },
+            { label: "Ревью знаний", text: "Очередь legal_knowledge чанков на проверку (TZ-4 §8). Помеченные disputed/needs_review автоматически исключаются из ответов AI." },
+            { label: "Качество AI", text: "Агрегаты по всей команде: персона-конфликты, нарушения политики разговора (TZ-4 §10). Помогает ловить regression в работе AI после деплоя." },
+            { label: "Wiki", text: "Корпоративная база: лучшие практики, регламенты. Автосинтез из успешных диалогов." },
+          ]}
+          footer="Раньше методолог был отдельной ролью. С апреля 2026 эти инструменты — часть Дашборда ROP."
+        />
+      </div>
+
       {/* Sub-tab bar */}
       <div className="flex items-center gap-2 rounded-xl p-1.5 overflow-x-auto" style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)" }}>
         {visibleTabs.map((t) => {
