@@ -1543,3 +1543,114 @@ async def approve_arena_knowledge_draft(
         "chunk_id": str(chunk.id),
         "message": "Факт добавлен в очередь review для Арены.",
     }
+
+
+# ── PR #101 (TZ-5 wizard improvements) ──────────────────────────────────
+
+
+@router.post("/imports/{draft_id}/re-extract")
+@limiter.limit("5/minute")
+async def re_extract_draft(
+    request: Request,
+    draft_id: uuid.UUID,
+    body: dict | None = None,
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-run the extractor on the same uploaded bytes.
+
+    Use case: first extract gave low confidence or wrong route — ROP wants
+    to retry (e.g. force a different ``route_type``) without re-uploading
+    the file. Reads the original bytes from the attachment's
+    ``storage_path`` and re-runs ``extract_text_from_bytes`` +
+    ``extract_for_route``.
+
+    Body (optional): ``{"forced_route_type": "scenario|character|arena_knowledge"}``.
+    Without forced_route_type the classifier picks again — useful if the
+    extractor ships an LLM upgrade between the first try and now.
+
+    Lifecycle: only `ready`, `edited`, `failed` drafts can be re-extracted
+    (NOT `converted` or `discarded` — those are terminal). The draft's
+    `extracted` JSONB and `confidence` are overwritten; status flips back
+    to `ready`. `original_confidence` is REPLACED so the audit invariant
+    reflects the latest LLM run, not the first one.
+    """
+    from pathlib import Path
+
+    from app.models.client import Attachment
+    from app.models.scenario import ScenarioDraft
+    from app.services.scenario_extractor import (
+        ROUTE_TYPES,
+        classify_material,
+        extract_for_route,
+        extract_text_from_bytes,
+    )
+
+    payload = body or {}
+    forced = payload.get("forced_route_type")
+    if forced is not None and forced not in ROUTE_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"forced_route_type must be one of {ROUTE_TYPES}",
+        )
+
+    row = (
+        await db.execute(
+            select(ScenarioDraft, Attachment)
+            .join(Attachment, ScenarioDraft.attachment_id == Attachment.id)
+            .where(ScenarioDraft.id == draft_id)
+        )
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    draft, attachment = row
+
+    if draft.status not in ("ready", "edited", "failed"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Re-extract запрещён для статуса {draft.status!r}. "
+                "Допустимы: ready, edited, failed."
+            ),
+        )
+
+    storage_path = Path(attachment.storage_path) if attachment.storage_path else None
+    if not storage_path or not storage_path.exists():
+        raise HTTPException(
+            status_code=410,
+            detail="Файл больше недоступен на диске — повторно загрузите через wizard.",
+        )
+
+    try:
+        raw_bytes = storage_path.read_bytes()
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"I/O error: {exc}") from exc
+
+    try:
+        source_text = extract_text_from_bytes(attachment.filename, raw_bytes)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Не удалось распарсить: {type(exc).__name__}: {exc}",
+        )
+
+    chosen_route = forced
+    if not chosen_route:
+        chosen_route = classify_material(source_text).route_type
+
+    extracted = extract_for_route(source_text, chosen_route)
+    new_confidence = float(extracted.get("confidence", 0.0))
+
+    draft.route_type = chosen_route
+    draft.extracted = extracted
+    draft.confidence = new_confidence
+    draft.original_confidence = new_confidence
+    draft.status = "ready"
+    draft.error_message = None
+
+    logger.info(
+        "scenario_draft.re_extracted actor=%s draft=%s route=%s confidence=%.2f forced=%s",
+        user.id, draft.id, chosen_route, new_confidence, bool(forced),
+    )
+    await db.commit()
+    return _draft_to_response(draft, attachment_filename=attachment.filename)
