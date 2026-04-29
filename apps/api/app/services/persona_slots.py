@@ -354,6 +354,36 @@ def all_slot_codes() -> frozenset[str]:
     return frozenset(PERSONA_SLOTS.keys())
 
 
+def render_facts_block_for_system_prompt(
+    confirmed_facts: dict[str, Any] | None,
+) -> str:
+    """Full Russian block ready to splice into the system prompt.
+
+    Wraps :func:`render_facts_for_prompt` with the header / footer
+    instructions ("веди себя как знакомый, ссылайся естественно,
+    переспроси если устарело"). Returns "" when there are no facts —
+    caller can drop the block entirely without checking length.
+
+    Used by both ``_build_system_prompt`` (non-streaming path) and
+    ``generate_response_stream`` (streaming path) so the AI sees
+    identical memory context regardless of which LLM provider is
+    chosen — preserving call-mode parity.
+    """
+    inner = render_facts_for_prompt(confirmed_facts, include_stale=True)
+    if not inner:
+        return ""
+    return (
+        "═══ ЧТО ТЫ УЖЕ ЗНАЕШЬ О СОБЕСЕДНИКЕ (из прошлых звонков) ═══\n"
+        + inner + "\n"
+        "═══════════════════════════════════════════════════════════\n"
+        "Веди себя как ЗНАКОМЫЙ — не переспрашивай эти данные. Можешь "
+        "ССЫЛАТЬСЯ на них естественно («помню, ты говорил про…», "
+        "«ты же из <город>?»), но НЕ пересказывать списком. Если факт "
+        "помечен «(возможно устарело)» — переспроси аккуратно: "
+        "«у тебя всё ещё <X> или что-то изменилось?»."
+    )
+
+
 def render_facts_for_prompt(
     confirmed_facts: dict[str, Any] | None,
     *,

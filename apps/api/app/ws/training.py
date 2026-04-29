@@ -1380,6 +1380,26 @@ async def _generate_character_reply(
     except Exception:
         logger.debug("manager_profile/quote injection failed", exc_info=True)
 
+    # TZ-4.5 PR 4 — load persona facts from cross-session memory so
+    # the LLM sees them in the system prompt. Best-effort: failure
+    # falls through to a cold-start (no facts) call. The fresh read
+    # picks up anything the extractor wrote on the previous turn.
+    _persona_facts: dict | None = None
+    try:
+        from app.services import persona_memory as _pm_for_facts
+        async with async_session() as _db_facts:
+            _snap_for_facts = await _pm_for_facts.get_snapshot(
+                _db_facts, session_id=session_id,
+            )
+            if _snap_for_facts is not None and _snap_for_facts.lead_client_id is not None:
+                _p = await _pm_for_facts.get_for_lead(
+                    _db_facts, lead_client_id=_snap_for_facts.lead_client_id,
+                )
+                if _p is not None and _p.confirmed_facts:
+                    _persona_facts = dict(_p.confirmed_facts)
+    except Exception:
+        logger.debug("persona_facts load failed — proceeding cold-start", exc_info=True)
+
     try:
         # H1 fix: route by estimated token count, not call_number
         _est_tokens = len(extra_system) // 2  # rough estimate for Russian text
@@ -1517,6 +1537,8 @@ async def _generate_character_reply(
                 # build_call_mode_modifier sees custom-builder value
                 # instead of always defaulting to 5.
                 difficulty=state.get("base_difficulty"),
+                # 2026-04-29 (TZ-4.5 PR 4): cross-session memory.
+                persona_facts=_persona_facts,
             ):
                 _streamed_text += token
                 _chunk_buffer += token
@@ -1708,6 +1730,8 @@ async def _generate_character_reply(
                     tone=_tone,
                     # 2026-04-22: see generate_response_stream call above.
                     difficulty=state.get("base_difficulty"),
+                    # 2026-04-29 (TZ-4.5 PR 4): cross-session memory.
+                    persona_facts=_persona_facts,
                 )
     except LLMError as e:
         logger.error("LLM failed for session %s: %s", session_id, e)
