@@ -99,6 +99,12 @@ services:
       # changes. Roll back by flipping CALL_ARC_V1 to "0" + restart api.
       CALL_ARC_V1: "1"
       CALL_ARC_INJECT_REALITY: "1"
+      # P1 (2026-04-29) Coaching mistake detector — rule-based, no LLM.
+      # Watches manager turns and emits coaching.mistake WS events
+      # (monologue, no_open_question, early_pricing, repeated_argument,
+      # talk_ratio_high). Backend-only — UI binding is P2. Roll back
+      # by flipping to "0" + restart api.
+      COACHING_MISTAKE_DETECTOR_V1: "1"
     # Don't expose API port directly — use nginx
     ports: !reset []
     # Graceful shutdown: gunicorn --graceful-timeout 30 + margin
