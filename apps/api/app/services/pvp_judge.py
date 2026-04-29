@@ -14,6 +14,7 @@ AI Judge config:
 
 import json
 import logging
+import time
 import uuid
 from dataclasses import dataclass, field
 
@@ -21,6 +22,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors as err
 from app.models.pvp import DuelDifficulty, DIFFICULTY_MULTIPLIERS
+from app.services.arena_metrics import (
+    ARENA_AI_JUDGE_LATENCY,
+    ARENA_JUDGE_DEGRADED,
+)
 from app.services.llm import generate_response
 from app.services.rag_legal import retrieve_legal_context, RAGContext
 
@@ -246,6 +251,7 @@ async def judge_round(
     )
 
     # LLM call (temperature controlled by system prompt directive for determinism)
+    _judge_started = time.time()
     try:
         messages = [{"role": "user", "content": user}]
         llm_response = await generate_response(
@@ -257,9 +263,12 @@ async def judge_round(
 
         # Parse JSON from response
         result = _parse_judge_response(llm_response.content)
+        ARENA_AI_JUDGE_LATENCY.labels(judge_type="round", status="ok").observe(time.time() - _judge_started)
 
     except Exception as e:
         logger.error("AI Judge failed: %s", e)
+        ARENA_AI_JUDGE_LATENCY.labels(judge_type="round", status="error").observe(time.time() - _judge_started)
+        ARENA_JUDGE_DEGRADED.labels(reason="llm_error").inc()
         # Fallback: neutral scores
         result = {
             "selling_score": 25,
@@ -364,6 +373,7 @@ def _parse_judge_response(raw: str) -> dict:
                 pass
 
         logger.warning("Failed to parse judge JSON: %s", text[:200])
+        ARENA_JUDGE_DEGRADED.labels(reason="json_parse").inc()
         return {
             "selling_score": 25,
             "acting_score": 15,
@@ -391,6 +401,7 @@ async def judge_full_duel(
     Round 1: player1 SELLS, player2 is CLIENT
     Round 2: player2 SELLS, player1 is CLIENT
     """
+    _full_started = time.time()
     # Round 1: P1 sells, P2 acts (P2's emotion journey)
     r1_seller, r1_client = await judge_round(
         dialog=round1_dialog,
@@ -490,6 +501,7 @@ async def judge_full_duel(
         turning_point=turning_point,
     )
 
+    ARENA_AI_JUDGE_LATENCY.labels(judge_type="duel", status="ok").observe(time.time() - _full_started)
     logger.info("Duel judged: %s", result.summary)
     return result
 
