@@ -1073,6 +1073,21 @@ async def _advance_round(duel_id: uuid.UUID) -> None:
                 "key_articles": seller_score.key_articles,
             },
         }
+        # PR F: surface degraded judge to players. judge_round returns the
+        # neutral 25/15/10 fallback silently on LLM error or JSON parse
+        # failure — without this signal the FE displayed those numbers as
+        # if they were a real evaluation. Emit BEFORE judge.score so the
+        # FE can decide to mark the score as "fallback".
+        if seller_score.degraded or client_score.degraded:
+            _degraded_reason = seller_score.degraded_reason or client_score.degraded_reason or "unknown"
+            for participant_id in [_snap_p1, _snap_p2]:
+                if participant_id != BOT_ID:
+                    await _send_to_user(participant_id, "judge.degraded", {
+                        "duel_id": str(duel_id),
+                        "round": round_number,
+                        "reason": _degraded_reason,
+                        "detail": "Оценка выполнена в резервном режиме — баллы могут не отражать реальную игру.",
+                    })
         for participant_id in [_snap_p1, _snap_p2]:
             if participant_id != BOT_ID:
                 await _send_to_user(participant_id, "judge.score", round_score_payload)
