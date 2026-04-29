@@ -130,6 +130,7 @@ async def _call_with_backoff(
     max_attempts: int = 3,
     retry_on_timeout_only: bool = False,
     max_tokens: int | None = None,
+    temperature: float | None = None,
 ) -> "LLMResponse | None":
     """Call an LLM provider with exponential backoff + jitter and circuit breaker.
 
@@ -137,8 +138,9 @@ async def _call_with_backoff(
     Updates circuit breaker health on success/failure.
     All health mutations are protected by asyncio.Lock (S1-02 2.2.2).
 
-    ``max_tokens=None`` is forwarded as-is so each provider falls back to its
-    historical hardcoded budget — preserves bit-for-bit pre-Sprint-0 behaviour.
+    ``max_tokens=None`` and ``temperature=None`` are forwarded as-is so each
+    provider falls back to its historical hardcoded value — preserves
+    bit-for-bit pre-Sprint-0 behaviour for callers that don't pass them.
     """
     health = _provider_health[provider_name]
     lock = _get_health_lock()
@@ -150,7 +152,7 @@ async def _call_with_backoff(
 
     for attempt in range(max_attempts):
         try:
-            response = await call_fn(system, messages, timeout, max_tokens)
+            response = await call_fn(system, messages, timeout, max_tokens, temperature)
             async with lock:
                 health.record_success()
             logger.info(
@@ -1414,6 +1416,7 @@ async def _call_gemini(
     messages: list[dict],
     timeout: float,
     max_tokens: int | None = None,
+    temperature: float | None = None,
 ) -> LLMResponse:
     """Call Gemini API directly via REST (no SDK dependency).
 
@@ -1451,7 +1454,9 @@ async def _call_gemini(
             # When max_tokens is None we keep the historical 1200 cap exactly,
             # so flag-off behaviour is bit-for-bit identical (Sprint 0).
             "maxOutputTokens": max_tokens if max_tokens is not None else 1200,
-            "temperature": 0.85,
+            # PR E: callers like pvp_judge pass temperature=0.2 for less
+            # variance in scoring. None preserves historical 0.85 default.
+            "temperature": temperature if temperature is not None else 0.85,
         },
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -1512,6 +1517,7 @@ async def _call_local_llm(
     messages: list[dict],
     timeout: float,
     max_tokens: int | None = None,
+    temperature: float | None = None,
     *,
     tools: list[dict] | None = None,
     raw_messages: list[dict] | None = None,
@@ -1559,7 +1565,8 @@ async def _call_local_llm(
             "options": {
                 # max_tokens=None keeps the historical 800 cap exactly.
                 "num_predict": max_tokens if max_tokens is not None else 800,
-                "temperature": 0.85,
+                # PR E: temperature=None preserves historical 0.85 default.
+                "temperature": temperature if temperature is not None else 0.85,
             },
         }
         try:
@@ -1594,7 +1601,8 @@ async def _call_local_llm(
         "messages": oai_messages,
         # max_tokens=None preserves the historical 800 cap.
         "max_tokens": max_tokens if max_tokens is not None else 800,
-        "temperature": 0.85,
+        # PR E: temperature=None preserves historical 0.85 default.
+        "temperature": temperature if temperature is not None else 0.85,
         "timeout": timeout,
     }
     if tools:
@@ -1628,6 +1636,7 @@ async def _call_claude(
     messages: list[dict],
     timeout: float,
     max_tokens: int | None = None,
+    temperature: float | None = None,
 ) -> LLMResponse:
     """Call Claude API. Raises LLMError on failure."""
     client = _get_claude_client()
@@ -1642,7 +1651,8 @@ async def _call_claude(
             model=settings.claude_model,
             # max_tokens=None preserves the historical 800 cap.
             max_tokens=max_tokens if max_tokens is not None else 800,
-            temperature=1.0,
+            # PR E: temperature=None preserves historical 1.0 default.
+            temperature=temperature if temperature is not None else 1.0,
             system=system_prompt,
             messages=messages,
             timeout=timeout,
@@ -1669,6 +1679,7 @@ async def _call_openai(
     messages: list[dict],
     timeout: float,
     max_tokens: int | None = None,
+    temperature: float | None = None,
     *,
     tools: list[dict] | None = None,
     raw_messages: list[dict] | None = None,
@@ -1701,7 +1712,8 @@ async def _call_openai(
         "messages": oai_messages,
         # max_tokens=None preserves the historical 800 cap.
         "max_tokens": max_tokens if max_tokens is not None else 800,
-        "temperature": 1.0,
+        # PR E: temperature=None preserves historical 1.0 default.
+        "temperature": temperature if temperature is not None else 1.0,
         "timeout": timeout,
     }
     if tools:
@@ -2044,6 +2056,11 @@ async def generate_response(
     prefer_provider: str = "auto",
     task_type: str = "default",
     max_tokens: int | None = None,
+    # PR E: explicit temperature override. None = each provider falls back
+    # to its historical default (Gemini 0.85, Local 0.85, Claude 1.0,
+    # OpenAI 1.0). Use 0.2 for judge / scoring tasks where determinism
+    # matters more than creative variance.
+    temperature: float | None = None,
     session_mode: str = "chat",
     # 2026-04-21: constructor v2 tone (harsh/neutral/lively/friendly).
     # Defaults None → call-mode modifier uses only difficulty band.
@@ -2363,6 +2380,7 @@ async def generate_response(
                     "gemini", _call_gemini, full_system, trimmed, timeout,
                     max_attempts=3, retry_on_timeout_only=False,
                     max_tokens=_forwarded_max_tokens,
+                    temperature=temperature,
                 )
                 if resp is not None:
                     return await _apply_filter(resp)
@@ -2372,6 +2390,7 @@ async def generate_response(
                     "local", _call_local_llm, full_system, trimmed, timeout,
                     max_attempts=3, retry_on_timeout_only=False,
                     max_tokens=_forwarded_max_tokens,
+                    temperature=temperature,
                 )
                 if resp is not None:
                     resp.is_fallback = True
@@ -2383,6 +2402,7 @@ async def generate_response(
                     "local", _call_local_llm, full_system, trimmed, timeout,
                     max_attempts=3, retry_on_timeout_only=False,
                     max_tokens=_forwarded_max_tokens,
+                    temperature=temperature,
                 )
                 if resp is not None:
                     return await _apply_filter(resp)
@@ -2393,6 +2413,7 @@ async def generate_response(
                     "gemini", _call_gemini, full_system, trimmed, timeout,
                     max_attempts=3, retry_on_timeout_only=False,
                     max_tokens=_forwarded_max_tokens,
+                    temperature=temperature,
                 )
                 if resp is not None:
                     resp.is_fallback = True
@@ -2404,6 +2425,7 @@ async def generate_response(
                 "claude", _call_claude, full_system, trimmed, timeout,
                 max_attempts=3, retry_on_timeout_only=False,
                 max_tokens=_forwarded_max_tokens,
+                temperature=temperature,
             )
             if resp is not None:
                 resp.is_fallback = True
@@ -2414,6 +2436,7 @@ async def generate_response(
                 "openai", _call_openai, full_system, trimmed, timeout * 2,
                 max_attempts=2,
                 max_tokens=_forwarded_max_tokens,
+                temperature=temperature,
             )
             if resp is not None:
                 resp.is_fallback = True
