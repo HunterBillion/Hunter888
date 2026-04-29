@@ -189,7 +189,14 @@ class Settings(BaseSettings):
     # Output budget (in tokens) for call/voice mode when V2 is on. Short by
     # design — long answers in voice always sound like a dictating assistant.
     # Ignored when call_humanized_v2 is off (legacy 800/1200 hardcode wins).
-    call_humanized_v2_max_tokens: int = 300
+    #
+    # 2026-04-29 (Bug 1 fix): dropped from 300 to 80. Field-reported that
+    # AI replies were ~8s of audio. 300 tokens × ~1.5 words/token = ~200
+    # words ≈ 80s of speech — far too verbose for a phone interaction.
+    # 80 tokens ≈ 50-55 words ≈ 15-20s max, with the in-prompt instruction
+    # below pushing the model toward 1-2 sentences. Tune up if pilots
+    # report mid-sentence cutoffs.
+    call_humanized_v2_max_tokens: int = 80
     # Sentence-gate scrub mode for the AI-tell phrase scanner. Three modes:
     #   "warn"  — detect + log + emit WS event, audio still goes through
     #             unchanged. Safe default; collects FP/TP rate for tuning.

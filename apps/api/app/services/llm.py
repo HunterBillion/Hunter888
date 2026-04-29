@@ -2267,6 +2267,19 @@ async def generate_response(
                 pass
         full_system = full_system + build_call_mode_modifier(_diff, tone=tone)
 
+    # Bug 1 fix (User-first 2026-04-29): explicit short-reply directive
+    # for blocking path. Same reasoning as the streaming path —
+    # max_tokens alone produces truncated long replies; the prompt rule
+    # produces complete short ones. Only when V2 + call/center.
+    if settings.call_humanized_v2 and session_mode in ("call", "center"):
+        full_system = full_system + (
+            "\n\n[REPLY_LENGTH] Это телефонный звонок. Отвечай 1-2 короткими "
+            "фразами, как реальный человек по телефону. Не объясняй детально, "
+            "не разворачивай мысль, если тебя об этом не просили. Если "
+            "вопрос требует длинного ответа — дай суть в одной фразе и спроси "
+            "встречный уточняющий вопрос."
+        )
+
     # ── Resolve provider and max_tokens ──
     prompt_tokens = len(full_system) // 2  # Russian: ~2 chars/token
     resolved_provider = _resolve_provider(prefer_provider, prompt_tokens, task_type)
@@ -2622,6 +2635,20 @@ async def generate_response_stream(
             except Exception:
                 pass
         full_system = full_system + build_call_mode_modifier(_diff_s, tone=tone)
+
+    # Bug 1 fix (User-first 2026-04-29): max_tokens alone doesn't make
+    # replies short — modern Russian-tuned LLMs hit the cap by writing
+    # half a long sentence and getting truncated, which sounds worse
+    # than a complete short reply. Add an explicit prompt instruction
+    # only when V2 + call/center, so the model aims for short by design.
+    if settings.call_humanized_v2 and session_mode in ("call", "center"):
+        full_system = full_system + (
+            "\n\n[REPLY_LENGTH] Это телефонный звонок. Отвечай 1-2 короткими "
+            "фразами, как реальный человек по телефону. Не объясняй детально, "
+            "не разворачивай мысль, если тебя об этом не просили. Если "
+            "вопрос требует длинного ответа — дай суть в одной фразе и спроси "
+            "встречный уточняющий вопрос."
+        )
 
     if task_type == "roleplay":
         full_system = full_system + _render_policy_prompt(mode=session_mode)
