@@ -412,8 +412,13 @@ class Attachment(Base):
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
-    client_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("real_clients.id", ondelete="CASCADE"), nullable=False, index=True
+    # NULL for TZ-5 training_material rows (ROP-uploaded learning content,
+    # not bound to any CRM client). Alembic 20260429_001 relaxed the
+    # NOT NULL. Existing client-attachment readers filter by
+    # ``client_id == X`` so NULL rows simply don't appear in their
+    # results — exactly the desired behaviour.
+    client_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("real_clients.id", ondelete="CASCADE"), nullable=True, index=True
     )
     session_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="SET NULL"), index=True
