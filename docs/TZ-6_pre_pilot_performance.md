@@ -1,102 +1,136 @@
 # ТЗ-6 — Pre-pilot performance optimization
 
 > **Статус:** проектируется. Дата: 2026-04-29.
-> **Триггер:** пользователь сообщил что policy/persona slot lock «подлагивает иногда тупит» в живом звонке. Аудит подтвердил: synchronous LLM call per AI message + sync DB writes добавляют 800-1500ms latency на каждый turn.
+> **Триггер:** пользователь сообщил «policy/persona slot lock подлагивает иногда тупит» в живом звонке.
+>
+> ⚠️ **Важно (rev. 2 от 2026-04-29 после deep audit):** первая редакция этого ТЗ (commit 7c4eb8e) ошибочно атрибутировала задержку к `conversation_audit_hook` (предполагая sync LLM call) и `lock_slot` (предполагая SELECT FOR UPDATE). **Аудит кода показал что это НЕ так:**
+>
+> - `conversation_audit_hook` — **только regex/CPU**, ни одного LLM-вызова, latency ~10-20ms
+> - `lock_slot` — **optimistic concurrency** через `version` column, БЕЗ pessimistic locks, latency 1-2 SQL queries
+>
+> Реальный источник задержки — другой. Эта rev. 2 переписана с правильным root cause.
 
-## 1. Что тормозит — конкретно
+## 1. Что реально тормозит — confirmed by audit
 
-### 1.1 conversation_audit_hook
+### 1.1 `detect_triggers` — sync LLM call в hot path
 
-[apps/api/app/services/conversation_audit_hook.py](apps/api/app/services/conversation_audit_hook.py) — **синхронный LLM-вызов** на каждой реплике AI:
-1. Классифицирует `policy_violations` (6 типов из TZ-4 §10)
-2. Записывает violations через `lock_slot` / `record_conflict_attempt`
-3. Эмитит `DomainEvent` через canonical writer
+`apps/api/app/ws/training.py:1677-1685` — на **каждой** реплике AI делается `await detect_triggers(...)`. Это LLM-вызов классификатора (определяет триггеры эмоций: empathy/facts/pressure/...).
 
-Время: 500-1000ms LLM + 200-500ms DB. Блокирует ответ AI пока не закончится.
+Сам комментарий в коде ([ws/training.py:1673-1675](apps/api/app/ws/training.py:1673)) предупреждает:
+```python
+# Skip LLM-based trigger detection when using local provider (single-concurrent)
+# to avoid 60+s latency per message (character response + trigger + trap = 3 serial LLM calls)
+_skip_llm_detection = settings.local_llm_enabled and not llm_result.is_fallback
+```
 
-### 1.2 runtime_metrics in-memory
+То есть **в коде уже есть знание про 3 serial LLM calls = 60+ секунд latency**. Только обходится через `local_llm_enabled` флаг (Mac Mini), что подходит для dev, но в проде с Gemini/Claude/GPT — `_skip_llm_detection = False`, и пользователь получает блокирующий LLM-вызов на каждой реплике.
 
-[apps/api/app/services/runtime_metrics.py](apps/api/app/services/runtime_metrics.py) — `defaultdict(int)` в памяти процесса. Сбрасывается на каждом рестарте api. Дашборд /dashboard/system/runtime-metrics показывает «последние N с момента старта пода», что вводит в заблуждение оператора.
+**Стек блокирующих LLM-вызовов на один turn:**
+1. `generate_response()` — основная генерация ответа AI (~1-3 сек)
+2. `detect_triggers()` — классификатор триггеров (~0.8-2 сек)  ← **этот**
+3. `trap_engine` (опционально) — если активен trap-сценарий (~0.5-1 сек)
 
-### 1.3 persona_memory.lock_slot
+Итого 2.3-6 секунд последовательно, прежде чем reply дойдёт до фронта.
 
-При каждом совпадении slot'а (TZ-4 §9):
-- `SELECT FOR UPDATE` на `memory_personas`
-- `UPDATE confirmed_facts SET ... version=version+1`
-- `INSERT INTO domain_events ...`
+### 1.2 `runtime_metrics` — in-memory only
 
-Сейчас всё синхронно в одной транзакции. Под нагрузкой 5+ параллельных сессий вызывает row-level lock contention.
+`apps/api/app/services/runtime_metrics.py:38-58`:
+```python
+_blocked_starts: dict[...] = defaultdict(int)
+_finalize: dict[...] = defaultdict(int)
+_followup_gap: dict[...] = defaultdict(int)
+```
 
-## 2. Решение
+Сбрасывается на рестарт api-контейнера. Endpoint `apps/api/app/api/client_domain_ops.py:270-326` (`GET /admin/runtime/metrics`) рендерит Prometheus text format напрямую из in-memory dict. Если Prometheus scraper стоит (`/api/metrics` → Prometheus → Grafana) — счётчики агрегируются на уровне Prometheus и переживают рестарт. Если FE дашборд `/dashboard/system` читает endpoint **напрямую** (без Prometheus middleware) — счётчики «врут» после каждого деплоя.
 
-### 2.1 Async write-behind для audit_hook
+**Проверить:** реально ли `/dashboard/system/RuntimeMetricsPanel` ходит на `GET /admin/runtime/metrics` напрямую или есть Prometheus-aggregation между ними.
 
-Файл: `app/services/audit_hook_queue.py` (новый)
+### 1.3 `conversation_audit_hook` — НЕ источник задержки (опровергнуто)
 
-- В call-flow `conversation_audit_hook.process_reply(...)` **больше не делает LLM-вызов**
-- Вместо этого: добавляет `(session_id, message_id, reply_text)` в Redis stream `audit_hook:queue`
-- Worker `app/workers/audit_hook_worker.py` (новый процесс или внутри scheduler) читает stream, делает LLM-классификацию и запись
-- WS-канал получает live-update когда обработка закончена (~1-2 сек спустя ответа AI)
+Аудит показал: hook делает только 2 SELECT (snapshot + persona) + regex pattern matching + опциональный INSERT в domain_events + WS enqueue. Реальный latency ~10-20ms. **Не приоритет.**
 
-**Эффект:** AI-ответ не блокируется audit hook'ом. Пользователь видит violation badge с задержкой 1-2 сек, но это **намного** лучше чем задержка ответа AI на 1 сек.
+### 1.4 `lock_slot` — НЕ источник задержки (опровергнуто)
 
-### 2.2 Persistent runtime metrics
+Аудит показал: optimistic concurrency через `expected_version` check, без `for_update()`. Caller загружает persona отдельно, `lock_slot` только flush+UPDATE+emit_domain_event. Latency 5-15ms. **Не приоритет.**
 
-Файл: `app/services/runtime_metrics_redis.py` (replacement)
+## 2. Решение (rev. 2)
 
-- `defaultdict(int)` → Redis `HINCRBY` с TTL 30 дней
-- Backfill при старте процесса не нужен (счётчики живут в Redis независимо от api пода)
-- Дашборд читает напрямую из Redis (один HGETALL per panel)
+### 2.1 Async detect_triggers (главная победа)
 
-**Plus:** добавить **persistent counter** из `domain_events` агрегата за последние 24h — реальный «сколько всего сегодня» рядом с «сколько с момента старта процесса».
+Сейчас `await detect_triggers(...)` блокирует поток. Триггеры нужны для:
+- Обновления emotion FSM (используется в **следующей** реплике AI)
+- Логирования
 
-### 2.3 lock_slot deferred
+**Идея:** перенести вызов `detect_triggers` в `asyncio.create_task(...)` ПОСЛЕ того как reply ушёл клиенту по WebSocket'у. Триггеры применятся к следующему turn'у — это семантически корректно (current turn уже завершён).
 
-Большая часть `lock_slot` вызовов происходит из audit_hook (через `record_conflict_attempt`). С async audit hook (2.1) они автоматически уходят из критического пути.
+**Изменение:** [`apps/api/app/ws/training.py:1677`](apps/api/app/ws/training.py:1677):
+```python
+# Было: блокирует reply
+trigger_result = await detect_triggers(...)
+emotion_engine.apply_triggers(trigger_result.triggers)
 
-Оставшиеся синхронные вызовы (в момент обнаружения нового факта) — оптимизировать batched commit: накопить несколько `lock_slot` за turn, сбросить одним UPDATE.
+# Станет: reply уходит сразу, триггеры применятся для NEXT reply
+await ws.send_json({"type": "character.response", "data": {...}})
+asyncio.create_task(_apply_triggers_async(session_id, ...))
+```
 
-## 3. Acceptance criteria
+**Эффект:** 1-2 секунды latency убираются с каждого turn. Звонок становится плавным.
 
-- [ ] AI-reply latency ≤ 200ms median (без conversation_audit_hook на критическом пути) — измерять через Prometheus histogram
-- [ ] Violation badge на FE появляется ≤ 2 секунды после AI-reply
-- [ ] Дашборд `/dashboard/system/runtime-metrics` показывает корректные числа после рестарта api контейнера (Redis-backed)
-- [ ] 10 параллельных сессий не вызывают row-level lock contention в `memory_personas` (тест с `asyncio.gather`)
+**Риск:** триггеры применяются с лагом одного turn — это может изменить динамику эмоций (раньше было «реактивно тут же»). Митигация: A/B тест с 5 пилотными — оценить не ломается ли тренировка.
 
-## 4. Тесты
+### 2.2 Persistent runtime metrics — only if needed
 
-- `test_audit_hook_queue.py` — async enqueue/dequeue, no message loss, ordering preserved per session
-- `test_runtime_metrics_redis.py` — counters survive process restart
-- `test_lock_slot_concurrent.py` — 10 parallel writers → version monotonic, no lost updates
-- Load test: 50 RPS на /ws/training/{session_id}, p95 reply latency ≤ 500ms
+**Сначала проверить** через grep что `RuntimeMetricsPanel.tsx` действительно ходит напрямую на API. Если он использует `/api/metrics` через Prometheus aggregator — задача отсутствует. Если напрямую — мигрировать на Redis HINCRBY + 30-day TTL ИЛИ читать из `domain_events` агрегатом за 24h.
+
+**Эффект:** дашборд показывает реальные числа после рестарта api.
+
+### 2.3 ~~Async write-behind audit_hook~~ — отменено
+
+Первая редакция предлагала это решение. Отменяется как решение несуществующей проблемы.
+
+### 2.4 Background task patterns — что уже есть
+
+В коде уже массово используется `asyncio.create_task()` (event_bus.py:184, scheduler.py:68, RAG, arena audio). Inf для async-task'ов готова — не надо вводить celery/arq.
+
+## 3. Acceptance criteria (rev. 2)
+
+- [ ] AI-reply latency p95 ≤ 1500ms (сейчас, с sync detect_triggers, ~3-5s) — измерять Prometheus histogram перед фиксом и после
+- [ ] Voice mode subjectively плавный на 5 пилотных — нет ощущения «AI зависает»
+- [ ] Emotion FSM продолжает корректно реагировать (триггеры применяются с задержкой ≤ 1 turn) — проверять через test_emotion_engine.py
+- [ ] **Только если нужно:** RuntimeMetricsPanel показывает correct числа после рестарта api
+
+## 4. Тесты (rev. 2)
+
+- `test_detect_triggers_async.py` — триггеры применяются на NEXT turn, не блокируют CURRENT
+- `test_emotion_fsm_with_async_triggers.py` — FSM не ломается от lag в 1 turn
+- Load test: 50 RPS на /ws/training/{session_id}, p95 ≤ 1500ms
 
 ## 5. Migration
 
-- Phase 1 (1 неделя): развернуть Redis-metrics параллельно с in-memory; дашборд показывает оба числа; собираем сравнение.
-- Phase 2 (1 неделя): переключить дашборд на Redis-only; in-memory оставить как backup.
-- Phase 3 (1 неделя): развернуть audit_hook worker; conversation_audit_hook переключается с sync на async по feature flag.
-- Phase 4: feature flag → on by default. Удалить sync code path.
+Phase 1 (1 неделя): feature flag `async_trigger_detection=false` (default). Включаем для 5 пилотных.
+Phase 2 (1 неделя): A/B измерение, если эмоции не ломаются — `async_trigger_detection=true` для всех.
+Phase 3: удаление sync code path.
 
-## 6. Риски
+## 6. Объём работы (rev. 2)
 
-1. **Redis недоступен** → metrics дашборд пуст. Митигируется: fallback на in-memory + alert в /dashboard/system.
-2. **Worker отстаёт** от очереди → violation badges с большим delay. Митигируется: scaling worker (multiple consumer instances on same Redis stream).
-3. **Lost messages** при downscale worker'а → используем Redis Streams (consumer groups, ACK).
+- Backend (1 файл `ws/training.py`, 1 файл `_apply_triggers_async`): **0.5 дня**
+- Tests + load test: **1 день**
+- A/B обкатка: **1-2 недели**
 
-## 7. Объём работы
+Итого: **~2 дня кода + 2 недели обкатки**. **Намного меньше чем rev. 1 предполагала.**
 
-- Backend: 4-5 дней (Redis metrics + audit worker + tests)
-- Прод-обкатка по фазам: 4 недели
-- Итого до полного перехода: **~5 недель**
+## 7. Связь с другими ТЗ
 
-## 8. Какой эффект ожидается на пилоте
+- TZ-4.5 (persona memory): добавит **ещё один** sync LLM call (fact extraction). Тоже async, чтобы не складывать задержки.
+- Voice-mode (sprint «не звучи как AI»): plata через async pipeline становится возможной.
 
-До TZ-6:
-- AI отвечает за 2-3 секунды
-- Часто voice mode «затыкается» при детектировании violation
-- Дашборд показывает `Finalize=2` вне зависимости от прошедших дней
+## 8. Что НЕ делаем
 
-После TZ-6:
-- AI отвечает за 0.6-1.0 секунды
-- Voice mode плавный
-- Дашборд показывает корректные числа за последние 24h
+- ~~Redis-streams worker для audit_hook~~ — atтакует несуществующую проблему
+- ~~Batch lock_slot UPDATE~~ — в проде нет contention'а
+
+## 9. Что узнал из этого аудита (lesson learned)
+
+**Никогда не доверять spec'у без проверки кода.** Первая редакция TZ-6 базировалась на моих предположениях о том «как обычно тормозят real-time системы», без открытия `conversation_audit_hook.py`. Это привело к 5-недельному плану, атакующему 2 несуществующие проблемы. После реального чтения файла — план сжался до 2 дней.
+
+Применять этот же принцип ко всем будущим spec'ам: **сначала grep + read**, потом план.

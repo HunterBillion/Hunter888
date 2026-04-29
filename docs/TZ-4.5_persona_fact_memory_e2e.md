@@ -1,28 +1,37 @@
 # ТЗ-4.5 — Persona Memory: end-to-end factual memory
 
 > **Статус:** проектируется. Последователь TZ-4 §9 (D3).
-> **Дата создания:** 2026-04-29.
+> **Дата создания:** 2026-04-29. Rev. 2: 2026-04-29 после deep code audit.
 > **Зависимости:** TZ-4 D3 (persona_memory сервис уже есть), TZ-1 §15.1 (correlation_id NOT NULL).
-> **Триггер:** аудит 2026-04-29 показал что `MemoryPersona.confirmed_facts` никогда не пишется ни одним code-path; AI не помнит что менеджер ему сказал между звонками.
+> **Триггер:** аудит 2026-04-29 показал что AI не помнит что менеджер ему сказал между звонками.
 
-## 1. Контекст и проблема
+## 1. Контекст и проблема (rev. 2 — точные данные из audit)
 
-TZ-4 D3 заложил **схему** persona memory:
-- `MemoryPersona.confirmed_facts JSONB` — постоянное хранилище фактов о клиенте
-- `MemoryPersona.do_not_ask_again_slots JSONB` — какие вопросы AI уже задавал
-- `persona_memory.lock_slot(...)` — атомарная запись с bump'ом version
+TZ-4 D3 заложил **больше чем я первоначально думал**. Вот что **уже** работает:
 
-Но **end-to-end pipeline отсутствует**:
+| Слой | Реализовано | File:line |
+|---|---|---|
+| ORM-схема `confirmed_facts JSONB` | ✅ | `models/persona.py:121` |
+| Writer-функция `lock_slot()` (полная, с optimistic concurrency, идемпотентная) | ✅ **НО dead-code** | `services/persona_memory.py:411-504` |
+| Юнит-тесты `lock_slot` | ✅ | `tests/test_persona_memory.py:386,411,433,440` |
+| AST-guard «никто не пишет confirmed_facts вне persona_memory» | ✅ | `tests/test_persona_invariants.py` |
+| API view `GET /persona/{lead_client_id}` отдаёт facts наружу | ✅ | `api/persona_view.py:139` |
+| Pseudo-registry slot codes (14 штук) | ✅ **но не shared** | `services/conversation_policy_engine.py:316-331` |
+| Reactive guard `asked_known_slot_again` (постфактум ловит переспросы) | ✅ | `services/conversation_policy_engine.py:291-339` |
+| Counter `record_conflict_attempt` (identity drift) | ✅ | `services/persona_memory.py` |
 
-| Слой | Реализовано? |
-|---|---|
-| ORM-схема | ✅ |
-| Сервис `persona_memory.lock_slot` | ✅ |
-| AST-guard | ✅ |
-| **Извлечение фактов из conversation messages** | ❌ |
-| **Запись извлечённых фактов в `confirmed_facts`** | ❌ |
-| **Чтение `confirmed_facts` в `_build_system_prompt`** | ❌ |
-| **Контракт "что считать фактом"** | ❌ |
+Что **НЕ реализовано** (критичные gaps):
+
+| Слой | Статус | Что нужно |
+|---|---|---|
+| **Caller** для `lock_slot()` в runtime | ❌ | Вся writer-функция dead-code; никто её не зовёт после реплик |
+| **Fact extraction** из conversation | ❌ | Нет LLM-классификатора, нет regex-extractor, нет session-end hook |
+| **Reader** `confirmed_facts` в `_build_system_prompt` | ❌ | Сигнатура `_build_system_prompt(character_prompt, guardrails, emotion_state, scenario_prompt)` не имеет persona-параметра. Нет placeholder `{persona_facts}` в шаблонах |
+| **Shared slot registry** | ❌ | Реестр размазан в одной локальной переменной `triggers` |
+| **Forget mechanism** | ❌ | Нет timestamp на фактах, нет TTL, нет API `unlock_slot` |
+| **End-to-end test** «session 1 пишет → session 2 читает» | ❌ | Нет |
+
+**Готовность:** 25-30%. Фундамент D3 прочный, недостающий слой — **верх пирамиды** (extractor + prompt-injector + shared registry).
 
 Поэтому AI каждый раз начинает с чистого листа, даже если 5 минут назад менеджер сказал «меня зовут Дмитрий, у меня компания Альфа».
 

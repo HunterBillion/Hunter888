@@ -1,8 +1,17 @@
 # ТЗ-5 — Input funnel: материалы → автокарточка сценария
 
-> **Статус:** концепт. Идея от пользователя 2026-04-29.
-> **Зависимости:** TZ-4 §7 (`attachment_pipeline` 11-state — переиспользуем!), TZ-3 (scenario lifecycle).
+> **Статус:** концепт. Идея от пользователя 2026-04-29. Rev. 2 после code audit.
+> **Зависимости:** TZ-4 §7 (attachment_pipeline есть), TZ-3 (scenario lifecycle).
 > **Триггер:** пользователь предложил «загрузить свои данные → платформа парсит → предлагает карточку сценария».
+>
+> ⚠️ **Корректировки rev. 2 (важные расширения scope):**
+> - **PDF/DOCX парсера в API НЕТ.** `grep "pypdf|PyPDF2|python-docx|pdfplumber|unstructured"` → 0 hits. В `pyproject.toml` только `fpdf2` (writer, не reader). **Нужен новый dependency** + extraction-сервис. Это **расширяет scope**, не «лишь добавить ветку в classifier».
+> - **Путь сценариев существует** через query-параметр: `/dashboard?tab=methodology&sub=scenarios` рендерит [ScenariosEditor.tsx](apps/web/src/components/dashboard/methodology/ScenariosEditor.tsx) (487 строк, TZ-3 §14.4 MVP). Что **уже** работает: список templates со status-badge + draft_revision + version indicator, кнопка Publish с обработкой 409/422, view-versions disclosure. Что **НЕ** в текущем MVP (явно расписано в docstring файла):
+>   - **In-place editing** (name/description/stages) — «C4.1, ещё не в UI». Сейчас methodologists правят через `PUT /rop/scenarios/{id}` напрямую API.
+>   - **Drag-and-drop reorder этапов**, traps picker, scoring modifier editor — «polish, не MVP».
+>   - **Create-new wizard** — «C4.2, после того как Publish flow обкатается неделю».
+> - Document-types в `attachment_storage.py:57-68` — **только 5 mime-категорий** (`pdf`, `image`, `document`, `spreadsheet`, `unknown`). Нет semantic typing. Нужен **второй уровень** классификации (semantic doc-type поверх mime).
+> - «11 состояний» из rev. 1 — это была моя оценка. Реально в коде **4 ортогональных status-колонки** (`status` × `ocr_status` × `classification_status` × `verification_status`), декартово произведение даёт ≈11 валидных состояний — но это не зафиксированный invariant.
 
 ## 1. Зачем
 
@@ -104,14 +113,20 @@ LLM-pipeline в две прохода:
 3. **Качество разное по форматам** — .pdf с OCR хуже .docx; нужны warnings ROP'у
 4. **152-ФЗ соответствие** загружаемых материалов — ROP должен подтвердить чек-боксом «этот материал можно использовать в обучении»
 
-## 8. Объём работы
+## 8. Объём работы (rev. 2 — реальные оценки после code audit)
 
-- Backend (extractor + pipeline branch): 5 дней
-- FE (`/import` surface + draft editor): 4 дня
+- **Новые deps + PDF/DOCX парсер** (выбор + интеграция `pypdf` или `unstructured`): 2 дня
+- **Расширить ScenariosEditor.tsx** до полного CRUD (in-place editing формы, create-new wizard) — то что в docstring помечено как «C4.1 + C4.2»: 3-4 дня. Эта часть **нужна в любом случае** для пилота, не только для import-flow.
+- Backend `scenario_extractor` (+ pipeline branch): 5 дней
+- FE drag-and-drop import + draft editor поверх существующего ScenariosEditor: 4 дня
 - Тесты + golden references: 3 дня
 - A/B с 3 пилотными командами: 1 неделя
 
-Итого: **~3 недели** до запуска beta, потом 2-3 недели обкатки на пилоте.
+Итого: **~3.5 недели** до запуска beta, потом 2-3 недели обкатки.
+
+**Расщепление:**
+- **TZ-5a — Полный CRUD сценариев в UI** (расширение `ScenariosEditor.tsx` до C4.1+C4.2 из docstring). Обязательно для пилота. ~4 дня.
+- **TZ-5b — Import flow** (PDF/DOCX парсер + scenario_extractor + drag-drop UI поверх 5a). Можно после пилота. ~3 недели.
 
 ## 9. Связь с ареной (TZ-4.4 user request)
 
