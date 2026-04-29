@@ -124,6 +124,29 @@ from app.services.tts import (
 logger = logging.getLogger(__name__)
 
 
+def _call_tts_factors(state: dict) -> list[dict] | None:
+    """Return active_factors for a TTS call when call humanisation V2 is on.
+
+    The factors are already maintained in ``state["active_factors"]`` by
+    the main handler (seed at first turn, refresh via
+    ``FactorInteractionMatrix``). Until Sprint 0 only one of the six TTS
+    call sites actually forwarded them — the others passed ``emotion``
+    only and the existing ``inject_hesitations`` / factor-specific
+    breathing path was effectively dead in voice mode.
+
+    This helper lets every TTS site opt in as a single branch. When
+    ``CALL_HUMANIZED_V2`` is OFF we return ``None`` so pre-Sprint-0
+    audible behaviour is preserved bit-for-bit. When ON we return the
+    live list so the humaniser actually fires.
+
+    Note: this is a *read* of ``state`` — callers must not mutate the
+    returned list (the matrix recomputes it each turn).
+    """
+    if not settings.call_humanized_v2:
+        return None
+    return list(state.get("active_factors") or [])
+
+
 async def _resolve_scenario(db, scenario_id: "uuid.UUID") -> Scenario | None:
     """Look up a scenario by ID, checking both legacy `scenarios` table and
     `scenario_templates`. If the ID matches a template but not a legacy row,
@@ -1355,7 +1378,11 @@ async def _generate_character_reply(
                     # Per-sentence budget = ElevenLabs timeout + 2s grace (covers Navy fallback)
                     _sent_budget = float(settings.elevenlabs_timeout_seconds) + 2.0
                     r = await asyncio.wait_for(
-                        get_tts_audio_b64(_text, str(session_id), emotion=current_emotion),
+                        get_tts_audio_b64(
+                            _text, str(session_id),
+                            emotion=current_emotion,
+                            active_factors=_call_tts_factors(state),
+                        ),
                         timeout=_sent_budget,
                     )
                     if r:
@@ -1859,7 +1886,11 @@ async def _generate_character_reply(
         _user_tts_pref = state.get("user_prefs", {}).get("tts_enabled", True)
         if is_tts_available() and _user_tts_pref:
             try:
-                _tts_res = await get_tts_audio_b64(hangup_phrase, str(session_id), emotion="hangup")
+                _tts_res = await get_tts_audio_b64(
+                    hangup_phrase, str(session_id),
+                    emotion="hangup",
+                    active_factors=_call_tts_factors(state),
+                )
                 if _tts_res and _tts_res.get("audio"):
                     await _send(ws, "tts.audio", {
                         "audio_b64": _tts_res["audio"],
@@ -2183,7 +2214,11 @@ async def _generate_character_reply(
 
             if len(_merged) <= 1:
                 # Single sentence — no pipelining benefit, use original path
-                tts_result = await get_tts_audio_b64(clean_content, str(session_id), emotion=new_emotion)
+                tts_result = await get_tts_audio_b64(
+                    clean_content, str(session_id),
+                    emotion=new_emotion,
+                    active_factors=_call_tts_factors(state),
+                )
                 if tts_result and tts_result.get("audio"):
                     await _send(ws, "tts.audio", {
                         "audio_b64": tts_result["audio"],
@@ -2205,7 +2240,11 @@ async def _generate_character_reply(
                 # Multiple sentences — synthesize in parallel, send sequentially
                 async def _synth_sentence(_text: str, _idx: int) -> tuple[int, dict | None]:
                     try:
-                        result = await get_tts_audio_b64(_text, str(session_id), emotion=new_emotion)
+                        result = await get_tts_audio_b64(
+                            _text, str(session_id),
+                            emotion=new_emotion,
+                            active_factors=_call_tts_factors(state),
+                        )
                         return (_idx, result)
                     except Exception as _e:
                         # Journal #C: was `return (_idx, None)` without logging.
@@ -2567,7 +2606,10 @@ async def _silence_watchdog(
             # TTS for silence prompt
             if is_tts_available():
                 try:
-                    tts_result = await get_tts_audio_b64(phrase, str(session_id))
+                    tts_result = await get_tts_audio_b64(
+                        phrase, str(session_id),
+                        active_factors=_call_tts_factors(state),
+                    )
                     if tts_result and tts_result.get("audio"):
                         await _send(ws, "tts.audio", {
                             "audio_b64": tts_result["audio"],
