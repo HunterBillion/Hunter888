@@ -313,6 +313,27 @@ SILENCE_PHRASES_BY_EMOTION: dict[str, list[str]] = {
 _SILENCE_FALLBACK = ["Алло? Вы ещё здесь?", "Алло?", "Мне кажется, связь прервалась..."]
 
 
+# Sprint 0 §6 — auto-opener phrases (Bug B fix). When V2 is on and a
+# call session starts, the AI emits one of these in the first second so
+# the manager isn't greeted by silence. Five short variants picked at
+# random; emotion-neutral on purpose because the persona's emotional
+# arc starts at "cold" and a long opening "Не желаю с вами разговаривать"
+# would be its own AI-tell. Real humans answer the phone neutrally.
+CALL_AUTO_OPENERS: tuple[str, ...] = (
+    "Алло?",
+    "Да, слушаю.",
+    "Алло, говорите.",
+    "Да?",
+    "Слушаю вас.",
+)
+
+
+def _pick_call_auto_opener() -> str:
+    """Return one of the auto-opener phrases at random."""
+    import random as _rnd
+    return _rnd.choice(CALL_AUTO_OPENERS)
+
+
 def _pick_silence_phrase(emotion: str, silence_count: int = 0) -> str:
     """Pick an emotion-aware silence phrase.
 
@@ -3766,6 +3787,91 @@ async def _handle_session_start(
         await _send(ws, "stage.update", stage_tracker.build_ws_payload(init_stage))
     except Exception:
         logger.debug("Stage tracker init failed for session %s", session.id)
+
+    # ── Sprint 0 §6 (Bug B fix) — auto-opener for call mode ──
+    # Pre-Sprint-0 a fresh call session sat silently waiting for the
+    # manager to speak first. Real debtors who pick up the phone always
+    # say SOMETHING ("Алло?" / "Да?" / "Слушаю"). Without this the
+    # session sounded like a standby AI assistant.
+    #
+    # Gated by THREE flags so any of them flipping off rolls back cleanly:
+    #   - settings.call_humanized_v2          — master Sprint 0 flag
+    #   - settings.call_humanized_v2_auto_opener — feature-specific flag
+    #   - state.session_mode in {call,center}    — chat sessions are silent
+    #     by design (manager types first), don't touch them
+    try:
+        _cp_open = state.get("custom_params") or {}
+        _mode_open = _cp_open.get("session_mode") or "chat"
+        _opener_eligible = (
+            settings.call_humanized_v2
+            and settings.call_humanized_v2_auto_opener
+            and _mode_open in ("call", "center")
+        )
+        if _opener_eligible:
+            await _send_call_auto_opener(ws, session.id, state)
+    except Exception:
+        # Never let opener failure abort session.start. The manager can
+        # always start the call manually — the opener is a UX nicety.
+        logger.warning(
+            "auto-opener failed for session=%s — session continues silently",
+            session.id, exc_info=True,
+        )
+
+
+async def _send_call_auto_opener(ws, session_id, state: dict) -> None:
+    """Emit a short opener phrase (text + TTS audio) and persist it.
+
+    Behaves like the silence-prompt path: assistant message saved to DB so
+    history replay reconstructs UI exactly, TTS uses active_factors so the
+    voice carries the same humanisation factors as the rest of the call.
+    Emotion is hardcoded "cold" — fresh sessions always start there per
+    the FSM, and we don't want to fork off into emotion-resolution logic
+    inside the start handler.
+    """
+    phrase = _pick_call_auto_opener()
+    # 1) Notify the UI immediately so the message bubble appears.
+    await _send(ws, "character.message", {
+        "content": phrase,
+        "emotion": "cold",
+        "is_auto_opener": True,
+    })
+    # 2) Best-effort TTS. If it fails the text bubble still rendered.
+    if is_tts_available() and (state.get("user_prefs") or {}).get("tts_enabled", True):
+        try:
+            tts_result = await get_tts_audio_b64(
+                phrase, str(session_id),
+                emotion="cold",
+                active_factors=_call_tts_factors(state),
+            )
+            if tts_result and tts_result.get("audio"):
+                await _send(ws, "tts.audio", {
+                    "audio_b64": tts_result["audio"],
+                    "format": tts_result.get("format", "mp3"),
+                    "emotion": "cold",
+                    "voice_params": tts_result.get("voice_params"),
+                    "duration_ms": tts_result.get("duration_ms"),
+                    "text": phrase,
+                })
+        except TTSError as exc:
+            logger.debug(
+                "auto-opener TTS failed session=%s: %s", session_id, exc,
+            )
+    # 3) Persist as assistant message so /resume rebuilds the UI cleanly.
+    try:
+        async with async_session() as db:
+            await add_message(
+                session_id=session_id,
+                role=MessageRole.assistant,
+                content=phrase,
+                db=db,
+                emotion_state="cold",
+            )
+            await db.commit()
+    except Exception:
+        # Persistence is the least critical — UI already saw the bubble.
+        logger.warning(
+            "auto-opener persist failed session=%s", session_id, exc_info=True,
+        )
 
 
 async def _handle_deepgram_streaming(
