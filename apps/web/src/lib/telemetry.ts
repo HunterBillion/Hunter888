@@ -26,7 +26,9 @@ type EventName =
   | "stage_skipped"
   | "whisper_script_clicked"
   | "retrain_widget_shown"
-  | "retrain_widget_clicked";
+  | "retrain_widget_clicked"
+  // P2 (2026-04-29) — coaching mistake detector toasts.
+  | "coaching_mistake";
 
 const isDev =
   typeof process !== "undefined" && process.env?.NODE_ENV === "development";
