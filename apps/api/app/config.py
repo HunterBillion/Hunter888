@@ -211,6 +211,18 @@ class Settings(BaseSettings):
     # so the manager isn't greeted by silence. Defaults to True under V2.
     call_humanized_v2_auto_opener: bool = True
 
+    # ── P0 (2026-04-29) Call Arc — decouple AI from manager script ────────
+    # Two-axis architecture: AI gets per-call role (CallArcStep), not per-stage
+    # behaviour directives. StageTracker keeps running for scoring/UI.
+    # When True: training.py skips StageTracker.build_stage_prompt() injection
+    # and uses build_arc_prompt() instead. Reality block is also injected.
+    # When False (default): bit-for-bit identical to today.
+    call_arc_v1: bool = False
+    # When True AND call_arc_v1 is on: inject the always-loaded reality block
+    # (apps/api/prompts/reality_ru_2026.md) into the call-mode system prompt.
+    # Separate flag so we can A/B the arc and reality independently.
+    call_arc_inject_reality: bool = True
+
     # ── Phase 1 (Roadmap) ConversationCompletionPolicy flags ──────────────
     # When False (default during rollout): legacy terminal side-effect
     # blocks still own the writes; policy only VALIDATES + stamps the new
