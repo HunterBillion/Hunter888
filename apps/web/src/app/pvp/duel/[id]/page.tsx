@@ -799,6 +799,10 @@ function DuelPage() {
                 : "online"
           }
           scores={store.judgeScore ?? undefined}
+          // 2026-04-29 (Фаза 3): пробрасываем тир игрока, чтобы аватар/бабл
+          // твоих сообщений покрасились по рангу. opponentTier пока не доступен
+          // в payload — придёт в Фазе 7 (расширение match.found с opponent_tier).
+          selfTier={store.rating?.rank_tier ?? undefined}
         />
       </div>
 
