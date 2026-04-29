@@ -123,8 +123,11 @@ async def test_ingest_training_material_creates_row_without_client(monkeypatch):
     assert attachment.status == "received"
     assert attachment.classification_status == "classification_pending"
     assert attachment.verification_status == "unverified"
-    # Storage was invoked with the bucket directory, not a real client id.
-    assert captured["stored_with"][0]["client_id"] == "_training_materials"
+    # Storage was invoked with the per-uploader bucket directory.
+    # PR-1.1 audit fix moved from a shared `_training_materials` to
+    # `_training_materials/{uploaded_by}` so guessed URLs cannot cross-
+    # reference another ROP's uploads.
+    assert captured["stored_with"][0]["client_id"].startswith("_training_materials/")
     # Exactly one event — no CRM interaction for training materials.
     types = [c["event_type"] for c in captured["emit_calls"]]
     assert types == ["attachment.uploaded"]

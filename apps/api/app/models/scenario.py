@@ -421,14 +421,33 @@ class ScenarioDraft(Base):
         String(30), nullable=False, server_default="extracting"
     )
 
-    # Full ScenarioDraft dataclass payload (TZ-5 §3.1):
-    #   title_suggested, summary, archetype_hint, steps,
-    #   expected_objections, success_criteria, quotes_from_source.
+    # PR-2 multi-route discriminator: scenario / character / arena_knowledge.
+    # Classifier suggests, ROP can override before approve. Targets:
+    #   scenario        → ScenarioTemplate
+    #   character       → custom_characters row
+    #   arena_knowledge → LegalKnowledgeChunk
+    route_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, server_default="scenario"
+    )
+    # Polymorphic pointer — target table depends on route_type. App-layer
+    # validation; no SQL FK because the target table varies.
+    target_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
+    # Draft dataclass payload (shape varies by route_type — see
+    # scenario_extractor for per-route schemas).
     extracted: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
     )
     confidence: Mapped[float] = mapped_column(
         Float, nullable=False, server_default="0.0"
+    )
+    # Audit invariant (PR-1.1) — what the LLM originally produced before
+    # any ROP override. Detects post-hoc confidence raises on hallucinated
+    # drafts.
+    original_confidence: Mapped[float | None] = mapped_column(
+        Float, nullable=True
     )
     source_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -446,6 +465,7 @@ class ScenarioDraft(Base):
     __table_args__ = (
         Index("ix_scenario_drafts_status", "status"),
         Index("ix_scenario_drafts_created_by", "created_by"),
+        Index("ix_scenario_drafts_route_type", "route_type"),
     )
 
 

@@ -556,9 +556,35 @@ app.mount("/api/uploads/avatars", StaticFiles(directory=str(_avatars_dir)), name
 
 _attachments_dir = _Path(__file__).resolve().parent.parent / "uploads" / "attachments"
 _attachments_dir.mkdir(parents=True, exist_ok=True)
+
+
+# TZ-5 PR-1.1 audit fix — refuse to serve training_material files via
+# the unauthenticated StaticFiles mount. Training materials may legitimately
+# contain client PII despite the 152-FZ consent gate, and a guessed URL
+# under `/api/uploads/attachments/_training_materials/...` would otherwise
+# bypass auth entirely.
+#
+# Reads of training_material bytes go through the auth-gated endpoint
+# `GET /api/rop/scenarios/drafts/{draft_id}/download` (defined in
+# `app/api/rop.py`). Client-attachment uploads (CRM passport scans etc.)
+# continue to work — they live under `/api/uploads/attachments/{client_uuid}/...`
+# which is unaffected.
+class _AuthGatedAttachmentsStaticFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        if path.startswith("_training_materials"):
+            from starlette.responses import PlainTextResponse
+
+            return PlainTextResponse(
+                "Training materials require an auth'd download endpoint. "
+                "See /api/rop/scenarios/drafts/{id}/download.",
+                status_code=403,
+            )
+        return await super().get_response(path, scope)
+
+
 app.mount(
     "/api/uploads/attachments",
-    StaticFiles(directory=str(_attachments_dir)),
+    _AuthGatedAttachmentsStaticFiles(directory=str(_attachments_dir)),
     name="attachments",
 )
 

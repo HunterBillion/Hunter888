@@ -701,8 +701,14 @@ async def ingest_training_material(
     # Storage layer handles extension whitelist + safe filename + sha256.
     # Training-material API passes the narrower ``TRAINING_MATERIAL_EXTENSIONS``
     # set so the rejection error points at the correct allowlist.
+    #
+    # Audit fix (PR-1.1): bucket per-uploader so a guessed URL under the
+    # shared bucket directory cannot cross-reference another ROP's
+    # uploads. Reads are also gated by the auth'd /rop/scenarios/drafts/
+    # {id}/download endpoint — the generic StaticFiles mount returns
+    # 403 for `_training_materials/...` paths now.
     stored: StoredAttachment = store_attachment_bytes(
-        client_id="_training_materials",  # bucket directory, not a real client id
+        client_id=f"_training_materials/{uploaded_by}",
         filename=raw_filename,
         data=raw_bytes,
         allowed_extensions=allowed_extensions or ALLOWED_EXTENSIONS,

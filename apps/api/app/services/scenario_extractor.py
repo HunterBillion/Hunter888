@@ -87,10 +87,10 @@ class ScenarioStep:
 
 @dataclass
 class ScenarioDraftPayload:
-    """Structured output of the extractor (matches TZ-5 §3.1 spec).
+    """Structured output of the SCENARIO branch of the extractor.
 
-    Persisted as JSONB in ``scenario_drafts.extracted``. The dataclass
-    serves as both the LLM JSON schema target and the FE/API contract.
+    Persisted as JSONB in ``scenario_drafts.extracted`` when
+    ``route_type='scenario'``. Matches TZ-5 §3.1 spec.
     """
 
     title_suggested: str
@@ -115,6 +115,340 @@ class ScenarioDraftPayload:
         }
 
 
+# ── PR-2 multi-route payloads ────────────────────────────────────────────
+
+
+@dataclass
+class CharacterDraftPayload:
+    """CHARACTER route — extracted client persona for the training Constructor.
+
+    Maps to the shape consumed by `apps/web/.../CharacterBuilder.tsx` and
+    persisted into `custom_characters` after ROP approval. Fields are kept
+    intentionally narrow so the heuristic + LLM extractor produce something
+    a ROP can review in &lt;30 seconds.
+    """
+
+    name: str  # "Иван П., директор стройки"
+    archetype_hint: str | None
+    description: str  # 2-3 sentence summary
+    personality_traits: list[str]  # ["агрессивный", "торопится", "недоверчив"]
+    typical_objections: list[str]
+    speech_patterns: list[str]  # phrases / verbal tics from source
+    quotes_from_source: list[str]
+    confidence: float
+
+    def to_jsonable(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "archetype_hint": self.archetype_hint,
+            "description": self.description,
+            "personality_traits": list(self.personality_traits),
+            "typical_objections": list(self.typical_objections),
+            "speech_patterns": list(self.speech_patterns),
+            "quotes_from_source": list(self.quotes_from_source),
+            "confidence": float(self.confidence),
+        }
+
+
+@dataclass
+class ArenaKnowledgeDraftPayload:
+    """ARENA_KNOWLEDGE route — RAG/quiz fact for the Arena (LegalKnowledgeChunk).
+
+    The shape mirrors `LegalKnowledgeChunk` columns the ROP edits (see
+    `apps/api/app/models/rag.py`). After approval the chunk lands in
+    `legal_knowledge_chunks` with `is_active=False` (pending review queue).
+    """
+
+    fact_text: str  # the canonical fact (1-3 sentences)
+    law_article: str | None  # "127-ФЗ ст. 213.3 п. 2"
+    category: str  # "eligibility" | "process" | "rights" | ...
+    difficulty_level: int  # 1..5
+    match_keywords: list[str]
+    common_errors: list[str]  # what people get wrong
+    correct_response_hint: str
+    quotes_from_source: list[str]
+    confidence: float
+
+    def to_jsonable(self) -> dict[str, Any]:
+        return {
+            "fact_text": self.fact_text,
+            "law_article": self.law_article,
+            "category": self.category,
+            "difficulty_level": int(self.difficulty_level),
+            "match_keywords": list(self.match_keywords),
+            "common_errors": list(self.common_errors),
+            "correct_response_hint": self.correct_response_hint,
+            "quotes_from_source": list(self.quotes_from_source),
+            "confidence": float(self.confidence),
+        }
+
+
+# Route discriminator — single source of truth for the 3 branches.
+ROUTE_TYPES = ("scenario", "character", "arena_knowledge")
+
+
+@dataclass
+class ClassificationResult:
+    """Output of the LLM classifier (`classify_material`).
+
+    `route_type` is the suggested branch; `confidence` is how sure the
+    classifier is. `mixed_routes` lists ALL plausible branches (LLM may
+    say "this material is mostly scenario but also contains arena facts");
+    the FE shows them so ROP can split or pick the primary.
+    """
+
+    route_type: str  # one of ROUTE_TYPES
+    confidence: float
+    reasoning: str  # 1-line "why" — shown to ROP
+    mixed_routes: list[str]  # secondary candidates
+
+
+def _heuristic_classify(text: str) -> ClassificationResult:
+    """Deterministic fallback classifier used when no LLM is configured.
+
+    Heuristics:
+      * high density of "Шаг N", "Этап", "stages" markers → scenario
+      * persona descriptors ("должник", "директор", "клиент типа", "агрессивный",
+        "недоверч*", profession nouns) → character
+      * legal markers ("127-ФЗ", "ст.", "статья", percentages, deadlines,
+        case codes) → arena_knowledge
+      * tied / unclear → scenario (safe default — easiest to convert manually)
+
+    Confidence intentionally caps at 0.55 so the LLM is preferred when wired,
+    and the heuristic outputs always show as "уверенность низкая" until a real
+    LLM upgrade re-classifies.
+    """
+    if not text or not text.strip():
+        return ClassificationResult(
+            route_type="scenario",
+            confidence=0.0,
+            reasoning="(пустой материал — не удалось определить тип)",
+            mixed_routes=[],
+        )
+    lower = text.lower()
+    scenario_markers = sum(
+        lower.count(m)
+        for m in ("шаг ", "этап ", "stage", "приветств", "квалифик", "закрыт", "возражени")
+    )
+    character_markers = sum(
+        lower.count(m)
+        for m in (
+            "клиент типа",
+            "должник",
+            "директор",
+            "агрессив",
+            "недоверчив",
+            "торопится",
+            "обычно говорит",
+            "характер",
+            "типаж",
+            "архетип",
+        )
+    )
+    arena_markers = sum(
+        lower.count(m)
+        for m in (
+            "127-фз",
+            "ст.",
+            "статья ",
+            "пункт ",
+            "закон",
+            "право",
+            "процедур",
+            "банкротств",
+            "%",
+            "руб",
+            "₽",
+        )
+    )
+
+    scores = {
+        "scenario": scenario_markers,
+        "character": character_markers,
+        "arena_knowledge": arena_markers,
+    }
+    top = max(scores, key=scores.get)
+    total = sum(scores.values()) or 1
+    primary_share = scores[top] / total
+    confidence = min(0.55, 0.25 + 0.5 * primary_share)
+    mixed = [k for k, v in scores.items() if k != top and v >= max(2, scores[top] // 2)]
+
+    reasoning_map = {
+        "scenario": "Найдены маркеры этапов разговора и возражений — похоже на сценарий звонка.",
+        "character": "Найдены описания типажа клиента — похоже на персонажа конструктора.",
+        "arena_knowledge": "Найдены ссылки на статьи закона — похоже на материал для Арены.",
+    }
+    return ClassificationResult(
+        route_type=top,
+        confidence=confidence,
+        reasoning=reasoning_map[top],
+        mixed_routes=mixed,
+    )
+
+
+def classify_material(text: str) -> ClassificationResult:
+    """Top-level classifier: where does this material belong?
+
+    Wraps `_heuristic_classify` for now. PR-3 will swap in a real LLM call
+    (Claude Sonnet) behind the same dataclass contract — callers don't
+    change. PII is scrubbed BEFORE classification so the LLM never sees
+    raw client data.
+    """
+    scrubbed = strip_pii(text)
+    return _heuristic_classify(scrubbed)
+
+
+# Per-route heuristic extractors. Each takes scrubbed text and returns
+# the route's payload dataclass.
+
+
+def _heuristic_extract_character(text: str) -> CharacterDraftPayload:
+    """Extract a CharacterDraftPayload from text describing a client typage."""
+    cleaned = text.strip()
+    if not cleaned:
+        return CharacterDraftPayload(
+            name="(не определено)",
+            archetype_hint=None,
+            description="",
+            personality_traits=[],
+            typical_objections=[],
+            speech_patterns=[],
+            quotes_from_source=[],
+            confidence=0.0,
+        )
+    paragraphs = [p.strip() for p in _PARAGRAPH_SPLIT_RE.split(cleaned) if p.strip()]
+    name = paragraphs[0].splitlines()[0][:120] if paragraphs else "Импортированный персонаж"
+    description = (paragraphs[0] if paragraphs else cleaned)[:400]
+
+    trait_keywords = [
+        "агрессив",
+        "недоверч",
+        "торопится",
+        "скептичный",
+        "эмоциональный",
+        "спокойный",
+        "грубый",
+        "вежливый",
+        "уставший",
+    ]
+    traits = [k for k in trait_keywords if k in cleaned.lower()]
+
+    objections: list[str] = []
+    for line in cleaned.splitlines():
+        s = line.strip().strip("«»\"'")
+        low = s.lower()
+        if any(t in low for t in ("дорого", "подумаю", "не сейчас", "не интересно", "не верю")):
+            if 5 <= len(s) <= 220:
+                objections.append(s[:220])
+        if len(objections) >= 5:
+            break
+
+    quotes: list[str] = []
+    for line in cleaned.splitlines():
+        s = line.strip().strip("«»\"'")
+        if 20 <= len(s) <= 220 and (s.endswith(".") or s.endswith("?") or s.endswith("!")):
+            quotes.append(s[:220])
+        if len(quotes) >= 5:
+            break
+
+    confidence = 0.4 if (traits or objections) else 0.2
+    return CharacterDraftPayload(
+        name=name,
+        archetype_hint=None,
+        description=description,
+        personality_traits=traits[:6],
+        typical_objections=objections,
+        speech_patterns=[],
+        quotes_from_source=quotes,
+        confidence=confidence,
+    )
+
+
+def _heuristic_extract_arena_knowledge(text: str) -> ArenaKnowledgeDraftPayload:
+    """Extract an ArenaKnowledgeDraftPayload from a legal/factual document."""
+    cleaned = text.strip()
+    if not cleaned:
+        return ArenaKnowledgeDraftPayload(
+            fact_text="",
+            law_article=None,
+            category="general",
+            difficulty_level=2,
+            match_keywords=[],
+            common_errors=[],
+            correct_response_hint="",
+            quotes_from_source=[],
+            confidence=0.0,
+        )
+    # First non-empty paragraph as the canonical fact.
+    paragraphs = [p.strip() for p in _PARAGRAPH_SPLIT_RE.split(cleaned) if p.strip()]
+    fact = (paragraphs[0] if paragraphs else cleaned)[:500]
+
+    article_match = re.search(r"(\d+\s*-\s*[А-ЯA-Z]{1,3}|ст\.\s*\d+\.\d+|статья\s+\d+)", cleaned, re.IGNORECASE)
+    law_article = article_match.group(0) if article_match else None
+
+    keywords: list[str] = []
+    for kw in ("банкротств", "долг", "процедур", "имущество", "кредит", "просрочк", "суд"):
+        if kw in cleaned.lower():
+            keywords.append(kw)
+
+    quotes: list[str] = []
+    for line in cleaned.splitlines():
+        s = line.strip()
+        if 20 <= len(s) <= 220 and any(c in s for c in (".", "%", "₽", "руб")):
+            quotes.append(s[:220])
+        if len(quotes) >= 5:
+            break
+
+    confidence = 0.4 if (law_article or len(keywords) >= 2) else 0.2
+    return ArenaKnowledgeDraftPayload(
+        fact_text=fact,
+        law_article=law_article,
+        category="general",
+        difficulty_level=2,
+        match_keywords=keywords[:8],
+        common_errors=[],
+        correct_response_hint=fact[:200],
+        quotes_from_source=quotes,
+        confidence=confidence,
+    )
+
+
+def extract_for_route(text: str, route_type: str) -> dict[str, Any]:
+    """Dispatch heuristic extraction by route_type, return JSONB-ready dict.
+
+    Used by `run_extraction` after `classify_material` decides the branch.
+    Caller persists the dict into `scenario_drafts.extracted`.
+    """
+    scrubbed = strip_pii(text)
+    if route_type == "scenario":
+        payload_s = _heuristic_extract(scrubbed)
+        payload_s = _validate_quotes(payload_s, scrubbed)
+        payload_s = _scrub_payload(payload_s)
+        return payload_s.to_jsonable()
+    if route_type == "character":
+        payload_c = _heuristic_extract_character(scrubbed)
+        # Validate quotes the same way scenarios do.
+        kept_quotes: list[str] = []
+        haystack = re.sub(r"\s+", " ", scrubbed).lower()
+        for q in payload_c.quotes_from_source:
+            normalised = re.sub(r"\s+", " ", q).lower()
+            if normalised and normalised in haystack:
+                kept_quotes.append(q)
+        payload_c.quotes_from_source = kept_quotes
+        return payload_c.to_jsonable()
+    if route_type == "arena_knowledge":
+        payload_a = _heuristic_extract_arena_knowledge(scrubbed)
+        kept_quotes_a: list[str] = []
+        haystack_a = re.sub(r"\s+", " ", scrubbed).lower()
+        for q in payload_a.quotes_from_source:
+            normalised = re.sub(r"\s+", " ", q).lower()
+            if normalised and normalised in haystack_a:
+                kept_quotes_a.append(q)
+        payload_a.quotes_from_source = kept_quotes_a
+        return payload_a.to_jsonable()
+    raise ValueError(f"Unknown route_type: {route_type!r}")
+
+
 # ── Format-aware text extraction ────────────────────────────────────────
 
 _PARAGRAPH_SPLIT_RE = re.compile(r"\n{2,}")
@@ -122,12 +456,51 @@ _HEADING_RE = re.compile(
     r"^(?:#+\s+|\d+[.)]\s+|[А-ЯA-Z][А-ЯA-Z\s]{3,}:?$)", re.MULTILINE
 )
 
+# TZ-5 PR-1.1 audit fix — zip-bomb / XML-bomb guards for the .docx/.pptx
+# fallback parsers. The fallbacks read members of the uploaded zip in-
+# memory; without these limits a 50 MB malicious zip can expand to multi-
+# GB of XML and OOM the API worker.
+#
+# A typical legitimate course .pptx is &lt;50 MB uncompressed; a long Word
+# memo is &lt;5 MB. These caps are generous for real material but stop
+# pathological inputs.
+MAX_ZIP_TOTAL_UNCOMPRESSED = 200 * 1024 * 1024
+MAX_ZIP_MEMBER_SIZE = 100 * 1024 * 1024
+MAX_DECODED_TEXT_SIZE = 20 * 1024 * 1024
+
 
 class UnsupportedTrainingMaterialFormat(ValueError):
     """Raised when the file extension is in ALLOWED_EXTENSIONS but no
     parser is wired up. Distinct from the upload-time rejection so the
     error surfaces in the extractor's ``error_message`` column, not in the
     upload 415."""
+
+
+class TrainingMaterialTooLarge(ValueError):
+    """Raised when an uploaded zip-based document violates the
+    decompression-size guards. Distinct exception class so the
+    ``run_extraction`` branch maps it to a friendly draft error message
+    instead of a 500."""
+
+
+def _check_zip_bomb_guards(zf) -> None:
+    """Refuse to parse a zip whose declared uncompressed total or member
+    size exceeds the configured caps. Reads only the central directory
+    (no decompression) so it's cheap. Called by the docx/pptx fallback
+    parsers BEFORE reading any member."""
+    total = 0
+    for info in zf.infolist():
+        if info.file_size > MAX_ZIP_MEMBER_SIZE:
+            raise TrainingMaterialTooLarge(
+                f"Архив содержит элемент {info.filename!r} с размером "
+                f"{info.file_size} байт (лимит {MAX_ZIP_MEMBER_SIZE})."
+            )
+        total += info.file_size
+        if total > MAX_ZIP_TOTAL_UNCOMPRESSED:
+            raise TrainingMaterialTooLarge(
+                f"Распакованный размер архива превышает "
+                f"{MAX_ZIP_TOTAL_UNCOMPRESSED} байт."
+            )
 
 
 def extract_text_from_bytes(filename: str, data: bytes) -> str:
@@ -196,12 +569,28 @@ def _extract_docx(data: bytes) -> str:
         import zipfile
 
         with zipfile.ZipFile(io.BytesIO(data)) as z:
-            with z.open("word/document.xml") as fh:
-                xml = fh.read().decode("utf-8", errors="replace")
+            _check_zip_bomb_guards(z)
+            try:
+                info = z.getinfo("word/document.xml")
+            except KeyError as exc:
+                raise UnsupportedTrainingMaterialFormat(
+                    "Архив .docx не содержит word/document.xml — повреждён."
+                ) from exc
+            with z.open(info) as fh:
+                # Cap individual member reads to MAX_DECODED_TEXT_SIZE so
+                # even a "honest" but huge member can't blow up memory.
+                xml_bytes = fh.read(MAX_DECODED_TEXT_SIZE + 1)
+                if len(xml_bytes) > MAX_DECODED_TEXT_SIZE:
+                    raise TrainingMaterialTooLarge(
+                        f"document.xml превышает {MAX_DECODED_TEXT_SIZE} байт."
+                    )
+                xml = xml_bytes.decode("utf-8", errors="replace")
         text = re.sub(r"<[^>]+>", " ", xml)
         text = re.sub(r"\s+", " ", text).strip()
         return text
-    except Exception as exc:  # pragma: no cover -- defensive
+    except (UnsupportedTrainingMaterialFormat, TrainingMaterialTooLarge):
+        raise
+    except (zipfile.BadZipFile, KeyError) as exc:
         raise UnsupportedTrainingMaterialFormat(
             f"docx fallback parser failed: {exc}"
         ) from exc
@@ -247,17 +636,38 @@ def _extract_pptx(data: bytes) -> str:
         import zipfile
 
         out: list[str] = []
+        out_size = 0
         with zipfile.ZipFile(io.BytesIO(data)) as z:
-            for name in z.namelist():
-                if name.startswith("ppt/slides/slide") and name.endswith(".xml"):
-                    with z.open(name) as fh:
-                        xml = fh.read().decode("utf-8", errors="replace")
-                    text = re.sub(r"<[^>]+>", " ", xml)
-                    text = re.sub(r"\s+", " ", text).strip()
-                    if text:
-                        out.append(text)
+            _check_zip_bomb_guards(z)
+            for info in z.infolist():
+                name = info.filename
+                # Path-traversal defense: skip anything that tries to
+                # escape the slide directory or has a leading slash.
+                if ".." in name or name.startswith("/"):
+                    continue
+                if not (name.startswith("ppt/slides/slide") and name.endswith(".xml")):
+                    continue
+                with z.open(info) as fh:
+                    xml_bytes = fh.read(MAX_ZIP_MEMBER_SIZE + 1)
+                    if len(xml_bytes) > MAX_ZIP_MEMBER_SIZE:
+                        raise TrainingMaterialTooLarge(
+                            f"Слайд {name!r} превышает {MAX_ZIP_MEMBER_SIZE} байт."
+                        )
+                    xml = xml_bytes.decode("utf-8", errors="replace")
+                text = re.sub(r"<[^>]+>", " ", xml)
+                text = re.sub(r"\s+", " ", text).strip()
+                if text:
+                    out.append(text)
+                    out_size += len(text)
+                    if out_size > MAX_DECODED_TEXT_SIZE:
+                        raise TrainingMaterialTooLarge(
+                            f"Совокупный текст слайдов превышает "
+                            f"{MAX_DECODED_TEXT_SIZE} байт."
+                        )
         return "\n\n".join(out)
-    except Exception as exc:  # pragma: no cover -- defensive
+    except (UnsupportedTrainingMaterialFormat, TrainingMaterialTooLarge):
+        raise
+    except zipfile.BadZipFile as exc:
         raise UnsupportedTrainingMaterialFormat(
             f"pptx fallback parser failed: {exc}"
         ) from exc
@@ -448,24 +858,23 @@ async def run_extraction(
     attachment: Attachment,
     raw_bytes: bytes,
     actor_id: uuid.UUID | None = None,
+    forced_route_type: str | None = None,
 ) -> ScenarioDraft:
     """Persist a ``ScenarioDraft`` row for ``attachment``.
 
-    Caller contract:
-      * ``attachment.document_type == 'training_material'``
-      * ``attachment.classification_status == 'classified'``
+    PR-2 multi-route flow:
+      1. Decode bytes → text.
+      2. ``classify_material`` decides ``route_type`` (scenario / character
+         / arena_knowledge). ROP can override via ``forced_route_type``.
+      3. ``extract_for_route`` runs the per-branch heuristic + quote
+         validator + PII scrub.
+      4. Persist a ``ScenarioDraft`` row carrying the route_type and the
+         extracted payload (shape varies by route).
 
-    On success the helper transitions the attachment through
-    ``scenario_draft_extracting -> scenario_draft_ready`` (each transition
-    emits a canonical Domain Event via the pipeline helpers, which keeps
-    the AST guard happy).
-
-    On parser failure (unsupported format, corrupt bytes) the row lands
-    with ``status='failed'`` and ``error_message`` set. The attachment
-    transitions to ``scenario_draft_extracting`` then ``scenario_draft_ready``
-    anyway so the FE can render the "extraction failed" state without
-    the row sitting forever in ``scenario_draft_extracting``. The ROP can
-    discard or retry.
+    On parser failure / classifier failure / oversized input the row lands
+    with ``status='failed'`` and ``error_message`` set, but the attachment
+    still progresses to ``scenario_draft_ready`` so the FE doesn't show a
+    spinner forever — ROP discards or retries.
     """
     if attachment.document_type != "training_material":
         raise ValueError(
@@ -487,9 +896,24 @@ async def run_extraction(
             "scenario_extractor: parser missing for attachment %s: %s",
             attachment.id, exc,
         )
+    except TrainingMaterialTooLarge as exc:
+        error_message = str(exc)
+        logger.warning(
+            "scenario_extractor: zip-bomb guard tripped on attachment %s: %s",
+            attachment.id, exc,
+        )
+    except Exception as exc:
+        error_message = f"Не удалось распарсить файл: {type(exc).__name__}: {exc}"
+        logger.warning(
+            "scenario_extractor: unexpected parser exception for attachment %s",
+            attachment.id, exc_info=True,
+        )
 
+    # PR-2: classify + per-route extraction
     if error_message:
-        payload = ScenarioDraftPayload(
+        # Failure path — empty scenario shape so the FE can render the
+        # "extraction failed" state. route_type defaults to 'scenario'.
+        extracted_blob = ScenarioDraftPayload(
             title_suggested=attachment.filename,
             summary="",
             archetype_hint=None,
@@ -498,11 +922,33 @@ async def run_extraction(
             success_criteria=[],
             quotes_from_source=[],
             confidence=0.0,
-        )
+        ).to_jsonable()
+        chosen_route = forced_route_type or "scenario"
+        confidence = 0.0
         status = "failed"
     else:
-        payload = extract_scenario_draft(source_text)
-        status = "ready"
+        if forced_route_type and forced_route_type in ROUTE_TYPES:
+            chosen_route = forced_route_type
+        else:
+            classification = classify_material(source_text)
+            chosen_route = classification.route_type
+            # Stash classifier reasoning into the payload so the FE can
+            # show "почему ИИ выбрал эту ветку" without a separate request.
+            logger.info(
+                "scenario_extractor: classified attachment %s as %s (%.2f) — %s",
+                attachment.id, chosen_route, classification.confidence,
+                classification.reasoning,
+            )
+        try:
+            extracted_blob = extract_for_route(source_text, chosen_route)
+            confidence = float(extracted_blob.get("confidence", 0.0))
+            status = "ready"
+        except ValueError as exc:
+            error_message = str(exc)
+            extracted_blob = {}
+            confidence = 0.0
+            status = "failed"
+            chosen_route = chosen_route or "scenario"
 
     draft_id = uuid.uuid4()
     draft = ScenarioDraft(
@@ -510,8 +956,13 @@ async def run_extraction(
         attachment_id=attachment.id,
         created_by=actor_id,
         status=status,
-        extracted=payload.to_jsonable(),
-        confidence=payload.confidence,
+        route_type=chosen_route,
+        target_id=None,
+        extracted=extracted_blob,
+        confidence=confidence,
+        # PR-1.1 audit invariant — capture the LLM's original confidence
+        # alongside the (later editable) `confidence` column.
+        original_confidence=confidence,
         # Persist scrubbed source so the audit trail and quote re-validation
         # don't re-touch the raw upload bytes.
         source_text=strip_pii(source_text)[:200_000] if source_text else None,
@@ -524,7 +975,7 @@ async def run_extraction(
         db,
         attachment=attachment,
         draft_id=draft.id,
-        confidence=payload.confidence,
+        confidence=confidence,
         actor_id=actor_id,
         source=SOURCE_SCENARIO_EXTRACTOR,
     )
@@ -585,10 +1036,19 @@ def draft_payload_to_template_fields(
 
 
 __all__ = [
+    "ArenaKnowledgeDraftPayload",
+    "CharacterDraftPayload",
+    "ClassificationResult",
+    "MAX_DECODED_TEXT_SIZE",
+    "MAX_ZIP_TOTAL_UNCOMPRESSED",
+    "ROUTE_TYPES",
     "ScenarioDraftPayload",
     "ScenarioStep",
+    "TrainingMaterialTooLarge",
     "UnsupportedTrainingMaterialFormat",
+    "classify_material",
     "draft_payload_to_template_fields",
+    "extract_for_route",
     "extract_scenario_draft",
     "extract_text_from_bytes",
     "run_extraction",

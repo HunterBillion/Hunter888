@@ -246,18 +246,38 @@ def downgrade() -> None:
         op.drop_table("scenario_drafts")
 
     # ── reverse 1b: re-tighten client_id to NOT NULL ───────────────────
-    # Defensive: hard-delete any orphan training_material rows so the
-    # ALTER doesn't fail. Production downgrades are rare; the data loss
-    # is acceptable here (training materials are uploaded again from
-    # source on rollback).
+    # Audit fix (PR-1.1): the original implementation silently DELETE'd
+    # every training_material attachment so the ALTER could re-add NOT
+    # NULL. That cascades through `ondelete=CASCADE` on
+    # `scenario_drafts.attachment_id` and wipes every imported draft.
+    # Refuse to run unless the operator explicitly opts in via env var.
+    # Mirrors project rule §2 ("rollback via revert PR + git pull, not
+    # destructive in-place SQL on prod").
+    import os as _os
+
     bind = op.get_bind()
-    bind.execute(
+    orphan_count = bind.execute(
         sa.text(
-            "DELETE FROM attachments "
+            "SELECT COUNT(*) FROM attachments "
             "WHERE client_id IS NULL "
             "  AND document_type = 'training_material'"
         )
-    )
+    ).scalar_one()
+    if orphan_count and int(orphan_count) > 0:
+        if _os.getenv("ALLOW_TZ5_DOWNGRADE_DATA_LOSS") != "1":
+            raise RuntimeError(
+                f"Refusing to downgrade TZ-5: {orphan_count} training_material "
+                "attachments would be DELETED (cascading to scenario_drafts). "
+                "Set ALLOW_TZ5_DOWNGRADE_DATA_LOSS=1 to confirm data loss, "
+                "or revert the feature via a forward migration instead."
+            )
+        bind.execute(
+            sa.text(
+                "DELETE FROM attachments "
+                "WHERE client_id IS NULL "
+                "  AND document_type = 'training_material'"
+            )
+        )
     op.alter_column(
         "attachments",
         "client_id",
