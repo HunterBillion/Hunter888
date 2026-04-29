@@ -41,6 +41,10 @@ dependencies = [
     # Payment providers
     "yookassa>=3.0.0,<4.0.0",
     "stripe>=8.0.0,<12.0.0",
+    # Observability — explicit dep (also pulled transitively by
+    # prometheus-fastapi-instrumentator) so app.services.arena_metrics can
+    # define custom Histograms/Counters without relying on transitive deps.
+    "prometheus-client>=0.21.0,<1.0.0",
 ]
 
 [project.optional-dependencies]

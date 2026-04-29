@@ -99,6 +99,14 @@ const PUBLIC_ROUTES = [
 ];
 
 function isPublicRoute(pathname: string): boolean {
+  // 2026-04-29: /dev/* — pixel-UI demo routes (DuelChat preview etc.).
+  // Открыты без auth и в dev, и в prod — нужны для визуального ревью
+  // редизайна арены до того, как UI попадёт в боевой /pvp/duel флоу.
+  // TODO(после Фазы 7): закрыть гейт обратно `process.env.NODE_ENV !== "production"`,
+  // когда новый чат будет интегрирован в боевую дуэль.
+  if (pathname.startsWith("/dev/")) {
+    return true;
+  }
   return PUBLIC_ROUTES.some((route) => {
     if (route === pathname) return true;
     if (route.endsWith("/") && pathname.startsWith(route)) return true;

@@ -1221,47 +1221,97 @@ async def _generate_character_reply(
     except Exception as e:
         logger.debug("Objection chain injection failed for session %s: %s", session_id, e)
 
-    # Inject comprehensive stage-aware behavior rules into AI client prompt
-    try:
-        from app.core.redis_pool import get_redis as _get_redis_sp
-        _r_sp = _get_redis_sp()
-        _st_prompt = StageTracker(str(session_id), _r_sp)
-        _stage_st = await _st_prompt.get_state()
-        extra_system += _st_prompt.build_stage_prompt(_stage_st)
+    # ── P0 (2026-04-29) Call Arc — decouple AI from manager script ────────
+    # When CALL_ARC_V1 is on AND session_mode is "call": skip the stage-driven
+    # behaviour directives and inject a per-call role contract instead. The
+    # AI no longer learns about manager checklist stages. StageTracker keeps
+    # running for /results scoring and for the manager-side script panel WS
+    # events — only the AI prompt path changes.
+    #
+    # When CALL_ARC_V1 is off: legacy behaviour bit-for-bit (StageTracker
+    # injection runs as before, including skip-reaction handling).
+    _arc_active = False
+    if settings.call_arc_v1:
+        _cp_arc = state.get("custom_params") or {}
+        _session_mode_arc = (_cp_arc.get("session_mode") or state.get("session_mode") or "chat").lower()
+        _arc_active = _session_mode_arc in ("call", "center")
 
-        # If there are pending skip reactions (from previous process_message),
-        # surface them so the AI can react to a skipped stage. Pre-Sprint-0
-        # this was a hard directive ("Начни свой ответ с одной из этих фраз")
-        # which produced the "скрипт блокирует" UX bug — every off-script
-        # question got slapped back with "Стоп, мы даже не познакомились!"
-        # regardless of what the manager actually asked.
-        # Sprint 0 §A (User-first 2026-04-29): when V2 is on, surface the
-        # skip context as an OPTION, not an order — and only if it's
-        # naturally relevant to the manager's actual line.
-        _skip_reactions = state.get("_pending_skip_reactions", [])
-        if _skip_reactions:
-            if settings.call_humanized_v2:
-                extra_system += (
-                    "\n\n[SKIP_CONTEXT: Менеджер только что пропустил важный "
-                    "этап разговора. Если это реально режет тебе слух — можешь "
-                    "коротко это заметить (например: "
-                    + "; ".join(f'«{r}»' for r in _skip_reactions)
-                    + "). Но только если это уместно в ответ на его конкретную "
-                    "фразу. Если он задал нормальный вопрос — отвечай по теме его "
-                    "вопроса, не возвращай его насильно на этап.]"
+    if _arc_active:
+        # Arc path: inject per-call role + reality block. Skip stage prompt.
+        try:
+            from app.services.call_arc import build_arc_prompt, get_arc_step
+            _call_n = int(state.get("call_number", 1) or 1)
+            _total_n = int(state.get("total_calls", 3) or 3)
+            _arc_step = get_arc_step(_call_n, _total_n)
+            _prev_summary = state.get("compressed_history") or None
+            _arc_block = build_arc_prompt(_arc_step, prev_calls_summary=_prev_summary)
+            extra_system += "\n\n" + _arc_block
+        except Exception:
+            logger.debug(
+                "Call-arc injection failed for session %s — falling back to no-arc",
+                session_id,
+                exc_info=True,
+            )
+        if settings.call_arc_inject_reality:
+            try:
+                from app.services.llm import load_prompt as _arc_load_prompt
+                _reality = _arc_load_prompt("reality_ru_2026.md")
+                if _reality:
+                    extra_system += "\n\n" + _reality
+            except Exception:
+                logger.debug(
+                    "Reality block injection failed for session %s",
+                    session_id,
+                    exc_info=True,
                 )
-            else:
-                extra_system += (
-                    "\n\n[SKIP_REACTION: Менеджер пропустил важный этап! "
-                    "Начни свой ответ с одной из этих фраз (выбери наиболее уместную), "
-                    "затем продолжи отвечать по существу:\n"
-                    + "\n".join(f'  — "{r}"' for r in _skip_reactions)
-                    + "]"
-                )
-            # Clear skip reactions after injecting (one-shot)
-            state.pop("_pending_skip_reactions", None)
-    except Exception as e:
-        logger.debug("Stage context injection failed for session %s: %s", session_id, e)
+        # StageTracker still runs (for UI events emitted elsewhere on
+        # process_message), but its prompt is intentionally NOT injected.
+        # Skip-reactions are also dropped on the floor — under the arc
+        # paradigm the AI reacts to the manager's actual words via persona,
+        # not to checklist transitions. Clear the queue so it doesn't leak.
+        state.pop("_pending_skip_reactions", None)
+    else:
+        # Legacy path — preserve byte-for-byte.
+        try:
+            from app.core.redis_pool import get_redis as _get_redis_sp
+            _r_sp = _get_redis_sp()
+            _st_prompt = StageTracker(str(session_id), _r_sp)
+            _stage_st = await _st_prompt.get_state()
+            extra_system += _st_prompt.build_stage_prompt(_stage_st)
+
+            # If there are pending skip reactions (from previous process_message),
+            # surface them so the AI can react to a skipped stage. Pre-Sprint-0
+            # this was a hard directive ("Начни свой ответ с одной из этих фраз")
+            # which produced the "скрипт блокирует" UX bug — every off-script
+            # question got slapped back with "Стоп, мы даже не познакомились!"
+            # regardless of what the manager actually asked.
+            # Sprint 0 §A (User-first 2026-04-29): when V2 is on, surface the
+            # skip context as an OPTION, not an order — and only if it's
+            # naturally relevant to the manager's actual line.
+            _skip_reactions = state.get("_pending_skip_reactions", [])
+            if _skip_reactions:
+                if settings.call_humanized_v2:
+                    extra_system += (
+                        "\n\n[SKIP_CONTEXT: Менеджер только что пропустил важный "
+                        "этап разговора. Если это реально режет тебе слух — можешь "
+                        "коротко это заметить (например: "
+                        + "; ".join(f'«{r}»' for r in _skip_reactions)
+                        + "). Но только если это уместно в ответ на его конкретную "
+                        "фразу. Если он задал нормальный вопрос — отвечай по теме его "
+                        "вопроса, не возвращай его насильно на этап.]"
+                    )
+                else:
+                    extra_system += (
+                        "\n\n[SKIP_REACTION: Менеджер пропустил важный этап! "
+                        "Начни свой ответ с одной из этих фраз (выбери наиболее уместную), "
+                        "затем продолжи отвечать по существу:\n"
+                        + "\n".join(f'  — "{r}"' for r in _skip_reactions)
+                        + "]"
+                    )
+                # Clear skip reactions after injecting (one-shot)
+                state.pop("_pending_skip_reactions", None)
+        except Exception as e:
+            logger.debug("Stage context injection failed for session %s: %s", session_id, e)
 
     # Inject fake transition prompt if present (from V3 engine)
     if state.get("fake_transition_prompt"):

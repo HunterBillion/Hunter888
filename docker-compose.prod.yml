@@ -78,7 +78,27 @@ services:
       # flipping CALL_HUMANIZED_V2 to "0" + `up -d --force-recreate api`.
       CALL_HUMANIZED_V2: "1"
       CALL_HUMANIZED_V2_AUTO_OPENER: "1"
-      CALL_HUMANIZED_V2_SCRUB_MODE: warn
+      # P0.5 (2026-04-29): scrubber goes from observe-only ("warn") to
+      # actually editing the AI text before TTS ("strip"). The phrase list
+      # in ai_lexicon.py has had a couple of weeks of warn-mode logging in
+      # prod; FP rate is acceptable. With strip, sentences starting with a
+      # known AI-tell ("Безусловно", "Отличный вопрос", "Конечно", ...)
+      # have the lead phrase removed before the audio is synthesised.
+      CALL_HUMANIZED_V2_SCRUB_MODE: strip
+      # P0.5 (2026-04-29): tighter output budget for call mode. 80 tokens
+      # were producing replies up to ~13s of audio (field-observed in TTS
+      # logs 2026-04-29). 60 tokens ≈ ~40 words ≈ 10-12s max — closer to
+      # the natural phone-reply length. The arc prompt now also mandates
+      # broken rhythm so the model is much less likely to ramble even at
+      # the lower cap.
+      CALL_HUMANIZED_V2_MAX_TOKENS: "60"
+      # P0 (2026-04-29) Call Arc — decouple AI from manager script (PR #101).
+      # Two-axis architecture: AI gets per-call role (CallArcStep), manager
+      # sees stage tracker untouched. StageTracker keeps emitting stage.update
+      # for /results scoring and the script panel — only AI prompt path
+      # changes. Roll back by flipping CALL_ARC_V1 to "0" + restart api.
+      CALL_ARC_V1: "1"
+      CALL_ARC_INJECT_REALITY: "1"
     # Don't expose API port directly — use nginx
     ports: !reset []
     # Graceful shutdown: gunicorn --graceful-timeout 30 + margin
