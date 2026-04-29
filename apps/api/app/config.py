@@ -178,6 +178,19 @@ class Settings(BaseSettings):
     # Flip via env var CONVERSATION_POLICY_ENFORCE_ENABLED=1 + restart api.
     conversation_policy_enforce_enabled: bool = False
 
+    # ── Sprint 0 (2026-04-29) Call humanization V2 — staged rollout ───────
+    # Master flag for the call-mode realism pipeline:
+    #   1) max_tokens really propagates to providers (call default = 300)
+    #   2) active_factors / pad_state plumbed into every TTS call site
+    #   3) sentence-gate scrubs AI-tells BEFORE chunks reach UI / TTS
+    # Default OFF → behaviour is bit-for-bit identical to today. Flip per-env
+    # with CALL_HUMANIZED_V2=1; the chat path is never affected.
+    call_humanized_v2: bool = False
+    # Output budget (in tokens) for call/voice mode when V2 is on. Short by
+    # design — long answers in voice always sound like a dictating assistant.
+    # Ignored when call_humanized_v2 is off (legacy 800/1200 hardcode wins).
+    call_humanized_v2_max_tokens: int = 300
+
     # ── Phase 1 (Roadmap) ConversationCompletionPolicy flags ──────────────
     # When False (default during rollout): legacy terminal side-effect
     # blocks still own the writes; policy only VALIDATES + stamps the new
