@@ -61,6 +61,13 @@ class Settings(BaseSettings):
     # 2026-04-21 unified LLM policy — see claude_model docstring.
     llm_primary_model: str = "gpt-5.4"
     llm_fallback_model: str = "claude-opus-4.7"
+
+    # TZ-5 input funnel models (PR #102 + owner override 2026-04-29).
+    # Both routed via the navy proxy (`local_llm_url`). Same precedence
+    # rules as the rest of the platform — fallback to heuristic when the
+    # navy provider is unreachable, NOT to Anthropic/OpenAI direct keys.
+    tz5_extractor_model: str = "gpt-5.4"
+    tz5_classifier_model: str = "gemini-3.1-pro-preview"
     llm_timeout_seconds: int = 60  # Gemma 4 on Ollama: first request ~30s (model swap), then ~10-15s
     llm_max_history_messages: int = 20
 
