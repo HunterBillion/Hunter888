@@ -57,8 +57,26 @@
   --ui-pixel-lg: 18px;
   --ui-pixel-xl: 24px;
 
+  /* ═══ Pixel font stack ═══
+     VT323 — основной (только латиница). Pixelify Sans — кириллический fallback.
+     Браузер автоматически берёт глиф из второго, если в первом нет нужного символа.
+     2026-04-29: добавлено в Фазе 2 — без этого русский font-pixel падал на Geist Mono. */
+  --font-pixel-stack: var(--font-vt323), var(--font-pixelify), 'Press Start 2P', 'Courier New', monospace;
+
   /* ═══ Borders radius \u2014 always 0 for pure pixel, but keeping var for escape hatch ═══ */
   --ui-radius: 0;
+}
+
+/* 2026-04-29: VT323 не поддерживает кириллицу — без этого правила русский
+   текст в font-pixel падал на Geist Mono. Добавляем Pixelify Sans
+   (subset cyrillic) как fallback. Стек инлайн, без прокси-переменной —
+   nested var() через --font-pixel-stack резолвился в guaranteed-invalid
+   (проверено runtime-evalом 2026-04-29: --font-vt323 определён на body-class,
+   а --font-pixel-stack на :root, поэтому var() внутри него не находил
+   --font-vt323 в момент substitution). !important нужен, чтобы перебить
+   Tailwind utility, которая выигрывала каскад без него. */
+.font-pixel {
+  font-family: var(--font-vt323), var(--font-pixelify), 'Press Start 2P', 'Courier New', monospace !important;
 }
 
 /* 2026-04-18: classes at root level (not @layer components) —
