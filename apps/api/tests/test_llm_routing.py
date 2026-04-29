@@ -575,11 +575,14 @@ class TestCallHumanizedV2DispatcherGate:
         assert "call_humanized_v2" in src
         assert 'session_mode in ("call", "center")' in src
 
-    def test_default_max_tokens_setting_is_300(self):
+    def test_default_max_tokens_setting_is_phone_short(self):
         from app.config import settings
-        # Pilot default. If product wants a different cap it should be a
-        # conscious flip in .env, not a silent change in code.
-        assert settings.call_humanized_v2_max_tokens == 300
+        # 2026-04-29 (Bug 1 fix): dropped from 300 to 80. 300 produced
+        # ~80s of speech per turn — too verbose for a phone interaction.
+        # If product wants a different cap it should be a conscious flip
+        # in .env, not a silent change in code. See test_call_reply_length
+        # for the canonical pin on the 80 default.
+        assert settings.call_humanized_v2_max_tokens == 80
 
     def test_flag_default_off_in_settings(self):
         """Production must not get the V2 path until ops explicitly opts in."""
