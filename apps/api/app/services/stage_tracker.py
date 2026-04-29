@@ -607,34 +607,47 @@ class StageTracker:
             return state, True, newly_skipped
 
         # ── Auto-complete greeting after first few messages ──
-        # If we're still on greeting after 4+ messages with ANY content, auto-advance.
-        # With Sprint 2's softer HYSTERESIS_CONFIRMATIONS_BY_STAGE[1]=1 this
-        # path should fire much less often — most dialogues will naturally
-        # transition earlier.
-        if (
-            state.current_stage == 1
-            and message_index >= STAGE_KEYWORDS["greeting"]["max_messages"]
-            and state.current_stage not in state.stages_completed
-        ):
-            import time as _time
-            _now = _time.time()
-            _started_ts = state.stage_started_at_ts.get(1)
-            if _started_ts is not None:
-                state.stage_durations_sec[1] = round(_now - _started_ts, 1)
-            state.stage_message_counts[1] = message_index
+        # 2026-04-29 (User-first Bug 2): generalised auto-advance ceiling.
+        # Pre-fix this fallback only fired for stage 1 (greeting). Stages
+        # 2-6 had no ceiling, so a manager who didn't say magic keywords
+        # was stuck on the same stage forever — field-reported as "после
+        # 2 шага я уже сделал все но нихуя". The script panel dots
+        # appeared "статичны" because nothing was moving them.
+        #
+        # Now: if we've been on the current stage for max_messages user
+        # messages without a keyword-driven transition, force advance to
+        # the next stage with minimal score credit (0.1) — same behaviour
+        # the original stage-1 fallback used. Closing (stage 7) is
+        # terminal — never auto-advance past it.
+        _stage_idx = state.current_stage  # 1-based
+        _is_advanceable = 1 <= _stage_idx <= len(STAGE_ORDER) - 1
+        if _is_advanceable and _stage_idx not in state.stages_completed:
+            _cur_name = STAGE_ORDER[_stage_idx - 1]
+            _max_msgs = STAGE_KEYWORDS[_cur_name].get("max_messages")
+            if _max_msgs is not None and message_index >= _max_msgs:
+                import time as _time
+                _now = _time.time()
+                _started_ts = state.stage_started_at_ts.get(_stage_idx)
+                if _started_ts is not None:
+                    state.stage_durations_sec[_stage_idx] = round(_now - _started_ts, 1)
+                state.stage_message_counts[_stage_idx] = message_index
 
-            state.stages_completed.append(1)
-            if 1 not in state.stage_scores:
-                state.stage_scores[1] = 0.1  # Minimal credit
-            state.current_stage = 2
-            state.current_stage_name = "contact"
-            state.last_detected_at = message_index
-            state.confidence = 0.5
-            state.stage_started_at_msg[2] = message_index
-            state.stage_started_at_ts[2] = _now
+                state.stages_completed.append(_stage_idx)
+                if _stage_idx not in state.stage_scores:
+                    state.stage_scores[_stage_idx] = 0.1  # Minimal credit
+                _next_idx = _stage_idx + 1
+                state.current_stage = _next_idx
+                state.current_stage_name = STAGE_ORDER[_next_idx - 1]
+                state.last_detected_at = message_index
+                state.confidence = 0.5
+                state.stage_started_at_msg[_next_idx] = message_index
+                state.stage_started_at_ts[_next_idx] = _now
+                # Clear any pending hysteresis confirmations — they are
+                # for the OLD stage's transition candidates, irrelevant now.
+                state.transition_confirmations.clear()
 
-            await self._save_state(state)
-            return state, True, []
+                await self._save_state(state)
+                return state, True, []
 
         await self._save_state(state)
         return state, False, []
