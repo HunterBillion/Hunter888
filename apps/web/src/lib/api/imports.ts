@@ -157,6 +157,15 @@ export const discardImportDraft = (
 ): Promise<{ id: string; status: "discarded" }> =>
   api.post(`/rop/scenarios/drafts/${id}/discard`, {});
 
+export const reExtractDraft = (
+  id: string,
+  forcedRouteType?: ImportRouteType,
+): Promise<ImportDraft> =>
+  api.post<ImportDraft>(
+    `/rop/imports/${id}/re-extract`,
+    forcedRouteType ? { forced_route_type: forcedRouteType } : {},
+  );
+
 export const ROUTE_LABELS_RU: Record<ImportRouteType, string> = {
   scenario: "Сценарий звонка",
   character: "Персонаж в Конструктор",

@@ -135,7 +135,8 @@ jobs:
             tests/test_scenario_extractor.py \
             tests/test_attachment_pipeline_training_material.py \
             tests/test_scenario_draft_to_template.py \
-            tests/test_scenario_classifier.py
+            tests/test_scenario_classifier.py \
+            tests/test_scenario_re_extract.py
 
   frontend:
     runs-on: ubuntu-latest
