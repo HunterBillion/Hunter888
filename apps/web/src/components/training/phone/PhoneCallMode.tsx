@@ -226,6 +226,14 @@ interface Props {
    *  label and becomes non-clickable. Prevents double-click races during
    *  the ~15s window where backend is scoring the session. */
   endInFlight?: boolean;
+
+  /** User-first §A.2 (2026-04-29): callback for "тап = вставить" on the
+   *  desktop ScriptPanel example phrases. Pre-A.2 this prop was missing,
+   *  ScriptPanel's handleCopy fell through to navigator.clipboard
+   *  (silent — no UI feedback, no input pre-fill), so users tapped and
+   *  nothing visibly happened. The call page wires this to setTextInput
+   *  so a tap pre-fills the fallback text input. */
+  onCopyExample?: (text: string) => void;
 }
 
 function formatElapsed(sec: number): string {
@@ -253,6 +261,7 @@ export function PhoneCallMode({
   stage,
   coachingHint,
   endInFlight = false,
+  onCopyExample,
 }: Props) {
   const sceneKey = (sceneId || "none") in SCENE_GRADIENTS ? (sceneId || "none") : "none";
   const sceneGradient = SCENE_GRADIENTS[sceneKey];
@@ -419,14 +428,21 @@ export function PhoneCallMode({
           back to the lg:hidden bar above + ScriptDrawer at page level. */}
       {stage && stage.total > 0 && (
         <aside
-          className="hidden lg:block absolute right-4 top-20 z-10 w-[300px] max-h-[calc(100vh-180px)] overflow-y-auto rounded-2xl p-4 backdrop-blur-lg"
+          // User-first §A.2 (2026-04-29): bumped z-10 → z-30 because the
+          // sibling avatar div below also has z-10 and is later in DOM
+          // order, so under same-stack-level rules it painted on top of
+          // the script panel and silently swallowed every click.
+          // pointer-events-auto is belt-and-braces: even if a future
+          // ancestor disables pointer events for the whole call surface,
+          // the script panel stays interactive.
+          className="hidden lg:block absolute right-4 top-20 z-30 pointer-events-auto w-[300px] max-h-[calc(100vh-180px)] overflow-y-auto rounded-2xl p-4 backdrop-blur-lg"
           style={{
             background: "rgba(10,8,20,0.58)",
             border: "1px solid rgba(255,255,255,0.08)",
             boxShadow: "0 12px 36px rgba(0,0,0,0.4)",
           }}
         >
-          <ScriptPanel compactHeader />
+          <ScriptPanel compactHeader onCopyExample={onCopyExample} />
         </aside>
       )}
 
