@@ -211,6 +211,14 @@ class Settings(BaseSettings):
     # so the manager isn't greeted by silence. Defaults to True under V2.
     call_humanized_v2_auto_opener: bool = True
 
+    # ── P1 (2026-04-29) Coaching Mistake Detector ─────────────────────────
+    # Rule-based real-time coach for the manager. Watches user turns and
+    # emits ``coaching.mistake`` WS events (monologue, no_open_question,
+    # early_pricing, repeated_argument, talk_ratio_high). UI binding is
+    # P2 — for now the events go to console for verification.
+    # When False (default): detector is not called, no events emitted.
+    coaching_mistake_detector_v1: bool = False
+
     # ── P0 (2026-04-29) Call Arc — decouple AI from manager script ────────
     # Two-axis architecture: AI gets per-call role (CallArcStep), not per-stage
     # behaviour directives. StageTracker keeps running for scoring/UI.
