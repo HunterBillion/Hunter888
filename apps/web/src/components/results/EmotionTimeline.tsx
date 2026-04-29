@@ -173,7 +173,7 @@ export default function EmotionTimeline({ timeline, journeySummary, onReplayMess
     labels,
     datasets: [
       {
-        label: "Vibe",
+        label: "Настроение",
         data: dataValues,
         borderColor: magentaHex,
         backgroundColor: (ctx: { chart: { ctx: CanvasRenderingContext2D } }) => {

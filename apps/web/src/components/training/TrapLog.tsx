@@ -5,9 +5,9 @@ import { useSessionStore } from "@/stores/useSessionStore";
 import { AppIcon } from "@/components/ui/AppIcon";
 
 const STATUS_CONFIG = {
-  fell: { icon: "\u274C", color: "var(--danger)", label: "Fell" },
-  dodged: { icon: "\u2705", color: "var(--success)", label: "Dodge" },
-  partial: { icon: "\u26A0\uFE0F", color: "var(--warning, #f59e0b)", label: "Partial" },
+  fell: { icon: "\u274C", color: "var(--danger)", label: "\u041F\u043E\u043F\u0430\u043B\u0441\u044F" },
+  dodged: { icon: "\u2705", color: "var(--success)", label: "\u0423\u043A\u043B\u043E\u043D\u0438\u043B\u0441\u044F" },
+  partial: { icon: "\u26A0\uFE0F", color: "var(--warning, #f59e0b)", label: "\u0427\u0430\u0441\u0442\u0438\u0447\u043D\u043E" },
 } as const;
 
 const CATEGORY_LABELS: Record<string, string> = {
