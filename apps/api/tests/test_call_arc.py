@@ -87,6 +87,27 @@ def test_arc_prompt_renders_prev_calls_summary():
     assert summary in block
 
 
+def test_arc_prompt_carries_speech_rhythm_rules():
+    """P0.5 (2026-04-29): broken-rhythm rule + AI-tell ban must be in every arc block.
+
+    The TTS pipeline emits replies that are technically correct but sound
+    like a dictating assistant when sentences are uniform-length. The arc
+    prompt must explicitly mandate broken rhythm and explicitly forbid the
+    most common assistant-register phrases.
+    """
+    step = get_arc_step(1, 3)
+    block = build_arc_prompt(step)
+    # Rhythm directive present.
+    assert "рваный ритм" in block.lower()
+    # At least one of the named AI-register phrases must be banned in-prompt.
+    banned = ["безусловно", "отличный вопрос", "давайте рассмотрим"]
+    assert any(b in block.lower() for b in banned), (
+        "speech rhythm block must explicitly name AI-tell phrases as forbidden"
+    )
+    # The directive must mention "телефон" (phone register, not chat).
+    assert "телефон" in block.lower()
+
+
 # ── Test 2: must_not_happen guards call 1 against premature close ────────────
 
 @pytest.mark.parametrize("total_n", [3, 4, 5])
