@@ -1,44 +1,55 @@
-"""TZ-5 PR #102 — Claude-powered classifier + extractor.
+"""TZ-5 PR #102 — LLM-powered classifier + extractor (via navy proxy).
 
 Replaces the heuristic floor in `scenario_extractor` with real LLM calls
 behind the same dataclass contract:
 
-  * `llm_classify_material(text)`  → ClassificationResult  (Claude Haiku)
-  * `llm_extract_for_route(text, route)` → JSONB-ready dict (Claude Sonnet)
-  * `llm_validate_quotes(payload, source)` → payload with hallucinated
-    quotes dropped + confidence penalty (Claude Haiku, optional 2nd pass)
+  * `llm_classify_material(text)` → ClassificationResult  (Gemini classifier)
+  * `llm_extract_for_route(text, route)` → JSONB-ready dict (GPT extractor)
+  * `_validate_quotes_via_llm(payload, source)` → drops hallucinated
+    quotes (substring check; LLM hook reserved for PR #103)
+
+Provider
+--------
+All calls route through the navy proxy at `settings.local_llm_url` using
+the OpenAI-compatible SDK (`_get_local_client`). Owner-mandated models:
+  - extractor:  ``settings.tz5_extractor_model``  (default "gpt-5.4")
+  - classifier: ``settings.tz5_classifier_model`` (default
+    "gemini-3.1-pro-preview")
+
+Direct Anthropic / OpenAI / Gemini keys are NOT consulted from this
+module — the navy proxy is the single egress per project policy.
 
 Design
 ------
 
-* **Two-pass architecture (TZ-5 §3.1):** Sonnet does the heavy structural
-  extraction (richer reasoning), Haiku does cheap classification + quote
-  validation. This is intentionally slow-then-fast: extraction quality
-  matters more than 50ms of latency.
+* **Two-pass architecture (TZ-5 §3.1):** the heavier extractor does
+  structural extraction; the cheaper classifier picks the route + does
+  quote validation downstream. Heuristic stays as the fallback floor
+  when the navy proxy is unreachable.
 
 * **JSON-mode output:** every prompt asks for JSON only and we parse +
   validate against the dataclass shape; on parse failure we fall back to
   the heuristic so the wizard never gets a 500.
 
-* **Graceful degradation:** if `settings.claude_api_key` is unset or the
-  API call fails / times out, we return the heuristic result. The
-  scenario_extractor public API stays the same; callers don't know
-  whether they got LLM or heuristic output.
+* **Graceful degradation:** if `local_llm_enabled` is off, the navy proxy
+  returns an error, JSON parsing fails, or any other exception fires —
+  the heuristic result is returned. Callers don't know whether they got
+  LLM or heuristic output.
 
 * **PII safety (152-FZ):** `strip_pii` runs on the input BEFORE any LLM
-  call so Anthropic never sees raw client phones / passport / etc.
+  call so the proxy never sees raw client phones / passport / etc. The
+  output gets a second scrub pass too (defense in depth).
 
-* **Cost control:** classifier is Haiku (~50× cheaper than Sonnet), and
-  extraction has a 4000-char input cap (truncate at paragraph boundary)
-  so a 50 MB material doesn't burn $5 on a single call.
+* **Cost control:** input is capped at `MAX_LLM_INPUT_CHARS = 4000` with
+  paragraph-boundary truncation, so a 50 MB material doesn't burn $5
+  on a single extraction call.
 
 Config
 ------
 
-Reads `settings.claude_api_key`. The optional `TZ5_LLM_ENABLED` env var
-provides a runtime kill-switch — set it to `0` to force heuristic only,
-useful when debugging classifier behavior or running pilot demos
-offline.
+Reads `settings.local_llm_url`, `settings.local_llm_api_key`,
+`settings.local_llm_enabled`, plus the two TZ-5-specific model names.
+Runtime kill-switch: `TZ5_LLM_ENABLED=0` env var forces heuristic.
 """
 
 from __future__ import annotations
@@ -60,13 +71,13 @@ from app.services.scenario_extractor import (
 
 logger = logging.getLogger(__name__)
 
-# Latest Claude model IDs as of TZ-5 PR #102 (2026-04-29).
-# `opus`, `sonnet`, `haiku` literals would resolve to current versions
-# but the SDK requires concrete IDs. Update these strings only when
-# Anthropic ships new model versions; the rest of the file is unchanged.
-MODEL_CLASSIFIER = "claude-haiku-4-5-20251001"
-MODEL_EXTRACTOR = "claude-sonnet-4-6"
-MODEL_VALIDATOR = "claude-haiku-4-5-20251001"
+
+def _model_classifier() -> str:
+    return getattr(settings, "tz5_classifier_model", "gemini-3.1-pro-preview")
+
+
+def _model_extractor() -> str:
+    return getattr(settings, "tz5_extractor_model", "gpt-5.4")
 
 # Hard cap on the text we send to the LLM. A typical .docx memo of 50KB
 # fits in 4000 chars after PII scrub + paragraph-boundary truncation;
@@ -80,10 +91,18 @@ LLM_TIMEOUT = 12.0
 
 
 def _llm_enabled() -> bool:
-    """Runtime kill-switch + key check."""
+    """Runtime kill-switch + navy-proxy availability check.
+
+    The navy proxy is the single egress for this module; we don't
+    consult ``claude_api_key`` / ``openai_api_key`` directly.
+    """
     if os.getenv("TZ5_LLM_ENABLED", "1") == "0":
         return False
-    return bool(getattr(settings, "claude_api_key", None))
+    return bool(
+        getattr(settings, "local_llm_enabled", False)
+        and getattr(settings, "local_llm_url", "")
+        and getattr(settings, "local_llm_api_key", "")
+    )
 
 
 def _truncate_for_llm(text: str) -> str:
@@ -137,22 +156,25 @@ async def llm_classify_material(text: str) -> ClassificationResult:
 
     truncated = _truncate_for_llm(scrubbed)
     try:
-        from app.services.llm import _get_claude_client
+        from app.services.llm import _get_local_client
 
-        client = _get_claude_client()
+        client = _get_local_client()
         if client is None:
             return _heuristic_classify(scrubbed)
 
         resp = await asyncio.wait_for(
-            client.messages.create(
-                model=MODEL_CLASSIFIER,
+            client.chat.completions.create(
+                model=_model_classifier(),
                 max_tokens=300,
-                system=_CLASSIFIER_SYSTEM,
-                messages=[{"role": "user", "content": truncated}],
+                temperature=0.0,
+                messages=[
+                    {"role": "system", "content": _CLASSIFIER_SYSTEM},
+                    {"role": "user", "content": truncated},
+                ],
             ),
             timeout=LLM_TIMEOUT,
         )
-        raw = resp.content[0].text if resp.content else ""
+        raw = resp.choices[0].message.content or "" if resp.choices else ""
         parsed = _safe_json(raw)
         if not isinstance(parsed, dict):
             raise ValueError(f"classifier did not return JSON: {raw[:200]}")
@@ -264,22 +286,25 @@ async def llm_extract_for_route(text: str, route_type: str) -> dict[str, Any]:
 
     truncated = _truncate_for_llm(scrubbed)
     try:
-        from app.services.llm import _get_claude_client
+        from app.services.llm import _get_local_client
 
-        client = _get_claude_client()
+        client = _get_local_client()
         if client is None:
             return heuristic_extract_for_route(scrubbed, route_type)
 
         resp = await asyncio.wait_for(
-            client.messages.create(
-                model=MODEL_EXTRACTOR,
+            client.chat.completions.create(
+                model=_model_extractor(),
                 max_tokens=2000,
-                system=_EXTRACTOR_SYSTEMS[route_type],
-                messages=[{"role": "user", "content": truncated}],
+                temperature=0.2,
+                messages=[
+                    {"role": "system", "content": _EXTRACTOR_SYSTEMS[route_type]},
+                    {"role": "user", "content": truncated},
+                ],
             ),
-            timeout=LLM_TIMEOUT * 2,  # Sonnet is slower than Haiku
+            timeout=LLM_TIMEOUT * 2,  # extractor is slower than classifier
         )
-        raw = resp.content[0].text if resp.content else ""
+        raw = resp.choices[0].message.content or "" if resp.choices else ""
         parsed = _safe_json(raw)
         if not isinstance(parsed, dict):
             raise ValueError(f"extractor did not return JSON: {raw[:200]}")
@@ -406,9 +431,6 @@ def _safe_json(raw: str) -> Any | None:
 
 
 __all__ = [
-    "MODEL_CLASSIFIER",
-    "MODEL_EXTRACTOR",
-    "MODEL_VALIDATOR",
     "llm_classify_material",
     "llm_extract_for_route",
 ]

@@ -31,11 +31,40 @@ from app.services.scenario_extractor_llm import (
 )
 
 
-def _claude_response(text: str) -> SimpleNamespace:
-    """Build the minimal shape that `_get_claude_client().messages.create`
-    returns: an object with `.content[0].text`. Anthropic SDK uses
-    pydantic models but for testing this duck-typed namespace works."""
-    return SimpleNamespace(content=[SimpleNamespace(text=text)])
+def _navy_response(text: str) -> SimpleNamespace:
+    """Build the minimal OpenAI-compatible shape that
+    `_get_local_client().chat.completions.create` returns: an object
+    with `.choices[0].message.content`. Used by the navy proxy + the
+    OpenAI SDK that wraps it.
+    """
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=text))]
+    )
+
+
+def _navy_settings() -> SimpleNamespace:
+    """Stub `settings` so `_llm_enabled` returns True (navy proxy
+    configured) without touching the real env."""
+    return SimpleNamespace(
+        local_llm_enabled=True,
+        local_llm_url="https://api.navy/v1",
+        local_llm_api_key="sk-navy-test",
+        tz5_classifier_model="gemini-3.1-pro-preview",
+        tz5_extractor_model="gpt-5.4",
+    )
+
+
+def _navy_settings_no_key() -> SimpleNamespace:
+    """`local_llm_enabled=False` → `_llm_enabled()` returns False →
+    heuristic fallback path is taken."""
+    return SimpleNamespace(
+        local_llm_enabled=False,
+        local_llm_url="",
+        local_llm_api_key="",
+        tz5_classifier_model="gemini-3.1-pro-preview",
+        tz5_extractor_model="gpt-5.4",
+    )
+
 
 
 # ── Kill-switch + missing-key fallback ──────────────────────────────────
@@ -58,7 +87,7 @@ async def test_llm_classify_falls_back_when_kill_switch_set(monkeypatch):
 async def test_llm_classify_falls_back_when_no_api_key(monkeypatch):
     monkeypatch.setattr(
         "app.services.scenario_extractor_llm.settings",
-        SimpleNamespace(claude_api_key=None),
+        _navy_settings_no_key(),
     )
     result = await llm_classify_material("Шаг 1: Приветствие.")
     assert result.confidence <= 0.55
@@ -71,21 +100,21 @@ async def test_llm_classify_falls_back_when_no_api_key(monkeypatch):
 async def test_llm_classify_parses_haiku_response(monkeypatch):
     monkeypatch.setattr(
         "app.services.scenario_extractor_llm.settings",
-        SimpleNamespace(claude_api_key="test-key"),
+        _navy_settings(),
     )
     monkeypatch.setenv("TZ5_LLM_ENABLED", "1")
-    fake_client = SimpleNamespace(messages=SimpleNamespace(
-        create=AsyncMock(return_value=_claude_response(
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
+        create=AsyncMock(return_value=_navy_response(
             json.dumps({
                 "route_type": "character",
                 "confidence": 0.92,
                 "reasoning": "описание типажа должника",
                 "mixed_routes": [],
             })
-        ))
+    )))
     ))
     with patch(
-        "app.services.llm._get_claude_client",
+        "app.services.llm._get_local_client",
         return_value=fake_client,
     ):
         result = await llm_classify_material("Клиент типа: агрессивный должник.")
@@ -99,14 +128,14 @@ async def test_llm_classify_falls_back_on_malformed_json(monkeypatch):
     """LLM returned text but not JSON → heuristic fallback."""
     monkeypatch.setattr(
         "app.services.scenario_extractor_llm.settings",
-        SimpleNamespace(claude_api_key="test-key"),
+        _navy_settings(),
     )
     monkeypatch.setenv("TZ5_LLM_ENABLED", "1")
-    fake_client = SimpleNamespace(messages=SimpleNamespace(
-        create=AsyncMock(return_value=_claude_response("Sure, the route_type is character"))
-    ))
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
+        create=AsyncMock(return_value=_navy_response("Sure, the route_type is character"))
+    )))
     with patch(
-        "app.services.llm._get_claude_client",
+        "app.services.llm._get_local_client",
         return_value=fake_client,
     ):
         result = await llm_classify_material("Шаг 1.")
@@ -119,16 +148,16 @@ async def test_llm_classify_falls_back_on_unknown_route_type(monkeypatch):
     """LLM returned a route_type that's not in ROUTE_TYPES → fallback."""
     monkeypatch.setattr(
         "app.services.scenario_extractor_llm.settings",
-        SimpleNamespace(claude_api_key="test-key"),
+        _navy_settings(),
     )
     monkeypatch.setenv("TZ5_LLM_ENABLED", "1")
-    fake_client = SimpleNamespace(messages=SimpleNamespace(
-        create=AsyncMock(return_value=_claude_response(
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
+        create=AsyncMock(return_value=_navy_response(
             json.dumps({"route_type": "garbage", "confidence": 0.9})
-        ))
+    )))
     ))
     with patch(
-        "app.services.llm._get_claude_client",
+        "app.services.llm._get_local_client",
         return_value=fake_client,
     ):
         result = await llm_classify_material("Шаг 1.")
@@ -139,14 +168,14 @@ async def test_llm_classify_falls_back_on_unknown_route_type(monkeypatch):
 async def test_llm_classify_falls_back_on_api_exception(monkeypatch):
     monkeypatch.setattr(
         "app.services.scenario_extractor_llm.settings",
-        SimpleNamespace(claude_api_key="test-key"),
+        _navy_settings(),
     )
     monkeypatch.setenv("TZ5_LLM_ENABLED", "1")
-    fake_client = SimpleNamespace(messages=SimpleNamespace(
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
         create=AsyncMock(side_effect=RuntimeError("API down"))
-    ))
+    )))
     with patch(
-        "app.services.llm._get_claude_client",
+        "app.services.llm._get_local_client",
         return_value=fake_client,
     ):
         result = await llm_classify_material("Шаг 1.")
@@ -162,7 +191,7 @@ async def test_llm_classify_falls_back_on_api_exception(monkeypatch):
 async def test_llm_extract_scenario_route_parses_sonnet_json(monkeypatch):
     monkeypatch.setattr(
         "app.services.scenario_extractor_llm.settings",
-        SimpleNamespace(claude_api_key="test-key"),
+        _navy_settings(),
     )
     monkeypatch.setenv("TZ5_LLM_ENABLED", "1")
     source = (
@@ -183,11 +212,11 @@ async def test_llm_extract_scenario_route_parses_sonnet_json(monkeypatch):
         "quotes_from_source": ["Поздороваться, представиться", "не было в исходнике"],
         "confidence": 0.85,
     }
-    fake_client = SimpleNamespace(messages=SimpleNamespace(
-        create=AsyncMock(return_value=_claude_response(json.dumps(sonnet_payload)))
-    ))
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
+        create=AsyncMock(return_value=_navy_response(json.dumps(sonnet_payload)))
+    )))
     with patch(
-        "app.services.llm._get_claude_client",
+        "app.services.llm._get_local_client",
         return_value=fake_client,
     ):
         blob = await llm_extract_for_route(source, "scenario")
@@ -202,15 +231,15 @@ async def test_llm_extract_scenario_route_parses_sonnet_json(monkeypatch):
 async def test_llm_extract_falls_back_on_missing_required_keys(monkeypatch):
     monkeypatch.setattr(
         "app.services.scenario_extractor_llm.settings",
-        SimpleNamespace(claude_api_key="test-key"),
+        _navy_settings(),
     )
     monkeypatch.setenv("TZ5_LLM_ENABLED", "1")
     bad_payload = {"title_suggested": "X"}  # missing steps, quotes_from_source
-    fake_client = SimpleNamespace(messages=SimpleNamespace(
-        create=AsyncMock(return_value=_claude_response(json.dumps(bad_payload)))
-    ))
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
+        create=AsyncMock(return_value=_navy_response(json.dumps(bad_payload)))
+    )))
     with patch(
-        "app.services.llm._get_claude_client",
+        "app.services.llm._get_local_client",
         return_value=fake_client,
     ):
         blob = await llm_extract_for_route("Шаг 1: Привет.", "scenario")
@@ -223,7 +252,7 @@ async def test_llm_extract_falls_back_on_missing_required_keys(monkeypatch):
 async def test_llm_extract_arena_payload_passes_through(monkeypatch):
     monkeypatch.setattr(
         "app.services.scenario_extractor_llm.settings",
-        SimpleNamespace(claude_api_key="test-key"),
+        _navy_settings(),
     )
     monkeypatch.setenv("TZ5_LLM_ENABLED", "1")
     source = "По 127-ФЗ ст. 213.3 минимальный долг — 500 000 руб."
@@ -238,11 +267,11 @@ async def test_llm_extract_arena_payload_passes_through(monkeypatch):
         "quotes_from_source": ["500 000 руб."],
         "confidence": 0.9,
     }
-    fake_client = SimpleNamespace(messages=SimpleNamespace(
-        create=AsyncMock(return_value=_claude_response(json.dumps(arena_payload)))
-    ))
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
+        create=AsyncMock(return_value=_navy_response(json.dumps(arena_payload)))
+    )))
     with patch(
-        "app.services.llm._get_claude_client",
+        "app.services.llm._get_local_client",
         return_value=fake_client,
     ):
         blob = await llm_extract_for_route(source, "arena_knowledge")
@@ -257,7 +286,7 @@ async def test_llm_extract_pii_scrubbed_from_output(monkeypatch):
     output PII scrub catches it before persistence."""
     monkeypatch.setattr(
         "app.services.scenario_extractor_llm.settings",
-        SimpleNamespace(claude_api_key="test-key"),
+        _navy_settings(),
     )
     monkeypatch.setenv("TZ5_LLM_ENABLED", "1")
     payload = {
@@ -270,11 +299,11 @@ async def test_llm_extract_pii_scrubbed_from_output(monkeypatch):
         "quotes_from_source": [],
         "confidence": 0.7,
     }
-    fake_client = SimpleNamespace(messages=SimpleNamespace(
-        create=AsyncMock(return_value=_claude_response(json.dumps(payload)))
-    ))
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
+        create=AsyncMock(return_value=_navy_response(json.dumps(payload)))
+    )))
     with patch(
-        "app.services.llm._get_claude_client",
+        "app.services.llm._get_local_client",
         return_value=fake_client,
     ):
         blob = await llm_extract_for_route("source", "scenario")
