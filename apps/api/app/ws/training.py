@@ -3184,6 +3184,73 @@ def _build_client_profile_prompt(profile, ambient_ctx: dict | None = None) -> st
     return "\n".join(parts)
 
 
+async def _clone_source_session_profile(
+    source_session_id: uuid.UUID,
+    new_session_id: uuid.UUID,
+    db: AsyncSession,
+):
+    """Clone the ClientProfile of a previous session onto a fresh retrain session.
+
+    Bug fix (2026-04-29): clicking «Повторить звонок» on /results created a
+    new session that copied scenario/archetype/profession from the source
+    but RAN THE PROFILE GENERATOR FRESH — so the manager saw the old
+    client's name on the results card but a different name (and debt
+    amounts, fears, soft_spot, etc.) inside the actual call. The fix:
+    when the new session's ``source_session_id`` is set, clone the source's
+    ClientProfile row identity-for-identity — same approach used by
+    ``_clone_story_profile_for_session`` for multi-call story mode.
+
+    The clone is full-fidelity: name, age, debt, creditors, fears, traps,
+    objection chain — everything that defines "who is this client" carries
+    over. The retrain therefore behaves like "another call with the SAME
+    person", not "a new random person from the same scenario".
+
+    Returns:
+        ClientProfile ORM instance (added + flushed) on success, ``None``
+        if the source session has no profile (legacy/unfinished session).
+    """
+    from app.models.roleplay import ClientProfile
+
+    src_result = await db.execute(
+        select(ClientProfile).where(ClientProfile.session_id == source_session_id)
+    )
+    src = src_result.scalar_one_or_none()
+    if src is None:
+        return None
+
+    cloned = ClientProfile(
+        session_id=new_session_id,
+        full_name=src.full_name,
+        age=src.age,
+        gender=src.gender,
+        city=src.city,
+        archetype_code=src.archetype_code,
+        profession_id=src.profession_id,
+        education_level=src.education_level,
+        legal_literacy=src.legal_literacy,
+        total_debt=src.total_debt,
+        creditors=src.creditors,
+        income=src.income,
+        income_type=src.income_type,
+        property_list=src.property_list,
+        fears=src.fears,
+        soft_spot=src.soft_spot,
+        trust_level=src.trust_level,
+        resistance_level=src.resistance_level,
+        lead_source=src.lead_source,
+        call_history=src.call_history,
+        crm_notes=src.crm_notes,
+        hidden_objections=src.hidden_objections,
+        trap_ids=src.trap_ids,
+        chain_id=src.chain_id,
+        cascade_ids=src.cascade_ids,
+        breaking_point=src.breaking_point,
+    )
+    db.add(cloned)
+    await db.flush()
+    return cloned
+
+
 async def _clone_story_profile_for_session(
     story_id: uuid.UUID,
     session_id: uuid.UUID,
@@ -3460,6 +3527,28 @@ async def _handle_session_start(
                                 )
                                 profile = None
 
+                    # Retrain (clone_from_session_id) — clone source profile
+                    # so the manager sees the same person across retrains.
+                    # Bug fix 2026-04-29 (mirror of the call-mode path).
+                    if profile is None and getattr(session, "source_session_id", None):
+                        try:
+                            profile = await _clone_source_session_profile(
+                                session.source_session_id, session.id, db,
+                            )
+                            if profile is not None:
+                                logger.info(
+                                    "ClientProfile cloned from retrain source | "
+                                    "session=%s | source=%s | name=%s",
+                                    session.id, session.source_session_id, profile.full_name,
+                                )
+                        except Exception:
+                            logger.warning(
+                                "_clone_source_session_profile failed for session=%s, "
+                                "falling back to generator",
+                                session.id, exc_info=True,
+                            )
+                            profile = None
+
                     if profile is None:
                         profile = await generate_client_profile(
                             session_id=session.id,
@@ -3698,6 +3787,15 @@ async def _handle_session_start(
             profile = None
             if story_id:
                 profile = await _clone_story_profile_for_session(story_id, session.id, db)
+
+            # Retrain (clone_from_session_id) — clone source profile so the
+            # manager sees the same person they saw on /results. Bug fix
+            # 2026-04-29: previously fell through to generate_client_profile
+            # which produced a fresh random name on every retrain.
+            if profile is None and getattr(session, "source_session_id", None):
+                profile = await _clone_source_session_profile(
+                    session.source_session_id, session.id, db,
+                )
 
             if profile is None:
                 profile = await generate_client_profile(
