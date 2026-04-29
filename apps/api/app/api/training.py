@@ -8,6 +8,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.consent import check_consent_accepted
+from app.config import settings
 from app.core import errors as err
 from app.core.deps import get_current_user
 from app.database import get_db
