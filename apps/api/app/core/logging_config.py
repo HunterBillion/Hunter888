@@ -37,8 +37,17 @@ class JSONFormatter(logging.Formatter):
         if record.exc_info and record.exc_info[0] is not None:
             log_entry["exception"] = self.formatException(record.exc_info)
 
-        # Include extra context fields (e.g., user_id, request_id from middleware)
-        for key in ("user_id", "request_id", "client_ip", "duration_ms", "session_id"):
+        # Include extra context fields (e.g., user_id, request_id from middleware,
+        # correlation_id from contextvar via LogContextFilter).
+        for key in (
+            "user_id",
+            "request_id",
+            "correlation_id",
+            "client_ip",
+            "duration_ms",
+            "session_id",
+            "duel_id",
+        ):
             val = getattr(record, key, None)
             if val is not None:
                 log_entry[key] = val
@@ -75,6 +84,12 @@ def setup_logging(log_level: str = "info", log_format: str = "text") -> None:
             )
         )
 
+    # Auto-inject request_id / correlation_id from contextvars into every record,
+    # so existing logger.info(...) calls in async tasks/WS handlers carry the
+    # IDs without having to pass extra={} at every call site.
+    from app.core.correlation import LogContextFilter
+
+    handler.addFilter(LogContextFilter())
     root.addHandler(handler)
 
     # Reduce noise from verbose libraries

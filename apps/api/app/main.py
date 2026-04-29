@@ -446,12 +446,22 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 # Request ID middleware — attaches unique ID to every request for distributed tracing.
 # Reads X-Request-ID from reverse proxy (nginx/LB) or generates a new one.
-# The ID is available in log records via logging_config.py extra fields.
+# The ID is exposed three ways:
+#   * ``request.state.request_id``         — direct access from endpoint code
+#   * contextvar (``app.core.correlation``) — auto-injected into LogRecords by
+#     LogContextFilter so any logger.info() call inside the request scope
+#     carries the id without having to pass extra={}
+#   * ``X-Request-ID`` response header     — visible to the browser / proxy
 class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:16]
         request.state.request_id = request_id
-        response = await call_next(request)
+        from app.core.correlation import bind_request_id, reset_request_id
+        token = bind_request_id(request_id)
+        try:
+            response = await call_next(request)
+        finally:
+            reset_request_id(token)
         response.headers["X-Request-ID"] = request_id
         return response
 
@@ -582,9 +592,21 @@ else:
 def _attach_ws_request_id(websocket: WebSocket) -> str:
     """Generate a short request_id and attach to websocket.state. Also emit
     as X-Request-ID response header on the handshake so browser/devtools
-    can correlate with HTTP traffic."""
+    can correlate with HTTP traffic.
+
+    Binds the id into the contextvar (``app.core.correlation``) so log
+    records emitted by handler tasks carry it automatically. The binding
+    lives for the duration of the WS handler coroutine — when the handler
+    returns the contextvar copy is discarded with the task.
+    """
     rid = websocket.headers.get("x-request-id") or uuid.uuid4().hex[:16]
     websocket.state.request_id = rid
+    from app.core.correlation import bind_request_id
+    # No reset: the WS handler is the lifetime of this contextvar copy; the
+    # task's contextvar dict is dropped when the task ends, so leaking the
+    # binding is impossible. Storing the token on websocket.state is a
+    # micro-optimisation we don't need.
+    bind_request_id(rid)
     return rid
 
 
