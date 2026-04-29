@@ -361,13 +361,28 @@ async def capture_for_session(
     db.add(snapshot)
     await db.flush()
 
+    # ── Domain event emission (TZ-1 §15.1 invariant 4) ─────────────────────
+    # ``domain_events.lead_client_id`` is NOT NULL with FK→lead_clients.id.
+    # The earlier fallback ``session.lead_client_id or session.id`` looked
+    # tempting but ``session.id`` is a ``training_sessions`` PK, not a
+    # ``lead_clients`` PK — every home_preview session triggered a
+    # ForeignKeyViolationError that ``home.start`` swallowed silently.
+    # Result on prod: 94/95 snapshots had **no** corresponding
+    # ``persona.snapshot_captured`` event in the audit log.
+    #
+    # Behaviour now: when the session is not yet bound to a real CRM
+    # lead (home_preview path), we skip the event emit. The snapshot
+    # row itself survives (it's how persona-memory reads identity at
+    # call time); the missing event is a known acceptable loss for
+    # synthetic preview sessions. When the session is later upgraded
+    # to a real lead (via a future "save to CRM" action), the persona
+    # event chain starts at that point with a valid anchor.
+    if session.lead_client_id is None:
+        return snapshot, None
+
     event = await emit_domain_event(
         db,
-        # lead_client_id is OPTIONAL on snapshots (home_preview path) but
-        # MANDATORY on DomainEvent. When absent, fall back to the session
-        # id reinterpreted as the correlation anchor — TZ-1 §15.1 lets
-        # session_id stand in when the canonical lead doesn't exist yet.
-        lead_client_id=session.lead_client_id or session.id,
+        lead_client_id=session.lead_client_id,
         event_type="persona.snapshot_captured",
         actor_type="user" if actor_id else "system",
         actor_id=actor_id,
@@ -377,7 +392,7 @@ async def capture_for_session(
         session_id=session.id,
         payload={
             "session_id": str(session.id),
-            "lead_client_id": str(session.lead_client_id) if session.lead_client_id else None,
+            "lead_client_id": str(session.lead_client_id),
             "captured_from": captured_from,
             "persona_version": persona_version,
             "full_name": identity_full_name,

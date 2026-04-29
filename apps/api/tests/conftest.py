@@ -8,6 +8,19 @@ Provides:
   - Redis mock
 """
 
+# ─── Test env defaults ─────────────────────────────────────────────────────
+# Settings has strict validators that refuse to boot if OAuth redirect_uri
+# points to the wrong path (production lesson: misrouted /api/auth/...
+# vs FE /auth/callback). Locally a developer's .env may point at the
+# legacy /auth/google/callback for live debugging, which then breaks
+# `pytest` even though the test suite never touches OAuth. Set sensible
+# defaults BEFORE any `from app.*` import — `setdefault` so a developer
+# who genuinely needs different values can still override.
+import os as _os
+
+_os.environ.setdefault("GOOGLE_REDIRECT_URI", "http://localhost:3000/auth/callback")
+_os.environ.setdefault("YANDEX_REDIRECT_URI", "http://localhost:3000/auth/callback")
+
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch

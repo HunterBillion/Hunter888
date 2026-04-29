@@ -292,11 +292,22 @@ async def test_capture_for_session_with_persona_emits_snapshot_event(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_capture_for_session_with_fallback_emits_snapshot_event(monkeypatch):
-    """home_preview path: no MemoryPersona, identity from PersonaIdentity
-    fallback. lead_client_id may be NULL on the snapshot, but the
-    DomainEvent must still get a non-NULL lead_client_id (TZ-1 invariant
-    — falls back to session.id when no canonical lead exists)."""
+async def test_capture_for_session_with_fallback_skips_event_when_no_lead(monkeypatch):
+    """home_preview path: no MemoryPersona, no canonical lead_client.
+
+    The earlier implementation tried to fall back to ``session.id`` for
+    the DomainEvent's ``lead_client_id`` — but that column has a FK to
+    ``lead_clients.id``, and a training-session UUID is never present
+    there, so every home_preview emit raised ForeignKeyViolationError
+    (silently swallowed by the caller). Prod state confirmed: 94/95
+    home_preview snapshots had no corresponding event.
+
+    Behaviour now: snapshot is still captured (it's how persona-memory
+    reads identity at call time), but the event emit is skipped. The
+    caller gets ``(snapshot, None)`` and can decide what to do —
+    typically nothing, because home_preview is a synthetic identity
+    not yet bound to a real lead.
+    """
     session = SimpleNamespace(id=uuid.uuid4(), lead_client_id=None)
     db = _make_db(get_result=None)
     captured = _patch_emit(monkeypatch)
@@ -315,9 +326,11 @@ async def test_capture_for_session_with_fallback_emits_snapshot_event(monkeypatc
     assert snapshot.full_name == "Алёна Васильева"
     assert snapshot.lead_client_id is None
     assert snapshot.captured_from == "home_preview"
-    # DomainEvent.lead_client_id falls back to session.id when snapshot
-    # has none — required by TZ-1 NOT NULL constraint.
-    assert captured[0]["lead_client_id"] == session.id
+    # No event emitted when there's no canonical lead — the snapshot
+    # alone is enough for the runtime, and the audit log accepts the
+    # gap as the documented cost of synthetic preview sessions.
+    assert event is None
+    assert captured == []
 
 
 @pytest.mark.asyncio
