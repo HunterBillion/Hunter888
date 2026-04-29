@@ -58,6 +58,7 @@ import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
+import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 
 // ── Types matching the rop.py response shape ───────────────────────────────
 
@@ -216,12 +217,13 @@ export function ScenariosEditor() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <h3 className="font-display text-sm tracking-wider" style={{ color: "var(--text-secondary)" }}>
-            СЦЕНАРИИ
-          </h3>
-          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-            Всего {counts.total} · опубликовано {counts.published} · черновиков {counts.draft}
+        <div className="flex items-start gap-2">
+          <div>
+            <h3 className="font-display text-sm tracking-wider" style={{ color: "var(--text-secondary)" }}>
+              СЦЕНАРИИ
+            </h3>
+            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+              Всего {counts.total} · опубликовано {counts.published} · черновиков {counts.draft}
             {counts.no_version > 0 && (
               <>
                 {" · "}
@@ -231,6 +233,18 @@ export function ScenariosEditor() {
               </>
             )}
           </p>
+          </div>
+          <PixelInfoButton
+            title="Сценарии (TZ-3)"
+            sections={[
+              { icon: CircleDot, label: "Шаблон сценария", text: "Базовая «карточка»: название, описание, этапы. Менеджеры видят только опубликованные шаблоны." },
+              { icon: Send, label: "Версии (immutable)", text: "Каждое нажатие «Опубликовать» создаёт НОВУЮ версию. Старые версии остаются — открытые сейчас сессии работают на той версии, на которой стартовали." },
+              { icon: ChevronDown, label: "Зачем версии", text: "Раньше правка шаблона прямо влияла на идущие звонки → менеджер посередине разговора видел изменённый шаг 4. Теперь правки сидят в draft до явной публикации." },
+              { icon: AlertTriangle, label: "Без published версии", text: "Шаблон есть, но menager'у его не дать (ничего не опубликовано). Жёлтое предупреждение в счётчике сверху." },
+              { icon: CheckCircle2, label: "Что в этом MVP", text: "Список + Publish + просмотр истории версий. In-place редактор полей и create-new wizard — следующая итерация (C4.1+C4.2)." },
+            ]}
+            footer="Совет: после Publish обновите страницу у менеджеров — runtime-резолвер выберет новую версию для НОВЫХ сессий, текущие закончатся на старой."
+          />
         </div>
         <button
           onClick={fetchList}

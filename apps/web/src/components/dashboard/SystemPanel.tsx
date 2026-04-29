@@ -15,6 +15,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Activity, Database, Users as UsersIcon } from "lucide-react";
 import dynamic from "next/dynamic";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
+import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 
 const UsersAdminPanel = dynamic(
   () => import("@/components/dashboard/UsersAdminPanel").then((m) => m.UsersAdminPanel),
@@ -47,6 +48,20 @@ export function SystemPanel() {
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-base tracking-wider" style={{ color: "var(--text-secondary)" }}>
+          СИСТЕМА
+        </h2>
+        <PixelInfoButton
+          title="Системная вкладка"
+          sections={[
+            { icon: UsersIcon, label: "Пользователи", text: "Полный реестр аккаунтов: создать, заблокировать, сменить роль, сбросить пароль. Только admin." },
+            { icon: Database, label: "Домен клиентов", text: "TZ-1 — оперативный пульт по событиям клиентов. Метрики согласованности (parity), флаги переключения старого/нового пути записи, последние 50 событий." },
+            { icon: Activity, label: "Среда выполнения", text: "TZ-2 — счётчики выполнения сессий: сколько завершилось через WS vs REST, сколько защит сработало, сколько задач на повторный звонок не создалось." },
+          ]}
+          footer="Только для роли admin. ROP видит «Команду» и «Активность», но не «Систему»."
+        />
+      </div>
       <div
         className="flex items-center gap-2 rounded-xl p-1.5"
         style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)" }}
