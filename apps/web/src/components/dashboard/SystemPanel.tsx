@@ -35,8 +35,11 @@ type SubTab = "users" | "client_domain" | "runtime";
 
 const SUB_TABS: { id: SubTab; label: string; icon: typeof UsersIcon }[] = [
   { id: "users", label: "Пользователи", icon: UsersIcon },
-  { id: "client_domain", label: "Client Domain", icon: Database },
-  { id: "runtime", label: "Runtime", icon: Activity },
+  // "Домен клиентов" = TZ-1 client_domain — operator-facing translation
+  // of an architectural identifier. Sub-route param stays English so
+  // existing deep-links don't break.
+  { id: "client_domain", label: "Домен клиентов", icon: Database },
+  { id: "runtime", label: "Среда выполнения", icon: Activity },
 ];
 
 export function SystemPanel() {

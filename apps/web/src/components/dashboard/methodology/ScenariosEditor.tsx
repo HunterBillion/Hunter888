@@ -312,7 +312,7 @@ function ScenarioRow({
         <button
           onClick={onToggle}
           className="p-1 rounded hover:bg-white/5"
-          aria-label="Toggle versions"
+          aria-label="Показать или скрыть версии"
         >
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>

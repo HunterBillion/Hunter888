@@ -255,7 +255,7 @@ function ReportCard({ report, index }: { report: WeeklyReport; index: number }) 
               <div style={{ display: "grid", gap: "0.5rem", marginBottom: "1rem", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))" }}>
                 <StatCard icon={Target} label="Ср. балл" value={report.average_score != null ? Number(report.average_score).toFixed(0) : "—"} color={scoreColor(report.average_score)} />
                 <StatCard icon={Star} label="Лучший" value={report.best_score != null ? String(report.best_score) : "—"} color="var(--rank-gold)" />
-                <StatCard icon={Trophy} label="Win rate" value={report.win_rate != null ? `${Number(report.win_rate).toFixed(0)}%` : "—"} color="var(--success)" />
+                <StatCard icon={Trophy} label="Побед" value={report.win_rate != null ? `${Number(report.win_rate).toFixed(0)}%` : "—"} color="var(--success)" />
                 <StatCard icon={Lightning} label="XP" value={`+${report.xp_earned}`} color="var(--warning)" />
                 <StatCard icon={Clock} label="Время" value={`${report.total_time_minutes} мин`} color="var(--info)" />
                 <StatCard
