@@ -124,6 +124,67 @@ from app.services.tts import (
 logger = logging.getLogger(__name__)
 
 
+async def _apply_call_scrub_gate(
+    raw_sentence: str,
+    *,
+    ws,
+    session_id,
+) -> str | None:
+    """Run the AI-tell sentence gate before launching a TTS task.
+
+    Returns the text that should actually be synthesised, or ``None`` if
+    the caller should skip the TTS launch (mode=drop, or strip with empty
+    residue). Emits a ``character.ai_tell_detected`` WS event for
+    observability whenever a match is found, regardless of mode — so the
+    front-end can surface a small admin badge without changing audio.
+
+    No-op when ``CALL_HUMANIZED_V2`` is OFF: returns the input unchanged
+    and skips the scan entirely. The scrubber import is local so the
+    legacy code path doesn't pay the import cost when the flag is off.
+    """
+    if not settings.call_humanized_v2:
+        return raw_sentence
+    try:
+        from app.services.ai_tell_scrubber import scrub  # local import on hot path
+        result = scrub(raw_sentence, mode=settings.call_humanized_v2_scrub_mode)
+    except Exception:
+        # Defensive: if the scrubber raises (corrupt lexicon, bad mode
+        # string, anything) we MUST NOT blackhole the audio. Pass through.
+        logger.warning(
+            "ai_tell_scrubber failed for session=%s — passing audio unchanged",
+            session_id, exc_info=True,
+        )
+        return raw_sentence
+
+    if result.matches:
+        try:
+            await _send(ws, "character.ai_tell_detected", {
+                "matches": list(result.matches),
+                "action": result.action,
+                "mode": settings.call_humanized_v2_scrub_mode,
+                # Truncate to avoid leaking full sentence to UI logs.
+                "preview": raw_sentence[:80],
+            })
+        except Exception:
+            # Cosmetic event; never let it break the call path.
+            logger.debug(
+                "Could not emit ai_tell_detected event session=%s",
+                session_id, exc_info=True,
+            )
+        logger.info(
+            "ai_tell_detected session=%s mode=%s action=%s matches=%s",
+            session_id,
+            settings.call_humanized_v2_scrub_mode,
+            result.action,
+            list(result.matches),
+        )
+
+    if result.action == "dropped":
+        return None
+    # warn → original; stripped → residue.
+    return result.text or raw_sentence
+
+
 def _call_tts_factors(state: dict) -> list[dict] | None:
     """Return active_factors for a TTS call when call humanisation V2 is on.
 
@@ -1444,13 +1505,25 @@ async def _generate_character_reply(
                     _clean_sent = _STAGE_DIR_RE.sub("", _tts_sentence_buffer).strip()
                     # Skip tiny fragments (e.g. "А.", "Да!") — too short for meaningful TTS
                     if len(_clean_sent) >= 10:
-                        _idx = len(_tts_sent_indices)
-                        _tts_sent_indices.append(_idx)
-                        _tts_tasks[_idx] = asyncio.create_task(_synth_for_stream(_clean_sent, _idx))
-                        _tts_sentence_buffer = ""
-                        _stream_tts_used = True
-                        # Send any ready chunks without blocking the stream
-                        await _flush_ordered_tts_chunks()
+                        # Sprint 0 §5: AI-tell gate runs before TTS task launch.
+                        # No-op when CALL_HUMANIZED_V2 is OFF (returns input).
+                        _gated_sent = await _apply_call_scrub_gate(
+                            _clean_sent, ws=ws, session_id=session_id,
+                        )
+                        if _gated_sent is None:
+                            # Mode=drop matched — suppress audio for this sentence
+                            # but DO advance the buffer so the next sentence starts fresh.
+                            _tts_sentence_buffer = ""
+                        else:
+                            _idx = len(_tts_sent_indices)
+                            _tts_sent_indices.append(_idx)
+                            _tts_tasks[_idx] = asyncio.create_task(
+                                _synth_for_stream(_gated_sent, _idx)
+                            )
+                            _tts_sentence_buffer = ""
+                            _stream_tts_used = True
+                            # Send any ready chunks without blocking the stream
+                            await _flush_ordered_tts_chunks()
 
             # Flush remaining buffer (text)
             if _chunk_buffer:
@@ -1466,10 +1539,17 @@ async def _generate_character_reply(
             ):
                 _clean_sent = _STAGE_DIR_RE.sub("", _tts_sentence_buffer).strip()
                 if len(_clean_sent) >= 10:
-                    _idx = len(_tts_sent_indices)
-                    _tts_sent_indices.append(_idx)
-                    _tts_tasks[_idx] = asyncio.create_task(_synth_for_stream(_clean_sent, _idx))
-                    _stream_tts_used = True
+                    # Sprint 0 §5: AI-tell gate — same gate as the main loop.
+                    _gated_sent = await _apply_call_scrub_gate(
+                        _clean_sent, ws=ws, session_id=session_id,
+                    )
+                    if _gated_sent is not None:
+                        _idx = len(_tts_sent_indices)
+                        _tts_sent_indices.append(_idx)
+                        _tts_tasks[_idx] = asyncio.create_task(
+                            _synth_for_stream(_gated_sent, _idx)
+                        )
+                        _stream_tts_used = True
 
             # Text portion of LLM response is complete — let UI clear the
             # typing spinner NOW, before we wait for any trailing TTS audio.
@@ -2213,12 +2293,18 @@ async def _generate_character_reply(
                 _merged = [clean_content]
 
             if len(_merged) <= 1:
-                # Single sentence — no pipelining benefit, use original path
-                tts_result = await get_tts_audio_b64(
-                    clean_content, str(session_id),
-                    emotion=new_emotion,
-                    active_factors=_call_tts_factors(state),
+                # Single sentence — no pipelining benefit, use original path.
+                # Sprint 0 §5: AI-tell gate (parity with streaming path).
+                _gated_single = await _apply_call_scrub_gate(
+                    clean_content, ws=ws, session_id=session_id,
                 )
+                tts_result = None
+                if _gated_single is not None:
+                    tts_result = await get_tts_audio_b64(
+                        _gated_single, str(session_id),
+                        emotion=new_emotion,
+                        active_factors=_call_tts_factors(state),
+                    )
                 if tts_result and tts_result.get("audio"):
                     await _send(ws, "tts.audio", {
                         "audio_b64": tts_result["audio"],
@@ -2240,8 +2326,14 @@ async def _generate_character_reply(
                 # Multiple sentences — synthesize in parallel, send sequentially
                 async def _synth_sentence(_text: str, _idx: int) -> tuple[int, dict | None]:
                     try:
+                        # Sprint 0 §5: gate each parallel sentence too.
+                        _gated_text = await _apply_call_scrub_gate(
+                            _text, ws=ws, session_id=session_id,
+                        )
+                        if _gated_text is None:
+                            return (_idx, None)
                         result = await get_tts_audio_b64(
-                            _text, str(session_id),
+                            _gated_text, str(session_id),
                             emotion=new_emotion,
                             active_factors=_call_tts_factors(state),
                         )

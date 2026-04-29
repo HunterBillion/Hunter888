@@ -190,6 +190,19 @@ class Settings(BaseSettings):
     # design — long answers in voice always sound like a dictating assistant.
     # Ignored when call_humanized_v2 is off (legacy 800/1200 hardcode wins).
     call_humanized_v2_max_tokens: int = 300
+    # Sentence-gate scrub mode for the AI-tell phrase scanner. Three modes:
+    #   "warn"  — detect + log + emit WS event, audio still goes through
+    #             unchanged. Safe default; collects FP/TP rate for tuning.
+    #   "strip" — if the AI-tell sits at the very start of the sentence
+    #             (within first ~30 chars), strip it; if the residue is
+    #             too short to be a meaningful utterance, drop TTS.
+    #   "drop"  — skip TTS for any sentence containing an AI-tell.
+    # Only consulted when call_humanized_v2 is on.
+    call_humanized_v2_scrub_mode: str = "warn"
+    # Bug B fix (auto-opener): when V2 is on AND the session mode is call,
+    # the AI sends a short "Алло?" / "Да, слушаю" within the first second
+    # so the manager isn't greeted by silence. Defaults to True under V2.
+    call_humanized_v2_auto_opener: bool = True
 
     # ── Phase 1 (Roadmap) ConversationCompletionPolicy flags ──────────────
     # When False (default during rollout): legacy terminal side-effect
