@@ -767,6 +767,34 @@ export default function TrainingSessionPage() {
           break;
         }
 
+        // P2 (2026-04-29) — coaching mistake detector toasts in chat mode.
+        // Same payload as call mode (see call/page.tsx for mapping rationale).
+        case "coaching.mistake": {
+          const d = data.data as Record<string, unknown>;
+          const hint = String(d.hint ?? "");
+          if (!hint) break;
+          const severity = String(d.severity ?? "warn");
+          const priority: "low" | "medium" | "high" =
+            severity === "alert" ? "high" : severity === "info" ? "low" : "medium";
+          const mistakeType = String(d.type ?? "stage");
+          const iconMap: Record<string, string> = {
+            monologue: "mic-off",
+            no_open_question: "help-circle",
+            early_pricing: "alert-triangle",
+            repeated_argument: "rotate-cw",
+            talk_ratio_high: "volume-2",
+          };
+          s.addWhisper({
+            type: "stage",
+            message: hint,
+            stage: mistakeType,
+            priority,
+            icon: iconMap[mistakeType] ?? "zap",
+            timestamp: Date.now(),
+          });
+          break;
+        }
+
         case "whisper.toggle_ack":
           if (data.data.enabled !== undefined) s.setWhispersEnabled(data.data.enabled as boolean);
           break;
