@@ -71,6 +71,14 @@ services:
       LOG_FORMAT: json
       LOG_LEVEL: info
       CORS_ORIGINS: https://x-hunter.expert,https://www.x-hunter.expert
+      # Sprint 0 (2026-04-29) call humanisation — opt-in flags.
+      # Master flag drives auto-opener + sentence-gate + max_tokens=300
+      # for call/voice mode. Default OFF in code; this prod override
+      # turns them ON for the pilot. Roll back without redeploy by
+      # flipping CALL_HUMANIZED_V2 to "0" + `up -d --force-recreate api`.
+      CALL_HUMANIZED_V2: "1"
+      CALL_HUMANIZED_V2_AUTO_OPENER: "1"
+      CALL_HUMANIZED_V2_SCRUB_MODE: warn
     # Don't expose API port directly — use nginx
     ports: !reset []
     # Graceful shutdown: gunicorn --graceful-timeout 30 + margin
