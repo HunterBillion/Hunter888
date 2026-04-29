@@ -628,7 +628,7 @@ export function ClientDomainPanel() {
             <StatCard
               label="CRM интеракций"
               value={parity.total_interactions}
-              hint="Legacy timeline"
+              hint="Старая лента"
             />
             <StatCard
               label="Projection-строк"
@@ -636,7 +636,7 @@ export function ClientDomainPanel() {
               hint="Должно ≈ events"
             />
             <StatCard
-              label="Parity ratio"
+              label="Согласованность"
               value={health ? formatPercent(health.parity_ratio) : "—"}
               hint="1.0 = идеал"
               accent={
@@ -962,18 +962,18 @@ export function ClientDomainPanel() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <FlagBadge
               enabled={flags.client_domain_dual_write_enabled}
-              label="Dual-write"
-              note="писать и legacy, и DomainEvent"
+              label="Двойная запись"
+              note="писать и в старую таблицу, и в DomainEvent"
             />
             <FlagBadge
               enabled={flags.client_domain_cutover_read_enabled}
-              label="Cutover read-path"
-              note="UI читает из projection"
+              label="Чтение из проекции"
+              note="UI читает из новой таблицы projection"
             />
             <FlagBadge
               enabled={flags.client_domain_strict_emit}
-              label="Strict emit"
-              note="emit-failures откатывают txn"
+              label="Строгая запись"
+              note="ошибка emit откатывает транзакцию"
             />
           </div>
           <p
@@ -1029,9 +1029,9 @@ export function ClientDomainPanel() {
                     <th className="px-3 py-2 text-left font-semibold">Когда</th>
                     <th className="px-3 py-2 text-left font-semibold">Событие</th>
                     <th className="px-3 py-2 text-left font-semibold">Источник</th>
-                    <th className="px-3 py-2 text-left font-semibold">Lead</th>
-                    <th className="px-3 py-2 text-left font-semibold">Actor</th>
-                    <th className="px-3 py-2 text-left font-semibold">Correlation</th>
+                    <th className="px-3 py-2 text-left font-semibold">Клиент</th>
+                    <th className="px-3 py-2 text-left font-semibold">Кто</th>
+                    <th className="px-3 py-2 text-left font-semibold">Связка</th>
                   </tr>
                 </thead>
                 <tbody>
