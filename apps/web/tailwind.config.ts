@@ -72,7 +72,7 @@ const config: Config = {
         sans: ["var(--font-geist-sans)", "system-ui", "sans-serif"],
         display: ["var(--font-geist-sans)", "system-ui", "sans-serif"],
         mono: ["var(--font-geist-mono)", "monospace"],
-        pixel: ["var(--font-vt323)", "monospace"],
+        pixel: ["var(--font-vt323)", "var(--font-pixelify)", "Press Start 2P", "Courier New", "monospace"],
       },
       /* ── Spacing scale (8px grid) ── */
       spacing: {

@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
-import { Geist, Geist_Mono, VT323 } from "next/font/google";
+import { Geist, Geist_Mono, VT323, Pixelify_Sans } from "next/font/google";
 import { ViewTransitions } from "next-view-transitions";
 import { Providers } from "@/components/providers/Providers";
 import "./globals.css";
@@ -21,6 +21,18 @@ const vt323 = VT323({
   weight: "400",
   subsets: ["latin", "latin-ext", "vietnamese"],
   variable: "--font-vt323",
+  display: "swap",
+});
+
+// 2026-04-29: Pixelify Sans добавлен как Cyrillic-fallback для font-pixel.
+// VT323 (наш основной pixel-шрифт) не поддерживает кириллицу, поэтому
+// русский текст в .font-pixel падал на Geist Mono. Pixelify Sans поддерживает
+// subset "cyrillic" — браузер автоматически подберёт глиф из этого шрифта,
+// если VT323 не содержит запрашиваемый символ. Цепочка задана в pixel-ui.css.
+const pixelifySans = Pixelify_Sans({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-pixelify",
   display: "swap",
 });
 
@@ -91,7 +103,7 @@ export default async function RootLayout({
           @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
         `}</style>
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable} ${vt323.variable} min-h-screen antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${vt323.variable} ${pixelifySans.variable} min-h-screen antialiased`}>
         <ViewTransitions>
           <Providers>
             {children}
