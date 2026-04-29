@@ -152,6 +152,38 @@ export default function TrainingCallPage() {
   const endInFlightRef = useRef(false);
   const currentSessionIdRef = useRef<string>(id);
 
+  // Sprint 0 §7 (Bug A) — first-audio gate.
+  //
+  // Problem: when handleAccept runs, it tells the ringback loop to play
+  // a final ~60ms pickup click via Web Audio (line 314+, scheduled at
+  // ctx.currentTime + 0.02). Right after that, the WS connects, the
+  // backend (with CALL_HUMANIZED_V2 + auto_opener flag) sends the
+  // "Алло?" tts.audio almost immediately, and the HTMLAudioElement
+  // playback starts before the pickup click finishes — user hears them
+  // overlap as "странный звук".
+  //
+  // Fix: hold a wall-clock timestamp that means "first TTS allowed at".
+  // Set it 350ms after the Accept click (covers 20ms schedule + 60ms
+  // click + 250ms ctx-close + 20ms safety margin). Each tts.audio /
+  // tts.audio_chunk handler runs through scheduleAudioPlayback() which
+  // either plays immediately (gate already open) or defers via
+  // setTimeout (one-shot, queue order preserved because all pending
+  // calls share the same target wake-up).
+  //
+  // Default value Date.now() means "open" — a stale-state refresh
+  // (callAccepted=true on mount) bypasses the gate entirely, which is
+  // correct: there is no fresh pickup click on rehydration.
+  const audioGateUntilRef = useRef<number>(Date.now());
+  const scheduleAudioPlayback = useCallback((play: () => void) => {
+    const now = Date.now();
+    const gate = audioGateUntilRef.current;
+    if (now >= gate) {
+      play();
+      return;
+    }
+    setTimeout(play, gate - now);
+  }, []);
+
   // --- TTS (plays backend mp3, exposes real audioLevel) -------------------
   const tts = useTTS({ lang: "ru-RU", rate: 0.95, pitch: 1.0 });
 
@@ -405,13 +437,21 @@ export default function TrainingCallPage() {
           tts.cancelFallback();
           const audioB64 = data.data.audio_b64 as string | undefined;
           if (audioB64 && typeof audioB64 === "string" && audioB64.length > 0) {
-            tts.playAudioMessage({
-              audio: audioB64,
-              emotion: data.data.emotion as EmotionState | undefined,
-              voice_params: data.data.voice_params as
-                | { stability: number; similarity_boost: number; style: number; speed: number }
-                | undefined,
-              duration_ms: data.data.duration_ms as number | undefined,
+            // Sprint 0 §7 (Bug A): defer the first audio behind the
+            // pickup-click gate so it does not overlap with the
+            // ringback's farewell tone.
+            const emotion = data.data.emotion as EmotionState | undefined;
+            const voiceParams = data.data.voice_params as
+              | { stability: number; similarity_boost: number; style: number; speed: number }
+              | undefined;
+            const durationMs = data.data.duration_ms as number | undefined;
+            scheduleAudioPlayback(() => {
+              tts.playAudioMessage({
+                audio: audioB64,
+                emotion,
+                voice_params: voiceParams,
+                duration_ms: durationMs,
+              });
             });
           } else {
             logger.warn("[CALL] tts.audio received but audio_b64 missing/empty", {
@@ -438,19 +478,31 @@ export default function TrainingCallPage() {
           tts.cancelFallback();
           const chunkAudio = data.data.audio_b64 as string | undefined;
           if (chunkAudio) {
-            tts.queueAudioChunk({
-              audio: chunkAudio,
-              index: (data.data.sentence_index as number) ?? 0,
-              isLast: Boolean(data.data.is_last),
+            // Sprint 0 §7 (Bug A): same gate. queueAudioChunk only adds
+            // to the internal sentence queue — useTTS plays them in
+            // index order regardless of when they were queued, so the
+            // setTimeout indirection does not reorder anything.
+            const idx = (data.data.sentence_index as number) ?? 0;
+            const last = Boolean(data.data.is_last);
+            scheduleAudioPlayback(() => {
+              tts.queueAudioChunk({
+                audio: chunkAudio,
+                index: idx,
+                isLast: last,
+              });
             });
           }
           break;
         }
 
         case "tts.couple_audio":
-          tts.playCoupleAudio(
-            data.data as unknown as Parameters<typeof tts.playCoupleAudio>[0],
-          );
+          // Sprint 0 §7 (Bug A): also gate the couple-audio path.
+          {
+            const couple = data.data as unknown as Parameters<typeof tts.playCoupleAudio>[0];
+            scheduleAudioPlayback(() => {
+              tts.playCoupleAudio(couple);
+            });
+          }
           break;
 
         case "character.response": {
@@ -837,6 +889,12 @@ export default function TrainingCallPage() {
           } catch {
             /* storage quota / private mode — non-fatal */
           }
+          // Sprint 0 §7 (Bug A): hold first TTS audio for 350ms so the
+          // pickup click (~60ms tone scheduled at +20ms) and the audio
+          // context close (+250ms) finish before any backend audio
+          // starts playing. See audioGateUntilRef definition for the
+          // budget breakdown.
+          audioGateUntilRef.current = Date.now() + 350;
           setCallAccepted(true);
         }}
         onDecline={async () => {

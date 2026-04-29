@@ -178,6 +178,32 @@ class Settings(BaseSettings):
     # Flip via env var CONVERSATION_POLICY_ENFORCE_ENABLED=1 + restart api.
     conversation_policy_enforce_enabled: bool = False
 
+    # ── Sprint 0 (2026-04-29) Call humanization V2 — staged rollout ───────
+    # Master flag for the call-mode realism pipeline:
+    #   1) max_tokens really propagates to providers (call default = 300)
+    #   2) active_factors / pad_state plumbed into every TTS call site
+    #   3) sentence-gate scrubs AI-tells BEFORE chunks reach UI / TTS
+    # Default OFF → behaviour is bit-for-bit identical to today. Flip per-env
+    # with CALL_HUMANIZED_V2=1; the chat path is never affected.
+    call_humanized_v2: bool = False
+    # Output budget (in tokens) for call/voice mode when V2 is on. Short by
+    # design — long answers in voice always sound like a dictating assistant.
+    # Ignored when call_humanized_v2 is off (legacy 800/1200 hardcode wins).
+    call_humanized_v2_max_tokens: int = 300
+    # Sentence-gate scrub mode for the AI-tell phrase scanner. Three modes:
+    #   "warn"  — detect + log + emit WS event, audio still goes through
+    #             unchanged. Safe default; collects FP/TP rate for tuning.
+    #   "strip" — if the AI-tell sits at the very start of the sentence
+    #             (within first ~30 chars), strip it; if the residue is
+    #             too short to be a meaningful utterance, drop TTS.
+    #   "drop"  — skip TTS for any sentence containing an AI-tell.
+    # Only consulted when call_humanized_v2 is on.
+    call_humanized_v2_scrub_mode: str = "warn"
+    # Bug B fix (auto-opener): when V2 is on AND the session mode is call,
+    # the AI sends a short "Алло?" / "Да, слушаю" within the first second
+    # so the manager isn't greeted by silence. Defaults to True under V2.
+    call_humanized_v2_auto_opener: bool = True
+
     # ── Phase 1 (Roadmap) ConversationCompletionPolicy flags ──────────────
     # When False (default during rollout): legacy terminal side-effect
     # blocks still own the writes; policy only VALIDATES + stamps the new

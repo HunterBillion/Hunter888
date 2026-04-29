@@ -124,6 +124,90 @@ from app.services.tts import (
 logger = logging.getLogger(__name__)
 
 
+async def _apply_call_scrub_gate(
+    raw_sentence: str,
+    *,
+    ws,
+    session_id,
+) -> str | None:
+    """Run the AI-tell sentence gate before launching a TTS task.
+
+    Returns the text that should actually be synthesised, or ``None`` if
+    the caller should skip the TTS launch (mode=drop, or strip with empty
+    residue). Emits a ``character.ai_tell_detected`` WS event for
+    observability whenever a match is found, regardless of mode — so the
+    front-end can surface a small admin badge without changing audio.
+
+    No-op when ``CALL_HUMANIZED_V2`` is OFF: returns the input unchanged
+    and skips the scan entirely. The scrubber import is local so the
+    legacy code path doesn't pay the import cost when the flag is off.
+    """
+    if not settings.call_humanized_v2:
+        return raw_sentence
+    try:
+        from app.services.ai_tell_scrubber import scrub  # local import on hot path
+        result = scrub(raw_sentence, mode=settings.call_humanized_v2_scrub_mode)
+    except Exception:
+        # Defensive: if the scrubber raises (corrupt lexicon, bad mode
+        # string, anything) we MUST NOT blackhole the audio. Pass through.
+        logger.warning(
+            "ai_tell_scrubber failed for session=%s — passing audio unchanged",
+            session_id, exc_info=True,
+        )
+        return raw_sentence
+
+    if result.matches:
+        try:
+            await _send(ws, "character.ai_tell_detected", {
+                "matches": list(result.matches),
+                "action": result.action,
+                "mode": settings.call_humanized_v2_scrub_mode,
+                # Truncate to avoid leaking full sentence to UI logs.
+                "preview": raw_sentence[:80],
+            })
+        except Exception:
+            # Cosmetic event; never let it break the call path.
+            logger.debug(
+                "Could not emit ai_tell_detected event session=%s",
+                session_id, exc_info=True,
+            )
+        logger.info(
+            "ai_tell_detected session=%s mode=%s action=%s matches=%s",
+            session_id,
+            settings.call_humanized_v2_scrub_mode,
+            result.action,
+            list(result.matches),
+        )
+
+    if result.action == "dropped":
+        return None
+    # warn → original; stripped → residue.
+    return result.text or raw_sentence
+
+
+def _call_tts_factors(state: dict) -> list[dict] | None:
+    """Return active_factors for a TTS call when call humanisation V2 is on.
+
+    The factors are already maintained in ``state["active_factors"]`` by
+    the main handler (seed at first turn, refresh via
+    ``FactorInteractionMatrix``). Until Sprint 0 only one of the six TTS
+    call sites actually forwarded them — the others passed ``emotion``
+    only and the existing ``inject_hesitations`` / factor-specific
+    breathing path was effectively dead in voice mode.
+
+    This helper lets every TTS site opt in as a single branch. When
+    ``CALL_HUMANIZED_V2`` is OFF we return ``None`` so pre-Sprint-0
+    audible behaviour is preserved bit-for-bit. When ON we return the
+    live list so the humaniser actually fires.
+
+    Note: this is a *read* of ``state`` — callers must not mutate the
+    returned list (the matrix recomputes it each turn).
+    """
+    if not settings.call_humanized_v2:
+        return None
+    return list(state.get("active_factors") or [])
+
+
 async def _resolve_scenario(db, scenario_id: "uuid.UUID") -> Scenario | None:
     """Look up a scenario by ID, checking both legacy `scenarios` table and
     `scenario_templates`. If the ID matches a template but not a legacy row,
@@ -227,6 +311,27 @@ SILENCE_PHRASES_BY_EMOTION: dict[str, list[str]] = {
 }
 # Fallback for unknown emotions
 _SILENCE_FALLBACK = ["Алло? Вы ещё здесь?", "Алло?", "Мне кажется, связь прервалась..."]
+
+
+# Sprint 0 §6 — auto-opener phrases (Bug B fix). When V2 is on and a
+# call session starts, the AI emits one of these in the first second so
+# the manager isn't greeted by silence. Five short variants picked at
+# random; emotion-neutral on purpose because the persona's emotional
+# arc starts at "cold" and a long opening "Не желаю с вами разговаривать"
+# would be its own AI-tell. Real humans answer the phone neutrally.
+CALL_AUTO_OPENERS: tuple[str, ...] = (
+    "Алло?",
+    "Да, слушаю.",
+    "Алло, говорите.",
+    "Да?",
+    "Слушаю вас.",
+)
+
+
+def _pick_call_auto_opener() -> str:
+    """Return one of the auto-opener phrases at random."""
+    import random as _rnd
+    return _rnd.choice(CALL_AUTO_OPENERS)
 
 
 def _pick_silence_phrase(emotion: str, silence_count: int = 0) -> str:
@@ -1355,7 +1460,11 @@ async def _generate_character_reply(
                     # Per-sentence budget = ElevenLabs timeout + 2s grace (covers Navy fallback)
                     _sent_budget = float(settings.elevenlabs_timeout_seconds) + 2.0
                     r = await asyncio.wait_for(
-                        get_tts_audio_b64(_text, str(session_id), emotion=current_emotion),
+                        get_tts_audio_b64(
+                            _text, str(session_id),
+                            emotion=current_emotion,
+                            active_factors=_call_tts_factors(state),
+                        ),
                         timeout=_sent_budget,
                     )
                     if r:
@@ -1417,13 +1526,25 @@ async def _generate_character_reply(
                     _clean_sent = _STAGE_DIR_RE.sub("", _tts_sentence_buffer).strip()
                     # Skip tiny fragments (e.g. "А.", "Да!") — too short for meaningful TTS
                     if len(_clean_sent) >= 10:
-                        _idx = len(_tts_sent_indices)
-                        _tts_sent_indices.append(_idx)
-                        _tts_tasks[_idx] = asyncio.create_task(_synth_for_stream(_clean_sent, _idx))
-                        _tts_sentence_buffer = ""
-                        _stream_tts_used = True
-                        # Send any ready chunks without blocking the stream
-                        await _flush_ordered_tts_chunks()
+                        # Sprint 0 §5: AI-tell gate runs before TTS task launch.
+                        # No-op when CALL_HUMANIZED_V2 is OFF (returns input).
+                        _gated_sent = await _apply_call_scrub_gate(
+                            _clean_sent, ws=ws, session_id=session_id,
+                        )
+                        if _gated_sent is None:
+                            # Mode=drop matched — suppress audio for this sentence
+                            # but DO advance the buffer so the next sentence starts fresh.
+                            _tts_sentence_buffer = ""
+                        else:
+                            _idx = len(_tts_sent_indices)
+                            _tts_sent_indices.append(_idx)
+                            _tts_tasks[_idx] = asyncio.create_task(
+                                _synth_for_stream(_gated_sent, _idx)
+                            )
+                            _tts_sentence_buffer = ""
+                            _stream_tts_used = True
+                            # Send any ready chunks without blocking the stream
+                            await _flush_ordered_tts_chunks()
 
             # Flush remaining buffer (text)
             if _chunk_buffer:
@@ -1439,10 +1560,17 @@ async def _generate_character_reply(
             ):
                 _clean_sent = _STAGE_DIR_RE.sub("", _tts_sentence_buffer).strip()
                 if len(_clean_sent) >= 10:
-                    _idx = len(_tts_sent_indices)
-                    _tts_sent_indices.append(_idx)
-                    _tts_tasks[_idx] = asyncio.create_task(_synth_for_stream(_clean_sent, _idx))
-                    _stream_tts_used = True
+                    # Sprint 0 §5: AI-tell gate — same gate as the main loop.
+                    _gated_sent = await _apply_call_scrub_gate(
+                        _clean_sent, ws=ws, session_id=session_id,
+                    )
+                    if _gated_sent is not None:
+                        _idx = len(_tts_sent_indices)
+                        _tts_sent_indices.append(_idx)
+                        _tts_tasks[_idx] = asyncio.create_task(
+                            _synth_for_stream(_gated_sent, _idx)
+                        )
+                        _stream_tts_used = True
 
             # Text portion of LLM response is complete — let UI clear the
             # typing spinner NOW, before we wait for any trailing TTS audio.
@@ -1859,7 +1987,11 @@ async def _generate_character_reply(
         _user_tts_pref = state.get("user_prefs", {}).get("tts_enabled", True)
         if is_tts_available() and _user_tts_pref:
             try:
-                _tts_res = await get_tts_audio_b64(hangup_phrase, str(session_id), emotion="hangup")
+                _tts_res = await get_tts_audio_b64(
+                    hangup_phrase, str(session_id),
+                    emotion="hangup",
+                    active_factors=_call_tts_factors(state),
+                )
                 if _tts_res and _tts_res.get("audio"):
                     await _send(ws, "tts.audio", {
                         "audio_b64": _tts_res["audio"],
@@ -2182,8 +2314,18 @@ async def _generate_character_reply(
                 _merged = [clean_content]
 
             if len(_merged) <= 1:
-                # Single sentence — no pipelining benefit, use original path
-                tts_result = await get_tts_audio_b64(clean_content, str(session_id), emotion=new_emotion)
+                # Single sentence — no pipelining benefit, use original path.
+                # Sprint 0 §5: AI-tell gate (parity with streaming path).
+                _gated_single = await _apply_call_scrub_gate(
+                    clean_content, ws=ws, session_id=session_id,
+                )
+                tts_result = None
+                if _gated_single is not None:
+                    tts_result = await get_tts_audio_b64(
+                        _gated_single, str(session_id),
+                        emotion=new_emotion,
+                        active_factors=_call_tts_factors(state),
+                    )
                 if tts_result and tts_result.get("audio"):
                     await _send(ws, "tts.audio", {
                         "audio_b64": tts_result["audio"],
@@ -2205,7 +2347,17 @@ async def _generate_character_reply(
                 # Multiple sentences — synthesize in parallel, send sequentially
                 async def _synth_sentence(_text: str, _idx: int) -> tuple[int, dict | None]:
                     try:
-                        result = await get_tts_audio_b64(_text, str(session_id), emotion=new_emotion)
+                        # Sprint 0 §5: gate each parallel sentence too.
+                        _gated_text = await _apply_call_scrub_gate(
+                            _text, ws=ws, session_id=session_id,
+                        )
+                        if _gated_text is None:
+                            return (_idx, None)
+                        result = await get_tts_audio_b64(
+                            _gated_text, str(session_id),
+                            emotion=new_emotion,
+                            active_factors=_call_tts_factors(state),
+                        )
                         return (_idx, result)
                     except Exception as _e:
                         # Journal #C: was `return (_idx, None)` without logging.
@@ -2567,7 +2719,10 @@ async def _silence_watchdog(
             # TTS for silence prompt
             if is_tts_available():
                 try:
-                    tts_result = await get_tts_audio_b64(phrase, str(session_id))
+                    tts_result = await get_tts_audio_b64(
+                        phrase, str(session_id),
+                        active_factors=_call_tts_factors(state),
+                    )
                     if tts_result and tts_result.get("audio"):
                         await _send(ws, "tts.audio", {
                             "audio_b64": tts_result["audio"],
@@ -3632,6 +3787,91 @@ async def _handle_session_start(
         await _send(ws, "stage.update", stage_tracker.build_ws_payload(init_stage))
     except Exception:
         logger.debug("Stage tracker init failed for session %s", session.id)
+
+    # ── Sprint 0 §6 (Bug B fix) — auto-opener for call mode ──
+    # Pre-Sprint-0 a fresh call session sat silently waiting for the
+    # manager to speak first. Real debtors who pick up the phone always
+    # say SOMETHING ("Алло?" / "Да?" / "Слушаю"). Without this the
+    # session sounded like a standby AI assistant.
+    #
+    # Gated by THREE flags so any of them flipping off rolls back cleanly:
+    #   - settings.call_humanized_v2          — master Sprint 0 flag
+    #   - settings.call_humanized_v2_auto_opener — feature-specific flag
+    #   - state.session_mode in {call,center}    — chat sessions are silent
+    #     by design (manager types first), don't touch them
+    try:
+        _cp_open = state.get("custom_params") or {}
+        _mode_open = _cp_open.get("session_mode") or "chat"
+        _opener_eligible = (
+            settings.call_humanized_v2
+            and settings.call_humanized_v2_auto_opener
+            and _mode_open in ("call", "center")
+        )
+        if _opener_eligible:
+            await _send_call_auto_opener(ws, session.id, state)
+    except Exception:
+        # Never let opener failure abort session.start. The manager can
+        # always start the call manually — the opener is a UX nicety.
+        logger.warning(
+            "auto-opener failed for session=%s — session continues silently",
+            session.id, exc_info=True,
+        )
+
+
+async def _send_call_auto_opener(ws, session_id, state: dict) -> None:
+    """Emit a short opener phrase (text + TTS audio) and persist it.
+
+    Behaves like the silence-prompt path: assistant message saved to DB so
+    history replay reconstructs UI exactly, TTS uses active_factors so the
+    voice carries the same humanisation factors as the rest of the call.
+    Emotion is hardcoded "cold" — fresh sessions always start there per
+    the FSM, and we don't want to fork off into emotion-resolution logic
+    inside the start handler.
+    """
+    phrase = _pick_call_auto_opener()
+    # 1) Notify the UI immediately so the message bubble appears.
+    await _send(ws, "character.message", {
+        "content": phrase,
+        "emotion": "cold",
+        "is_auto_opener": True,
+    })
+    # 2) Best-effort TTS. If it fails the text bubble still rendered.
+    if is_tts_available() and (state.get("user_prefs") or {}).get("tts_enabled", True):
+        try:
+            tts_result = await get_tts_audio_b64(
+                phrase, str(session_id),
+                emotion="cold",
+                active_factors=_call_tts_factors(state),
+            )
+            if tts_result and tts_result.get("audio"):
+                await _send(ws, "tts.audio", {
+                    "audio_b64": tts_result["audio"],
+                    "format": tts_result.get("format", "mp3"),
+                    "emotion": "cold",
+                    "voice_params": tts_result.get("voice_params"),
+                    "duration_ms": tts_result.get("duration_ms"),
+                    "text": phrase,
+                })
+        except TTSError as exc:
+            logger.debug(
+                "auto-opener TTS failed session=%s: %s", session_id, exc,
+            )
+    # 3) Persist as assistant message so /resume rebuilds the UI cleanly.
+    try:
+        async with async_session() as db:
+            await add_message(
+                session_id=session_id,
+                role=MessageRole.assistant,
+                content=phrase,
+                db=db,
+                emotion_state="cold",
+            )
+            await db.commit()
+    except Exception:
+        # Persistence is the least critical — UI already saw the bubble.
+        logger.warning(
+            "auto-opener persist failed session=%s", session_id, exc_info=True,
+        )
 
 
 async def _handle_deepgram_streaming(

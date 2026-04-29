@@ -129,12 +129,16 @@ async def _call_with_backoff(
     timeout: float,
     max_attempts: int = 3,
     retry_on_timeout_only: bool = False,
+    max_tokens: int | None = None,
 ) -> "LLMResponse | None":
     """Call an LLM provider with exponential backoff + jitter and circuit breaker.
 
     Returns LLMResponse on success, None if all attempts fail.
     Updates circuit breaker health on success/failure.
     All health mutations are protected by asyncio.Lock (S1-02 2.2.2).
+
+    ``max_tokens=None`` is forwarded as-is so each provider falls back to its
+    historical hardcoded budget — preserves bit-for-bit pre-Sprint-0 behaviour.
     """
     health = _provider_health[provider_name]
     lock = _get_health_lock()
@@ -146,7 +150,7 @@ async def _call_with_backoff(
 
     for attempt in range(max_attempts):
         try:
-            response = await call_fn(system, messages, timeout)
+            response = await call_fn(system, messages, timeout, max_tokens)
             async with lock:
                 health.record_success()
             logger.info(
@@ -1386,6 +1390,7 @@ async def _call_gemini(
     system_prompt: str,
     messages: list[dict],
     timeout: float,
+    max_tokens: int | None = None,
 ) -> LLMResponse:
     """Call Gemini API directly via REST (no SDK dependency).
 
@@ -1420,7 +1425,9 @@ async def _call_gemini(
         },
         "contents": contents,
         "generationConfig": {
-            "maxOutputTokens": 1200,
+            # When max_tokens is None we keep the historical 1200 cap exactly,
+            # so flag-off behaviour is bit-for-bit identical (Sprint 0).
+            "maxOutputTokens": max_tokens if max_tokens is not None else 1200,
             "temperature": 0.85,
         },
         "safetySettings": [
@@ -1481,6 +1488,7 @@ async def _call_local_llm(
     system_prompt: str,
     messages: list[dict],
     timeout: float,
+    max_tokens: int | None = None,
     *,
     tools: list[dict] | None = None,
     raw_messages: list[dict] | None = None,
@@ -1525,7 +1533,11 @@ async def _call_local_llm(
             "messages": oai_messages,
             "stream": False,
             "think": False,
-            "options": {"num_predict": 800, "temperature": 0.85},
+            "options": {
+                # max_tokens=None keeps the historical 800 cap exactly.
+                "num_predict": max_tokens if max_tokens is not None else 800,
+                "temperature": 0.85,
+            },
         }
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=5.0)) as client:
@@ -1557,7 +1569,8 @@ async def _call_local_llm(
     kwargs: dict = {
         "model": settings.local_llm_model,
         "messages": oai_messages,
-        "max_tokens": 800,
+        # max_tokens=None preserves the historical 800 cap.
+        "max_tokens": max_tokens if max_tokens is not None else 800,
         "temperature": 0.85,
         "timeout": timeout,
     }
@@ -1591,6 +1604,7 @@ async def _call_claude(
     system_prompt: str,
     messages: list[dict],
     timeout: float,
+    max_tokens: int | None = None,
 ) -> LLMResponse:
     """Call Claude API. Raises LLMError on failure."""
     client = _get_claude_client()
@@ -1603,7 +1617,8 @@ async def _call_claude(
     try:
         response = await client.messages.create(
             model=settings.claude_model,
-            max_tokens=800,
+            # max_tokens=None preserves the historical 800 cap.
+            max_tokens=max_tokens if max_tokens is not None else 800,
             temperature=1.0,
             system=system_prompt,
             messages=messages,
@@ -1630,6 +1645,7 @@ async def _call_openai(
     system_prompt: str,
     messages: list[dict],
     timeout: float,
+    max_tokens: int | None = None,
     *,
     tools: list[dict] | None = None,
     raw_messages: list[dict] | None = None,
@@ -1660,7 +1676,8 @@ async def _call_openai(
     kwargs: dict = {
         "model": settings.llm_fallback_model,
         "messages": oai_messages,
-        "max_tokens": 800,
+        # max_tokens=None preserves the historical 800 cap.
+        "max_tokens": max_tokens if max_tokens is not None else 800,
         "temperature": 1.0,
         "timeout": timeout,
     }
@@ -2255,6 +2272,19 @@ async def generate_response(
     resolved_provider = _resolve_provider(prefer_provider, prompt_tokens, task_type)
     effective_max_tokens = max_tokens or _default_max_tokens(resolved_provider, task_type)
 
+    # ── Sprint 0: gate the actual provider override on flag + mode ──
+    # Bit-for-bit preservation when CALL_HUMANIZED_V2 is off: pass None to the
+    # backoff/provider stack so each provider falls back to its historical
+    # hardcoded literal (800/1200). Only when the flag is on AND the session
+    # is voice/call (or caller passed max_tokens explicitly) do we forward a
+    # real cap to the wire. ``effective_max_tokens`` keeps being logged for
+    # observability either way.
+    _forwarded_max_tokens: int | None = None
+    if max_tokens is not None:
+        _forwarded_max_tokens = max_tokens
+    elif settings.call_humanized_v2 and session_mode in ("call", "center"):
+        _forwarded_max_tokens = settings.call_humanized_v2_max_tokens
+
     trimmed = _trim_history(messages, settings.llm_max_history_messages)
 
     # ── Filter user input before sending to LLM (PII stripping, jailbreak blocking) ──
@@ -2289,6 +2319,7 @@ async def generate_response(
                 resp = await _call_with_backoff(
                     "gemini", _call_gemini, full_system, trimmed, timeout,
                     max_attempts=3, retry_on_timeout_only=False,
+                    max_tokens=_forwarded_max_tokens,
                 )
                 if resp is not None:
                     return await _apply_filter(resp)
@@ -2297,6 +2328,7 @@ async def generate_response(
                 resp = await _call_with_backoff(
                     "local", _call_local_llm, full_system, trimmed, timeout,
                     max_attempts=3, retry_on_timeout_only=False,
+                    max_tokens=_forwarded_max_tokens,
                 )
                 if resp is not None:
                     resp.is_fallback = True
@@ -2307,6 +2339,7 @@ async def generate_response(
                 resp = await _call_with_backoff(
                     "local", _call_local_llm, full_system, trimmed, timeout,
                     max_attempts=3, retry_on_timeout_only=False,
+                    max_tokens=_forwarded_max_tokens,
                 )
                 if resp is not None:
                     return await _apply_filter(resp)
@@ -2316,6 +2349,7 @@ async def generate_response(
                 resp = await _call_with_backoff(
                     "gemini", _call_gemini, full_system, trimmed, timeout,
                     max_attempts=3, retry_on_timeout_only=False,
+                    max_tokens=_forwarded_max_tokens,
                 )
                 if resp is not None:
                     resp.is_fallback = True
@@ -2326,6 +2360,7 @@ async def generate_response(
             resp = await _call_with_backoff(
                 "claude", _call_claude, full_system, trimmed, timeout,
                 max_attempts=3, retry_on_timeout_only=False,
+                max_tokens=_forwarded_max_tokens,
             )
             if resp is not None:
                 resp.is_fallback = True
@@ -2335,6 +2370,7 @@ async def generate_response(
             resp = await _call_with_backoff(
                 "openai", _call_openai, full_system, trimmed, timeout * 2,
                 max_attempts=2,
+                max_tokens=_forwarded_max_tokens,
             )
             if resp is not None:
                 resp.is_fallback = True
@@ -2358,6 +2394,7 @@ async def _stream_ollama(
     system_prompt: str,
     messages: list[dict],
     timeout: float,
+    max_tokens: int | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream tokens from Ollama native API."""
     if not settings.local_llm_enabled or not settings.local_llm_url:
@@ -2376,7 +2413,8 @@ async def _stream_ollama(
         "stream": True,
         "think": False,
         "options": {
-            "num_predict": 800,
+            # max_tokens=None preserves the historical 800 cap.
+            "num_predict": max_tokens if max_tokens is not None else 800,
             "temperature": 0.85,
         },
     }
@@ -2410,6 +2448,7 @@ async def _stream_gemini(
     system_prompt: str,
     messages: list[dict],
     timeout: float,
+    max_tokens: int | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream tokens from Gemini API via SSE."""
     client = _get_gemini_client()
@@ -2430,7 +2469,11 @@ async def _stream_gemini(
     payload = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": contents,
-        "generationConfig": {"maxOutputTokens": 1200, "temperature": 0.85},
+        "generationConfig": {
+            # max_tokens=None preserves the historical 1200 cap.
+            "maxOutputTokens": max_tokens if max_tokens is not None else 1200,
+            "temperature": 0.85,
+        },
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -2599,6 +2642,13 @@ async def generate_response_stream(
     prompt_tokens = len(full_system) / 2  # Russian: ~2 chars/token
     resolved = _resolve_provider(prefer_provider, prompt_tokens, task_type)
 
+    # ── Sprint 0: gate stream max_tokens override on flag + mode (parity
+    # with generate_response). When OFF we pass None → providers use their
+    # historical 800/1200 hardcode → behaviour bit-for-bit preserved.
+    _stream_max_tokens: int | None = None
+    if settings.call_humanized_v2 and session_mode in ("call", "center"):
+        _stream_max_tokens = settings.call_humanized_v2_max_tokens
+
     semaphore = _get_llm_semaphore(task_type)
     async with semaphore:
         # Try streaming providers — buffer full response for post-stream filtering
@@ -2607,7 +2657,9 @@ async def generate_response_stream(
 
         try:
             if resolved == "local" and settings.local_llm_enabled:
-                async for token in _stream_ollama(full_system, trimmed, 60.0):
+                async for token in _stream_ollama(
+                    full_system, trimmed, 60.0, max_tokens=_stream_max_tokens,
+                ):
                     full_response_buf.append(token)
                     yield token
                 streamed = True
@@ -2617,7 +2669,9 @@ async def generate_response_stream(
         if not streamed:
             try:
                 if settings.gemini_api_key:
-                    async for token in _stream_gemini(full_system, trimmed, 30.0):
+                    async for token in _stream_gemini(
+                        full_system, trimmed, 30.0, max_tokens=_stream_max_tokens,
+                    ):
                         full_response_buf.append(token)
                         yield token
                     streamed = True
@@ -2656,6 +2710,12 @@ async def generate_response_stream(
         scenario_prompt=scenario_prompt,
         prefer_provider=prefer_provider,
         task_type=task_type,
+        # Forward the stream's mode + cap so the blocking fallback honours
+        # the same call_humanized_v2 gate (parity).
+        session_mode=session_mode,
+        max_tokens=_stream_max_tokens,
+        tone=tone,
+        difficulty=difficulty,
     )
     if response and response.content:
         yield response.content
