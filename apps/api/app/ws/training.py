@@ -3807,6 +3807,18 @@ async def _handle_session_start(
             and settings.call_humanized_v2_auto_opener
             and _mode_open in ("call", "center")
         )
+        # Sprint 0 §6: log the gate decision unconditionally — without
+        # this, "opener didn't fire" is indistinguishable from "fired
+        # but the WS dropped the message" in prod logs. Plain INFO
+        # because it's once per session.start and useful for the pilot.
+        logger.info(
+            "auto-opener gate session=%s eligible=%s "
+            "v2=%s opener_flag=%s mode=%r",
+            session.id, _opener_eligible,
+            settings.call_humanized_v2,
+            settings.call_humanized_v2_auto_opener,
+            _mode_open,
+        )
         if _opener_eligible:
             await _send_call_auto_opener(ws, session.id, state)
     except Exception:
