@@ -49,7 +49,7 @@ from app.services.pvp_bot_engine import (
     generate_bot_opener,
     cleanup_bot_state,
 )
-from app.core.correlation import correlation_scope, bind_correlation_id
+from app.core.correlation import bind_correlation_id
 from app.core.ws_rate_limiter import pvp_limiter
 
 logger = logging.getLogger(__name__)
@@ -749,6 +749,10 @@ async def _cleanup_duel_runtime(duel_id: uuid.UUID) -> None:
 
 
 async def _cancel_duel_after_disconnect(user_id: uuid.UUID, duel_id: uuid.UUID) -> None:
+    # Bind ``correlation_id = duel_id`` for every log emitted from this task.
+    # Each ``asyncio.create_task`` gets a fresh contextvar copy (PEP 567), so
+    # this binding stays local — no leak into the parent task or other duels.
+    bind_correlation_id(str(duel_id))
     try:
         await asyncio.sleep(matchmaker.RECONNECT_GRACE_SECONDS + 1)
         if user_id in _active_connections:
@@ -796,6 +800,7 @@ async def _cancel_duel_after_disconnect(user_id: uuid.UUID, duel_id: uuid.UUID) 
 
 
 async def _finish_round_after_timeout(duel_id: uuid.UUID, round_number: int) -> None:
+    bind_correlation_id(str(duel_id))
     await asyncio.sleep(ROUND_TIME_LIMIT)
     async with _duel_sessions_lock:
         session = _duel_sessions.get(duel_id)
@@ -931,6 +936,7 @@ async def _generate_ai_reply(session: dict[str, Any], round_number: int, user_te
 
 
 async def _start_round(duel_id: uuid.UUID, round_number: int) -> None:
+    bind_correlation_id(str(duel_id))
     async with _duel_sessions_lock:
         session = _duel_sessions.get(duel_id)
         if not session or session["completed"]:
@@ -1013,6 +1019,7 @@ async def _start_round(duel_id: uuid.UUID, round_number: int) -> None:
 
 
 async def _advance_round(duel_id: uuid.UUID) -> None:
+    bind_correlation_id(str(duel_id))
     async with _duel_sessions_lock:
         session = _duel_sessions.get(duel_id)
         if not session or session["completed"]:
@@ -1112,6 +1119,7 @@ async def _maybe_finish_round(duel_id: uuid.UUID) -> None:
 
 
 async def _finalize_duel(duel_id: uuid.UUID) -> None:
+    bind_correlation_id(str(duel_id))
     async with _duel_sessions_lock:
         session = _duel_sessions.get(duel_id)
         if not session or session["completed"]:
@@ -1502,6 +1510,7 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
 
 
 async def _handle_duel_ready(user_id: uuid.UUID, duel_id: uuid.UUID) -> None:
+    bind_correlation_id(str(duel_id))
     context = await _load_duel_context(duel_id)
     if not context:
         await _send_to_user(user_id, "error", {"detail": "Дуэль не найдена"})
@@ -1573,6 +1582,13 @@ async def _handle_duel_message(user_id: uuid.UUID, text: str) -> None:
     if not session:
         await _send_to_user(user_id, "error", {"detail": "Активная дуэль не найдена"})
         return
+
+    # Bind correlation_id = duel_id so every log emitted by the AI-generation
+    # / judge / advance-round chain triggered from this message handler
+    # carries the same id, joinable in Loki/CloudWatch.
+    _resolved_duel_id = session.get("duel_id")
+    if _resolved_duel_id is not None:
+        bind_correlation_id(str(_resolved_duel_id))
 
     _pvp_timestamps[session.get("duel_id", uuid.uuid4())] = time.time()
 
