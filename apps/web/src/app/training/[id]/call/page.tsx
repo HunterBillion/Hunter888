@@ -579,6 +579,41 @@ export default function TrainingCallPage() {
           break;
         }
 
+        // P2 (2026-04-29) — coaching mistake detector toasts.
+        // Backend rule-based detector emits this on every detected mistake
+        // (monologue, no_open_question, early_pricing, repeated_argument,
+        // talk_ratio_high). Routed through addWhisper so the existing
+        // PhoneCallMode coachingHint UI renders it (priority dot + text).
+        case "coaching.mistake": {
+          const d = data.data as Record<string, unknown>;
+          const hint = String(d.hint ?? "");
+          if (!hint) break;
+          const severity = String(d.severity ?? "warn");
+          const priority: "low" | "medium" | "high" =
+            severity === "alert" ? "high" : severity === "info" ? "low" : "medium";
+          const mistakeType = String(d.type ?? "stage");
+          const iconMap: Record<string, string> = {
+            monologue: "mic-off",
+            no_open_question: "help-circle",
+            early_pricing: "alert-triangle",
+            repeated_argument: "rotate-cw",
+            talk_ratio_high: "volume-2",
+          };
+          s.addWhisper({
+            type: "stage",
+            message: hint,
+            stage: mistakeType,
+            priority,
+            icon: iconMap[mistakeType] ?? "zap",
+            timestamp: Date.now(),
+          });
+          telemetry.track("coaching_mistake", {
+            mistake_type: mistakeType,
+            severity,
+          });
+          break;
+        }
+
         case "score.hint": {
           const d = data.data as Record<string, unknown>;
           const num = (k: string) => Number(d[k] ?? 0);
