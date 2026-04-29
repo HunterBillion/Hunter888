@@ -134,13 +134,13 @@ export function PostSessionVerdict({ score, onContinue, xpGained = 0 }: PostSess
                   {displayScore}
                 </motion.div>
               </div>
-              <div className="font-mono text-sm tracking-widest mt-2" style={{ color: "var(--text-muted)" }}>
-                MASTERY SCORE
+              <div className="font-pixel text-2xl tracking-widest mt-3" style={{ color: "var(--text-muted)" }}>
+                ИТОГОВЫЙ БАЛЛ
               </div>
             </motion.div>
           )}
 
-          {/* Phase 2: Verdict word with GLITCH effect */}
+          {/* Phase 2: Verdict word — Russian primary, pixel font, sharp rendering */}
           {phase === "verdict" && (
             <motion.div
               key="verdict"
@@ -156,26 +156,24 @@ export function PostSessionVerdict({ score, onContinue, xpGained = 0 }: PostSess
                 style={{ background: verdict.color }}
               />
               <div
-                className="font-display font-black tracking-wider glitch-text"
-                data-text={verdict.word}
+                className="font-pixel font-bold tracking-wider glitch-text"
+                data-text={verdict.wordRu}
                 style={{
-                  fontSize: "80px",
-                  lineHeight: 1.1,
+                  // Pixel font (VT323) needs explicit crisp rendering; the
+                  // browser otherwise smooths it like a regular font and the
+                  // pixel grid disappears.
+                  fontSize: "120px",
+                  lineHeight: 1,
                   color: verdict.color,
                   textShadow: `0 0 60px ${verdict.glow}, 0 0 120px ${verdict.glow}`,
+                  WebkitFontSmoothing: "none",
+                  MozOsxFontSmoothing: "grayscale",
+                  imageRendering: "pixelated",
+                  letterSpacing: "0.05em",
                 }}
               >
-                {verdict.word}
-              </div>
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className="font-mono text-xl tracking-widest"
-                style={{ color: "var(--text-secondary)" }}
-              >
                 {verdict.wordRu}
-              </motion.div>
+              </div>
             </motion.div>
           )}
 
@@ -209,10 +207,15 @@ export function PostSessionVerdict({ score, onContinue, xpGained = 0 }: PostSess
                   <span className="text-3xl" style={{ color: "var(--text-muted)" }}>/100</span>
                 </div>
                 <div
-                  className="font-display text-2xl font-bold tracking-widest mt-2"
-                  style={{ color: verdict.color }}
+                  className="font-pixel text-4xl font-bold tracking-widest mt-2"
+                  style={{
+                    color: verdict.color,
+                    WebkitFontSmoothing: "none",
+                    MozOsxFontSmoothing: "grayscale",
+                    letterSpacing: "0.05em",
+                  }}
                 >
-                  {verdict.word}
+                  {verdict.wordRu}
                 </div>
               </div>
 

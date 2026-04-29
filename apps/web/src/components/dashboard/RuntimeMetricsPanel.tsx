@@ -300,8 +300,8 @@ export function RuntimeMetricsPanel() {
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Activity size={16} style={{ color: "var(--accent)" }} />
-          <h3 className="text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--text-secondary)" }}>
-            TZ-2 Runtime Telemetry
+          <h3 className="text-base font-semibold tracking-wide" style={{ color: "var(--text-secondary)" }}>
+            Телеметрия выполнения сессий
           </h3>
           {refreshing && (
             <Loader2 size={12} className="animate-spin" style={{ color: "var(--text-muted)" }} />
@@ -329,50 +329,50 @@ export function RuntimeMetricsPanel() {
       {/* Headline tiles */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Tile
-          label="Blocked starts"
+          label="Заблокированных стартов"
           value={totals.blocked}
           icon={ShieldAlert}
           accent="var(--warning)"
-          hint="Guard violations (start + end)"
+          hint="Срабатывания защит при старте и завершении"
         />
         <Tile
-          label="Finalize"
+          label="Завершено сессий"
           value={totals.finalize}
           icon={CheckCircle2}
           accent="var(--success)"
-          hint="Все завершения сессий"
+          hint="Все успешные завершения"
         />
         <Tile
-          label="Idempotent finalize"
+          label="Повторных завершений"
           value={idempotentFinalizes}
           icon={AlertOctagon}
           accent={idempotentFinalizes > 0 ? "var(--warning)" : "var(--text-muted)"}
-          hint="Двойные finalize (REST↔WS race)"
+          hint="Двойной finalize (гонка REST ↔ WS)"
         />
         <Tile
-          label="Follow-up gap"
+          label="Пропущенных задач"
           value={totals.gap}
           icon={ShieldAlert}
           accent="var(--text-muted)"
-          hint="Follow-up'ы, которые не создались"
+          hint="Задачи на повторный звонок, которые не создались"
         />
       </div>
 
       {/* Detail tables */}
       <Section
-        title="runtime_blocked_starts_total"
-        subtitle="Срабатывания guard'ов на старте/завершении сессии"
+        title="Заблокированные старты по причинам"
+        subtitle="Какая защита и на каком этапе остановила сессию"
       >
         <CounterTable
           rows={metrics?.blocked_starts ?? []}
           labelOrder={["guard", "phase", "mode", "runtime_type"]}
-          emptyMessage="Пока ни один guard не срабатывал — это норма для свежего деплоя."
+          emptyMessage="Пока ни одна защита не срабатывала — это норма для свежего деплоя."
         />
       </Section>
 
       <Section
-        title="runtime_finalize_total"
-        subtitle="REST↔WS parity: ratio completed_via × outcome × freshness"
+        title="Завершения сессий — REST против WebSocket"
+        subtitle="Как сессия закончилась × итог × режим политики × повторное это завершение или первое"
       >
         <CounterTable
           rows={metrics?.finalize ?? []}
@@ -382,19 +382,19 @@ export function RuntimeMetricsPanel() {
       </Section>
 
       <Section
-        title="runtime_followup_gap_total"
-        subtitle="Случаи, когда follow-up не создался — по причине"
+        title="Пропущенные задачи на повторный звонок"
+        subtitle="Случаи, когда система решила не создавать задачу — с указанием причины"
       >
         <CounterTable
           rows={metrics?.followup_gap ?? []}
           labelOrder={["reason", "outcome", "helper"]}
-          emptyMessage="Follow-up gap'ов не зафиксировано."
+          emptyMessage="Все ожидаемые задачи на повторный звонок были созданы."
         />
       </Section>
 
       <p className="text-xs italic" style={{ color: "var(--text-muted)" }}>
-        Счётчики живут в памяти процесса и сбрасываются при рестарте api.
-        Auto-refresh каждые {REFRESH_MS / 1000}с пока вкладка активна.
+        Счётчики живут в памяти процесса и сбрасываются при рестарте api-сервера.
+        Автообновление каждые {REFRESH_MS / 1000} сек., пока вкладка активна.
       </p>
     </div>
   );
