@@ -21,6 +21,7 @@ from app.services.persona_slots import (
     PersonaSlot,
     all_slot_codes,
     get_slot,
+    render_facts_block_for_system_prompt,
     render_facts_for_prompt,
 )
 
@@ -208,6 +209,50 @@ class TestRenderFactsForPrompt:
         rendered = render_facts_for_prompt(facts)
         assert "Город: Рязань" in rendered
         assert "(возможно устарело)" not in rendered
+
+
+class TestRenderFactsBlockForSystemPrompt:
+    """The PR 4 wrapper that produces the full block ready to splice
+    into the LLM system prompt — header, body, footer instructions.
+    Used by both _build_system_prompt and generate_response_stream
+    so they produce identical text."""
+
+    def test_empty_facts_returns_empty_string(self):
+        assert render_facts_block_for_system_prompt(None) == ""
+        assert render_facts_block_for_system_prompt({}) == ""
+
+    def test_includes_header_and_footer(self):
+        facts = {"full_name": {"value": "Дмитрий"}}
+        block = render_facts_block_for_system_prompt(facts)
+        assert "ЧТО ТЫ УЖЕ ЗНАЕШЬ О СОБЕСЕДНИКЕ" in block
+        assert "Веди себя как ЗНАКОМЫЙ" in block
+        assert "не переспрашивай" in block
+
+    def test_renders_facts_in_body(self):
+        facts = {
+            "full_name": {"value": "Дмитрий"},
+            "city": {"value": "Москва"},
+        }
+        block = render_facts_block_for_system_prompt(facts)
+        assert "Имя: Дмитрий" in block
+        assert "Город: Москва" in block
+
+    def test_acknowledges_stale_facts_in_footer(self):
+        from datetime import datetime, timedelta, timezone
+
+        old = (datetime.now(timezone.utc) - timedelta(days=200)).isoformat()
+        facts = {"income": {"value": "100000", "captured_at": old}}
+        block = render_facts_block_for_system_prompt(facts)
+        # Footer instruction tells AI how to handle stale facts
+        assert "(возможно устарело)" in block
+        assert "переспроси" in block.lower()
+
+    def test_empty_after_filter_returns_empty(self):
+        """Edge: facts dict has only unknown slots → render_facts_for
+        prompt returns empty → wrapper must return empty too (no
+        bare header without body)."""
+        facts = {"removed_slot_xyz": {"value": "anything"}}
+        assert render_facts_block_for_system_prompt(facts) == ""
 
 
 class TestRegistryConsistencyWithPolicyEngine:
