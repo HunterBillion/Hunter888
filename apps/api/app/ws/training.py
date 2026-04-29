@@ -2196,6 +2196,16 @@ async def _generate_character_reply(
     )
     _ai_reply_text = (llm_result.content or "").strip()
     _ai_reply_lower = _ai_reply_text.lower()
+    # ── P1 (2026-04-29) Coaching mistake detector — record AI turn ──
+    # Feed assistant char volume into the talk-ratio rolling window so
+    # ``talk_ratio_high`` mistake fires when manager dominates the call.
+    if settings.coaching_mistake_detector_v1 and _ai_reply_text:
+        try:
+            from app.services.mistake_detector import record_assistant_turn as _coach_rec_a
+            from app.core.redis_pool import get_redis as _get_redis_coach_rec
+            await _coach_rec_a(_get_redis_coach_rec(), str(session_id), _ai_reply_text)
+        except Exception:
+            logger.debug("Coaching record_assistant_turn failed for %s", session_id, exc_info=True)
     # Split into sentences and only look at the LAST one.
     _last_sentence = _ai_reply_lower
     for _delim in (".", "!", "?", "…"):
@@ -4307,12 +4317,14 @@ async def _handle_audio_chunk(
     await _send_score_update(ws, session_id, stt_result.text, state)
 
     # ── Stage tracking: detect stage by content (audio path) ──
+    _coach_audio_stage = None
     try:
         from app.core.redis_pool import get_redis as _get_redis_sta
         r_sta = _get_redis_sta()
         st = StageTracker(str(session_id), r_sta)
         msg_count = state.get("message_count", 0)
         stage_state, stage_changed, skipped = await st.process_message(stt_result.text, msg_count, "user")
+        _coach_audio_stage = stage_state.current_stage
         # 2026-04-23 Sprint 7 — mirror stage state into WS dict so the
         # whisper_engine (and anyone reading state["current_stage_name"])
         # gets fresh values. Previously nobody wrote these back, so
@@ -4331,6 +4343,23 @@ async def _handle_audio_chunk(
                 state["_pending_skip_reactions"] = reactions
     except Exception:
         logger.debug("Stage tracking failed for session %s (audio)", session_id, exc_info=True)
+
+    # ── P1 (2026-04-29) Coaching mistake detector — audio path ──
+    # Rule-based, no LLM, <1ms. Side effect: emits coaching.mistake WS
+    # events. Flag-gated; OFF by default = exact no-op.
+    if settings.coaching_mistake_detector_v1:
+        try:
+            from app.services.mistake_detector import evaluate_user_turn as _coach_eval_a
+            from app.core.redis_pool import get_redis as _get_redis_coach_a
+            _r_coach_a = _get_redis_coach_a()
+            _stage_for_coach = _coach_audio_stage if _coach_audio_stage is not None else state.get("current_stage", 1)
+            _fired_a = await _coach_eval_a(
+                _r_coach_a, str(session_id), stt_result.text, int(_stage_for_coach or 1),
+            )
+            for _m_a in _fired_a:
+                await _send(ws, "coaching.mistake", _m_a.to_payload())
+        except Exception:
+            logger.debug("Coaching mistake detector failed (audio) for %s", session_id, exc_info=True)
 
     # Generate character response (with fail-safe: ensure UI isn't stuck
     # on "avatar typing" if the LLM path raises something other than the
@@ -4882,6 +4911,22 @@ async def _handle_text_message(
     except Exception:
         logger.debug("Stage tracking failed for session %s", session_id, exc_info=True)
 
+    # ── P1 (2026-04-29) Coaching mistake detector — text path ──
+    # Same contract as the audio-path hook above. See mistake_detector.py.
+    if settings.coaching_mistake_detector_v1:
+        try:
+            from app.services.mistake_detector import evaluate_user_turn as _coach_eval_t
+            from app.core.redis_pool import get_redis as _get_redis_coach_t
+            _r_coach_t = _get_redis_coach_t()
+            _stage_for_coach_t = state.get("current_stage", 1) or 1
+            _fired_t = await _coach_eval_t(
+                _r_coach_t, str(session_id), content, int(_stage_for_coach_t),
+            )
+            for _m_t in _fired_t:
+                await _send(ws, "coaching.mistake", _m_t.to_payload())
+        except Exception:
+            logger.debug("Coaching mistake detector failed (text) for %s", session_id, exc_info=True)
+
     try:
         await _generate_character_reply(ws, session_id, state)
         # 2026-04-22: Auto-fire session.end after AI replied to a manager
@@ -5148,6 +5193,15 @@ async def _handle_session_end(
                 enriched_details["_stage_progress"] = st_cleanup.build_scoring_details(final_stage)
             except Exception:
                 logger.debug("Stage tracker cleanup failed for session %s", session_id)
+
+            # ── P1 (2026-04-29) Coaching state cleanup ──
+            if settings.coaching_mistake_detector_v1:
+                try:
+                    from app.services.mistake_detector import reset as _coach_reset
+                    from app.core.redis_pool import get_redis as _get_redis_coach_end
+                    await _coach_reset(_get_redis_coach_end(), str(session_id))
+                except Exception:
+                    logger.debug("Coaching cleanup failed for session %s", session_id, exc_info=True)
 
             # ── Save session difficulty for AI-Coach frontend ──
             _base_diff = state.get("base_difficulty", 5)
