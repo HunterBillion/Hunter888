@@ -30,6 +30,7 @@ from enum import Enum
 from typing import Any
 
 from app.models.pvp import DuelDifficulty
+from app.services.arena_metrics import ARENA_AI_BOT_LATENCY
 from app.services.llm import generate_response
 from app.services.rag_legal import retrieve_legal_context, RAGContext
 from app.services.content_filter import filter_ai_output
@@ -810,6 +811,8 @@ async def generate_bot_reply(
         BotMood.resigned: "callback",
     }
 
+    _bot_started = time.time()
+    _bot_status = "ok"
     try:
         response = await asyncio.wait_for(
             generate_response(
@@ -825,14 +828,18 @@ async def generate_bot_reply(
         raw_text = response.content.strip()
     except asyncio.TimeoutError:
         logger.error("PvP bot LLM timeout [%s/%s] after %.0fs", duel_id[:8], round_number, _BOT_LLM_TIMEOUT)
+        ARENA_AI_BOT_LATENCY.labels(provider="local", status="timeout").observe(time.time() - _bot_started)
         return _get_scripted_fallback(ai_role, emotion.mood)
     except Exception as exc:
         logger.error("PvP bot LLM error [%s/%s]: %s", duel_id[:8], round_number, exc)
+        ARENA_AI_BOT_LATENCY.labels(provider="local", status="error").observe(time.time() - _bot_started)
         return _get_scripted_fallback(ai_role, emotion.mood)
 
     if not raw_text:
         logger.warning("PvP bot LLM returned empty response [%s/%s]", duel_id[:8], round_number)
+        ARENA_AI_BOT_LATENCY.labels(provider="local", status="empty").observe(time.time() - _bot_started)
         return _get_scripted_fallback(ai_role, emotion.mood)
+    ARENA_AI_BOT_LATENCY.labels(provider="local", status=_bot_status).observe(time.time() - _bot_started)
 
     # 5. Filter output
     filtered, violations = filter_ai_output(raw_text)
@@ -878,6 +885,7 @@ async def generate_bot_opener(
         turn_count=0,
     )
 
+    _opener_started = time.time()
     try:
         response = await asyncio.wait_for(
             generate_response(
@@ -893,13 +901,17 @@ async def generate_bot_opener(
         raw_text = response.content.strip()
     except asyncio.TimeoutError:
         logger.error("PvP bot opener LLM timeout [%s/%s]", duel_id[:8], round_number)
+        ARENA_AI_BOT_LATENCY.labels(provider="local", status="timeout").observe(time.time() - _opener_started)
         return _get_scripted_fallback(ai_role, emotion.mood)
     except Exception as exc:
         logger.error("PvP bot opener LLM error [%s/%s]: %s", duel_id[:8], round_number, exc)
+        ARENA_AI_BOT_LATENCY.labels(provider="local", status="error").observe(time.time() - _opener_started)
         return _get_scripted_fallback(ai_role, emotion.mood)
 
     if not raw_text:
+        ARENA_AI_BOT_LATENCY.labels(provider="local", status="empty").observe(time.time() - _opener_started)
         return _get_scripted_fallback(ai_role, emotion.mood)
+    ARENA_AI_BOT_LATENCY.labels(provider="local", status="ok").observe(time.time() - _opener_started)
 
     filtered, violations = filter_ai_output(raw_text)
     if violations:

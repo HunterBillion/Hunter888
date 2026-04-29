@@ -34,6 +34,13 @@ from app.services.anti_cheat_realtime import (
     check_message as ac_check_message,
     cleanup_duel as ac_cleanup_duel,
 )
+from app.services.arena_metrics import (
+    ARENA_DUEL_STATE_TRANSITIONS,
+    ARENA_FINALIZE_ATTEMPTS,
+    ARENA_QUEUE_WAIT,
+    ARENA_ROUND_DURATION,
+    ARENA_WS_DISCONNECT,
+)
 from app.services.content_filter import filter_ai_output, filter_user_input
 from app.services.glicko2 import get_or_create_rating, update_rating_after_duel
 from app.services.pvp_matchmaker import check_tier_change
@@ -42,6 +49,7 @@ from app.services.pvp_bot_engine import (
     generate_bot_opener,
     cleanup_bot_state,
 )
+from app.core.correlation import correlation_scope, bind_correlation_id
 from app.core.ws_rate_limiter import pvp_limiter
 
 logger = logging.getLogger(__name__)
@@ -660,10 +668,19 @@ async def _update_duel_row(duel_id: uuid.UUID, **updates: Any) -> None:
         duel = (await db.execute(select(PvPDuel).where(PvPDuel.id == duel_id))).scalar_one_or_none()
         if not duel:
             return
+        # Snapshot the previous status BEFORE applying updates so we can emit
+        # an FSM-transition counter when ``status`` is one of the keys. This
+        # is the canonical wrapper for status writes; direct ``duel.status =``
+        # mutations elsewhere have to emit the counter inline.
+        prev_status = getattr(duel, "status", None)
         for key, value in updates.items():
             setattr(duel, key, value)
         db.add(duel)
         await db.commit()
+        if "status" in updates and prev_status != updates["status"]:
+            _from = getattr(prev_status, "value", str(prev_status)) if prev_status is not None else "unknown"
+            _to = getattr(updates["status"], "value", str(updates["status"]))
+            ARENA_DUEL_STATE_TRANSITIONS.labels(from_state=_from, to_state=_to).inc()
 
 
 async def _send_duel_state(user_id: uuid.UUID, session: dict[str, Any]) -> None:
@@ -752,7 +769,9 @@ async def _cancel_duel_after_disconnect(user_id: uuid.UUID, duel_id: uuid.UUID) 
             duel = (await db.execute(select(PvPDuel).where(PvPDuel.id == duel_id))).scalar_one_or_none()
             if not duel or duel.status in (DuelStatus.completed, DuelStatus.cancelled):
                 return
+            _prev_state = getattr(duel.status, "value", str(duel.status))
             duel.status = DuelStatus.cancelled
+            ARENA_DUEL_STATE_TRANSITIONS.labels(from_state=_prev_state, to_state="cancelled").inc()
             duel.completed_at = datetime.now(timezone.utc)
             if duel.created_at:
                 duel.duration_seconds = max(
@@ -782,6 +801,9 @@ async def _finish_round_after_timeout(duel_id: uuid.UUID, round_number: int) -> 
         session = _duel_sessions.get(duel_id)
         if not session or session["completed"] or session["round"] != round_number:
             return
+        # Stamp end-reason so the round-duration histogram in _advance_round
+        # picks the right label without changing _advance_round's signature.
+        session["_round_end_reason"] = "timeout"
         _snap_p1 = session["player1_id"]
         _snap_p2 = session["player2_id"]
     for user_id in [_snap_p1, _snap_p2]:
@@ -1001,6 +1023,17 @@ async def _advance_round(duel_id: uuid.UUID) -> None:
         _snap_names = dict(session.get("player_names", {}))
         _snap_archetype = session["archetype"]
         _snap_difficulty = session["difficulty"]
+        _snap_round_started = session.get("round_started_at")
+        _snap_is_pve = session.get("is_pve", False)
+        _snap_end_reason = session.pop("_round_end_reason", "message_limit")
+    # Round duration: only meaningful if we have a start timestamp; the
+    # session may legitimately reset round_started_at to None on edge paths.
+    if _snap_round_started:
+        ARENA_ROUND_DURATION.labels(
+            mode="pve" if _snap_is_pve else "duel",
+            round_no=str(round_number),
+            end_reason=_snap_end_reason,
+        ).observe(max(0.0, time.time() - _snap_round_started))
 
     async with _duel_messages_lock:
         round_messages = list(_duel_messages.get(duel_id, {}).get(round_number, []))
@@ -1106,6 +1139,7 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
             return
         if duel.status in (DuelStatus.completed, DuelStatus.judging):
             logger.warning("Duel %s already finalized (status=%s), skipping", duel_id, duel.status.value)
+            ARENA_FINALIZE_ATTEMPTS.labels(outcome="skipped", already_completed="true").inc()
             return
 
         # H2 (Roadmap Phase 0 §5.1): if both rounds carry no messages we
@@ -1115,7 +1149,9 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
         # both players with a specific reason so the UI doesn't animate
         # a "победа" badge on an empty match.
         if not round1_messages and not round2_messages:
+            _prev_state = getattr(duel.status, "value", str(duel.status))
             duel.status = DuelStatus.cancelled
+            ARENA_DUEL_STATE_TRANSITIONS.labels(from_state=_prev_state, to_state="cancelled").inc()
             duel.winner_id = None
             duel.completed_at = datetime.now(timezone.utc)
             duel.round_1_data = {"messages": [], "cancelled_reason": "no_round_data"}
@@ -1133,6 +1169,7 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
                     outcome=TerminalOutcome.pvp_abandoned,
                     reason=TerminalReason.matchmaking_timeout,
                 )
+                ARENA_FINALIZE_ATTEMPTS.labels(outcome="abandoned", already_completed="false").inc()
             except Exception:
                 logger.warning(
                     "completion_policy stamp failed (pvp cancelled) for duel %s",
@@ -1159,7 +1196,9 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
             )
             return
 
+        _prev_state = getattr(duel.status, "value", str(duel.status))
         duel.status = DuelStatus.judging
+        ARENA_DUEL_STATE_TRANSITIONS.labels(from_state=_prev_state, to_state="judging").inc()
         db.add(duel)
         await db.flush()
 
@@ -1178,6 +1217,8 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
         except Exception as exc:
             # Judge failed — mark duel as error state, don't lose messages
             logger.error("Judge failed for duel %s: %s", duel_id, exc, exc_info=True)
+            ARENA_DUEL_STATE_TRANSITIONS.labels(from_state="judging", to_state="completed").inc()
+            ARENA_FINALIZE_ATTEMPTS.labels(outcome="judge_error", already_completed="false").inc()
             duel.status = DuelStatus.completed
             duel.round_1_data = {"messages": round1_messages}
             duel.round_2_data = {"messages": round2_messages}
@@ -1204,6 +1245,7 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
                 int((duel.completed_at - duel.created_at).total_seconds()),
             )
         duel.status = DuelStatus.completed
+        ARENA_DUEL_STATE_TRANSITIONS.labels(from_state="judging", to_state="completed").inc()
 
         # Phase 1 (Roadmap §6.3 path 7) — stamp canonical PvP terminal
         # contract. Maps judge_result to {pvp_win, pvp_loss, pvp_draw}
@@ -1230,6 +1272,9 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
                 outcome=_pvp_outcome,
                 reason=TerminalReason.judge_completed,
             )
+            ARENA_FINALIZE_ATTEMPTS.labels(
+                outcome=_pvp_outcome.value, already_completed="false"
+            ).inc()
         except Exception:
             logger.warning(
                 "completion_policy stamp failed (pvp) for duel %s",
@@ -1620,6 +1665,7 @@ async def _background_matchmaking(user_id: uuid.UUID) -> None:
                 await db.commit()
                 if match:
                     opponent_id = match["opponent_id"]
+                    ARENA_QUEUE_WAIT.labels(mode="ranked", outcome="matched").observe(elapsed)
                     await _send_to_user(
                         user_id, "match.found",
                         _match_found_payload(match, user_id),
@@ -1632,6 +1678,7 @@ async def _background_matchmaking(user_id: uuid.UUID) -> None:
 
             if elapsed >= matchmaker.MATCH_TIMEOUT_SECONDS:
                 # Timeout → auto-create PvE duel
+                ARENA_QUEUE_WAIT.labels(mode="ranked", outcome="pve_fallback").observe(elapsed)
                 async with async_session() as db:
                     duel = await matchmaker.create_pve_duel(user_id, db)
                     await db.commit()
@@ -1656,11 +1703,13 @@ async def _background_matchmaking(user_id: uuid.UUID) -> None:
             await asyncio.sleep(3.0)
     except asyncio.CancelledError:
         # Cleanup: leave queue if task was cancelled (user disconnected / left)
+        ARENA_QUEUE_WAIT.labels(mode="ranked", outcome="cancelled").observe(time.time() - start_time)
         await matchmaker.leave_queue(user_id)
     except Exception as exc:
         logger.error(
             "Background matchmaking error for %s: %s", user_id, exc, exc_info=True,
         )
+        ARENA_QUEUE_WAIT.labels(mode="ranked", outcome="error").observe(time.time() - start_time)
         await matchmaker.leave_queue(user_id)
         await _send_to_user(
             user_id, "error",
@@ -2834,12 +2883,16 @@ async def pvp_websocket(websocket: WebSocket) -> None:
 
     except WebSocketDisconnect:
         logger.info("PvP WebSocket disconnected: user=%s", user_id)
+        _ws_disconnect_reason = "client_disconnect"
     except Exception as exc:
         logger.error("PvP WebSocket error: user=%s error=%s", user_id, exc, exc_info=True)
+        _ws_disconnect_reason = "internal_error"
         try:
             await _send(websocket, "error", {"detail": "Внутренняя ошибка сервера"})
         except Exception:
             pass  # Connection already closed
+    else:
+        _ws_disconnect_reason = "normal_close"
     finally:
         # ── B.2: Only remove OUR connection (not a newer one) ───────────
         entry = _active_connections.get(user_id)
@@ -2856,6 +2909,23 @@ async def pvp_websocket(websocket: WebSocket) -> None:
                 for did, s in _duel_sessions.items()
                 if user_id in (s["player1_id"], s["player2_id"]) and not s["completed"]
             ]
+        # Phase determination for the disconnect counter — ranks the user's
+        # current activity by "most engaged" wins. ``_active_duels`` is the
+        # strongest signal; queue membership (matchmaking task) is next;
+        # otherwise we treat it as a lobby disconnect.
+        try:
+            if _active_duels:
+                _ws_disconnect_phase = "in_duel"
+            elif user_id in _matchmaking_tasks:
+                _ws_disconnect_phase = "queue"
+            else:
+                _ws_disconnect_phase = "lobby"
+            ARENA_WS_DISCONNECT.labels(
+                phase=_ws_disconnect_phase, reason=_ws_disconnect_reason
+            ).inc()
+        except Exception:
+            # Metric emission must never break disconnect cleanup.
+            pass
         for duel_id, _p1, _p2 in _active_duels:
             await matchmaker.set_reconnect_grace(user_id, duel_id)
             _cancel_disconnect_task(user_id, duel_id)
