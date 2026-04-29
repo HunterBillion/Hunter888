@@ -710,7 +710,21 @@ class StageTracker:
 
         This replaces the simple [CURRENT_STAGE: ...] tag with detailed behavioral rules
         including how to act, what info to reveal, and relevant trap categories.
+
+        Sprint 0 §A (User-first 2026-04-29): when CALL_HUMANIZED_V2 is on, the
+        section is reframed from imperative directives ("ПОВЕДЕНИЕ НА ЭТОМ
+        ЭТАПЕ: Ты настороженный...") to descriptive context with an explicit
+        permission to follow the manager's actual question off-script. The
+        original wording was effectively locking the AI into the stage role
+        and producing the "скрипт блокирует" UX bug — manager asks about
+        messengers mid-greeting, AI keeps replying like a wary stranger.
         """
+        # Lazy local import: keeps the test-time import graph independent of
+        # settings (some tests import this module without app.config available).
+        from app.config import settings
+
+        humanized = bool(settings.call_humanized_v2)
+
         if state.current_stage > len(STAGE_ORDER):
             return (
                 "\n\n[STAGE_CONTEXT]\n"
@@ -726,15 +740,24 @@ class StageTracker:
             f"\n\n[STAGE_CONTEXT: {stage_name} ({stage_label}), этап {state.current_stage}/{state.total_stages}]",
         ]
 
-        # Behavioral instructions
-        if behavior.get("behavior"):
-            parts.append(f"ПОВЕДЕНИЕ НА ЭТОМ ЭТАПЕ: {behavior['behavior']}")
+        if humanized:
+            # New: descriptive frame + explicit off-script permission.
+            if behavior.get("behavior"):
+                parts.append(
+                    f"ЕСТЕСТВЕННОЕ СОСТОЯНИЕ КЛИЕНТА В ЭТОТ МОМЕНТ: {behavior['behavior']}"
+                )
+            if behavior.get("info_reveal"):
+                parts.append(
+                    f"ЧТО УМЕСТНО РАСКРЫТЬ ПО НАСТРОЕНИЮ: {behavior['info_reveal']}"
+                )
+        else:
+            # Legacy imperative — preserved bit-for-bit when flag is off.
+            if behavior.get("behavior"):
+                parts.append(f"ПОВЕДЕНИЕ НА ЭТОМ ЭТАПЕ: {behavior['behavior']}")
+            if behavior.get("info_reveal"):
+                parts.append(f"ЧТО МОЖЕШЬ РАСКРЫТЬ: {behavior['info_reveal']}")
 
-        # Info reveal rules
-        if behavior.get("info_reveal"):
-            parts.append(f"ЧТО МОЖЕШЬ РАСКРЫТЬ: {behavior['info_reveal']}")
-
-        # Relevant trap categories
+        # Relevant trap categories — same in both modes.
         trap_cats = behavior.get("traps", [])
         if trap_cats:
             cat_labels = {
@@ -755,6 +778,20 @@ class StageTracker:
             parts.append("Разговор продвигается. Можешь быть чуть открытее.")
         else:
             parts.append("Разговор в продвинутой фазе. Можно обсуждать детали.")
+
+        if humanized:
+            # Sprint 0 §A: the master rule that fixes "скрипт блокирует". The
+            # stage context above is a HINT about the natural mood, NOT a
+            # script. If the manager goes off-script and asks an unrelated
+            # question, the client must answer the question — not yank the
+            # manager back to the checklist.
+            parts.append(
+                "ВАЖНО (свобода ответа): этап — это контекст, а не сценарий. "
+                "Если менеджер задаёт вопрос вне темы этапа (например про "
+                "мессенджеры на этапе знакомства, или про график при возражениях), "
+                "отвечай ПО ЕГО ВОПРОСУ естественным языком. Не возвращай его "
+                "на этап силой, не игнорируй его реальный вопрос."
+            )
 
         return "\n".join(parts)
 

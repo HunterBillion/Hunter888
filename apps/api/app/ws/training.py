@@ -1230,16 +1230,34 @@ async def _generate_character_reply(
         extra_system += _st_prompt.build_stage_prompt(_stage_st)
 
         # If there are pending skip reactions (from previous process_message),
-        # inject them as a directive for the AI to challenge the manager
+        # surface them so the AI can react to a skipped stage. Pre-Sprint-0
+        # this was a hard directive ("Начни свой ответ с одной из этих фраз")
+        # which produced the "скрипт блокирует" UX bug — every off-script
+        # question got slapped back with "Стоп, мы даже не познакомились!"
+        # regardless of what the manager actually asked.
+        # Sprint 0 §A (User-first 2026-04-29): when V2 is on, surface the
+        # skip context as an OPTION, not an order — and only if it's
+        # naturally relevant to the manager's actual line.
         _skip_reactions = state.get("_pending_skip_reactions", [])
         if _skip_reactions:
-            extra_system += (
-                "\n\n[SKIP_REACTION: Менеджер пропустил важный этап! "
-                "Начни свой ответ с одной из этих фраз (выбери наиболее уместную), "
-                "затем продолжи отвечать по существу:\n"
-                + "\n".join(f'  — "{r}"' for r in _skip_reactions)
-                + "]"
-            )
+            if settings.call_humanized_v2:
+                extra_system += (
+                    "\n\n[SKIP_CONTEXT: Менеджер только что пропустил важный "
+                    "этап разговора. Если это реально режет тебе слух — можешь "
+                    "коротко это заметить (например: "
+                    + "; ".join(f'«{r}»' for r in _skip_reactions)
+                    + "). Но только если это уместно в ответ на его конкретную "
+                    "фразу. Если он задал нормальный вопрос — отвечай по теме его "
+                    "вопроса, не возвращай его насильно на этап.]"
+                )
+            else:
+                extra_system += (
+                    "\n\n[SKIP_REACTION: Менеджер пропустил важный этап! "
+                    "Начни свой ответ с одной из этих фраз (выбери наиболее уместную), "
+                    "затем продолжи отвечать по существу:\n"
+                    + "\n".join(f'  — "{r}"' for r in _skip_reactions)
+                    + "]"
+                )
             # Clear skip reactions after injecting (one-shot)
             state.pop("_pending_skip_reactions", None)
     except Exception as e:
