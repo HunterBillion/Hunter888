@@ -831,6 +831,9 @@ async def _send_ai_message(duel_id: uuid.UUID, round_number: int, ai_role: str, 
         "sender_role": ai_role,
         "text": text,
         "round": round_number,
+        # PR D: server_msg_id for FE dedup. AI messages come without a
+        # client_msg_id since the player did not originate them.
+        "server_msg_id": uuid.uuid4().hex,
     }
     msg_entry = {
         "sender_id": str(BOT_ID),
@@ -1553,7 +1556,19 @@ async def _handle_duel_ready(user_id: uuid.UUID, duel_id: uuid.UUID) -> None:
     await _start_round(duel_id, 1)
 
 
-async def _handle_duel_message(user_id: uuid.UUID, text: str) -> None:
+async def _handle_duel_message(
+    user_id: uuid.UUID,
+    text: str,
+    *,
+    client_msg_id: str | None = None,
+) -> None:
+    """Handle a player's duel message.
+
+    ``client_msg_id`` is an optional client-generated id (uuid string) that
+    the server echoes back in the broadcast payload alongside a fresh
+    ``server_msg_id``. The frontend dedups its optimistic render against
+    the echo by ``client_msg_id`` — see PR D in observability epic.
+    """
     # Fast lookup via Redis reverse index, then fall back to in-memory scan
     session = None
     _user_duel_id = await PvPDuelRedis.get_duel_for_user(str(user_id))
@@ -1613,11 +1628,19 @@ async def _handle_duel_message(user_id: uuid.UUID, text: str) -> None:
 
     round_number = session["round"]
     role = _player_role_for_round(session, user_id, round_number)
+    # Generate a server-side message id and include client_msg_id (when the
+    # FE provided one) so the broadcast echo can be deduped against the
+    # sender's optimistic render. Without this the FE renders the message
+    # twice — once optimistically on send, once on echo — which is the
+    # "дублирует" complaint we tracked in the original audit.
     payload = {
         "sender_role": role,
         "text": text,
         "round": round_number,
+        "server_msg_id": uuid.uuid4().hex,
     }
+    if client_msg_id:
+        payload["client_msg_id"] = client_msg_id
     msg = {
         "sender_id": str(user_id),
         "role": role,
@@ -2781,9 +2804,15 @@ async def pvp_websocket(websocket: WebSocket) -> None:
                 text = (msg.get("text") or "").strip()
                 # B.3: Defense-in-depth — truncate before any processing
                 text = text[:2000]
+                # PR D: optional client-generated msg id for dedup of echo.
+                # Frontend may send any ASCII id up to 64 chars; we treat it
+                # opaquely and echo back unmodified.
+                _client_msg_id = msg.get("client_msg_id")
+                if _client_msg_id is not None:
+                    _client_msg_id = str(_client_msg_id)[:64]
                 if text:
                     try:
-                        await _handle_duel_message(user_id, text)
+                        await _handle_duel_message(user_id, text, client_msg_id=_client_msg_id)
                     except Exception as exc:
                         logger.error("duel.message handler error [user=%s]: %s", user_id, exc, exc_info=True)
                         await _send(websocket, "error", {"detail": "Ошибка обработки сообщения. Попробуйте ещё раз."})
