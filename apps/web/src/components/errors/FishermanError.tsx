@@ -7,12 +7,12 @@ import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 // ── Error fish that swim across ────────────────────────────
 const ERROR_FISH = [
-  { code: "404", label: "Not Found" },
-  { code: "500", label: "Server Error" },
-  { code: "503", label: "Unavailable" },
-  { code: "408", label: "Timeout" },
-  { code: "ERR", label: "No Connection" },
-  { code: "DNS", label: "DNS Failed" },
+  { code: "404", label: "Не найдено" },
+  { code: "500", label: "Сервер упал" },
+  { code: "503", label: "Недоступно" },
+  { code: "408", label: "Таймаут" },
+  { code: "ERR", label: "Нет связи" },
+  { code: "DNS", label: "Сбой DNS" },
 ];
 
 interface Fish {

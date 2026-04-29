@@ -119,7 +119,7 @@ export default function GameCRMPage() {
                   {[
                     { label: "Историй", value: stories.length, icon: Layers3 },
                     { label: "Активных", value: activeStories.length, icon: Activity },
-                    { label: "Continuity", value: completedStories.length > 0 ? `${completedStories.length}/${stories.length}` : stories.length > 0 ? `0/${stories.length}` : "0", icon: Sparkles },
+                    { label: "Завершённые", value: completedStories.length > 0 ? `${completedStories.length}/${stories.length}` : stories.length > 0 ? `0/${stories.length}` : "0", icon: Sparkles },
                   ].map((item) => (
                     <div key={item.label} className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
                       <item.icon size={14} style={{ color: "var(--accent)" }} />
