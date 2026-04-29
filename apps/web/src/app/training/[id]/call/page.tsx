@@ -1008,6 +1008,14 @@ export default function TrainingCallPage() {
               }
             : null
         }
+        onCopyExample={(text) => {
+          // User-first §A.2 (2026-04-29): "тап = вставить" on the desktop
+          // ScriptPanel example phrases. Pre-A.2 this prop wasn't passed
+          // so handleCopy fell through to navigator.clipboard (silent).
+          // Now a tap pre-fills the fallback text input — same UX as the
+          // mobile ScriptDrawer that already had this wiring.
+          setTextInput(text);
+        }}
         micSlot={
           <button
             type="button"
