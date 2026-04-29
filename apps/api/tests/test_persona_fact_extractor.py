@@ -399,3 +399,245 @@ class TestExtractedFact:
         f = ExtractedFact(slot_code="full_name", value="X", confidence=0.9, quote="X")
         with pytest.raises(Exception):
             f.value = "hacked"  # type: ignore[misc]
+
+
+# ─── _should_commit — confidence-based commit decision ──────────────────────
+
+
+class TestShouldCommit:
+    """The gate between extracted-fact and lock_slot. Three tiers:
+    new/stable-overwrite/volatile-overwrite — verifying each."""
+
+    def test_new_fact_at_floor(self):
+        from app.services.persona_fact_extractor import _should_commit
+
+        fact = ExtractedFact(slot_code="full_name", value="Иван", confidence=0.7, quote="меня зовут Иван")
+        assert _should_commit(fact, persona_facts={}) is True
+
+    def test_new_fact_below_floor(self):
+        from app.services.persona_fact_extractor import _should_commit
+
+        fact = ExtractedFact(slot_code="full_name", value="Иван", confidence=0.69, quote="x")
+        # validation gate already enforces ≥ 0.7 in production; this
+        # tests the defence-in-depth at the commit layer.
+        assert _should_commit(fact, persona_facts={}) is False
+
+    def test_overwrite_stable_below_strict_floor(self):
+        """full_name is stable=True; overwrite needs ≥ 0.9."""
+        from app.services.persona_fact_extractor import _should_commit
+
+        fact = ExtractedFact(
+            slot_code="full_name", value="Алексей", confidence=0.85, quote="зовут Алексей",
+        )
+        existing = {"full_name": {"value": "Иван"}}
+        assert _should_commit(fact, persona_facts=existing) is False
+
+    def test_overwrite_stable_at_strict_floor(self):
+        from app.services.persona_fact_extractor import _should_commit
+
+        fact = ExtractedFact(
+            slot_code="full_name", value="Алексей", confidence=0.92, quote="зовут Алексей",
+        )
+        existing = {"full_name": {"value": "Иван"}}
+        assert _should_commit(fact, persona_facts=existing) is True
+
+    def test_overwrite_volatile_at_relaxed_floor(self):
+        """income is stable=False; overwrite at 0.7 is OK."""
+        from app.services.persona_fact_extractor import _should_commit
+
+        fact = ExtractedFact(
+            slot_code="income", value="120000", confidence=0.75, quote="зарабатываю 120к",
+        )
+        existing = {"income": {"value": "100000"}}
+        assert _should_commit(fact, persona_facts=existing) is True
+
+    def test_unknown_slot_never_commits(self):
+        from app.services.persona_fact_extractor import _should_commit
+
+        fact = ExtractedFact(
+            slot_code="favourite_pizza", value="пепперони", confidence=0.99, quote="люблю пепперони",
+        )
+        assert _should_commit(fact, persona_facts={}) is False
+
+    def test_existing_fact_with_null_value_treated_as_empty(self):
+        """Defensive: malformed DB row {"value": None} should be
+        treated as 'no existing value' so a new fact can write."""
+        from app.services.persona_fact_extractor import _should_commit
+
+        fact = ExtractedFact(
+            slot_code="full_name", value="Иван", confidence=0.75, quote="зовут Иван",
+        )
+        existing = {"full_name": {"value": None}}
+        assert _should_commit(fact, persona_facts=existing) is True
+
+
+# ─── extract_and_commit_facts_for_turn — the public PR 3 wiring ─────────────
+
+
+class TestExtractAndCommit:
+    @pytest.mark.asyncio
+    async def test_no_persona_returns_zero(self):
+        from app.services.persona_fact_extractor import (
+            extract_and_commit_facts_for_turn,
+        )
+
+        n = await extract_and_commit_facts_for_turn(
+            db=MagicMock(),
+            session_id="sid",
+            user_id="uid",
+            manager_message="меня зовут Иван",
+            persona=None,
+        )
+        assert n == 0
+
+    @pytest.mark.asyncio
+    async def test_no_facts_returns_zero(self):
+        """Extractor returns []. Wrapper does nothing, no lock_slot call."""
+        from app.services.persona_fact_extractor import (
+            extract_and_commit_facts_for_turn,
+        )
+
+        persona = MagicMock()
+        persona.confirmed_facts = {}
+        persona.version = 1
+
+        with patch(
+            "app.services.persona_fact_extractor.extract_facts_from_turn",
+            AsyncMock(return_value=[]),
+        ):
+            n = await extract_and_commit_facts_for_turn(
+                db=MagicMock(),
+                session_id="sid",
+                user_id="uid",
+                manager_message="привет",
+                persona=persona,
+            )
+        assert n == 0
+
+    @pytest.mark.asyncio
+    async def test_commits_high_confidence_new_facts(self):
+        from app.services.persona_fact_extractor import (
+            extract_and_commit_facts_for_turn,
+        )
+
+        persona = MagicMock()
+        persona.confirmed_facts = {}
+        persona.version = 1
+        persona.lead_client_id = "lc-1"
+
+        candidates = [
+            ExtractedFact("full_name", "Дмитрий", 0.95, "меня зовут Дмитрий"),
+            ExtractedFact("city", "Москва", 0.90, "из Москвы"),
+        ]
+
+        lock_slot_mock = AsyncMock(return_value=(persona, MagicMock()))
+        with patch(
+            "app.services.persona_fact_extractor.extract_facts_from_turn",
+            AsyncMock(return_value=candidates),
+        ), patch(
+            "app.services.persona_memory.lock_slot", lock_slot_mock,
+        ):
+            n = await extract_and_commit_facts_for_turn(
+                db=MagicMock(),
+                session_id="sid",
+                user_id="uid",
+                manager_message="меня зовут Дмитрий, я из Москвы",
+                persona=persona,
+            )
+        assert n == 2
+        assert lock_slot_mock.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_skips_low_confidence_overwrite_of_stable_slot(self):
+        from app.services.persona_fact_extractor import (
+            extract_and_commit_facts_for_turn,
+        )
+
+        persona = MagicMock()
+        persona.confirmed_facts = {"full_name": {"value": "Иван"}}
+        persona.version = 1
+        persona.lead_client_id = "lc-1"
+
+        # Confidence 0.85 — below stable=True floor of 0.9
+        candidates = [ExtractedFact("full_name", "Алексей", 0.85, "зовут Алексей")]
+
+        lock_slot_mock = AsyncMock()
+        with patch(
+            "app.services.persona_fact_extractor.extract_facts_from_turn",
+            AsyncMock(return_value=candidates),
+        ), patch(
+            "app.services.persona_memory.lock_slot", lock_slot_mock,
+        ):
+            n = await extract_and_commit_facts_for_turn(
+                db=MagicMock(),
+                session_id="sid",
+                user_id="uid",
+                manager_message="зовут Алексей",
+                persona=persona,
+            )
+        assert n == 0
+        lock_slot_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_swallows_persona_conflict_continues_batch(self):
+        from app.services import persona_memory
+        from app.services.persona_fact_extractor import (
+            extract_and_commit_facts_for_turn,
+        )
+
+        persona = MagicMock()
+        persona.confirmed_facts = {}
+        persona.version = 1
+        persona.lead_client_id = "lc-1"
+
+        candidates = [
+            ExtractedFact("full_name", "Дмитрий", 0.95, "зовут Дмитрий"),
+            ExtractedFact("city", "Москва", 0.90, "из Москвы"),
+        ]
+
+        # First call raises PersonaConflict, second succeeds
+        async def _flaky_lock_slot(db, **kwargs):
+            if kwargs["slot_code"] == "full_name":
+                raise persona_memory.PersonaConflict(
+                    expected=1, actual=2, lead_client_id="lc-1",
+                )
+            return (persona, MagicMock())
+
+        with patch(
+            "app.services.persona_fact_extractor.extract_facts_from_turn",
+            AsyncMock(return_value=candidates),
+        ), patch(
+            "app.services.persona_memory.lock_slot", side_effect=_flaky_lock_slot,
+        ):
+            n = await extract_and_commit_facts_for_turn(
+                db=MagicMock(),
+                session_id="sid",
+                user_id="uid",
+                manager_message="зовут Дмитрий, из Москвы",
+                persona=persona,
+            )
+        # First failed, second committed.
+        assert n == 1
+
+    @pytest.mark.asyncio
+    async def test_extractor_exception_returns_zero(self):
+        from app.services.persona_fact_extractor import (
+            extract_and_commit_facts_for_turn,
+        )
+
+        persona = MagicMock()
+        persona.confirmed_facts = {}
+        persona.version = 1
+
+        with patch(
+            "app.services.persona_fact_extractor.extract_facts_from_turn",
+            AsyncMock(side_effect=RuntimeError("boom")),
+        ):
+            n = await extract_and_commit_facts_for_turn(
+                db=MagicMock(),
+                session_id="sid",
+                user_id="uid",
+                manager_message="меня зовут Иван",
+                persona=persona,
+            )
+        assert n == 0

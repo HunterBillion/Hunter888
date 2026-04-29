@@ -447,9 +447,15 @@ async def lock_slot(
 
     confirmed_facts: dict[str, Any] = dict(persona.confirmed_facts or {})
     if fact_value is not None:
+        # TZ-4.5 PR 3: include captured_at for the prompt-render TTL
+        # check (persona_slots.render_facts_for_prompt marks stale
+        # facts with "(возможно устарело)" when age > slot.ttl_days).
+        # ISO-8601 UTC for cross-timezone safety.
+        from datetime import datetime as _dt, timezone as _tz
         confirmed_facts[slot_code] = {
             "value": fact_value,
             "source": source_ref or (str(session_id) if session_id else source),
+            "captured_at": _dt.now(_tz.utc).isoformat(),
         }
         persona.confirmed_facts = confirmed_facts
 

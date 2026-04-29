@@ -437,3 +437,158 @@ async def extract_facts_from_turn(
         return []
 
     return _parse_response(raw, manager_message=msg)
+
+
+# ─── Public end-to-end wrapper (PR 3 wiring point) ──────────────────────────
+
+
+# Confidence floors for the commit-or-drop decision. The extractor
+# guarantees ≥ 0.7 already (anything lower it didn't return). We add a
+# stricter ceiling for stable=True slots: rewriting "this person's
+# name" should require near-certainty.
+_OVERWRITE_STABLE_MIN_CONFIDENCE = 0.9
+_OVERWRITE_VOLATILE_MIN_CONFIDENCE = 0.7
+_NEW_FACT_MIN_CONFIDENCE = 0.7
+
+
+def _should_commit(
+    fact: ExtractedFact,
+    *,
+    persona_facts: dict[str, Any],
+) -> bool:
+    """Decide if an extracted fact should call lock_slot.
+
+    Three rules:
+
+      1. Slot must exist in the registry (already enforced by
+         _validate_one — but defensive cheap re-check).
+      2. New fact (slot empty in persona_facts) → confidence ≥ 0.7.
+      3. Overwrite (slot already populated) →
+         - stable=True slots need ≥ 0.9 (anti-flip-flop)
+         - stable=False slots need ≥ 0.7 (free evolution)
+    """
+    from app.services.persona_slots import get_slot  # noqa: PLC0415
+
+    slot = get_slot(fact.slot_code)
+    if slot is None:
+        return False
+
+    existing = persona_facts.get(fact.slot_code)
+    has_existing_value = (
+        isinstance(existing, dict) and existing.get("value") is not None
+    )
+
+    if not has_existing_value:
+        return fact.confidence >= _NEW_FACT_MIN_CONFIDENCE
+
+    floor = (
+        _OVERWRITE_STABLE_MIN_CONFIDENCE
+        if slot.stable
+        else _OVERWRITE_VOLATILE_MIN_CONFIDENCE
+    )
+    return fact.confidence >= floor
+
+
+async def extract_and_commit_facts_for_turn(
+    db,
+    *,
+    session_id,
+    user_id,
+    manager_message: str,
+    persona,
+) -> int:
+    """End-to-end wrapper for the call-flow caller (PR 3 wiring point).
+
+    1. Run :func:`extract_facts_from_turn` with the persona's current
+       confirmed_facts as context.
+    2. For each fact that passes :func:`_should_commit`, call
+       ``persona_memory.lock_slot``.
+    3. Returns the number of facts successfully committed.
+
+    Never raises. Failures (no LLM, optimistic-concurrency conflict,
+    DB error) are logged and counted as zero. The audit-hook contract:
+    fact extraction is best-effort, the call must continue regardless.
+
+    The caller (``ws/training.py``) is responsible for awaiting this
+    function inside its existing post-reply ``async with async_session``
+    block — same pattern as ``audit_and_publish_assistant_reply``.
+    """
+    if persona is None:
+        return 0
+
+    persona_facts: dict[str, Any] = dict(getattr(persona, "confirmed_facts", None) or {})
+
+    try:
+        candidates = await extract_facts_from_turn(
+            manager_message=manager_message,
+            confirmed_facts=persona_facts,
+        )
+    except Exception:  # pragma: no cover — extractor is already best-effort
+        logger.exception(
+            "fact-extractor: extract_facts_from_turn raised — session=%s",
+            session_id,
+        )
+        return 0
+
+    if not candidates:
+        return 0
+
+    # Lazy import to avoid a top-level cycle (persona_memory imports
+    # nothing from us, but keeping the import inside the function
+    # makes accidental future cycles obvious in stack traces).
+    from app.services import persona_memory  # noqa: PLC0415
+
+    committed = 0
+    for fact in candidates:
+        if not _should_commit(fact, persona_facts=persona_facts):
+            logger.debug(
+                "fact-extractor: %s skipped (confidence=%.2f, has_existing=%s)",
+                fact.slot_code,
+                fact.confidence,
+                fact.slot_code in persona_facts,
+            )
+            continue
+
+        try:
+            await persona_memory.lock_slot(
+                db,
+                persona=persona,
+                slot_code=fact.slot_code,
+                fact_value=fact.value,
+                expected_version=persona.version,
+                session_id=session_id,
+                source_ref=f"extractor:{fact.quote[:60]}",
+                actor_id=user_id,
+                source="ws.training.fact_extractor",
+            )
+        except persona_memory.PersonaConflict:
+            # Another writer raced us. Log at info, not error — the
+            # next manager turn will re-extract the same fact (since
+            # confirmed_facts will then be up-to-date) and either
+            # accept it or skip as already-locked.
+            logger.info(
+                "fact-extractor: PersonaConflict on slot=%s — re-extract on next turn",
+                fact.slot_code,
+            )
+            continue
+        except Exception:
+            logger.exception(
+                "fact-extractor: lock_slot raised on slot=%s — swallowing",
+                fact.slot_code,
+            )
+            continue
+
+        # Update local view so subsequent facts in the same batch
+        # see the new value (else stable=True overwrite check would
+        # use stale data within one turn).
+        persona_facts[fact.slot_code] = {"value": fact.value}
+        committed += 1
+
+    if committed:
+        logger.info(
+            "fact-extractor: committed %d facts in session=%s lead=%s",
+            committed,
+            session_id,
+            getattr(persona, "lead_client_id", None),
+        )
+    return committed

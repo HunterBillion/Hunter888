@@ -1805,6 +1805,54 @@ async def _generate_character_reply(
                 session_id,
             )
 
+        # TZ-4.5 PR 3 — persona fact extraction. Same post-reply
+        # placement as the audit hook above: the manager has already
+        # seen the streamed reply by the time we reach this line, so
+        # the ~600ms extractor LLM call doesn't block any UX. Facts
+        # land in MemoryPersona.confirmed_facts so PR 4 can inject
+        # them into the system prompt for the NEXT manager turn —
+        # closing the "AI remembers between calls" loop.
+        #
+        # The extractor is best-effort. No client / timeout / LLM
+        # error / optimistic-concurrency conflict → zero facts
+        # committed and the call continues unaffected.
+        try:
+            from app.services.persona_fact_extractor import (
+                extract_and_commit_facts_for_turn,
+            )
+            _user_id = state.get("user_id")
+            _manager_message = (
+                messages[-1]["content"]
+                if messages and messages[-1].get("role") == "user"
+                else ""
+            )
+            if _user_id is not None and _manager_message:
+                # Re-load persona — audit_hook may have bumped
+                # mutation_blocked_count (snapshot side) but persona
+                # state is what lock_slot needs. Fresh read avoids
+                # PersonaConflict from the audit-hook's own writes.
+                from app.services import persona_memory as _pm
+                _snapshot = await _pm.get_snapshot(db, session_id=session_id)
+                _persona = (
+                    await _pm.get_for_lead(db, lead_client_id=_snapshot.lead_client_id)
+                    if _snapshot is not None and _snapshot.lead_client_id is not None
+                    else None
+                )
+                if _persona is not None:
+                    await extract_and_commit_facts_for_turn(
+                        db,
+                        session_id=session_id,
+                        user_id=_user_id,
+                        manager_message=_manager_message,
+                        persona=_persona,
+                    )
+                    await db.commit()
+        except Exception:
+            logger.exception(
+                "persona_fact_extractor crashed for session %s — swallowing",
+                session_id,
+            )
+
     # ─── V3 Emotion Engine with Trigger Detection ───
     new_emotion = current_emotion
     emotion_meta = {}
