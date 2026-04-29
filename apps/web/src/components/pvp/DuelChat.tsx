@@ -3,15 +3,12 @@
 /**
  * DuelChat — пиксельный чат дуэли.
  *
- * 2026-04-29 (Фаза 2 редизайна арены): полная замена терминал-стиля
- * (TrafficLights / $-prompt / pvp-chat — xhunter / font-mono) на
- * пиксель-аркадные речевые баблы с аватарами по тирам.
- *
- * API не сломан — все обязательные пропсы прежние (messages, myRole, input,
- * onInputChange, onSend, disabled, opponentStatus, scores). Добавлены два
- * опциональных пропса selfTier / opponentTier — без них рамки аватаров
- * нейтральные (как при unranked). Parent (apps/web/src/app/pvp/duel/[id]/page.tsx)
- * подключит их в Фазе 3, когда будет добавлен FighterCard.
+ * 2026-04-29 Фаза 2 (PR #103): полная замена терминал-стиля на пиксельные
+ * речевые баблы.
+ * 2026-04-29 polish: уникальные SVG-портреты вместо инициалов, hover-lift,
+ * own-bubble accent-tint, bigger digits, max-h на длинных сообщениях,
+ * delivered ✓, wrap-aware score header, exit-анимация typing-bubble,
+ * новые опциональные пропсы (deliveredIds).
  */
 
 import { useEffect, useRef, useMemo, useState } from "react";
@@ -23,6 +20,8 @@ import { type PvPRankTier, PVP_RANK_COLORS, normalizeRankTier } from "@/types";
 const MAX_MESSAGE_LENGTH = 2000;
 /** Скорость typewriter-эффекта для входящих AI/opponent-сообщений. */
 const TYPEWRITER_MS_PER_CHAR = 28;
+/** Высота, выше которой длинное сообщение получит внутренний скролл. */
+const LONG_MESSAGE_MAX_PX = 280;
 
 /* ── Sanitizer (defense-in-depth for WS messages) ──────── */
 function sanitizeMessageText(text: string): string {
@@ -67,14 +66,14 @@ interface Props {
   onInputChange: (value: string) => void;
   onSend: () => void;
   disabled?: boolean;
-  /** Optional: opponent connection status */
   opponentStatus?: ConnectionStatus;
-  /** Optional: current judge scores to show in header */
   scores?: DuelScores | null;
-  /** Optional: own rank tier — определяет цвет рамки твоего аватара. */
   selfTier?: PvPRankTier | string;
-  /** Optional: opponent rank tier — цвет рамки аватара соперника. */
   opponentTier?: PvPRankTier | string;
+  /** ID-сообщений, для которых сервер подтвердил доставку. Опционально. */
+  deliveredIds?: string[];
+  /** Авто-фокус инпута при маунте. По умолчанию false. */
+  autoFocus?: boolean;
 }
 
 /* ── Helpers ────────────────────────────────────────────── */
@@ -84,14 +83,9 @@ function tierColor(tier?: PvPRankTier | string): string {
   return PVP_RANK_COLORS[norm] ?? "var(--text-muted)";
 }
 
-function roleInitials(role: "seller" | "client"): string {
-  return role === "seller" ? "ME" : "OP";
-}
-
 /**
  * useTypewriter — печатает текст по символу.
  * Уважает prefers-reduced-motion: сразу показывает финальный текст.
- * Если `enabled=false` — тоже мгновенно (для своих сообщений).
  */
 function useTypewriter(text: string, enabled: boolean): string {
   const reduce = useReducedMotion();
@@ -117,12 +111,120 @@ function useTypewriter(text: string, enabled: boolean): string {
   return displayed;
 }
 
-/* ── Pixel Avatar ───────────────────────────────────────── */
-/**
- * 56×56 пиксельный аватар. Без PNG — чисто CSS, чтобы не раздувать bundle.
- * Внутри: инициалы (ME / OP) на «stippled» фоне в цвет тира.
- * Рамка outline — тоже tier-color.
- */
+/* ── Pixel Sprite Avatars ───────────────────────────────────
+ * 16×16 спрайты как массив строк. Литералы:
+ *   .  transparent
+ *   H  headset/hair dark
+ *   h  headset/hair light highlight
+ *   S  skin
+ *   s  skin shadow
+ *   e  eye
+ *   m  mouth
+ *   n  neck
+ *   B  body main
+ *   b  body shadow
+ *   t  tier accent (галстук / шарф) — заменяется на цвет тира
+ *   r  ring/headset accent (тот же tier-цвет)
+ * Render: SVG 16×16 с rect-ами 1×1, image-rendering: pixelated.
+ * ───────────────────────────────────────────────────────── */
+
+/** Менеджер (свой аватар): хедсет + галстук в цвет тира. */
+const SPRITE_MANAGER: string[] = [
+  "................", // 0
+  "................", // 1
+  "....HHHHHHHH....", // 2
+  "...HrhHHHHrhH...", // 3 headset top band
+  "..HrSSSSSSSSrH..", // 4 headset side
+  "..HhSSSSSSSShH..", // 5
+  "..HhSeSSSSeShH..", // 6 eyes
+  "..HhSSSSSSSShH..", // 7
+  "..HhSSSmmSSShH..", // 8 mouth
+  "..HhSSSSSSSShH..", // 9
+  "...HhsSSSSshH...", // 10 chin shadow
+  "....hsSSSSsh....", // 11
+  ".....nnnnnn.....", // 12 neck
+  "....bBBttBBb....", // 13 collar + tie top
+  "...bBBBttBBBb...", // 14
+  "..bBBBBttBBBBb..", // 15 body
+];
+
+/** Клиент (соперник AI): другая причёска, без хедсета, casual collar. */
+const SPRITE_CLIENT: string[] = [
+  "................", // 0
+  "....HHHHHH......", // 1 hair top
+  "...HhHHHHHh.....", // 2
+  "..HhhSSSSShHh...", // 3 hair sides + face top
+  "..HSSSSSSSSh....", // 4
+  "..HSSSSSSSSh....", // 5
+  "..HSeSSSSeSh....", // 6 eyes
+  "..HSSSSSSSSh....", // 7
+  "..HSSSSSSSSh....", // 8
+  "..HSSSmmmSSh....", // 9 mouth (smile slightly wider)
+  "...sSSSSSSs.....", // 10
+  "....sSSSSs......", // 11
+  ".....nnnn.......", // 12
+  "....bBBBBBb.....", // 13 collar
+  "...bBBrrBBBb....", // 14 scarf accent (tier color via 'r')
+  "..bBBBBrrBBBBb..", // 15
+];
+
+function PixelSprite({
+  sprite,
+  tier,
+  size = 56,
+}: {
+  sprite: string[];
+  tier?: PvPRankTier | string;
+  size?: number;
+}) {
+  const accent = tierColor(tier);
+  const palette: Record<string, string> = {
+    H: "#1a1a2e", // dark
+    h: "#3d3a52", // dark light
+    S: "#e7c4a0", // skin
+    s: "#c79676", // skin shadow
+    e: "#0d0d18",
+    m: "#a23446",
+    n: "#cfa57f",
+    B: "#4a4a5e",
+    b: "#2c2c3a",
+    t: accent, // tier
+    r: accent, // tier
+  };
+  const cell = 100 / 16; // viewBox is 0..16
+  const rects: React.ReactElement[] = [];
+  for (let y = 0; y < sprite.length; y += 1) {
+    const row = sprite[y];
+    for (let x = 0; x < row.length; x += 1) {
+      const ch = row[x];
+      const fill = palette[ch];
+      if (!fill) continue;
+      rects.push(
+        <rect
+          key={`${x}-${y}`}
+          x={x * cell + "%"}
+          y={y * cell + "%"}
+          width={cell + "%"}
+          height={cell + "%"}
+          fill={fill}
+        />,
+      );
+    }
+  }
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      preserveAspectRatio="xMidYMid meet"
+      style={{ imageRendering: "pixelated", display: "block" }}
+      aria-hidden
+    >
+      {rects}
+    </svg>
+  );
+}
+
 function PixelAvatar({
   role,
   tier,
@@ -133,16 +235,17 @@ function PixelAvatar({
   side: "left" | "right";
 }) {
   const color = tierColor(tier);
+  const sprite = role === "seller" ? SPRITE_MANAGER : SPRITE_CLIENT;
   return (
     <div
       aria-hidden
-      className="shrink-0 relative flex items-center justify-center font-pixel"
+      className="shrink-0 relative overflow-hidden"
       style={{
         width: 56,
         height: 56,
         outline: `3px solid ${color}`,
         outlineOffset: -3,
-        background: `color-mix(in srgb, ${color} 12%, var(--bg-panel))`,
+        background: `color-mix(in srgb, ${color} 18%, var(--bg-panel))`,
         backgroundImage: `repeating-linear-gradient(
           0deg,
           transparent 0,
@@ -154,34 +257,27 @@ function PixelAvatar({
           side === "left"
             ? `3px 3px 0 0 ${color}`
             : `-3px 3px 0 0 ${color}`,
-        color,
-        fontSize: 18,
-        letterSpacing: "0.05em",
-        userSelect: "none",
       }}
     >
-      {roleInitials(role)}
+      <PixelSprite sprite={sprite} tier={tier} size={56} />
     </div>
   );
 }
 
 /* ── Pixel Spike Bubble ─────────────────────────────────── */
-/**
- * Прямоугольный пиксель-бабл с треугольной «спайкой» к аватару.
- * Спайка — отдельный absolute div, повёрнутый на 45deg, с двумя видимыми
- * границами, чтобы шов с outline бабла был аккуратный.
- */
 function PixelBubble({
   side,
   color,
+  tinted,
+  hoverable = true,
   children,
 }: {
   side: "left" | "right";
   color: string;
+  tinted: boolean;
+  hoverable?: boolean;
   children: React.ReactNode;
 }) {
-  // На left-side бабл стоит справа от аватара, спайка слева.
-  // На right-side бабл стоит слева от аватара, спайка справа.
   const tailLeft = side === "left" ? -7 : "auto";
   const tailRight = side === "right" ? -7 : "auto";
   const tailBorder =
@@ -189,11 +285,18 @@ function PixelBubble({
       ? { borderLeft: `2px solid ${color}`, borderBottom: `2px solid ${color}` }
       : { borderRight: `2px solid ${color}`, borderTop: `2px solid ${color}` };
 
+  // Tinted = own bubble (мягкий fill в цвет тира). Чужой — нейтральный bg-panel.
+  const bg = tinted
+    ? `color-mix(in srgb, ${color} 14%, var(--bg-panel))`
+    : "var(--bg-panel)";
+
   return (
-    <div
+    <motion.div
+      whileHover={hoverable ? { x: -1, y: -1 } : undefined}
+      transition={{ type: "spring", stiffness: 500, damping: 30 }}
       className="relative max-w-[78%]"
       style={{
-        background: "var(--bg-panel)",
+        background: bg,
         outline: `2px solid ${color}`,
         outlineOffset: -2,
         boxShadow: `3px 3px 0 0 ${color}`,
@@ -210,13 +313,13 @@ function PixelBubble({
           top: 16,
           left: tailLeft,
           right: tailRight,
-          background: "var(--bg-panel)",
+          background: bg,
           transform: "rotate(45deg)",
           ...tailBorder,
         }}
       />
       {children}
-    </div>
+    </motion.div>
   );
 }
 
@@ -233,14 +336,14 @@ function PixelStatusChip({ status }: { status: ConnectionStatus }) {
     <div
       className="inline-flex items-center gap-1.5 font-pixel"
       style={{
-        padding: "3px 8px",
+        padding: "3px 10px",
         background: "var(--bg-panel)",
         outline: `2px solid ${c.color}`,
         outlineOffset: -2,
         boxShadow: `2px 2px 0 0 ${c.color}`,
         color: c.color,
-        fontSize: 11,
-        letterSpacing: "0.12em",
+        fontSize: 13,
+        letterSpacing: "0.14em",
         textTransform: "uppercase",
       }}
     >
@@ -248,8 +351,8 @@ function PixelStatusChip({ status }: { status: ConnectionStatus }) {
         className={c.pulse ? "animate-pulse" : ""}
         style={{
           display: "inline-block",
-          width: 6,
-          height: 6,
+          width: 7,
+          height: 7,
           background: c.color,
         }}
       />
@@ -258,21 +361,17 @@ function PixelStatusChip({ status }: { status: ConnectionStatus }) {
   );
 }
 
-/* ── Thinking dots (для пустого бабла «соперник думает») ── */
+/* ── Thinking dots ───────────────────────────────────────── */
 function ThinkingDots({ color }: { color: string }) {
   return (
-    <span
-      aria-hidden
-      className="inline-flex items-center gap-1"
-      role="presentation"
-    >
+    <span aria-hidden className="inline-flex items-center gap-1" role="presentation">
       {[0, 1, 2].map((i) => (
         <motion.span
           key={i}
           style={{
             display: "inline-block",
-            width: 5,
-            height: 5,
+            width: 6,
+            height: 6,
             background: color,
           }}
           animate={{ opacity: [0.25, 1, 0.25] }}
@@ -295,26 +394,21 @@ function MessageRow({
   selfTier,
   opponentTier,
   isLatestIncoming,
+  isDelivered,
 }: {
   msg: Message;
   isMine: boolean;
   selfTier?: PvPRankTier | string;
   opponentTier?: PvPRankTier | string;
   isLatestIncoming: boolean;
+  isDelivered: boolean;
 }) {
   const side: "left" | "right" = isMine ? "right" : "left";
   const tier = isMine ? selfTier : opponentTier;
   const color = tierColor(tier);
   const timeStr = formatMessageTime(msg.timestamp);
-
-  // Typewriter — только для свежего входящего AI-сообщения.
-  // Старые/исторические сообщения соперника отображаются мгновенно
-  // (иначе при скролле в начало раунда зрелище становится мучительным).
   const displayed = useTypewriter(msg.text, !isMine && isLatestIncoming);
-
-  // role="article" + aria-label позволяет screen reader-у адресно цитировать сообщение.
-  const senderName =
-    msg.sender_role === "seller" ? "Менеджер" : "Клиент";
+  const senderName = msg.sender_role === "seller" ? "Менеджер" : "Клиент";
 
   return (
     <motion.div
@@ -328,30 +422,31 @@ function MessageRow({
       }`}
     >
       <PixelAvatar role={msg.sender_role} tier={tier} side={side} />
-      <PixelBubble side={side} color={color}>
+      <PixelBubble side={side} color={color} tinted={isMine}>
         <div
           className="flex items-center justify-between gap-3 mb-1 font-pixel"
-          style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase" }}
+          style={{ fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}
         >
           <span style={{ color }}>{isMine ? "ВЫ" : senderName}</span>
           {timeStr && (
-            <span style={{ color: "var(--text-muted)", fontSize: 10 }}>
+            <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
               {timeStr}
             </span>
           )}
         </div>
-        <p
+        <div
           className="leading-relaxed"
           style={{
             color: "var(--text-primary)",
-            fontSize: 14,
+            fontSize: 15,
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
             minHeight: "1.4em",
+            maxHeight: LONG_MESSAGE_MAX_PX,
+            overflowY: "auto",
           }}
         >
           {displayed}
-          {/* Каретка-блинкер во время печати */}
           {!isMine && isLatestIncoming && displayed.length < msg.text.length && (
             <motion.span
               aria-hidden
@@ -367,7 +462,23 @@ function MessageRow({
               transition={{ duration: 0.7, repeat: Infinity }}
             />
           )}
-        </p>
+        </div>
+        {/* Delivered tick (только для своих, и только если есть подтверждение) */}
+        {isMine && isDelivered && (
+          <div
+            className="font-pixel"
+            style={{
+              marginTop: 4,
+              textAlign: "right",
+              color,
+              fontSize: 12,
+              letterSpacing: "0.04em",
+            }}
+            aria-label="Доставлено"
+          >
+            ✓
+          </div>
+        )}
       </PixelBubble>
     </motion.div>
   );
@@ -378,19 +489,20 @@ function TypingBubble({ tier }: { tier?: PvPRankTier | string }) {
   const color = tierColor(tier);
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -4 }}
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -8, transition: { duration: 0.18 } }}
+      transition={{ duration: 0.22 }}
       className="flex items-start gap-3 flex-row"
       role="status"
       aria-live="polite"
       aria-label="Соперник набирает сообщение"
     >
       <PixelAvatar role="client" tier={tier} side="left" />
-      <PixelBubble side="left" color={color}>
+      <PixelBubble side="left" color={color} tinted={false} hoverable={false}>
         <div
           className="flex items-center gap-2 font-pixel"
-          style={{ fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase" }}
+          style={{ fontSize: 14, letterSpacing: "0.14em", textTransform: "uppercase" }}
         >
           <span style={{ color }}>Думает</span>
           <ThinkingDots color={color} />
@@ -400,7 +512,7 @@ function TypingBubble({ tier }: { tier?: PvPRankTier | string }) {
   );
 }
 
-/* ── Score Header (pixelified) ──────────────────────────── */
+/* ── Score Header (pixelified, wrap-aware) ──────────────── */
 function ScoreHeader({ scores }: { scores: DuelScores }) {
   const Cell = ({
     label,
@@ -411,16 +523,16 @@ function ScoreHeader({ scores }: { scores: DuelScores }) {
     value: number;
     color: string;
   }) => (
-    <div className="flex items-baseline gap-1.5">
+    <div className="flex flex-col items-center justify-center">
       <span
         className="font-pixel"
-        style={{ color: "var(--text-muted)", fontSize: 10, letterSpacing: "0.14em" }}
+        style={{ color: "var(--text-muted)", fontSize: 11, letterSpacing: "0.18em" }}
       >
         {label}
       </span>
       <span
         className="font-pixel"
-        style={{ color, fontSize: 18, letterSpacing: "0.04em" }}
+        style={{ color, fontSize: 26, letterSpacing: "0.04em", lineHeight: 1.1 }}
       >
         {Math.round(value)}
       </span>
@@ -428,16 +540,14 @@ function ScoreHeader({ scores }: { scores: DuelScores }) {
   );
   return (
     <div
-      className="flex items-center justify-center gap-6 px-4 py-2 shrink-0"
+      className="grid grid-cols-3 items-center px-4 py-2 shrink-0 gap-2"
       style={{
         background: "var(--accent-muted)",
         borderBottom: "2px solid var(--accent)",
       }}
     >
       <Cell label="SELL" value={scores.selling_score} color="var(--accent)" />
-      <span style={{ width: 2, height: 14, background: "var(--accent)" }} />
       <Cell label="ACT" value={scores.acting_score} color="var(--text-primary)" />
-      <span style={{ width: 2, height: 14, background: "var(--accent)" }} />
       <Cell label="LEGAL" value={scores.legal_accuracy} color="var(--success)" />
     </div>
   );
@@ -455,6 +565,8 @@ export function DuelChat({
   scores,
   selfTier,
   opponentTier,
+  deliveredIds,
+  autoFocus = false,
 }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -465,7 +577,11 @@ export function DuelChat({
     [messages],
   );
 
-  // ID последнего входящего (от соперника) сообщения — для typewriter.
+  const deliveredSet = useMemo(
+    () => new Set(deliveredIds ?? []),
+    [deliveredIds],
+  );
+
   const latestIncomingId = useMemo(() => {
     for (let i = sanitizedMessages.length - 1; i >= 0; i -= 1) {
       const m = sanitizedMessages[i];
@@ -474,10 +590,15 @@ export function DuelChat({
     return null;
   }, [sanitizedMessages, myRole]);
 
-  // Auto-scroll to latest message
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (autoFocus && inputRef.current && !disabled) {
+      inputRef.current.focus();
+    }
+  }, [autoFocus, disabled]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -500,7 +621,6 @@ export function DuelChat({
         boxShadow: "4px 4px 0 0 var(--accent), 0 0 24px var(--accent-glow)",
       }}
     >
-      {/* ── Pixel Title Bar (заменяет macOS terminal) ─────── */}
       <div
         className="flex items-center justify-between px-4 py-2.5 shrink-0"
         style={{
@@ -512,7 +632,7 @@ export function DuelChat({
           className="font-pixel"
           style={{
             color: "var(--text-primary)",
-            fontSize: 13,
+            fontSize: 15,
             letterSpacing: "0.18em",
             textTransform: "uppercase",
           }}
@@ -522,10 +642,8 @@ export function DuelChat({
         <PixelStatusChip status={opponentStatus} />
       </div>
 
-      {/* ── Score Overlay (pixel) ─────────────────────────── */}
       {scores && <ScoreHeader scores={scores} />}
 
-      {/* ── Messages Area ─────────────────────────────────── */}
       <div
         role="log"
         aria-live="polite"
@@ -544,7 +662,6 @@ export function DuelChat({
                 index > 0 ? sanitizedMessages[index - 1]?.round : null;
               return (
                 <div key={msg.id}>
-                  {/* Round separator — пиксельный */}
                   {(index === 0 || previousRound !== msg.round) && (
                     <div className="flex items-center gap-3 my-4">
                       <div
@@ -563,8 +680,8 @@ export function DuelChat({
                           outline: "2px solid var(--accent)",
                           outlineOffset: -2,
                           boxShadow: "2px 2px 0 0 var(--accent)",
-                          padding: "2px 10px",
-                          fontSize: 11,
+                          padding: "3px 12px",
+                          fontSize: 14,
                           letterSpacing: "0.18em",
                           textTransform: "uppercase",
                         }}
@@ -588,13 +705,14 @@ export function DuelChat({
                     selfTier={selfTier}
                     opponentTier={opponentTier}
                     isLatestIncoming={msg.id === latestIncomingId}
+                    isDelivered={deliveredSet.has(msg.id)}
                   />
                 </div>
               );
             })}
           </AnimatePresence>
 
-          <AnimatePresence>
+          <AnimatePresence mode="wait">
             {opponentStatus === "typing" && (
               <TypingBubble tier={opponentTier} />
             )}
@@ -603,7 +721,6 @@ export function DuelChat({
         <div ref={endRef} />
       </div>
 
-      {/* ── Pixel Input Area (заменяет $-prompt) ──────────── */}
       <div
         className="shrink-0"
         style={{
@@ -643,7 +760,7 @@ export function DuelChat({
                 borderRadius: 0,
                 padding: "10px 12px",
                 fontFamily: "var(--font-geist-sans), sans-serif",
-                fontSize: 14,
+                fontSize: 15,
                 lineHeight: 1.4,
                 boxShadow: isFocused
                   ? "2px 2px 0 0 var(--accent)"
@@ -653,7 +770,6 @@ export function DuelChat({
             />
           </div>
 
-          {/* Pixel Send Button (соответствует .ui-btn--primary паттерну) */}
           <motion.button
             onClick={onSend}
             disabled={sendDisabled}
@@ -675,28 +791,19 @@ export function DuelChat({
             whileHover={sendDisabled ? {} : { x: -1, y: -1 }}
             whileTap={sendDisabled ? {} : { x: 2, y: 2, boxShadow: "none" }}
           >
-            <Send size={18} />
+            <Send size={20} />
           </motion.button>
         </div>
 
-        {/* Подсказка + счётчик */}
-        {(charCount > 0 || isFocused) && (
-          <div className="px-4 pb-2 flex items-center justify-between">
-            <span
-              className="font-pixel"
-              style={{
-                color: "var(--text-muted)",
-                fontSize: 11,
-                letterSpacing: "0.12em",
-              }}
-            >
-              {isFocused ? "ENTER — ОТПРАВИТЬ · SHIFT+ENTER — НОВАЯ СТРОКА" : ""}
-            </span>
+        {/* Char-counter — только когда есть текст. Подсказка про Enter удалена
+            (по запросу: «убрал тупые слова»). Длина важна, hint про Enter — нет. */}
+        {charCount > 0 && (
+          <div className="px-4 pb-2 flex items-center justify-end">
             <span
               className="font-pixel"
               style={{
                 color: charWarning ? "var(--danger)" : "var(--text-muted)",
-                fontSize: 11,
+                fontSize: 13,
                 letterSpacing: "0.08em",
               }}
             >
