@@ -79,6 +79,13 @@ services:
       CALL_HUMANIZED_V2: "1"
       CALL_HUMANIZED_V2_AUTO_OPENER: "1"
       CALL_HUMANIZED_V2_SCRUB_MODE: warn
+      # P0 (2026-04-29) Call Arc — decouple AI from manager script (PR #101).
+      # Two-axis architecture: AI gets per-call role (CallArcStep), manager
+      # sees stage tracker untouched. StageTracker keeps emitting stage.update
+      # for /results scoring and the script panel — only AI prompt path
+      # changes. Roll back by flipping CALL_ARC_V1 to "0" + restart api.
+      CALL_ARC_V1: "1"
+      CALL_ARC_INJECT_REALITY: "1"
     # Don't expose API port directly — use nginx
     ports: !reset []
     # Graceful shutdown: gunicorn --graceful-timeout 30 + margin
