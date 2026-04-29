@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 MONOLOGUE_THRESHOLD = 200          # chars in a single manager message
 MONOLOGUE_THRESHOLD_ALERT = 350    # chars → alert severity
 
-NO_QUESTION_WINDOW_S = 60          # seconds without an open-ended question
+NO_QUESTION_WINDOW_S = 12          # seconds without an open-ended question
 NO_QUESTION_MIN_TURNS = 3          # don't fire on turn 1 — give a beat
 
 EARLY_PRICING_STAGE_FLOOR = 4      # presentation; below this is "early"
