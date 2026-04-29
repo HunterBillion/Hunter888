@@ -123,12 +123,28 @@ _PII_PATTERNS = [
     r"8[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}",
     # Email
     r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b",
-    # Passport (RU format: 4 digits space 6 digits)
-    r"\b\d{4}\s?\d{6}\b",
+    # Passport (RU format: 4 digits space 6 digits — anchored at boundaries)
+    r"\b\d{4}\s\d{6}\b",
     # SNILS
     r"\b\d{3}[\s\-]?\d{3}[\s\-]?\d{3}[\s\-]?\d{2}\b",
-    # INN (10 or 12 digits)
+    # INN (10 or 12 digits, with or without "ИНН" prefix)
     r"\bИНН[\s:]*\d{10,12}\b",
+    r"\b\d{10}\b(?=\D|$)",  # bare 10-digit (corporate INN)
+    r"\b\d{12}\b(?=\D|$)",  # bare 12-digit (individual INN)
+    # TZ-5 §4 — Russian banking/legal identifiers in training materials
+    # OGRN — corporate state registration (13 digits)
+    r"\b\d{13}\b(?=\D|$)",
+    # OGRNIP — individual entrepreneur (15 digits)
+    r"\b\d{15}\b(?=\D|$)",
+    # BIK — bank routing (9 digits)
+    r"\bБИК[\s:]*\d{9}\b",
+    # Bank account / р/с (20 digits)
+    r"\b(?:р/с|р\.с\.|расчётный счёт|расчетный счёт)[\s:]*\d{20}\b",
+    r"\b\d{20}\b(?=\D|$)",
+    # Card numbers (Luhn-shaped 13-19 digits with optional spaces)
+    r"\b(?:\d[\s\-]?){13,19}\b",
+    # Vehicle plates (А000АА00 / А000АА000 — Russian)
+    r"\b[АВЕКМНОРСТУХAVEKMHOPCTYX]\d{3}[АВЕКМНОРСТУХAVEKMHOPCTYX]{2}\d{2,3}\b",
 ]
 
 _pii_compiled = [re.compile(p, re.UNICODE) for p in _PII_PATTERNS]
@@ -213,11 +229,47 @@ def filter_user_input(text: str) -> tuple[str, list[str]]:
 
 
 def strip_pii(text: str) -> str:
-    """Remove PII patterns from text, returning cleaned version."""
-    cleaned = _safe_truncate(text)
-    for pattern in _pii_compiled:
-        cleaned = pattern.sub("[ДАННЫЕ СКРЫТЫ]", cleaned)
-    return cleaned
+    """Remove PII patterns from text, returning cleaned version.
+
+    TZ-5 §4 fix: short inputs (≤ MAX_REGEX_INPUT_LENGTH) are scrubbed in
+    one pass; longer inputs (e.g. parsed .docx with thousands of lines)
+    are scrubbed in overlapping windows so PII near a chunk boundary
+    isn't missed. Without this, the original 5KB-truncate behaviour
+    leaked phone numbers / passport fragments to the LLM and to the
+    `scenario_drafts.source_text` JSONB column from any non-trivial
+    training material upload.
+    """
+    if not text:
+        return text
+    if len(text) <= MAX_REGEX_INPUT_LENGTH:
+        cleaned = text
+        for pattern in _pii_compiled:
+            cleaned = pattern.sub("[ДАННЫЕ СКРЫТЫ]", cleaned)
+        return cleaned
+    # Chunked scrub: window stride is MAX_REGEX_INPUT_LENGTH minus a
+    # 200-char overlap so a phone number split across the seam still
+    # matches in at least one window. Each chunk is regex'd in isolation
+    # (bounded ReDoS exposure stays MAX_REGEX_INPUT_LENGTH per call).
+    overlap = 200
+    stride = MAX_REGEX_INPUT_LENGTH - overlap
+    cleaned_parts: list[str] = []
+    start = 0
+    while start < len(text):
+        end = min(start + MAX_REGEX_INPUT_LENGTH, len(text))
+        chunk = text[start:end]
+        for pattern in _pii_compiled:
+            chunk = pattern.sub("[ДАННЫЕ СКРЫТЫ]", chunk)
+        if start == 0:
+            cleaned_parts.append(chunk)
+        else:
+            # Drop the leading `overlap` chars — they were already covered
+            # by the previous window's tail (and may now contain partially-
+            # scrubbed tokens; the previous window's scrub is authoritative).
+            cleaned_parts.append(chunk[overlap:])
+        if end >= len(text):
+            break
+        start += stride
+    return "".join(cleaned_parts)
 
 
 def _sanitize_rag_field(text: str, field_name: str, chunk_id: str = "") -> tuple[str, list[str]]:

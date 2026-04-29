@@ -33,7 +33,17 @@ import uuid
 from datetime import datetime, timezone
 
 from app.core.rate_limit import limiter
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -795,3 +805,741 @@ async def delete_chunk(
     await db.delete(chunk)
     await db.commit()
     return {"message": "Chunk deleted"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TZ-5 — INPUT FUNNEL: training material → ScenarioDraft → ScenarioTemplate
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Three endpoints make up the import flow that the FE
+# /dashboard/methodology/scenarios/import surface consumes:
+#
+#   POST   /scenarios/import           — upload bytes, run extractor,
+#                                         persist ScenarioDraft.
+#   GET    /scenarios/drafts           — list drafts (with optional
+#                                         status filter).
+#   GET    /scenarios/drafts/{id}      — fetch one draft (full payload).
+#   PUT    /scenarios/drafts/{id}      — ROP edits the structured payload
+#                                         in-place; status flips to
+#                                         'edited'.
+#   POST   /scenarios/drafts/{id}/create-scenario — convert draft to
+#                                         ScenarioTemplate + v1 (status=
+#                                         draft, NOT auto-published).
+#   POST   /scenarios/drafts/{id}/discard         — terminal discard.
+#
+# Auth: every endpoint sits behind ``_require_methodologist`` (rop +
+# admin). Rate limits are deliberately low because the import flow is
+# manual, not bulk.
+
+_LOW_CONFIDENCE_THRESHOLD = 0.6  # TZ-5 §4 invariant
+
+
+def _draft_to_response(
+    draft, *, attachment_filename: str | None = None, include_raw: bool = False
+) -> dict:  # noqa: D401
+    return _build_draft_response(draft, attachment_filename=attachment_filename, include_raw=include_raw)
+
+
+def _build_draft_response(
+    draft, *, attachment_filename: str | None = None, include_raw: bool = False
+) -> dict:
+    """Serialize a ``ScenarioDraft`` row for the API.
+
+    Implements TZ-5 §4 invariant: when ``confidence < 0.6`` the structured
+    payload is hidden (``extracted_visible=False``) and the FE falls back
+    to showing ``source_text`` only.
+
+    PR-1.1 audit fix — ``extracted_raw`` (the unfiltered LLM output that
+    may contain hallucinated PII fragments the second-pass scrub didn't
+    catch) is now ONLY included when ``include_raw=True``. The list
+    endpoint omits it; the detail endpoint accepts ``?include_raw=1``.
+    Without this gate, low-confidence drafts could leak hallucinated
+    phone-number-shaped strings to any FE consumer that bypassed the
+    "show anyway" toggle.
+    """
+    payload = draft.extracted or {}
+    visible = float(draft.confidence or 0.0) >= _LOW_CONFIDENCE_THRESHOLD
+    response: dict = {
+        "id": str(draft.id),
+        "attachment_id": str(draft.attachment_id),
+        "attachment_filename": attachment_filename,
+        # PR-2 multi-route fields
+        "route_type": getattr(draft, "route_type", "scenario"),
+        "target_id": str(draft.target_id) if getattr(draft, "target_id", None) else None,
+        "scenario_template_id": (
+            str(draft.scenario_template_id) if draft.scenario_template_id else None
+        ),
+        "status": draft.status,
+        "confidence": float(draft.confidence or 0.0),
+        "original_confidence": (
+            float(draft.original_confidence)
+            if getattr(draft, "original_confidence", None) is not None
+            else None
+        ),
+        "extracted_visible": visible,
+        "extracted": payload if visible else None,
+        # Auth-gated download URL (replaces direct StaticFiles access).
+        "download_url": f"/api/rop/scenarios/drafts/{draft.id}/download",
+        "source_text": draft.source_text,
+        "error_message": draft.error_message,
+        "created_at": draft.created_at.isoformat() if draft.created_at else None,
+        "updated_at": draft.updated_at.isoformat() if draft.updated_at else None,
+    }
+    if include_raw:
+        response["extracted_raw"] = payload
+    return response
+
+
+@router.post("/scenarios/import", status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
+async def import_scenario_material(
+    request: Request,
+    file: UploadFile = File(...),
+    consent_152fz: bool = Form(False),
+    forced_route_type: str | None = Form(None),
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a training material and produce a ScenarioDraft.
+
+    Body: ``multipart/form-data`` with ``file`` and ``consent_152fz``.
+
+    Flow (TZ-5 §3.2):
+      1. Validate consent box (152-FZ acceptance).
+      2. Validate format (.pdf/.docx/.txt/.md/.pptx) + size (≤ 50 MB).
+      3. ``ingest_training_material`` persists the Attachment row.
+      4. ``mark_classified(document_type='training_material')`` flips
+         ``classification_status`` from ``classification_pending`` to
+         ``classified``. (No real classifier worker is invoked — the
+         endpoint knows the document type by virtue of being the import
+         endpoint.)
+      5. ``run_extraction`` parses the bytes, scrubs PII, runs the LLM
+         pipeline, persists the ScenarioDraft row, and transitions the
+         attachment through ``scenario_draft_extracting → scenario_draft_ready``.
+
+    Response: serialized draft (with confidence-gated payload).
+    """
+    from app.services.attachment_pipeline import (
+        SOURCE_SCENARIO_IMPORT,
+        ingest_training_material,
+        mark_classified,
+    )
+    from app.services.attachment_storage import (
+        MAX_TRAINING_MATERIAL_BYTES,
+        TRAINING_MATERIAL_EXTENSIONS,
+        UnsupportedAttachmentType,
+    )
+    from app.services.scenario_extractor import run_extraction
+
+    if not consent_152fz:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "scenario_import_consent_required",
+                "message": (
+                    "Подтвердите согласие на обработку обучающего материала "
+                    "(152-ФЗ): загружаемые данные не должны содержать "
+                    "несогласованной персональной информации клиентов."
+                ),
+            },
+        )
+
+    # Read up to limit+1 so we can distinguish "exact limit" from "over".
+    data = await file.read(MAX_TRAINING_MATERIAL_BYTES + 1)
+    if not data:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+    if len(data) > MAX_TRAINING_MATERIAL_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                "Файл больше "
+                f"{MAX_TRAINING_MATERIAL_BYTES // (1024 * 1024)} МБ — "
+                "разделите материал на части."
+            ),
+        )
+
+    try:
+        attachment = await ingest_training_material(
+            db,
+            uploaded_by=user.id,
+            raw_bytes=data,
+            raw_filename=file.filename,
+            content_type=file.content_type,
+            source=SOURCE_SCENARIO_IMPORT,
+            allowed_extensions=TRAINING_MATERIAL_EXTENSIONS,
+        )
+    except UnsupportedAttachmentType as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+
+    # Manual classification flip — the import endpoint knows the type by
+    # construction, so we don't wait for the async classifier worker.
+    await mark_classified(
+        db,
+        attachment=attachment,
+        document_type="training_material",
+        actor_id=user.id,
+        source=SOURCE_SCENARIO_IMPORT,
+    )
+
+    # PR-2: validate forced_route_type if caller pre-decided the branch
+    # (e.g. user clicked "Импорт" from the ScenariosEditor and KNOWS this
+    # is a scenario). When None, the classifier picks the route.
+    from app.services.scenario_extractor import ROUTE_TYPES, run_extraction
+
+    if forced_route_type is not None and forced_route_type not in ROUTE_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"forced_route_type must be one of {ROUTE_TYPES}, "
+                f"got {forced_route_type!r}"
+            ),
+        )
+
+    draft = await run_extraction(
+        db,
+        attachment=attachment,
+        raw_bytes=data,
+        actor_id=user.id,
+        forced_route_type=forced_route_type,
+    )
+    await db.commit()
+
+    response = _draft_to_response(draft, attachment_filename=attachment.filename)
+    response["message"] = (
+        "Черновик создан"
+        if draft.status == "ready" and float(draft.confidence) >= _LOW_CONFIDENCE_THRESHOLD
+        else "Материал загружен; уверенность низкая — отредактируйте вручную."
+    )
+    return response
+
+
+# ── PR-2: unified /imports alias ─────────────────────────────────────────
+# Same handler under a route-neutral path so the FE can call POST
+# /rop/imports from the ImportWizard regardless of which panel triggered
+# it. The classifier decides the route unless forced_route_type is set.
+
+@router.post("/imports", status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
+async def unified_import(
+    request: Request,
+    file: UploadFile = File(...),
+    consent_152fz: bool = Form(False),
+    forced_route_type: str | None = Form(None),
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unified import endpoint — alias of POST /rop/scenarios/import.
+
+    The FE ImportWizard hits this path. Classifier picks scenario /
+    character / arena_knowledge unless ``forced_route_type`` is set
+    (e.g. user clicked "Импорт" from a specific panel and pre-committed
+    to that branch).
+    """
+    return await import_scenario_material(
+        request=request,
+        file=file,
+        consent_152fz=consent_152fz,
+        forced_route_type=forced_route_type,
+        user=user,
+        db=db,
+    )
+
+
+@router.get("/scenarios/drafts")
+async def list_scenario_drafts(
+    status_filter: str | None = Query(None, alias="status"),
+    route_type: str | None = Query(None),
+    only_mine: bool = Query(False),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    """List import drafts (most recent first).
+
+    Filters:
+      * ``status`` — extracting / ready / edited / converted / discarded / failed
+      * ``route_type`` — scenario / character / arena_knowledge (PR-2)
+      * ``only_mine=true`` — restrict to drafts the caller uploaded;
+        admins see everyone by default.
+    """
+    from app.models.client import Attachment
+    from app.models.scenario import ScenarioDraft
+
+    stmt = select(ScenarioDraft, Attachment.filename).join(
+        Attachment, ScenarioDraft.attachment_id == Attachment.id
+    )
+    if status_filter:
+        stmt = stmt.where(ScenarioDraft.status == status_filter)
+    if route_type:
+        stmt = stmt.where(ScenarioDraft.route_type == route_type)
+    if only_mine:
+        stmt = stmt.where(ScenarioDraft.created_by == user.id)
+    stmt = (
+        stmt.order_by(desc(ScenarioDraft.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    rows = (await db.execute(stmt)).all()
+
+    count_stmt = select(func.count(ScenarioDraft.id))
+    if status_filter:
+        count_stmt = count_stmt.where(ScenarioDraft.status == status_filter)
+    if route_type:
+        count_stmt = count_stmt.where(ScenarioDraft.route_type == route_type)
+    if only_mine:
+        count_stmt = count_stmt.where(ScenarioDraft.created_by == user.id)
+    total = (await db.execute(count_stmt)).scalar() or 0
+
+    return {
+        "drafts": [
+            _draft_to_response(draft, attachment_filename=filename)
+            for draft, filename in rows
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+@router.get("/scenarios/drafts/{draft_id}")
+async def get_scenario_draft(
+    draft_id: uuid.UUID,
+    include_raw: bool = Query(False),
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.client import Attachment
+    from app.models.scenario import ScenarioDraft
+
+    row = (
+        await db.execute(
+            select(ScenarioDraft, Attachment.filename)
+            .join(Attachment, ScenarioDraft.attachment_id == Attachment.id)
+            .where(ScenarioDraft.id == draft_id)
+        )
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    draft, filename = row
+    if include_raw:
+        # Audit-log access to the raw (potentially-PII) LLM output.
+        logger.info(
+            "scenario_draft.raw_accessed actor=%s draft=%s",
+            user.id, draft.id,
+        )
+    return _draft_to_response(
+        draft, attachment_filename=filename, include_raw=include_raw
+    )
+
+
+@router.put("/scenarios/drafts/{draft_id}")
+@limiter.limit("30/minute")
+async def update_scenario_draft(
+    request: Request,
+    draft_id: uuid.UUID,
+    data: dict,
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    """ROP edits the structured draft in-place.
+
+    Body: ``{"extracted": {...full ScenarioDraftPayload shape...}}``.
+    Optional ``confidence`` override lets ROP raise a low-confidence draft
+    after manual review.
+
+    The status transitions from ``ready`` to ``edited`` on the first edit,
+    so analytics can distinguish raw-LLM drafts from human-curated ones.
+    Subsequent edits keep ``edited``. Drafts in ``converted``/``discarded``/
+    ``failed`` cannot be edited (TZ-5 §3 invariant).
+    """
+    from app.models.scenario import ScenarioDraft
+
+    result = await db.execute(
+        select(ScenarioDraft).where(ScenarioDraft.id == draft_id)
+    )
+    draft = result.scalar_one_or_none()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if draft.status not in ("ready", "edited"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "scenario_draft_immutable",
+                "message": f"Черновик в статусе {draft.status!r} нельзя редактировать.",
+            },
+        )
+
+    extracted = data.get("extracted")
+    extracted_changed = False
+    if extracted is not None:
+        if not isinstance(extracted, dict):
+            raise HTTPException(status_code=422, detail="`extracted` must be an object")
+        draft.extracted = extracted
+        extracted_changed = True
+
+    if "confidence" in data:
+        try:
+            new_conf = float(data["confidence"])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="`confidence` must be a number")
+        if not (0.0 <= new_conf <= 1.0):
+            raise HTTPException(status_code=422, detail="`confidence` out of [0,1]")
+
+        # PR-1.1 audit fix — refuse to raise confidence above the §4 threshold
+        # without an accompanying `extracted` edit. Otherwise a ROP could
+        # flip a hallucinated draft to "high confidence" via a single PUT
+        # without curating it. Lowering or keeping below threshold is fine.
+        previous_conf = float(draft.confidence or 0.0)
+        if (
+            new_conf >= _LOW_CONFIDENCE_THRESHOLD
+            and previous_conf < _LOW_CONFIDENCE_THRESHOLD
+            and not extracted_changed
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "scenario_draft_confidence_override_requires_review",
+                    "message": (
+                        "Чтобы поднять уверенность выше "
+                        f"{_LOW_CONFIDENCE_THRESHOLD:.0%}, отредактируйте "
+                        "содержание черновика в этом же запросе."
+                    ),
+                    "previous": previous_conf,
+                    "requested": new_conf,
+                },
+            )
+
+        # Audit-log every confidence override regardless of direction so
+        # the publish path has a traceable record of "who raised confidence
+        # on this imported draft" (TZ-5 §4 compliance).
+        if new_conf != previous_conf:
+            logger.info(
+                "scenario_draft.confidence_overridden actor=%s draft=%s old=%.2f new=%.2f",
+                user.id, draft.id, previous_conf, new_conf,
+            )
+        draft.confidence = new_conf
+
+    if draft.status == "ready":
+        draft.status = "edited"
+
+    await db.commit()
+    return _draft_to_response(draft)
+
+
+@router.post("/scenarios/drafts/{draft_id}/create-scenario", status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
+async def create_scenario_from_draft(
+    request: Request,
+    draft_id: uuid.UUID,
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    """Convert a ``ScenarioDraft`` into a ``ScenarioTemplate`` + v1.
+
+    The created template lands with ``status='draft'`` per TZ-5 §3.2 step 4
+    so the runtime never sees a half-baked imported template until the
+    ROP explicitly publishes it through the existing TZ-3 flow
+    (``POST /rop/scenarios/{id}/publish``).
+
+    The draft row is marked ``converted`` and gets ``scenario_template_id``
+    pointing at the new template (1-to-1 link, enforced by the UNIQUE
+    constraint at the column level).
+    """
+    from app.models.scenario import ScenarioDraft, ScenarioTemplate
+    from app.services.scenario_extractor import (
+        ScenarioDraftPayload,
+        ScenarioStep,
+        draft_payload_to_template_fields,
+    )
+
+    result = await db.execute(
+        select(ScenarioDraft).where(ScenarioDraft.id == draft_id)
+    )
+    draft = result.scalar_one_or_none()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if draft.status not in ("ready", "edited"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "scenario_draft_not_convertible",
+                "message": (
+                    f"Черновик в статусе {draft.status!r} нельзя конвертировать. "
+                    "Допустимые статусы: ready, edited."
+                ),
+            },
+        )
+
+    raw = draft.extracted or {}
+    try:
+        payload = ScenarioDraftPayload(
+            title_suggested=raw.get("title_suggested", "Импортированный сценарий"),
+            summary=raw.get("summary", ""),
+            archetype_hint=raw.get("archetype_hint"),
+            steps=[
+                ScenarioStep(**s) if isinstance(s, dict) else s
+                for s in raw.get("steps", [])
+            ],
+            expected_objections=list(raw.get("expected_objections", [])),
+            success_criteria=list(raw.get("success_criteria", [])),
+            quotes_from_source=list(raw.get("quotes_from_source", [])),
+            confidence=float(raw.get("confidence", draft.confidence or 0.0)),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "scenario_draft_payload_invalid",
+                "message": f"Структура черновика повреждена: {exc}",
+            },
+        )
+
+    fallback_code = f"imported_{str(draft.id)[:8]}"
+    fields = draft_payload_to_template_fields(payload, fallback_code=fallback_code)
+
+    template = ScenarioTemplate(**fields)
+    db.add(template)
+    await db.flush()
+    # TZ-5 §3.2 step 4 — imported templates start in 'draft', NOT
+    # auto-published. The runtime resolver (PR C3) follows
+    # ``current_published_version_id``, so leaving it NULL keeps the
+    # template invisible to live training sessions until the ROP
+    # explicitly publishes via the existing TZ-3 publish flow.
+    version = await _create_scenario_version(db, template, user, status_value="draft")
+    template.current_published_version_id = None
+
+    draft.status = "converted"
+    draft.scenario_template_id = template.id
+
+    await db.commit()
+    return {
+        "draft_id": str(draft.id),
+        "template_id": str(template.id),
+        "version_id": str(version.id),
+        "message": "Сценарий создан как черновик. Опубликуйте через TZ-3 publish flow.",
+    }
+
+
+@router.get("/scenarios/drafts/{draft_id}/download")
+@limiter.limit("30/minute")
+async def download_training_material(
+    request: Request,
+    draft_id: uuid.UUID,
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    """Auth-gated download of the underlying training-material file.
+
+    PR-1.1 audit fix — replaces direct `/api/uploads/attachments/
+    _training_materials/{sha[:16]}_{filename}` access. The StaticFiles
+    mount now refuses that prefix; callers must come through this
+    endpoint. Authorization: caller must be the original uploader OR
+    have admin role (admins always allowed for audit/cross-ROP review).
+    """
+    from fastapi.responses import FileResponse
+
+    from app.models.client import Attachment
+    from app.models.scenario import ScenarioDraft
+
+    row = (
+        await db.execute(
+            select(ScenarioDraft, Attachment)
+            .join(Attachment, ScenarioDraft.attachment_id == Attachment.id)
+            .where(ScenarioDraft.id == draft_id)
+        )
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    draft, attachment = row
+
+    is_admin = getattr(user.role, "value", str(user.role)) == "admin"
+    if not is_admin and attachment.uploaded_by != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Доступ только владельцу материала или администратору",
+        )
+
+    if not attachment.storage_path:
+        raise HTTPException(status_code=410, detail="Файл больше недоступен")
+
+    return FileResponse(
+        path=attachment.storage_path,
+        filename=attachment.filename,
+        media_type=attachment.content_type or "application/octet-stream",
+    )
+
+
+@router.post("/scenarios/drafts/{draft_id}/discard")
+@limiter.limit("10/minute")
+async def discard_scenario_draft(
+    request: Request,
+    draft_id: uuid.UUID,
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.scenario import ScenarioDraft
+
+    result = await db.execute(
+        select(ScenarioDraft).where(ScenarioDraft.id == draft_id)
+    )
+    draft = result.scalar_one_or_none()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if draft.status == "converted":
+        raise HTTPException(
+            status_code=409,
+            detail="Сконвертированный черновик нельзя отменить — удалите шаблон через TZ-3.",
+        )
+    draft.status = "discarded"
+    await db.commit()
+    return {"id": str(draft.id), "status": "discarded"}
+
+
+# ── PR-2: unified /imports list alias + approve endpoints ───────────────
+
+
+@router.get("/imports")
+async def list_imports(
+    status_filter: str | None = Query(None, alias="status"),
+    route_type: str | None = Query(None),
+    only_mine: bool = Query(False),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unified import-history endpoint — alias of GET /scenarios/drafts.
+
+    The FE's ImportHistory component calls this from any panel. Filter
+    by route_type to scope the list to the current panel's branch.
+    """
+    return await list_scenario_drafts(
+        status_filter=status_filter,
+        route_type=route_type,
+        only_mine=only_mine,
+        page=page,
+        page_size=page_size,
+        user=user,
+        db=db,
+    )
+
+
+@router.post("/imports/{draft_id}/approve-character", status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
+async def approve_character_draft(
+    request: Request,
+    draft_id: uuid.UUID,
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    """PR-2: convert a CHARACTER-route draft into a row in
+    ``custom_characters``.
+
+    The created row is owned by the approving user (current ROP) and
+    starts with ``is_shared=False`` so it shows up in their personal
+    Constructor list. ROP can then publish-share it from the existing
+    Constructor UI if they want the team to see it.
+    """
+    from app.models.custom_character import CustomCharacter
+    from app.models.scenario import ScenarioDraft
+
+    result = await db.execute(
+        select(ScenarioDraft).where(ScenarioDraft.id == draft_id)
+    )
+    draft = result.scalar_one_or_none()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if draft.route_type != "character":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Draft route_type={draft.route_type!r} is not 'character'.",
+        )
+    if draft.status not in ("ready", "edited"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Draft status={draft.status!r} is not convertible.",
+        )
+
+    raw = draft.extracted or {}
+    character = CustomCharacter(
+        user_id=user.id,
+        name=str(raw.get("name") or "Импортированный персонаж")[:100],
+        # Sensible defaults — ROP edits in Constructor before sharing.
+        archetype=str(raw.get("archetype_hint") or "neutral")[:50],
+        profession="other",
+        lead_source="imported",
+        difficulty=5,
+        description=str(raw.get("description") or "")[:2000] or None,
+        is_shared=False,
+    )
+    db.add(character)
+    await db.flush()
+
+    draft.status = "converted"
+    draft.target_id = character.id
+    await db.commit()
+    return {
+        "draft_id": str(draft.id),
+        "character_id": str(character.id),
+        "message": "Персонаж создан в Конструкторе. Отредактируйте перед публикацией.",
+    }
+
+
+@router.post("/imports/{draft_id}/approve-arena-knowledge", status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
+async def approve_arena_knowledge_draft(
+    request: Request,
+    draft_id: uuid.UUID,
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    """PR-2: convert an ARENA_KNOWLEDGE-route draft into a row in
+    ``legal_knowledge_chunks`` with ``is_active=False`` (pending review
+    queue). The existing knowledge_review_policy moderates it before it
+    reaches live quizzes.
+    """
+    from app.models.rag import LegalKnowledgeChunk
+    from app.models.scenario import ScenarioDraft
+
+    result = await db.execute(
+        select(ScenarioDraft).where(ScenarioDraft.id == draft_id)
+    )
+    draft = result.scalar_one_or_none()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if draft.route_type != "arena_knowledge":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Draft route_type={draft.route_type!r} is not 'arena_knowledge'.",
+        )
+    if draft.status not in ("ready", "edited"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Draft status={draft.status!r} is not convertible.",
+        )
+
+    raw = draft.extracted or {}
+    chunk = LegalKnowledgeChunk(
+        category=str(raw.get("category") or "general")[:50],
+        fact_text=str(raw.get("fact_text") or "")[:2000],
+        law_article=str(raw.get("law_article") or "")[:200] or None,
+        difficulty_level=int(raw.get("difficulty_level") or 2),
+        match_keywords=list(raw.get("match_keywords") or []),
+        common_errors=list(raw.get("common_errors") or []),
+        correct_response_hint=str(raw.get("correct_response_hint") or "")[:1000],
+        tags=["imported"],
+        # Lands in the review queue, not live quizzes.
+        is_active=False,
+    )
+    db.add(chunk)
+    await db.flush()
+
+    draft.status = "converted"
+    draft.target_id = chunk.id
+    await db.commit()
+    return {
+        "draft_id": str(draft.id),
+        "chunk_id": str(chunk.id),
+        "message": "Факт добавлен в очередь review для Арены.",
+    }

@@ -337,6 +337,90 @@ async function request(path: string, options: RequestInit = {}): Promise<unknown
   return response.json();
 }
 
+async function uploadMultipart(
+  path: string,
+  buildFormData: () => FormData,
+): Promise<unknown> {
+  // Factory pattern — FormData is consumed on first fetch, so we rebuild
+  // for refresh/retry. Same auth/CSRF/retry semantics as uploadFile but
+  // accepts an arbitrary form (used by TZ-5 import: file + consent_152fz
+  // + optional forced_route_type).
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const csrfToken = getCsrfToken();
+  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(`${apiPrefix()}${path}`, {
+      method: "POST",
+      headers,
+      body: buildFormData(),
+      credentials: "include",
+    });
+  } catch {
+    throw new ApiError("Сервер недоступен. Проверьте подключение.", 0);
+  }
+
+  if (response.status === 401) {
+    const refreshed = await handleTokenRefresh();
+    if (refreshed) {
+      const newToken = getToken();
+      if (newToken) headers["Authorization"] = `Bearer ${newToken}`;
+      const newCsrf = getCsrfToken();
+      if (newCsrf) headers["X-CSRF-Token"] = newCsrf;
+      response = await fetchWithTimeout(`${apiPrefix()}${path}`, {
+        method: "POST",
+        headers,
+        body: buildFormData(),
+        credentials: "include",
+      });
+    }
+    if (response.status === 401) {
+      _authFailed = true;
+      clearTokens();
+      notifySessionExpired();
+      window.location.href = "/login";
+      throw new ApiError("Unauthorized", 401);
+    }
+  }
+
+  if (response.status === 403) {
+    const body403 = await response.json().catch(() => ({}));
+    const detail = typeof body403.detail === "string" ? body403.detail : "";
+    if (detail.toLowerCase().includes("csrf")) {
+      const refreshed = await handleTokenRefresh();
+      if (refreshed) {
+        const newCsrf = getCsrfToken();
+        if (newCsrf) headers["X-CSRF-Token"] = newCsrf;
+        const newToken = getToken();
+        if (newToken) headers["Authorization"] = `Bearer ${newToken}`;
+        response = await fetchWithTimeout(`${apiPrefix()}${path}`, {
+          method: "POST",
+          headers,
+          body: buildFormData(),
+          credentials: "include",
+        });
+      }
+    }
+  }
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const message =
+      typeof body.detail === "string"
+        ? body.detail
+        : typeof body.detail?.message === "string"
+        ? body.detail.message
+        : "Upload failed";
+    throw new ApiError(message, response.status);
+  }
+
+  return response.json();
+}
+
+
 async function uploadFile(path: string, file: File): Promise<unknown> {
   // Factory: FormData body is consumed on first fetch — must recreate for retries
   const createBody = () => {
@@ -445,4 +529,8 @@ export const api = {
     request(path, { method: "DELETE", signal: opts?.signal }) as Promise<T>,
   upload: <T = any>(path: string, file: File): Promise<T> =>
     uploadFile(path, file) as Promise<T>,
+  uploadMultipart: <T = any>(
+    path: string,
+    buildFormData: () => FormData,
+  ): Promise<T> => uploadMultipart(path, buildFormData) as Promise<T>,
 };

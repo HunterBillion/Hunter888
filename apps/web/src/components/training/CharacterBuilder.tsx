@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { logger } from "@/lib/logger";
 import { AvatarPreview } from "./AvatarPreview";
+import { ImportWizard } from "@/components/methodology/ImportWizard";
+import { ImportHistory } from "@/components/methodology/ImportHistory";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import { useGamificationStore } from "@/stores/useGamificationStore";
 // 2026-04-21: dropped Save/CheckCircle2/SkipForward — autosave replaced the
@@ -155,6 +157,8 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
     fetchGamification().catch(() => {});
   }, [fetchGamification]);
   const [step, setStep] = useState<Step>(0);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRefreshKey, setImportRefreshKey] = useState(0);
   // Step 0
   const [archetype, setArchetype] = useState<ArchetypeCode | null>(null);
   const [groupFilter, setGroupFilter] = useState<ArchetypeGroup | null>(null);
@@ -441,6 +445,24 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
 
   return (
     <div className="mt-8">
+      {/* TZ-5 PR-2 — import button + history */}
+      <div className="flex justify-end mb-4">
+        <button
+          onClick={() => setImportOpen(true)}
+          className="px-3 py-1.5 rounded-md text-xs font-medium"
+          style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+          title="Загрузить описание клиентского типажа — платформа создаст черновик персонажа."
+        >
+          📤 Импорт типажа
+        </button>
+      </div>
+      <ImportWizard
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        presetRouteType="character"
+        onApproved={() => setImportRefreshKey((k) => k + 1)}
+      />
+      <ImportHistory routeType="character" refreshKey={importRefreshKey} />
       {/* Stepper — 8 steps */}
       <div className="flex items-center justify-between mb-8 overflow-x-auto pb-2">
         {STEPS.map((s, i) => {

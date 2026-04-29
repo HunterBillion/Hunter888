@@ -129,6 +129,9 @@ ALLOWED_EVENT_TYPES: frozenset[str] = frozenset(
         "attachment.classified",
         "attachment.verified",
         "attachment.rejected",
+        # ── TZ-5 §3 input funnel (scenario_extractor producers) ───────────
+        "attachment.scenario_draft_extracting",
+        "attachment.scenario_draft_ready",
         # ── TZ-4 §6.2/§8 knowledge review (D4 producers) ──────────────────
         "knowledge_item.created",
         "knowledge_item.updated",

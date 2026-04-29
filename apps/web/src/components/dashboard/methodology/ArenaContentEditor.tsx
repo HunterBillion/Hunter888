@@ -13,6 +13,8 @@ import { motion } from "framer-motion";
 import { Database, Plus, Trash2, Loader2, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { ImportWizard } from "@/components/methodology/ImportWizard";
+import { ImportHistory } from "@/components/methodology/ImportHistory";
 
 interface Chunk {
   id: string;
@@ -38,6 +40,8 @@ export function ArenaContentEditor() {
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRefreshKey, setImportRefreshKey] = useState(0);
 
   const [form, setForm] = useState({
     title: "", content: "", category: "eligibility",
@@ -99,14 +103,31 @@ export function ArenaContentEditor() {
             {total} чанков ФЗ-127
           </span>
         </div>
-        <motion.button
-          onClick={() => setShowCreate(!showCreate)}
-          className="btn-neon flex items-center gap-2 text-xs"
-          whileTap={{ scale: 0.97 }}
-        >
-          <Plus size={14} /> Новый чанк
-        </motion.button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium"
+            style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+            title="Загрузить статью или подборку фактов — платформа добавит в очередь review."
+          >
+            📤 Импорт
+          </button>
+          <motion.button
+            onClick={() => setShowCreate(!showCreate)}
+            className="btn-neon flex items-center gap-2 text-xs"
+            whileTap={{ scale: 0.97 }}
+          >
+            <Plus size={14} /> Новый чанк
+          </motion.button>
+        </div>
       </div>
+      <ImportWizard
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        presetRouteType="arena_knowledge"
+        onApproved={() => setImportRefreshKey((k) => k + 1)}
+      />
+      <ImportHistory routeType="arena_knowledge" refreshKey={importRefreshKey} />
 
       <div className="flex gap-2 flex-wrap">
         <select

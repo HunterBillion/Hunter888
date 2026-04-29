@@ -59,6 +59,8 @@ import { api, ApiError } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
+import { ImportWizard } from "@/components/methodology/ImportWizard";
+import { ImportHistory } from "@/components/methodology/ImportHistory";
 
 // ── Types matching the rop.py response shape ───────────────────────────────
 
@@ -113,6 +115,8 @@ interface PublishValidationDetail {
 
 export function ScenariosEditor() {
   const [items, setItems] = useState<ScenarioListItem[]>([]);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRefreshKey, setImportRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -246,16 +250,36 @@ export function ScenariosEditor() {
             footer="Совет: после Publish обновите страницу у менеджеров — runtime-резолвер выберет новую версию для НОВЫХ сессий, текущие закончатся на старой."
           />
         </div>
-        <button
-          onClick={fetchList}
-          disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50"
-          style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
-        >
-          <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
-          Обновить
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium"
+            style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+            title="Загрузить памятку или скрипт — платформа предложит черновик сценария."
+          >
+            📤 Импорт
+          </button>
+          <button
+            onClick={fetchList}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50"
+            style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+          >
+            <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
+            Обновить
+          </button>
+        </div>
       </div>
+      <ImportWizard
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        presetRouteType="scenario"
+        onApproved={() => {
+          setImportRefreshKey((k) => k + 1);
+          fetchList();
+        }}
+      />
+      <ImportHistory routeType="scenario" refreshKey={importRefreshKey} />
 
       {error && (
         <div

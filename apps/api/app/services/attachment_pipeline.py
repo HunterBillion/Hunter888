@@ -127,6 +127,12 @@ SOURCE_AV_WORKER = "worker.av"
 SOURCE_OCR_WORKER = "worker.ocr"
 SOURCE_CLASSIFIER_WORKER = "worker.classifier"
 SOURCE_VERIFICATION_REVIEW = "review.verification"
+# TZ-5 §3 — scenario_extractor service writes through these helpers when
+# transitioning training_material attachments through the post-classified
+# branch. Distinct source label so the audit trail clearly attributes the
+# transition to the import funnel rather than the generic classifier.
+SOURCE_SCENARIO_EXTRACTOR = "service.scenario_extractor"
+SOURCE_SCENARIO_IMPORT = "api.scenarios.import"
 
 
 # ── Public types ─────────────────────────────────────────────────────────
@@ -640,6 +646,138 @@ async def _emit_linkage_event(
 # under TZ-4 §13.2.1 review.
 
 
+async def ingest_training_material(
+    db: AsyncSession,
+    *,
+    uploaded_by: uuid.UUID,
+    raw_bytes: bytes,
+    raw_filename: str | None,
+    content_type: str | None,
+    source: str = SOURCE_SCENARIO_IMPORT,
+    extra_metadata: dict[str, Any] | None = None,
+    allowed_extensions: frozenset[str] | None = None,
+) -> Attachment:
+    """TZ-5 §3 — sibling of :func:`ingest_upload` for ROP-uploaded
+    training materials.
+
+    Differences from :func:`ingest_upload`:
+      * No ``client``: training materials live outside the CRM domain.
+        ``client_id`` and ``lead_client_id`` are both NULL on the row;
+        ``call_attempt_id`` / ``session_id`` / ``message_id`` are also
+        unused.
+      * No interaction event: there's no CRM timeline to project onto.
+      * Document type is forced to ``training_material`` (the API endpoint
+        signals intent — we don't infer this from the extension because
+        the same .pdf may be a passport scan in another flow).
+      * Larger size budget (caller validates with
+        ``MAX_TRAINING_MATERIAL_BYTES``); this helper itself doesn't gate.
+
+    The dedup contract still applies: the same bytes uploaded twice by
+    different ROPs return the same ``original`` row + a duplicate marker
+    via the partial UNIQUE index, but only when both share the same
+    ``lead_client_id`` (NULL for training materials, so dedup is per
+    ``(NULL, sha256)``). PostgreSQL treats NULLs as distinct in UNIQUE
+    indexes by default — so cross-ROP dedup is not enforced for training
+    materials. That's intentional: we don't want one ROP's "delete this
+    course material" to surface another ROP's still-needed copy.
+
+    Returns the persisted Attachment row in state
+    ``status=received, ocr_status=*, classification_status=classification_pending``
+    with ``document_type='training_material'``. The caller is responsible
+    for calling :func:`mark_classified` (with ``document_type='training_material'``)
+    before transitioning into the scenario_extractor branch via
+    :func:`mark_scenario_draft_extracting`.
+    """
+    if not raw_bytes:
+        raise ValueError("training material payload is empty")
+
+    from app.services.attachment_storage import (
+        ALLOWED_EXTENSIONS,
+        StoredAttachment,
+        ocr_status_for,
+        store_attachment_bytes,
+    )
+
+    # Storage layer handles extension whitelist + safe filename + sha256.
+    # Training-material API passes the narrower ``TRAINING_MATERIAL_EXTENSIONS``
+    # set so the rejection error points at the correct allowlist.
+    #
+    # Audit fix (PR-1.1): bucket per-uploader so a guessed URL under the
+    # shared bucket directory cannot cross-reference another ROP's
+    # uploads. Reads are also gated by the auth'd /rop/scenarios/drafts/
+    # {id}/download endpoint — the generic StaticFiles mount returns
+    # 403 for `_training_materials/...` paths now.
+    stored: StoredAttachment = store_attachment_bytes(
+        client_id=f"_training_materials/{uploaded_by}",
+        filename=raw_filename,
+        data=raw_bytes,
+        allowed_extensions=allowed_extensions or ALLOWED_EXTENSIONS,
+    )
+    document_type = "training_material"
+
+    base_metadata: dict[str, Any] = {
+        "source": source,
+        "original_filename": raw_filename,
+        "kind": "training_material",
+    }
+    if extra_metadata:
+        base_metadata.update(extra_metadata)
+
+    attachment_id = uuid.uuid4()
+    upload_event = await emit_domain_event(
+        db,
+        # Training materials have no lead_client; the canonical event log
+        # accepts NULL here (events without a lead_client_id still anchor
+        # via aggregate_id=attachment_id).
+        lead_client_id=None,
+        event_type="attachment.uploaded",
+        actor_type="user",
+        actor_id=uploaded_by,
+        source=source,
+        aggregate_type="attachment",
+        aggregate_id=attachment_id,
+        payload={
+            "attachment_id": str(attachment_id),
+            "sha256": stored.sha256,
+            "filename": stored.filename,
+            "document_type": document_type,
+            "file_size": stored.file_size,
+            "kind": "training_material",
+            "status": "received",
+        },
+        idempotency_key=f"attachment.uploaded.training_material:{attachment_id}",
+    )
+    domain_event_id = upload_event.id if is_event_persisted(upload_event) else None
+
+    attachment = Attachment(
+        id=attachment_id,
+        uploaded_by=uploaded_by,
+        # No CRM bindings — training materials are team assets.
+        client_id=None,
+        lead_client_id=None,
+        session_id=None,
+        message_id=None,
+        call_attempt_id=None,
+        filename=stored.filename,
+        content_type=content_type,
+        file_size=stored.file_size,
+        sha256=stored.sha256,
+        storage_path=stored.storage_path,
+        public_url=stored.public_url,
+        document_type=document_type,
+        status="received",
+        ocr_status=ocr_status_for(document_type),
+        classification_status="classification_pending",
+        verification_status="unverified",
+        duplicate_of=None,
+        domain_event_id=domain_event_id,
+        metadata_={**base_metadata, "domain_event_id": str(domain_event_id) if domain_event_id else None},
+    )
+    db.add(attachment)
+    await db.flush()
+    return attachment
+
+
 async def mark_av_passed(
     db: AsyncSession,
     *,
@@ -803,6 +941,103 @@ async def mark_verified(
     )
 
 
+async def mark_scenario_draft_extracting(
+    db: AsyncSession,
+    *,
+    attachment: Attachment,
+    actor_id: uuid.UUID | None = None,
+    source: str = SOURCE_SCENARIO_EXTRACTOR,
+) -> DomainEvent:
+    """TZ-5 §3 — scenario_extractor picked up a ``training_material`` row
+    for parsing. Transitions ``classification_status`` from ``classified``
+    to ``scenario_draft_extracting`` so concurrent extractor workers can
+    see the row is taken (a second worker SELECT-WHERE-classified misses
+    it). The terminal ``classified`` token is preserved on
+    ``document_type`` so downstream readers still see the row classified
+    as a training material.
+
+    Asymmetry note: only attachments with ``document_type='training_material'``
+    are valid for this transition. The helper enforces it -- a misrouted
+    row (e.g. a passport scan that the classifier mis-typed) would
+    otherwise sit in ``scenario_draft_extracting`` forever because no
+    extractor would touch it.
+    """
+    if attachment.document_type != "training_material":
+        raise ValueError(
+            "mark_scenario_draft_extracting requires "
+            f"document_type='training_material', got "
+            f"{attachment.document_type!r}"
+        )
+    if attachment.classification_status != "classified":
+        raise ValueError(
+            "mark_scenario_draft_extracting requires "
+            f"classification_status='classified', got "
+            f"{attachment.classification_status!r}"
+        )
+    attachment.classification_status = "scenario_draft_extracting"
+    payload: dict[str, Any] = {"attachment_id": str(attachment.id)}
+    return await emit_domain_event(
+        db,
+        lead_client_id=attachment.lead_client_id,
+        event_type="attachment.scenario_draft_extracting",
+        actor_type="system" if actor_id is None else "user",
+        actor_id=actor_id,
+        source=source,
+        aggregate_type="attachment",
+        aggregate_id=attachment.id,
+        payload=payload,
+        idempotency_key=f"attachment.scenario_draft_extracting:{attachment.id}",
+    )
+
+
+async def mark_scenario_draft_ready(
+    db: AsyncSession,
+    *,
+    attachment: Attachment,
+    draft_id: uuid.UUID,
+    confidence: float,
+    actor_id: uuid.UUID | None = None,
+    source: str = SOURCE_SCENARIO_EXTRACTOR,
+) -> DomainEvent:
+    """TZ-5 §3 — extractor finished and persisted a ``ScenarioDraft`` row.
+    Transitions ``classification_status`` to ``scenario_draft_ready``;
+    the FE polls on this token to know when to stop showing the spinner
+    and switch to the editable preview surface.
+
+    ``confidence`` is included in the event payload so downstream readers
+    (analytics, audit) can compute precision over time without reading
+    the draft row directly.
+    """
+    if attachment.classification_status != "scenario_draft_extracting":
+        raise ValueError(
+            "mark_scenario_draft_ready requires "
+            f"classification_status='scenario_draft_extracting', got "
+            f"{attachment.classification_status!r}"
+        )
+    if not (0.0 <= confidence <= 1.0):
+        raise ValueError(
+            f"confidence must be in [0.0, 1.0], got {confidence!r}"
+        )
+    attachment.classification_status = "scenario_draft_ready"
+    payload: dict[str, Any] = {
+        "attachment_id": str(attachment.id),
+        "draft_id": str(draft_id),
+        "confidence": confidence,
+    }
+    return await emit_domain_event(
+        db,
+        lead_client_id=attachment.lead_client_id,
+        event_type="attachment.scenario_draft_ready",
+        actor_type="system" if actor_id is None else "user",
+        actor_id=actor_id,
+        source=source,
+        aggregate_type="attachment",
+        aggregate_id=attachment.id,
+        payload=payload,
+        idempotency_key=f"attachment.scenario_draft_ready:{attachment.id}",
+    )
+
+
 async def mark_rejected(
     db: AsyncSession,
     *,
@@ -840,13 +1075,18 @@ __all__ = [
     "SOURCE_CLASSIFIER_WORKER",
     "SOURCE_CRM_UPLOAD",
     "SOURCE_OCR_WORKER",
+    "SOURCE_SCENARIO_EXTRACTOR",
+    "SOURCE_SCENARIO_IMPORT",
     "SOURCE_TRAINING_UPLOAD",
     "SOURCE_VERIFICATION_REVIEW",
+    "ingest_training_material",
     "ingest_upload",
     "mark_av_passed",
     "mark_av_rejected",
     "mark_classified",
     "mark_ocr_completed",
     "mark_rejected",
+    "mark_scenario_draft_extracting",
+    "mark_scenario_draft_ready",
     "mark_verified",
 ]

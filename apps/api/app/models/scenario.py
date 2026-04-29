@@ -360,6 +360,115 @@ class ScenarioVersion(Base):
     )
 
 
+class ScenarioDraft(Base):
+    """TZ-5 — extracted scenario card from an uploaded training material.
+
+    Lifecycle (TZ-5 §3 / §3.2)::
+
+        attachment.classification_status = scenario_draft_extracting
+        scenario_drafts row inserted with status='extracting'
+                  │
+                  ▼ (LLM extractor finishes, scrubs PII, writes draft)
+        scenario_drafts.status = 'ready'        confidence ≥ 0.6
+                                  or 'failed'   if pipeline errored
+        attachment.classification_status = scenario_draft_ready
+                  │
+                  ▼ (ROP edits draft in /scenarios/import surface)
+        scenario_drafts.status = 'edited'
+                  │
+                  ▼ (ROP clicks "Create scenario")
+        scenario_template + scenario_version created (TZ-3 lifecycle)
+        scenario_drafts.scenario_template_id set; status='converted'
+                  │
+                  └── alternative: ROP discards → status='discarded'
+
+    The draft row is a holding tank: it never touches runtime session
+    selection. Only after conversion does the produced ScenarioTemplate
+    enter the normal TZ-3 publish flow (which keeps "imported" and
+    "hand-built" templates indistinguishable, per TZ-5 §5 acceptance
+    criterion 4).
+    """
+
+    __tablename__ = "scenario_drafts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=sa.text("gen_random_uuid()"),
+    )
+    attachment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("attachments.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    scenario_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scenario_templates.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+    )
+
+    # Lifecycle: extracting → ready → edited → converted | discarded
+    # plus terminal 'failed' for unrecoverable extractor errors.
+    status: Mapped[str] = mapped_column(
+        String(30), nullable=False, server_default="extracting"
+    )
+
+    # PR-2 multi-route discriminator: scenario / character / arena_knowledge.
+    # Classifier suggests, ROP can override before approve. Targets:
+    #   scenario        → ScenarioTemplate
+    #   character       → custom_characters row
+    #   arena_knowledge → LegalKnowledgeChunk
+    route_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, server_default="scenario"
+    )
+    # Polymorphic pointer — target table depends on route_type. App-layer
+    # validation; no SQL FK because the target table varies.
+    target_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
+    # Draft dataclass payload (shape varies by route_type — see
+    # scenario_extractor for per-route schemas).
+    extracted: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
+    confidence: Mapped[float] = mapped_column(
+        Float, nullable=False, server_default="0.0"
+    )
+    # Audit invariant (PR-1.1) — what the LLM originally produced before
+    # any ROP override. Detects post-hoc confidence raises on hallucinated
+    # drafts.
+    original_confidence: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    source_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("ix_scenario_drafts_status", "status"),
+        Index("ix_scenario_drafts_created_by", "created_by"),
+        Index("ix_scenario_drafts_route_type", "route_type"),
+    )
+
+
 class Scenario(Base):
     """Original Scenario model — kept for backward compatibility.
 
