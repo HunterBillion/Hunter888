@@ -648,6 +648,15 @@ export function WaveScene() {
             e.preventDefault();
             setContextLost(true);
           });
+          // User-first Bug 3 (2026-04-29): listen for restoration too.
+          // Pre-fix the contextLost state was a one-way trip: once the
+          // GPU reclaimed the context (page navigation, tab visibility,
+          // power saving), WaveScene stayed as the fallback gradient
+          // forever even when the user returned. With a restored handler
+          // R3F is told to re-init the scene the next render tick.
+          gl.domElement.addEventListener("webglcontextrestored", () => {
+            setContextLost(false);
+          });
         }}
       >
         <fog attach="fog" args={[isDark ? "#100F1A" : "#E8E4F0", 80, 160]} />
