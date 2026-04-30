@@ -56,6 +56,14 @@ class JudgeRoundScore:
     ideal_reply: str = ""            # "Иван, при долге от 500т вы можете списать всё за 6 мес через суд..."
     key_articles: list[str] = field(default_factory=list)  # ["ст. 213.3", "ст. 213.28"]
 
+    # PR F: True iff the judge fell back to the neutral 25/15/10 default
+    # because the LLM call failed (timeout / safety-block / parse error /
+    # all providers down). The caller must surface this to the player so a
+    # fake score isn't shown as real. Today the fake score is silently
+    # accepted by the FE — see ARENA_JUDGE_DEGRADED counter from PR B.
+    degraded: bool = False
+    degraded_reason: str = ""
+
 
 @dataclass
 class PlayerBreakdown:
@@ -252,6 +260,11 @@ async def judge_round(
 
     # LLM call (temperature controlled by system prompt directive for determinism)
     _judge_started = time.time()
+    # PR F: track fallback so the WS layer can emit ``judge.degraded`` and
+    # the FE can show "оценка не выполнена, применены резервные баллы"
+    # instead of accepting the neutral 25/15/10 as a real score.
+    _degraded = False
+    _degraded_reason = ""
     try:
         messages = [{"role": "user", "content": user}]
         llm_response = await generate_response(
@@ -274,11 +287,20 @@ async def judge_round(
         # Parse JSON from response
         result = _parse_judge_response(llm_response.content)
         ARENA_AI_JUDGE_LATENCY.labels(judge_type="round", status="ok").observe(time.time() - _judge_started)
+        # _parse_judge_response uses the same neutral 25/15/10 sentinel on
+        # JSON parse failure (after logging a warning). Detect it via the
+        # canonical "JSON parse error" flag the parser writes.
+        _flags_check = result.get("flags") or []
+        if isinstance(_flags_check, list) and "JSON parse error" in _flags_check:
+            _degraded = True
+            _degraded_reason = "json_parse"
 
     except Exception as e:
         logger.error("AI Judge failed: %s", e)
         ARENA_AI_JUDGE_LATENCY.labels(judge_type="round", status="error").observe(time.time() - _judge_started)
         ARENA_JUDGE_DEGRADED.labels(reason="llm_error").inc()
+        _degraded = True
+        _degraded_reason = "llm_error"
         # Fallback: neutral scores
         result = {
             "selling_score": 25,
@@ -334,6 +356,8 @@ async def judge_round(
         coaching_tip=coaching_tip_raw[:240],
         ideal_reply=ideal_reply_raw[:400],
         key_articles=key_articles,
+        degraded=_degraded,
+        degraded_reason=_degraded_reason,
     )
     seller_score.total = seller_score.selling_score + seller_score.legal_accuracy
 
@@ -342,6 +366,8 @@ async def judge_round(
         selling_score=0.0,  # Client doesn't get selling score
         legal_accuracy=0.0,
         breakdown=result.get("acting_breakdown", {}),
+        degraded=_degraded,
+        degraded_reason=_degraded_reason,
     )
     client_score.total = client_score.acting_score
 
