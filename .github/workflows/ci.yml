@@ -132,6 +132,7 @@ jobs:
             tests/test_event_bus_outbox.py \
             tests/test_crm_followup.py \
             tests/test_game_crm_chat.py \
+            tests/test_team_panel.py \
             tests/test_scenario_extractor.py \
             tests/test_attachment_pipeline_training_material.py \
             tests/test_scenario_draft_to_template.py \
