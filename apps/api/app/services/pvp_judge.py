@@ -259,6 +259,16 @@ async def judge_round(
             messages=messages,
             task_type="judge",
             prefer_provider="cloud",
+            # PR E: judge needs determinism. Module docstring (line 10)
+            # promises "Temperature = 0 (deterministic)" but the original
+            # call used the provider default (~0.85) → scores oscillated
+            # ±5–10 between identical inputs. 0.2 keeps a tiny bit of
+            # variance so drift-detection in run_calibration still surfaces
+            # semantic regressions. max_tokens=600 caps the response: the
+            # judge schema fits in <600 tokens and longer outputs were
+            # filtered post-hoc, wasting cloud budget.
+            temperature=0.2,
+            max_tokens=600,
         )
 
         # Parse JSON from response
