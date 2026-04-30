@@ -1189,8 +1189,24 @@ async def synthesize_speech(
     # Call ElevenLabs API (or navy.api proxy if elevenlabs_base_url is set)
     _base = (settings.elevenlabs_base_url or "").rstrip("/")
     _tts_endpoint = f"{_base}/v1/text-to-speech" if _base else ELEVENLABS_TTS_URL
-    url = f"{_tts_endpoint}/{voice_id}"
+
+    # IL-2 (2026-04-30): when streaming flag is on, hit the /stream endpoint
+    # with optimize_streaming_latency. ElevenLabs starts emitting audio as
+    # soon as the first text token has been processed — the response body
+    # is byte-streamed back. Network wall-clock is faster (~100-300ms saved
+    # per sentence) and the public return type stays identical (full mp3
+    # bytes accumulated server-side). Sets up infrastructure for future
+    # incremental sub-sentence audio streaming over WS (IL-2.5).
+    _il2_streaming = bool(getattr(settings, "elevenlabs_streaming_enabled", False))
+    if _il2_streaming:
+        url = f"{_tts_endpoint}/{voice_id}/stream"
+    else:
+        url = f"{_tts_endpoint}/{voice_id}"
     params_qs = {"output_format": DEFAULT_OUTPUT_FORMAT}
+    if _il2_streaming:
+        # 0=highest quality, 4=max optimisation. 3 is the sweet spot per
+        # ElevenLabs latency docs — minimal quality drop, ~30-40% TTFB win.
+        params_qs["optimize_streaming_latency"] = "3"
     headers = {
         "xi-api-key": settings.elevenlabs_api_key,
         "Content-Type": "application/json",
@@ -1233,9 +1249,40 @@ async def synthesize_speech(
             logger.error("Navy TTS fallback also failed: %s", e)
             return None
 
+    from types import SimpleNamespace as _NS
+    response = None
+    audio_bytes = b""
     try:
         client = _get_shared_client()
-        response = await client.post(url, json=payload, headers=headers, params=params_qs)
+        if _il2_streaming:
+            # Stream-accumulate so generation begins as early as ElevenLabs
+            # internal pipeline allows. Total wall-clock is shorter than
+            # /text-to-speech because the server doesn't buffer the full
+            # mp3 before flushing. We still aggregate the bytes locally so
+            # the public return type stays identical (full-mp3 TTSResult).
+            _stream_buf = bytearray()
+            _status = 0
+            _err_body = b""
+            async with client.stream(
+                "POST", url, json=payload, headers=headers, params=params_qs,
+            ) as _resp:
+                _status = _resp.status_code
+                if _status == 200:
+                    async for _chunk in _resp.aiter_bytes():
+                        if _chunk:
+                            _stream_buf.extend(_chunk)
+                else:
+                    _err_body = await _resp.aread()
+            # Build a response shim with the same surface the legacy block
+            # below expects: ``status_code``, ``content``, ``text``.
+            if _status == 200:
+                audio_bytes = bytes(_stream_buf)
+                response = _NS(status_code=200, content=audio_bytes, text="")
+            else:
+                _err_text = _err_body.decode("utf-8", errors="replace") if _err_body else ""
+                response = _NS(status_code=_status, content=b"", text=_err_text)
+        else:
+            response = await client.post(url, json=payload, headers=headers, params=params_qs)
     except httpx.ConnectError:
         logger.error("ElevenLabs API unavailable")
         fallback_audio = await _try_navy_fallback("connect_error")
