@@ -226,6 +226,17 @@ class Settings(BaseSettings):
     # When False (default): detector is not called, no events emitted.
     coaching_mistake_detector_v1: bool = False
 
+    # ── IL-2 (2026-04-30) ElevenLabs Streaming Endpoint ──────────────────
+    # Switches synthesize_speech() from /v1/text-to-speech/{voice_id} to
+    # /v1/text-to-speech/{voice_id}/stream + optimize_streaming_latency=3.
+    # ElevenLabs starts emitting audio as soon as the first text token is
+    # processed instead of buffering the full mp3 server-side. Network
+    # wall-clock saving observed by ElevenLabs latency docs: ~30-40% TTFB
+    # reduction. Public return type is unchanged (full-mp3 TTSResult);
+    # caller code does not need to be aware. Default OFF — flip per env
+    # with ELEVENLABS_STREAMING_ENABLED=1 for the pilot.
+    elevenlabs_streaming_enabled: bool = False
+
     # ── IL-1 (2026-04-30) Call Filler Audio ───────────────────────────────
     # Pre-LLM thinking sound played during LLM generation to mask the
     # 1.7-4.7s of dead air between "user turn ends" and "first AI audio".
