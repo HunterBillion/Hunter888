@@ -105,6 +105,10 @@ services:
       # talk_ratio_high). Backend-only — UI binding is P2. Roll back
       # by flipping to "0" + restart api.
       COACHING_MISTAKE_DETECTOR_V1: "1"
+      # IL-1 (2026-04-30) Call filler audio — pre-LLM thinking sound
+      # masks 1.7-4.7s of dead air. See PR #123. Roll back: flip "0" +
+      # restart api. Required: CALL_HUMANIZED_V2=1 (already set above).
+      CALL_FILLER_V1: "1"
     # Don't expose API port directly — use nginx
     ports: !reset []
     # Graceful shutdown: gunicorn --graceful-timeout 30 + margin
