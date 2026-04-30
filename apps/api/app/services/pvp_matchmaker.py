@@ -59,6 +59,17 @@ BASE_MATCH_RANGE = 200.0
 DUEL_STATE_TTL = 3600               # 1 hour TTL for duel state in Redis
 RECONNECT_GRACE_SECONDS = 60        # Grace period for reconnection
 
+# PR G: shorter PvE fallback when the queue is effectively empty.
+# Pilot reality (15 testers) means the queue has ≤2 candidates almost
+# always. The full MATCH_TIMEOUT_SECONDS=60 gap-relaxation curve is fine
+# for ranked-vs-ranked search but it makes a lone player wait a minute
+# before a bot match shows up — the original audit's #1 onboarding gripe.
+# We keep MATCH_TIMEOUT_SECONDS=60 (governs gap escalation; see
+# GAP_EXPANSION_SCHEDULE) and add an independent fallback timer for the
+# queue-near-empty case so the gap-relaxation curve stays intact.
+PVE_FALLBACK_TIMEOUT_EMPTY_QUEUE = 15
+PVE_FALLBACK_QUEUE_SIZE_THRESHOLD = 2  # ≤ this many = "effectively empty"
+
 # S3-11: Maximum rating gap to prevent newbie-vs-master matches.
 # Gap widens gradually: 400 (0-30s) → 600 (30-60s) → 800 (60-90s) → uncapped.
 MAX_RATING_GAP = 400
