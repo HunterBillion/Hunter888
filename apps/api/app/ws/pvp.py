@@ -1730,8 +1730,22 @@ async def _background_matchmaking(user_id: uuid.UUID) -> None:
                     )
                     return
 
-            if elapsed >= matchmaker.MATCH_TIMEOUT_SECONDS:
-                # Timeout → auto-create PvE duel
+            # PR G: pilot-reality fallback. The queue has ≤
+            # PVE_FALLBACK_QUEUE_SIZE_THRESHOLD candidates almost always
+            # (15 testers, no concurrent peak), so waiting the full
+            # MATCH_TIMEOUT_SECONDS=60 to fall back to PvE makes lone
+            # players sit through a minute of empty matchmaking. We
+            # short-circuit at PVE_FALLBACK_TIMEOUT_EMPTY_QUEUE=15s only
+            # when the queue is effectively empty — preserves the full
+            # gap-relaxation curve (GAP_EXPANSION_SCHEDULE) for healthy
+            # ranked-vs-ranked search whenever there ARE other players.
+            _queue_size = await matchmaker.get_queue_size()
+            _queue_empty = _queue_size <= matchmaker.PVE_FALLBACK_QUEUE_SIZE_THRESHOLD
+            _fallback_now = elapsed >= matchmaker.MATCH_TIMEOUT_SECONDS or (
+                _queue_empty and elapsed >= matchmaker.PVE_FALLBACK_TIMEOUT_EMPTY_QUEUE
+            )
+            if _fallback_now:
+                # Auto-create PvE duel.
                 ARENA_QUEUE_WAIT.labels(mode="ranked", outcome="pve_fallback").observe(elapsed)
                 async with async_session() as db:
                     duel = await matchmaker.create_pve_duel(user_id, db)
