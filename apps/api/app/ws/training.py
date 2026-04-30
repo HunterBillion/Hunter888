@@ -1567,6 +1567,50 @@ async def _generate_character_reply(
                     logger.debug("Stream TTS synth error: %s", _te)
                     return None
 
+            # ── IL-1 (2026-04-30) Filler audio at sentence_index=0 ──
+            # Reserve index 0 for an in-character thinking sound (Ну.../
+            # Ммм.../Так-так...). LLM sentences then naturally start at
+            # index 1+ via the existing ``len(_tts_sent_indices)`` counter.
+            # Fires CONCURRENTLY with the LLM stream so the filler plays
+            # while the LLM is still generating real content — kills the
+            # 1.7-4.7s of dead air observed in field TTS logs (2026-04-29).
+            #
+            # Skipped when: flag off, not call/center mode, TTS disabled,
+            # or pick_filler() returned text=None (15% silence rate so it
+            # doesn't sound like a stuck record on every turn).
+            _filler_emitted = False
+            _cp_filler = state.get("custom_params") or {}
+            _session_mode_filler = (
+                _cp_filler.get("session_mode")
+                or state.get("session_mode")
+                or "chat"
+            ).lower()
+            if (
+                settings.call_filler_v1
+                and settings.call_humanized_v2
+                and _tts_stream_enabled
+                and _session_mode_filler in ("call", "center")
+            ):
+                try:
+                    from app.services.call_filler import pick_filler as _il1_pick
+                    _il1_choice = _il1_pick(current_emotion)
+                    if _il1_choice.text:
+                        _tts_sent_indices.append(0)
+                        _tts_tasks[0] = asyncio.create_task(
+                            _synth_for_stream(_il1_choice.text, 0),
+                        )
+                        _filler_emitted = True
+                        _stream_tts_used = True
+                        logger.debug(
+                            "IL-1 filler launched | session=%s | emotion=%s | text=%r",
+                            session_id, current_emotion, _il1_choice.text,
+                        )
+                except Exception:
+                    logger.debug(
+                        "IL-1 filler scheduling failed for %s",
+                        session_id, exc_info=True,
+                    )
+
             # Thread session_mode into the stream so the call-mode prompt
             # modifier (short replies, difficulty-aware, phone register) is
             # actually applied. Without this the stream path silently reverted
