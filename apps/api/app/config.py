@@ -226,6 +226,15 @@ class Settings(BaseSettings):
     # When False (default): detector is not called, no events emitted.
     coaching_mistake_detector_v1: bool = False
 
+    # ── IL-1 (2026-04-30) Call Filler Audio ───────────────────────────────
+    # Pre-LLM thinking sound played during LLM generation to mask the
+    # 1.7-4.7s of dead air between "user turn ends" and "first AI audio".
+    # Filler text picked per emotion (Ну.../Ммм.../Так-так...) and pushed
+    # into the streaming TTS pipeline at sentence_index=0; real LLM
+    # sentences shift to indices 1+. Default OFF — when ON, fires only on
+    # call/center session_mode and only when CALL_HUMANIZED_V2 is also on.
+    call_filler_v1: bool = False
+
     # ── P0 (2026-04-29) Call Arc — decouple AI from manager script ────────
     # Two-axis architecture: AI gets per-call role (CallArcStep), not per-stage
     # behaviour directives. StageTracker keeps running for scoring/UI.
