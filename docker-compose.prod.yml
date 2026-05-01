@@ -123,6 +123,10 @@ services:
       # Adds variable pickup delay (300-1800ms triangular per mood) so
       # the AI doesn't pick up at zero ms. Roll back: flip "0".
       CALL_OPENER_PERSONA_AWARE: "1"
+      # (2026-05-01) Adaptive temperature 0.4-1.0 per emotion — see PR #144.
+      # hostile=0.95, deal=0.55, hangup=0.40 (full table in llm.py).
+      # Roll back: flip "0" + restart api.
+      ADAPTIVE_TEMPERATURE_ENABLED: "1"
     # Don't expose API port directly — use nginx
     ports: !reset []
     # Graceful shutdown: gunicorn --graceful-timeout 30 + margin
