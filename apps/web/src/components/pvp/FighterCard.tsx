@@ -20,45 +20,9 @@ import {
   normalizeRankTier,
 } from "@/types";
 import { HPBar } from "./HPBar";
-
-/* ── Тот же spreite-формат, что DuelChat ──────────────────── */
-const SPRITE_MANAGER: string[] = [
-  "................",
-  "................",
-  "....HHHHHHHH....",
-  "...HrhHHHHrhH...",
-  "..HrSSSSSSSSrH..",
-  "..HhSSSSSSSShH..",
-  "..HhSeSSSSeShH..",
-  "..HhSSSSSSSShH..",
-  "..HhSSSmmSSShH..",
-  "..HhSSSSSSSShH..",
-  "...HhsSSSSshH...",
-  "....hsSSSSsh....",
-  ".....nnnnnn.....",
-  "....bBBttBBb....",
-  "...bBBBttBBBb...",
-  "..bBBBBttBBBBb..",
-];
-
-const SPRITE_CLIENT: string[] = [
-  "................",
-  "....HHHHHH......",
-  "...HhHHHHHh.....",
-  "..HhhSSSSShHh...",
-  "..HSSSSSSSSh....",
-  "..HSSSSSSSSh....",
-  "..HSeSSSSeSh....",
-  "..HSSSSSSSSh....",
-  "..HSSSSSSSSh....",
-  "..HSSSmmmSSh....",
-  "...sSSSSSSs.....",
-  "....sSSSSs......",
-  ".....nnnn.......",
-  "....bBBBBBb.....",
-  "...bBBrrBBBb....",
-  "..bBBBBrrBBBBb..",
-];
+// 2026-05-01: 12-portrait library заменила локальные SPRITE_MANAGER/CLIENT.
+// PixelPortrait сам читает спрайт по коду + применяет tier для player-литералов.
+import { PixelPortrait, type PixelAvatarCode } from "./PixelAvatarLibrary";
 
 function tierColorOf(tier?: PvPRankTier | string): string {
   if (!tier) return "var(--text-muted)";
@@ -72,68 +36,18 @@ function tierLabelOf(tier?: PvPRankTier | string): string {
   return PVP_RANK_LABELS[norm] ?? norm;
 }
 
-interface SpriteProps {
-  sprite: string[];
-  tier?: PvPRankTier | string;
-  size: number;
-}
-function PixelSprite({ sprite, tier, size }: SpriteProps) {
-  const accent = tierColorOf(tier);
-  const palette: Record<string, string> = {
-    H: "#1a1a2e",
-    h: "#3d3a52",
-    S: "#e7c4a0",
-    s: "#c79676",
-    e: "#0d0d18",
-    m: "#a23446",
-    n: "#cfa57f",
-    B: "#4a4a5e",
-    b: "#2c2c3a",
-    t: accent,
-    r: accent,
-  };
-  const cell = 100 / 16;
-  const rects: React.ReactElement[] = [];
-  for (let y = 0; y < sprite.length; y += 1) {
-    const row = sprite[y];
-    for (let x = 0; x < row.length; x += 1) {
-      const ch = row[x];
-      const fill = palette[ch];
-      if (!fill) continue;
-      rects.push(
-        <rect
-          key={`${x}-${y}`}
-          x={x * cell + "%"}
-          y={y * cell + "%"}
-          width={cell + "%"}
-          height={cell + "%"}
-          fill={fill}
-        />,
-      );
-    }
-  }
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      preserveAspectRatio="xMidYMid meet"
-      style={{ imageRendering: "pixelated", display: "block" }}
-      aria-hidden
-    >
-      {rects}
-    </svg>
-  );
-}
-
 interface Props {
   side: "left" | "right";
-  /** Имя бойца — если undefined, показываем «БОЙ Б». */
+  /** Имя бойца — если undefined, показываем «БОЕЦ». */
   name?: string;
-  /** Тир — рамка/HP/badge. */
+  /** Тир — рамка/HP/badge (player) или ТОЛЬКО рамка (client). */
   tier?: PvPRankTier | string;
-  /** Роль в текущем раунде — определяет, какой спрайт показывать. */
-  role: "seller" | "client";
+  /**
+   * 2026-05-01: вместо `role` теперь явный `avatar` код из 12-portrait library.
+   * Backwards-compat: если передан старый `role`, маппится на operator/grandma.
+   */
+  avatar?: PixelAvatarCode;
+  role?: "seller" | "client"; // legacy; держится для существующих call-сайтов
   /** HP 0..100. По умолчанию 100. */
   hp?: number;
   /** Bot? Лейбл BOT под именем вместо реального ника. */
@@ -146,13 +60,19 @@ export function FighterCard({
   side,
   name,
   tier,
+  avatar,
   role,
   hp = 100,
   isBot = false,
   active = false,
 }: Props) {
   const accent = tierColorOf(tier);
-  const sprite = role === "seller" ? SPRITE_MANAGER : SPRITE_CLIENT;
+  // Resolve avatar:
+  // 1) explicit `avatar` prop wins
+  // 2) legacy `role` prop maps to neutral defaults (operator / grandma)
+  // 3) fallback operator
+  const avatarCode: PixelAvatarCode =
+    avatar ?? (role === "seller" ? "operator" : role === "client" ? "grandma" : "operator");
   const display = name || (isBot ? "AI-БОТ" : "БОЕЦ");
   const tierLabel = tierLabelOf(tier);
 
@@ -192,7 +112,7 @@ export function FighterCard({
           )`,
         }}
       >
-        <PixelSprite sprite={sprite} tier={tier} size={64} />
+        <PixelPortrait code={avatarCode} tier={tier} size={64} />
       </div>
 
       {/* Right side — name, tier, HP */}

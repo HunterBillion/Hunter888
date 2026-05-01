@@ -15,6 +15,11 @@ import { useEffect, useRef, useMemo, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Send } from "lucide-react";
 import { type PvPRankTier, PVP_RANK_COLORS, normalizeRankTier } from "@/types";
+// 2026-05-01: 12-portrait avatar library (Phase 9)
+import {
+  PixelPortrait,
+  type PixelAvatarCode,
+} from "./PixelAvatarLibrary";
 
 /* ── Constants ──────────────────────────────────────────── */
 const MAX_MESSAGE_LENGTH = 2000;
@@ -74,6 +79,14 @@ interface Props {
   deliveredIds?: string[];
   /** Авто-фокус инпута при маунте. По умолчанию false. */
   autoFocus?: boolean;
+  /**
+   * 2026-05-01: явные коды аватаров из 12-portrait library.
+   * selfAvatar — твой портрет (rookie/operator/senior/lead).
+   * opponentAvatar — портрет соперника (8 client-кодов).
+   * Если не передано — fallback на operator/grandma по myRole.
+   */
+  selfAvatar?: PixelAvatarCode;
+  opponentAvatar?: PixelAvatarCode;
 }
 
 /* ── Helpers ────────────────────────────────────────────── */
@@ -111,131 +124,22 @@ function useTypewriter(text: string, enabled: boolean): string {
   return displayed;
 }
 
-/* ── Pixel Sprite Avatars ───────────────────────────────────
- * 16×16 спрайты как массив строк. Литералы:
- *   .  transparent
- *   H  headset/hair dark
- *   h  headset/hair light highlight
- *   S  skin
- *   s  skin shadow
- *   e  eye
- *   m  mouth
- *   n  neck
- *   B  body main
- *   b  body shadow
- *   t  tier accent (галстук / шарф) — заменяется на цвет тира
- *   r  ring/headset accent (тот же tier-цвет)
- * Render: SVG 16×16 с rect-ами 1×1, image-rendering: pixelated.
+/* ── Pixel Avatar wrapper ───────────────────────────────────
+ * 2026-05-01: SPRITE_MANAGER/SPRITE_CLIENT удалены отсюда. 12 спрайтов
+ * живут в PixelAvatarSprites.ts. PixelPortrait сам рендерит 16×16 SVG
+ * + применяет tier для player-литералов. Здесь — только tier-color рамка.
  * ───────────────────────────────────────────────────────── */
 
-/** Менеджер (свой аватар): хедсет + галстук в цвет тира. */
-const SPRITE_MANAGER: string[] = [
-  "................", // 0
-  "................", // 1
-  "....HHHHHHHH....", // 2
-  "...HrhHHHHrhH...", // 3 headset top band
-  "..HrSSSSSSSSrH..", // 4 headset side
-  "..HhSSSSSSSShH..", // 5
-  "..HhSeSSSSeShH..", // 6 eyes
-  "..HhSSSSSSSShH..", // 7
-  "..HhSSSmmSSShH..", // 8 mouth
-  "..HhSSSSSSSShH..", // 9
-  "...HhsSSSSshH...", // 10 chin shadow
-  "....hsSSSSsh....", // 11
-  ".....nnnnnn.....", // 12 neck
-  "....bBBttBBb....", // 13 collar + tie top
-  "...bBBBttBBBb...", // 14
-  "..bBBBBttBBBBb..", // 15 body
-];
-
-/** Клиент (соперник AI): другая причёска, без хедсета, casual collar. */
-const SPRITE_CLIENT: string[] = [
-  "................", // 0
-  "....HHHHHH......", // 1 hair top
-  "...HhHHHHHh.....", // 2
-  "..HhhSSSSShHh...", // 3 hair sides + face top
-  "..HSSSSSSSSh....", // 4
-  "..HSSSSSSSSh....", // 5
-  "..HSeSSSSeSh....", // 6 eyes
-  "..HSSSSSSSSh....", // 7
-  "..HSSSSSSSSh....", // 8
-  "..HSSSmmmSSh....", // 9 mouth (smile slightly wider)
-  "...sSSSSSSs.....", // 10
-  "....sSSSSs......", // 11
-  ".....nnnn.......", // 12
-  "....bBBBBBb.....", // 13 collar
-  "...bBBrrBBBb....", // 14 scarf accent (tier color via 'r')
-  "..bBBBBrrBBBBb..", // 15
-];
-
-function PixelSprite({
-  sprite,
-  tier,
-  size = 56,
-}: {
-  sprite: string[];
-  tier?: PvPRankTier | string;
-  size?: number;
-}) {
-  const accent = tierColor(tier);
-  const palette: Record<string, string> = {
-    H: "#1a1a2e", // dark
-    h: "#3d3a52", // dark light
-    S: "#e7c4a0", // skin
-    s: "#c79676", // skin shadow
-    e: "#0d0d18",
-    m: "#a23446",
-    n: "#cfa57f",
-    B: "#4a4a5e",
-    b: "#2c2c3a",
-    t: accent, // tier
-    r: accent, // tier
-  };
-  const cell = 100 / 16; // viewBox is 0..16
-  const rects: React.ReactElement[] = [];
-  for (let y = 0; y < sprite.length; y += 1) {
-    const row = sprite[y];
-    for (let x = 0; x < row.length; x += 1) {
-      const ch = row[x];
-      const fill = palette[ch];
-      if (!fill) continue;
-      rects.push(
-        <rect
-          key={`${x}-${y}`}
-          x={x * cell + "%"}
-          y={y * cell + "%"}
-          width={cell + "%"}
-          height={cell + "%"}
-          fill={fill}
-        />,
-      );
-    }
-  }
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      preserveAspectRatio="xMidYMid meet"
-      style={{ imageRendering: "pixelated", display: "block" }}
-      aria-hidden
-    >
-      {rects}
-    </svg>
-  );
-}
-
 function PixelAvatar({
-  role,
+  code,
   tier,
   side,
 }: {
-  role: "seller" | "client";
+  code: PixelAvatarCode;
   tier?: PvPRankTier | string;
   side: "left" | "right";
 }) {
   const color = tierColor(tier);
-  const sprite = role === "seller" ? SPRITE_MANAGER : SPRITE_CLIENT;
   return (
     <div
       aria-hidden
@@ -259,7 +163,7 @@ function PixelAvatar({
             : `-3px 3px 0 0 ${color}`,
       }}
     >
-      <PixelSprite sprite={sprite} tier={tier} size={56} />
+      <PixelPortrait code={code} tier={tier} size={56} />
     </div>
   );
 }
@@ -393,6 +297,8 @@ function MessageRow({
   isMine,
   selfTier,
   opponentTier,
+  selfAvatar,
+  opponentAvatar,
   isLatestIncoming,
   isDelivered,
 }: {
@@ -400,11 +306,14 @@ function MessageRow({
   isMine: boolean;
   selfTier?: PvPRankTier | string;
   opponentTier?: PvPRankTier | string;
+  selfAvatar: PixelAvatarCode;
+  opponentAvatar: PixelAvatarCode;
   isLatestIncoming: boolean;
   isDelivered: boolean;
 }) {
   const side: "left" | "right" = isMine ? "right" : "left";
   const tier = isMine ? selfTier : opponentTier;
+  const avatarCode = isMine ? selfAvatar : opponentAvatar;
   const color = tierColor(tier);
   const timeStr = formatMessageTime(msg.timestamp);
   const displayed = useTypewriter(msg.text, !isMine && isLatestIncoming);
@@ -421,7 +330,7 @@ function MessageRow({
         side === "right" ? "flex-row-reverse" : "flex-row"
       }`}
     >
-      <PixelAvatar role={msg.sender_role} tier={tier} side={side} />
+      <PixelAvatar code={avatarCode} tier={tier} side={side} />
       <PixelBubble side={side} color={color} tinted={isMine}>
         <div
           className="flex items-center justify-between gap-3 mb-1 font-pixel"
@@ -485,7 +394,13 @@ function MessageRow({
 }
 
 /* ── Typing bubble (соперник «думает») ──────────────────── */
-function TypingBubble({ tier }: { tier?: PvPRankTier | string }) {
+function TypingBubble({
+  tier,
+  opponentAvatar,
+}: {
+  tier?: PvPRankTier | string;
+  opponentAvatar: PixelAvatarCode;
+}) {
   const color = tierColor(tier);
   return (
     <motion.div
@@ -498,7 +413,7 @@ function TypingBubble({ tier }: { tier?: PvPRankTier | string }) {
       aria-live="polite"
       aria-label="Соперник набирает сообщение"
     >
-      <PixelAvatar role="client" tier={tier} side="left" />
+      <PixelAvatar code={opponentAvatar} tier={tier} side="left" />
       <PixelBubble side="left" color={color} tinted={false} hoverable={false}>
         <div
           className="flex items-center gap-2 font-pixel"
@@ -567,10 +482,17 @@ export function DuelChat({
   opponentTier,
   deliveredIds,
   autoFocus = false,
+  selfAvatar,
+  opponentAvatar,
 }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [isFocused, setIsFocused] = useState(false);
+
+  // Resolve avatars: explicit prop > sensible default by role.
+  // 2026-05-01: дефолты — operator (player) и grandma (default client demographics).
+  const resolvedSelfAvatar: PixelAvatarCode = selfAvatar ?? "operator";
+  const resolvedOpponentAvatar: PixelAvatarCode = opponentAvatar ?? "grandma";
 
   const sanitizedMessages = useMemo(
     () => messages.map((msg) => ({ ...msg, text: sanitizeMessageText(msg.text) })),
@@ -704,6 +626,8 @@ export function DuelChat({
                     isMine={isMine}
                     selfTier={selfTier}
                     opponentTier={opponentTier}
+                    selfAvatar={resolvedSelfAvatar}
+                    opponentAvatar={resolvedOpponentAvatar}
                     isLatestIncoming={msg.id === latestIncomingId}
                     isDelivered={deliveredSet.has(msg.id)}
                   />
@@ -714,7 +638,7 @@ export function DuelChat({
 
           <AnimatePresence mode="wait">
             {opponentStatus === "typing" && (
-              <TypingBubble tier={opponentTier} />
+              <TypingBubble tier={opponentTier} opponentAvatar={resolvedOpponentAvatar} />
             )}
           </AnimatePresence>
         </div>
