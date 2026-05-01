@@ -86,6 +86,14 @@ interface UseTTSOptions {
   onSpeakerChange?: (speaker: "A" | "B" | "AB" | null) => void;
   /** Callback fired when active human factors change (for Avatar3D effects). */
   onActiveFactorsChange?: (factors: HumanFactor[]) => void;
+  /**
+   * 2026-05-01 — Phone-band realism filter on every TTS playback.
+   * Routes audio through Web Audio API: highpass 300 Hz, lowpass 3400 Hz,
+   * compressor (4:1 / -18dB), makeup gain — the canonical PSTN narrowband.
+   * Sounds unmistakably "telephone" instead of studio-clean. Only useful
+   * on the call page; chat / arena should leave it false.
+   */
+  phoneBandFilter?: boolean;
 }
 
 interface UseTTSReturn {
@@ -183,7 +191,80 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     onVoiceParamsChange,
     onSpeakerChange,
     onActiveFactorsChange,
+    phoneBandFilter = false,
   } = options;
+
+  // 2026-05-01 — Phone-band realism filter chain.
+  // Lazily-allocated AudioContext shared across all TTS playbacks in
+  // this hook lifecycle. Each new HTMLAudioElement is wrapped in a
+  // MediaElementAudioSourceNode → highpass(300Hz) → lowpass(3400Hz) →
+  // compressor → makeup-gain → destination, mimicking the PSTN
+  // narrowband bandpass + companding profile (G.711, 300-3400 Hz). Result:
+  // every TTS reply sounds unmistakably "telephone" instead of studio.
+  const phoneBandCtxRef = useRef<AudioContext | null>(null);
+
+  const getOrCreatePhoneBandCtx = useCallback((): AudioContext | null => {
+    if (!phoneBandFilter || typeof window === "undefined") return null;
+    if (phoneBandCtxRef.current) {
+      // If the context is suspended (auto-play policy), try to resume on
+      // first use — caller should already have done a gesture-driven
+      // unlock by the time we get here.
+      if (phoneBandCtxRef.current.state === "suspended") {
+        phoneBandCtxRef.current.resume().catch(() => {});
+      }
+      return phoneBandCtxRef.current;
+    }
+    try {
+      const AC = (window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext) as typeof AudioContext | undefined;
+      if (!AC) return null;
+      phoneBandCtxRef.current = new AC();
+      return phoneBandCtxRef.current;
+    } catch {
+      return null;
+    }
+  }, [phoneBandFilter]);
+
+  /**
+   * Wire ``audio`` through the phone-band filter chain. MUST be called
+   * BEFORE ``audio.play()`` because MediaElementAudioSourceNode can be
+   * created at most ONCE per HTMLAudioElement. Returns true on success.
+   * Callers fall through to the default direct path on false.
+   */
+  const routeThroughPhoneBand = useCallback(
+    (audio: HTMLAudioElement): boolean => {
+      const ctx = getOrCreatePhoneBandCtx();
+      if (!ctx) return false;
+      try {
+        const source = ctx.createMediaElementSource(audio);
+        const hp = ctx.createBiquadFilter();
+        hp.type = "highpass";
+        hp.frequency.value = 300;
+        hp.Q.value = 0.7;
+        const lp = ctx.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.value = 3400;
+        lp.Q.value = 0.7;
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -18;
+        comp.knee.value = 12;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.005;
+        comp.release.value = 0.05;
+        // Bandpass + compression both shave loudness; +4 dB makeup gain
+        // restores perceptual level without clipping the destination.
+        const makeup = ctx.createGain();
+        makeup.gain.value = 1.6;
+        source.connect(hp).connect(lp).connect(comp).connect(makeup).connect(ctx.destination);
+        return true;
+      } catch (err) {
+        console.warn("[TTS] phone-band routing failed:", err);
+        return false;
+      }
+    },
+    [getOrCreatePhoneBandCtx],
+  );
 
   // --- Core state ---
   const [speaking, setSpeaking] = useState(false);
@@ -437,6 +518,13 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
         const audio = new Audio(url);
         audio.volume = volumeRef.current;
         audioRef.current = audio;
+
+        // Phone-band filter (call mode only) — must run BEFORE audio.play()
+        // since MediaElementAudioSourceNode can be created exactly once per
+        // HTMLAudioElement. Falls through silently if Web Audio is unavailable.
+        if (phoneBandFilter) {
+          routeThroughPhoneBand(audio);
+        }
 
         // Set modulation state
         if (opts?.emotion) updateEmotion(opts.emotion);
@@ -789,6 +877,10 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     const audio = new Audio(url);
     audio.volume = volumeRef.current;
     audioRef.current = audio;
+    // Phone-band filter on chunk path too — same constraint: route before play().
+    if (phoneBandFilter) {
+      routeThroughPhoneBand(audio);
+    }
     const advance = () => {
       URL.revokeObjectURL(url);
       playingChunkRef.current = false;

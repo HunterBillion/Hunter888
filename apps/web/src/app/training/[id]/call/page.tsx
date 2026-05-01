@@ -192,7 +192,11 @@ export default function TrainingCallPage() {
   }, []);
 
   // --- TTS (plays backend mp3, exposes real audioLevel) -------------------
-  const tts = useTTS({ lang: "ru-RU", rate: 0.95, pitch: 1.0 });
+  // 2026-05-01 — phoneBandFilter ON for call page only. Routes every TTS
+  // playback through highpass(300Hz)→lowpass(3400Hz)→compressor (PSTN
+  // narrowband) so the AI client sounds unmistakably "по телефону" instead
+  // of studio-clean. Chat / arena pages don't pass this prop, default false.
+  const tts = useTTS({ lang: "ru-RU", rate: 0.95, pitch: 1.0, phoneBandFilter: true });
 
   // --- STT (continuous, forwards recognized text to WS) -------------------
   const sttSendRef = useRef<((text: string) => void) | null>(null);

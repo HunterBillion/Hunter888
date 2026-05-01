@@ -246,6 +246,15 @@ class Settings(BaseSettings):
     # Default OFF; flip per env after pilot validation.
     call_opener_persona_aware: bool = False
 
+    # ── (2026-05-01) Adaptive temperature per emotion ─────────────────────
+    # Maps emotion → sampling temperature in the [0.4, 1.0] band:
+    #   hangup=0.40, deal=0.55, negotiating=0.65, considering=0.70,
+    #   cold/curious=0.80, callback/guarded=0.85, hostile=0.95, testing=1.00.
+    # Applied only when caller did NOT pass an explicit temperature
+    # AND session_mode is call/center AND this flag is on. Chat / arena /
+    # judges / coaches keep their historical defaults. Default OFF.
+    adaptive_temperature_enabled: bool = False
+
     # ── IL-3 (2026-05-01) STT keyword priming ─────────────────────────────
     # Pass an ``initial_prompt`` to faster-whisper biasing the decoder
     # toward the bankruptcy / sales-call lexicon (ФССП, 127-ФЗ, кредиторы,
