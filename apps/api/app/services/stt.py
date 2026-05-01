@@ -71,6 +71,24 @@ _BFL_CORRECTIONS = {
 logger = logging.getLogger(__name__)
 
 
+# IL-3 (2026-05-01) — STT keyword priming for the bankruptcy / sales-call domain.
+# Whisper's ``initial_prompt`` biases the decoder toward similar tokens. The
+# string below is a corpus-style hint, not a sentence: words the manager and
+# the AI client are likely to use, packed densely. faster-whisper limits
+# the prompt to roughly the model's prompt window (224 tokens for small/
+# medium); this string is well under that.
+_DEFAULT_STT_KEYWORD_PROMPT_RU = (
+    "Банкротство физических лиц по 127-ФЗ. ФССП, пристав, исполнительное "
+    "производство, арбитражный управляющий, конкурсная масса. МФЦ, упрощённая "
+    "процедура, судебная процедура, реструктуризация. Кредиторы: Сбер, ВТБ, "
+    "Тинькофф, Альфа-Банк, Газпромбанк. МФО, микрозайм, просрочка, "
+    "коллекторы. Госуслуги, СберID, личный кабинет. Ипотека, имущество, "
+    "арест, торги. Стоимость процедуры, рассрочка, аванс, договор. "
+    "Мошенники, гарантии, лицензия. Алло, слушаю, минутку, перезвоните, "
+    "до свидания."
+)
+
+
 @dataclass
 class STTResult:
     text: str
@@ -185,6 +203,18 @@ async def _transcribe_whisper(
         "language": lang,
         "response_format": "verbose_json",
     }
+
+    # IL-3 (2026-05-01) — keyword priming for the bankruptcy domain.
+    # Whisper's ``initial_prompt`` biases the decoder toward similar tokens.
+    # Toma + Deepgram report the same trick lifts domain term-recall on
+    # phone-quality audio. Default OFF; flag-gated for staged rollout.
+    if getattr(settings, "stt_keyword_prompt_enabled", False):
+        _kw_prompt = (
+            getattr(settings, "stt_keyword_prompt_text", "")
+            or _DEFAULT_STT_KEYWORD_PROMPT_RU
+        )
+        if _kw_prompt:
+            data["prompt"] = _kw_prompt
 
     _validate_audio(audio_bytes)
 
