@@ -109,6 +109,11 @@ services:
       # masks 1.7-4.7s of dead air. See PR #123. Roll back: flip "0" +
       # restart api. Required: CALL_HUMANIZED_V2=1 (already set above).
       CALL_FILLER_V1: "1"
+      # IL-2 (2026-04-30) ElevenLabs streaming endpoint — see PR #128.
+      # Switches /text-to-speech/{voice} → /stream + optimize_streaming_latency=3.
+      # Quality identical (same model + voice settings); ~30-40% TTFB win.
+      # Roll back: flip "0" + restart api.
+      ELEVENLABS_STREAMING_ENABLED: "1"
     # Don't expose API port directly — use nginx
     ports: !reset []
     # Graceful shutdown: gunicorn --graceful-timeout 30 + margin
