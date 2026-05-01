@@ -1257,6 +1257,9 @@ async def _advance_round(duel_id: uuid.UUID) -> None:
                 difficulty=_snap_difficulty,
                 round_number=round_number,
                 db=db,
+                # Content→Arena PR-5: enables chunk-usage telemetry inside
+                # judge_round → ChunkUsageLog rows tagged source_type="pvp_duel".
+                duel_id=duel_id,
             )
         round_score_payload = {
             "round": round_number,
@@ -1431,6 +1434,7 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
                 archetype=session["archetype"],
                 difficulty=duel.difficulty,
                 db=db,
+                duel_id=duel_id,
             )
         except Exception as exc:
             # Judge failed — mark duel as error state, don't lose messages
