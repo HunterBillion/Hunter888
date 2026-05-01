@@ -70,6 +70,12 @@ const AiQualityPanel = dynamic(
   { loading: () => <DashboardSkeleton />, ssr: false }
 );
 
+// TZ-8 PR-C — per-team playbooks editor.
+const PlaybooksEditor = dynamic(
+  () => import("@/components/methodology/PlaybooksEditor").then((m) => m.PlaybooksEditor),
+  { loading: () => <DashboardSkeleton />, ssr: false }
+);
+
 interface UserListItem {
   id: string;
   email: string;
@@ -86,6 +92,7 @@ type SubTab =
   | "sessions"
   | "arena"
   | "scenarios"
+  | "playbooks"
   | "knowledge_review"
   | "ai_quality"
   | "scoring"
@@ -241,6 +248,12 @@ const SUB_TABS: { id: SubTab; label: string; icon: typeof BookOpen; adminOnly?: 
   { id: "sessions", label: "Сессии", icon: FileText },
   { id: "arena", label: "Контент арены", icon: Database },
   { id: "scenarios", label: "Сценарии", icon: Stack },
+  // TZ-8 PR-C — per-team playbooks (opener / objection / closing /
+  // discovery / persona_tone / counter_fact / process). Authored by
+  // ROP+admin, surfaces in coach + judge RAG of the same team.
+  // Distinct from "Контент арены" (global ФЗ-127 facts) — see TZ-8 §1
+  // for the boundary contract.
+  { id: "playbooks", label: "Методология", icon: Sparkle },
   // TZ-4 §8 — TTL review queue. Visible to ROP+admin (the
   // POST /admin/knowledge/{id}/review endpoint also gates on those
   // roles, so a pilot manager seeing the tab gets a 403 anyway —
@@ -269,6 +282,7 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
       "sessions",
       "arena",
       "scenarios",
+      "playbooks",
       "knowledge_review",
       "ai_quality",
       "scoring",
@@ -359,6 +373,7 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
           {active === "sessions" && <SessionsBrowser />}
           {active === "arena" && <ArenaContentEditor />}
           {active === "scenarios" && <ScenariosEditor />}
+          {active === "playbooks" && <PlaybooksEditor canAuthor={true} />}
           {active === "knowledge_review" && <KnowledgeReviewQueue />}
           {active === "ai_quality" && <AiQualityPanel />}
           {active === "scoring" && <PlaceholderTab title="Скоринг" subtitle="Управление весами скоринговых слоёв (L1–L10) — в дорожной карте." />}
