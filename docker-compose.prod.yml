@@ -114,6 +114,15 @@ services:
       # Quality identical (same model + voice settings); ~30-40% TTFB win.
       # Roll back: flip "0" + restart api.
       ELEVENLABS_STREAMING_ENABLED: "1"
+      # IL-3 (2026-04-30) STT keyword priming — see PR #137. Whisper
+      # initial_prompt biased toward bankruptcy/sales-call lexicon
+      # (ФССП, 127-ФЗ, кредиторы, СберID...). Roll back: flip "0".
+      STT_KEYWORD_PROMPT_ENABLED: "1"
+      # (2026-05-01) Persona-aware call opener — see PR #140.
+      # Replaces flat 5-phrase pool with (mood, age_bucket) bank.
+      # Adds variable pickup delay (300-1800ms triangular per mood) so
+      # the AI doesn't pick up at zero ms. Roll back: flip "0".
+      CALL_OPENER_PERSONA_AWARE: "1"
     # Don't expose API port directly — use nginx
     ports: !reset []
     # Graceful shutdown: gunicorn --graceful-timeout 30 + margin
