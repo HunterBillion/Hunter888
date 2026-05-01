@@ -140,6 +140,13 @@ ALLOWED_EVENT_TYPES: frozenset[str] = frozenset(
         "knowledge_item.reviewed",
         # ── TZ-4 §12 conversation policy engine (D5 producer) ─────────────
         "conversation.policy_violation_detected",
+        # ── (2026-05-01) Realism telemetry ────────────────────────────────
+        # Emitted at call session.start with a snapshot of which call-realism
+        # features are active (Call Arc, IL-1 filler, IL-2 streaming, IL-3
+        # STT priming, persona-aware opener, adaptive temperature, mistake
+        # detector, phone-band TTS). Lets analytics correlate feature-set
+        # to outcome (completion, score, retention) without per-turn traces.
+        "call.realism_snapshot",
     }
 )
 
