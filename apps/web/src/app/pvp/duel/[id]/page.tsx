@@ -9,6 +9,12 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAuthBootstrap } from "@/hooks/useAuthBootstrap";
 import { usePvPStore } from "@/stores/usePvPStore";
 import { DuelChat } from "@/components/pvp/DuelChat";
+// 2026-05-01: 12-portrait avatar library
+import {
+  usePlayerAvatar,
+  resolveOpponentAvatar,
+} from "@/components/pvp/PixelAvatarLibrary";
+import { useGamificationStore } from "@/stores/useGamificationStore";
 import { RoundIndicator } from "@/components/pvp/RoundIndicator";
 import { DuelResult } from "@/components/pvp/DuelResult";
 import { PvPVictoryScreen } from "@/components/pvp/PvPVictoryScreen";
@@ -50,6 +56,11 @@ function DuelPage() {
   const store = usePvPStore();
   const shake = useScreenShake();
   const sfx = useSFX();
+  // 2026-05-01: подписка на level (вместо snapshot getState) — если игрок
+  // сделал level-up прямо в дуэли (редкий, но возможный кейс на финале
+  // последнего раунда), аватар обновится без ручного refetch.
+  const playerLevel = useGamificationStore((s) => s.level);
+  const selfAvatar = usePlayerAvatar(playerLevel);
   const [confettiTrigger, setConfettiTrigger] = useState(0);
   const [showVictoryScreen, setShowVictoryScreen] = useState(true);
   const [input, setInput] = useState("");
@@ -803,6 +814,10 @@ function DuelPage() {
           // твоих сообщений покрасились по рангу. opponentTier пока не доступен
           // в payload — придёт в Фазе 7 (расширение match.found с opponent_tier).
           selfTier={store.rating?.rank_tier ?? undefined}
+          // 2026-05-01 (12-portrait library): свой аватар — реактивный
+          // hook usePlayerAvatar(level), соперник — по архетипу из duelBrief.
+          selfAvatar={selfAvatar}
+          opponentAvatar={resolveOpponentAvatar(store.duelBrief?.archetype ?? null)}
         />
       </div>
 
