@@ -489,6 +489,16 @@ class Settings(BaseSettings):
     # path so reviewer-approved chunks also get fast-track embeddings.
     arena_embedding_live_backfill_enabled: bool = False
 
+    # ── TZ-8 PR-E: review-TTL auto-flip scheduler ─────────────────────
+    # Enables the hourly worker that flips
+    # ``methodology_chunks`` / ``wiki_pages`` rows whose
+    # ``review_due_at`` has elapsed from ``actual`` to
+    # ``needs_review``. Default off so existing deploys are unchanged
+    # — flip to ``true`` once the operations team is comfortable with
+    # the auto-stale visibility behaviour. The pass is idempotent and
+    # safe to run alongside a cron-based copy.
+    review_ttl_scheduler_enabled: bool = False
+
     @field_validator("cors_origins")
     @classmethod
     def validate_cors_origins(cls, v: str, info) -> str:

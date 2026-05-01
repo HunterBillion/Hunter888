@@ -279,6 +279,25 @@ async def lifespan(application: FastAPI):
         except Exception:
             logger.warning("Lifespan: failed to start embedding live-backfill worker", exc_info=True)
 
+    # TZ-8 PR-E: review-TTL auto-flip scheduler. Held in app.state so
+    # the shutdown hook can cancel cleanly. The bulk UPDATE inside is
+    # idempotent, so a partial rollback at cancellation just means the
+    # next tick (next hour) re-runs the work.
+    application.state.review_ttl_scheduler_task = None
+    if settings.review_ttl_scheduler_enabled:
+        try:
+            from app.services.review_ttl_scheduler import ReviewTtlScheduler
+            _ttl_worker = ReviewTtlScheduler()
+            application.state.review_ttl_scheduler_task = asyncio.create_task(
+                _ttl_worker.run_forever()
+            )
+            logger.info("Lifespan: review-TTL scheduler started")
+        except Exception:
+            logger.warning(
+                "Lifespan: failed to start review-TTL scheduler",
+                exc_info=True,
+            )
+
     logger.info("Lifespan: startup complete")
     yield
     # ── Shutdown ──
@@ -300,6 +319,17 @@ async def lifespan(application: FastAPI):
         _eb_task.cancel()
         try:
             await _eb_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    # TZ-8 PR-E: stop the review-TTL scheduler. Independent of the
+    # other workers — its UPDATE is idempotent, so a half-flushed
+    # cancel just lets the next-hour pass redo the work.
+    _ttl_task = getattr(application.state, "review_ttl_scheduler_task", None)
+    if _ttl_task is not None:
+        _ttl_task.cancel()
+        try:
+            await _ttl_task
         except (asyncio.CancelledError, Exception):
             pass
 
