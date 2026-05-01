@@ -432,7 +432,15 @@ class LiveEmbeddingBackfillWorker:
     def __init__(
         self,
         *,
-        block_timeout_seconds: int = 5,
+        # 2026-05-01 — must be STRICTLY LESS than the redis client's
+        # ``socket_timeout`` (5 s in app.core.redis_pool). Equal values
+        # cause the socket read to time out at exactly the same moment
+        # BLPOP would server-side return the empty result, producing a
+        # WARNING traceback every cycle in production logs (observed in
+        # prod 2026-05-01 right after enabling the feature flag — see
+        # PR fix). Use 4 s so BLPOP returns cleanly via the redis
+        # protocol path, never via the socket read-timeout path.
+        block_timeout_seconds: int = 4,
         idle_sleep: float = 1.0,
     ) -> None:
         self.block_timeout = block_timeout_seconds
