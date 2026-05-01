@@ -149,7 +149,7 @@ jobs:
             tests/test_methodology_authz.py \
             tests/test_methodology_rag.py \
             tests/test_methodology_concurrency.py \
-            tests/test_methodology_telemetry.py
+            tests/test_review_ttl_scheduler.py
 
   frontend:
     runs-on: ubuntu-latest
