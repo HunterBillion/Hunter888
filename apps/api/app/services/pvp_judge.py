@@ -27,7 +27,12 @@ from app.services.arena_metrics import (
     ARENA_JUDGE_DEGRADED,
 )
 from app.services.llm import generate_response
-from app.services.rag_legal import retrieve_legal_context, RAGContext
+from app.services.rag_legal import (
+    retrieve_legal_context,
+    RAGContext,
+    log_chunk_usage,
+    record_chunk_outcome,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +199,13 @@ async def judge_round(
     round_number: int,
     db: AsyncSession,
     emotion_journey: dict | None = None,
+    # Content→Arena PR-5 — optional duel_id for chunk-usage telemetry.
+    # When provided, every legal chunk surfaced by the RAG retrieval is
+    # logged with ``source_type="pvp_duel"`` so methodologists can see
+    # which uploaded chunks actually fire in arena play. Omitted in
+    # legacy callers (calibration, ad-hoc replay) — telemetry is then
+    # silently skipped.
+    duel_id: uuid.UUID | None = None,
 ) -> tuple[JudgeRoundScore, JudgeRoundScore]:
     """Judge a single round of PvP dialog.
 
@@ -213,6 +225,27 @@ async def judge_round(
     # Collect all messages for legal RAG context
     all_text = " ".join(msg.get("text", "") for msg in dialog)
     legal_context = await retrieve_legal_context(all_text, db, top_k=5)
+
+    # Content→Arena PR-5: log retrieval for every chunk surfaced by the
+    # RAG. Methodologists in AiQualityPanel can then see "which 127-ФЗ
+    # chunks actually fire in dueled rounds" — closes the feedback loop
+    # for ROP-uploaded knowledge. Logger is non-blocking (own try/except
+    # inside log_chunk_usage); a logging failure never breaks the judge.
+    if duel_id is not None and legal_context.has_results:
+        try:
+            await log_chunk_usage(
+                db,
+                chunk_ids=[r.chunk_id for r in legal_context.results if r.chunk_id is not None],
+                user_id=seller_id,  # the player whose answer the chunk would have helped
+                source_type="pvp_duel",
+                source_id=duel_id,
+                query_text=all_text,
+                retrieval_method=legal_context.method,
+                relevance_scores={r.chunk_id: r.relevance_score for r in legal_context.results if r.chunk_id is not None},
+                ranks={r.chunk_id: i for i, r in enumerate(legal_context.results, start=1) if r.chunk_id is not None},
+            )
+        except Exception:
+            logger.warning("pvp_judge: log_chunk_usage failed (non-critical)", exc_info=True)
 
     # Format dialog
     dialog_text = ""
@@ -382,6 +415,52 @@ async def judge_round(
         multiplier,
     )
 
+    # Content→Arena PR-5: record per-chunk outcome so methodology gets
+    # answer_correct telemetry. Heuristic: a chunk is "answered correctly"
+    # if the judge's legal_details list contains ANY entry with a matching
+    # ``law_article`` whose accuracy is "correct" or "correct_cited", and
+    # "incorrect" otherwise. Skipped on degraded judge (no real eval).
+    if duel_id is not None and not _degraded and legal_context.has_results:
+        try:
+            details_list = result.get("legal_details") or []
+            article_accuracy: dict[str, bool] = {}
+            for d in details_list if isinstance(details_list, list) else []:
+                claim = str((d or {}).get("claim") or "")
+                accuracy = str((d or {}).get("accuracy") or "").lower()
+                # Normalise the article reference (e.g. "ст. 213.3") so we
+                # can match against retrieved chunks' law_article field.
+                if not claim:
+                    continue
+                is_correct = accuracy in ("correct", "correct_cited")
+                # Fold multiple mentions: any "correct" wins; otherwise "incorrect".
+                for r in legal_context.results:
+                    if r.law_article and r.law_article.lower() in claim.lower():
+                        if is_correct:
+                            article_accuracy[str(r.chunk_id)] = True
+                        else:
+                            article_accuracy.setdefault(str(r.chunk_id), False)
+
+            for r in legal_context.results:
+                if r.chunk_id is None:
+                    continue
+                outcome = article_accuracy.get(str(r.chunk_id))
+                if outcome is None:
+                    # Chunk surfaced by RAG but not addressed in legal_details
+                    # — treat as not-yet-answered (was_answered stays False
+                    # via log_chunk_usage's default).
+                    continue
+                await record_chunk_outcome(
+                    db,
+                    chunk_id=r.chunk_id,
+                    user_id=seller_id,
+                    source_type="pvp_duel",
+                    source_id=duel_id,
+                    answer_correct=outcome,
+                    score_delta=float(seller_score.legal_accuracy),
+                )
+        except Exception:
+            logger.warning("pvp_judge: record_chunk_outcome failed (non-critical)", exc_info=True)
+
     return seller_score, client_score
 
 
@@ -431,6 +510,10 @@ async def judge_full_duel(
     db: AsyncSession,
     round1_emotion_journey: dict | None = None,
     round2_emotion_journey: dict | None = None,
+    # Content→Arena PR-5: forwarded into per-round judge_round so the
+    # chunk-usage telemetry tags the duel correctly. Optional for
+    # back-compat with older callers (calibration, replay).
+    duel_id: uuid.UUID | None = None,
 ) -> JudgeDuelResult:
     """Judge a complete PvP duel (both rounds).
 
@@ -450,6 +533,7 @@ async def judge_full_duel(
         round_number=1,
         db=db,
         emotion_journey=round1_emotion_journey,
+        duel_id=duel_id,
     )
 
     # Round 2: P2 sells, P1 acts (P1's emotion journey)
@@ -464,6 +548,7 @@ async def judge_full_duel(
         round_number=2,
         db=db,
         emotion_journey=round2_emotion_journey,
+        duel_id=duel_id,
     )
 
     # Player 1: R1 selling + R2 acting
