@@ -89,13 +89,17 @@ logger = logging.getLogger(__name__)
 # (embedding compute).
 _QUEUE_KEY = "arena:embedding:backfill:legal_chunks"
 _QUEUE_KEY_WIKI = "arena:embedding:backfill:wiki_pages"
+_QUEUE_KEY_METHODOLOGY = "arena:embedding:backfill:methodology_chunks"
 
-# Watch order matters when both queues have data: BLPOP returns from
-# the first key with a value. Wiki pages are user-edited and tend to
-# be the "fresh signal" the manager just saved — drain those first so
-# the next coach query sees the change. Legal chunks are bulk-imports
-# and can wait a few seconds longer without hurting UX.
-_QUEUE_KEYS = (_QUEUE_KEY_WIKI, _QUEUE_KEY)
+# Watch order matters when several queues have data: BLPOP returns
+# from the first key with a value. Methodology chunks are user-saved
+# in real time on the team panel — surfacing the new playbook in
+# the next coach query is the most visible UX signal, so they go
+# first. Wiki pages are user-edited too but accumulate in slower
+# batches (auto-ingest + occasional manual edits). Legal chunks
+# are bulk-imports and can wait a few seconds longer without
+# hurting UX.
+_QUEUE_KEYS = (_QUEUE_KEY_METHODOLOGY, _QUEUE_KEY_WIKI, _QUEUE_KEY)
 
 # Hard cap so a runaway producer (e.g. import flood) cannot OOM Redis.
 # 5 000 ids × ~50 bytes ≈ 250 KB per queue. The cold sweep on next
@@ -152,6 +156,25 @@ async def enqueue_wiki_page(page_id: uuid.UUID) -> None:
         )
 
 
+async def enqueue_methodology_chunk(chunk_id: uuid.UUID) -> None:
+    """Push a methodology_chunks id onto the live-backfill queue (TZ-8 PR-B).
+
+    Called from the methodology REST API after each create / update.
+    Same best-effort contract as :func:`enqueue_chunk` and
+    :func:`enqueue_wiki_page` — a Redis hiccup is logged + swallowed,
+    the user's POST/PUT still returns 201/200, and the next cold
+    sweep on restart eventually catches up.
+    """
+    try:
+        await _rpush_bounded(_QUEUE_KEY_METHODOLOGY, str(chunk_id))
+    except Exception:
+        logger.warning(
+            "embedding_live_backfill: enqueue failed for methodology chunk %s "
+            "(non-critical)",
+            chunk_id, exc_info=True,
+        )
+
+
 async def queue_length() -> int:
     """Return current legal-chunks backlog size (operators / health probes)."""
     try:
@@ -170,6 +193,17 @@ async def wiki_queue_length() -> int:
 
         r = get_redis()
         return int(await r.llen(_QUEUE_KEY_WIKI))
+    except Exception:
+        return -1
+
+
+async def methodology_queue_length() -> int:
+    """Return current methodology-chunks backlog size (operators / health probes)."""
+    try:
+        from app.core.redis_pool import get_redis
+
+        r = get_redis()
+        return int(await r.llen(_QUEUE_KEY_METHODOLOGY))
     except Exception:
         return -1
 
@@ -293,6 +327,79 @@ async def populate_single_wiki_page_embedding(page_id: uuid.UUID) -> bool:
         return False
 
 
+async def populate_single_methodology_chunk_embedding(chunk_id: uuid.UUID) -> bool:
+    """Compute and write the embedding for one methodology chunk (TZ-8 PR-B).
+
+    Mirrors :func:`populate_single_wiki_page_embedding` but for
+    :class:`MethodologyChunk` rows. Reads ``title`` + ``body``
+    concatenated (so the embedding captures both — the title is
+    short and frequently the most discriminative signal) capped
+    at 1500 chars to match the wiki contract.
+
+    Also updates ``embedding_model`` + ``embedding_updated_at`` so
+    a future model migration (gemini → next-gen) can target the
+    rows that haven't been re-embedded yet, the same provenance
+    contract ``rag_legal_v2`` introduced.
+
+    Returns True on successful write, False otherwise. Each call
+    uses its own DB session so a failure on one chunk doesn't
+    poison the worker's surrounding transaction.
+    """
+    try:
+        from datetime import datetime, timezone
+
+        from app.database import async_session
+        from app.models.methodology import MethodologyChunk
+        from app.services.llm import get_embeddings_batch
+        from sqlalchemy import select, update
+
+        async with async_session() as db:
+            row = (
+                await db.execute(
+                    select(MethodologyChunk.title, MethodologyChunk.body)
+                    .where(MethodologyChunk.id == chunk_id)
+                )
+            ).first()
+            if row is None:
+                logger.info(
+                    "embedding_live_backfill: methodology chunk %s not found, skipping",
+                    chunk_id,
+                )
+                return False
+            # Title + body — the same shape the retriever's reranker
+            # treats as the searchable payload. Truncate at 1500 to
+            # match the wiki path's 1500-char window.
+            text = ((row.title or "") + "\n\n" + (row.body or ""))[:1500]
+            if not text.strip():
+                return False
+            embeddings = await get_embeddings_batch([text])
+            if not embeddings or not embeddings[0]:
+                logger.warning(
+                    "embedding_live_backfill: provider returned empty for "
+                    "methodology chunk %s",
+                    chunk_id,
+                )
+                return False
+            await db.execute(
+                update(MethodologyChunk)
+                .where(MethodologyChunk.id == chunk_id)
+                .values(
+                    embedding=embeddings[0],
+                    embedding_model="gemini-embedding-001",
+                    embedding_updated_at=datetime.now(timezone.utc),
+                )
+            )
+            await db.commit()
+            return True
+    except Exception:
+        logger.warning(
+            "embedding_live_backfill: failed to embed methodology chunk %s "
+            "(transient, will be picked up by cold sweep on restart)",
+            chunk_id, exc_info=True,
+        )
+        return False
+
+
 # ── Worker ──────────────────────────────────────────────────────────────────
 
 
@@ -304,6 +411,7 @@ async def populate_single_wiki_page_embedding(page_id: uuid.UUID) -> bool:
 _DISPATCH = {
     _QUEUE_KEY: populate_single_legal_chunk_embedding,
     _QUEUE_KEY_WIKI: populate_single_wiki_page_embedding,
+    _QUEUE_KEY_METHODOLOGY: populate_single_methodology_chunk_embedding,
 }
 
 
@@ -407,8 +515,11 @@ class LiveEmbeddingBackfillWorker:
 __all__ = [
     "LiveEmbeddingBackfillWorker",
     "enqueue_chunk",
+    "enqueue_methodology_chunk",
     "enqueue_wiki_page",
+    "methodology_queue_length",
     "populate_single_legal_chunk_embedding",
+    "populate_single_methodology_chunk_embedding",
     "populate_single_wiki_page_embedding",
     "queue_length",
     "wiki_queue_length",

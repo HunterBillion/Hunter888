@@ -1,17 +1,19 @@
-"""Static invariants that guard the PR-X foundation contract for wiki RAG.
+"""Static invariants that guard the wiki *and* methodology RAG contracts.
 
-PR-X (foundation, the bug-fix prerequisite for the TZ-6 methodology
-epic) added two cooperating defences for user-edited wiki content
-flowing into LLM prompts:
+Originally introduced as ``test_wiki_invariants.py`` in PR-X (PR
+#153) for the wiki RAG hardening; renamed to ``test_rag_invariants.py``
+in TZ-8 PR-B when the same contract was extended to the new
+``methodology_chunks`` source. The shape is now generic across all
+user-curated RAG sources that flow into the system prompt:
 
-  1. ``app.services.content_filter.filter_wiki_context`` sanitises
-     ``content`` / ``page_path`` / ``tags`` against jailbreaks, PII,
-     and runaway lengths.
+  1. ``app.services.content_filter.filter_<source>_context`` sanitises
+     the user-controllable string fields (titles, body, tags,
+     keywords) against jailbreaks, PII, and runaway lengths.
 
   2. ``app.services.rag_unified.UnifiedRAGResult.to_prompt`` wraps
-     the rendered wiki block in ``[DATA_START] ... [DATA_END]``
-     isolation markers so the LLM's system prompt treats the content
-     as data, not instructions.
+     each rendered block in ``[DATA_START] ... [DATA_END]`` isolation
+     markers so the LLM's system prompt treats the content as data,
+     not instructions.
 
 The two are paired — sanitisation without wrapping leaves a hand-
 crafted jailbreak that doesn't trip the regex; wrapping without
@@ -23,7 +25,7 @@ moment a new caller bypasses the canonical path.
 
 The fix when one of these tests fires is **not** to add the offending
 file to the allow-list below — it is to route the new consumer
-through ``UnifiedRAGResult.to_prompt`` (or ``filter_wiki_context``
+through ``UnifiedRAGResult.to_prompt`` (or ``filter_*_context``
 explicitly if the consumer needs the cleaned dicts for non-prompt
 use, e.g. compounding). Quietly weakening the allow-list is the
 failure mode this guard exists to make impossible.
@@ -44,14 +46,21 @@ APP_DIR = Path(__file__).resolve().parent.parent / "app"
 
 # ── Allow-lists ─────────────────────────────────────────────────────────────
 #
-# Files that are allowed to read ``UnifiedRAGResult.wiki_context`` as a
-# raw string. The dataclass itself defines and consumes the field;
-# everything else must call ``to_prompt()`` and receive the wrapped form.
-ALLOWED_WIKI_CONTEXT_READERS = {
+# Files that are allowed to read ``UnifiedRAGResult.wiki_context`` /
+# ``methodology_context`` as a raw string. The dataclass itself
+# defines and consumes the fields; everything else must call
+# ``to_prompt()`` and receive the wrapped form.
+ALLOWED_RAG_CONTEXT_READERS = {
     # Canonical owner + the only sanctioned formatter (to_prompt builds
     # the [DATA_START]/[DATA_END] envelope).
     "app/services/rag_unified.py",
 }
+
+# Backwards-compat alias for any external imports of the old name.
+# The variable was renamed when the file moved from wiki-only to
+# multi-source guard. Keep the alias so a future search by the old
+# symbol still surfaces the right list.
+ALLOWED_WIKI_CONTEXT_READERS = ALLOWED_RAG_CONTEXT_READERS
 
 # Files that are allowed to render the ``[DATA_START_WIKI]``-style
 # isolation markers around wiki content. Right now only ``to_prompt``
@@ -75,6 +84,11 @@ ALLOWED_DATA_MARKER_WRITERS = {
     "tests/test_rag_security.py",
     "tests/test_wiki_foundation.py",
     "tests/test_wiki_invariants.py",
+    "tests/test_rag_invariants.py",
+    # TZ-8 PR-B test files that assert on the methodology block's markers.
+    "tests/test_methodology_filter.py",
+    "tests/test_methodology_rag.py",
+    "tests/test_methodology_to_prompt.py",
 }
 
 
@@ -152,32 +166,45 @@ def _string_constants(path: Path) -> list[tuple[int, str]]:
 # ── Tests ───────────────────────────────────────────────────────────────────
 
 
-def test_wiki_context_is_only_read_inside_to_prompt():
-    """``UnifiedRAGResult.wiki_context`` is read **only** in
-    ``rag_unified.py`` — every other consumer must call
-    :meth:`UnifiedRAGResult.to_prompt`.
+@pytest.mark.parametrize(
+    ("attr", "raw_field_hint"),
+    [
+        ("wiki_context", "UnifiedRAGResult.wiki_pages"),
+        ("methodology_context", "UnifiedRAGResult.methodology_chunks"),
+    ],
+)
+def test_rag_context_strings_are_only_read_inside_to_prompt(
+    attr: str, raw_field_hint: str
+):
+    """``UnifiedRAGResult.<attr>`` is read **only** in ``rag_unified.py``
+    — every other consumer must call :meth:`UnifiedRAGResult.to_prompt`.
 
-    Failure means a new caller is concatenating raw wiki markdown into
-    a prompt without the ``[DATA_START]/[DATA_END]`` envelope. The fix
-    is to call ``to_prompt()`` (or, if the consumer truly needs the
-    dicts pre-format, call ``filter_wiki_context`` and add a justified
-    allow-list entry under TZ §13 review).
+    One parametrised test covers both the wiki source (PR-X) and the
+    methodology source (TZ-8 PR-B) so adding a fourth source means
+    one new ``parametrize`` row, not a new test function.
+
+    Failure means a new caller is concatenating raw user-curated
+    markdown into a prompt without the ``[DATA_START]/[DATA_END]``
+    envelope. The fix is to call ``to_prompt()`` (or, if the consumer
+    truly needs the dicts pre-format, pull from ``raw_field_hint`` —
+    the already-sanitised list of dicts the retriever produced — and
+    add a justified allow-list entry under TZ §13 review).
     """
     offenders: list[str] = []
     for file_path in _iter_python_files(APP_DIR):
         rel = file_path.relative_to(APP_DIR.parent).as_posix()
-        if rel in ALLOWED_WIKI_CONTEXT_READERS:
+        if rel in ALLOWED_RAG_CONTEXT_READERS:
             continue
-        lines = _attribute_reads(file_path, "wiki_context")
+        lines = _attribute_reads(file_path, attr)
         if lines:
             offenders.append(f"{rel}: {lines}")
     assert not offenders, (
-        "Direct read of ``UnifiedRAGResult.wiki_context`` found outside "
-        "the canonical formatter. Call ``UnifiedRAGResult.to_prompt()`` "
-        "and inject the wrapped form instead. If the consumer needs "
-        "the dicts pre-format (e.g. knowledge compounding), pull from "
-        "``UnifiedRAGResult.wiki_pages`` (already filtered) and not "
-        "from ``wiki_context`` (raw rendered string):\n"
+        f"Direct read of ``UnifiedRAGResult.{attr}`` found outside "
+        f"the canonical formatter. Call ``UnifiedRAGResult.to_prompt()`` "
+        f"and inject the wrapped form instead. If the consumer needs "
+        f"the dicts pre-format (e.g. knowledge compounding or "
+        f"telemetry), pull from ``{raw_field_hint}`` (already "
+        f"filtered) and not from ``{attr}`` (raw rendered string):\n"
         + "\n".join(offenders)
     )
 
@@ -254,3 +281,52 @@ def test_to_prompt_with_no_wiki_emits_no_wiki_markers():
     assert "ПЕРСОНАЛЬНАЯ WIKI" not in out
     # Legal path still gets its own block — we did not regress it.
     assert "ПРАВОВАЯ БАЗА" in out
+
+
+def test_to_prompt_actually_wraps_methodology_in_data_markers():
+    """TZ-8 PR-B — the methodology block follows the same wrapping
+    contract as wiki/legal. Pairs with the AST guards above so a
+    future refactor can't satisfy them by removing the markers from
+    ``rag_unified.py`` itself."""
+    from app.services.rag_unified import UnifiedRAGResult
+
+    r = UnifiedRAGResult()
+    r.methodology_context = "- [opener] Greeting: state your name first"
+    out = r.to_prompt()
+    assert "МЕТОДОЛОГИЯ КОМАНДЫ:" in out
+    assert "[DATA_START]" in out
+    assert "[DATA_END]" in out
+    assert out.index("[DATA_START]") < out.index(
+        "Greeting: state your name first"
+    ) < out.index("[DATA_END]")
+
+
+def test_to_prompt_with_no_methodology_emits_no_methodology_markers():
+    """Empty methodology_context → no methodology block."""
+    from app.services.rag_unified import UnifiedRAGResult
+
+    r = UnifiedRAGResult()
+    r.legal_context = "Legal X"
+    out = r.to_prompt()
+    assert "МЕТОДОЛОГИЯ КОМАНДЫ" not in out
+    assert "ПРАВОВАЯ БАЗА" in out
+
+
+def test_to_prompt_orders_legal_methodology_wiki():
+    """When all three blocks are present, the order in the prompt is
+    legal → methodology → wiki. This is the budget-priority order
+    (coach gets methodology > wiki, training gets legal > methodology)
+    — a future refactor that re-orders blocks should be a TZ §13
+    review, not a silent reshuffle."""
+    from app.services.rag_unified import UnifiedRAGResult
+
+    r = UnifiedRAGResult(
+        legal_context="L",
+        methodology_context="M",
+        wiki_context="W",
+    )
+    out = r.to_prompt()
+    legal_pos = out.index("ПРАВОВАЯ БАЗА")
+    method_pos = out.index("МЕТОДОЛОГИЯ КОМАНДЫ")
+    wiki_pos = out.index("ПЕРСОНАЛЬНАЯ WIKI")
+    assert legal_pos < method_pos < wiki_pos
