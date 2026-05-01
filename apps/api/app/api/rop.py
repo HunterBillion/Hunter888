@@ -1494,11 +1494,27 @@ async def approve_arena_knowledge_draft(
     user: User = Depends(_require_methodologist),
     db: AsyncSession = Depends(get_db),
 ):
-    """PR-2: convert an ARENA_KNOWLEDGE-route draft into a row in
-    ``legal_knowledge_chunks`` with ``is_active=False`` (pending review
-    queue). The existing knowledge_review_policy moderates it before it
-    reaches live quizzes.
+    """Convert an ARENA_KNOWLEDGE-route draft into a ``LegalKnowledgeChunk``.
+
+    Content→Arena PR-3 (2026-05-01): high-confidence drafts auto-publish
+    (``is_active=True``) so the AI judge sees ROP-uploaded facts in the
+    next dueled round, not whenever the review queue is processed
+    manually. The threshold is governed by
+    ``settings.arena_knowledge_auto_publish_confidence`` (default 0.85).
+
+    We deliberately gate on ``draft.original_confidence`` — the LLM's
+    immutable assessment from the extractor — NOT on the editable
+    ``draft.confidence``. This protects against the post-hoc-bump
+    attack documented in migration 20260429_002 (audit-fix C7): a
+    methodologist who raises a hallucinated draft's confidence to 0.99
+    can still NOT trick the system into auto-publishing — the auto path
+    only trusts the extractor's original number.
+
+    On miss (``original_confidence`` < threshold or NULL) the chunk is
+    created with ``is_active=False`` and the existing review queue takes
+    over — bit-for-bit identical to pre-PR-3 behaviour.
     """
+    from app.config import settings as _app_settings
     from app.models.rag import LegalKnowledgeChunk
     from app.models.scenario import ScenarioDraft
 
@@ -1519,6 +1535,20 @@ async def approve_arena_knowledge_draft(
             detail=f"Draft status={draft.status!r} is not convertible.",
         )
 
+    # Auto-publish gate: trust ONLY the immutable original_confidence.
+    # NULL original_confidence (legacy PR-1 rows or missing field) is
+    # treated as "below threshold" — no auto-publish, falls into the
+    # review queue. This is the safe default: an unknown confidence
+    # never gets the fast-track.
+    threshold = float(_app_settings.arena_knowledge_auto_publish_confidence)
+    original_conf = draft.original_confidence
+    auto_publish = (
+        original_conf is not None and float(original_conf) >= threshold
+    )
+    chunk_tags = ["imported"]
+    if auto_publish:
+        chunk_tags.append("auto_published")
+
     raw = draft.extracted or {}
     chunk = LegalKnowledgeChunk(
         category=str(raw.get("category") or "general")[:50],
@@ -1528,9 +1558,8 @@ async def approve_arena_knowledge_draft(
         match_keywords=list(raw.get("match_keywords") or []),
         common_errors=list(raw.get("common_errors") or []),
         correct_response_hint=str(raw.get("correct_response_hint") or "")[:1000],
-        tags=["imported"],
-        # Lands in the review queue, not live quizzes.
-        is_active=False,
+        tags=chunk_tags,
+        is_active=auto_publish,
     )
     db.add(chunk)
     await db.flush()
@@ -1541,7 +1570,13 @@ async def approve_arena_knowledge_draft(
     return {
         "draft_id": str(draft.id),
         "chunk_id": str(chunk.id),
-        "message": "Факт добавлен в очередь review для Арены.",
+        "auto_published": auto_publish,
+        "original_confidence": float(original_conf) if original_conf is not None else None,
+        "message": (
+            "Факт автоопубликован — попадёт в Арену в ближайших дуэлях."
+            if auto_publish
+            else "Факт добавлен в очередь review для Арены."
+        ),
     }
 
 

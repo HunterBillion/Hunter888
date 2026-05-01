@@ -452,6 +452,17 @@ class Settings(BaseSettings):
     # can verify writes (XLEN) before flipping the consumer.
     arena_bus_audit_consumer_enabled: bool = False
 
+    # Content→Arena PR-3: auto-publish threshold for arena_knowledge
+    # drafts. When ROP/admin approves an ``arena_knowledge`` import and
+    # the LLM's *original* confidence (immutable column from migration
+    # 20260429_002 audit-fix C7) is at or above this value, the resulting
+    # ``LegalKnowledgeChunk`` is created with ``is_active=True`` so the
+    # AI judge sees it immediately. Below the threshold, the chunk lands
+    # in the existing review queue (``is_active=False``). Default 0.85
+    # from the original arena audit recommendation; lowering it is an
+    # ops decision documented in the change log.
+    arena_knowledge_auto_publish_confidence: float = 0.85
+
     @field_validator("cors_origins")
     @classmethod
     def validate_cors_origins(cls, v: str, info) -> str:
