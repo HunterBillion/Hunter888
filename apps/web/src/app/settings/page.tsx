@@ -18,6 +18,8 @@ import AuthLayout from "@/components/layout/AuthLayout";
 import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { AvatarUpload } from "@/components/settings/AvatarUpload";
+// 2026-05-01 (Фаза 8): pixel sound settings — master + 3 категории + mute
+import { SoundSettings } from "@/components/settings/SoundSettings";
 import { PIPELINE_STATUSES, CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
 import type { ClientStatus } from "@/types";
 import { logger } from "@/lib/logger";
@@ -443,6 +445,33 @@ const triggerAutosave = useCallback(async () => {
               </div>
             </Card>
           </Section>
+
+          {/* 2026-05-01 (Фаза 8): звук — отдельная секция, целиком кастомный
+              блок. Section-grid не используется (4 ползунка живут внутри
+              SoundSettings своим layout-ом). */}
+          <motion.section
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: "var(--accent-muted)" }}
+              >
+                <SpeakerHigh weight="duotone" size={18} style={{ color: "var(--accent)" }} />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
+                  Звук
+                </h2>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Mute + 4 ползунка громкости
+                </p>
+              </div>
+            </div>
+            <SoundSettings />
+          </motion.section>
 
           <Section icon={Bell} title="Система" description="Оформление и уведомления">
             <Card>

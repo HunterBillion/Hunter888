@@ -20,6 +20,7 @@
 import * as React from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowLeftRight } from "lucide-react";
+import { useSound } from "@/hooks/useSound";
 
 interface Props {
   roundNumber: number;
@@ -85,6 +86,19 @@ export function RoundIndicator({
   const isCritical = remaining <= 10 && remaining > 0;
   const isLow = remaining <= 30 && remaining > 10;
   const isHeartbeat = remaining <= 5 && remaining > 0;
+
+  // 2026-05-01 (Фаза 8): heartbeat sfx последние 5 секунд раунда.
+  // Срабатывает на каждой смене целочисленной секунды, не уважает rAF.
+  const { playSound } = useSound();
+  const lastSecRef = React.useRef<number>(-1);
+  React.useEffect(() => {
+    const intSec = Math.floor(remaining);
+    if (intSec === lastSecRef.current) return;
+    lastSecRef.current = intSec;
+    if (isHeartbeat && intSec > 0 && !reducedMotion) {
+      playSound("heartbeat");
+    }
+  }, [remaining, isHeartbeat, reducedMotion, playSound]);
   const ringColor = isCritical
     ? "var(--danger)"
     : isLow
