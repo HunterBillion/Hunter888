@@ -54,6 +54,11 @@ async def retrieve_methodology_context(
     db: AsyncSession,
     top_k: int = 4,
     min_similarity: float | None = None,
+    *,
+    user_id: uuid.UUID | None = None,
+    source_type: str = "methodology_retrieval",
+    source_id: uuid.UUID | None = None,
+    log_usage: bool = True,
 ) -> list[dict]:
     """Per-team RAG search over ``methodology_chunks``.
 
@@ -175,6 +180,32 @@ async def retrieve_methodology_context(
 
     candidates.sort(key=lambda r: r["rerank_score"], reverse=True)
     final = candidates[:top_k]
+
+    # TZ-8 PR-D telemetry: log every chunk surfaced to the prompt so
+    # the methodology effectiveness panel knows what fired. Best-effort
+    # — wrapped in its own try/except inside the helper, never raises.
+    # Skip logging when user_id is unknown (e.g. system-level retrieval
+    # for diagnostics) — caller can opt out via ``log_usage=False`` too.
+    if log_usage and user_id is not None and final:
+        from app.services.methodology_telemetry import (
+            log_methodology_retrieval,
+        )
+
+        for rank, c in enumerate(final, start=1):
+            log_id = await log_methodology_retrieval(
+                db,
+                user_id=user_id,
+                chunk_id=uuid.UUID(c["id"]),
+                source_type=source_type,
+                source_id=source_id,
+                query_text=query[:500],
+                relevance_score=c.get("rerank_score") or c.get("similarity"),
+                retrieval_rank=rank,
+            )
+            # Surface the log id back to the caller so it can later
+            # patch the outcome (judge result) onto the right row.
+            if log_id is not None:
+                c["_usage_log_id"] = str(log_id)
 
     logger.info(
         "Methodology RAG | team=%s | query='%s' | threshold=%.2f | returned=%d/%d",

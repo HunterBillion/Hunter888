@@ -270,8 +270,17 @@ async def retrieve_all_context(
             )
 
             async with _make_session() as rag_db:
+                # Pass ``user_id`` so the retriever can log usage
+                # (TZ-8 PR-D telemetry). ``source_type`` matches the
+                # context_type so the effectiveness panel can split
+                # "fired in coach" vs "fired in training".
                 return await retrieve_methodology_context(
-                    query, team_id, rag_db, top_k=4
+                    query,
+                    team_id,
+                    rag_db,
+                    top_k=4,
+                    user_id=user_id,
+                    source_type=context_type,
                 )
 
         tasks["methodology"] = asyncio.create_task(_methodology())

@@ -183,16 +183,29 @@ class ChunkUsageLog(Base):
     __tablename__ = "chunk_usage_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # TZ-8 PR-D: ``chunk_id`` is now polymorphic across three RAG
+    # tables (legal_knowledge_chunks / wiki_pages / methodology_chunks)
+    # — the FK to legal_knowledge_chunks was dropped in migration
+    # ``20260502_002_methodology_telemetry``. Use ``chunk_kind``
+    # (below) as the discriminator when joining.
     chunk_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("legal_knowledge_chunks.id", ondelete="SET NULL"), nullable=True, index=True
+        UUID(as_uuid=True), nullable=True, index=True
     )
+    chunk_kind: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="legal", server_default="legal", index=True
+    )
+    """Discriminator: 'legal' | 'wiki' | 'methodology'. Joins to the
+    matching pgvector table at query time. Adding a fourth source
+    means one new value here + one migration backfill — no schema
+    change to this table beyond the ``server_default`` carry-over."""
+
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
     # Context of usage
     source_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
-    # "training" | "pvp_duel" | "quiz" | "blitz" | "validation"
+    # "training" | "pvp_duel" | "quiz" | "blitz" | "validation" | "methodology_retrieval"
     source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # FK to training_sessions.id / pvp_duels.id / knowledge_quiz_sessions.id
 

@@ -148,7 +148,8 @@ jobs:
             tests/test_methodology_filter.py \
             tests/test_methodology_authz.py \
             tests/test_methodology_rag.py \
-            tests/test_methodology_concurrency.py
+            tests/test_methodology_concurrency.py \
+            tests/test_methodology_telemetry.py
 
   frontend:
     runs-on: ubuntu-latest
