@@ -265,6 +265,20 @@ async def lifespan(application: FastAPI):
         except Exception:
             logger.warning("Lifespan: failed to start arena bus AuditLogConsumer", exc_info=True)
 
+    # Content→Arena PR-6: start the live embedding backfill worker. Held
+    # in app.state so the shutdown hook can cancel it cleanly. The worker
+    # commits each chunk's embedding in its own DB transaction, so
+    # cancellation never leaves a partial write.
+    application.state.embedding_live_backfill_task = None
+    if settings.arena_embedding_live_backfill_enabled:
+        try:
+            from app.services.embedding_live_backfill import LiveEmbeddingBackfillWorker
+            _eb_worker = LiveEmbeddingBackfillWorker()
+            application.state.embedding_live_backfill_task = asyncio.create_task(_eb_worker.run_forever())
+            logger.info("Lifespan: embedding live-backfill worker started")
+        except Exception:
+            logger.warning("Lifespan: failed to start embedding live-backfill worker", exc_info=True)
+
     logger.info("Lifespan: startup complete")
     yield
     # ── Shutdown ──
@@ -276,6 +290,16 @@ async def lifespan(application: FastAPI):
         _audit_task.cancel()
         try:
             await _audit_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    # Stop the live embedding backfill worker before the Redis pool
+    # closes — its BLPOP would otherwise raise on a half-shut connection.
+    _eb_task = getattr(application.state, "embedding_live_backfill_task", None)
+    if _eb_task is not None:
+        _eb_task.cancel()
+        try:
+            await _eb_task
         except (asyncio.CancelledError, Exception):
             pass
 

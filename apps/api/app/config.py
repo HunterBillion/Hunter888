@@ -481,6 +481,14 @@ class Settings(BaseSettings):
     # ops decision documented in the change log.
     arena_knowledge_auto_publish_confidence: float = 0.85
 
+    # Content→Arena PR-6: live embedding backfill worker. When True, a
+    # background task drains a Redis queue and computes the embedding
+    # for each newly-published LegalKnowledgeChunk within seconds (vs
+    # the historical "embedding stays NULL until next API restart").
+    # Independent of auto_publish: enqueue happens on every approve
+    # path so reviewer-approved chunks also get fast-track embeddings.
+    arena_embedding_live_backfill_enabled: bool = False
+
     @field_validator("cors_origins")
     @classmethod
     def validate_cors_origins(cls, v: str, info) -> str:

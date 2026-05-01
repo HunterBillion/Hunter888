@@ -1567,6 +1567,20 @@ async def approve_arena_knowledge_draft(
     draft.status = "converted"
     draft.target_id = chunk.id
     await db.commit()
+
+    # Content→Arena PR-6: schedule live embedding backfill so the new
+    # chunk gets its pgvector ``embedding`` populated within seconds —
+    # otherwise auto-published chunks (PR-3) sit with ``embedding=NULL``
+    # until the next API restart, defeating the auto-publish promise.
+    # Best-effort: enqueue failure (Redis down) is logged + swallowed,
+    # the cold sweep on next restart picks up the gap.
+    try:
+        from app.services.embedding_live_backfill import enqueue_chunk
+        await enqueue_chunk(chunk.id)
+    except Exception:
+        # enqueue_chunk is itself best-effort; double-belt for safety.
+        pass
+
     return {
         "draft_id": str(draft.id),
         "chunk_id": str(chunk.id),
