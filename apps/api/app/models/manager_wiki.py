@@ -144,6 +144,33 @@ class WikiPage(Base):
     # Shadow column (migration 20260417_005) — gemini-embedding-001@768
     embedding_v2: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
     embedding_v2_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # ── Governance (TZ-8 PR-A — single vocabulary across legal / wiki /
+    # methodology, see app/models/knowledge_status.py). Closes the
+    # deferred governance item from PR-X (PR #153) without forking
+    # schemas: the rag_wiki retriever now filters
+    # ``knowledge_status IN ('actual','disputed')`` so an outdated
+    # auto-generated insight stops surfacing without losing audit
+    # history.
+    knowledge_status: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="actual",
+        server_default="actual",
+        index=True,
+    )
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    review_due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

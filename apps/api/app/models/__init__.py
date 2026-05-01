@@ -197,6 +197,16 @@ from app.models.persona import (
 )
 from app.models.ws_outbox import WsOutboxEvent, WsOutboxStatus
 from app.services.web_push import PushSubscription
+# TZ-8 PR-A — methodology playbooks (per-team) + shared governance enum.
+# Registering here so Alembic autogenerate sees the table and the
+# ``models import *`` bootstrap in alembic/env.py resolves correctly.
+from app.models.knowledge_status import (
+    KnowledgeStatus,
+    STATUSES_HIDDEN_FROM_RAG,
+    STATUSES_VISIBLE_IN_RAG,
+    is_visible_in_rag,
+)
+from app.models.methodology import MethodologyChunk, MethodologyKind
 
 __all__ = [
     "User",
@@ -398,4 +408,11 @@ __all__ = [
     "GENDERS",
     "TONES",
     "PERSONA_CAPTURED_FROM",
+    # TZ-8 PR-A — per-team methodology playbooks
+    "KnowledgeStatus",
+    "STATUSES_VISIBLE_IN_RAG",
+    "STATUSES_HIDDEN_FROM_RAG",
+    "is_visible_in_rag",
+    "MethodologyChunk",
+    "MethodologyKind",
 ]

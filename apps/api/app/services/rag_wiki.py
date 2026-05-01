@@ -10,6 +10,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.knowledge_status import STATUSES_VISIBLE_IN_RAG
 from app.models.manager_wiki import ManagerWiki, WikiPage
 from app.services.llm import get_embedding
 
@@ -59,7 +60,12 @@ async def retrieve_wiki_context(
     if not wiki_id:
         return []
 
-    # Auto-pick threshold from page count when caller passes None
+    # Auto-pick threshold from page count when caller passes None.
+    # The denominator counts only RAG-eligible pages — same filter
+    # the SELECT below uses, so the threshold heuristic stays
+    # representative (a wiki of 200 mostly-outdated pages should
+    # behave like a small wiki, not a large one).
+    visible_statuses = list(STATUSES_VISIBLE_IN_RAG)
     if min_similarity is None:
         from sqlalchemy import func as _fn
         _pc = await db.execute(
@@ -67,6 +73,7 @@ async def retrieve_wiki_context(
             .where(WikiPage.wiki_id == wiki_id)
             .where(WikiPage.embedding.isnot(None))
             .where(WikiPage.page_type != "log")
+            .where(WikiPage.knowledge_status.in_(visible_statuses))
         )
         page_count = _pc.scalar() or 0
         if page_count < 3:
@@ -78,7 +85,13 @@ async def retrieve_wiki_context(
         else:
             min_similarity = 0.40
 
-    # Over-fetch 3x so the reranker has candidates to reorder
+    # Over-fetch 3x so the reranker has candidates to reorder.
+    # The status filter (TZ-8 PR-A) is the SAME contract used by
+    # legal RAG since TZ-4 §11.2.1 — outdated/needs_review pages stay
+    # in the table for audit but disappear from coach/training/judge
+    # retrieval. ``disputed`` rows still surface (with a downward
+    # rerank bias applied below) so the team sees them even while
+    # they're being challenged.
     fetch_n = top_k * 3
     results = await db.execute(
         select(
@@ -86,11 +99,13 @@ async def retrieve_wiki_context(
             WikiPage.content,
             WikiPage.page_type,
             WikiPage.tags,
+            WikiPage.knowledge_status,
             WikiPage.embedding.cosine_distance(query_emb).label("distance"),
         )
         .where(WikiPage.wiki_id == wiki_id)
         .where(WikiPage.embedding.isnot(None))
         .where(WikiPage.page_type != "log")
+        .where(WikiPage.knowledge_status.in_(visible_statuses))
         .order_by("distance")
         .limit(fetch_n)
     )
@@ -105,10 +120,18 @@ async def retrieve_wiki_context(
             "content": row.content[:500] if row.content else "",
             "page_type": row.page_type,
             "tags": row.tags or [],
+            "knowledge_status": row.knowledge_status,
             "similarity": round(similarity, 3),
         })
 
-    # Lightweight reranker — tag overlap + page_type bonus
+    # Lightweight reranker — tag overlap + page_type bonus +
+    # disputed-status penalty. ``disputed`` rows still surface (the
+    # SQL filter above lets them through) so the user sees the
+    # contested guidance, but the rerank bias pushes them below
+    # uncontested rows of comparable similarity. The penalty is
+    # smaller than the type bonus on purpose — a high-relevance
+    # ``disputed`` insight should still beat a low-relevance ``actual``
+    # transcript.
     _q_words = {w.lower() for w in query.split() if len(w) >= 3}
     _TYPE_BONUS = {
         "insight": 0.08,      # curated cross-page discovery
@@ -118,10 +141,17 @@ async def retrieve_wiki_context(
         "transcript": -0.02,  # raw, less distilled
         "log": -0.10,         # shouldn't even appear due to filter above, defensive
     }
+    _DISPUTED_PENALTY = -0.04
     for c in candidates:
         _tag_hits = sum(1 for t in c["tags"] if t and t.lower() in _q_words)
         _type_boost = _TYPE_BONUS.get(c["page_type"] or "page", 0.0)
-        c["rerank_score"] = round(c["similarity"] + 0.04 * _tag_hits + _type_boost, 4)
+        _status_penalty = (
+            _DISPUTED_PENALTY if c.get("knowledge_status") == "disputed" else 0.0
+        )
+        c["rerank_score"] = round(
+            c["similarity"] + 0.04 * _tag_hits + _type_boost + _status_penalty,
+            4,
+        )
 
     candidates.sort(key=lambda r: r["rerank_score"], reverse=True)
     wiki_results = candidates[:top_k]
