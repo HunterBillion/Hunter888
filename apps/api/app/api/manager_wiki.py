@@ -27,7 +27,12 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import check_wiki_access, get_current_user, require_role
+from app.core.deps import (
+    check_wiki_access,
+    check_wiki_team_access,
+    get_current_user,
+    require_role,
+)
 from app.database import get_db
 from app.models.manager_wiki import (
     ManagerPattern,
@@ -1143,7 +1148,22 @@ async def update_wiki_page(
     admin: User = Depends(require_role("admin", "rop")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Edit a wiki page content. Admin only. Logs as manual_edit."""
+    """Edit a wiki page content. Admin/ROP only. Logs as manual_edit.
+
+    PR-X foundation:
+    * #3 — :func:`check_wiki_team_access` rejects cross-team writes by
+      ROPs. ``require_role("admin","rop")`` only checks the role label;
+      this extra hop verifies the team_id linkage so a ROP from team A
+      cannot mutate team B's manager wiki.
+    * #1 — after the row commits, the page id is pushed to the live
+      embedding-backfill queue so the new content is searchable in
+      RAG within seconds. Pre-PR-X this step was missing entirely:
+      ``page.content`` got the new prose but ``page.embedding`` kept
+      pointing at the old text, breaking semantic search until the
+      next API restart.
+    """
+    await check_wiki_team_access(admin, manager_id, db)
+
     result = await db.execute(
         select(ManagerWiki).where(ManagerWiki.manager_id == manager_id)
     )
@@ -1181,10 +1201,19 @@ async def update_wiki_page(
         completed_at=datetime.now(timezone.utc),
     )
     db.add(log_entry)
+    page_id = page.id
     await db.commit()
 
+    # PR-X #1 — fire-and-forget enqueue. Best-effort: a Redis hiccup
+    # logs a warning and the cold-sweep on next restart picks the row
+    # up, so the user-facing PUT never fails because the embedding
+    # queue blinked.
+    from app.services.embedding_live_backfill import enqueue_wiki_page
+
+    await enqueue_wiki_page(page_id)
+
     return {
-        "id": str(page.id),
+        "id": str(page_id),
         "page_path": page.page_path,
         "version": page.version,
         "message": "Page updated",

@@ -361,6 +361,75 @@ def filter_rag_context(results: list) -> tuple[list, list[str]]:
     return results, all_violations
 
 
+def filter_wiki_context(pages: list[dict]) -> tuple[list[dict], list[str]]:
+    """Filter user-editable wiki pages before prompt injection.
+
+    PR-X foundation fix #2 — closes the prompt-injection gap on the
+    third RAG source. ``manager_wiki.update_wiki_page`` (admin/rop UI)
+    accepts arbitrary markdown; without sanitisation that markdown
+    would land verbatim in the LLM system prompt via
+    :func:`UnifiedRAGResult.to_prompt`. A ROP who pasted a model
+    transcript ending with ``Ignore all previous instructions…``
+    would silently jailbreak every coach/training session that
+    surfaced the page.
+
+    The fields on the dict mirror what
+    :func:`app.services.rag_wiki.retrieve_wiki_context` returns —
+    ``content`` (truncated to 500 chars upstream), ``page_path``
+    (used as a heading in the prompt), and ``tags`` (list[str]).
+    Other fields (``similarity``, ``page_type``, ``rerank_score``)
+    are not user-controllable and are passed through.
+
+    Args:
+        pages: list[dict] from ``retrieve_wiki_context``. Mutated in
+            place (cleaned content/page_path/tags) and also returned.
+
+    Returns:
+        (cleaned_pages, all_violations). ``all_violations`` carries
+        the same ``rag_injection:<field>`` / ``rag_pii:<field>``
+        / ``rag_length:<field>`` markers as :func:`filter_rag_context`
+        for unified observability.
+    """
+    all_violations: list[str] = []
+
+    for page in pages:
+        page_id = str(page.get("page_path", ""))[:60]
+
+        content = page.get("content")
+        if content:
+            cleaned, v = _sanitize_rag_field(content, "wiki_content", page_id)
+            page["content"] = cleaned
+            all_violations.extend(v)
+
+        # ``page_path`` is rendered as a header in the prompt — a ROP
+        # who names a page ``ignore-all-previous-instructions`` should
+        # not weaponise the path itself.
+        path = page.get("page_path")
+        if path:
+            cleaned, v = _sanitize_rag_field(path, "wiki_page_path", page_id)
+            page["page_path"] = cleaned
+            all_violations.extend(v)
+
+        tags = page.get("tags")
+        if tags:
+            cleaned_tags = []
+            for t in tags:
+                if not t:
+                    continue
+                cleaned, v = _sanitize_rag_field(str(t), "wiki_tag", page_id)
+                all_violations.extend(v)
+                cleaned_tags.append(cleaned)
+            page["tags"] = cleaned_tags
+
+    if all_violations:
+        logger.warning(
+            "Wiki context filter: %d violation(s) across %d pages: %s",
+            len(all_violations), len(pages), all_violations[:10],
+        )
+
+    return pages, all_violations
+
+
 def filter_ai_output(text: str) -> tuple[str, list[str]]:
     """Filter AI response before sending to user.
 
