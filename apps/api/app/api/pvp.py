@@ -40,6 +40,8 @@ from app.models.progress import ManagerProgress
 from app.models.user import User, UserFriendship
 from app.schemas.pvp import (
     AntiCheatFlagResponse,
+    AvailableCharacter,
+    AvailableCharactersResponse,
     DuelResponse,
     GauntletCooldownResponse,
     GauntletCreateRequest,
@@ -964,4 +966,75 @@ async def create_team_battle(
         team_id=team.id,
         player1_id=user.id,
         player2_id=body.partner_id,
+    )
+
+
+# ─── Content→Arena PR-4: custom characters in /pvp lobby ──────────────────
+
+
+@router.get("/characters/available", response_model=AvailableCharactersResponse)
+async def get_available_characters(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200, description="Max items per bucket"),
+):
+    """Return custom characters the current user can pick for a duel.
+
+    Two buckets:
+    * ``own``    — presets the user created (always visible).
+    * ``shared`` — other users' presets with ``is_shared=True``, capped
+      to ``limit`` rows ordered by recency. Excludes presets the user
+      already owns to avoid duplicates across the two buckets.
+
+    Used by the frontend matchmaking lobby to render a "pick a client"
+    grid before pressing "Найти соперника" / "Сыграть с ботом". When a
+    character is picked, the FE forwards its id in ``pve.accept`` /
+    ``queue.join`` payload (extension landing in PR-4 follow-up); the
+    server resolves it to the duel's archetype and persona.
+
+    The endpoint is intentionally a plain REST GET (not part of the WS
+    flow) so it can be cached by the FE for the lifetime of the lobby
+    open and pre-fetched on hover.
+    """
+    from app.models.custom_character import CustomCharacter
+
+    own_rows = (
+        await db.execute(
+            select(CustomCharacter)
+            .where(CustomCharacter.user_id == user.id)
+            .order_by(desc(CustomCharacter.last_played_at), desc(CustomCharacter.created_at))
+            .limit(limit)
+        )
+    ).scalars().all()
+
+    shared_rows = (
+        await db.execute(
+            select(CustomCharacter)
+            .where(CustomCharacter.is_shared.is_(True))
+            .where(CustomCharacter.user_id != user.id)
+            .order_by(desc(CustomCharacter.created_at))
+            .limit(limit)
+        )
+    ).scalars().all()
+
+    def _to_card(c: "CustomCharacter", *, is_own: bool) -> AvailableCharacter:
+        return AvailableCharacter(
+            id=c.id,
+            name=c.name,
+            archetype=c.archetype,
+            profession=c.profession,
+            difficulty=c.difficulty,
+            description=c.description,
+            is_own=is_own,
+            is_shared=bool(c.is_shared),
+            play_count=int(c.play_count or 0),
+            avg_score=c.avg_score,
+        )
+
+    own = [_to_card(c, is_own=True) for c in own_rows]
+    shared = [_to_card(c, is_own=False) for c in shared_rows]
+    return AvailableCharactersResponse(
+        own=own,
+        shared=shared,
+        total=len(own) + len(shared),
     )
