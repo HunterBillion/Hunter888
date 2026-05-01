@@ -829,7 +829,26 @@ async def _ensure_session(duel_id: uuid.UUID, duel: PvPDuel, player1_name: str, 
         _duel_messages.setdefault(duel_id, {1: [], 2: []})
         # Persist to Redis for cross-process durability
         await PvPDuelRedis.save_session(str(duel_id), session)
-        return session
+
+    # Content→Arena PR-7: emit a content-trace event on the bus exactly
+    # once per duel (the session-creation block is guarded by the lock,
+    # reconnects re-enter via the early-return at the top). Best-effort,
+    # silent when bus is disabled — see arena_content_trace.publish_*.
+    try:
+        from app.services.arena_content_trace import publish_duel_started
+        await publish_duel_started(
+            duel_id=duel_id,
+            scenario_template_id=getattr(duel, "scenario_template_id", None),
+            scenario_version_id=getattr(duel, "scenario_version_id", None),
+            archetype=archetype,
+            is_pve=bool(duel.is_pve),
+            difficulty=duel.difficulty.value if duel.difficulty else None,
+        )
+    except Exception:
+        # Defensive: arena_content_trace is itself best-effort, but we
+        # never want a session-creation log emit to break the duel start.
+        logger.debug("arena_content_trace.publish_duel_started failed", exc_info=True)
+    return session
 
 
 async def _update_duel_row(duel_id: uuid.UUID, **updates: Any) -> None:
