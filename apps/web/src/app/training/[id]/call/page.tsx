@@ -32,6 +32,8 @@ import { PolicyViolationCounter } from "@/components/policy/PolicyViolationCount
 import { usePolicyStore } from "@/stores/usePolicyStore";
 import { useShallow } from "zustand/react/shallow";
 import IncomingCallScreen from "@/components/training/phone/IncomingCallScreen";
+import CallDialingOverlay from "@/components/training/phone/CallDialingOverlay";
+import CallEndingTransition from "@/components/training/phone/CallEndingTransition";
 import ScriptDrawer from "@/components/training/ScriptDrawer";
 import { SessionAttachmentButton } from "@/components/training/SessionAttachmentButton";
 import { telemetry } from "@/lib/telemetry";
@@ -129,6 +131,11 @@ export default function TrainingCallPage() {
   // Transient state flags for the IncomingCallScreen buttons.
   const [accepting, setAccepting] = useState(false);
   const [declining, setDeclining] = useState(false);
+  // Phase 1 of call-flow lifecycle redesign (2026-05-01): brief
+  // "Соединение..." overlay between Accept-click and PhoneCallMode taking
+  // over. Sells the "real phone call" feel — without it, click → instant
+  // active call felt AI-y. Cleared after ~1200ms by the Accept handler.
+  const [dialingOverlay, setDialingOverlay] = useState(false);
   // real_client_id pulled from GET /training/sessions/{id} — used as
   // redirect target when user clicks Decline (back to the CRM card).
   const [realClientId, setRealClientId] = useState<string | null>(null);
@@ -645,7 +652,12 @@ export default function TrainingCallPage() {
           endInFlightRef.current = true;
           setHangupReason("Звонок завершён");
           setHangupInProgress(true);
-          router.replace(`/results/${currentSessionIdRef.current || id}`);
+          // Phase 5+6 (2026-05-01): give CallEndingTransition its 2.2s
+          // animated transition before the route swap so the user sees
+          // "Анализирую → Считаю баллы → Готовлю отчёт".
+          setTimeout(() => {
+            router.replace(`/results/${currentSessionIdRef.current || id}`);
+          }, 2200);
           break;
 
         case "client.hangup": {
@@ -808,10 +820,13 @@ export default function TrainingCallPage() {
         logger.warn("[call] end POST failed (may already be ended)", err);
       }
     })();
-    // Replace (not push) so back-button doesn't return to dead call.
+    // Phase 5+6 (2026-05-01): give CallEndingTransition its 2.2s window
+    // (was 250ms — too quick to register as a transition; user perceived
+    // the result page as "appearing instantly"). Replace not push so
+    // back-button doesn't return to a dead call.
     window.setTimeout(() => {
       router.replace(`/results/${sid}`);
-    }, 250);
+    }, 2200);
   }, [id, router, tts, stt]);
 
   const onHangup = useCallback(() => {
@@ -930,6 +945,13 @@ export default function TrainingCallPage() {
           // starts playing. See audioGateUntilRef definition for the
           // budget breakdown.
           audioGateUntilRef.current = Date.now() + 350;
+          // Phase 1 (2026-05-01): show "Соединение..." dialing overlay
+          // for 1200ms over the active call so the transition feels like
+          // a real phone connecting, not a teleport into an active call.
+          // The 350ms first-audio gate already held back AI audio enough
+          // to align with the overlay disappearing.
+          setDialingOverlay(true);
+          setTimeout(() => setDialingOverlay(false), 1200);
           setCallAccepted(true);
         }}
         onDecline={async () => {
@@ -975,31 +997,32 @@ export default function TrainingCallPage() {
   // loading spinner on /results) is invisible to the user. The farewell
   // TTS still plays because it was queued before this render.
   if (hangupInProgress) {
-    return (
-      <div
-        className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-5 text-white"
-        style={{
-          background:
-            "radial-gradient(ellipse at center, #2a1a4a 0%, #14091e 55%, #06030c 100%)",
-        }}
-      >
-        <div className="text-6xl animate-pulse">📞</div>
-        <div className="text-xl font-semibold tracking-tight">Звонок завершён</div>
-        {hangupReason && (
-          <div className="text-sm text-white/60 max-w-sm text-center px-8">
-            {hangupReason}
-          </div>
-        )}
-        <div className="flex items-center gap-2 text-xs text-white/50 mt-3">
-          <div className="h-1 w-1 rounded-full bg-white/60 animate-pulse" />
-          <span>Сохраняем результаты…</span>
-        </div>
-      </div>
-    );
+    // Phase 5+6 of call-flow lifecycle redesign (2026-05-01): rich animated
+    // transition between hangup and /results — replaces the static
+    // "📞 Звонок завершён / Сохраняем результаты..." screen with a
+    // 2.2s sequence that cycles "Звонок завершён → Анализирую разговор
+    // → Считаю баллы → Готовлю отчёт" + hangup-click sound + progress bar.
+    // The actual router.replace call is delayed at each call site below
+    // (see scheduleHangupRedirect) so the user sees the full transition.
+    const callStats: Array<{ label: string; value: string }> = [];
+    if (s.elapsed && s.elapsed > 0) {
+      const m = Math.floor(s.elapsed / 60);
+      const sec = s.elapsed % 60;
+      callStats.push({ label: "Длительность", value: `${m}:${sec.toString().padStart(2, "0")}` });
+    }
+    if (s.stagesCompleted && s.stagesCompleted.length > 0) {
+      callStats.push({ label: "Этапов пройдено", value: String(s.stagesCompleted.length) });
+    }
+    return <CallEndingTransition reason={hangupReason} stats={callStats} />;
   }
 
   return (
     <>
+      {/* Phase 1 of call-flow lifecycle redesign (2026-05-01): "Соединение..."
+          overlay covers PhoneCallMode for ~1200ms after Accept-click so the
+          transition feels like a real phone connecting. Auto-dismisses via
+          setTimeout in the Accept handler. */}
+      <CallDialingOverlay visible={dialingOverlay} calleeName={s.characterName} />
       {/* 2026-04-23 Sprint 3: ScriptDrawer floats over PhoneCallMode on
           mobile + narrow windows (it's lg:hidden by default). On desktop
           the plan's merge into PhoneCallMode teleprompter happens
