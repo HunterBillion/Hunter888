@@ -235,6 +235,12 @@ async def browse_sessions(
         User, User.id == TrainingSession.user_id
     ).where(TrainingSession.status == SessionStatus.completed)
 
+    # SEC-2026-05-02 (9-layer audit fix #9): restrict to caller's team.
+    # See ``_filter_session_by_caller_team`` for the rationale + admin
+    # escape semantics. The JOIN against ``User`` is already in ``base``,
+    # so the helper just appends a ``WHERE users.team_id = ...``.
+    base = _filter_session_by_caller_team(base, user)
+
     if user_id:
         base = base.where(TrainingSession.user_id == user_id)
     if date_from:
@@ -298,6 +304,11 @@ async def get_session_details(
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    # SEC-2026-05-02 (9-layer audit fix #9): team-scope guard on the
+    # session-details lookup. Without this any ROP could read sensitive
+    # training transcripts of users in other teams.
+    await _scope_check_session(db, session.user_id, user)
 
     user_r = await db.execute(select(User.full_name).where(User.id == session.user_id))
     user_name = user_r.scalar() or "Anonymous"
@@ -832,6 +843,76 @@ async def delete_chunk(
 # manual, not bulk.
 
 _LOW_CONFIDENCE_THRESHOLD = 0.6  # TZ-5 §4 invariant
+
+
+def _is_admin(caller: User) -> bool:
+    """Single source of truth for admin escape. Used by every team-scope
+    helper so a future rename of ``UserRole.admin`` only changes one
+    place. Admins always bypass team-anchored gates because their role
+    is intentionally cross-team (audit + recovery).
+    """
+    return getattr(caller.role, "value", str(caller.role)) == "admin"
+
+
+def _filter_session_by_caller_team(stmt, caller: User):
+    """Append ``team_id``-anchored WHERE to a ``TrainingSession`` SELECT.
+
+    SEC-2026-05-02 (9-layer audit fix #9): ``browse_sessions`` and
+    ``get_session_details`` previously filtered ONLY by role
+    (``rop`` or ``admin``). A ROP from team-A could read every team-B
+    session by hitting these endpoints with a session_id, or page
+    through them via the listing. This helper restricts the view to
+    sessions owned by users in the caller's own team.
+
+    Admins bypass the filter (cross-team audit). ROP without a team
+    gets an empty result set, NOT a 403 — the listing endpoint is
+    paginated and surfacing 403 would break legitimate pre-team
+    accounts; an empty result is informative enough.
+
+    The filter is composed via a JOIN ON ``users.team_id`` so the
+    base query stays decoupled from caller team resolution. Caller
+    must have already JOINed ``User`` (which all session endpoints
+    do for the user_name column).
+    """
+    if _is_admin(caller):
+        return stmt
+    caller_team = getattr(caller, "team_id", None)
+    if caller_team is None:
+        # No team to anchor on — return a trivially-empty filter.
+        # We use a literal-false WHERE rather than 403 so the listing
+        # endpoint pages cleanly with zero results.
+        return stmt.where(User.team_id == uuid.UUID(int=0))
+    return stmt.where(User.team_id == caller_team)
+
+
+async def _scope_check_session(
+    db: AsyncSession,
+    session_user_id: uuid.UUID,
+    caller: User,
+) -> None:
+    """Verify the caller can read a single ``TrainingSession``.
+
+    SEC-2026-05-02: counterpart to :func:`_filter_session_by_caller_team`
+    for the ``get_session_details`` endpoint where pagination doesn't
+    apply. Raises 403 if the session's owner is in a different team.
+    Admins bypass (cross-team audit).
+    """
+    if _is_admin(caller):
+        return
+    caller_team = getattr(caller, "team_id", None)
+    if caller_team is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Доступ запрещён: ваш аккаунт не привязан к команде.",
+        )
+    owner_team = (
+        await db.execute(select(User.team_id).where(User.id == session_user_id))
+    ).scalar_one_or_none()
+    if owner_team is None or owner_team != caller_team:
+        raise HTTPException(
+            status_code=403,
+            detail="Доступ запрещён: сессия принадлежит другой команде.",
+        )
 
 
 async def _scope_check_draft(
