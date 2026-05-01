@@ -4128,11 +4128,49 @@ async def _send_call_auto_opener(ws, session_id, state: dict) -> None:
     Behaves like the silence-prompt path: assistant message saved to DB so
     history replay reconstructs UI exactly, TTS uses active_factors so the
     voice carries the same humanisation factors as the rest of the call.
-    Emotion is hardcoded "cold" — fresh sessions always start there per
-    the FSM, and we don't want to fork off into emotion-resolution logic
-    inside the start handler.
+
+    Persona-aware (2026-05-01) — when ``call_opener_persona_aware`` flag is
+    on, the phrase is picked from a (mood, age_bucket) bank: hostile says
+    "Что?", senior cold says "Слушаю", young cold says "Да?". This is the
+    biggest single "feels real" tell on first turn — a flat "Алло?" on
+    every call is the strongest "this is AI" signal. See call_opener.py
+    for the full register bank and the cluster 1.4 research that drove it.
+
+    Pickup-delay (2026-05-01) — also under the same flag: instead of
+    firing the opener TTS instantly, sample a triangular delay (300-1800ms
+    typical, longer for "busy" moods) and silently wait before emitting.
+    Real humans don't pick up at zero ms — the variation is what makes
+    the call sound human.
     """
-    phrase = _pick_call_auto_opener()
+    _opener_persona_aware = bool(getattr(settings, "call_opener_persona_aware", False))
+    if _opener_persona_aware:
+        try:
+            from app.services.call_opener import pick_opener
+            _client_card = state.get("client_card") or {}
+            _persona_age = _client_card.get("age") if isinstance(_client_card, dict) else None
+            _persona_emotion = state.get("emotion") or "cold"
+            _opener_choice = pick_opener(_persona_emotion, _persona_age)
+            phrase = _opener_choice.text
+            # Apply human-like pickup delay before emitting any audio. Skip if
+            # the choice returned 0 (e.g. hangup mood — opener shouldn't fire
+            # at all, but the upstream gate should already prevent us from
+            # being here for hangup).
+            if _opener_choice.pickup_delay_ms > 0:
+                await asyncio.sleep(_opener_choice.pickup_delay_ms / 1000.0)
+            logger.info(
+                "auto_opener (persona-aware) | session=%s | emotion=%s | age_bucket=%s | "
+                "phrase=%r | pickup_delay_ms=%d",
+                session_id, _persona_emotion, _opener_choice.age_bucket,
+                phrase, _opener_choice.pickup_delay_ms,
+            )
+        except Exception:
+            logger.debug(
+                "Persona-aware opener failed for %s — falling back to flat pool",
+                session_id, exc_info=True,
+            )
+            phrase = _pick_call_auto_opener()
+    else:
+        phrase = _pick_call_auto_opener()
     # 1) Notify the UI immediately so the message bubble appears.
     await _send(ws, "character.message", {
         "content": phrase,

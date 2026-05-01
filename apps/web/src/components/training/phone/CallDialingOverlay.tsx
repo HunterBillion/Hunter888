@@ -47,8 +47,25 @@ export interface CallDialingOverlayProps {
   calleeName?: string;
 }
 
-/** Play a single Russian-style dial-tone beep (425 Hz, ~900ms with fades). */
-function playDialTone(): { stop: () => void } {
+/**
+ * Play a Russian PSTN ringback tone (425 Hz, 1.0 s on / 4.0 s off — per ITU
+ * Operational Bulletin 781 / Russian carrier spec). Returns a stop handle so
+ * the caller can cut the tone the moment the AI's auto-opener fires.
+ *
+ * Was (pre-deep-research): one 425 Hz beep ~900 ms then silence — that
+ * sounds like a *dial tone* (continuous), not a *ringback* (pulsed «гудки»).
+ * Russian ear tells those apart immediately.
+ *
+ * Now: looped 1.0 s on / 4.0 s off cadence — the unmistakable «гудки идут».
+ * Loops via setTimeout so we keep ringing for as long as the overlay shows
+ * (parent typically 1.2 s but with persona-aware variable delay can be up
+ * to ~2.2 s — overlay no longer hides the gudok cycle).
+ *
+ * Volume profile: ~0.20 amplitude with 30 ms attack and 60 ms release per
+ * ring, so each pulse has the slightly-soft edge of a real carrier tone
+ * instead of a square click. Master gain fades out 40 ms on stop().
+ */
+function playRussianRingback(): { stop: () => void } {
   if (typeof window === "undefined") return { stop: () => {} };
   try {
     const AC = (window.AudioContext ||
@@ -56,27 +73,57 @@ function playDialTone(): { stop: () => void } {
         .webkitAudioContext) as typeof AudioContext | undefined;
     if (!AC) return { stop: () => {} };
     const ctx = new AC();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = 425; // Russian PTSN dial-tone frequency
-    // Soft attack + sustain + release envelope
-    const now = ctx.currentTime;
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.18, now + 0.05);
-    gain.gain.setValueAtTime(0.18, now + 0.85);
-    gain.gain.linearRampToValueAtTime(0, now + 0.95);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 1.0);
+    const masterGain = ctx.createGain();
+    masterGain.gain.value = 1.0;
+    masterGain.connect(ctx.destination);
+
     let stopped = false;
+    let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const RING_ON_S = 1.0;
+    const RING_OFF_S = 4.0;
+    const ATTACK_S = 0.03;
+    const RELEASE_S = 0.06;
+    const RING_AMP = 0.20;
+    const FREQ = 425;
+
+    const playOneRing = () => {
+      if (stopped) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = FREQ;
+      const now = ctx.currentTime;
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(RING_AMP, now + ATTACK_S);
+      gain.gain.setValueAtTime(RING_AMP, now + RING_ON_S - RELEASE_S);
+      gain.gain.linearRampToValueAtTime(0, now + RING_ON_S);
+      osc.connect(gain).connect(masterGain);
+      osc.start(now);
+      osc.stop(now + RING_ON_S + 0.05);
+      pendingTimer = setTimeout(
+        () => { playOneRing(); },
+        (RING_ON_S + RING_OFF_S) * 1000,
+      );
+    };
+
+    playOneRing();
+
     const stop = () => {
       if (stopped) return;
       stopped = true;
-      try { osc.stop(); } catch { /* already stopped */ }
-      try { ctx.close(); } catch { /* */ }
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        pendingTimer = null;
+      }
+      try {
+        const now = ctx.currentTime;
+        masterGain.gain.cancelScheduledValues(now);
+        masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+        masterGain.gain.linearRampToValueAtTime(0, now + 0.04);
+      } catch { /* already torn down */ }
+      setTimeout(() => { try { ctx.close(); } catch { /* */ } }, 200);
     };
-    setTimeout(stop, 1200);
     return { stop };
   } catch {
     return { stop: () => {} };
@@ -91,7 +138,7 @@ export default function CallDialingOverlay({
 
   useEffect(() => {
     if (visible) {
-      stopperRef.current = playDialTone();
+      stopperRef.current = playRussianRingback();
       return () => {
         try { stopperRef.current?.stop(); } catch { /* */ }
       };
