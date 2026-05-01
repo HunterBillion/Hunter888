@@ -4070,6 +4070,63 @@ async def _handle_session_start(
 
     await _send(ws, "session.started", started_data)
 
+    # ── (2026-05-01) Realism telemetry — feature-set snapshot ──
+    # Without this snapshot none of the call-realism features show up in
+    # CRM / scoring / analytics — they're effectively invisible to product.
+    # Two things happen here:
+    #   (1) Snapshot is stamped into ``state["__realism_snapshot"]`` so
+    #       the session.end finalizer can persist it into
+    #       ``scoring_details["_realism"]`` (visible on /results page).
+    #   (2) ``call.realism_snapshot`` DomainEvent is emitted via the
+    #       canonical helper so the unified TZ-1 timeline picks it up
+    #       (queryable from admin dashboard, correlatable with
+    #       lead_client / session.completed events).
+    try:
+        from app.services.realism_telemetry import (
+            count_active_realism_features,
+            snapshot_realism_features,
+        )
+        _cp_realism = (session.custom_params or {})
+        _mode_realism = (
+            _cp_realism.get("session_mode")
+            or getattr(session, "mode", None)
+            or "chat"
+        ).lower()
+        _realism_snap = snapshot_realism_features(settings, session_mode=_mode_realism)
+        _realism_snap["active_count"] = count_active_realism_features(_realism_snap)
+        state["__realism_snapshot"] = _realism_snap
+        # DomainEvent — wrap in a try since emit can fail in dual-write
+        # mode if outbox flag is mid-flip; never let telemetry break the
+        # session start (TZ-1 §4.4 — observability is opt-in, not gating).
+        try:
+            from app.services.client_domain import emit_domain_event
+            await emit_domain_event(
+                db=db,
+                event_type="call.realism_snapshot",
+                aggregate_id=session.id,
+                aggregate_type="training_session",
+                lead_client_id=getattr(session, "lead_client_id", None),
+                payload=_realism_snap,
+                correlation_id=str(session.id),
+                source="ws_training",
+            )
+        except Exception:
+            logger.debug(
+                "call.realism_snapshot DomainEvent emit failed for %s",
+                session.id, exc_info=True,
+            )
+        logger.info(
+            "realism_snapshot | session=%s | active_count=%d | flags=%s",
+            session.id, _realism_snap["active_count"],
+            ",".join(k for k, v in _realism_snap.items()
+                     if isinstance(v, bool) and v),
+        )
+    except Exception:
+        logger.debug(
+            "Realism telemetry snapshot failed for session %s",
+            session.id, exc_info=True,
+        )
+
     # ── Init stage tracker ──
     try:
         from app.core.redis_pool import get_redis as _get_redis_stage
@@ -5373,6 +5430,14 @@ async def _handle_session_end(
                 enriched_details["_stage_progress"] = st_cleanup.build_scoring_details(final_stage)
             except Exception:
                 logger.debug("Stage tracker cleanup failed for session %s", session_id)
+
+            # ── (2026-05-01) Realism telemetry → scoring_details ──
+            # Stamp the session-start snapshot of active realism features
+            # into ``scoring_details["_realism"]`` so /results page and any
+            # SQL analytics can correlate feature-set with score / outcome.
+            _realism_snap = state.get("__realism_snapshot")
+            if _realism_snap:
+                enriched_details["_realism"] = _realism_snap
 
             # ── P1 (2026-04-29) Coaching state cleanup ──
             if settings.coaching_mistake_detector_v1:
