@@ -41,15 +41,30 @@ async def coach_chat(
     profile_ctx = await _get_manager_context(user_id, db)
     recent_sessions_ctx = await _get_recent_sessions(user_id, db)
 
-    # 2. Unified RAG: Legal + Wiki in parallel
+    # 2. Unified RAG: Legal + Wiki + Personality + Methodology in parallel.
+    #
+    # SEC/AUDIT-2026-05-02 (P0 #1 from 9-layer audit + prod-deploy report):
+    # the previous call omitted ``team_id``. ``rag_unified.retrieve_all_context``
+    # silently SKIPS the methodology branch when ``team_id is None`` (line 264
+    # of rag_unified.py — by design, since methodology is per-team-only per
+    # TZ-8 §1, no global fallback). Net effect: every methodology playbook
+    # ROP uploaded was *invisible* to the coach. Resolve the caller's team
+    # from the User row and forward it.
     rag_ctx = ""
     try:
+        from app.models.user import User as _User
         from app.services.rag_unified import retrieve_all_context
+
+        _team_id = (
+            await db.execute(select(_User.team_id).where(_User.id == user_id))
+        ).scalar_one_or_none()
+
         rag_result = await retrieve_all_context(
             query=message,
             user_id=user_id,
             db=db,
             context_type="coach",
+            team_id=_team_id,
         )
         rag_ctx = rag_result.to_prompt()
     except Exception:
