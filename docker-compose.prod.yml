@@ -127,6 +127,16 @@ services:
       # hostile=0.95, deal=0.55, hangup=0.40 (full table in llm.py).
       # Roll back: flip "0" + restart api.
       ADAPTIVE_TEMPERATURE_ENABLED: "1"
+      # (2026-05-01) Low-risk flags from previous-agent's deploy plan —
+      # both shipped + tested, off only because rollout was staged.
+      #   * REVIEW_TTL_SCHEDULER_ENABLED — TZ-8 PR-E (#163): nightly
+      #     auto-flip of `actual` → `needs_review` for stale chunks.
+      #   * ARENA_EMBEDDING_LIVE_BACKFILL_ENABLED — Content→Arena PR-6
+      #     (#146): live worker that backfills embeddings for new
+      #     legal_knowledge_chunks instead of relying on nightly batch.
+      # Both fail-closed (no behaviour change if subsystems break).
+      REVIEW_TTL_SCHEDULER_ENABLED: "1"
+      ARENA_EMBEDDING_LIVE_BACKFILL_ENABLED: "1"
     # Don't expose API port directly — use nginx
     ports: !reset []
     # Graceful shutdown: gunicorn --graceful-timeout 30 + margin
