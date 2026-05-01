@@ -95,7 +95,25 @@ class UnifiedRAGResult:
         return bool(self.wiki_context)
 
     def to_prompt(self) -> str:
-        """Format all RAG context for system prompt injection."""
+        """Format all RAG context for system prompt injection.
+
+        PR-X foundation fix #2 — both blocks (legal & wiki) are wrapped
+        in ``[DATA_START] ... [DATA_END]`` isolation markers so the LLM
+        treats them as data, not instructions. The system prompt that
+        consumes this output (see ``test_rag_security.py::TestDataMarkers``)
+        already understands these markers because the legal path has used
+        them since S1-01. Wiki used to be raw concatenation — a ROP who
+        pasted ``Ignore all previous instructions…`` into a page edit
+        would jailbreak every coach session that surfaced the page.
+        ``filter_wiki_context`` (called upstream of the merger) plus the
+        markers here close that gap.
+
+        AST-invariant ``test_wiki_invariants.py`` enforces that
+        ``UnifiedRAGResult.wiki_context`` is read **only** inside this
+        function (and inside the dataclass definition itself). Any new
+        consumer that needs wiki content must call ``to_prompt()`` and
+        receive the wrapped form — never the raw string.
+        """
         parts: list[str] = []
 
         if self.legal_context:
@@ -104,8 +122,15 @@ class UnifiedRAGResult:
             )
 
         if self.wiki_context:
+            # The marker pair MUST stay in lock-step with the legal
+            # path's ``RAGContext.to_prompt_context`` and with the
+            # AST-invariant in ``test_wiki_invariants.py``. Renaming
+            # them is a TZ §13 review.
             parts.append(
-                "ПЕРСОНАЛЬНАЯ WIKI МЕНЕДЖЕРА:\n" + self.wiki_context
+                "ПЕРСОНАЛЬНАЯ WIKI МЕНЕДЖЕРА:\n"
+                "[DATA_START]\n"
+                + self.wiki_context
+                + "\n[DATA_END]"
             )
 
         # Personality goes through lorebook system, not here
@@ -229,6 +254,15 @@ async def retrieve_all_context(
 
             elif name == "wiki":
                 if raw:  # list[dict]
+                    # PR-X foundation fix #2 — sanitise user-edited
+                    # markdown for prompt injection / PII / length
+                    # before it ever lands in the system prompt. Mutates
+                    # ``raw`` in place; downstream knowledge-compounding
+                    # gets the cleaned version too (intentional — we
+                    # don't want injected content surviving anywhere).
+                    from app.services.content_filter import filter_wiki_context
+
+                    raw, _wiki_violations = filter_wiki_context(raw)
                     lines = [
                         f"- [{r['page_path']}]: {r['content'][:200]}"
                         for r in raw

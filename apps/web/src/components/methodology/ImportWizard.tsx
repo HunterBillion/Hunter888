@@ -653,8 +653,48 @@ function ReviewStep({
       )}
 
       {draft.error_message && (
-        <div className="text-sm text-red-400 bg-red-900/20 rounded p-3 border border-red-700/40">
-          {draft.error_message}
+        <div className="rounded-lg border border-red-700/40 bg-red-900/20 p-3 text-sm space-y-2">
+          <p className="font-medium text-red-300">Не удалось разобрать файл</p>
+          <p className="text-red-400 text-xs whitespace-pre-wrap">{draft.error_message}</p>
+          <div className="flex gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => onReExtract()}
+              disabled={reExtracting}
+              className="px-3 py-1.5 rounded text-xs bg-red-700/30 hover:bg-red-700/50 disabled:opacity-40"
+            >
+              {reExtracting ? "Пробуем…" : "↻ Попробовать ещё раз"}
+            </button>
+            <button
+              type="button"
+              onClick={onDiscard}
+              className="px-3 py-1.5 rounded text-xs opacity-70 hover:opacity-100"
+            >
+              Удалить
+            </button>
+          </div>
+          <p className="text-xs opacity-60 italic mt-1">
+            Подсказка: для .pdf проверьте что файл не отсканирован картинкой.
+            Для .docx — что не защищён паролем. .txt и .md обычно работают
+            без проблем.
+          </p>
+        </div>
+      )}
+
+      {!draft.error_message && draft.confidence < 0.6 && (
+        <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 p-3 text-sm space-y-2">
+          <p className="font-medium text-amber-300">
+            ⚠ Низкая уверенность ({(draft.confidence * 100).toFixed(0)}%)
+          </p>
+          <p className="text-xs opacity-80">
+            Платформа не уверена в результате — возможно текст слишком короткий
+            или содержит много необычных слов. Что можно сделать:
+          </p>
+          <ul className="text-xs opacity-80 list-disc pl-5 space-y-0.5">
+            <li>отредактировать поля ниже вручную перед сохранением;</li>
+            <li>нажать «↻ Re-extract» чтобы прогнать заново;</li>
+            <li>переключить ветку на радио выше — возможно платформа промахнулась.</li>
+          </ul>
         </div>
       )}
 
@@ -788,6 +828,53 @@ function ScenarioEditor({
       payload.steps.filter((_, i) => i !== idx).map((s, i) => ({ ...s, order: i + 1 })),
     );
 
+  // Polish PR — reorder helpers. Both sides do the same thing: swap two
+  // entries and re-number `order` 1..N so it stays stable for the
+  // backend (which validates monotonic order on convert-to-template).
+  const moveStep = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0) return;
+    if (from >= payload.steps.length || to >= payload.steps.length) return;
+    const next = [...payload.steps];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    update(
+      "steps",
+      next.map((s, i) => ({ ...s, order: i + 1 })),
+    );
+  };
+  const moveUp = (idx: number) => moveStep(idx, idx - 1);
+  const moveDown = (idx: number) => moveStep(idx, idx + 1);
+
+  // Drag state — `dragIdx` tracks the row being dragged, `dragOverIdx`
+  // the row currently hovered. We use HTML5 native drag and drop (no
+  // new dep) — touch devices fall back to the up/down arrow buttons,
+  // which are always visible.
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  const onDragStart = (idx: number) => (e: React.DragEvent) => {
+    setDragIdx(idx);
+    e.dataTransfer.effectAllowed = "move";
+    // Firefox needs setData to fire dragstart at all.
+    e.dataTransfer.setData("text/plain", String(idx));
+  };
+  const onDragOverRow = (idx: number) => (e: React.DragEvent) => {
+    e.preventDefault(); // necessary to allow drop
+    e.dataTransfer.dropEffect = "move";
+    setDragOverIdx(idx);
+  };
+  const onDragEndRow = () => {
+    setDragIdx(null);
+    setDragOverIdx(null);
+  };
+  const onDropRow = (idx: number) => (e: React.DragEvent) => {
+    e.preventDefault();
+    if (dragIdx !== null && dragIdx !== idx) {
+      moveStep(dragIdx, idx);
+    }
+    onDragEndRow();
+  };
+
   return (
     <div className="space-y-3">
       <div>
@@ -810,10 +897,36 @@ function ScenarioEditor({
       </div>
       <div>
         <FieldLabel>Этапы</FieldLabel>
+        <p className="text-xs opacity-50 mb-2">
+          Перетащите за ⋮⋮ или используйте кнопки ▲/▼ чтобы изменить порядок.
+        </p>
         <div className="space-y-2">
           {payload.steps.map((s, i) => (
-            <div key={i} className="bg-white/5 rounded p-2 space-y-1">
+            <div
+              key={i}
+              draggable
+              onDragStart={onDragStart(i)}
+              onDragOver={onDragOverRow(i)}
+              onDrop={onDropRow(i)}
+              onDragEnd={onDragEndRow}
+              className="bg-white/5 rounded p-2 space-y-1 transition"
+              style={{
+                opacity: dragIdx === i ? 0.4 : 1,
+                outline:
+                  dragOverIdx === i && dragIdx !== null && dragIdx !== i
+                    ? "2px solid var(--accent)"
+                    : "2px solid transparent",
+                outlineOffset: "1px",
+              }}
+            >
               <div className="flex items-center gap-2">
+                <span
+                  className="text-xs opacity-50 cursor-grab select-none px-1"
+                  title="Перетащите чтобы изменить порядок"
+                  aria-hidden="true"
+                >
+                  ⋮⋮
+                </span>
                 <span className="text-xs opacity-60 w-5">#{s.order}</span>
                 <input
                   type="text"
@@ -822,6 +935,28 @@ function ScenarioEditor({
                   className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-sm"
                   placeholder="Название шага"
                 />
+                <div className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => moveUp(i)}
+                    disabled={i === 0}
+                    className="opacity-60 hover:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed px-1 text-xs"
+                    aria-label={`Переместить шаг ${s.order} вверх`}
+                    title="Вверх"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveDown(i)}
+                    disabled={i === payload.steps.length - 1}
+                    className="opacity-60 hover:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed px-1 text-xs"
+                    aria-label={`Переместить шаг ${s.order} вниз`}
+                    title="Вниз"
+                  >
+                    ▼
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => removeStep(i)}

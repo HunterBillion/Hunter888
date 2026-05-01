@@ -31,6 +31,9 @@ import { roleName } from "@/lib/guards";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import { TeamKpiPanel } from "@/components/methodology/TeamKpiPanel";
+import { TeamAnalyticsWidget } from "@/components/methodology/TeamAnalyticsWidget";
+import { BulkAssignModal } from "@/components/methodology/BulkAssignModal";
+import { CsvImportModal } from "@/components/methodology/CsvImportModal";
 
 const WikiDashboard = dynamic(
   () => import("@/components/dashboard/WikiDashboard").then((m) => m.WikiDashboard),
@@ -93,10 +96,13 @@ interface Props {
   isAdminCaller: boolean;
 }
 
-function RopList() {
+function RopList({ isAdminCaller }: { isAdminCaller: boolean }) {
   const [items, setItems] = useState<UserListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     // Methodologist role retired 2026-04-26 — ROPs inherited the methodology
@@ -106,7 +112,7 @@ function RopList() {
       .then((data) => setItems(Array.isArray(data) ? data : []))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Ошибка загрузки"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [refreshKey]);
 
   if (loading) return <DashboardSkeleton />;
   if (error) {
@@ -116,53 +122,102 @@ function RopList() {
       </div>
     );
   }
+
+  const toolbar = (
+    <div className="flex flex-wrap gap-2 mb-3 justify-end">
+      <button
+        type="button"
+        onClick={() => setBulkOpen(true)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium"
+        style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+        title="Назначить один сценарий нескольким менеджерам сразу"
+      >
+        🎯 Массовое назначение
+      </button>
+      {isAdminCaller && (
+        <button
+          type="button"
+          onClick={() => setCsvOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium"
+          style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+          title="Загрузить список менеджеров/РОПов из .csv"
+        >
+          📥 Импорт CSV
+        </button>
+      )}
+    </div>
+  );
+
+  const bulkModal = (
+    <BulkAssignModal
+      open={bulkOpen}
+      onClose={() => setBulkOpen(false)}
+      onAssigned={() => setRefreshKey((k) => k + 1)}
+    />
+  );
+  const csvModal = (
+    <CsvImportModal
+      open={csvOpen}
+      onClose={() => setCsvOpen(false)}
+      onImported={() => setRefreshKey((k) => k + 1)}
+    />
+  );
+
   if (items.length === 0) {
     return (
       <>
-        <TeamKpiPanel />
+        <TeamAnalyticsWidget refreshKey={refreshKey} />
+        {toolbar}
+        <TeamKpiPanel refreshKey={refreshKey} />
         <div className="glass-panel rounded-xl p-8 text-center">
           <Brain size={32} weight="duotone" style={{ color: "var(--text-muted)", margin: "0 auto 12px", opacity: 0.5 }} />
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
             В вашей команде пока нет РОПов. Назначить может администратор.
           </p>
         </div>
+        {bulkModal}
+        {csvModal}
       </>
     );
   }
 
   return (
     <>
-      <TeamKpiPanel />
+      <TeamAnalyticsWidget refreshKey={refreshKey} />
+      {toolbar}
+      <TeamKpiPanel refreshKey={refreshKey} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {items.map((u) => (
-        <div
-          key={u.id}
-          className="glass-panel rounded-xl p-4 flex items-center gap-3"
-          style={{ border: u.is_active ? "1px solid var(--border-color)" : "1px dashed var(--danger)" }}
-        >
+        {items.map((u) => (
           <div
-            className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm"
-            style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+            key={u.id}
+            className="glass-panel rounded-xl p-4 flex items-center gap-3"
+            style={{ border: u.is_active ? "1px solid var(--border-color)" : "1px dashed var(--danger)" }}
           >
-            {u.full_name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
+            <div
+              className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm"
+              style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+            >
+              {u.full_name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>
+                {u.full_name}
+              </div>
+              <div className="flex items-center gap-2 text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                <Mail size={12} />
+                <span className="truncate">{u.email}</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                <span>{roleName(u.role)}</span>
+                {u.team_name && <span>· {u.team_name}</span>}
+                {!u.is_active && <span style={{ color: "var(--danger)" }}>· неактивен</span>}
+              </div>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>
-              {u.full_name}
-            </div>
-            <div className="flex items-center gap-2 text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-              <Mail size={12} />
-              <span className="truncate">{u.email}</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-              <span>{roleName(u.role)}</span>
-              {u.team_name && <span>· {u.team_name}</span>}
-              {!u.is_active && <span style={{ color: "var(--danger)" }}>· неактивен</span>}
-            </div>
-          </div>
-        </div>
-      ))}
+        ))}
       </div>
+      {bulkModal}
+      {csvModal}
     </>
   );
 }
@@ -300,7 +355,7 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
         >
-          {active === "rops" && <RopList />}
+          {active === "rops" && <RopList isAdminCaller={isAdminCaller} />}
           {active === "sessions" && <SessionsBrowser />}
           {active === "arena" && <ArenaContentEditor />}
           {active === "scenarios" && <ScenariosEditor />}
