@@ -1,0 +1,55 @@
+# Hunter888 — /metrics IP allowlist for Prometheus scrape
+# ---------------------------------------------------------
+#
+# FIND-012 from the original audit: the Prometheus scrape endpoint at
+# `/metrics` exposes per-route latency, session counts, error rates and
+# the 8 arena-specific counters (PR A/B of Эпик 1). All of those are
+# operational signals that must not be visible to external scrapers —
+# competitors who can read latency p95 can infer concurrent player
+# count, infrastructure capacity, time-of-day patterns.
+#
+# This snippet should be included from `/etc/nginx/nginx.conf` (or the
+# main `hunter888.conf`) inside the existing server { } block so the
+# allowlist applies BEFORE the upstream proxy_pass to the api container.
+#
+# Activation steps on 72.56.38.62 (when the server is back up):
+#
+#   1. cp infra/nginx/metrics-allowlist.conf.example \
+#      /etc/nginx/conf.d/hunter888-metrics.conf
+#   2. Replace `<grafana-scraper-ip>` with the actual scraper's IP.
+#   3. nginx -t && systemctl reload nginx
+#   4. Set METRICS_ENABLED=true in /opt/hunter888/.env.production
+#   5. docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api
+#   6. Verify from an allowed IP:
+#        curl -s https://x-hunter.expert/metrics | grep '^arena_' | head
+#      Should return 8+ arena_* counter / histogram families.
+#   7. Verify denial from a non-allowed IP:
+#        curl -i https://x-hunter.expert/metrics
+#      Should return 403.
+#
+# Why this isn't in the api container directly: the FastAPI app already
+# protects /metrics behind the METRICS_ENABLED env flag (see
+# apps/api/app/main.py around line 575). Keeping the IP allowlist at
+# the nginx layer means even an accidental METRICS_ENABLED=true does
+# not leak to the public — defence in depth.
+
+# Drop this inside the existing server { } block for x-hunter.expert.
+location = /metrics {
+    # Internal monitoring scrapers — list each Grafana / Prometheus
+    # instance that should be allowed to read.
+    allow 127.0.0.1;
+    allow ::1;
+    # Internal docker bridge for compose-local Grafana sidecar.
+    allow 172.16.0.0/12;
+    # Operator office IPs (replace with your actual VPN range or
+    # individual scraper IPs).
+    # allow <grafana-scraper-ip>;
+    # allow <ops-vpn-cidr>;
+    deny all;
+
+    # Same upstream as the rest of /api — we just gate by IP first.
+    proxy_pass http://api_upstream/metrics;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}

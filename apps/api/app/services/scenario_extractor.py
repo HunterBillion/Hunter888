@@ -990,17 +990,65 @@ async def run_extraction(
         source_text=strip_pii(source_text)[:200_000] if source_text else None,
         error_message=error_message,
     )
-    db.add(draft)
-    await db.flush()
 
-    await mark_scenario_draft_ready(
-        db,
-        attachment=attachment,
-        draft_id=draft.id,
-        confidence=confidence,
-        actor_id=actor_id,
-        source=SOURCE_SCENARIO_EXTRACTOR,
-    )
+    # SEC-2026-05-02 (9-layer audit fix #10): wrap the post-classification
+    # write in a try/except so that DB-level failures (UNIQUE conflicts,
+    # transient connection drops on flush, mark_scenario_draft_ready
+    # failing on its own DB roundtrip) do NOT leave the attachment stuck
+    # in ``scenario_draft_extracting`` forever. Emergency PR #159 added a
+    # broad except for classifier/extractor exceptions but only up to
+    # this point — anything raised by db.flush() / mark_scenario_draft_ready
+    # was still poisoning the attachment row.
+    #
+    # Failure recovery is best-effort: open a fresh session and force
+    # ``classification_status`` back to ``scenario_draft_failed`` so the
+    # FE can render the failed state and ROP can re-extract or discard.
+    try:
+        db.add(draft)
+        await db.flush()
+        await mark_scenario_draft_ready(
+            db,
+            attachment=attachment,
+            draft_id=draft.id,
+            confidence=confidence,
+            actor_id=actor_id,
+            source=SOURCE_SCENARIO_EXTRACTOR,
+        )
+    except Exception:
+        logger.error(
+            "scenario_extractor: post-classification persist failed for attachment %s — "
+            "marking attachment as scenario_draft_failed via best-effort fallback",
+            attachment.id, exc_info=True,
+        )
+        # Try to roll back the in-memory draft + attachment changes on the
+        # current session before the recovery write.
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        # Best-effort recovery in a brand-new session so a poisoned
+        # transaction on `db` cannot block the status flip.
+        try:
+            from app.database import async_session as _recovery_session_factory
+
+            async with _recovery_session_factory() as _recovery_db:
+                from app.models.attachment import Attachment as _Attachment
+                from sqlalchemy import update as _update
+
+                await _recovery_db.execute(
+                    _update(_Attachment)
+                    .where(_Attachment.id == attachment.id)
+                    .where(_Attachment.classification_status == "scenario_draft_extracting")
+                    .values(classification_status="scenario_draft_failed")
+                )
+                await _recovery_db.commit()
+        except Exception:
+            logger.error(
+                "scenario_extractor: recovery write also failed for attachment %s — "
+                "row will need manual remediation",
+                attachment.id, exc_info=True,
+            )
+        raise
     return draft
 
 
