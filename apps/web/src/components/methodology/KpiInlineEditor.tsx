@@ -12,7 +12,7 @@
  * "" in the input clears that target (FE hides the bar).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import {
   type KpiStatus,
@@ -168,6 +168,11 @@ function KpiCell({
   const [draft, setDraft] = useState<string>(
     valueTarget === null ? "" : String(valueTarget),
   );
+  // Audit fix (#11): blur and Enter both fire on Enter-press because
+  // setEditing(false) unmounts the input → blur cascades → second PATCH.
+  // savedRef guards: once Enter has fired the save, blur skips it.
+  // Same applies to two rapid Enter presses (input is gone).
+  const savedRef = useRef(false);
 
   // Sync draft with prop changes (e.g. parent refresh after save).
   useEffect(() => {
@@ -208,13 +213,20 @@ function KpiCell({
             onChange={(e) => setDraft(e.target.value)}
             onBlur={async () => {
               setEditing(false);
+              // Skip if the just-fired keydown (Enter) already saved.
+              if (savedRef.current) {
+                savedRef.current = false;
+                return;
+              }
               await onSave(draft);
             }}
             onKeyDown={async (e) => {
               if (e.key === "Enter") {
+                savedRef.current = true;  // signal blur to skip
                 setEditing(false);
                 await onSave(draft);
               } else if (e.key === "Escape") {
+                savedRef.current = true;  // also skip blur save
                 setEditing(false);
                 setDraft(valueTarget === null ? "" : String(valueTarget));
               }
