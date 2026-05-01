@@ -86,6 +86,25 @@ merged PRs. The check caught it; rebase fixed it in one command.
 - Never push to `main` or `develop` directly. Always through a PR.
 - After merge, the branch is garbage — do not reuse it for a new feature.
 
+### Audit recent PRs in your zone before opening a new feature PR
+
+Before pushing a new feature PR, **audit the last ~5 merged PRs that
+touch the same files or surface as your work**. Use
+`git log --oneline -20` + `git show <sha> --stat` to spot:
+
+- new infrastructure you can reuse (e.g. an existing helper / worker
+  / regex set) instead of duplicating it,
+- new invariants other agents introduced (e.g. a column you mustn't
+  bypass, a markers contract in prompts) so you don't accidentally
+  break them,
+- pattern templates (existing AST guards, allow-list shapes) you can
+  copy verbatim to keep the codebase coherent.
+
+This habit caught two bugs in this project already (PR #139's
+`original_confidence` reuse, PR #146's `LiveEmbeddingBackfillWorker`
+extension instead of fork). Five minutes of reading is cheaper than
+a duplicate-helpers rebase a month later.
+
 ### CI gate
 
 `.github/workflows/ci.yml` splits tests into:
