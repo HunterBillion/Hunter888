@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
+from app.config import settings
 from app.core.security import decode_token
 from app.database import async_session
 from app.models.pvp import (
@@ -275,7 +276,17 @@ async def _send(ws: WebSocket, msg_type: str, data: dict | None = None) -> None:
 
 
 async def _send_to_user(user_id: uuid.UUID, msg_type: str, data: dict | None = None) -> None:
-    """Send message to a connected user. Logs warning if user not connected."""
+    """Send message to a connected user. Logs warning if user not connected.
+
+    Эпик 2 PR-2: when ``settings.arena_bus_dual_write_enabled`` is true,
+    ALSO publish a copy to the arena bus (fire-and-forget). The bus copy
+    carries the contextvar correlation_id (set by PR C wraps in every
+    duel-handling task), so subscribers can join all events of one duel
+    on a single key. Bus failure never blocks the WS path: the publish
+    runs after the WS send and is wrapped in shield+suppress so a Redis
+    outage degrades observability but never breaks the user-facing
+    response.
+    """
     entry = _active_connections.get(user_id)
     if entry:
         ws, _ = entry
@@ -284,6 +295,46 @@ async def _send_to_user(user_id: uuid.UUID, msg_type: str, data: dict | None = N
         logger.warning(
             "PvP message lost: user %s not connected, type=%s", user_id, msg_type
         )
+
+    # Bus dual-write — guarded by config flag, isolated from WS failure mode.
+    if settings.arena_bus_dual_write_enabled:
+        await _publish_to_bus(msg_type, data, recipient_user_id=user_id)
+
+
+async def _publish_to_bus(
+    msg_type: str,
+    data: dict | None,
+    *,
+    recipient_user_id: uuid.UUID | None = None,
+) -> None:
+    """Fire-and-forget bus publish. Never raises.
+
+    Pulls correlation_id from the contextvar — populated by PR C wraps
+    on every duel async task entry, so all events of one duel share a
+    correlation key. Falls back to empty correlation when called outside
+    a duel scope (lobby / queue events) — these still hit the global
+    stream which is fine.
+    """
+    try:
+        from app.core.correlation import get_correlation_id
+        from app.services.arena_bus import publish as _bus_publish
+        from app.services.arena_envelope import ArenaEvent
+
+        payload: dict[str, Any] = dict(data or {})
+        if recipient_user_id is not None:
+            payload.setdefault("_recipient_user_id", str(recipient_user_id))
+        event = ArenaEvent.create(
+            type=msg_type,
+            payload=payload,
+            correlation_id=get_correlation_id() or "",
+            producer="ws.pvp.handler",
+        )
+        await asyncio.shield(_bus_publish(event))
+    except Exception:
+        # Bus is best-effort — a missed publish degrades observability,
+        # never blocks the user-facing flow. Log at DEBUG (operational
+        # alert lives on a Redis-health metric, not on every miss).
+        logger.debug("arena_bus dual-write failed", exc_info=True)
 
 
 def _schedule_arena_audio_for_user(

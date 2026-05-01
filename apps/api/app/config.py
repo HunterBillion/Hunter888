@@ -426,6 +426,14 @@ class Settings(BaseSettings):
     # Prometheus-format request-latency and session data does not leak.
     metrics_enabled: bool = False
 
+    # Arena bus (Эпик 2). When enabled, every WS broadcast in ws/pvp.py
+    # ALSO publishes to the Redis-Streams arena bus (foundation in
+    # app.services.arena_bus). Fire-and-forget — bus failure never blocks
+    # the WS path. Disabled by default for cautious rollout: enable on
+    # one canary worker first to verify Redis memory usage before turning
+    # on globally.
+    arena_bus_dual_write_enabled: bool = False
+
     @field_validator("cors_origins")
     @classmethod
     def validate_cors_origins(cls, v: str, info) -> str:
