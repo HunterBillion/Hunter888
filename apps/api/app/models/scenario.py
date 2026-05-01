@@ -12,6 +12,7 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     Float,
@@ -466,6 +467,22 @@ class ScenarioDraft(Base):
         Index("ix_scenario_drafts_status", "status"),
         Index("ix_scenario_drafts_created_by", "created_by"),
         Index("ix_scenario_drafts_route_type", "route_type"),
+        # Audit fix — mirror DB-level CHECKs in the model so SQLAlchemy
+        # rejects invalid writes BEFORE the DB does. Without these, an
+        # `AsyncMock(db)` test passes a `status='garbage'` blob through
+        # ORM serialisation and only the real PG flush fails.
+        CheckConstraint(
+            "status IN ('extracting','ready','edited','converted','discarded','failed')",
+            name="ck_scenario_drafts_status",
+        ),
+        CheckConstraint(
+            "confidence >= 0.0 AND confidence <= 1.0",
+            name="ck_scenario_drafts_confidence_range",
+        ),
+        CheckConstraint(
+            "route_type IN ('scenario','character','arena_knowledge')",
+            name="ck_scenario_drafts_route_type",
+        ),
     )
 
 

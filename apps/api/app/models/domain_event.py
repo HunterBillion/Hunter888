@@ -16,8 +16,15 @@ class DomainEvent(Base):
     __tablename__ = "domain_events"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    lead_client_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("lead_clients.id", ondelete="CASCADE"), nullable=False, index=True
+    # Audit fix (PR-emergency): nullable=True for non-CRM events. TZ-5
+    # training_material flow emits events with lead_client_id=NULL since
+    # imported materials don't belong to any CRM client; joins fall back
+    # to correlation_id (= aggregate_id, the attachment.id). The CRM
+    # timeline projector ignores rows with lead_client_id=NULL — they
+    # never appear in client cards, only in the canonical event log.
+    # Migration 20260501_003 relaxes the NOT NULL constraint at DB level.
+    lead_client_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("lead_clients.id", ondelete="CASCADE"), nullable=True, index=True
     )
     event_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     aggregate_type: Mapped[str | None] = mapped_column(String(80), nullable=True)

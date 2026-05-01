@@ -935,26 +935,42 @@ async def run_extraction(
             llm_extract_for_route,
         )
 
-        if forced_route_type and forced_route_type in ROUTE_TYPES:
-            chosen_route = forced_route_type
-        else:
-            classification = await llm_classify_material(source_text)
-            chosen_route = classification.route_type
-            logger.info(
-                "scenario_extractor: classified attachment %s as %s (%.2f) — %s",
-                attachment.id, chosen_route, classification.confidence,
-                classification.reasoning,
-            )
+        chosen_route = forced_route_type if (forced_route_type and forced_route_type in ROUTE_TYPES) else None
         try:
+            if chosen_route is None:
+                classification = await llm_classify_material(source_text)
+                chosen_route = classification.route_type
+                logger.info(
+                    "scenario_extractor: classified attachment %s as %s (%.2f) — %s",
+                    attachment.id, chosen_route, classification.confidence,
+                    classification.reasoning,
+                )
             extracted_blob = await llm_extract_for_route(source_text, chosen_route)
             confidence = float(extracted_blob.get("confidence", 0.0))
             status = "ready"
-        except ValueError as exc:
-            error_message = str(exc)
+        except Exception as exc:
+            # Audit fix (BLOCKER): catch ANY exception (was ValueError-only).
+            # If anything between mark_scenario_draft_extracting and
+            # mark_scenario_draft_ready raises (LLM proxy down, malformed
+            # JSON we couldn't decode, NaN confidence, network blip), the
+            # attachment was previously left in `scenario_draft_extracting`
+            # forever — re-extract endpoint refused that state, no recovery
+            # path. Now: always land in `failed` status with the error
+            # message, so ROP can discard or retry via re-extract (which
+            # we also need to allow `scenario_draft_extracting` from now
+            # on — see endpoint update).
+            logger.warning(
+                "scenario_extractor: classifier/extractor exception on attachment %s",
+                attachment.id, exc_info=True,
+            )
+            error_message = (
+                f"Не удалось классифицировать или извлечь: "
+                f"{type(exc).__name__}: {exc}"
+            )
             extracted_blob = {}
             confidence = 0.0
             status = "failed"
-            chosen_route = chosen_route or "scenario"
+            chosen_route = chosen_route or forced_route_type or "scenario"
 
     draft_id = uuid.uuid4()
     draft = ScenarioDraft(

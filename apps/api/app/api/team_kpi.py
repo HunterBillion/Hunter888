@@ -37,6 +37,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import require_role
@@ -219,20 +220,46 @@ async def update_kpi_target(
             status_code=400, detail="No KPI fields supplied",
         )
 
+    # Audit fix (BLOCKER): the original SELECT-then-INSERT-or-UPDATE
+    # pattern races on first-time creation: two parallel PATCHes both
+    # see `None` from SELECT, both try to INSERT, second one hits the
+    # PK conflict (user_id is PK). Result: HTTP 500. Mirror the
+    # `_insert_with_dedup` race resolution from attachment_pipeline —
+    # wrap the INSERT branch in a savepoint and retry as UPDATE if the
+    # row already exists by the time we get there.
     row = (
         await db.execute(
             select(ManagerKpiTarget).where(ManagerKpiTarget.user_id == user_id)
         )
     ).scalar_one_or_none()
+
     if row is None:
-        row = ManagerKpiTarget(user_id=user_id, updated_by=user.id)
-        db.add(row)
+        # First-time creation path — race-safe INSERT + fallback to UPDATE.
+        try:
+            async with db.begin_nested():
+                row = ManagerKpiTarget(user_id=user_id, updated_by=user.id)
+                for k, v in patch.items():
+                    setattr(row, k, v)
+                db.add(row)
+                await db.flush()
+        except IntegrityError:
+            # Lost the race — another writer just created the row. Fall
+            # through to the UPDATE path with a fresh SELECT.
+            row = (
+                await db.execute(
+                    select(ManagerKpiTarget).where(ManagerKpiTarget.user_id == user_id)
+                )
+            ).scalar_one()
+            for k, v in patch.items():
+                setattr(row, k, v)
+            row.updated_by = user.id
+            await db.flush()
+    else:
+        for k, v in patch.items():
+            setattr(row, k, v)
+        row.updated_by = user.id
+        await db.flush()
 
-    for k, v in patch.items():
-        setattr(row, k, v)
-    row.updated_by = user.id
-
-    await db.flush()
     await db.commit()
     return _row_to_response(row)
 

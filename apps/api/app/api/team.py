@@ -246,10 +246,19 @@ async def team_analytics(
     manager_ids = [m.id for m in managers]
 
     # Per-manager session count + avg score in last 30 days.
+    # Audit fix (BLOCKER): the column on TrainingSession is `score_total`,
+    # not `total_score`. Original PR #122 had this typo, which means the
+    # /team/analytics endpoint would throw on the FIRST real call —
+    # tests passed because they used AsyncMock(db) and never executed
+    # against a real schema (CLAUDE.md §4.1 lesson "tests passed ≠ feature
+    # works"). count() also switched to score_total so the weighted
+    # avg accumulator (lines below) uses sessions-with-score consistently
+    # — earlier it counted ALL sessions including NULL-score, biasing
+    # team_avg_score_30d in the team summary.
     stats_q = select(
         TrainingSession.user_id,
-        func.count(TrainingSession.id).label("sessions"),
-        func.avg(TrainingSession.total_score).label("avg_score"),
+        func.count(TrainingSession.score_total).label("sessions"),
+        func.avg(TrainingSession.score_total).label("avg_score"),
         func.max(TrainingSession.created_at).label("last_session_at"),
     ).where(
         and_(
@@ -439,18 +448,27 @@ async def import_users_csv(
                 ))
                 continue
 
+        # Audit fix (BLOCKER): each row in its own SAVEPOINT so a
+        # per-row IntegrityError doesn't roll back the whole batch.
+        # Original code called `db.rollback()` on per-row failure which
+        # silently undid every successfully-flushed prior INSERT — but
+        # the response still claimed `status='created'` for them, so the
+        # `created` counter and DB state diverged. Pattern mirrors
+        # attachment_pipeline._insert_with_dedup race resolution.
         try:
-            new_user = User(
-                email=email,
-                full_name=full_name,
-                role=UserRole(role_raw),
-                team_id=team_id,
-                hashed_password=placeholder_hash,
-                must_change_password=True,
-                is_active=True,
-            )
-            db.add(new_user)
-            await db.flush()
+            async with db.begin_nested():
+                new_user = User(
+                    email=email,
+                    full_name=full_name,
+                    role=UserRole(role_raw),
+                    team_id=team_id,
+                    hashed_password=placeholder_hash,
+                    must_change_password=True,
+                    is_active=True,
+                )
+                db.add(new_user)
+                await db.flush()
+            # Savepoint committed → persist the per-row result.
             rows.append(CsvImportRowResult(
                 line=line_no, email=email,
                 status="created", user_id=new_user.id,
@@ -458,7 +476,7 @@ async def import_users_csv(
             created += 1
             existing_emails.add(email)  # protect against intra-batch dupes
         except IntegrityError as exc:
-            await db.rollback()
+            # Savepoint already rolled back; outer txn intact.
             rows.append(CsvImportRowResult(
                 line=line_no, email=email,
                 status="error", error=str(exc.orig)[:200],

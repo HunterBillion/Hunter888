@@ -1175,8 +1175,18 @@ async def update_scenario_draft(
     if extracted is not None:
         if not isinstance(extracted, dict):
             raise HTTPException(status_code=422, detail="`extracted` must be an object")
+        # Audit fix (BLOCKER bypass): the gate checked
+        # `extracted is not None`, which let a no-op PUT (`extracted={}` or
+        # a verbatim copy of `draft.extracted`) flip the gate open and
+        # allow confidence ≥ 0.6 without curation. Now require
+        # MEANINGFULLY DIFFERENT content. Cheap deep-equal via JSON
+        # serialisation (both blobs are JSONB-shaped).
+        import json as _json
+
+        old_blob = _json.dumps(draft.extracted or {}, sort_keys=True)
+        new_blob = _json.dumps(extracted, sort_keys=True)
+        extracted_changed = old_blob != new_blob
         draft.extracted = extracted
-        extracted_changed = True
 
     if "confidence" in data:
         try:
