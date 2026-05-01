@@ -834,6 +834,49 @@ async def delete_chunk(
 _LOW_CONFIDENCE_THRESHOLD = 0.6  # TZ-5 §4 invariant
 
 
+async def _scope_check_draft(
+    db: AsyncSession,
+    draft,
+    caller: User,
+) -> None:
+    """Audit fix (#6 from 5-agent review) — enforce team-scoped access on
+    a ScenarioDraft. Without this any ROP could read/edit/approve/discard
+    another team's drafts because all draft endpoints only had a role
+    gate (rop+admin) and never checked the relationship between the
+    caller's team and the draft's owner.
+
+    Rules:
+      * admin role: always allowed (cross-team audit + recovery).
+      * draft.created_by IS NULL (legacy / system-imported): allowed
+        for any rop+admin caller — no team to anchor on.
+      * otherwise: caller's team_id must match the team of the user
+        who created the draft. ROP without a team gets denied.
+
+    Raises HTTPException(403) when access is forbidden.
+    """
+    is_admin = getattr(caller.role, "value", str(caller.role)) == "admin"
+    if is_admin:
+        return
+    if draft.created_by is None:
+        return
+    creator_row = await db.execute(
+        select(User.team_id).where(User.id == draft.created_by)
+    )
+    creator_team_id = creator_row.scalar_one_or_none()
+    if creator_team_id is None:
+        # Creator has no team_id → can't anchor. Refuse, surface
+        # message that admin can recover.
+        raise HTTPException(
+            status_code=403,
+            detail="Доступ запрещён: автор черновика не привязан к команде.",
+        )
+    if caller.team_id != creator_team_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Доступ запрещён: черновик принадлежит другой команде.",
+        )
+
+
 def _draft_to_response(
     draft, *, attachment_filename: str | None = None, include_raw: bool = False
 ) -> dict:  # noqa: D401
@@ -1122,6 +1165,7 @@ async def get_scenario_draft(
     if not row:
         raise HTTPException(status_code=404, detail="Draft not found")
     draft, filename = row
+    await _scope_check_draft(db, draft, user)
     if include_raw:
         # Audit-log access to the raw (potentially-PII) LLM output.
         logger.info(
@@ -1161,6 +1205,7 @@ async def update_scenario_draft(
     draft = result.scalar_one_or_none()
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
+    await _scope_check_draft(db, draft, user)
     if draft.status not in ("ready", "edited"):
         raise HTTPException(
             status_code=409,
@@ -1264,11 +1309,12 @@ async def create_scenario_from_draft(
     )
 
     result = await db.execute(
-        select(ScenarioDraft).where(ScenarioDraft.id == draft_id)
+        select(ScenarioDraft).where(ScenarioDraft.id == draft_id).with_for_update()
     )
     draft = result.scalar_one_or_none()
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
+    await _scope_check_draft(db, draft, user)
     if draft.status not in ("ready", "edited"):
         raise HTTPException(
             status_code=409,
@@ -1396,6 +1442,7 @@ async def discard_scenario_draft(
     draft = result.scalar_one_or_none()
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
+    await _scope_check_draft(db, draft, user)
     if draft.status == "converted":
         raise HTTPException(
             status_code=409,
@@ -1455,11 +1502,12 @@ async def approve_character_draft(
     from app.models.scenario import ScenarioDraft
 
     result = await db.execute(
-        select(ScenarioDraft).where(ScenarioDraft.id == draft_id)
+        select(ScenarioDraft).where(ScenarioDraft.id == draft_id).with_for_update()
     )
     draft = result.scalar_one_or_none()
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
+    await _scope_check_draft(db, draft, user)
     if draft.route_type != "character":
         raise HTTPException(
             status_code=409,
@@ -1529,11 +1577,12 @@ async def approve_arena_knowledge_draft(
     from app.models.scenario import ScenarioDraft
 
     result = await db.execute(
-        select(ScenarioDraft).where(ScenarioDraft.id == draft_id)
+        select(ScenarioDraft).where(ScenarioDraft.id == draft_id).with_for_update()
     )
     draft = result.scalar_one_or_none()
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
+    await _scope_check_draft(db, draft, user)
     if draft.route_type != "arena_knowledge":
         raise HTTPException(
             status_code=409,
@@ -1665,7 +1714,12 @@ async def re_extract_draft(
     if not row:
         raise HTTPException(status_code=404, detail="Draft not found")
     draft, attachment = row
+    await _scope_check_draft(db, draft, user)
 
+    # Audit fix (#8 follow-up): allow re-extract from `scenario_draft_extracting`
+    # too — see scenario_extractor.run_extraction now lands in `failed` on
+    # any unexpected exception, but legacy stuck rows from before the fix
+    # need a recovery path. `failed` was already allowed.
     if draft.status not in ("ready", "edited", "failed"):
         raise HTTPException(
             status_code=409,

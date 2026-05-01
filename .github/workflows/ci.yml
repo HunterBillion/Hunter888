@@ -140,6 +140,7 @@ jobs:
             tests/test_scenario_extractor_llm.py \
             tests/test_scenario_re_extract.py \
             tests/test_team_kpi.py \
+            tests/test_team_kpi_concurrency.py \
             tests/test_rag_security.py \
             tests/test_rag_invariants.py \
             tests/test_wiki_foundation.py \

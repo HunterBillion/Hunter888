@@ -129,6 +129,14 @@ export function ImportWizard({ open, onClose, presetRouteType, onApproved }: Pro
   };
 
   const startProcessing = async () => {
+    // Audit fix (#10): guard against double-click. Without `step !==
+    // "select"` short-circuit, two rapid presses of "Загрузить" before
+    // React re-renders fire two parallel processFile(0) calls — two
+    // POSTs to /rop/imports → two ScenarioDrafts for the same file
+    // (`ingest_training_material` doesn't dedup by sha256 since
+    // lead_client_id=NULL bypasses the partial UNIQUE index — see
+    // pipeline docstring). Cheapest fix: sync flag check.
+    if (step !== "select") return;
     if (!queue.length || !consent) return;
     setStep("uploading");
     setActiveIdx(0);
