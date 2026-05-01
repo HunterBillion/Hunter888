@@ -323,3 +323,37 @@ class GauntletResultResponse(BaseModel):
     completed_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Content→Arena PR-4: characters available in /pvp lobby
+# ---------------------------------------------------------------------------
+
+
+class AvailableCharacter(BaseModel):
+    """One pickable client preset for a PvP/PvE duel.
+
+    Represents a row from ``custom_characters`` filtered by visibility
+    rules (own + ``is_shared=true``). The frontend renders these as
+    cards in the matchmaking screen so the player can pick a specific
+    persona to face instead of getting a random archetype.
+    """
+
+    id: uuid.UUID
+    name: str
+    archetype: str
+    profession: str | None = None
+    difficulty: int = 5
+    description: str | None = None
+    is_own: bool = Field(default=False, description="True if this preset belongs to the requesting user")
+    is_shared: bool = Field(default=False, description="True if visible to others via share")
+    play_count: int = 0
+    avg_score: int | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class AvailableCharactersResponse(BaseModel):
+    own: list[AvailableCharacter] = Field(default_factory=list)
+    shared: list[AvailableCharacter] = Field(default_factory=list)
+    total: int = 0
