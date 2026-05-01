@@ -595,24 +595,86 @@ def _collect_anti_cheat_flag(user_id: uuid.UUID, result: Any) -> dict[str, Any]:
     }
 
 
-def _match_found_payload(match: dict[str, Any], viewer_id: uuid.UUID) -> dict[str, Any]:
+async def _player_card(db, user_id: uuid.UUID) -> dict[str, Any]:
+    """Build a display-card dict for one player (PR-1 of Content→Arena epic).
+
+    Returns a stable shape regardless of player kind (human/bot/missing-row),
+    so callers building WS-payloads never have to handle ``None`` and the
+    frontend can always render avatar + name + tier-themed background.
+
+    For the PvE bot (`BOT_ID`) returns a synthetic card with ``tier="ai"``
+    so the frontend can pick a distinct AI-themed visual.
+
+    On missing User / PvPRating row falls back to safe placeholders
+    (``"Неизвестно"`` name, ``"unranked"`` tier). The frontend already
+    handles these defaults — see Phase 6/7 frontend work.
+    """
+    if user_id == BOT_ID:
+        return {
+            "id": str(BOT_ID),
+            "name": "AI Бот",
+            "tier": "ai",
+            "avatar_url": None,
+        }
+    from app.models.pvp import PvPRating
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    rating = (await db.execute(
+        select(PvPRating).where(PvPRating.user_id == user_id)
+    )).scalar_one_or_none()
+    name = user.full_name if user else "Неизвестно"
+    avatar = user.avatar_url if user else None
+    if rating and rating.rank_tier is not None:
+        tier_value = rating.rank_tier.value if hasattr(rating.rank_tier, "value") else str(rating.rank_tier)
+    else:
+        tier_value = "unranked"
+    return {
+        "id": str(user_id),
+        "name": name,
+        "tier": tier_value,
+        "avatar_url": avatar,
+    }
+
+
+async def _match_found_payload(
+    match: dict[str, Any],
+    viewer_id: uuid.UUID,
+    db,
+) -> dict[str, Any]:
+    """Build the ``match.found`` payload for one viewer.
+
+    Backward-compatible: keeps the legacy ``opponent_rating``/``difficulty``/
+    ``is_pve``/``duel_id`` fields the frontend already reads. Adds ``you``
+    and ``opponent`` cards (name/tier/avatar) so Phase 9 of the frontend
+    can wire ArenaBackground/FighterCard/VsBanner straight from the event
+    without a follow-up REST call.
+    """
     player1_id = match.get("player1_id")
     player2_id = match.get("player2_id")
     player1_rating = match.get("player1_rating")
     player2_rating = match.get("player2_rating")
 
     if viewer_id == player1_id:
+        opponent_id = player2_id
         opponent_rating = player2_rating
     elif viewer_id == player2_id:
+        opponent_id = player1_id
         opponent_rating = player1_rating
     else:
+        opponent_id = None
         opponent_rating = None
+
+    you_card = await _player_card(db, viewer_id)
+    opponent_card = await _player_card(db, opponent_id) if opponent_id is not None else {
+        "id": None, "name": "Неизвестно", "tier": "unranked", "avatar_url": None,
+    }
 
     return {
         "duel_id": str(match["duel_id"]),
         "opponent_rating": opponent_rating,
         "difficulty": match["difficulty"],
         "is_pve": False,
+        "you": you_card,
+        "opponent": opponent_card,
     }
 
 
@@ -744,6 +806,16 @@ async def _send_duel_state(user_id: uuid.UUID, session: dict[str, Any]) -> None:
         user_id=user_id,
         mode="duel",
     )
+    # PR-1 of Content→Arena: bundle player cards into duel.brief so the
+    # frontend's Phase 9 wiring (ArenaBackground tier-themed biome,
+    # FighterCard with name/avatar/HPBar, VsBanner) can render straight
+    # from the WS event without a follow-up REST call.
+    opponent_id = (
+        session["player2_id"] if user_id == session["player1_id"] else session["player1_id"]
+    )
+    async with async_session() as _card_db:
+        you_card = await _player_card(_card_db, user_id)
+        opp_card = await _player_card(_card_db, opponent_id)
     await _send_to_user(user_id, "duel.brief", {
         "duel_id": str(session["duel_id"]),
         "your_role": role,
@@ -755,6 +827,8 @@ async def _send_duel_state(user_id: uuid.UUID, session: dict[str, Any]) -> None:
         "round_number": round_number,
         "time_limit_seconds": ROUND_TIME_LIMIT,
         "lifelines_remaining": lifelines_remaining,
+        "you": you_card,
+        "opponent": opp_card,
     })
     await _send_to_user(user_id, "duel.state", {
         "duel_id": str(session["duel_id"]),
@@ -1016,6 +1090,13 @@ async def _start_round(duel_id: uuid.UUID, round_number: int) -> None:
         round_number=round_number,
     )
 
+    # PR-1 of Content→Arena: load both player cards once outside the user
+    # loop — single DB session, two SELECTs, results reused for both
+    # broadcasts. Avoids N×2 queries in the hot round-start path.
+    async with async_session() as _card_db:
+        _p1_card = await _player_card(_card_db, _snap_p1)
+        _p2_card = await _player_card(_card_db, _snap_p2)
+
     for user_id in [_snap_p1, _snap_p2]:
         if user_id == BOT_ID:
             continue
@@ -1026,6 +1107,8 @@ async def _start_round(duel_id: uuid.UUID, round_number: int) -> None:
             user_id=user_id,
             mode="duel",
         )
+        you_card = _p1_card if user_id == _snap_p1 else _p2_card
+        opp_card = _p2_card if user_id == _snap_p1 else _p1_card
         await _send_to_user(user_id, "duel.brief", {
             "duel_id": str(duel_id),
             "your_role": role,
@@ -1037,6 +1120,8 @@ async def _start_round(duel_id: uuid.UUID, round_number: int) -> None:
             "round_number": round_number,
             "time_limit_seconds": ROUND_TIME_LIMIT,
             "lifelines_remaining": lifelines_remaining,
+            "you": you_card,
+            "opponent": opp_card,
         })
         await _send_to_user(user_id, "round.start", {
             "round": round_number,
@@ -1495,6 +1580,14 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
         from dataclasses import asdict
         return asdict(bd)
 
+    # PR-1 of Content→Arena: bundle player cards with the result payload
+    # so the frontend's PvPVictoryScreen 4-phase reveal can render the
+    # tier-themed `TierPulseBadge` and post-match comparison without an
+    # extra REST call. Cards are loaded ONCE here (not per-recipient).
+    async with async_session() as _card_db:
+        _p1_card = await _player_card(_card_db, session["player1_id"])
+        _p2_card = await _player_card(_card_db, session["player2_id"])
+
     result_data = {
         "duel_id": str(duel_id),
         "player1_total": judge_result.player1_total,
@@ -1510,6 +1603,10 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
         "player1_breakdown": _breakdown_to_dict(judge_result.player1_breakdown),
         "player2_breakdown": _breakdown_to_dict(judge_result.player2_breakdown),
         "turning_point": judge_result.turning_point,
+        # PR-1 of Content→Arena: player cards (id, name, tier, avatar_url)
+        # for tier-themed final-screen rendering.
+        "player1_card": _p1_card,
+        "player2_card": _p2_card,
     }
     for user_id in [session["player1_id"], session["player2_id"]]:
         if user_id != BOT_ID:
@@ -1771,14 +1868,10 @@ async def _background_matchmaking(user_id: uuid.UUID) -> None:
                 if match:
                     opponent_id = match["opponent_id"]
                     ARENA_QUEUE_WAIT.labels(mode="ranked", outcome="matched").observe(elapsed)
-                    await _send_to_user(
-                        user_id, "match.found",
-                        _match_found_payload(match, user_id),
-                    )
-                    await _send_to_user(
-                        opponent_id, "match.found",
-                        _match_found_payload(match, opponent_id),
-                    )
+                    _viewer_payload = await _match_found_payload(match, user_id, db)
+                    _opp_payload = await _match_found_payload(match, opponent_id, db)
+                    await _send_to_user(user_id, "match.found", _viewer_payload)
+                    await _send_to_user(opponent_id, "match.found", _opp_payload)
                     return
 
             # PR G: pilot-reality fallback. The queue has ≤
@@ -1801,10 +1894,14 @@ async def _background_matchmaking(user_id: uuid.UUID) -> None:
                 async with async_session() as db:
                     duel = await matchmaker.create_pve_duel(user_id, db)
                     await db.commit()
+                    you_card = await _player_card(db, user_id)
+                    bot_card = await _player_card(db, BOT_ID)
                 await _send_to_user(user_id, "match.found", {
                     "duel_id": str(duel.id),
                     "difficulty": duel.difficulty.value,
                     "is_pve": True,
+                    "you": you_card,
+                    "opponent": bot_card,
                 })
                 return
 
@@ -2921,12 +3018,15 @@ async def pvp_websocket(websocket: WebSocket) -> None:
                     async with async_session() as db:
                         match = await matchmaker.accept_invitation(cid, user_id, db)
                         await db.commit()
+                        if match:
+                            _self_payload = await _match_found_payload(match, user_id, db)
+                            _challenger_payload = await _match_found_payload(match, cid, db)
                     if not match:
                         await _send(websocket, "error", {"detail": "Приглашение истекло или недоступно"})
                         continue
 
-                    await _send(websocket, "match.found", _match_found_payload(match, user_id))
-                    await _send_to_user(cid, "match.found", _match_found_payload(match, cid))
+                    await _send(websocket, "match.found", _self_payload)
+                    await _send_to_user(cid, "match.found", _challenger_payload)
                     continue
 
                 # Regular queue join → background task (NON-BLOCKING)
@@ -2956,10 +3056,14 @@ async def pvp_websocket(websocket: WebSocket) -> None:
                 async with async_session() as db:
                     duel = await matchmaker.create_pve_duel(user_id, db)
                     await db.commit()
+                    you_card = await _player_card(db, user_id)
+                    bot_card = await _player_card(db, BOT_ID)
                 await _send(websocket, "match.found", {
                     "duel_id": str(duel.id),
                     "difficulty": duel.difficulty.value,
                     "is_pve": True,
+                    "you": you_card,
+                    "opponent": bot_card,
                 })
                 continue
 
