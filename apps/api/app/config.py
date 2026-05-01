@@ -237,6 +237,15 @@ class Settings(BaseSettings):
     # with ELEVENLABS_STREAMING_ENABLED=1 for the pilot.
     elevenlabs_streaming_enabled: bool = False
 
+    # ── (2026-05-01) Persona-aware call opener ───────────────────────────
+    # Replaces the flat 5-phrase auto-opener pool with a (mood, age) bank.
+    # Hostile says "Что?", senior cold says "Слушаю", young cold says "Да?".
+    # Adds a human-like pickup delay (300-1800ms triangular, longer for
+    # "busy" moods) so first audio doesn't fire at zero ms after session
+    # start — that's the strongest "this is AI" tell on turn 1.
+    # Default OFF; flip per env after pilot validation.
+    call_opener_persona_aware: bool = False
+
     # ── IL-3 (2026-05-01) STT keyword priming ─────────────────────────────
     # Pass an ``initial_prompt`` to faster-whisper biasing the decoder
     # toward the bankruptcy / sales-call lexicon (ФССП, 127-ФЗ, кредиторы,
