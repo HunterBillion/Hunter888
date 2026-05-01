@@ -237,6 +237,16 @@ class Settings(BaseSettings):
     # with ELEVENLABS_STREAMING_ENABLED=1 for the pilot.
     elevenlabs_streaming_enabled: bool = False
 
+    # ── IL-3 (2026-05-01) STT keyword priming ─────────────────────────────
+    # Pass an ``initial_prompt`` to faster-whisper biasing the decoder
+    # toward the bankruptcy / sales-call lexicon (ФССП, 127-ФЗ, кредиторы,
+    # СберID...). Toma + Deepgram report the same trick lifts domain
+    # term-recall measurably with no general regression. Default OFF.
+    stt_keyword_prompt_enabled: bool = False
+    # Optional override — when empty, ``stt.py`` uses the built-in
+    # _DEFAULT_STT_KEYWORD_PROMPT_RU constant (Russian bankruptcy lexicon).
+    stt_keyword_prompt_text: str = ""
+
     # ── IL-1 (2026-04-30) Call Filler Audio ───────────────────────────────
     # Pre-LLM thinking sound played during LLM generation to mask the
     # 1.7-4.7s of dead air between "user turn ends" and "first AI audio".
