@@ -142,7 +142,9 @@ jobs:
             tests/test_team_kpi.py \
             tests/test_rag_security.py \
             tests/test_wiki_invariants.py \
-            tests/test_wiki_foundation.py
+            tests/test_wiki_foundation.py \
+            tests/test_methodology_model.py \
+            tests/test_wiki_governance.py
 
   frontend:
     runs-on: ubuntu-latest
