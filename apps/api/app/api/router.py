@@ -104,6 +104,13 @@ from app.api.manager_wiki import router as wiki_router
 
 api_router.include_router(wiki_router, tags=["wiki"])
 
+# Methodology — per-team playbooks (TZ-8 PR-B). Tagged separately
+# from wiki because the surface is conceptually different (team-shared
+# manual playbooks vs. per-manager auto-generated wiki).
+from app.api.methodology import router as methodology_router
+
+api_router.include_router(methodology_router, tags=["methodology"])
+
 # Reviews — public landing page testimonials
 from app.api.reviews import router as reviews_router
 

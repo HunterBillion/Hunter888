@@ -48,10 +48,17 @@ def _use_legal_v2() -> bool:
 # CHARS_PER_TOKEN ≈ 2 for Russian text
 
 BUDGET = {
-    "training": {"legal": 800, "personality": 600, "wiki": 300},
-    "coach":    {"legal": 600, "personality": 300, "wiki": 500},
-    "quiz":     {"legal": 1000, "personality": 0, "wiki": 200},
+    "training": {"legal": 700, "personality": 400, "wiki": 250, "methodology": 350},
+    "coach":    {"legal": 500, "personality": 250, "wiki": 350, "methodology": 600},
+    "quiz":     {"legal": 1000, "personality": 0, "wiki": 200, "methodology": 0},
 }
+# Coach gets the largest methodology bucket — that's the headline
+# value of TZ-8 ("show me how WE do it"). Quiz=0 because the
+# knowledge quiz tests recall of objective facts, not procedure.
+# Total per context ≤ 1700 tokens (8K-context safe; see TZ-8 §3.6).
+# Training personality reduced from 500 → 400 to fit the methodology
+# bucket within the 1700 cap; the lorebook assembly in llm.py:2062
+# is the primary consumer of personality and runs on its own budget.
 
 CHARS_PER_TOKEN = 2
 
@@ -78,10 +85,13 @@ class UnifiedRAGResult:
     legal_context: str = ""
     personality_context: str = ""
     wiki_context: str = ""
+    methodology_context: str = ""
     legal_chunks_count: int = 0
     personality_entries_count: int = 0
     wiki_pages_count: int = 0
+    methodology_chunks_count: int = 0
     wiki_pages: list[dict] = field(default_factory=list)  # raw wiki results for knowledge compounding
+    methodology_chunks: list[dict] = field(default_factory=list)  # raw methodology results for telemetry / UI debug
     total_tokens_estimate: int = 0
     retrieval_ms: float = 0.0
     errors: list[str] = field(default_factory=list)
@@ -93,6 +103,10 @@ class UnifiedRAGResult:
     @property
     def has_wiki(self) -> bool:
         return bool(self.wiki_context)
+
+    @property
+    def has_methodology(self) -> bool:
+        return bool(self.methodology_context)
 
     def to_prompt(self) -> str:
         """Format all RAG context for system prompt injection.
@@ -121,10 +135,24 @@ class UnifiedRAGResult:
                 "ПРАВОВАЯ БАЗА (127-ФЗ):\n" + self.legal_context
             )
 
+        if self.methodology_context:
+            # Team methodology block — same isolation contract as
+            # wiki/legal. Placed BEFORE wiki so the prompt order
+            # mirrors the budget order (methodology > wiki for
+            # coach/training; wiki > methodology for nothing).
+            # AST-invariant in test_rag_invariants.py enforces that
+            # methodology_context is read only inside this method.
+            parts.append(
+                "МЕТОДОЛОГИЯ КОМАНДЫ:\n"
+                "[DATA_START]\n"
+                + self.methodology_context
+                + "\n[DATA_END]"
+            )
+
         if self.wiki_context:
             # The marker pair MUST stay in lock-step with the legal
             # path's ``RAGContext.to_prompt_context`` and with the
-            # AST-invariant in ``test_wiki_invariants.py``. Renaming
+            # AST-invariant in ``test_rag_invariants.py``. Renaming
             # them is a TZ §13 review.
             parts.append(
                 "ПЕРСОНАЛЬНАЯ WIKI МЕНЕДЖЕРА:\n"
@@ -153,9 +181,10 @@ async def retrieve_all_context(
     *,
     archetype_code: str | None = None,
     emotion_state: str = "cold",
+    team_id: UUID | None = None,
 ) -> UnifiedRAGResult:
     """
-    Retrieve context from all 3 RAG sources in parallel.
+    Retrieve context from all 4 RAG sources in parallel.
 
     Args:
         query: Search query (user message or scenario description)
@@ -164,6 +193,11 @@ async def retrieve_all_context(
         context_type: "training" | "coach" | "quiz" — determines token weights
         archetype_code: For Personality RAG (optional, only for training)
         emotion_state: For Personality RAG (optional)
+        team_id: Manager's team UUID (for Methodology RAG). When
+            ``None``, methodology RAG is skipped — it has no
+            "global" notion (TZ-8 §1) so a missing team_id means
+            no scope is available. Pass ``user.team_id`` from
+            the caller.
 
     Returns:
         UnifiedRAGResult with formatted context and metadata
@@ -223,6 +257,25 @@ async def retrieve_all_context(
 
         tasks["wiki"] = asyncio.create_task(_wiki())
 
+    # Methodology RAG (TZ-8 PR-B). Per-team — needs ``team_id`` from
+    # the caller. Quiz path has budget=0 so no scan; training/coach
+    # paths skip the task when team_id is unknown rather than risk
+    # cross-team leakage from a fallback.
+    if budgets.get("methodology", 0) > 0 and team_id is not None:
+
+        async def _methodology():
+            from app.database import async_session as _make_session
+            from app.services.rag_methodology import (
+                retrieve_methodology_context,
+            )
+
+            async with _make_session() as rag_db:
+                return await retrieve_methodology_context(
+                    query, team_id, rag_db, top_k=4
+                )
+
+        tasks["methodology"] = asyncio.create_task(_methodology())
+
     # Personality RAG (only if archetype provided and budget > 0)
     if budgets["personality"] > 0 and archetype_code:
 
@@ -274,6 +327,43 @@ async def retrieve_all_context(
                         result.wiki_pages_count = len(lines)
                         result.wiki_pages = raw  # preserve for knowledge compounding
 
+            elif name == "methodology":
+                if raw:  # list[dict] from rag_methodology
+                    # TZ-8 PR-B — same write-side hygiene as wiki:
+                    # ``filter_methodology_context`` runs before the
+                    # block hits the prompt builder. AST-invariant in
+                    # ``test_rag_invariants.py`` confirms the
+                    # methodology_context attribute is read only
+                    # inside ``UnifiedRAGResult.to_prompt`` so a
+                    # future consumer can't sneak around the filter.
+                    from app.services.content_filter import (
+                        filter_methodology_context,
+                    )
+
+                    raw, _meth_violations = filter_methodology_context(raw)
+                    lines = []
+                    for c in raw:
+                        body = c.get("body") or ""
+                        if not body:
+                            continue
+                        # Title precedes the body so the LLM sees
+                        # "Closing playbook: …" rather than an
+                        # untitled bullet. Truncate body to 300
+                        # chars for the prompt block — the full
+                        # text stays in result.methodology_chunks
+                        # for telemetry / UI.
+                        lines.append(
+                            f"- [{c.get('kind', 'other')}] "
+                            f"{c.get('title', '?')}: {body[:300]}"
+                        )
+                    if lines:
+                        text = "\n".join(lines)
+                        result.methodology_context = _trim(
+                            text, budgets["methodology"]
+                        )
+                        result.methodology_chunks_count = len(lines)
+                        result.methodology_chunks = raw
+
             elif name == "personality":
                 if hasattr(raw, "entries") and raw.entries:
                     # Character card is handled by llm.py lorebook assembly.
@@ -296,14 +386,16 @@ async def retrieve_all_context(
         len(result.legal_context)
         + len(result.personality_context)
         + len(result.wiki_context)
+        + len(result.methodology_context)
     )
     result.total_tokens_estimate = total_chars // CHARS_PER_TOKEN
     result.retrieval_ms = (time.perf_counter() - start) * 1000
 
     logger.debug(
-        "Unified RAG [%s]: legal=%d wiki=%d personality=%d | %d tokens | %.0fms",
+        "Unified RAG [%s]: legal=%d methodology=%d wiki=%d personality=%d | %d tokens | %.0fms",
         context_type,
         result.legal_chunks_count,
+        result.methodology_chunks_count,
         result.wiki_pages_count,
         result.personality_entries_count,
         result.total_tokens_estimate,

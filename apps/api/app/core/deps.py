@@ -160,6 +160,110 @@ def check_wiki_access(user: User, manager_id) -> None:
     )
 
 
+async def check_methodology_team_access(
+    user: User,
+    *,
+    team_id=None,
+    chunk_id=None,
+    db=None,
+    mode: str = "write",
+) -> object:
+    """Authz gate for methodology endpoints (TZ-8 PR-B).
+
+    The methodology surface has a more nuanced matrix than wiki:
+    managers can READ their team's methodology even though they
+    cannot author it (per TZ-8 §4.2). This helper unifies the
+    reading/writing decision in one place so endpoints don't
+    re-implement the matrix.
+
+    Exactly one of ``team_id`` / ``chunk_id`` must be supplied. When
+    ``chunk_id`` is given, the gate loads the row's ``team_id`` and
+    returns the row (so endpoints don't pay for a second SELECT).
+
+    Rules
+    -----
+
+    * ``admin``         → any team, read or write.
+    * ``rop``           → team_id must match ``user.team_id``;
+                          ``rop.team_id is None`` → 403.
+    * ``manager``       → READ only, team_id must match
+                          ``user.team_id``; never authors.
+    * ``methodologist`` and other roles → 403.
+
+    Returns
+    -------
+
+    * On a ``team_id``-form call: returns ``user.team_id`` (admin)
+      or the resolved team id (anything else) — convenience for
+      list endpoints that need to inject the filter.
+    * On a ``chunk_id``-form call: returns the loaded
+      :class:`MethodologyChunk` row (so the endpoint can mutate it
+      without a second SELECT).
+    """
+    from app.models.methodology import MethodologyChunk
+    from sqlalchemy import select as _select
+
+    if mode not in ("read", "write"):
+        raise ValueError(f"mode must be 'read' or 'write', got {mode!r}")
+    if (team_id is None) == (chunk_id is None):
+        raise ValueError(
+            "check_methodology_team_access requires exactly one of "
+            "team_id or chunk_id"
+        )
+
+    role = user.role.value
+
+    # Resolve target team_id (and the chunk row when supplied) once
+    # — admin still needs the row for the chunk_id form.
+    chunk = None
+    target_team = team_id
+    if chunk_id is not None:
+        if db is None:
+            raise ValueError("db is required when chunk_id is supplied")
+        chunk = (
+            await db.execute(
+                _select(MethodologyChunk).where(MethodologyChunk.id == chunk_id)
+            )
+        ).scalar_one_or_none()
+        if chunk is None:
+            raise HTTPException(status_code=404, detail="Methodology chunk not found")
+        target_team = chunk.team_id
+
+    if role == "admin":
+        return chunk if chunk_id is not None else target_team
+
+    if role == "rop":
+        if user.team_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="ROP is not assigned to a team",
+            )
+        if str(user.team_id) != str(target_team):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot access methodology outside your team",
+            )
+        return chunk if chunk_id is not None else target_team
+
+    if role == "manager":
+        if mode != "read":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Managers cannot author methodology",
+            )
+        if user.team_id is None or str(user.team_id) != str(target_team):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot read methodology outside your team",
+            )
+        return chunk if chunk_id is not None else target_team
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=err.INSUFFICIENT_PERMISSIONS,
+    )
+
+
 async def check_wiki_team_access(user: User, manager_id, db) -> None:
     """Stricter ownership gate for mutating wiki ops (PR-X foundation #3).
 

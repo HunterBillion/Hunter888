@@ -141,10 +141,14 @@ jobs:
             tests/test_scenario_re_extract.py \
             tests/test_team_kpi.py \
             tests/test_rag_security.py \
-            tests/test_wiki_invariants.py \
+            tests/test_rag_invariants.py \
             tests/test_wiki_foundation.py \
             tests/test_methodology_model.py \
-            tests/test_wiki_governance.py
+            tests/test_wiki_governance.py \
+            tests/test_methodology_filter.py \
+            tests/test_methodology_authz.py \
+            tests/test_methodology_rag.py \
+            tests/test_methodology_concurrency.py
 
   frontend:
     runs-on: ubuntu-latest

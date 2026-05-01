@@ -430,6 +430,90 @@ def filter_wiki_context(pages: list[dict]) -> tuple[list[dict], list[str]]:
     return pages, all_violations
 
 
+def filter_methodology_context(chunks: list[dict]) -> tuple[list[dict], list[str]]:
+    """Sanitise team methodology chunks before they reach the prompt.
+
+    TZ-8 PR-B — closes the prompt-injection gap on the third RAG
+    source (after legal in S1-01 and wiki in PR-X). The shape of
+    the work is identical to :func:`filter_wiki_context` because
+    both are user-edited free-form text injected into a system
+    prompt; only the field names differ:
+
+      * ``title``    → rendered as a header in the prompt block
+      * ``body``     → rendered as the bulk content
+      * ``tags``     → free-form labels (UI filter, not a retriever
+                       signal — sanitised anyway because they ride
+                       inside the same dict that lands in the LLM
+                       trace and the methodology UI)
+      * ``keywords`` → reranker hints; sanitised so a malicious
+                       keyword cannot smuggle a jailbreak token
+
+    Mutates ``chunks`` in place and returns it for ergonomics.
+    Other dict keys (``id``, ``kind``, ``knowledge_status``,
+    ``similarity``, ``rerank_score``) are not user-controllable
+    and pass through.
+
+    Violation strings follow the same ``rag_<kind>:<field>`` shape
+    as :func:`filter_rag_context` and :func:`filter_wiki_context`,
+    so the unified observability log treats all three sources
+    consistently.
+    """
+    all_violations: list[str] = []
+
+    for chunk in chunks:
+        # Logging anchor — title is the most stable identifier the
+        # caller has at this stage (the row id is fine but a title
+        # string is friendlier in Grafana when the operator scrolls
+        # the warning stream).
+        anchor = str(chunk.get("title", ""))[:60]
+
+        title = chunk.get("title")
+        if title:
+            cleaned, v = _sanitize_rag_field(title, "methodology_title", anchor)
+            chunk["title"] = cleaned
+            all_violations.extend(v)
+
+        body = chunk.get("body")
+        if body:
+            cleaned, v = _sanitize_rag_field(body, "methodology_body", anchor)
+            chunk["body"] = cleaned
+            all_violations.extend(v)
+
+        tags = chunk.get("tags")
+        if tags:
+            cleaned_tags = []
+            for t in tags:
+                if not t:
+                    continue
+                cleaned, v = _sanitize_rag_field(
+                    str(t), "methodology_tag", anchor
+                )
+                all_violations.extend(v)
+                cleaned_tags.append(cleaned)
+            chunk["tags"] = cleaned_tags
+
+        keywords = chunk.get("keywords")
+        if keywords:
+            cleaned_kw = []
+            for kw in keywords:
+                if not kw:
+                    continue
+                cleaned, v = _sanitize_rag_field(
+                    str(kw), "methodology_keyword", anchor
+                )
+                all_violations.extend(v)
+                cleaned_kw.append(cleaned)
+            chunk["keywords"] = cleaned_kw
+
+    if all_violations:
+        logger.warning(
+            "Methodology context filter: %d violation(s) across %d chunks: %s",
+            len(all_violations), len(chunks), all_violations[:10],
+        )
+
+    return chunks, all_violations
+
+
 def filter_ai_output(text: str) -> tuple[str, list[str]]:
     """Filter AI response before sending to user.
 
