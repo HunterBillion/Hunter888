@@ -151,3 +151,12 @@ api_router.include_router(persona_view_router)
 from app.api.team import router as team_router
 
 api_router.include_router(team_router, prefix="/team", tags=["team"])
+
+# Команда v2 follow-up — per-manager KPI targets (rop|admin).
+# Lives on /team/* alongside the bulk-assign + analytics endpoints
+# from team.py. TODO(post-#122-merge): consolidate this module into
+# team.py — kept separate originally so #151 could land before/after
+# #122 without conflicts.
+from app.api.team_kpi import router as team_kpi_router
+
+api_router.include_router(team_kpi_router, prefix="/team", tags=["team", "kpi"])

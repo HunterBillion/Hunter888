@@ -30,6 +30,7 @@ import { api } from "@/lib/api";
 import { roleName } from "@/lib/guards";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
+import { TeamKpiPanel } from "@/components/methodology/TeamKpiPanel";
 import { TeamAnalyticsWidget } from "@/components/methodology/TeamAnalyticsWidget";
 import { BulkAssignModal } from "@/components/methodology/BulkAssignModal";
 import { CsvImportModal } from "@/components/methodology/CsvImportModal";
@@ -167,6 +168,7 @@ function RopList({ isAdminCaller }: { isAdminCaller: boolean }) {
       <>
         <TeamAnalyticsWidget refreshKey={refreshKey} />
         {toolbar}
+        <TeamKpiPanel refreshKey={refreshKey} />
         <div className="glass-panel rounded-xl p-8 text-center">
           <Brain size={32} weight="duotone" style={{ color: "var(--text-muted)", margin: "0 auto 12px", opacity: 0.5 }} />
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
@@ -183,6 +185,7 @@ function RopList({ isAdminCaller }: { isAdminCaller: boolean }) {
     <>
       <TeamAnalyticsWidget refreshKey={refreshKey} />
       {toolbar}
+      <TeamKpiPanel refreshKey={refreshKey} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {items.map((u) => (
           <div

@@ -139,6 +139,7 @@ jobs:
             tests/test_scenario_classifier.py \
             tests/test_scenario_extractor_llm.py \
             tests/test_scenario_re_extract.py \
+            tests/test_team_kpi.py \
             tests/test_rag_security.py \
             tests/test_wiki_invariants.py \
             tests/test_wiki_foundation.py
