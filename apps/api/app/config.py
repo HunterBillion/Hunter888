@@ -434,6 +434,14 @@ class Settings(BaseSettings):
     # on globally.
     arena_bus_dual_write_enabled: bool = False
 
+    # Эпик 2 PR-3: start the AuditLogConsumer in the lifespan startup.
+    # Reads every event from arena:bus:global and logs at INFO. Useful
+    # to (a) prove the bus loop works end-to-end before real consumers
+    # ship, (b) keep a permanent text audit trail for forensics, joinable
+    # to logs on correlation_id. Independent of dual_write so operators
+    # can verify writes (XLEN) before flipping the consumer.
+    arena_bus_audit_consumer_enabled: bool = False
+
     @field_validator("cors_origins")
     @classmethod
     def validate_cors_origins(cls, v: str, info) -> str:

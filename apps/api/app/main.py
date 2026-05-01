@@ -250,9 +250,35 @@ async def lifespan(application: FastAPI):
             await asyncio.sleep(3600)  # Check every hour
     asyncio.create_task(_league_scheduler())
 
+    # Эпик 2 PR-3: start the arena-bus audit consumer when enabled.
+    # The consumer task is held in app.state so the shutdown hook can
+    # cancel cleanly; the consumer's run_forever already acks any
+    # in-flight handles before raising CancelledError, so cancellation
+    # at shutdown does not lose events.
+    application.state.arena_bus_audit_task = None
+    if settings.arena_bus_audit_consumer_enabled:
+        try:
+            from app.services.arena_bus_consumer import AuditLogConsumer
+            _audit = AuditLogConsumer(consumer="audit-1")
+            application.state.arena_bus_audit_task = asyncio.create_task(_audit.run_forever())
+            logger.info("Lifespan: arena bus AuditLogConsumer started")
+        except Exception:
+            logger.warning("Lifespan: failed to start arena bus AuditLogConsumer", exc_info=True)
+
     logger.info("Lifespan: startup complete")
     yield
     # ── Shutdown ──
+    # Stop arena-bus audit consumer first so its in-flight batch acks
+    # cleanly before the Redis pool is closed. The consumer's
+    # run_forever() already handles CancelledError to flush PEL.
+    _audit_task = getattr(application.state, "arena_bus_audit_task", None)
+    if _audit_task is not None:
+        _audit_task.cancel()
+        try:
+            await _audit_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
     # Stop outbox worker first (flush pending events)
     from app.services.event_bus import event_bus as _eb
     await _eb.stop_worker()
