@@ -145,3 +145,11 @@ api_router.include_router(ai_quality_router)
 from app.api.persona_view import router as persona_view_router
 
 api_router.include_router(persona_view_router)
+
+# Команда v2 follow-up — per-manager KPI targets (rop|admin).
+# Lives on /team/* alongside the bulk-assign + analytics endpoints
+# from PR #122. Independent module so this PR can land before/after
+# #122 without conflicts.
+from app.api.team_kpi import router as team_kpi_router
+
+api_router.include_router(team_kpi_router, prefix="/team", tags=["team", "kpi"])

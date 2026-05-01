@@ -137,7 +137,8 @@ jobs:
             tests/test_scenario_draft_to_template.py \
             tests/test_scenario_classifier.py \
             tests/test_scenario_extractor_llm.py \
-            tests/test_scenario_re_extract.py
+            tests/test_scenario_re_extract.py \
+            tests/test_team_kpi.py
 
   frontend:
     runs-on: ubuntu-latest

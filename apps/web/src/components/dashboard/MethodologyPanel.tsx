@@ -30,6 +30,7 @@ import { api } from "@/lib/api";
 import { roleName } from "@/lib/guards";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
+import { TeamKpiPanel } from "@/components/methodology/TeamKpiPanel";
 
 const WikiDashboard = dynamic(
   () => import("@/components/dashboard/WikiDashboard").then((m) => m.WikiDashboard),
@@ -117,17 +118,22 @@ function RopList() {
   }
   if (items.length === 0) {
     return (
-      <div className="glass-panel rounded-xl p-8 text-center">
-        <Brain size={32} weight="duotone" style={{ color: "var(--text-muted)", margin: "0 auto 12px", opacity: 0.5 }} />
-        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-          В вашей команде пока нет РОПов. Назначить может администратор.
-        </p>
-      </div>
+      <>
+        <TeamKpiPanel />
+        <div className="glass-panel rounded-xl p-8 text-center">
+          <Brain size={32} weight="duotone" style={{ color: "var(--text-muted)", margin: "0 auto 12px", opacity: 0.5 }} />
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+            В вашей команде пока нет РОПов. Назначить может администратор.
+          </p>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <>
+      <TeamKpiPanel />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       {items.map((u) => (
         <div
           key={u.id}
@@ -156,7 +162,8 @@ function RopList() {
           </div>
         </div>
       ))}
-    </div>
+      </div>
+    </>
   );
 }
 

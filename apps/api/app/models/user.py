@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -117,3 +117,64 @@ class UserConsent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[User] = relationship(back_populates="consents")
+
+
+class ManagerKpiTarget(Base):
+    """Per-manager KPI targets surfaced in the Команда panel.
+
+    All target columns are nullable: ``None`` means "no target set" — the
+    UI hides the progress indicator instead of showing a 0/X bar. Bounds
+    enforced by CHECK constraints (migration ``20260501_002``):
+      * ``target_sessions_per_month >= 0``
+      * ``target_avg_score`` ∈ [0, 100]
+      * ``target_max_days_without_session >= 0``
+
+    1:1 with ``users.id`` (PK is the user_id), CASCADE on user delete so
+    we don't carry orphan KPI rows.
+    """
+
+    __tablename__ = "manager_kpi_targets"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    target_sessions_per_month: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    target_avg_score: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    target_max_days_without_session: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "target_sessions_per_month IS NULL OR target_sessions_per_month >= 0",
+            name="ck_kpi_target_sessions_nonneg",
+        ),
+        CheckConstraint(
+            "target_avg_score IS NULL OR (target_avg_score >= 0 AND target_avg_score <= 100)",
+            name="ck_kpi_target_score_in_range",
+        ),
+        CheckConstraint(
+            "target_max_days_without_session IS NULL OR target_max_days_without_session >= 0",
+            name="ck_kpi_target_days_nonneg",
+        ),
+    )
