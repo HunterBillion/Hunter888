@@ -420,10 +420,10 @@ async def judge_round(
     # if the judge's legal_details list contains ANY entry with a matching
     # ``law_article`` whose accuracy is "correct" or "correct_cited", and
     # "incorrect" otherwise. Skipped on degraded judge (no real eval).
+    article_accuracy: dict[str, bool] = {}
     if duel_id is not None and not _degraded and legal_context.has_results:
         try:
             details_list = result.get("legal_details") or []
-            article_accuracy: dict[str, bool] = {}
             for d in details_list if isinstance(details_list, list) else []:
                 claim = str((d or {}).get("claim") or "")
                 accuracy = str((d or {}).get("accuracy") or "").lower()
@@ -460,6 +460,40 @@ async def judge_round(
                 )
         except Exception:
             logger.warning("pvp_judge: record_chunk_outcome failed (non-critical)", exc_info=True)
+
+    # Content→Arena PR-7: emit a streaming content-trace event on the bus
+    # so AuditLogConsumer (Эпик 2 PR-3) and future content-analytics
+    # consumers see "round X of duel Y was scored, here are the chunks
+    # involved" without a SQL JOIN against ChunkUsageLog. Reuses the
+    # article_accuracy map computed above to derive the correct/incorrect
+    # split.
+    if duel_id is not None:
+        try:
+            from app.services.arena_content_trace import publish_round_scored
+            chunk_ids_correct = []
+            chunk_ids_incorrect = []
+            chunk_ids_all = []
+            for r in legal_context.results:
+                if r.chunk_id is None:
+                    continue
+                chunk_ids_all.append(r.chunk_id)
+                outcome = article_accuracy.get(str(r.chunk_id))
+                if outcome is True:
+                    chunk_ids_correct.append(r.chunk_id)
+                elif outcome is False:
+                    chunk_ids_incorrect.append(r.chunk_id)
+            await publish_round_scored(
+                duel_id=duel_id,
+                round_number=round_number,
+                legal_chunk_ids=chunk_ids_all,
+                legal_chunk_ids_correct=chunk_ids_correct,
+                legal_chunk_ids_incorrect=chunk_ids_incorrect,
+                selling_score=seller_score.selling_score,
+                legal_accuracy=seller_score.legal_accuracy,
+                degraded=_degraded,
+            )
+        except Exception:
+            logger.debug("pvp_judge: publish_round_scored failed (non-critical)", exc_info=True)
 
     return seller_score, client_score
 
