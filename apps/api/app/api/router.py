@@ -145,3 +145,9 @@ api_router.include_router(ai_quality_router)
 from app.api.persona_view import router as persona_view_router
 
 api_router.include_router(persona_view_router)
+
+# Team panel optimisations (rop|admin) — bulk assign + team analytics
+# + CSV user import. See `app/api/team.py`.
+from app.api.team import router as team_router
+
+api_router.include_router(team_router, prefix="/team", tags=["team"])
