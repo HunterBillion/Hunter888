@@ -118,3 +118,66 @@ def test_to_jsonable_persists_full_payload_shape():
     assert len(blob["steps"]) == 2
     assert blob["steps"][0]["name"] == "Приветствие"
     assert blob["expected_objections"] == ["дорого", "подумаю"]
+
+
+# ── Wizard reorder invariants (Polish PR) ──────────────────────────────
+
+
+def test_template_stage_order_is_monotonic_after_steps_swap():
+    """The wizard's drag-reorder feature swaps step entries and re-
+    numbers `order` 1..N. Post-conversion, `stages[i].order == i+1`
+    must hold — runtime resolver depends on monotonic order to render
+    the script panel in the right sequence."""
+    reordered_steps = [
+        ScenarioStep(order=1, name="Step C", description="C"),
+        ScenarioStep(order=2, name="Step B", description="B"),
+        ScenarioStep(order=3, name="Step A", description="A"),
+    ]
+    fields = draft_payload_to_template_fields(
+        _payload(steps=reordered_steps),
+        fallback_code="imported_x",
+    )
+    stages = fields["stages"]
+    assert [s["order"] for s in stages] == [1, 2, 3]
+    assert [s["name"] for s in stages] == ["Step C", "Step B", "Step A"]
+
+
+def test_template_stages_preserve_step_count_after_reorder():
+    """Reorder must not lose or duplicate steps."""
+    five = [
+        ScenarioStep(order=i, name=f"S{i}", description=f"d{i}")
+        for i in range(1, 6)
+    ]
+    fields = draft_payload_to_template_fields(
+        _payload(steps=five), fallback_code="imported_x"
+    )
+    assert len(fields["stages"]) == 5
+    orders = [s["order"] for s in fields["stages"]]
+    assert orders == sorted(orders)
+    assert len(set(orders)) == len(orders)
+
+
+def test_single_step_template_has_order_one():
+    """Edge: only one step → order=1, never 0 (avoid off-by-one in FE)."""
+    fields = draft_payload_to_template_fields(
+        _payload(steps=[ScenarioStep(order=1, name="Only step", description="x")]),
+        fallback_code="imported_x",
+    )
+    assert fields["stages"][0]["order"] == 1
+
+
+def test_step_descriptions_survive_reorder():
+    """Description (often paragraph-long) must not be dropped or trimmed
+    when steps are re-ordered. Catches a regression where a future
+    optimiser slim-mapped only `name`."""
+    steps = [
+        ScenarioStep(order=1, name="A", description="long description A " * 30),
+        ScenarioStep(order=2, name="B", description="long description B " * 30),
+    ]
+    fields = draft_payload_to_template_fields(
+        _payload(steps=steps), fallback_code="imported_x"
+    )
+    descriptions = [s["description"] for s in fields["stages"]]
+    assert all(len(d) > 100 for d in descriptions)
+    assert "description A" in descriptions[0]
+    assert "description B" in descriptions[1]
