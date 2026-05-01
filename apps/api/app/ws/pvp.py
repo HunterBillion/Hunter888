@@ -50,7 +50,7 @@ from app.services.pvp_bot_engine import (
     generate_bot_opener,
     cleanup_bot_state,
 )
-from app.core.correlation import bind_correlation_id
+from app.core.correlation import bind_correlation_id, reset_correlation_id
 from app.core.ws_rate_limiter import pvp_limiter
 
 logger = logging.getLogger(__name__)
@@ -1755,7 +1755,20 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
 
 
 async def _handle_duel_ready(user_id: uuid.UUID, duel_id: uuid.UUID) -> None:
-    bind_correlation_id(str(duel_id))
+    # SEC-2026-05-02 (9-layer audit fix): explicit token + finally so the
+    # contextvar is released when this handler exits. Previously the bare
+    # ``bind_correlation_id`` left ``correlation_id`` set on the WS-task
+    # scope; the next message the same player sent (e.g. queue.leave after
+    # the duel ends) inherited the previous duel's id in its log lines,
+    # confusing forensic timelines in Loki/CloudWatch.
+    _cid_token = bind_correlation_id(str(duel_id))
+    try:
+        await _handle_duel_ready_body(user_id, duel_id)
+    finally:
+        reset_correlation_id(_cid_token)
+
+
+async def _handle_duel_ready_body(user_id: uuid.UUID, duel_id: uuid.UUID) -> None:
     context = await _load_duel_context(duel_id)
     if not context:
         await _send_to_user(user_id, "error", {"detail": "Дуэль не найдена"})
@@ -2107,6 +2120,16 @@ async def _handle_rapid_fire(ws: WebSocket, user_id: uuid.UUID, match_id: uuid.U
             if not match:
                 await _send(ws, "error", {"detail": "Rapid Fire match not found"})
                 return
+            # SEC-2026-05-02 (9-layer audit fix): ownership check. Without
+            # this any authenticated user who knows a foreign ``match_id``
+            # (leaked URL, log scrape) could attach to that match's WS
+            # session and play someone else's run. ``player1_id`` is the
+            # canonical owner; ``player2_id`` is reserved for the future
+            # PvP variant of Rapid Fire (currently always NULL because
+            # ``is_pve=True``). Allow either as defence-in-depth.
+            if user_id != match.player1_id and user_id != getattr(match, "player2_id", None):
+                await _send(ws, "error", {"detail": "Доступ к этой Rapid Fire-сессии запрещён."})
+                return
 
             rating = await get_or_create_rating(user_id, db, rating_type="rapid_fire")
             base_difficulty = _difficulty_for_rating(rating.rating)
@@ -2348,6 +2371,10 @@ async def _handle_gauntlet(ws: WebSocket, user_id: uuid.UUID, run_id: uuid.UUID)
             )).scalar_one_or_none()
             if not run:
                 await _send(ws, "error", {"detail": "Gauntlet run not found"})
+                return
+            # SEC-2026-05-02: ownership check (see _handle_rapid_fire).
+            if user_id != run.user_id:
+                await _send(ws, "error", {"detail": "Доступ к этому Gauntlet-забегу запрещён."})
                 return
 
             rating = await get_or_create_rating(user_id, db)
@@ -2644,6 +2671,13 @@ async def _handle_team_battle(ws: WebSocket, user_id: uuid.UUID, team_id: uuid.U
             )).scalar_one_or_none()
             if not team:
                 await _send(ws, "error", {"detail": "Team not found"})
+                return
+            # SEC-2026-05-02: ownership check (see _handle_rapid_fire).
+            # Without this any authenticated user with a leaked team_id
+            # joined as a phantom "player2" via the else branch and
+            # corrupted the partner pairing.
+            if user_id != team.player1_id and user_id != team.player2_id:
+                await _send(ws, "error", {"detail": "Вы не состоите в этой команде."})
                 return
 
             is_player1 = user_id == team.player1_id
