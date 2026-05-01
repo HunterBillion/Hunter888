@@ -5,14 +5,17 @@ last 30 days, avg score, days since last session. PR #122 lands the
 read side. This module adds the *targets* side — a ROP can set per-
 manager goals so the FE renders progress-vs-target indicators.
 
-Why a separate module from `app/api/team.py`?
----------------------------------------------
+TODO(post-#122-merge): consolidate this module into ``app/api/team.py``
+======================================================================
 
-PR #122 is still open at the time of writing. Putting KPI endpoints
-into the same `team.py` file would force a hard merge dependency. A
-sibling module keeps both PRs land-able independently — the FE
-TeamAnalyticsWidget can call ``GET /team/users/{id}/kpi`` regardless
-of whether `team.py` has shipped yet.
+Status as of 2026-05-01: PR #122 is now merged. This module was kept
+separate originally so #151 could land before/after #122 without
+merge conflicts. Now that both are on main, the next sweep over
+the team panel surface should fold these endpoints into ``team.py``
+(roughly: import the four route handlers, drop this file, remove
+the ``team_kpi_router`` registration in ``app/api/router.py``).
+Not done inline because it's a non-trivial code move that deserves
+its own PR with focused review. Tracking: this comment.
 
 Endpoints
 ---------
