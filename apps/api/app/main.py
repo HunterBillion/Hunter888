@@ -466,7 +466,21 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             # a confusing 403 (CSRF missing) before the auth layer even
             # runs, and frontend ``handleUnauthorized()`` refresh-token
             # logic (which is gated on 401) never triggers.
-            has_auth = bool(request.headers.get("authorization"))
+            #
+            # SEC-2026-05-02 (9-layer audit fix): ``has_auth`` ALSO checks
+            # the ``access_token`` cookie. ``core.deps.get_current_user``
+            # reads the token from EITHER the Authorization header OR the
+            # cookie. The previous gate only looked at the header, so any
+            # cookie-only authed request (mobile browser, OAuth post-login,
+            # legacy client) bypassed CSRF entirely — a malicious
+            # cross-origin POST with the user's auto-sent cookie reached
+            # the protected endpoint without an X-CSRF-Token. Adding the
+            # cookie to the gate closes that vector while keeping the
+            # 401-not-403 UX for fully unauthenticated clients.
+            has_auth = bool(
+                request.headers.get("authorization")
+                or request.cookies.get("access_token")
+            )
             if not exempt and has_auth:
                 header_token = request.headers.get("X-CSRF-Token", "")
                 cookie_token = request.cookies.get("csrf_token", "")
