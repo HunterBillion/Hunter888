@@ -94,16 +94,20 @@ export function PvPVictoryScreen({
       return;
     }
     // SFX/haptic — only at the very start (KO phase).
+    // 2026-05-01 (Фаза 8): KO! flash звучит «BOOM» (новый pixel-sound `ko`).
+    // Через 600ms добавляется fanfare (victory) или dramatic (defeat) для слоистости.
     if (phase === "ko") {
       if (isWinner) {
-        playSound("victory");
+        playSound("ko");
         haptic("victory");
+        window.setTimeout(() => playSound("victory"), 600);
       } else if (isDraw) {
-        playSound("success");
+        playSound("hit");
         haptic("tap");
       } else {
-        playSound("defeat");
+        playSound("ko", 0.7);
         haptic("error");
+        window.setTimeout(() => playSound("defeat"), 600);
       }
     }
     // Promotion confetti at ELO phase
