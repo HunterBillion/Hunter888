@@ -113,6 +113,58 @@ _provider_health: dict[str, _ProviderHealth] = {
 _provider_health_lock: asyncio.Lock | None = None
 
 
+# 2026-05-01 — Adaptive temperature per emotion state.
+# Goal: a hostile / testing client should sound more chaotic; a deal-ready
+# client more measured. Flat 0.85 across all 10 emotions makes the AI feel
+# uniform regardless of state. Range pinned to user spec [0.4, 1.0]:
+#   * 0.40 hangup       — terminal, very predictable goodbye
+#   * 0.55 deal         — committed, calm, focused
+#   * 0.65 negotiating  — businesslike
+#   * 0.70 considering  — measured, deliberate
+#   * 0.80 cold         — neutral baseline
+#   * 0.80 curious      — engaged but composed
+#   * 0.85 callback     — slightly distracted
+#   * 0.85 guarded      — defensive, varied
+#   * 0.95 hostile      — chaotic, emotional
+#   * 1.00 testing      — maximum variance, provocative
+#
+# Hard-clamped to [0.4, 1.0] regardless of input (prevents accidentally
+# sending 1.4 to a provider that has its own ceiling).
+_ADAPTIVE_TEMPERATURE_BY_EMOTION: dict[str, float] = {
+    "hangup":       0.40,
+    "deal":         0.55,
+    "negotiating":  0.65,
+    "considering":  0.70,
+    "cold":         0.80,
+    "curious":      0.80,
+    "callback":     0.85,
+    "guarded":      0.85,
+    "hostile":      0.95,
+    "testing":      1.00,
+}
+
+ADAPTIVE_TEMPERATURE_MIN = 0.40
+ADAPTIVE_TEMPERATURE_MAX = 1.00
+ADAPTIVE_TEMPERATURE_DEFAULT = 0.80
+
+
+def adaptive_temperature_for_emotion(emotion: str) -> float:
+    """Map emotion → sampling temperature in the [0.4, 1.0] band.
+
+    Unknown / missing emotions fall back to ``ADAPTIVE_TEMPERATURE_DEFAULT``
+    (0.80, matching pre-feature 0.85 behaviour minus 0.05). The output is
+    always within the spec band — clamped just in case the table is
+    edited carelessly. Caller is expected to gate this through
+    ``settings.adaptive_temperature_enabled`` before applying.
+    """
+    val = _ADAPTIVE_TEMPERATURE_BY_EMOTION.get(emotion, ADAPTIVE_TEMPERATURE_DEFAULT)
+    if val < ADAPTIVE_TEMPERATURE_MIN:
+        return ADAPTIVE_TEMPERATURE_MIN
+    if val > ADAPTIVE_TEMPERATURE_MAX:
+        return ADAPTIVE_TEMPERATURE_MAX
+    return val
+
+
 def _get_health_lock() -> asyncio.Lock:
     """Lazy-init asyncio.Lock (must be created inside running event loop)."""
     global _provider_health_lock
@@ -2100,6 +2152,22 @@ async def generate_response(
         task_type: "simple" | "structured" | "roleplay" | "judge" | "coach" | "report" | "default"
         max_tokens: Override max output tokens (default picked by task_type)
     """
+    # 2026-05-01 — Adaptive temperature per emotion. Only applies when
+    # caller did NOT pass an explicit temperature (preserves judge / coach
+    # / scoring deterministic paths) AND we're in call mode AND the flag
+    # is on. Range pinned to [0.4, 1.0]: hostile=0.95 (chaotic), deal=0.55
+    # (composed), hangup=0.40 (terminal). Chat / arena unaffected.
+    if (
+        temperature is None
+        and session_mode in ("call", "center")
+        and getattr(settings, "adaptive_temperature_enabled", False)
+    ):
+        temperature = adaptive_temperature_for_emotion(emotion_state)
+        logger.debug(
+            "adaptive_temperature applied | emotion=%s | T=%.2f",
+            emotion_state, temperature,
+        )
+
     # ── Build system prompt ──
     _budget_mgr = get_context_budget_manager()
     _use_lorebook = False  # Will be set True if lorebook path succeeds
@@ -2461,6 +2529,7 @@ async def _stream_ollama(
     messages: list[dict],
     timeout: float,
     max_tokens: int | None = None,
+    temperature: float | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream tokens from Ollama native API."""
     if not settings.local_llm_enabled or not settings.local_llm_url:
@@ -2481,7 +2550,7 @@ async def _stream_ollama(
         "options": {
             # max_tokens=None preserves the historical 800 cap.
             "num_predict": max_tokens if max_tokens is not None else 800,
-            "temperature": 0.85,
+            "temperature": temperature if temperature is not None else 0.85,
         },
     }
 
@@ -2515,6 +2584,7 @@ async def _stream_gemini(
     messages: list[dict],
     timeout: float,
     max_tokens: int | None = None,
+    temperature: float | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream tokens from Gemini API via SSE."""
     client = _get_gemini_client()
@@ -2538,7 +2608,7 @@ async def _stream_gemini(
         "generationConfig": {
             # max_tokens=None preserves the historical 1200 cap.
             "maxOutputTokens": max_tokens if max_tokens is not None else 1200,
-            "temperature": 0.85,
+            "temperature": temperature if temperature is not None else 0.85,
         },
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -2594,6 +2664,11 @@ async def generate_response_stream(
     # at the bottom of the system prompt so it's the freshest context
     # the LLM sees.
     persona_facts: dict | None = None,
+    # 2026-05-01: explicit temperature override. None + adaptive flag +
+    # call mode → adaptive_temperature_for_emotion(). None otherwise =
+    # provider's historical default (0.85). Judges/coaches that need
+    # determinism keep passing 0.2 explicitly.
+    temperature: float | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream LLM response token-by-token. Falls back to blocking if streaming fails.
 
@@ -2747,6 +2822,20 @@ async def generate_response_stream(
     if settings.call_humanized_v2 and session_mode in ("call", "center"):
         _stream_max_tokens = settings.call_humanized_v2_max_tokens
 
+    # 2026-05-01 — Adaptive temperature parity with generate_response.
+    # Same gates: caller didn't override, call mode, flag enabled.
+    _stream_temperature: float | None = temperature
+    if (
+        _stream_temperature is None
+        and session_mode in ("call", "center")
+        and getattr(settings, "adaptive_temperature_enabled", False)
+    ):
+        _stream_temperature = adaptive_temperature_for_emotion(emotion_state)
+        logger.debug(
+            "adaptive_temperature applied (stream) | emotion=%s | T=%.2f",
+            emotion_state, _stream_temperature,
+        )
+
     semaphore = _get_llm_semaphore(task_type)
     async with semaphore:
         # Try streaming providers — buffer full response for post-stream filtering
@@ -2756,7 +2845,9 @@ async def generate_response_stream(
         try:
             if resolved == "local" and settings.local_llm_enabled:
                 async for token in _stream_ollama(
-                    full_system, trimmed, 60.0, max_tokens=_stream_max_tokens,
+                    full_system, trimmed, 60.0,
+                    max_tokens=_stream_max_tokens,
+                    temperature=_stream_temperature,
                 ):
                     full_response_buf.append(token)
                     yield token
@@ -2768,7 +2859,9 @@ async def generate_response_stream(
             try:
                 if settings.gemini_api_key:
                     async for token in _stream_gemini(
-                        full_system, trimmed, 30.0, max_tokens=_stream_max_tokens,
+                        full_system, trimmed, 30.0,
+                        max_tokens=_stream_max_tokens,
+                        temperature=_stream_temperature,
                     ):
                         full_response_buf.append(token)
                         yield token
@@ -2814,6 +2907,10 @@ async def generate_response_stream(
         max_tokens=_stream_max_tokens,
         tone=tone,
         difficulty=difficulty,
+        # 2026-05-01: forward computed adaptive temperature to the
+        # blocking fallback so the fallback voice matches what the
+        # streaming path would have used.
+        temperature=_stream_temperature,
     )
     if response and response.content:
         yield response.content
