@@ -82,6 +82,43 @@ GAP_EXPANSION_SCHEDULE: list[tuple[float, float]] = [
 
 
 # ---------------------------------------------------------------------------
+# Content→Arena PR-2: published-scenario picker
+# ---------------------------------------------------------------------------
+
+
+async def _pick_published_scenario(
+    db: AsyncSession,
+) -> tuple[uuid.UUID | None, uuid.UUID | None]:
+    """Return (``template_id``, ``version_id``) for a random published
+    ``ScenarioTemplate`` whose ``current_published_version_id`` is set.
+
+    Returns ``(None, None)`` when no published template exists — caller
+    leaves the duel's content FKs NULL and ``_load_duel_context`` falls
+    back to the legacy ``scenarios`` table. This is intentional: until
+    methodology has actually published at least one template, the arena
+    keeps using historical content rather than failing to start.
+
+    Random pick is deliberate. The methodology lobby will get a
+    "select scenario" UI in a follow-up (Эпик 6 Content Service), and
+    at that point the picker becomes parameterised. For now — random.
+    """
+    import random as _rand
+    from app.models.scenario import ScenarioTemplate
+
+    rows = (
+        await db.execute(
+            select(ScenarioTemplate.id, ScenarioTemplate.current_published_version_id)
+            .where(ScenarioTemplate.is_active.is_(True))
+            .where(ScenarioTemplate.current_published_version_id.is_not(None))
+        )
+    ).all()
+    if not rows:
+        return None, None
+    template_id, version_id = _rand.choice(rows)
+    return template_id, version_id
+
+
+# ---------------------------------------------------------------------------
 # Difficulty assignment
 # ---------------------------------------------------------------------------
 
@@ -369,11 +406,20 @@ async def find_match(
         # MATCH FOUND — create duel
         difficulty = determine_difficulty(player_rating, candidate_rating)
 
+        # Content→Arena PR-2: try to bind a published ScenarioTemplate to
+        # the new duel. ROP/admin-imported scenarios live there (TZ-3
+        # publish flow), so this is what makes "ROP uploads scenario →
+        # players actually see it" loop closed. NULL on miss = legacy
+        # fallback in _load_duel_context picks a random `scenarios` row.
+        _template_id, _version_id = await _pick_published_scenario(db)
+
         duel = PvPDuel(
             player1_id=user_id,
             player2_id=candidate_id,
             status=DuelStatus.pending,
             difficulty=difficulty,
+            scenario_template_id=_template_id,
+            scenario_version_id=_version_id,
         )
 
         # BUG-6 fix: execute Redis pipeline BEFORE db.flush() to prevent
@@ -445,12 +491,19 @@ async def create_pve_duel(
 
     difficulty = determine_difficulty(rating.rating, rating.rating)
 
+    # Content→Arena PR-2: PvE duels also get a published ScenarioTemplate
+    # when one is available. Methodology imports thus immediately surface
+    # in the lone-player PvE-fallback path (the most common pilot scenario).
+    _template_id, _version_id = await _pick_published_scenario(db)
+
     duel = PvPDuel(
         player1_id=user_id,
         player2_id=bot_id,
         status=DuelStatus.pending,
         difficulty=difficulty,
         is_pve=True,
+        scenario_template_id=_template_id,
+        scenario_version_id=_version_id,
     )
     db.add(duel)
     await db.flush()

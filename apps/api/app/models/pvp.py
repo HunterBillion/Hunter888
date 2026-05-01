@@ -209,6 +209,27 @@ class PvPDuel(Base):
     scenario_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("scenarios.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Content→Arena PR-2 (2026-05-01) — link to TZ-3 publish flow.
+    # ``scenario_template_id`` is the template the matchmaker picked; the
+    # ``current_published_version_id`` of that template at duel-creation
+    # time is captured in ``scenario_version_id`` so the duel renders the
+    # immutable snapshot even if the template later points elsewhere
+    # (TZ-3 §8 invariant 4 — ScenarioVersion is the source of truth).
+    # Both columns are nullable: legacy duels (created before this
+    # migration) have NULL and fall back to the legacy ``scenarios`` row
+    # picked via ``_load_duel_context``.
+    scenario_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scenario_templates.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    scenario_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scenario_versions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     # DOC_14: archetype used in CLIENT role (for cross-recommendations)
     archetype_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
 

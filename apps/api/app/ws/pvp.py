@@ -679,7 +679,23 @@ async def _match_found_payload(
 
 
 async def _load_duel_context(duel_id: uuid.UUID) -> dict[str, Any] | None:
-    from app.models.scenario import Scenario
+    """Load runtime context for a duel: users + scenario snapshot.
+
+    Content→Arena PR-2 (2026-05-01): added a TZ-3-aware path. When the
+    duel carries a ``scenario_template_id`` / ``scenario_version_id`` (set
+    by the matchmaker for newly-created duels) we resolve the immutable
+    snapshot through ``scenario_runtime_resolver.resolve_for_runtime``.
+    Legacy duels (both fields NULL) keep the historical behaviour: pick
+    a random row from the legacy ``scenarios`` table. This keeps every
+    in-flight duel after deploy on the same shape regardless of whether
+    it was started under the old or the new code path.
+
+    The resolver returns a frozen snapshot dict that mirrors
+    ScenarioVersion.snapshot — title is the only field the duel runtime
+    consumes today (passed into session['scenario_title']); subsequent
+    epics will surface stages / archetype_weights / opening lines.
+    """
+    from app.models.scenario import Scenario, ScenarioTemplate
     import random as _rand
 
     async with async_session() as db:
@@ -694,24 +710,64 @@ async def _load_duel_context(duel_id: uuid.UUID) -> dict[str, Any] | None:
         result = await db.execute(select(User).where(User.id.in_(player_ids)))
         users = {user.id: user for user in result.scalars().all()}
 
-        # Load scenario — use duel's scenario_id or pick random active one
+        # ── Path 1: TZ-3 publish flow (new code path) ──
+        # Either we already have a version_id stamped on the duel, or we
+        # have just a template_id (the matchmaker stamped one but not the
+        # other for some legacy reason). Both cases route through the
+        # canonical resolver.
         scenario_title = None
-        if duel.scenario_id:
-            sc = (await db.execute(
-                select(Scenario).where(Scenario.id == duel.scenario_id)
-            )).scalar_one_or_none()
-            scenario_title = sc.title if sc else None
-        else:
-            sc_result = await db.execute(
-                select(Scenario).where(Scenario.is_active == True)
-            )
-            scenarios = sc_result.scalars().all()
-            if scenarios:
-                picked = _rand.choice(scenarios)
-                scenario_title = picked.title
-                duel.scenario_id = picked.id
-                db.add(duel)
-                await db.commit()
+        if duel.scenario_version_id is not None or duel.scenario_template_id is not None:
+            try:
+                from app.services.scenario_runtime_resolver import (
+                    resolve_for_runtime,
+                    ScenarioNotFound,
+                )
+                resolved = await resolve_for_runtime(
+                    db,
+                    template_id=duel.scenario_template_id,
+                    version_id=duel.scenario_version_id,
+                )
+                snapshot = resolved.snapshot or {}
+                scenario_title = snapshot.get("title")
+                # If resolver promoted us from template_id-only to a real
+                # version_id (typical "template_pointer" path), capture
+                # the version we actually rendered so analytics + replay
+                # stay reproducible.
+                if duel.scenario_version_id is None and resolved.scenario_version_id is not None:
+                    duel.scenario_version_id = resolved.scenario_version_id
+                    db.add(duel)
+                    await db.commit()
+            except (ScenarioNotFound, Exception) as _resolver_exc:
+                # Resolver failures are loud (logger.warning inside) but
+                # we MUST NOT block the duel — drop into legacy fallback
+                # so live PvP isn't gated on TZ-3 health. The duel still
+                # carries the template/version FK for forensics.
+                logger.warning(
+                    "scenario_runtime_resolver failed for duel %s, falling back to legacy: %s",
+                    duel_id, _resolver_exc,
+                )
+
+        # ── Path 2: legacy random ``scenarios`` row ──
+        # Used by (a) every duel created before this migration, and (b)
+        # the resolver-failed branch above. Behaviour bit-for-bit
+        # identical to pre-PR-2 code.
+        if scenario_title is None:
+            if duel.scenario_id:
+                sc = (await db.execute(
+                    select(Scenario).where(Scenario.id == duel.scenario_id)
+                )).scalar_one_or_none()
+                scenario_title = sc.title if sc else None
+            else:
+                sc_result = await db.execute(
+                    select(Scenario).where(Scenario.is_active == True)
+                )
+                scenarios = sc_result.scalars().all()
+                if scenarios:
+                    picked = _rand.choice(scenarios)
+                    scenario_title = picked.title
+                    duel.scenario_id = picked.id
+                    db.add(duel)
+                    await db.commit()
 
         return {
             "duel": duel,
