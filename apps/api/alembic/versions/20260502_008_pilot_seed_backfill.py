@@ -217,16 +217,55 @@ def upgrade() -> None:
     """))
 
     # ── Step 2: insert manager_progress at level 15 (B5-04) ────────────
+    # The model has 30+ NOT NULL columns with python defaults but no
+    # server_defaults — a raw INSERT that names only a subset triggers
+    # NotNullViolationError on every other column. Explicit enumeration
+    # is the safe path. Default values mirror the python ``default=``
+    # values in ``app/models/progress.py:179-263``. The two list-typed
+    # columns (``unlocked_archetypes``, ``unlocked_scenarios``) are
+    # seeded as empty arrays — the platform's first-session calibration
+    # path will populate them on first arena entry.
     bind.execute(sa.text(f"""
         INSERT INTO manager_progress (
-            id, user_id, current_level, current_xp, total_xp,
-            calibration_complete, skill_confidence,
+            id, user_id,
+            current_level, current_xp, total_xp, total_sessions, total_hours,
+            skill_empathy, skill_knowledge, skill_objection_handling,
+            skill_stress_resistance, skill_closing, skill_qualification,
+            skill_time_management, skill_adaptation, skill_legal_knowledge,
+            skill_rapport_building,
+            unlocked_archetypes, unlocked_scenarios, weak_points,
+            current_deal_streak, best_deal_streak,
+            perfect_streak, best_perfect_streak,
+            arena_answer_streak, arena_best_answer_streak, arena_daily_streak,
+            checkpoints_completed, level_checkpoints_met,
+            calibration_complete, calibration_sessions, skill_confidence,
+            hunter_score,
+            prestige_level, prestige_xp_multiplier,
+            season_pass_tier, season_points,
+            arena_points, arena_points_last_month, arena_points_total_earned,
+            drill_streak, best_drill_streak, total_drills,
+            league_tier,
             created_at, updated_at
         )
         SELECT
             gen_random_uuid(), u.id,
-            {PILOT_TARGET_LEVEL}, 0, {PILOT_TARGET_XP},
-            TRUE, 'medium',
+            {PILOT_TARGET_LEVEL}, 0, {PILOT_TARGET_XP}, 0, 0.0,
+            50, 50, 50,
+            50, 50, 50,
+            50, 50, 50,
+            50,
+            '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+            0, 0,
+            0, 0,
+            0, 0, 0,
+            0, TRUE,
+            TRUE, 0, 'medium',
+            0.0,
+            0, 1.0,
+            0, 0,
+            0, 0, 0,
+            0, 0, 0,
+            0,
             NOW(), NOW()
         FROM users u
         WHERE u.email LIKE '%@trainer.local'
