@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Mail, ArrowRight, AlertCircle, KeyRound } from "lucide-react";
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/Button";
 import { api, resetAuthCircuitBreaker } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
@@ -41,7 +42,7 @@ export default function LoginPage() {
   useEffect(() => {
     api.get<{ google: boolean; yandex: boolean }>("/auth/oauth/status")
       .then(setOauthStatus)
-      .catch(() => {});
+      .catch((err) => logger.error("[login] oauth status fetch failed:", err));
   }, []);
 
   const handleForgot = async () => {

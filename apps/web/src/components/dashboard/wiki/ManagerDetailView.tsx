@@ -23,6 +23,7 @@ import {
   Lightbulb,
 } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
+import { logger } from "@/lib/logger";
 import type {
   DetailTab,
   EnrichedProfile,
@@ -106,7 +107,7 @@ export function ManagerDetailView({
     if (tab === "charts" && !detailChartData && !loading) {
       api.get("/wiki/dashboard/charts?days=30")
         .then((res: WikiChartData) => setDetailChartData(res))
-        .catch(() => {});
+        .catch((err) => logger.error("[ManagerDetailView] charts fetch failed:", err));
     }
   }, [tab, detailChartData, loading]);
 

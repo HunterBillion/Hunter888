@@ -13,6 +13,7 @@ import { motion } from "framer-motion";
 import { Database, Plus, Trash2, Loader2, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { toast } from "sonner";
 import { ImportWizard } from "@/components/methodology/ImportWizard";
 import { ImportHistory } from "@/components/methodology/ImportHistory";
 
@@ -76,8 +77,12 @@ export function ArenaContentEditor() {
         is_court_practice: false, tags: "",
       });
       fetchChunks();
-    } catch {
-      alert("Ошибка создания чанка");
+      toast.success("Чанк создан");
+    } catch (err) {
+      logger.error("[ArenaContentEditor] create failed:", err);
+      toast.error("Ошибка создания чанка", {
+        description: err instanceof Error ? err.message : undefined,
+      });
     }
   };
 
@@ -86,8 +91,12 @@ export function ArenaContentEditor() {
     try {
       await api.delete(`/rop/arena/chunks/${id}`);
       fetchChunks();
-    } catch {
-      alert("Ошибка удаления чанка");
+      toast.success("Чанк удалён");
+    } catch (err) {
+      logger.error("[ArenaContentEditor] delete failed:", err);
+      toast.error("Ошибка удаления чанка", {
+        description: err instanceof Error ? err.message : undefined,
+      });
     }
   };
 

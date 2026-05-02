@@ -614,7 +614,7 @@ function AssignedTab({
   useEffect(() => {
     api.get<Array<{ id: string; scenario_title: string; score_total: number | null; duration_seconds: number | null; ended_at: string | null }>>("/training/recent-home?days=7")
       .then(setRecentHome)
-      .catch(() => {});
+      .catch((err) => logger.error("[training] recent-home fetch failed:", err));
   }, []);
 
   if (assignedLoading) {

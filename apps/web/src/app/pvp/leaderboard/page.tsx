@@ -13,6 +13,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { LeaderboardSkeleton } from "@/components/ui/Skeleton";
 import { hasRole } from "@/lib/guards";
 import { api } from "@/lib/api";
+import { toast } from "sonner";
+import { logger } from "@/lib/logger";
 import type { PvPRankTier } from "@/types";
 import { PVP_RANK_LABELS, PVP_RANK_COLORS, normalizeRankTier } from "@/types";
 
@@ -66,8 +68,12 @@ export default function PvPLeaderboardPage() {
         },
       });
       store.fetchActiveSeason();
+      toast.success("Сезон создан");
     } catch (e) {
-      alert((e as Error).message);
+      logger.error("Failed to create season:", e);
+      toast.error("Не удалось создать сезон", {
+        description: e instanceof Error ? e.message : undefined,
+      });
     }
   };
 

@@ -1820,15 +1820,41 @@ async def re_extract_draft(
     try:
         raw_bytes = storage_path.read_bytes()
     except OSError as exc:
-        raise HTTPException(status_code=500, detail=f"I/O error: {exc}") from exc
+        # Log full OSError (including filesystem path) server-side; return
+        # a generic message to the client. Earlier we leaked the storage
+        # path + raw OSError text via the response detail, which exposes
+        # internal layout to anyone who can hit this admin endpoint.
+        logger.error(
+            "Failed to read attachment from storage",
+            extra={"attachment_id": str(attachment.id), "error": str(exc)},
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Не удалось прочитать файл. Попробуйте позже или загрузите заново.",
+        ) from exc
 
     try:
         source_text = extract_text_from_bytes(attachment.filename, raw_bytes)
     except Exception as exc:
+        # Generic exception class + raw text could include parser internals
+        # (PyPDF2 stack traces, MS Office binary chunks). Log server-side,
+        # return a safe-to-show message. Filename is fine to surface — the
+        # admin who uploaded already knows it.
+        logger.error(
+            "Attachment text extraction failed",
+            extra={
+                "attachment_id": str(attachment.id),
+                "filename": attachment.filename,
+                "error_class": type(exc).__name__,
+                "error": str(exc),
+            },
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=422,
-            detail=f"Не удалось распарсить: {type(exc).__name__}: {exc}",
-        )
+            detail=f"Не удалось распарсить файл «{attachment.filename}». Проверьте формат и повторите.",
+        ) from exc
 
     chosen_route = forced
     if not chosen_route:
