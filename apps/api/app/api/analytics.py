@@ -2,19 +2,28 @@
 
 All endpoints are per-user (manager sees own data).
 ROP/admin can view any user's analytics via user_id parameter.
+
+This module also hosts the FE-telemetry collector at
+``POST /analytics/events`` — see :func:`collect_events` for the
+batch-ingest contract. It accepts anonymous (pre-login) traffic, so
+it does NOT require an auth dep; rate-limit is per-IP.
 """
 
+import logging
 import uuid
 from dataclasses import asdict
-from datetime import date
+from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, Field
+from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors as err
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, get_current_user_optional
+from app.core.rate_limit import limiter
 from app.database import get_db
+from app.models.analytics_event import AnalyticsEvent
 from app.models.user import User
 from app.services.analytics import (
     AnalyticsSnapshot,
@@ -26,6 +35,7 @@ from app.services.analytics import (
     get_archetype_scores,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -111,6 +121,136 @@ def _resolve_user_id(
             detail=err.OWN_ANALYTICS_ONLY,
         )
     return target_user_id
+
+
+# ── FE telemetry collector ───────────────────────────────────────────────────
+
+
+# Whitelist of accepted event names. Mirrors the FE EventName union in
+# apps/web/src/lib/telemetry.ts. Adding new events requires updating
+# both files. We reject unknowns rather than silently accepting any
+# string so a typo on the FE doesn't poison the analytics table with
+# garbage event_name values.
+ALLOWED_EVENTS: frozenset[str] = frozenset({
+    "script_panel_toggle",
+    "script_example_copied",
+    "script_drawer_auto_open",
+    "stage_skipped",
+    "whisper_script_clicked",
+    "retrain_widget_shown",
+    "retrain_widget_clicked",
+    "coaching_mistake",
+})
+
+# Hard caps. Both bound the worst-case write — `MAX_EVENTS_PER_BATCH`
+# matches the FE-side flush threshold; `MAX_PAYLOAD_BYTES` guards
+# against a single oversized event tying up the JSONB write path.
+MAX_EVENTS_PER_BATCH = 100
+MAX_PAYLOAD_BYTES = 4 * 1024  # 4 KB per event payload
+
+
+class TelemetryEventIn(BaseModel):
+    name: str = Field(..., max_length=64)
+    payload: dict = Field(default_factory=dict)
+    occurred_at: datetime  # ISO 8601 with timezone — pydantic handles parse
+
+
+class CollectEventsIn(BaseModel):
+    events: list[TelemetryEventIn] = Field(..., min_length=1, max_length=MAX_EVENTS_PER_BATCH)
+    # Anonymous session id: client-generated UUID stored in localStorage.
+    # Lets us stitch one-browser sessions of events without identifying
+    # the underlying user. Optional; some events (e.g. server-rendered
+    # error pages) can't carry one.
+    anon_session_id: uuid.UUID | None = None
+    # Build-time SHA stamped into the FE bundle (NEXT_PUBLIC_RELEASE_SHA).
+    # Useful for correlating event spikes / drops with a specific deploy.
+    release_sha: str | None = Field(None, max_length=40)
+
+
+class CollectEventsOut(BaseModel):
+    accepted: int
+    rejected: int
+
+
+@router.post("/events", response_model=CollectEventsOut, status_code=status.HTTP_202_ACCEPTED)
+# Per-IP cap. 120/min = 2 events/sec sustained per browser, well above
+# normal usage (most users fire < 1 event/sec) and low enough that a
+# misbehaving client can't flood the table. Anonymous traffic counts
+# against the same bucket — we don't have a more specific identifier
+# for unauthed callers anyway.
+@limiter.limit("120/minute")
+async def collect_events(
+    request: Request,
+    body: CollectEventsIn,
+    user: User | None = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+) -> CollectEventsOut:
+    """Bulk-ingest FE telemetry events.
+
+    Anonymous-OK: pre-login pages (login, register, reset-password)
+    can fire events without auth. When the caller IS authed, we stamp
+    `user_id` so per-user trails work; otherwise we rely on
+    `anon_session_id` for stitching.
+
+    Validation strategy:
+      * Whitelist `name` against ALLOWED_EVENTS — typos are rejected,
+        not silently stored. The whitelist mirrors the FE EventName
+        union so adding a new event requires touching both sides.
+      * Cap `payload` size at 4 KB. A 100-event batch with maxed-out
+        payloads is ~400 KB, fine for a single JSONB write.
+      * Cap batch length at 100 (Pydantic validator). FE flushes at 50.
+
+    Errors are partial-tolerant: rejected events are skipped (counted
+    in the response), accepted events still land. We don't want one
+    bad event to drop a whole batch — that'd encourage clients to
+    swallow rejections.
+    """
+    if len(body.events) > MAX_EVENTS_PER_BATCH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="too many events in batch",
+        )
+
+    user_agent = request.headers.get("user-agent", "")[:256] or None
+
+    rows: list[dict] = []
+    rejected = 0
+    for evt in body.events:
+        if evt.name not in ALLOWED_EVENTS:
+            rejected += 1
+            continue
+        # Size-bound the payload. Use len() of repr as a cheap
+        # approximation; exact UTF-8 byte size would require
+        # serialising twice.
+        if len(repr(evt.payload)) > MAX_PAYLOAD_BYTES:
+            rejected += 1
+            continue
+        rows.append({
+            "user_id": user.id if user else None,
+            "anon_session_id": body.anon_session_id,
+            "event_name": evt.name,
+            "payload": evt.payload,
+            "occurred_at": evt.occurred_at,
+            "release_sha": body.release_sha,
+            "user_agent": user_agent,
+        })
+
+    if rows:
+        try:
+            await db.execute(insert(AnalyticsEvent), rows)
+            await db.commit()
+        except Exception as exc:
+            # Telemetry must never break the user flow. Log + roll back +
+            # report all-rejected so the client doesn't retry forever
+            # on a row that DB will keep refusing.
+            logger.warning(
+                "Analytics insert failed; dropping batch",
+                extra={"count": len(rows), "error": str(exc)},
+            )
+            await db.rollback()
+            return CollectEventsOut(accepted=0, rejected=rejected + len(rows))
+
+    return CollectEventsOut(accepted=len(rows), rejected=rejected)
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────

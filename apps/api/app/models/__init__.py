@@ -207,6 +207,9 @@ from app.models.knowledge_status import (
     is_visible_in_rag,
 )
 from app.models.methodology import MethodologyChunk, MethodologyKind
+# Anonymous FE telemetry collector (alembic 20260502_005). Read-only ORM
+# wrapper; bulk inserts use Core insert() for batch efficiency.
+from app.models.analytics_event import AnalyticsEvent
 
 __all__ = [
     "User",
@@ -415,4 +418,6 @@ __all__ = [
     "is_visible_in_rag",
     "MethodologyChunk",
     "MethodologyKind",
+    # Anonymous FE telemetry (alembic 20260502_005)
+    "AnalyticsEvent",
 ]
