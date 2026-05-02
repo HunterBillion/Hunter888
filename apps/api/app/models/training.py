@@ -46,6 +46,19 @@ class MessageRole(str, enum.Enum):
     system = "system"
 
 
+# Session intent catalog — synced with the CHECK constraint in
+# alembic 20260502_010. Mirror this in FE
+# `apps/web/src/types/index.ts` (SessionPurpose union).
+SESSION_PURPOSE_CLIENT_CALL = "client_call"
+SESSION_PURPOSE_PRACTICE = "practice"
+SESSION_PURPOSE_LEGACY_ORPHAN = "legacy_orphan"
+SESSION_PURPOSE_ALLOWED: frozenset[str] = frozenset({
+    SESSION_PURPOSE_CLIENT_CALL,
+    SESSION_PURPOSE_PRACTICE,
+    SESSION_PURPOSE_LEGACY_ORPHAN,
+})
+
+
 class TrainingSession(Base):
     """Completed training session (roleplay + scoring).
 
@@ -115,6 +128,19 @@ class TrainingSession(Base):
     # TZ-1 canonical bridge for unified client-domain projections.
     lead_client_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("lead_clients.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # 2026-05-02 (audit FIND-005): explicit session intent. Distinguishes
+    # "I'm working a real CRM client → count toward pipeline KPI" from
+    # "free practice, no client" from "legacy orphan" (sessions that
+    # predate this column — we refuse to retro-attribute). KPI views
+    # filter on this. Server-default 'practice' so legacy INSERTs that
+    # don't yet set the field produce a sensible row.
+    session_purpose: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        server_default="practice",
+        index=True,
     )
 
     # Constructor v2 (migration 20260404_006): link to saved custom character

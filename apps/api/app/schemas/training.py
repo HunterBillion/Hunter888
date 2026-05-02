@@ -75,6 +75,19 @@ class SessionStartRequest(BaseModel):
     mode: str | None = None
     runtime_type: str | None = None
 
+    # ── 2026-05-02 — explicit session intent (audit FIND-005) ──
+    # Distinguishes "I'm working a real CRM client" (counts toward
+    # pipeline KPI) from "free practice, no client" (excluded from
+    # pipeline KPI but still earns XP / leaderboard). When omitted,
+    # the handler derives the value from real_client_id presence:
+    #   real_client_id set → 'client_call'
+    #   real_client_id NULL → 'practice'
+    # FE can also send this explicitly when the user picks "Свободная
+    # практика" while having CRM clients. Allowed values mirror the
+    # CHECK constraint in alembic 20260502_010 + the FE SessionPurpose
+    # union in apps/web/src/types/index.ts.
+    session_purpose: str | None = None
+
     # TZ-2 §16.1 — strict schema. Unknown fields used to be silently
     # dropped, so any future canonical field (lead_client_id) added on
     # the frontend before the backend would vanish into the void with
