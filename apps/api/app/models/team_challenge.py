@@ -53,6 +53,7 @@ class TeamChallenge(Base):
         PG_UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     team_a_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True),
@@ -80,6 +81,7 @@ class TeamChallenge(Base):
         PG_UUID(as_uuid=True),
         ForeignKey("teams.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     metadata_json: Mapped[dict | None] = mapped_column(JSONB, default=dict)
 

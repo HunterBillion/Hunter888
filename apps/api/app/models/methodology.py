@@ -244,9 +244,21 @@ class MethodologyChunk(Base):
             "ix_methodology_chunks_team_kind",
             "team_id", "kind",
         ),
-        # ivfflat index for cosine similarity, created in the
-        # alembic migration via raw SQL because pgvector index
-        # options aren't expressible in a SQLAlchemy ``Index`` alone.
+        # ivfflat index for cosine similarity. Declared here so
+        # ``alembic check`` recognises it (the actual ivfflat
+        # creation lives in migration 20260502_001 via raw SQL —
+        # SQLAlchemy ``Index`` cannot express ``USING ivfflat``
+        # with ``vector_cosine_ops`` plus ``WITH (lists=100)``).
+        # The ``postgresql_using``/``postgresql_ops``/``postgresql_with``
+        # kwargs are sufficient for autogenerate to skip a redundant
+        # CREATE — the index already exists in the DB at this name.
+        Index(
+            "ix_methodology_chunks_embedding",
+            "embedding",
+            postgresql_using="ivfflat",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+            postgresql_with={"lists": 100},
+        ),
     )
 
     def __repr__(self) -> str:  # pragma: no cover (dev-only ergonomics)

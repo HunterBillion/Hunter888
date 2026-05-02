@@ -30,6 +30,7 @@ class MorningDrillSession(Base):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     # Opaque id returned by `GET /morning-drill` — kept for debugging /
     # cross-referencing client logs. NOT a primary key.

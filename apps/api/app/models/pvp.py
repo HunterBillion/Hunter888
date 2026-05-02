@@ -252,7 +252,7 @@ class PvPDuel(Base):
     player1_total: Mapped[float] = mapped_column(Float, default=0.0)
     player2_total: Mapped[float] = mapped_column(Float, default=0.0)
     winner_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     is_draw: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -395,10 +395,10 @@ class PvPMatchQueue(Base):
     # Range expands over time: base_range + (seconds_waited * expansion_rate)
     expanded_range: Mapped[float] = mapped_column(Float, default=0.0)
     matched_with: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     duel_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("pvp_duels.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("pvp_duels.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
 
@@ -505,10 +505,10 @@ class PvPTeam(Base):
     __tablename__ = "pvp_teams"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    player1_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    player2_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    player1_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    player2_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     avg_rating: Mapped[float] = mapped_column(Float, nullable=False, default=1500.0)
-    duel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("pvp_duels.id", ondelete="SET NULL"), nullable=True)
+    duel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("pvp_duels.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -539,7 +539,7 @@ class RapidFireMatch(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     player1_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    player2_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    player2_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     is_pve: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     archetypes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     mini_scores: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
@@ -592,7 +592,7 @@ class PvEBossRun(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     boss_index: Mapped[int] = mapped_column(Integer, nullable=False)
     boss_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    duel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("pvp_duels.id", ondelete="SET NULL"), nullable=True)
+    duel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("pvp_duels.id", ondelete="SET NULL"), nullable=True, index=True)
     score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     is_defeated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     special_mechanics_log: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

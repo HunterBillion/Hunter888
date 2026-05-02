@@ -99,6 +99,25 @@ jobs:
       - name: Run migrations
         run: python -m alembic upgrade head
 
+      - name: Schema drift check (advisory) — alembic check
+        # After ``alembic upgrade head`` the DB matches the migration
+        # graph. ``alembic check`` compares the models' declared
+        # schema against the just-migrated DB.
+        #
+        # Promoted to ADVISORY (continue-on-error) because the 2026-05-02
+        # prod audit found drift accumulated over months: not just the
+        # ~30 indexes that ``20260502_003_index_drift_sync`` addresses,
+        # but hundreds of NOT-NULL constraints, type drifts (VARCHAR vs
+        # String) and FK re-creations across legacy tables. A blocking
+        # gate here would block every PR until the full cleanup ships.
+        #
+        # Output remains visible in CI logs so reviewers can spot when
+        # NEW drift is introduced. Promote back to blocking after a
+        # dedicated "schema drift cleanup" PR pays down the legacy
+        # backlog (tracked in CI_DRIFT_DEBT.md, follow-up).
+        continue-on-error: true
+        run: python -m alembic check
+
       - name: Test — full suite (advisory while legacy failures are being paid down)
         # The repo carries ~116 pre-existing test failures that predate
         # TZ-1 (auth v2 fixtures, RAG stubs, adaptive difficulty mocks

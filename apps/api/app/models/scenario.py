@@ -281,7 +281,7 @@ class ScenarioTemplate(Base):
     # the resolver follows this FK rather than re-reading the mutable
     # template fields below (which may be mid-edit).
     status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="published"
+        String(20), nullable=False, server_default="published", index=True
     )
     draft_revision: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"

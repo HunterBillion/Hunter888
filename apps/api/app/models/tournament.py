@@ -87,7 +87,7 @@ class Tournament(Base):
     # DOC_12: Tournament type + themed/team extensions
     tournament_type: Mapped[str] = mapped_column(String(30), default="weekly_sprint", server_default="weekly_sprint")
     theme_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tournament_themes.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("tournament_themes.id", ondelete="SET NULL"), nullable=True, index=True
     )
     archetype_filter: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     difficulty_filter: Mapped[str | None] = mapped_column(String(20), nullable=True)

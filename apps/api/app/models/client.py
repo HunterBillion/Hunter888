@@ -502,6 +502,15 @@ class Attachment(Base):
         Index("ix_attachments_client_created", "client_id", "created_at"),
         Index("ix_attachments_session_created", "session_id", "created_at"),
         Index("ix_attachments_client_sha", "client_id", "sha256"),
+        # «один оригинал на (клиент, sha256)» — TZ-4 §7.2.6.
+        # Дубликаты лежат с ``duplicate_of IS NOT NULL`` и не
+        # конфликтуют с этим UNIQUE т.к. constraint не partial:
+        # клиент-side при подаче загружает либо новый файл (миссит
+        # constraint и делает обычный INSERT), либо обнаруживает
+        # дубликат через `sha256`-lookup до INSERT и ставит
+        # ``duplicate_of`` сам — в любом случае ровно один
+        # оригинал в (lead_client_id, sha256).
+        UniqueConstraint("lead_client_id", "sha256", name="uq_attachments_client_sha256_orig"),
     )
 
     def __repr__(self) -> str:

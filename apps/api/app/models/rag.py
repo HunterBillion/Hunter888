@@ -13,7 +13,7 @@ import hashlib
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, event, func
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text, event, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
@@ -162,7 +162,7 @@ class LegalKnowledgeChunk(Base):
         DateTime(timezone=True), nullable=True,
     )
     expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True), nullable=True, index=True,
     )
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
@@ -233,6 +233,14 @@ class ChunkUsageLog(Base):
     # S4-09: Soft delete — preserve analytics when parent chunk is deleted
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", index=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Legacy composite index preserved from earlier schema (DB has it).
+    # ``chunk_kind`` already has its own single-column index above; this
+    # composite is kept because the join from analytics queries
+    # (``WHERE chunk_kind = X AND chunk_id IN (...)``) lands on it.
+    __table_args__ = (
+        Index("ix_chunk_usage_logs_kind_chunk", "chunk_kind", "chunk_id"),
+    )
 
 
 class LegalValidationResult(Base):
