@@ -145,17 +145,48 @@ Reasons:
 
 ### Deploy flow (official)
 
+Use the `scripts/deploy-prod.sh` wrapper — it captures `RELEASE_SHA`
+and `BUILD_TIME`, builds with those baked in, then verifies the
+running container reports the expected sha back via `/api/version`.
+The 2026-05-02 audit (FIND-007) found `release_sha=unknown` on prod
+because operators were running the raw `docker compose build` chain
+below and dropping the env-vars on the floor. The script closes that
+loop and fails loud if the SHA doesn't make it into the container.
+
 ```
 ssh root@72.56.38.62
 cd /opt/hunter888
-git pull origin main
-docker compose -f docker-compose.yml -f docker-compose.prod.yml build api web
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api web
+bash scripts/deploy-prod.sh
 ```
 
-Verification:
+What the script does (read it before running — it's ~50 lines):
+
+  1. `git fetch origin main && git pull --ff-only origin main`
+  2. captures `RELEASE_SHA = git rev-parse HEAD` and `BUILD_TIME` (UTC)
+  3. `docker compose ... up -d --build` with both vars exported, so
+     the Dockerfile ARG → ENV chain bakes them into the image
+  4. waits 8 s for API to come up
+  5. `curl /api/version` and asserts the reported `release_sha`
+     matches the local one — exits non-zero if it doesn't
+
+Manual flow (if the script is unavailable for some reason):
+
 ```
-curl -s https://x-hunter.expert/api/version
+git pull origin main
+export RELEASE_SHA=$(git rev-parse HEAD) BUILD_TIME=$(date -u +%FT%TZ)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build api web
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api web
+curl -s https://x-hunter.expert/api/version  # must show your $RELEASE_SHA
+```
+
+Without the explicit `export RELEASE_SHA=...`, the compose default
+`${RELEASE_SHA:-unknown}` kicks in and you'll deploy an
+unidentifiable image. The `/api/version` step is not optional — it's
+the only way you find out which sha is actually running before the
+next pilot user hits a broken endpoint.
+
+Other verification:
+```
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api \
   python -m scripts.client_domain_ops parity
 ```
