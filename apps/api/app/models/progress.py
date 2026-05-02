@@ -451,6 +451,7 @@ class EarnedAchievement(Base):
         UUID(as_uuid=True),
         ForeignKey("training_sessions.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
     unlocked_at: Mapped[datetime] = mapped_column(

@@ -99,6 +99,18 @@ jobs:
       - name: Run migrations
         run: python -m alembic upgrade head
 
+      - name: Schema drift check (blocking) — alembic check
+        # After ``alembic upgrade head`` the DB matches the migration
+        # graph. ``alembic check`` then compares the models' declared
+        # schema against the just-migrated DB and FAILs if any column,
+        # index, or constraint differs. This is the gate that prevents
+        # "model has index=True but no migration was authored" drift,
+        # which the 2026-05-02 audit found across ~30 indexes (see
+        # PR / migration ``20260502_003_index_drift_sync``). New PRs
+        # that touch models without a matching migration will fail
+        # here instead of compounding silently.
+        run: python -m alembic check
+
       - name: Test — full suite (advisory while legacy failures are being paid down)
         # The repo carries ~116 pre-existing test failures that predate
         # TZ-1 (auth v2 fixtures, RAG stubs, adaptive difficulty mocks

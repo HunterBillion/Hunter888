@@ -75,7 +75,7 @@ class WeeklyLeagueMembership(Base):
     )  # 0-4
     group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("weekly_league_groups.id", ondelete="SET NULL"),
-        nullable=True,
+        nullable=True, index=True,
     )
     weekly_xp: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0,

@@ -281,8 +281,8 @@ class TeamQuizTeam(Base):
         index=True,
     )
     team_name: Mapped[str] = mapped_column(String(1), nullable=False)  # "A" or "B"
-    captain_id: Mapped[uuid.UUID] = mapped_column("player1_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    member_ids: Mapped[uuid.UUID | None] = mapped_column("player2_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    captain_id: Mapped[uuid.UUID] = mapped_column("player1_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    member_ids: Mapped[uuid.UUID | None] = mapped_column("player2_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     score: Mapped[float] = mapped_column("team_score", Float, nullable=False, server_default="0.0")
     passes_used: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -321,6 +321,7 @@ class DailyChallengeEntry(Base):
         UUID(as_uuid=True),
         ForeignKey("knowledge_quiz_sessions.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     score: Mapped[float] = mapped_column(Float, nullable=False, server_default="0.0")
     rank: Mapped[int | None] = mapped_column(Integer, nullable=True)

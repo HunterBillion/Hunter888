@@ -35,6 +35,7 @@ class LegalDocument(Base):
         UUID(as_uuid=True),
         ForeignKey("legal_document.id", ondelete="CASCADE"),
         nullable=True,
+        index=True,
     )
     doc_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     # 'law_fz' | 'law_chapter' | 'law_article' | 'law_item'

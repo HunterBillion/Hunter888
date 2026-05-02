@@ -107,6 +107,7 @@ class GameClientEvent(Base):
         UUID(as_uuid=True),
         ForeignKey("training_sessions.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
     # Привязка к обратному звонку (для event_type=callback)
