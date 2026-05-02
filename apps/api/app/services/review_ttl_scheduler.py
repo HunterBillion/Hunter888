@@ -52,7 +52,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TypedDict
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.knowledge_status import KnowledgeStatus
@@ -93,18 +93,35 @@ async def run_review_ttl_pass(db: AsyncSession) -> ReviewTtlPassResult:
     """
     now = datetime.now(timezone.utc)
 
-    # Methodology chunks
-    meth_result = await db.execute(
-        update(MethodologyChunk)
+    # ── Methodology chunks ──
+    # Capture ids before the UPDATE so we can fan out a single
+    # batched audit event (B5-02). Without this the previous
+    # implementation flipped statuses silently — a TTL-driven
+    # ``actual → needs_review`` left no trace in the timeline.
+    # We use SELECT … FOR UPDATE SKIP LOCKED to avoid blocking
+    # other cron / scheduler instances racing the same window.
+    meth_ids_result = await db.execute(
+        select(MethodologyChunk.id)
         .where(MethodologyChunk.knowledge_status == KnowledgeStatus.actual.value)
         .where(MethodologyChunk.review_due_at.isnot(None))
         .where(MethodologyChunk.review_due_at <= now)
-        .values(
-            knowledge_status=KnowledgeStatus.needs_review.value,
-            updated_at=now,
-        )
+        # B5-01: do not flip status of soft-deleted rows. They are
+        # already terminal; surface noise.
+        .where(MethodologyChunk.is_deleted.is_(False))
+        .with_for_update(skip_locked=True)
     )
-    meth_count = meth_result.rowcount or 0
+    meth_ids = [row[0] for row in meth_ids_result.fetchall()]
+    meth_count = len(meth_ids)
+
+    if meth_count > 0:
+        await db.execute(
+            update(MethodologyChunk)
+            .where(MethodologyChunk.id.in_(meth_ids))
+            .values(
+                knowledge_status=KnowledgeStatus.needs_review.value,
+                updated_at=now,
+            )
+        )
 
     # Wiki pages — same TTL contract introduced in PR-A.
     wiki_result = await db.execute(
@@ -118,6 +135,46 @@ async def run_review_ttl_pass(db: AsyncSession) -> ReviewTtlPassResult:
         )
     )
     wiki_count = wiki_result.rowcount or 0
+
+    # ── Audit emit (B5-02) ──
+    # One batched ``knowledge_item.expired`` event per methodology
+    # sweep, carrying the flipped ids in the payload. Per-row
+    # events would flood ``domain_events`` on a 10k-chunk table
+    # without giving the timeline UI any extra signal — the day
+    # of a sweep is the operative grouping. Idempotency key is
+    # per-day so a re-run within the same calendar day collapses
+    # rather than double-emitting.
+    if meth_count > 0:
+        try:
+            from app.services.client_domain import emit_domain_event
+            from app.services.knowledge_review_policy import KNOWLEDGE_GLOBAL_ANCHOR
+
+            await emit_domain_event(
+                db,
+                lead_client_id=KNOWLEDGE_GLOBAL_ANCHOR,
+                event_type="knowledge_item.expired",
+                actor_type="system",
+                actor_id=None,
+                source="review_ttl_scheduler",
+                aggregate_type="methodology_chunk",
+                aggregate_id=None,
+                payload={
+                    "flipped_count": meth_count,
+                    "flipped_ids": [str(i) for i in meth_ids[:1000]],
+                    "swept_at": now.isoformat(),
+                    "from_status": KnowledgeStatus.actual.value,
+                    "to_status": KnowledgeStatus.needs_review.value,
+                },
+                idempotency_key=(
+                    f"methodology.ttl_sweep:{now.date().isoformat()}"
+                ),
+            )
+        except Exception:
+            logger.warning(
+                "review_ttl_scheduler: emit_domain_event failed; "
+                "row updates persist, audit signal lost",
+                exc_info=True,
+            )
 
     await db.commit()
 

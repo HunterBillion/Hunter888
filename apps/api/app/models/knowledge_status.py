@@ -129,9 +129,163 @@ def is_visible_in_rag(status: str | KnowledgeStatus | None) -> bool:
     return str(status) in STATUSES_VISIBLE_IN_RAG
 
 
+# ── Transition graph (B5-07) ────────────────────────────────────────────
+#
+# Until 2026-05-02 the transition rules in :class:`KnowledgeStatus` lived
+# only as a docstring. ``knowledge_review_policy.mark_reviewed`` enforced
+# the docstring loosely (one ``AutoOutdatedForbidden`` check), but the
+# methodology PATCH endpoint and the TTL scheduler bypassed enforcement
+# entirely — letting a ROP do ``outdated → actual`` (recovery from soft
+# delete) which the docstring explicitly forbids. Audit B5-07 surfaced
+# this; the table below is the single source of truth from now on.
+#
+# Two sets of rules are encoded:
+#   * ``_HUMAN_ALLOWED_TRANSITIONS`` — what a human (admin/rop) may do
+#     via the UI / REST PATCH endpoint.
+#   * ``_AUTOMATED_ALLOWED_TRANSITIONS`` — what the system itself may
+#     do via the TTL scheduler. Strictly narrower than the human set:
+#     no automation may flip into ``outdated`` (TZ-4 §8.3.1 — wiping
+#     the knowledge base by cron is the failure mode that motivated
+#     the entire governance layer).
+#
+# Both sets implement the docstring on :class:`KnowledgeStatus` exactly.
+
+_HUMAN_ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    KnowledgeStatus.actual.value: frozenset({
+        KnowledgeStatus.needs_review.value,
+        KnowledgeStatus.disputed.value,
+        KnowledgeStatus.outdated.value,
+    }),
+    KnowledgeStatus.needs_review.value: frozenset({
+        KnowledgeStatus.actual.value,
+        KnowledgeStatus.outdated.value,
+    }),
+    KnowledgeStatus.disputed.value: frozenset({
+        KnowledgeStatus.actual.value,
+        KnowledgeStatus.outdated.value,
+    }),
+    # ``outdated`` is the soft-delete terminal — no exit. Recovery is
+    # a fresh INSERT (audit-friendly).
+    KnowledgeStatus.outdated.value: frozenset(),
+}
+
+_AUTOMATED_ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    # The TTL scheduler may only flag rows for review; never delete.
+    KnowledgeStatus.actual.value: frozenset({KnowledgeStatus.needs_review.value}),
+    # Everything else: automation is forbidden. Human review only.
+    KnowledgeStatus.needs_review.value: frozenset(),
+    KnowledgeStatus.disputed.value: frozenset(),
+    KnowledgeStatus.outdated.value: frozenset(),
+}
+
+
+class IllegalStatusTransition(ValueError):
+    """Raised when a caller attempts a status flip the graph forbids.
+
+    ``from_status`` and ``to_status`` are exposed on the instance so
+    REST handlers can map to a 409 with a structured payload (the FE
+    needs to know which pair was rejected to craft the right toast).
+    """
+
+    def __init__(
+        self,
+        from_status: str,
+        to_status: str,
+        *,
+        automated: bool,
+    ) -> None:
+        self.from_status = from_status
+        self.to_status = to_status
+        self.automated = automated
+        actor = "automated path" if automated else "manual transition"
+        super().__init__(
+            f"Illegal {actor}: {from_status} → {to_status}. "
+            f"See KnowledgeStatus docstring for the allowed graph."
+        )
+
+
+def validate_transition(
+    from_status: str | KnowledgeStatus | None,
+    to_status: str | KnowledgeStatus,
+    *,
+    automated: bool = False,
+) -> None:
+    """Raise :class:`IllegalStatusTransition` if the flip is not allowed.
+
+    Args:
+        from_status: current ``knowledge_status`` value. Tolerant on
+            input shape (str / enum / None). ``None`` is treated as
+            ``actual`` for parity with :func:`is_visible_in_rag` —
+            legacy rows pre-dating the column behave as if ``actual``.
+        to_status: target value. Required; ``None`` would be ambiguous
+            and is rejected as a TypeError early.
+        automated: True when called from a scheduler / bulk job.
+            Reads from :data:`_AUTOMATED_ALLOWED_TRANSITIONS` (strictly
+            narrower). False (default) reads from
+            :data:`_HUMAN_ALLOWED_TRANSITIONS`.
+
+    Idempotent same-state flips (e.g. ``actual → actual``) are
+    accepted as a no-op — REST endpoints often re-PATCH on UI
+    refresh and we don't want spurious 409s. The caller still gets
+    a clean return; the side-effect (event emit, version bump) is
+    the caller's choice.
+    """
+    if to_status is None:
+        raise TypeError("validate_transition: to_status must not be None")
+
+    src = (
+        from_status.value
+        if isinstance(from_status, KnowledgeStatus)
+        else (from_status or KnowledgeStatus.actual.value)
+    )
+    dst = (
+        to_status.value
+        if isinstance(to_status, KnowledgeStatus)
+        else str(to_status)
+    )
+
+    if src == dst:
+        # Idempotent re-PATCH; not a transition.
+        return
+
+    table = (
+        _AUTOMATED_ALLOWED_TRANSITIONS if automated
+        else _HUMAN_ALLOWED_TRANSITIONS
+    )
+
+    allowed = table.get(src, frozenset())
+    if dst not in allowed:
+        raise IllegalStatusTransition(src, dst, automated=automated)
+
+
+def allowed_next_states(
+    current: str | KnowledgeStatus | None,
+    *,
+    automated: bool = False,
+) -> frozenset[str]:
+    """Return the set of legal next states. Read-only mirror of the
+    transition graph for UI hints (e.g. greying out forbidden chips).
+
+    Same-state is excluded — UI should treat "no change" separately.
+    """
+    src = (
+        current.value
+        if isinstance(current, KnowledgeStatus)
+        else (current or KnowledgeStatus.actual.value)
+    )
+    table = (
+        _AUTOMATED_ALLOWED_TRANSITIONS if automated
+        else _HUMAN_ALLOWED_TRANSITIONS
+    )
+    return table.get(src, frozenset())
+
+
 __all__ = [
     "KnowledgeStatus",
     "STATUSES_VISIBLE_IN_RAG",
     "STATUSES_HIDDEN_FROM_RAG",
     "is_visible_in_rag",
+    "IllegalStatusTransition",
+    "validate_transition",
+    "allowed_next_states",
 ]

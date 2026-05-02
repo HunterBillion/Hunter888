@@ -268,9 +268,17 @@ async def check_methodology_team_access(
     if chunk_id is not None:
         if db is None:
             raise ValueError("db is required when chunk_id is supplied")
+        # Soft-deleted rows are not visible through any methodology
+        # endpoint (B5-01) — they exist only for ChunkUsageLog joins
+        # + audit history. Treat as 404 here so DELETE / PATCH / GET
+        # all return the same shape regardless of how the row was
+        # removed (hard-delete pre-2026-05-02 vs soft-delete now).
         chunk = (
             await db.execute(
-                _select(MethodologyChunk).where(MethodologyChunk.id == chunk_id)
+                _select(MethodologyChunk).where(
+                    MethodologyChunk.id == chunk_id,
+                    MethodologyChunk.is_deleted.is_(False),
+                )
             )
         ).scalar_one_or_none()
         if chunk is None:

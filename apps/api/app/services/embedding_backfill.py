@@ -324,9 +324,13 @@ async def populate_methodology_chunk_embeddings(db: AsyncSession) -> int:
     from app.services.llm import get_embeddings_batch
 
     current_model = "gemini-embedding-001"
+    # B5-01: skip soft-deleted rows. Re-embedding a chunk we've just
+    # marked as deleted is wasted work — it would never be retrieved
+    # anyway (rag_methodology filters ``is_deleted=False``).
     result = await db.execute(
         select(MethodologyChunk.id, MethodologyChunk.title, MethodologyChunk.body)
         .where(MethodologyChunk.embedding.is_(None))
+        .where(MethodologyChunk.is_deleted.is_(False))
     )
     rows = result.fetchall()
 
