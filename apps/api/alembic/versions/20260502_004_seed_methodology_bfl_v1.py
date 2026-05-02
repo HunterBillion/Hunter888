@@ -389,7 +389,7 @@ def _team_exists(team_id: str) -> bool:
     conn = op.get_bind()
     return bool(
         conn.execute(
-            sa.text("SELECT 1 FROM teams WHERE id = :tid"),
+            sa.text("SELECT 1 FROM teams WHERE id = CAST(:tid AS uuid)"),
             {"tid": team_id},
         ).fetchone()
     )
@@ -409,6 +409,13 @@ def upgrade() -> None:
         )
         return
 
+    # Note: every parameter that maps to a non-VARCHAR column needs an
+    # explicit ``CAST(... AS <type>)`` in the SQL — ``op.execute`` plus
+    # ``text(...).bindparams(...)`` strips type info, so asyncpg sees
+    # VARCHAR for every bind, and Postgres refuses to coerce VARCHAR
+    # → uuid / jsonb implicitly. The original 20260502_004 PR shipped
+    # without the ``team_id::uuid`` cast and crashed the API container
+    # on startup (alembic migration loop) — see hotfix in this revision.
     insert_sql = sa.text(
         """
         INSERT INTO methodology_chunks (
@@ -416,8 +423,12 @@ def upgrade() -> None:
             tags, keywords, knowledge_status, version,
             created_at, updated_at
         ) VALUES (
-            gen_random_uuid(), :team_id, NULL, :title, :body, :kind,
-            CAST(:tags AS jsonb), CAST(:keywords AS jsonb),
+            gen_random_uuid(),
+            CAST(:team_id AS uuid),
+            NULL,
+            :title, :body, :kind,
+            CAST(:tags AS jsonb),
+            CAST(:keywords AS jsonb),
             'actual', 1, now(), now()
         )
         ON CONFLICT (team_id, title) DO NOTHING
@@ -444,7 +455,7 @@ def downgrade() -> None:
     # they're filtered by ``is_deleted`` at read time.
     delete_sql = sa.text(
         "DELETE FROM methodology_chunks "
-        "WHERE team_id = :team_id AND title = :title"
+        "WHERE team_id = CAST(:team_id AS uuid) AND title = :title"
     )
     for chunk in SEED_CHUNKS:
         op.execute(
