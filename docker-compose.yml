@@ -143,12 +143,18 @@ services:
     # P1 fix (2026-04-18): python -c urllib can hang on DNS on some
     # networks; switched to urllib with explicit timeout. Base image is
     # python:3.12-slim so python IS available, but we cap exec at 3s.
+    # 2026-05-02 audit (FIND-008): probe ``/api/health/ready`` (deep
+    # DB+Redis check, returns HTTP 503 on degraded) instead of
+    # ``/api/health`` (now liveness-only — never IO, never 503).
+    # Container is "healthy" only after DB pool warms up and Redis
+    # answers ping; before that, ``/ready`` returns 503 and Docker
+    # holds the container in "starting" state.
     healthcheck:
       test:
         - "CMD"
         - "python"
         - "-c"
-        - "import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3) or sys.exit(0)"
+        - "import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/api/health/ready', timeout=3) or sys.exit(0)"
       interval: 10s
       timeout: 5s
       retries: 3

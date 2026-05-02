@@ -8,7 +8,7 @@
 import os
 import time
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from app.config import settings
 from app.core.deps import get_current_user, require_role
@@ -31,9 +31,16 @@ def _release_info() -> dict[str, str]:
 
 @router.get("/monitoring/health")
 async def health_check_public():
-    """Public health check — returns only status (for Docker/LB).
+    """Deep health probe — checks Postgres + Redis. Use for readiness.
 
-    Does NOT expose service internals.
+    Aliased by ``/api/health/ready``. Should be the target of any caller
+    that needs to know "is the service capable of serving requests right
+    now" (LB readiness gate, Docker healthcheck before promote, etc).
+
+    Distinct from ``/api/health/live`` which is a pure liveness probe
+    that never touches IO and never returns degraded — see PR notes for
+    the k8s liveness vs readiness rationale and audit FIND-008
+    (cold-pool spikes that this split removes from liveness).
     """
     try:
         async with async_session() as db:
@@ -50,10 +57,58 @@ async def health_check_public():
     return {"status": "ok"}
 
 
+@router.get("/health/live")
+async def health_check_live():
+    """Liveness probe — pure in-memory, no IO. Cannot return degraded.
+
+    Anyone hammering the API with high-frequency uptime checks should
+    hit this endpoint, not ``/health`` or ``/health/ready``. Cold DB
+    pool acquires and Redis reconnects can push the deep probe to
+    several seconds during normal lifecycle events (worker restart,
+    pool grow), which is fine for *readiness* but wrong for *liveness*
+    — a 5 s liveness spike must not get the container nuked by a
+    health-watcher.
+
+    Returns 200 + ``{"status": "ok"}`` as long as the python event
+    loop can answer. No DB touch, no Redis touch.
+    """
+    return {"status": "ok"}
+
+
+@router.get("/health/ready")
+async def health_check_ready(response: Response):
+    """Readiness probe — deep DB+Redis check, signals failure via HTTP 503.
+
+    Behaviour:
+      * DB + Redis both ok → HTTP 200, ``{"status": "ok"}``
+      * either side down  → HTTP 503, ``{"status": "degraded"}``
+
+    The HTTP-503-on-degraded behaviour is what makes the Docker
+    healthcheck (``urlopen()``) actually fail when a dependency is
+    out, instead of silently treating "degraded" as healthy. Pre-audit
+    the endpoint always returned 200 + body — so a Redis outage didn't
+    drop the container from rotation. With 503 the orchestrator
+    notices and stops sending traffic.
+    """
+    body = await health_check_public()
+    if body.get("status") != "ok":
+        response.status_code = 503
+    return body
+
+
 @router.get("/health")
 async def health_check_alias():
-    """Shallow alias for /monitoring/health used by local dev and reverse proxies."""
-    return await health_check_public()
+    """Default ``/api/health`` route — points at the **liveness** probe.
+
+    Why liveness, not readiness: external probes (uptime monitors, LBs)
+    historically hit ``/health`` expecting a sub-100ms reply. The deep
+    DB+Redis check used to live behind this same path and produced
+    occasional multi-second spikes during cold-pool warmup
+    (audit 2026-05-02 FIND-008). Split keeps the canonical alias cheap
+    and predictable; ops that need a deep check call ``/health/ready``
+    explicitly.
+    """
+    return {"status": "ok"}
 
 
 @router.get("/version")
