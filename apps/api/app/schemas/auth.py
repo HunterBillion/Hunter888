@@ -29,6 +29,25 @@ def _check_password_strength(v: str) -> str:
     return v
 
 
+import re as _re
+
+# Domains we use for our own audit / probe / load-test scripts. These
+# generate ~56% of the user table on prod (verified 2026-05-02 audit
+# FIND-009) and pollute every KPI dashboard. Blocking the registration
+# path stops the bleeding; the existing rows are soft-deleted in
+# alembic 20260502_009.
+#
+# Whitelisted: ``*@trainer.local`` is the operator's manual smoke-test
+# pool — admin/rop/manager fixtures created via the admin endpoint,
+# not via /register, so they never trip this guard. Google OAuth
+# users bypass /register entirely (different code path) so .test
+# substrings inside legitimate Google emails don't collide.
+_BLOCKED_EMAIL_PATTERN = _re.compile(
+    r"^.+@(test\.com|test\.local|fulltest\..+|csrf\..+|audit\..+)$",
+    flags=_re.IGNORECASE,
+)
+
+
 class RegisterRequest(BaseModel):
     email: str = Field(..., pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     password: str = Field(..., min_length=8, max_length=128)
@@ -38,6 +57,20 @@ class RegisterRequest(BaseModel):
     @classmethod
     def validate_password_strength(cls, v: str) -> str:
         return _check_password_strength(v)
+
+    @field_validator("email")
+    @classmethod
+    def reject_test_domains(cls, v: str) -> str:
+        # Reject obvious test-only domains. Operator's smoke-test
+        # accounts use ``@trainer.local`` (not blocked) and are
+        # created via admin endpoints, not /register. This guard is
+        # the registration-side complement of the soft-delete
+        # migration; without it the table refills within a week.
+        if _BLOCKED_EMAIL_PATTERN.match(v):
+            raise ValueError(
+                "Регистрация на этом домене запрещена. Используйте корпоративный email."
+            )
+        return v
 
 
 class LoginRequest(BaseModel):
