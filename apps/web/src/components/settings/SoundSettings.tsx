@@ -3,21 +3,27 @@
 /**
  * SoundSettings — карточка управления звуком на странице /settings.
  *
- * 2026-05-01 (Фаза 8):
+ * 2026-05-02 (rewrite): унификация стиля. Раньше карточка использовала
+ * pixel/arena эстетику (`borderRadius: 0`, `outline: 2px solid`,
+ * `boxShadow: "3px 3px 0 0 #000"`, `font-pixel`) и визуально не
+ * сочеталась с остальной страницей настроек, построенной на glass-panel
+ * + rounded-xl. Теперь оба соседних блока используют одинаковую
+ * card-конвенцию (`glass-panel rounded-xl border-radius`), один и тот
+ * же тонкий слайдер вместо pixel-thumb, и единый набор CSS-переменных.
+ *
+ * Поведение не меняется:
  *   - 4 ползунка: Master / SFX / Ambient / UI (0..100)
  *   - Mute-toggle (полностью отключает все звуки)
- *   - Preview-кнопки: тестовый звук категории, чтобы юзер слышал что меняет
+ *   - Preview-кнопки: тестовый звук категории
  *   - Все значения — в localStorage, синхронизируются между табами через
  *     useSyncExternalStore + custom event "vh-volume-change".
- *
- * Дизайн карточки повторяет существующий .glass-panel формат страницы
- * настроек, но pixel-slider кастомный — `<input type="range">` с
- * прокачанной CSS-стилизацией под пиксельную эстетику арены.
  */
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { SpeakerHigh, SpeakerSimpleSlash, Headphones, GameController, Bell } from "@phosphor-icons/react";
+import {
+  SpeakerHigh, SpeakerSimpleSlash, Headphones, GameController, Bell,
+} from "@phosphor-icons/react";
 import {
   useSound,
   useVolumes,
@@ -35,7 +41,8 @@ interface CategorySpec {
   icon: React.ComponentType<{ size?: number; weight?: "duotone" | "regular" | "fill" | "bold"; style?: React.CSSProperties }>;
   /** Звук-превью при изменении ползунка / по клику на кнопку. */
   preview: SoundName;
-  color: string;
+  /** CSS-переменная цвета акцента карточки. */
+  accent: string;
 }
 
 const CATEGORIES: CategorySpec[] = [
@@ -45,15 +52,15 @@ const CATEGORIES: CategorySpec[] = [
     hint: "Базовый уровень всех звуков",
     icon: SpeakerHigh,
     preview: "ko",
-    color: "var(--accent)",
+    accent: "var(--accent)",
   },
   {
     key: "sfx",
-    label: "Эффекты боя",
+    label: "Эффекты",
     hint: "Удары, KO, fanfare, heartbeat",
     icon: GameController,
     preview: "hit",
-    color: "var(--danger)",
+    accent: "var(--danger)",
   },
   {
     key: "ambient",
@@ -61,7 +68,7 @@ const CATEGORIES: CategorySpec[] = [
     hint: "Гул и атмосфера сцены",
     icon: Headphones,
     preview: "challenge",
-    color: "var(--magenta)",
+    accent: "var(--magenta, var(--accent))",
   },
   {
     key: "ui",
@@ -69,7 +76,7 @@ const CATEGORIES: CategorySpec[] = [
     hint: "Клики, уведомления, переключения",
     icon: Bell,
     preview: "notification",
-    color: "var(--info)",
+    accent: "var(--info)",
   },
 ];
 
@@ -77,7 +84,7 @@ export function SoundSettings() {
   const volumes = useVolumes();
   const { playSound } = useSound();
   const [muted, setMuted] = React.useState<boolean>(false);
-  // Sync mute on mount + listen for storage changes
+
   React.useEffect(() => {
     setMuted(isMutedGlobal());
     const onChange = () => setMuted(isMutedGlobal());
@@ -93,7 +100,7 @@ export function SoundSettings() {
     setMutedGlobal(!muted);
     setMuted(!muted);
     if (muted) {
-      // un-muting — give a soft confirmation tone
+      // un-muting — soft confirmation tone
       window.setTimeout(() => playSound("notification"), 50);
     }
   };
@@ -103,8 +110,7 @@ export function SoundSettings() {
     else setCategoryVolume(cat.key, value);
   };
 
-  // Debounced preview — играем превью через 220ms после последнего изменения,
-  // чтобы не спамить звуками во время drag.
+  // Debounced preview: play after 220ms of no change to avoid spamming.
   const previewTimeoutRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const schedulePreview = (cat: CategorySpec) => {
     if (muted) return;
@@ -124,34 +130,21 @@ export function SoundSettings() {
   };
 
   return (
-    <div className="space-y-4">
-      {/* Master mute toggle */}
+    <div className="space-y-3">
+      {/* Master mute toggle — single full-width card matching the
+          surrounding /settings glass-panel scheme. */}
       <div
-        className="flex items-center justify-between p-4"
-        style={{
-          background: "var(--bg-panel)",
-          outline: `2px solid ${muted ? "var(--danger)" : "var(--accent)"}`,
-          outlineOffset: -2,
-          boxShadow: `3px 3px 0 0 ${muted ? "var(--danger)" : "var(--accent)"}`,
-          borderRadius: 0,
-        }}
+        className="glass-panel rounded-xl p-4 flex items-center justify-between"
+        style={{ borderColor: muted ? "var(--danger)" : undefined }}
       >
         <div className="flex items-center gap-3">
           {muted ? (
-            <SpeakerSimpleSlash weight="duotone" size={24} style={{ color: "var(--danger)" }} />
+            <SpeakerSimpleSlash weight="duotone" size={22} style={{ color: "var(--danger)" }} />
           ) : (
-            <SpeakerHigh weight="duotone" size={24} style={{ color: "var(--accent)" }} />
+            <SpeakerHigh weight="duotone" size={22} style={{ color: "var(--accent)" }} />
           )}
           <div>
-            <div
-              className="font-pixel"
-              style={{
-                color: "var(--text-primary)",
-                fontSize: 14,
-                letterSpacing: "0.16em",
-                textTransform: "uppercase",
-              }}
-            >
+            <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
               {muted ? "Звуки выключены" : "Звуки включены"}
             </div>
             <div className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -160,32 +153,23 @@ export function SoundSettings() {
           </div>
         </div>
         <motion.button
+          type="button"
           onClick={handleMute}
-          whileHover={{ x: -1, y: -1 }}
-          whileTap={{ x: 2, y: 2 }}
-          className="font-pixel"
+          whileTap={{ scale: 0.95 }}
           aria-pressed={muted}
           aria-label={muted ? "Включить звуки" : "Выключить звуки"}
+          className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
           style={{
-            padding: "8px 16px",
-            background: muted ? "var(--accent)" : "var(--bg-secondary)",
-            color: muted ? "#fff" : "var(--text-primary)",
-            border: `2px solid ${muted ? "var(--accent)" : "var(--border-color)"}`,
-            borderRadius: 0,
-            fontSize: 12,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-            boxShadow: muted
-              ? "3px 3px 0 0 #000, 0 0 12px var(--accent-glow)"
-              : "2px 2px 0 0 var(--border-color)",
-            cursor: "pointer",
+            background: muted ? "var(--accent)" : "var(--input-bg)",
+            color: muted ? "white" : "var(--text-primary)",
+            border: `1px solid ${muted ? "var(--accent)" : "var(--border-color)"}`,
           }}
         >
-          {muted ? "Включить" : "Mute"}
+          {muted ? "Включить" : "Выключить"}
         </motion.button>
       </div>
 
-      {/* Volume sliders */}
+      {/* Category sliders — 2-col grid on desktop, stack on mobile. */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {CATEGORIES.map((cat) => {
           const value = valueOf(cat);
@@ -195,60 +179,32 @@ export function SoundSettings() {
           return (
             <div
               key={cat.key}
-              className="p-4"
-              style={{
-                background: "var(--bg-panel)",
-                outline: `2px solid ${disabled ? "var(--border-color)" : cat.color}`,
-                outlineOffset: -2,
-                boxShadow: disabled
-                  ? "2px 2px 0 0 var(--border-color)"
-                  : `3px 3px 0 0 ${cat.color}`,
-                borderRadius: 0,
-                opacity: disabled ? 0.55 : 1,
-                transition: "opacity 200ms",
-              }}
+              className="glass-panel rounded-xl p-4"
+              style={{ opacity: disabled ? 0.55 : 1, transition: "opacity 200ms" }}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <Icon size={18} weight="duotone" style={{ color: cat.color }} />
+                  <Icon size={18} weight="duotone" style={{ color: cat.accent }} />
                   <div>
-                    <div
-                      className="font-pixel"
-                      style={{
-                        color: "var(--text-primary)",
-                        fontSize: 13,
-                        letterSpacing: "0.14em",
-                        textTransform: "uppercase",
-                        lineHeight: 1.1,
-                      }}
-                    >
+                    <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                       {cat.label}
                     </div>
-                    <div
-                      className="text-[11px] mt-0.5"
-                      style={{ color: "var(--text-muted)" }}
-                    >
+                    <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
                       {cat.hint}
                     </div>
                   </div>
                 </div>
                 <span
-                  className="font-pixel tabular-nums"
-                  style={{
-                    color: cat.color,
-                    fontSize: 16,
-                    letterSpacing: "0.04em",
-                    minWidth: 38,
-                    textAlign: "right",
-                  }}
+                  className="text-sm font-mono tabular-nums"
+                  style={{ color: cat.accent, minWidth: 34, textAlign: "right" }}
                 >
-                  {pct}
+                  {pct}%
                 </span>
               </div>
 
-              <PixelSlider
+              <Slider
                 value={value}
-                color={cat.color}
+                accent={cat.accent}
                 disabled={disabled}
                 onChange={(v) => {
                   handleSlide(cat, v);
@@ -257,21 +213,16 @@ export function SoundSettings() {
                 ariaLabel={cat.label}
               />
 
-              <div className="flex justify-between mt-2">
+              <div className="flex justify-between gap-2 mt-3">
                 <button
                   type="button"
                   onClick={() => playSound(cat.preview)}
                   disabled={disabled}
-                  className="font-pixel"
+                  className="text-xs px-2.5 py-1 rounded-lg transition-colors"
                   style={{
-                    padding: "4px 10px",
-                    background: "transparent",
-                    color: disabled ? "var(--text-muted)" : cat.color,
-                    border: `1px solid ${disabled ? "var(--border-color)" : cat.color}`,
-                    borderRadius: 0,
-                    fontSize: 10,
-                    letterSpacing: "0.18em",
-                    textTransform: "uppercase",
+                    background: disabled ? "var(--input-bg)" : "var(--accent-muted)",
+                    color: disabled ? "var(--text-muted)" : "var(--accent)",
+                    border: "1px solid var(--border-color)",
                     cursor: disabled ? "not-allowed" : "pointer",
                   }}
                 >
@@ -281,20 +232,15 @@ export function SoundSettings() {
                   type="button"
                   onClick={() => handleSlide(cat, 0)}
                   disabled={disabled || value === 0}
-                  className="font-pixel"
+                  className="text-xs px-2.5 py-1 rounded-lg transition-colors"
                   style={{
-                    padding: "4px 10px",
                     background: "transparent",
                     color: "var(--text-muted)",
                     border: "1px solid var(--border-color)",
-                    borderRadius: 0,
-                    fontSize: 10,
-                    letterSpacing: "0.18em",
-                    textTransform: "uppercase",
                     cursor: disabled || value === 0 ? "not-allowed" : "pointer",
                   }}
                 >
-                  ↺ 0
+                  Сбросить
                 </button>
               </div>
             </div>
@@ -302,27 +248,24 @@ export function SoundSettings() {
         })}
       </div>
 
-      <p
-        className="text-xs"
-        style={{ color: "var(--text-muted)", padding: "0 4px" }}
-      >
-        Совет: установи Master около 70% для комфортной громкости. Если что-то
-        слишком громкое — уменьшай SFX, а не Master.
+      <p className="text-xs px-1" style={{ color: "var(--text-muted)" }}>
+        Совет: Master около 70% — комфортный уровень. Если что-то слишком громкое
+        — уменьшайте SFX, не Master.
       </p>
     </div>
   );
 }
 
-/* ── Pixel-styled range slider ──────────────────────────────────────── */
-function PixelSlider({
+/* ── Tonal range slider (glass-panel themed) ──────────────────────────── */
+function Slider({
   value,
-  color,
+  accent,
   disabled,
   onChange,
   ariaLabel,
 }: {
   value: number;
-  color: string;
+  accent: string;
   disabled: boolean;
   onChange: (v: number) => void;
   ariaLabel: string;
@@ -330,37 +273,40 @@ function PixelSlider({
   const pct = Math.round(value * 100);
   const sliderId = React.useId();
   return (
-    <div className="relative" style={{ height: 22 }}>
+    <div className="relative h-5 select-none">
       {/* Track */}
       <div
         aria-hidden
-        className="absolute"
-        style={{
-          left: 0,
-          right: 0,
-          top: 7,
-          height: 8,
-          background: "var(--bg-secondary)",
-          outline: "2px solid var(--text-primary)",
-          outlineOffset: -2,
-          boxShadow: "2px 2px 0 0 #000",
-        }}
+        className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 rounded-full"
+        style={{ background: "var(--input-bg)", border: "1px solid var(--border-color)" }}
       >
-        {/* Fill */}
         <div
+          className="absolute inset-y-0 left-0 rounded-full"
           style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
             width: `${pct}%`,
-            background: color,
-            transition: "width 80ms ease-out, background 200ms",
-            boxShadow: disabled ? "none" : `0 0 6px ${color}`,
+            background: accent,
+            transition: "width 80ms ease-out",
+            boxShadow: disabled ? "none" : `0 0 6px ${accent}`,
+            opacity: disabled ? 0.4 : 1,
           }}
         />
       </div>
-      {/* Native input — на полную ширину, transparent thumb управляет позицией */}
+      {/* Visible thumb */}
+      <div
+        aria-hidden
+        className="absolute top-1/2 rounded-full pointer-events-none"
+        style={{
+          left: `calc(${pct}% - 7px)`,
+          transform: "translateY(-50%)",
+          width: 14,
+          height: 14,
+          background: disabled ? "var(--text-muted)" : accent,
+          border: "2px solid var(--bg-primary)",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+          transition: "left 80ms ease-out",
+        }}
+      />
+      {/* Native input — full width, transparent for hit-testing only */}
       <input
         id={sliderId}
         type="range"
@@ -374,25 +320,6 @@ function PixelSlider({
         className="absolute inset-0 w-full h-full opacity-0"
         style={{ cursor: disabled ? "not-allowed" : "pointer" }}
       />
-      {/* Pixel thumb (visual) */}
-      {!disabled && (
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            left: `calc(${pct}% - 7px)`,
-            top: 1,
-            width: 14,
-            height: 20,
-            background: color,
-            outline: "2px solid var(--text-primary)",
-            outlineOffset: -2,
-            boxShadow: "2px 2px 0 0 #000",
-            transition: "left 80ms ease-out",
-            pointerEvents: "none",
-          }}
-        />
-      )}
     </div>
   );
 }

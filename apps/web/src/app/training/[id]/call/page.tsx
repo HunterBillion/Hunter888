@@ -42,6 +42,7 @@ import { useTTS } from "@/hooks/useTTS";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { MicStatusBanner, pickBannerKind } from "@/components/training/MicStatusBanner";
 import { TTSUnlockOverlay } from "@/components/training/TTSUnlockOverlay";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import type { EmotionState, WSMessage } from "@/types";
@@ -199,6 +200,25 @@ export default function TrainingCallPage() {
   // narrowband) so the AI client sounds unmistakably "по телефону" instead
   // of studio-clean. Chat / arena pages don't pass this prop, default false.
   const tts = useTTS({ lang: "ru-RU", rate: 0.95, pitch: 1.0, phoneBandFilter: true });
+
+  // Surface terminal TTS playback errors as toasts. Without this, decode
+  // failures, media-element errors, and tts.fallback transitions were
+  // silent and the user just heard nothing / a different voice with no
+  // explanation. Audit Pattern 3 #9 + #15.
+  const lastTtsErrorMsgRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!tts.playbackError) {
+      lastTtsErrorMsgRef.current = null;
+      return;
+    }
+    if (tts.playbackError.message === lastTtsErrorMsgRef.current) return;
+    lastTtsErrorMsgRef.current = tts.playbackError.message;
+    if (tts.playbackError.kind === "fallback_active") {
+      toast.info("Резервный голос", { description: tts.playbackError.message });
+    } else {
+      toast.error("Озвучка прервана", { description: tts.playbackError.message });
+    }
+  }, [tts.playbackError]);
 
   // --- STT (continuous, forwards recognized text to WS) -------------------
   const sttSendRef = useRef<((text: string) => void) | null>(null);
