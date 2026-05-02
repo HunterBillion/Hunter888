@@ -3257,6 +3257,16 @@ async def get_leaderboard(
         # "all" — filter out ghosts (inactive >30 days) per audit fix
         since = datetime.now(timezone.utc) - timedelta(days=30)
 
+    # B5-11: leaderboard is the *manager* cohort. Pre-audit, the
+    # query did not filter on User.role — so admins/ROPs/methodologists
+    # who happened to start a training session for testing rendered
+    # at the top, distorting the rankings (audit found the admin
+    # user "Администратор" sitting at rank 1 on prod).
+    # Hard-filter to ``role='manager'`` so the leaderboard reflects
+    # who's actually competing. ROPs/admins log in for governance,
+    # not to play.
+    from app.models.user import UserRole
+
     query = (
         select(
             TrainingSession.user_id,
@@ -3270,6 +3280,7 @@ async def get_leaderboard(
         .where(
             TrainingSession.status == SessionStatus.completed,
             TrainingSession.started_at >= since,
+            User.role == UserRole.manager,
         )
         .group_by(TrainingSession.user_id, User.full_name, User.avatar_url)
         .order_by(func.sum(TrainingSession.score_total).desc())

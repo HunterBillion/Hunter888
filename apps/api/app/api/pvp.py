@@ -161,10 +161,18 @@ async def get_leaderboard(
     """
     from datetime import timedelta
 
+    from app.models.user import UserRole
+
+    # B5-11: PvP leaderboard is the *manager* player cohort. Without
+    # the role filter, an admin running smoke duels lands at the top
+    # of the public ranking (audit found "Администратор" rank=1 on
+    # prod). Restrict to ``role='manager'`` here and in the count
+    # below so the FE leaderboard matches what users expect.
     stmt = (
         select(PvPRating, User)
         .join(User, User.id == PvPRating.user_id)
         .where(PvPRating.placement_done.is_(True))
+        .where(User.role == UserRole.manager)
     )
 
     # S3-04: Filter inactive players (no game in 30 days)
@@ -179,9 +187,12 @@ async def get_leaderboard(
     result = await db.execute(stmt)
     rows = result.all()
 
-    # Total count (same filters)
-    count_stmt = select(func.count(PvPRating.id)).where(
-        PvPRating.placement_done.is_(True)
+    # Total count (same filters — must mirror the SELECT exactly).
+    count_stmt = (
+        select(func.count(PvPRating.id))
+        .join(User, User.id == PvPRating.user_id)
+        .where(PvPRating.placement_done.is_(True))
+        .where(User.role == UserRole.manager)
     )
     if scope == "active":
         active_cutoff = datetime.now(timezone.utc) - timedelta(days=30)

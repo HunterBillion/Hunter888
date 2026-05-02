@@ -141,6 +141,31 @@ class ReminderScheduler:
             except Exception as e:
                 logger.error("Seasonal PvP reset error: %s", e, exc_info=True)
 
+            # B5-03: every-tick reconciler — backstop for the
+            # ``_check_seasonal_pvp_reset`` window above. If a deploy
+            # gap or worker hiccup made the scheduler miss its 1st-of-
+            # month slot, the platform sat without a season for the
+            # entire month. This reconciler ensures one always exists,
+            # without ever calling ``apply_season_reset`` (so existing
+            # ratings are preserved across the boundary).
+            try:
+                await asyncio.wait_for(self._reconcile_pvp_season(), timeout=_TASK_TIMEOUT)
+            except asyncio.TimeoutError:
+                logger.error("ReminderScheduler: PvP season reconcile timed out")
+            except Exception as e:
+                logger.error("PvP season reconcile error: %s", e, exc_info=True)
+
+            # B5-10: every-tick reconciler — flips ``is_active=TRUE``
+            # for in-window auto-created tournaments whose
+            # ``_check_weekly_tournament`` Sunday window was missed.
+            # Mirror semantics of the season reconciler.
+            try:
+                await asyncio.wait_for(self._reconcile_tournament_active(), timeout=_TASK_TIMEOUT)
+            except asyncio.TimeoutError:
+                logger.error("ReminderScheduler: tournament reconcile timed out")
+            except Exception as e:
+                logger.error("Tournament reconcile error: %s", e, exc_info=True)
+
             # ── 3.4: Smart nudge notifications ──
             try:
                 await asyncio.wait_for(self._check_smart_nudges(), timeout=_TASK_TIMEOUT)
@@ -395,6 +420,116 @@ class ReminderScheduler:
                 created_reminders,
                 auto_lost_count,
             )
+
+    async def _reconcile_pvp_season(self) -> None:
+        """B5-03: ensure an active PvP season always exists.
+
+        Backstop for ``_check_seasonal_pvp_reset`` which only fires
+        on the 1st of the month between 00:00-01:00 UTC. If a deploy
+        gap or worker hiccup misses that window, the platform sat
+        without an active season for the entire month — ratings kept
+        updating (``glicko2.update_rating`` doesn't read the season),
+        but ``leaderboard.season`` showed null and end-of-season-
+        rewards couldn't fire.
+
+        Important: this reconciler does NOT call
+        ``apply_season_reset``. The 1st-of-month branch above owns
+        soft-reset; this branch only ensures a row exists. So a
+        season that flips from "missing → present" mid-month
+        preserves all ratings/peak/placement_done/RD intact.
+
+        Skip on the 1st-of-month 00:00-01:00 window so the original
+        branch owns reset day, not us.
+        """
+        now = datetime.now(timezone.utc)
+        if now.day == 1 and now.hour == 0:
+            return
+
+        from app.models.pvp import PvPSeason
+        from sqlalchemy import update as sa_update
+
+        async with async_session() as db:
+            existing = (
+                await db.execute(
+                    select(PvPSeason).where(PvPSeason.is_active.is_(True)).limit(1)
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return  # already active — no-op
+
+            # Pre-create dedup: deactivate any orphan rows that
+            # somehow ended up active=True but failed the LIMIT 1
+            # above (impossible given the partial unique index from
+            # migration 20260502_007, but defensive).
+            await db.execute(
+                sa_update(PvPSeason)
+                .where(PvPSeason.is_active.is_(True))
+                .values(is_active=False)
+            )
+
+            month_start = now.replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0
+            )
+            month_end = (month_start + timedelta(days=32)).replace(
+                day=1
+            ) - timedelta(seconds=1)
+
+            new_season = PvPSeason(
+                name=f"Сезон {now.strftime('%B %Y')}",
+                start_date=month_start,
+                end_date=month_end,
+                is_active=True,
+            )
+            db.add(new_season)
+            await db.commit()
+            logger.info(
+                "_reconcile_pvp_season: created backstop season %s "
+                "(window %s → %s)",
+                new_season.name, month_start.isoformat(), month_end.isoformat(),
+            )
+
+    async def _reconcile_tournament_active(self) -> None:
+        """B5-10: flip ``is_active=TRUE`` for in-window auto tournaments.
+
+        Mirror of the season reconciler for tournaments. The cron at
+        ``_check_weekly_tournament`` fires only on Monday 00:00 UTC; if
+        an auto-created tournament was registered with
+        ``is_active=NULL`` (legacy data path) or the Sunday-night
+        cron missed its window, the in-window tournament is invisible
+        to ``get_active_tournament`` (which filters
+        ``is_active == True``).
+
+        Conservative: only ``auto_created=TRUE`` rows are touched,
+        admin-authored tournaments stay under their author's control.
+        """
+        now = datetime.now(timezone.utc)
+        from app.models.tournament import Tournament
+        from sqlalchemy import and_, or_, update as sa_update
+
+        async with async_session() as db:
+            # Flip in-window NULL/false-on-auto rows to TRUE.
+            await db.execute(
+                sa_update(Tournament)
+                .where(Tournament.auto_created.is_(True))
+                .where(Tournament.week_start <= now)
+                .where(Tournament.week_end >= now)
+                .where(
+                    or_(
+                        Tournament.is_active.is_(None),
+                        Tournament.is_active.is_(False),
+                    )
+                )
+                .values(is_active=True)
+            )
+            # Close expired auto rows still flagged active.
+            await db.execute(
+                sa_update(Tournament)
+                .where(Tournament.auto_created.is_(True))
+                .where(Tournament.week_end < now)
+                .where(Tournament.is_active.is_(True))
+                .values(is_active=False)
+            )
+            await db.commit()
 
     async def _reminder_exists(
         self,
