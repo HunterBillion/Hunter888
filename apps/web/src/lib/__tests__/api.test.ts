@@ -34,20 +34,30 @@ vi.mock("@/stores/useAuthStore", () => ({
 import { api } from "../api";
 import { getToken, clearTokens } from "../auth";
 
-// Helper to create mock Response
+// Helper to create mock Response.
+// `clone()` returns a fresh shape-equivalent object so callers can read
+// the body twice (real fetch supports this; api.ts uses it on the
+// 429 plan-limit path so the original `response.json()` later still
+// works). Without clone(), tests of that branch threw
+// "response.clone is not a function".
 function mockResponse(
   status: number,
   body: unknown = {},
   headers: Record<string, string> = {},
 ): Response {
   const headersObj = new Headers(headers);
-  return {
+  const base: Partial<Response> = {
     ok: status >= 200 && status < 300,
     status,
     headers: headersObj,
     json: () => Promise.resolve(body),
     text: () => Promise.resolve(JSON.stringify(body)),
-  } as unknown as Response;
+  };
+  // Self-referential clone: returns another mock with same body. The real
+  // Response.clone() returns a fresh stream-backed copy; for tests we just
+  // need both reads to succeed.
+  base.clone = () => mockResponse(status, body, headers);
+  return base as unknown as Response;
 }
 
 describe("api client", () => {

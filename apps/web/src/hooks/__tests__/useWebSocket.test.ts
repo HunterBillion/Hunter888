@@ -8,89 +8,112 @@
  * - Reconnect with exponential backoff
  * - Cleanup on unmount
  * - Heartbeat pings
+ *
+ * 2026-05-02 rewrite — the previous version of this file failed in two
+ * ways that are characteristic of test/source drift:
+ *   1. `MockWebSocket` delivered events via addEventListener, but the
+ *      source (useWebSocket.ts) uses `ws.onopen = ...` / `ws.onmessage = ...`
+ *      property-assignment style. The events fired into a void; the
+ *      hook never saw "open" / "message" → connection state stayed
+ *      "connecting", `onMessage` callback never fired, heartbeat
+ *      never started.
+ *   2. `require("@/lib/ws")` was used inside test bodies to retrieve
+ *      the mock-tracked factory, but vitest's path-alias resolver
+ *      runs only on `import` and `vi.mock`, NOT on dynamic `require`
+ *      — Node bare-resolver kicked in and threw MODULE_NOT_FOUND.
+ *
+ * Both fixed below: simulators call `this.onopen?.(evt)` etc. directly,
+ * and the mock factory is hoisted via `vi.hoisted` so the test body
+ * can reference it without re-importing.
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach, type Mock } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useWebSocket } from "../useWebSocket";
 
 // ---------------------------------------------------------------------------
-// Mock WebSocket
+// Hoisted mock setup — `vi.mock(...)` factories run BEFORE any imports
+// in this module, so the MockWebSocket class + state container must
+// live inside `vi.hoisted` to be reachable from the factory. Test
+// bodies access them through `getLastCreatedWs` / `MockWS` re-exports.
 // ---------------------------------------------------------------------------
 
-class MockWebSocket {
-  static CONNECTING = 0;
-  static OPEN = 1;
-  static CLOSING = 2;
-  static CLOSED = 3;
+const {
+  MockWS,
+  mockCreateWebSocket,
+  getLastCreatedWs,
+  resetLastCreatedWs,
+  makeFactory,
+} = vi.hoisted(() => {
+  // Mock WebSocket — matches the property-assignment event API used by
+  // the production source (`ws.onopen = ...`, `ws.onmessage = ...`).
+  // Earlier mock used addEventListener which the source never reads
+  // → events fired into a void → connection state never advanced.
+  class MockWebSocket {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSING = 2;
+    static CLOSED = 3;
 
-  readyState = MockWebSocket.CONNECTING;
-  url: string;
-  private _listeners: Record<string, Function[]> = {};
-  sent: unknown[] = [];
+    readyState = MockWebSocket.CONNECTING;
+    url: string;
+    onopen: ((evt: Event) => void) | null = null;
+    onmessage: ((evt: MessageEvent) => void) | null = null;
+    onerror: ((evt: Event) => void) | null = null;
+    onclose: ((evt: CloseEvent) => void) | null = null;
+    sent: unknown[] = [];
 
-  constructor(url: string) {
-    this.url = url;
-    // Auto-open after microtask (simulate real WS)
-    setTimeout(() => this._simulateOpen(), 0);
-  }
+    constructor(url: string) {
+      this.url = url;
+      setTimeout(() => this._simulateOpen(), 0);
+    }
 
-  addEventListener(event: string, fn: Function) {
-    (this._listeners[event] ??= []).push(fn);
-  }
+    send(data: unknown) {
+      this.sent.push(typeof data === "string" ? JSON.parse(data as string) : data);
+    }
 
-  removeEventListener(event: string, fn: Function) {
-    const list = this._listeners[event] ?? [];
-    this._listeners[event] = list.filter((f) => f !== fn);
-  }
+    close(code?: number) {
+      this.readyState = MockWS.CLOSED;
+      this.onclose?.({ code: code ?? 1000, reason: "" } as CloseEvent);
+    }
 
-  send(data: unknown) {
-    this.sent.push(typeof data === "string" ? JSON.parse(data as string) : data);
-  }
+    _simulateOpen() {
+      this.readyState = MockWS.OPEN;
+      this.onopen?.({} as Event);
+    }
 
-  close(code?: number) {
-    this.readyState = MockWebSocket.CLOSED;
-    this._emit("close", { code: code ?? 1000, reason: "" });
-  }
+    _simulateMessage(data: unknown) {
+      this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent);
+    }
 
-  // Test helpers
-  _simulateOpen() {
-    this.readyState = MockWebSocket.OPEN;
-    this._emit("open", {});
-  }
+    _simulateError() {
+      this.onerror?.(new Event("error"));
+    }
 
-  _simulateMessage(data: unknown) {
-    this._emit("message", { data: JSON.stringify(data) });
-  }
-
-  _simulateError() {
-    this._emit("error", new Event("error"));
-  }
-
-  _simulateClose(code = 1006) {
-    this.readyState = MockWebSocket.CLOSED;
-    this._emit("close", { code, reason: "" });
-  }
-
-  private _emit(event: string, data: unknown) {
-    for (const fn of this._listeners[event] ?? []) {
-      fn(data);
+    _simulateClose(code = 1006) {
+      this.readyState = MockWS.CLOSED;
+      this.onclose?.({ code, reason: "" } as CloseEvent);
     }
   }
-}
 
-// ---------------------------------------------------------------------------
-// Mocks
-// ---------------------------------------------------------------------------
-
-let lastCreatedWs: MockWebSocket | null = null;
+  const state: { last: MockWebSocket | null } = { last: null };
+  const makeFactory = () => (path: string) => {
+    const ws = new MockWebSocket(`ws://localhost${path}`);
+    state.last = ws;
+    return ws as unknown as WebSocket;
+  };
+  return {
+    MockWS: MockWebSocket,
+    mockCreateWebSocket: vi.fn(makeFactory()),
+    getLastCreatedWs: () => state.last,
+    resetLastCreatedWs: () => {
+      state.last = null;
+    },
+    makeFactory,
+  };
+});
 
 vi.mock("@/lib/ws", () => ({
-  createWebSocket: vi.fn((path: string) => {
-    const ws = new MockWebSocket(`ws://localhost${path}`);
-    lastCreatedWs = ws;
-    return ws;
-  }),
+  createWebSocket: mockCreateWebSocket,
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -107,11 +130,17 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
+import { useWebSocket } from "../useWebSocket";
+
 describe("useWebSocket", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    lastCreatedWs = null;
+    // `vi.clearAllMocks` wipes `.mockImplementation`. Re-install the
+    // closure-bound factory so `state.last` continues to track newly
+    // created sockets between tests.
+    mockCreateWebSocket.mockImplementation(makeFactory());
+    resetLastCreatedWs();
   });
 
   afterEach(() => {
@@ -120,19 +149,13 @@ describe("useWebSocket", () => {
 
   describe("connection lifecycle", () => {
     it("auto-connects on mount", () => {
-      const { createWebSocket } = require("@/lib/ws");
-
       renderHook(() => useWebSocket({ path: "/ws/test" }));
-
-      expect(createWebSocket).toHaveBeenCalledWith("/ws/test");
+      expect(mockCreateWebSocket).toHaveBeenCalledWith("/ws/test");
     });
 
     it("does NOT connect when autoConnect=false", () => {
-      const { createWebSocket } = require("@/lib/ws");
-
       renderHook(() => useWebSocket({ autoConnect: false }));
-
-      expect(createWebSocket).not.toHaveBeenCalled();
+      expect(mockCreateWebSocket).not.toHaveBeenCalled();
     });
 
     it("starts in disconnected state", () => {
@@ -157,7 +180,7 @@ describe("useWebSocket", () => {
     });
 
     it("cleans up WebSocket on unmount", async () => {
-      const { result, unmount } = renderHook(() =>
+      const { unmount } = renderHook(() =>
         useWebSocket({ path: "/ws/test" }),
       );
 
@@ -165,12 +188,13 @@ describe("useWebSocket", () => {
         vi.advanceTimersByTime(10);
       });
 
-      const ws = lastCreatedWs!;
-      expect(ws.readyState).toBe(MockWebSocket.OPEN);
+      const ws = getLastCreatedWs();
+      expect(ws).not.toBeNull();
+      expect(ws!.readyState).toBe(MockWS.OPEN);
 
       unmount();
 
-      expect(ws.readyState).toBe(MockWebSocket.CLOSED);
+      expect(ws!.readyState).toBe(MockWS.CLOSED);
     });
   });
 
@@ -186,43 +210,40 @@ describe("useWebSocket", () => {
         result.current.sendMessage({ type: "chat", text: "hello" });
       });
 
-      const ws = lastCreatedWs!;
-      expect(ws.sent).toContainEqual({ type: "chat", text: "hello" });
+      const ws = getLastCreatedWs();
+      expect(ws).not.toBeNull();
+      expect(ws!.sent).toContainEqual({ type: "chat", text: "hello" });
     });
 
     it("calls onMessage callback", async () => {
       const onMessage = vi.fn();
-      renderHook(() =>
-        useWebSocket({ path: "/ws/test", onMessage }),
-      );
+      renderHook(() => useWebSocket({ path: "/ws/test", onMessage }));
 
       await act(async () => {
         vi.advanceTimersByTime(10);
       });
 
       act(() => {
-        lastCreatedWs!._simulateMessage({ type: "pong" });
+        getLastCreatedWs()!._simulateMessage({ type: "scenario.update" });
       });
 
-      expect(onMessage).toHaveBeenCalledWith({ type: "pong" });
+      expect(onMessage).toHaveBeenCalledWith({ type: "scenario.update" });
     });
   });
 
   describe("manual connect/disconnect", () => {
-    it("connect() creates new WebSocket", async () => {
-      const { createWebSocket } = require("@/lib/ws");
-
+    it("connect() creates new WebSocket", () => {
       const { result } = renderHook(() =>
         useWebSocket({ autoConnect: false }),
       );
 
-      expect(createWebSocket).not.toHaveBeenCalled();
+      expect(mockCreateWebSocket).not.toHaveBeenCalled();
 
       act(() => {
         result.current.connect();
       });
 
-      expect(createWebSocket).toHaveBeenCalledTimes(1);
+      expect(mockCreateWebSocket).toHaveBeenCalledTimes(1);
     });
 
     it("disconnect() closes WebSocket", async () => {
@@ -232,13 +253,13 @@ describe("useWebSocket", () => {
         vi.advanceTimersByTime(10);
       });
 
-      const ws = lastCreatedWs!;
+      const ws = getLastCreatedWs();
 
       act(() => {
         result.current.disconnect();
       });
 
-      expect(ws.readyState).toBe(MockWebSocket.CLOSED);
+      expect(ws!.readyState).toBe(MockWS.CLOSED);
     });
   });
 
@@ -250,7 +271,7 @@ describe("useWebSocket", () => {
         vi.advanceTimersByTime(10);
       });
 
-      const ws = lastCreatedWs!;
+      const ws = getLastCreatedWs()!;
       // Clear the auth message from initial connect
       ws.sent = [];
 
@@ -258,7 +279,9 @@ describe("useWebSocket", () => {
         vi.advanceTimersByTime(30_000);
       });
 
-      const pings = ws.sent.filter((m: any) => m.type === "ping");
+      const pings = ws.sent.filter((m: unknown) =>
+        typeof m === "object" && m !== null && (m as { type?: string }).type === "ping",
+      );
       expect(pings.length).toBeGreaterThanOrEqual(1);
     });
   });
