@@ -80,6 +80,12 @@ ALLOWED_DATA_MARKER_WRITERS = {
     # entry pinned so the test catches a future refactor that drops
     # the preamble.
     "app/services/llm.py",
+    # TZ-8 P0 #2 — call_rag_cache references the markers in its
+    # module docstring to explain that ``get_call_rag_block`` returns
+    # the already-wrapped form from ``UnifiedRAGResult.to_prompt``. It
+    # never emits the literal itself; the docstring is documentation
+    # of the contract, not a renderer.
+    "app/services/call_rag_cache.py",
     # Test fixtures that assert on the markers.
     "tests/test_rag_security.py",
     "tests/test_wiki_foundation.py",
