@@ -81,6 +81,13 @@ function DuelPage() {
   });
   const [coachingOpen, setCoachingOpen] = useState(false);
   const [coachingPayload, setCoachingPayload] = useState<CoachingPayload | null>(null);
+  // Issue #168 — surfaces backend PR #120 ``judge.degraded`` event so
+  // the player knows the score is a neutral fallback (LLM down /
+  // JSON parse fail / all providers in circuit-breaker), not a real
+  // verdict. Cleared on the next round so the banner doesn't linger.
+  const [judgeDegraded, setJudgeDegraded] = useState<
+    { round_number: number; reason: string } | null
+  >(null);
   const [countdownOpen, setCountdownOpen] = useState(false);
   const [countdownRound, setCountdownRound] = useState<number | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -169,6 +176,9 @@ function DuelPage() {
           if (typeof d.your_role === "string") store.setMyRole(d.your_role as "seller" | "client");
           restartTimer(Number(d.time_limit || 0));
           setStatusNotice(null);
+          // Issue #168 — clear the degraded-judge banner when a new
+          // round starts. Each banner is scoped to a single round.
+          setJudgeDegraded(null);
           // Phase A — pre-round 3..2..1 countdown instead of raw auto-start
           setCountdownRound(Number(d.round || 1));
           setCountdownOpen(true);
@@ -257,6 +267,16 @@ function DuelPage() {
           if (timerRef.current) clearInterval(timerRef.current);
           store.setTimeRemaining(0);
           break;
+
+        case "judge.degraded": {
+          // Issue #168 — backend PR #120 explicit fallback signal.
+          // Pin the round + reason; the banner clears in the
+          // round-change effect below.
+          const roundNum = Number(d.round_number ?? d.round ?? 0);
+          const reason = String(d.reason ?? "llm_error");
+          setJudgeDegraded({ round_number: roundNum, reason });
+          break;
+        }
 
         case "duel.result": {
           if (timerRef.current) clearInterval(timerRef.current);
@@ -394,7 +414,22 @@ function DuelPage() {
     // eslint-disable-next-line no-control-regex
     const text = input.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\u200B-\u200F\uFEFF]/g, "").slice(0, 2000);
     if (!text || !store.myRole || store.roundNumber === 0) return;
-    sendMessage({ type: "duel.message", text });
+    // Issue #167 — optimistic add + server-echo reconcile via client_msg_id.
+    const clientMsgId =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `c-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    store.addMessage({
+      id: store.nextMsgId(),
+      sender_role: store.myRole,
+      text,
+      round: store.roundNumber,
+      timestamp: new Date().toISOString(),
+      client_msg_id: clientMsgId,
+      pending: true,
+    });
+    sendMessage({ type: "duel.message", text, client_msg_id: clientMsgId });
     setInput("");
   };
 
@@ -790,6 +825,39 @@ function DuelPage() {
             {micActive ? <MicOff size={12} /> : <Mic size={12} />}
             {micActive ? "слушаю…" : "голос"}
           </button>
+        </div>
+      )}
+
+      {/* Issue #168 — judge.degraded banner. Renders above the chat
+          when the backend signalled a neutral fallback verdict so
+          the player knows the displayed score is not a real LLM
+          assessment. Cleared on round.start. */}
+      {judgeDegraded && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="z-30 mx-3 mb-2 px-3 py-2 font-pixel"
+          style={{
+            background: "var(--warning-muted, #4a3a18)",
+            border: "2px solid var(--warning, #f5a623)",
+            outlineOffset: -2,
+            boxShadow: "3px 3px 0 0 var(--warning, #f5a623)",
+            color: "var(--warning, #f5a623)",
+            fontSize: 13,
+            letterSpacing: "0.06em",
+            lineHeight: 1.45,
+          }}
+        >
+          <strong style={{ marginRight: 6 }}>⚠ Резервная оценка</strong>
+          <span style={{ color: "var(--text-primary)" }}>
+            Раунд {judgeDegraded.round_number} оценён в fallback-режиме (
+            {judgeDegraded.reason === "llm_error" && "AI-судья временно недоступен"}
+            {judgeDegraded.reason === "json_parse" && "не удалось разобрать ответ AI"}
+            {judgeDegraded.reason === "all_providers_down" && "все провайдеры AI отключены"}
+            {!["llm_error", "json_parse", "all_providers_down"].includes(judgeDegraded.reason) &&
+              `сбой: ${judgeDegraded.reason}`}
+            ). Баллы могут не отражать реальную игру.
+          </span>
         </div>
       )}
 
