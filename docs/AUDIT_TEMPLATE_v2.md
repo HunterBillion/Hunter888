@@ -131,10 +131,12 @@ grep -oP '"\w+\.\w+"' apps/api/app/services/client_domain.py | sort -u | while r
   echo "  $clean — $count producers"
 done
 
-# Outbox lag
+# Outbox lag — 2026-05-02 fix: table is `outbox_events`, NOT
+# `domain_events_outbox` (the latter never existed; was a v1
+# template typo that crashed every audit run).
 psql -c "SELECT now() - MIN(created_at) AS oldest_unprocessed
-         FROM domain_events_outbox WHERE processed_at IS NULL"
-psql -c "SELECT count(*) FROM domain_events_outbox WHERE processed_at IS NULL"
+         FROM outbox_events WHERE processed_at IS NULL"
+psql -c "SELECT count(*) FROM outbox_events WHERE processed_at IS NULL"
 
 # Voice loop end-to-end timing
 wscat -c "wss://x-hunter.expert/ws/training?session_id=...&token=..."
@@ -341,7 +343,7 @@ POST /rop/imports (multipart .docx/.pdf) →
   confidence ≥ 0.85 → auto-publish
   confidence < 0.85 → review queue (admin аппрув)
     [gate bypass: extracted={} forces normalised deep-compare, PR #159]
-  arena_knowledge_chunks INSERT
+  legal_knowledge_chunks INSERT  # 2026-05-02: was "arena_knowledge_chunks"
   embedding_live_backfill workerom (Redis BLPOP queue) →
   pgvector embedding populated
 ```
@@ -436,22 +438,29 @@ arena_bus_dual_write_enabled      read=N   prod_compose=0  ← OFF (canary)
 Класс багов «поток A не подключён к потоку B» даёт самые тяжёлые P0:
 - TZ-8 methodology shipped + ai_coach без team_id → 0% эффект (был — закрыто #172)
 - Call mode без unified RAG → AI клиент без legal/methodology (был — закрыто #173)
-- Arena bus dual_write OFF → новые arena_knowledge_chunks не текут в TZ-8 retriever
+- Arena bus dual_write OFF → новые legal_knowledge_chunks не реплицируются в Redis Streams (`arena:bus:global`); если TZ-8 retriever подписан только на bus — он промахивается. Флаг: `arena_bus_dual_write_enabled` (config.py:463).
 
 ### 4.8 **Outbox health (NEW v2)**
 ```sql
--- Lag (max created_at - processed_at): должен быть < 5 min
+-- 2026-05-02 fix: canonical table is `outbox_events`, not the
+-- non-existent `domain_events_outbox`. Schema:
+--   status enum('pending','processing','processed','failed')
+--   attempts int, max_attempts int (default 3)
+--   next_retry_at, processed_at
+-- Old template referenced `retry_count`, which doesn't exist.
+
+-- Lag (oldest unprocessed): должен быть < 5 min
 SELECT now() - MIN(created_at) AS oldest_unprocessed
-FROM domain_events_outbox
+FROM outbox_events
 WHERE processed_at IS NULL;
 
 -- Backlog size
-SELECT count(*) FROM domain_events_outbox WHERE processed_at IS NULL;
+SELECT count(*) FROM outbox_events WHERE processed_at IS NULL;
 
--- Dead-letter (если есть)
+-- Dead-letter (status = 'failed' after max_attempts retries exhausted)
 SELECT count(*), event_type
-FROM domain_events_outbox
-WHERE processed_at IS NULL AND retry_count >= 3
+FROM outbox_events
+WHERE status = 'failed'
 GROUP BY event_type;
 ```
 

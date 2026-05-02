@@ -141,6 +141,12 @@ from app.api.admin_knowledge import router as admin_knowledge_router
 
 api_router.include_router(admin_knowledge_router)
 
+# Admin user-management — currently houses the unblacklist override for
+# refresh-replay protection. Audit-logged, rate-limited, admin-only.
+from app.api.admin_users import router as admin_users_router
+
+api_router.include_router(admin_users_router)
+
 # TZ-4 §13.4.1 — AI quality dashboard (rop|admin); aggregates
 # conversation_policy / persona_conflict signals over a rolling window.
 from app.api.ai_quality import router as ai_quality_router
