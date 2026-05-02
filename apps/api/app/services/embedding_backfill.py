@@ -13,6 +13,7 @@ to avoid overwhelming the embedding provider (Ollama local / Gemini cloud).
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 
 from sqlalchemy import select, update, func, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -298,6 +299,83 @@ async def invalidate_stale_legal_embeddings(db: AsyncSession) -> int:
     return invalidated
 
 
+# ── Methodology Chunks (TZ-8 cold-sweep — symmetric with legal/wiki) ──────────
+
+
+async def populate_methodology_chunk_embeddings(db: AsyncSession) -> int:
+    """Populate embeddings for methodology_chunks that lack them.
+
+    The TZ-8 PR-B live path enqueues each new chunk via
+    ``embedding_live_backfill.enqueue_methodology_chunk`` after the REST
+    write commits. This function is the *cold-sweep* counterpart, mirroring
+    ``populate_legal_chunk_embeddings`` / ``populate_wiki_page_embeddings`` —
+    it picks up rows whose embedding never made it onto the queue (Redis
+    blip during write, direct INSERT bypassing the API, seed migration,
+    older rows authored before the live worker shipped). Without it,
+    a methodology corpus could silently sit at ``embedding IS NULL``
+    forever and never appear in retrieval — exactly the failure mode
+    a 2026-05-02 audit smoke-test exposed.
+
+    Source text shape mirrors what the live worker uses for symmetry
+    (``embedding_live_backfill.populate_single_methodology_chunk_embedding``):
+    ``"{title}: {body}"`` truncated to 500 chars before embedding.
+    """
+    from app.models.methodology import MethodologyChunk
+    from app.services.llm import get_embeddings_batch
+
+    current_model = "gemini-embedding-001"
+    result = await db.execute(
+        select(MethodologyChunk.id, MethodologyChunk.title, MethodologyChunk.body)
+        .where(MethodologyChunk.embedding.is_(None))
+    )
+    rows = result.fetchall()
+
+    if not rows:
+        logger.info("methodology_chunks: all embeddings populated")
+        return 0
+
+    logger.info("methodology_chunks: populating %d embeddings...", len(rows))
+    updated = 0
+    now = datetime.now(timezone.utc)
+
+    for i in range(0, len(rows), BATCH_SIZE):
+        batch = rows[i: i + BATCH_SIZE]
+        texts = [_truncate(f"{row.title}: {row.body}", 500) for row in batch]
+
+        embeddings = await get_embeddings_batch(texts)
+        if not embeddings:
+            logger.warning(
+                "methodology_chunks: embedding batch failed at offset %d", i,
+            )
+            await asyncio.sleep(2)
+            continue
+
+        for row, emb in zip(batch, embeddings):
+            if emb and len(emb) > 0:
+                await db.execute(
+                    update(MethodologyChunk)
+                    .where(MethodologyChunk.id == row.id)
+                    .values(
+                        embedding=emb,
+                        embedding_model=current_model,
+                        embedding_updated_at=now,
+                    )
+                )
+                updated += 1
+
+        if updated % COMMIT_EVERY == 0 and updated > 0:
+            await db.commit()
+
+        await asyncio.sleep(PAUSE_BETWEEN_BATCHES)
+
+    await db.commit()
+    logger.info(
+        "methodology_chunks: embedding complete — %d/%d updated",
+        updated, len(rows),
+    )
+    return updated
+
+
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 
@@ -321,6 +399,7 @@ async def populate_all_embeddings() -> dict:
         ("personality_examples", populate_personality_example_embeddings),
         ("wiki_pages", populate_wiki_page_embeddings),
         ("legal_knowledge_chunks", populate_legal_chunk_embeddings),
+        ("methodology_chunks", populate_methodology_chunk_embeddings),
     ]
 
     for name, func in tables:
