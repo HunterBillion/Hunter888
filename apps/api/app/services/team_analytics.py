@@ -25,7 +25,11 @@ def _trunc(interval: str, col):
     return func.date_trunc(literal_column(f"'{interval}'"), col)
 
 from app.models.progress import ManagerProgress, SessionHistory
-from app.models.training import SessionStatus, TrainingSession
+from app.models.training import (
+    SESSION_PURPOSE_CLIENT_CALL,
+    SessionStatus,
+    TrainingSession,
+)
 from app.models.user import Team, User, UserRole
 
 logger = logging.getLogger(__name__)
@@ -127,6 +131,11 @@ async def _batch_session_stats(
     if not member_ids:
         return {}
     since = datetime.now(timezone.utc) - timedelta(days=days)
+    # Audit FIND-005: ROP team-KPI surfaces only "real client" work.
+    # Practice + legacy_orphan inflate counts and avg without
+    # representing pipeline activity. Filter applied here, NOT in
+    # `services/analytics.py` which feeds personal coaching cards
+    # (where practice progress is legitimate signal).
     result = await db.execute(
         select(
             TrainingSession.user_id,
@@ -136,6 +145,7 @@ async def _batch_session_stats(
             TrainingSession.user_id.in_(member_ids),
             TrainingSession.status == SessionStatus.completed,
             TrainingSession.started_at >= since,
+            TrainingSession.session_purpose == SESSION_PURPOSE_CLIENT_CALL,
         ).group_by(TrainingSession.user_id)
     )
     stats = {
@@ -158,6 +168,10 @@ async def _batch_score_trends(
     week1_start = now - timedelta(days=14)
     week1_end = now - timedelta(days=7)
 
+    # Audit FIND-005 — same filter as _batch_session_stats. Score
+    # trend over weeks should reflect client-pipeline progress; if
+    # an manager binge-practices on toy scenarios their trend would
+    # otherwise look great while real-client work stayed flat.
     # Week 1 (older) averages — one query for all members
     r1 = await db.execute(
         select(
@@ -168,6 +182,7 @@ async def _batch_score_trends(
             TrainingSession.status == SessionStatus.completed,
             TrainingSession.started_at >= week1_start,
             TrainingSession.started_at < week1_end,
+            TrainingSession.session_purpose == SESSION_PURPOSE_CLIENT_CALL,
         ).group_by(TrainingSession.user_id)
     )
     avg1 = {row.user_id: float(row.avg) for row in r1.all() if row.avg is not None}
@@ -181,6 +196,7 @@ async def _batch_score_trends(
             TrainingSession.user_id.in_(member_ids),
             TrainingSession.status == SessionStatus.completed,
             TrainingSession.started_at >= week1_end,
+            TrainingSession.session_purpose == SESSION_PURPOSE_CLIENT_CALL,
         ).group_by(TrainingSession.user_id)
     )
     avg2 = {row.user_id: float(row.avg) for row in r2.all() if row.avg is not None}
@@ -506,7 +522,8 @@ async def get_team_roi(team_id: uuid.UUID | None, db: AsyncSession, weeks: int =
     now = datetime.now(timezone.utc)
     since = now - timedelta(weeks=weeks + 1)  # +1 for delta calculation
 
-    # ONE query: weekly aggregates for all weeks at once
+    # ONE query: weekly aggregates for all weeks at once.
+    # Audit FIND-005: ROI is a pipeline KPI, exclude practice/orphan.
     from sqlalchemy import text as sa_text
     weekly_result = await db.execute(
         select(
@@ -518,6 +535,7 @@ async def get_team_roi(team_id: uuid.UUID | None, db: AsyncSession, weeks: int =
             TrainingSession.user_id.in_(member_ids),
             TrainingSession.status == SessionStatus.completed,
             TrainingSession.started_at >= since,
+            TrainingSession.session_purpose == SESSION_PURPOSE_CLIENT_CALL,
         ).group_by(
             _trunc("week", TrainingSession.started_at)
         ).order_by(
@@ -697,13 +715,16 @@ async def get_team_vs_platform(team_id: uuid.UUID | None, db: AsyncSession) -> d
             "percentile": percentile,
         })
 
-    # Sessions per week
+    # Sessions per week — pipeline volume metric.
+    # Audit FIND-005: filter to client_call so "конверсия по командам"
+    # / "platform benchmark" reflect real pipeline activity.
     since = datetime.now(timezone.utc) - timedelta(days=7)
     team_sessions_r = await db.execute(
         select(func.count(TrainingSession.id)).where(
             TrainingSession.user_id.in_(member_ids) if member_ids else False,
             TrainingSession.status == SessionStatus.completed,
             TrainingSession.started_at >= since,
+            TrainingSession.session_purpose == SESSION_PURPOSE_CLIENT_CALL,
         )
     ) if member_ids else None
     team_sessions = (team_sessions_r.scalar() or 0) if team_sessions_r else 0
@@ -712,6 +733,7 @@ async def get_team_vs_platform(team_id: uuid.UUID | None, db: AsyncSession) -> d
         select(func.count(TrainingSession.id)).where(
             TrainingSession.status == SessionStatus.completed,
             TrainingSession.started_at >= since,
+            TrainingSession.session_purpose == SESSION_PURPOSE_CLIENT_CALL,
         )
     )
     total_platform_sessions = platform_sessions_r.scalar() or 0
@@ -757,6 +779,8 @@ async def get_team_trends(
     now = datetime.now(timezone.utc)
     since = now - timedelta(weeks=num_weeks)
 
+    # Audit FIND-005: weekly trends are coaching/KPI surface — show
+    # client-pipeline progression, not generic activity.
     result = await db.execute(
         select(
             _trunc("week", TrainingSession.started_at).label("week_start"),
@@ -767,6 +791,7 @@ async def get_team_trends(
             TrainingSession.user_id.in_(member_ids),
             TrainingSession.status == SessionStatus.completed,
             TrainingSession.started_at >= since,
+            TrainingSession.session_purpose == SESSION_PURPOSE_CLIENT_CALL,
         ).group_by(
             _trunc("week", TrainingSession.started_at)
         ).order_by(
@@ -832,6 +857,7 @@ async def get_daily_activity(
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=days)
 
+    # Audit FIND-005: ROP daily-activity heatmap shows real-client work.
     result = await db.execute(
         select(
             _trunc("day", TrainingSession.started_at).label("day"),
@@ -841,6 +867,7 @@ async def get_daily_activity(
             TrainingSession.user_id.in_(member_ids),
             TrainingSession.status == SessionStatus.completed,
             TrainingSession.started_at >= since,
+            TrainingSession.session_purpose == SESSION_PURPOSE_CLIENT_CALL,
         ).group_by(
             _trunc("day", TrainingSession.started_at)
         ).order_by(
