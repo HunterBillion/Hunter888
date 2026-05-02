@@ -958,6 +958,33 @@ async def start_session(
     if _canonical_runtime_type not in RUNTIME_TYPES:
         _canonical_runtime_type = None  # belt-and-braces — CHECK would fail otherwise
 
+    # 2026-05-02 (audit FIND-005) — explicit session intent for KPI.
+    # Precedence:
+    #   1. body.session_purpose (FE explicitly sent the choice)
+    #   2. derive: real_client_id present → client_call, else practice
+    # Whitelist filter: an unknown explicit value is treated as missing
+    # rather than rejected, so a buggy FE doesn't block session start.
+    # legacy_orphan is reserved for rows backfilled by alembic
+    # 20260502_010 — the API never assigns it to new rows.
+    from app.models.training import (
+        SESSION_PURPOSE_ALLOWED,
+        SESSION_PURPOSE_CLIENT_CALL,
+        SESSION_PURPOSE_PRACTICE,
+    )
+    _supplied_purpose = (body.session_purpose or "").lower() or None
+    if _supplied_purpose in (SESSION_PURPOSE_CLIENT_CALL, SESSION_PURPOSE_PRACTICE):
+        _canonical_purpose = _supplied_purpose
+    else:
+        _canonical_purpose = (
+            SESSION_PURPOSE_CLIENT_CALL if real_client is not None
+            else SESSION_PURPOSE_PRACTICE
+        )
+    # Coherence: client_call without a real_client_id is meaningless.
+    # Demote to practice rather than insert an inconsistent row.
+    if _canonical_purpose == SESSION_PURPOSE_CLIENT_CALL and real_client is None:
+        _canonical_purpose = SESSION_PURPOSE_PRACTICE
+    assert _canonical_purpose in SESSION_PURPOSE_ALLOWED  # defence in depth
+
     session = TrainingSession(
         user_id=user.id,
         scenario_id=scenario_id,
@@ -975,6 +1002,7 @@ async def start_session(
         source=body.source,
         mode=_canonical_mode,
         runtime_type=_canonical_runtime_type,
+        session_purpose=_canonical_purpose,
     )
     db.add(session)
     await db.flush()
