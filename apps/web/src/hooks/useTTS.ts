@@ -32,6 +32,16 @@ import { logger } from "@/lib/logger";
 
 export type TTSMode = "elevenlabs" | "browser";
 
+// Reasons we can fail to play TTS audio. Distinct from
+// `needsAudioUnlock` (autoplay block — recoverable via user gesture).
+// Each terminal failure should produce a user-visible surface so the
+// app doesn't silently appear to be "mute".
+export type TTSPlaybackError =
+  | { kind: "decode"; message: string }   // base64 → blob → audio decode failed
+  | { kind: "media"; message: string }    // <audio> onerror — codec / corrupt data
+  | { kind: "fallback_active"; message: string } // backend said tts.fallback (ElevenLabs down)
+  | { kind: "unknown"; message: string };
+
 /** Re-export canonical EmotionState (10 states + legacy aliases) from types. */
 import type { EmotionState } from "@/types";
 export type { EmotionState };
@@ -171,6 +181,16 @@ interface UseTTSReturn {
    */
   unlock: () => void;
 
+  /**
+   * Last non-recoverable playback error (decode failed, media format
+   * not supported, audio.onerror fired). Cleared on next successful
+   * play. Distinct from `needsAudioUnlock` which is recoverable.
+   * Caller should surface this to the user (toast / banner) — earlier
+   * these errors went to console.warn only and the UI silently said
+   * "AI is mute" with no explanation.
+   */
+  playbackError: TTSPlaybackError | null;
+
   /** Current output volume (0-1). Applied to all subsequent audio plays. */
   volume: number;
 
@@ -283,6 +303,10 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
   // NotAllowedError (browser autoplay policy). UI surfaces a user-gesture
   // button which calls unlock() to retry playback within the click handler.
   const [needsAudioUnlock, setNeedsAudioUnlock] = useState(false);
+  // Last terminal playback error surfaced to UI. Set whenever a non-
+  // recoverable failure happens (decode, media error, fallback signal).
+  // UI toasts on transitions null → non-null.
+  const [playbackError, setPlaybackError] = useState<TTSPlaybackError | null>(null);
   const pendingPlaybackRef = useRef<
     | { audio: HTMLAudioElement; url: string; onEnded?: () => void }
     | null
@@ -484,6 +508,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     }
     nextExpectedIndexRef.current = 0;
     playingChunkRef.current = false;
+    chunkFailureStreakRef.current = 0;
     // Stop animation + modulation
     stopAudioLevelSimulation();
     clearModulationState();
@@ -551,6 +576,19 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
         };
 
         audio.onerror = () => {
+          // Media element error — codec mismatch, corrupted data,
+          // CSP-blocked blob URL. Pre-fix this went to default (no
+          // log) and the UI just stayed silent; now we surface.
+          const code = audio.error?.code ?? 0;
+          const codeNames: Record<number, string> = {
+            1: "MEDIA_ERR_ABORTED",
+            2: "MEDIA_ERR_NETWORK",
+            3: "MEDIA_ERR_DECODE",
+            4: "MEDIA_ERR_SRC_NOT_SUPPORTED",
+          };
+          const msg = `${codeNames[code] || "MEDIA_ERR_UNKNOWN"} (code ${code})`;
+          console.warn("[TTS] ✗ media element error:", msg);
+          setPlaybackError({ kind: "media", message: msg });
           setSpeaking(false);
           stopAudioLevelSimulation();
           stopDurationCountdown();
@@ -569,6 +607,9 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
           console.log(
             `[TTS] ▶ play STARTED | emotion=${opts?.emotion ?? "none"} | speaker=${opts?.speaker ?? "single"} | blob=${url.slice(0, 45)}`
           );
+          // Successful play resets any stale playback error so the UI
+          // toast doesn't linger after recovery.
+          setPlaybackError(null);
         }).catch((err) => {
           console.warn("[TTS] ✗ play FAILED:", err.name, "|", err.message);
           // Autoplay blocked (NotAllowedError) — keep the prepared Audio
@@ -584,6 +625,13 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
             setNeedsAudioUnlock(true);
             return;
           }
+          // Terminal: surface so UI can toast. Audit Pattern 3 #9 —
+          // previously these errors went to console.warn only and the
+          // user just heard "AI is mute" with no explanation.
+          setPlaybackError({
+            kind: "media",
+            message: `${err?.name || "Error"}: ${err?.message || "play failed"}`,
+          });
           setSpeaking(false);
           stopAudioLevelSimulation();
           stopDurationCountdown();
@@ -595,7 +643,9 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
 
         return audio;
       } catch (err) {
-        console.warn("[TTS] ✗ decode FAILED:", err);
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn("[TTS] ✗ decode FAILED:", msg);
+        setPlaybackError({ kind: "decode", message: msg });
         opts?.onEnded?.();
         return null;
       }
@@ -829,6 +879,13 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
   // ---------------------------------------------------------------------------
   const enableFallbackMode = useCallback(() => {
     setMode("browser");
+    // Audit Pattern 3 #15: surface fallback transition so the UI can
+    // toast the user. Previously this was logger.warn only — the user
+    // heard a different (browser default) voice and had no idea why.
+    setPlaybackError({
+      kind: "fallback_active",
+      message: "Голос клиента переключён на резервный (системный) — ElevenLabs временно недоступен.",
+    });
     logger.warn("[TTS] SWITCHED to browser mode permanently (ElevenLabs fallback triggered)");
   }, []);
 
@@ -856,11 +913,16 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
   const pendingChunksRef = useRef<Map<number, { audio: string; index: number; isLast: boolean }>>(new Map());
   const nextExpectedIndexRef = useRef(0);
   const playingChunkRef = useRef(false);
+  // Count of consecutive chunk play() / onerror failures. Reset on
+  // successful play. When >= 3 we treat streaming as broken and surface
+  // playbackError (audit Pattern 4 #10).
+  const chunkFailureStreakRef = useRef(0);
 
   const resetChunkQueue = useCallback(() => {
     pendingChunksRef.current.clear();
     nextExpectedIndexRef.current = 0;
     playingChunkRef.current = false;
+    chunkFailureStreakRef.current = 0;
   }, []);
 
   const playNextChunk = useCallback(() => {
@@ -881,22 +943,45 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     if (phoneBandFilter) {
       routeThroughPhoneBand(audio);
     }
-    const advance = () => {
+    const advance = (failed: boolean = false) => {
       URL.revokeObjectURL(url);
       playingChunkRef.current = false;
       nextExpectedIndexRef.current += 1;
+      // Audit Pattern 4 #10: when chunks fail one-by-one, the fallback
+      // timer has already been cancelled by the chunk-arrival handler in
+      // the page, so browser TTS never kicks in. Track the streak — 3+
+      // chunks failing back-to-back means streaming is broken; surface
+      // a playback error so the UI can fall back/toast.
+      if (failed) {
+        chunkFailureStreakRef.current += 1;
+        if (chunkFailureStreakRef.current >= 3) {
+          setPlaybackError({
+            kind: "media",
+            message: "Стриминг озвучки прервался — переключаемся на резервный голос",
+          });
+        }
+      } else {
+        chunkFailureStreakRef.current = 0;
+      }
       const more = pendingChunksRef.current.size > 0;
       setSpeaking(more);
       if (chunk.isLast && !more) {
         // Last chunk finished playing — reset index for next turn
         nextExpectedIndexRef.current = 0;
+        chunkFailureStreakRef.current = 0;
       }
       playNextChunk();
     };
-    audio.onended = advance;
-    audio.onerror = advance;
+    audio.onended = () => advance(false);
+    audio.onerror = () => {
+      console.warn("[TTS] ✗ chunk media error", chunk.index);
+      advance(true);
+    };
     setSpeaking(true);
-    audio.play().catch((err) => {
+    audio.play().then(() => {
+      // First successful chunk after a streak — clear the stale error.
+      if (chunkFailureStreakRef.current > 0) setPlaybackError(null);
+    }).catch((err) => {
       // Chunked path: on autoplay-block, route to the same unlock UX used
       // by decodeAndPlay so the first sentence of a phone-call reply isn't
       // silently dropped when the browser suppresses autoplay.
@@ -904,12 +989,12 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
         pendingPlaybackRef.current = {
           audio,
           url,
-          onEnded: advance,
+          onEnded: () => advance(false),
         };
         setNeedsAudioUnlock(true);
         return;
       }
-      advance();
+      advance(true);
     });
   }, []);
 
@@ -959,6 +1044,8 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     // Autoplay unlock
     needsAudioUnlock,
     unlock,
+    // Audit Pattern 3 #9 — terminal playback errors surfaced to UI
+    playbackError,
     // Volume
     volume,
     setVolume,

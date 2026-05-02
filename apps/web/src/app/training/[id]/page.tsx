@@ -64,6 +64,7 @@ import { BetweenCallsOverlay } from "@/components/training/BetweenCallsOverlay";
 import { useSessionStore } from "@/stores/useSessionStore";
 import { TrainingErrorBoundary } from "@/components/training/TrainingErrorBoundary";
 import { TTSUnlockOverlay } from "@/components/training/TTSUnlockOverlay";
+import { toast } from "sonner";
 import { TrainingToasts } from "@/components/training/TrainingToasts";
 import { BootSequence } from "@/components/training/BootSequence";
 import { useHotkeys } from "@/hooks/useHotkeys";
@@ -294,6 +295,25 @@ export default function TrainingSessionPage() {
 
   // TTS — ElevenLabs (primary) + browser speechSynthesis (fallback)
   const tts = useTTS({ lang: "ru-RU", rate: 0.95, pitch: 1.0 });
+
+  // Surface terminal TTS errors / fallback transitions as toasts. Mirror
+  // of /call page handler — chat path used the same useTTS pipeline but
+  // had no UI surface for any of these failure modes. Audit Pattern 3
+  // #9 + #15.
+  const lastTtsErrorMsgRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!tts.playbackError) {
+      lastTtsErrorMsgRef.current = null;
+      return;
+    }
+    if (tts.playbackError.message === lastTtsErrorMsgRef.current) return;
+    lastTtsErrorMsgRef.current = tts.playbackError.message;
+    if (tts.playbackError.kind === "fallback_active") {
+      toast.info("Резервный голос", { description: tts.playbackError.message });
+    } else {
+      toast.error("Озвучка прервана", { description: tts.playbackError.message });
+    }
+  }, [tts.playbackError]);
   const microphone = useMicrophone({
     onSilenceTimeout: () => useSessionStore.getState().setShowSilenceModal(true),
   });

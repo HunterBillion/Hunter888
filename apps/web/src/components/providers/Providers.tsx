@@ -2,6 +2,7 @@
 
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { NotificationWSProvider } from "@/providers/NotificationWSProvider";
+import { Toaster } from "@/components/ui/Toaster";
 
 // Suppress THREE.js console noise (Clock deprecation + Color CSS var parsing)
 if (typeof window !== "undefined") {
@@ -32,6 +33,15 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       <NotificationWSProvider>
         {children}
+        {/*
+          Sonner toast surface. Required for any `toast.success/error/...`
+          call across the app — without this mount, every toast (autosave
+          errors, OAuth unlink failures, validation messages on
+          /clients/pipeline + /consent) is silently dropped. The component
+          existed at components/ui/Toaster.tsx for months but was never
+          rendered. Mount here so it's available on every page.
+        */}
+        <Toaster />
       </NotificationWSProvider>
     </NextThemesProvider>
   );

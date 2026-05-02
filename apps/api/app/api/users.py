@@ -85,8 +85,24 @@ class UserPreferencesRequest(BaseModel):
     specialization: str | None = Field(None, max_length=100)
     experience_level: str | None = Field(None, pattern="^(beginner|intermediate|advanced)$")
     tts_enabled: bool | None = None
+    # 2026-05-02 audit: legacy single `notifications` flag kept for back-compat
+    # but the FE settings page sends three split fields below — previously these
+    # were dropped silently because Pydantic defaults to extra=ignore. Now they
+    # round-trip correctly so /settings actually persists what the user picked.
     notifications: bool | None = None
+    notify_email: bool | None = None
+    notify_push: bool | None = None
+    notify_frequency: str | None = Field(None, pattern="^(realtime|daily|weekly)$")
     training_mode: str | None = Field(None, pattern="^(voice|text|mixed|structured|freestyle|challenge)$")
+    # 2026-05-02 — audio prefs (TTS + mic). Used by /settings → "Звук и микрофон"
+    # section. None means "leave unchanged"; client passes only what user touched.
+    tts_voice: str | None = Field(None, max_length=64)
+    tts_volume: float | None = Field(None, ge=0.0, le=1.0)
+    tts_rate: float | None = Field(None, ge=0.5, le=1.5)
+    mic_device_id: str | None = Field(None, max_length=200)
+    speaker_device_id: str | None = Field(None, max_length=200)
+    noise_suppression: bool | None = None
+    echo_cancellation: bool | None = None
     # UI customization
     pipeline_columns: list[str] | None = None
     pipeline_layout: str | None = Field(None, pattern="^(grid|board)$")

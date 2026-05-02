@@ -178,10 +178,24 @@ export function useMicrophone(
       lastSoundTimeRef.current = Date.now();
     }
 
-    // Check silence timeout
+    // Check silence timeout. Defence-in-depth (audit Pattern 2 #7):
+    // we both invoke the consumer callback *and* hard-stop the recorder.
+    // Earlier the hook only fired the callback and trusted the consumer
+    // to call stopRecording() — if they forgot, the mic stayed open and
+    // streamed silent chunks indefinitely. Now the recorder always stops
+    // on its own, the callback is informational.
     const silenceDuration = Date.now() - lastSoundTimeRef.current;
     if (silenceDuration >= SILENCE_TIMEOUT_MS) {
       optionsRef.current.onSilenceTimeout?.();
+      const mr = mediaRecorderRef.current;
+      if (mr && mr.state !== "inactive") {
+        try { mr.stop(); } catch { /* already stopping */ }
+      }
+      // Belt: also drop tracks immediately so the OS-level mic indicator
+      // (browser tray) goes away even if `mr.stop()` is async.
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      }
       return; // Stop monitoring
     }
 

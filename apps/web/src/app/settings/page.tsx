@@ -18,8 +18,12 @@ import AuthLayout from "@/components/layout/AuthLayout";
 import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { AvatarUpload } from "@/components/settings/AvatarUpload";
-// 2026-05-01 (Фаза 8): pixel sound settings — master + 3 категории + mute
+// Звук + микрофон. SoundSettings — общий volume mute (master/sfx/ambient/ui).
+// AudioDevicesPanel — выбор mic/speaker, mic test, TTS preview. Все
+// карточки в едином glass-panel стиле остальных секций.
 import { SoundSettings } from "@/components/settings/SoundSettings";
+import { AudioDevicesPanel } from "@/components/settings/AudioDevicesPanel";
+import { toast } from "sonner";
 import { PIPELINE_STATUSES, CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
 import type { ClientStatus } from "@/types";
 import { logger } from "@/lib/logger";
@@ -165,6 +169,15 @@ export default function SettingsPage() {
   const [pipelineColumns, setPipelineColumns] = useState<string[]>(PIPELINE_STATUSES as string[]);
   const [compactMode, setCompactMode] = useState(false);
   const [accentColor, setAccentColor] = useState<string>("violet");
+  // Audio device + voice prefs (2026-05-02). Persisted in user.preferences
+  // alongside the rest. Defaults match getUserMedia "smart" defaults so a
+  // pristine user gets normal behaviour without touching settings.
+  const [micDeviceId, setMicDeviceId] = useState<string>("default");
+  const [speakerDeviceId, setSpeakerDeviceId] = useState<string>("default");
+  const [noiseSuppression, setNoiseSuppression] = useState<boolean>(true);
+  const [echoCancellation, setEchoCancellation] = useState<boolean>(true);
+  const [ttsVoice, setTtsVoice] = useState<string>("default");
+  const [ttsRate, setTtsRate] = useState<number>(0.95);
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -182,7 +195,13 @@ export default function SettingsPage() {
   const showCRM = user?.role && ["admin", "rop", "manager"].includes(user.role);
   const { level, streak, fetchProgress } = useGamificationStore();
 
-  useEffect(() => { mountedRef.current = true; }, []);
+  // FIX: previously this only set the ref but didn't trigger a re-render,
+  // so the theme picker and accent-color side-effects (which check
+  // mountedRef.current) ran one tick AFTER first paint → first frame
+  // showed empty chips, then they popped in. Use state mirror so the
+  // chips render on the very first post-hydration paint.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => { mountedRef.current = true; setHydrated(true); }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -202,6 +221,12 @@ export default function SettingsPage() {
     if (Array.isArray(p.pipeline_columns)) setPipelineColumns(p.pipeline_columns as string[]);
     if (typeof p.compact_mode === "boolean") setCompactMode(p.compact_mode);
     if (typeof p.accent_color === "string") setAccentColor(p.accent_color);
+    if (typeof p.mic_device_id === "string") setMicDeviceId(p.mic_device_id);
+    if (typeof p.speaker_device_id === "string") setSpeakerDeviceId(p.speaker_device_id);
+    if (typeof p.noise_suppression === "boolean") setNoiseSuppression(p.noise_suppression);
+    if (typeof p.echo_cancellation === "boolean") setEchoCancellation(p.echo_cancellation);
+    if (typeof p.tts_voice === "string") setTtsVoice(p.tts_voice);
+    if (typeof p.tts_rate === "number") setTtsRate(p.tts_rate);
     setLinkedGoogle(!!user.google_id);
     setLinkedYandex(!!user.yandex_id);
     api.get("/auth/oauth/status")
@@ -244,6 +269,15 @@ const triggerAutosave = useCallback(async () => {
         pipeline_columns: pipelineColumns,
         compact_mode: compactMode,
         accent_color: accentColor,
+        // 2026-05-02 audio prefs (now persisted server-side too — earlier
+        // notify_* and audio fields were silently dropped because the
+        // backend Pydantic schema didn't list them).
+        mic_device_id: micDeviceId,
+        speaker_device_id: speakerDeviceId,
+        noise_suppression: noiseSuppression,
+        echo_cancellation: echoCancellation,
+        tts_voice: ttsVoice,
+        tts_rate: ttsRate,
       };
       if (gender) prefs.gender = gender;
       if (trimmedRoleTitle.length >= 2) prefs.role_title = trimmedRoleTitle;
@@ -254,10 +288,15 @@ const triggerAutosave = useCallback(async () => {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
+      // Earlier this branch only logged — user got "saving spinner ▶ never
+      // 'Сохранено'" and assumed it worked. With the Toaster now mounted
+      // we surface the failure so they can retry.
       logger.error("Autosave failed:", e);
+      const msg = e instanceof Error ? e.message : "Не удалось сохранить настройки";
+      toast.error("Ошибка сохранения", { description: msg });
     }
     setSaving(false);
-  }, [ttsEnabled, gender, roleTitle, primaryContact, specialization, notifyEmail, notifyPush, notifyFrequency, trainingMode, experienceLevel, pipelineColumns, compactMode, accentColor, user]);
+  }, [ttsEnabled, gender, roleTitle, primaryContact, specialization, notifyEmail, notifyPush, notifyFrequency, trainingMode, experienceLevel, pipelineColumns, compactMode, accentColor, micDeviceId, speakerDeviceId, noiseSuppression, echoCancellation, ttsVoice, ttsRate, user]);
 
   useEffect(() => {
     if (!mountedRef.current || !user) return;
@@ -267,7 +306,7 @@ const triggerAutosave = useCallback(async () => {
     }, 1500);
     saveTimeoutRef.current = timeout;
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [ttsEnabled, gender, roleTitle, primaryContact, specialization, notifyEmail, notifyPush, notifyFrequency, trainingMode, experienceLevel, pipelineColumns, compactMode, accentColor, triggerAutosave]);
+  }, [ttsEnabled, gender, roleTitle, primaryContact, specialization, notifyEmail, notifyPush, notifyFrequency, trainingMode, experienceLevel, pipelineColumns, compactMode, accentColor, micDeviceId, speakerDeviceId, noiseSuppression, echoCancellation, ttsVoice, ttsRate, triggerAutosave]);
 
   const handleSaveName = async () => {
     const trimmed = fullName.trim();
@@ -282,9 +321,12 @@ const triggerAutosave = useCallback(async () => {
       await api.patch("/users/me/profile", { full_name: trimmed });
       invalidateUserCache();
       setFullNameSaved(true);
+      toast.success("Имя обновлено");
       setTimeout(() => setFullNameSaved(false), 2000);
     } catch (e) {
-      setFullNameError(e instanceof Error ? e.message : "Ошибка сохранения имени");
+      const msg = e instanceof Error ? e.message : "Ошибка сохранения имени";
+      setFullNameError(msg);
+      toast.error("Не удалось сохранить имя", { description: msg });
     }
     setFullNameSaving(false);
   };
@@ -446,9 +488,11 @@ const triggerAutosave = useCallback(async () => {
             </Card>
           </Section>
 
-          {/* 2026-05-01 (Фаза 8): звук — отдельная секция, целиком кастомный
-              блок. Section-grid не используется (4 ползунка живут внутри
-              SoundSettings своим layout-ом). */}
+          {/* Звук + микрофон. Объединяем в одну секцию с двумя
+              подблоками: общий volume mute (SoundSettings) и
+              устройства/голос/тест (AudioDevicesPanel). Оба блока в
+              едином glass-panel стиле (см. SoundSettings rewrite
+              2026-05-02). */}
           <motion.section
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -463,20 +507,36 @@ const triggerAutosave = useCallback(async () => {
               </div>
               <div>
                 <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
-                  Звук
+                  Звук и микрофон
                 </h2>
                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  Mute + 4 ползунка громкости
+                  Громкость, устройства, голос клиента
                 </p>
               </div>
             </div>
             <SoundSettings />
+            <div className="mt-3">
+              <AudioDevicesPanel
+                micDeviceId={micDeviceId}
+                speakerDeviceId={speakerDeviceId}
+                noiseSuppression={noiseSuppression}
+                echoCancellation={echoCancellation}
+                ttsVoice={ttsVoice}
+                ttsRate={ttsRate}
+                onChangeMicDevice={setMicDeviceId}
+                onChangeSpeakerDevice={setSpeakerDeviceId}
+                onChangeNoiseSuppression={setNoiseSuppression}
+                onChangeEchoCancellation={setEchoCancellation}
+                onChangeTtsVoice={setTtsVoice}
+                onChangeTtsRate={setTtsRate}
+              />
+            </div>
           </motion.section>
 
           <Section icon={Bell} title="Система" description="Оформление и уведомления">
             <Card>
               <label className="text-xs font-medium uppercase tracking-wide mb-3 block" style={{ color: "var(--text-muted)" }}>Тема</label>
-              {mountedRef.current && (
+              {hydrated && (
                 <div className="flex gap-2">
                   {([{ key: "dark", label: "Тёмная" }, { key: "light", label: "Светлая" }, { key: "system", label: "Авто" }] as const).map((t) => (
                     <Chip key={t.key} active={theme === t.key} label={t.label} onClick={() => setTheme(t.key)} />
@@ -543,12 +603,45 @@ const triggerAutosave = useCallback(async () => {
                     <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Google</span>
                   </div>
                   {linkedGoogle ? (
-                    <button onClick={async () => { setUnlinking("google"); try { await api.post("/auth/google/disconnect", {}); setLinkedGoogle(false); } catch {} setUnlinking(null); }}
-                    disabled={unlinking === "google"} className="text-xs px-2.5 py-1 rounded-lg" style={{ background: "var(--danger-muted)", color: "var(--danger)" }}>
+                    <button
+                      onClick={async () => {
+                        setUnlinking("google");
+                        try {
+                          await api.post("/auth/google/disconnect", {});
+                          setLinkedGoogle(false);
+                          toast.success("Google отвязан");
+                        } catch (e) {
+                          // Audit P0: this catch was empty — user got
+                          // "click happened, nothing changed" with zero
+                          // explanation. Now we surface the error.
+                          logger.error("Google unlink failed:", e);
+                          toast.error("Не удалось отвязать Google", {
+                            description: e instanceof Error ? e.message : undefined,
+                          });
+                        }
+                        setUnlinking(null);
+                      }}
+                      disabled={unlinking === "google"} className="text-xs px-2.5 py-1 rounded-lg" style={{ background: "var(--danger-muted)", color: "var(--danger)" }}>
                     {unlinking === "google" ? <Loader2 size={10} className="animate-spin" /> : "Отвязать"}
                     </button>
                   ) : oauthStatus.google ? (
-                    <button onClick={async () => { try { const d = await api.get("/auth/google/login"); if (d?.url) { const { validateOAuthUrl } = await import("@/lib/sanitize"); const safeUrl = validateOAuthUrl(d.url); if (safeUrl) window.location.href = safeUrl; } } catch {} }}
+                    <button
+                      onClick={async () => {
+                        try {
+                          const d = await api.get<{ url?: string }>("/auth/google/login");
+                          if (d?.url) {
+                            const { validateOAuthUrl } = await import("@/lib/sanitize");
+                            const safeUrl = validateOAuthUrl(d.url);
+                            if (safeUrl) window.location.href = safeUrl;
+                            else toast.error("Получен небезопасный URL для OAuth");
+                          } else {
+                            toast.error("Сервер не вернул URL для входа Google");
+                          }
+                        } catch (e) {
+                          logger.error("Google link failed:", e);
+                          toast.error("Не удалось начать привязку Google");
+                        }
+                      }}
                     className="text-xs px-2.5 py-1 rounded-lg" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
                     Привязать
                     </button>
@@ -560,12 +653,42 @@ const triggerAutosave = useCallback(async () => {
                     <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Yandex</span>
                   </div>
                   {linkedYandex ? (
-                    <button onClick={async () => { setUnlinking("yandex"); try { await api.post("/auth/yandex/disconnect", {}); setLinkedYandex(false); } catch {} setUnlinking(null); }}
-                    disabled={unlinking === "yandex"} className="text-xs px-2.5 py-1 rounded-lg" style={{ background: "var(--danger-muted)", color: "var(--danger)" }}>
+                    <button
+                      onClick={async () => {
+                        setUnlinking("yandex");
+                        try {
+                          await api.post("/auth/yandex/disconnect", {});
+                          setLinkedYandex(false);
+                          toast.success("Яндекс отвязан");
+                        } catch (e) {
+                          logger.error("Yandex unlink failed:", e);
+                          toast.error("Не удалось отвязать Яндекс", {
+                            description: e instanceof Error ? e.message : undefined,
+                          });
+                        }
+                        setUnlinking(null);
+                      }}
+                      disabled={unlinking === "yandex"} className="text-xs px-2.5 py-1 rounded-lg" style={{ background: "var(--danger-muted)", color: "var(--danger)" }}>
                     {unlinking === "yandex" ? <Loader2 size={10} className="animate-spin" /> : "Отвязать"}
                     </button>
                   ) : oauthStatus.yandex ? (
-                    <button onClick={async () => { try { const d = await api.get("/auth/yandex/login"); if (d?.url) { const { validateOAuthUrl } = await import("@/lib/sanitize"); const safeUrl = validateOAuthUrl(d.url); if (safeUrl) window.location.href = safeUrl; } } catch {} }}
+                    <button
+                      onClick={async () => {
+                        try {
+                          const d = await api.get<{ url?: string }>("/auth/yandex/login");
+                          if (d?.url) {
+                            const { validateOAuthUrl } = await import("@/lib/sanitize");
+                            const safeUrl = validateOAuthUrl(d.url);
+                            if (safeUrl) window.location.href = safeUrl;
+                            else toast.error("Получен небезопасный URL для OAuth");
+                          } else {
+                            toast.error("Сервер не вернул URL для входа Яндекса");
+                          }
+                        } catch (e) {
+                          logger.error("Yandex link failed:", e);
+                          toast.error("Не удалось начать привязку Яндекса");
+                        }
+                      }}
                     className="text-xs px-2.5 py-1 rounded-lg" style={{ background: "var(--accent-muted)", color: "var(--accent)" }}>
                     Привязать
                     </button>
