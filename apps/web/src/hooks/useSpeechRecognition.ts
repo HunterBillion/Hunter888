@@ -38,6 +38,31 @@ declare global {
 
 export type SpeechStatus = "idle" | "listening" | "processing" | "error" | "unsupported";
 
+// Web Speech API error codes we want to map for the UI. Anything outside
+// this set falls into "unknown" so <MicStatusBanner> can still render a
+// generic message instead of crashing on a missing key.
+export type SpeechErrorCode =
+  | "not-allowed"
+  | "audio-capture"
+  | "network"
+  | "service-not-allowed"
+  | "language-not-supported"
+  | "bad-grammar"
+  | "start-failed"
+  | "unsupported"
+  | "unknown";
+
+const KNOWN_SPEECH_ERROR_CODES: ReadonlySet<string> = new Set([
+  "not-allowed",
+  "audio-capture",
+  "network",
+  "service-not-allowed",
+  "language-not-supported",
+  "bad-grammar",
+  "start-failed",
+  "unsupported",
+]);
+
 interface UseSpeechRecognitionOptions {
   lang?: string;
   onResult?: (text: string) => void;
@@ -47,6 +72,7 @@ interface UseSpeechRecognitionOptions {
 
 interface UseSpeechRecognitionReturn {
   status: SpeechStatus;
+  errorCode: SpeechErrorCode | null;
   isSupported: boolean;
   interimText: string;
   startListening: () => void;
@@ -62,6 +88,7 @@ export function useSpeechRecognition(
   optionsRef.current = options;
 
   const [status, setStatus] = useState<SpeechStatus>("idle");
+  const [errorCode, setErrorCode] = useState<SpeechErrorCode | null>(null);
   const [interimText, setInterimText] = useState("");
   const [audioLevel, setAudioLevel] = useState(0);
 
@@ -119,9 +146,11 @@ export function useSpeechRecognition(
   const startListening = useCallback(() => {
     if (!isSupported) {
       setStatus("unsupported");
+      setErrorCode("unsupported");
       optionsRef.current.onError?.("unsupported");
       return;
     }
+    setErrorCode(null);
 
     const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognitionClass();
@@ -165,10 +194,16 @@ export function useSpeechRecognition(
       if (event.error === "aborted") return; // Ignore manual abort
 
       setStatus("error");
+      const code = (KNOWN_SPEECH_ERROR_CODES.has(event.error)
+        ? event.error
+        : "unknown") as SpeechErrorCode;
+      setErrorCode(code);
       optionsRef.current.onError?.(event.error);
 
-      if (event.error === "not-allowed") {
-        // Permission denied — can't recover
+      // Permission denied or hardware capture failed — both are
+      // unrecoverable on the same recognition instance. Stop the
+      // auto-restart loop so we don't hot-loop on InvalidStateError.
+      if (event.error === "not-allowed" || event.error === "audio-capture") {
         isListeningRef.current = false;
         stopAudioMonitor();
       }
@@ -197,6 +232,7 @@ export function useSpeechRecognition(
       startAudioMonitor();
     } catch {
       setStatus("error");
+      setErrorCode("start-failed");
       isListeningRef.current = false;
       stopAudioMonitor();
       optionsRef.current.onError?.("start-failed");
@@ -250,6 +286,7 @@ export function useSpeechRecognition(
 
   return {
     status,
+    errorCode,
     isSupported,
     interimText,
     startListening,

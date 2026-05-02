@@ -55,8 +55,8 @@ export function ArenaContentEditor() {
     if (categoryFilter) params.set("category", categoryFilter);
     if (searchQuery) params.set("search", searchQuery);
 
-    api.get(`/rop/arena/chunks?${params}`)
-      .then((res) => { setChunks(res.data.items); setTotal(res.data.total); })
+    api.get<{ items: Chunk[]; total: number }>(`/rop/arena/chunks?${params}`)
+      .then((res) => { setChunks(res.items); setTotal(res.total); })
       .catch((err) => logger.error("[ArenaContentEditor] load failed:", err))
       .finally(() => setLoading(false));
   }, [categoryFilter, searchQuery]);

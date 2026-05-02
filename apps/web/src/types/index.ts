@@ -1494,6 +1494,22 @@ export interface WSAuthRefreshError {
 
 export type MicrophonePermissionState = "prompt" | "granted" | "denied" | "error";
 
+// Distinct reasons we can derive from getUserMedia rejections + browser
+// capability checks. The UI maps each reason to its own remediation hint
+// (see <MicStatusBanner>). Generic "error" was conflating six different
+// failure modes — denied permission, no device, device-in-use,
+// not-secure-context, browser-unsupported, and unknown — so the user got
+// the same useless "Микрофон недоступен" for all of them.
+export type MicErrorReason =
+  | "denied"           // NotAllowedError / PermissionDeniedError
+  | "not_found"        // NotFoundError — нет устройств
+  | "in_use"           // NotReadableError — занят другим приложением
+  | "insecure"         // SecurityError или !window.isSecureContext
+  | "constraints"      // OverconstrainedError — sample rate / channels
+  | "unsupported"      // нет getUserMedia / MediaRecorder в браузере
+  | "aborted"          // AbortError — юзер закрыл prompt
+  | "unknown";         // всё остальное
+
 export type RecordingState = "idle" | "recording" | "processing";
 
 // ─── Training Session UI State ─────────────────────────────────────────────

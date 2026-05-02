@@ -38,10 +38,10 @@ export function SessionsBrowser() {
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
-    api.get(`/rop/sessions?${params}`)
+    api.get<{ items: SessionItem[]; total: number }>(`/rop/sessions?${params}`)
       .then((res) => {
-        setSessions(res.data.items);
-        setTotal(res.data.total);
+        setSessions(res.items);
+        setTotal(res.total);
       })
       .catch((err) => logger.error("[SessionsBrowser] load failed:", err))
       .finally(() => setLoading(false));
