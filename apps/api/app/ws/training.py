@@ -1430,6 +1430,48 @@ async def _generate_character_reply(
     except Exception:
         logger.debug("manager_profile/quote injection failed", exc_info=True)
 
+    # TZ-8 P0 #2 (audit-call-mode-rag-missing) — the call hot path
+    # never touched ``retrieve_all_context``, so methodology
+    # playbooks (per team), wiki insights (per manager), and legal
+    # context were invisible to the AI client during phone-mode
+    # sessions. ``call_rag_cache.get_call_rag_block`` resolves the
+    # caller's team_id once per session, runs the four-source RAG
+    # fanout, and caches the formatted ``[DATA_START]/[DATA_END]``
+    # block with a 60-second TTL. Failure-mode is "" (the call
+    # continues without the block; logged at DEBUG, never raises).
+    try:
+        from app.services.call_rag_cache import get_call_rag_block
+
+        # Latest user (manager) message drives the embedding query.
+        # Empty string when the session just opened — RAG returns
+        # nothing useful on a cold start anyway, and the cache will
+        # be populated on the first real exchange.
+        _last_user_msg = ""
+        for _m in reversed(messages):
+            if _m.get("role") == "user":
+                _last_user_msg = (_m.get("content") or "").strip()
+                break
+
+        if _last_user_msg:
+            async with async_session() as _rag_db:
+                _rag_block = await get_call_rag_block(
+                    state=state,
+                    user_id=state["user_id"],
+                    query=_last_user_msg,
+                    db=_rag_db,
+                    context_type="training",
+                    archetype_code=archetype_code,
+                    emotion_state=current_emotion,
+                )
+            if _rag_block:
+                extra_system = extra_system + "\n\n" + _rag_block
+    except Exception:
+        logger.debug(
+            "training.call_rag: unified RAG block injection failed "
+            "for session %s (call continues without RAG context)",
+            session_id, exc_info=True,
+        )
+
     # TZ-4.5 PR 4 — load persona facts from cross-session memory so
     # the LLM sees them in the system prompt. Best-effort: failure
     # falls through to a cold-start (no facts) call. The fresh read
