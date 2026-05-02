@@ -20,7 +20,7 @@ from app.core.deps import get_current_user, require_role
 from app.core.security import hash_password, verify_password
 from app.database import get_db
 from app.models.analytics import UserAchievement
-from app.models.training import TrainingSession
+from app.models.training import SESSION_PURPOSE_CLIENT_CALL, TrainingSession
 from app.models.user import User, UserFriendship
 from app.services.profile_gate import is_profile_complete
 
@@ -877,11 +877,17 @@ async def get_team_stats(
     # Team sessions
     team_user_ids = select(User.id).where(User.team_id == user.team_id)
 
+    # Audit FIND-005: ROP team-stats represent pipeline performance.
+    # Practice/legacy_orphan sessions are excluded from totals/avg/best
+    # so the dashboard isn't inflated by free-practice runs.
     sessions_result = await db.execute(
         select(
             func.count(TrainingSession.id),
             func.avg(TrainingSession.score_total),
-        ).where(TrainingSession.user_id.in_(team_user_ids))
+        ).where(
+            TrainingSession.user_id.in_(team_user_ids),
+            TrainingSession.session_purpose == SESSION_PURPOSE_CLIENT_CALL,
+        )
     )
     row = sessions_result.one()
     total_sessions = row[0] or 0
@@ -891,6 +897,7 @@ async def get_team_stats(
         select(func.count(TrainingSession.id)).where(
             TrainingSession.user_id.in_(team_user_ids),
             TrainingSession.status == "completed",
+            TrainingSession.session_purpose == SESSION_PURPOSE_CLIENT_CALL,
         )
     )
     completed_sessions = completed_result.scalar() or 0
@@ -901,15 +908,21 @@ async def get_team_stats(
         select(func.count(TrainingSession.id)).where(
             TrainingSession.user_id.in_(team_user_ids),
             TrainingSession.started_at >= week_start,
+            TrainingSession.session_purpose == SESSION_PURPOSE_CLIENT_CALL,
         )
     )
     sessions_this_week = week_result.scalar() or 0
 
-    # Best performer
+    # Best performer — pipeline-only avg, otherwise practice winners
+    # would top the team leaderboard.
     best_result = await db.execute(
         select(User.full_name, func.avg(TrainingSession.score_total).label("avg"))
         .join(TrainingSession, TrainingSession.user_id == User.id)
-        .where(User.team_id == user.team_id, TrainingSession.status == "completed")
+        .where(
+            User.team_id == user.team_id,
+            TrainingSession.status == "completed",
+            TrainingSession.session_purpose == SESSION_PURPOSE_CLIENT_CALL,
+        )
         .group_by(User.full_name)
         .order_by(func.avg(TrainingSession.score_total).desc())
         .limit(1)
