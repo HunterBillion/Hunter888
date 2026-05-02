@@ -123,6 +123,54 @@ async def get_current_user(
     return user
 
 
+async def get_current_user_optional(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    db: AsyncSession = Depends(get_db),
+    access_token: str | None = Cookie(default=None),
+) -> User | None:
+    """Like get_current_user, but returns None instead of raising when
+    auth is missing or invalid.
+
+    Use for endpoints that work for both authenticated and anonymous
+    callers — e.g. the FE telemetry collector at /analytics/events,
+    where pre-login pages (login, register, reset-password) need to
+    fire events without an access token.
+
+    Behaviour:
+      * No Bearer / cookie  → None (anonymous)
+      * Token present but invalid/expired/revoked → None (treat as
+        anonymous; do NOT 401 — telemetry must not block on auth state)
+      * Token valid → returns the User
+    """
+    token = None
+    if credentials:
+        token = credentials.credentials
+    elif access_token:
+        token = access_token
+    if not token:
+        return None
+    payload = decode_token(token)
+    if payload is None or payload.get("type") != "access":
+        return None
+    user_id = payload.get("sub")
+    if user_id is None:
+        return None
+    if await _is_token_revoked(payload.get("jti")):
+        return None
+    if await _is_user_blacklisted(user_id):
+        return None
+    token_rv = payload.get("rv", 0)
+    current_rv = await get_role_version(user_id)
+    if token_rv < current_rv:
+        return None
+    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        return None
+    return user
+
+
 def require_role(*roles: str):
     """FastAPI dependency factory: returns a dependency that checks user role.
 
