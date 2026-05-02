@@ -63,6 +63,7 @@ import { StoryCallReportOverlay } from "@/components/training/StoryCallReportOve
 import { BetweenCallsOverlay } from "@/components/training/BetweenCallsOverlay";
 import { useSessionStore } from "@/stores/useSessionStore";
 import { TrainingErrorBoundary } from "@/components/training/TrainingErrorBoundary";
+import { TTSUnlockOverlay } from "@/components/training/TTSUnlockOverlay";
 import { TrainingToasts } from "@/components/training/TrainingToasts";
 import { BootSequence } from "@/components/training/BootSequence";
 import { useHotkeys } from "@/hooks/useHotkeys";
@@ -2418,6 +2419,16 @@ export default function TrainingSessionPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/*
+        Autoplay-unlock overlay for chat mode. Browsers block
+        HTMLAudioElement.play() outside a user gesture, and useTTS
+        sets `needsAudioUnlock` whenever play() rejects. Without this
+        overlay, chat-mode users heard nothing and reported "ошибка
+        ТТС" — there was no surface to unlock the audio context.
+        Same component used in /call/page.tsx for parity.
+      */}
+      <TTSUnlockOverlay visible={tts.needsAudioUnlock} onUnlock={tts.unlock} />
 
       <HangupModal
         open={s.showHangupModal}

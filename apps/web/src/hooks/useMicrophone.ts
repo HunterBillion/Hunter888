@@ -2,7 +2,35 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { logger } from "@/lib/logger";
-import type { MicrophonePermissionState, RecordingState } from "@/types";
+import type { MicErrorReason, MicrophonePermissionState, RecordingState } from "@/types";
+
+// Map a getUserMedia rejection (or pre-flight failure) to a specific
+// MicErrorReason. Using the DOMException.name keeps us forward-compatible
+// when browsers add new error names.
+function classifyMicError(err: unknown): MicErrorReason {
+  if (typeof window !== "undefined" && !window.isSecureContext) return "insecure";
+  if (!(err instanceof DOMException)) return "unknown";
+  switch (err.name) {
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+      return "denied";
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return "not_found";
+    case "NotReadableError":
+    case "TrackStartError":
+      return "in_use";
+    case "OverconstrainedError":
+    case "ConstraintNotSatisfiedError":
+      return "constraints";
+    case "SecurityError":
+      return "insecure";
+    case "AbortError":
+      return "aborted";
+    default:
+      return "unknown";
+  }
+}
 
 const NOISE_GATE_THRESHOLD = 30; // dB threshold
 const SILENCE_TIMEOUT_MS = 30_000; // 30 seconds auto-stop
@@ -17,6 +45,7 @@ interface UseMicrophoneOptions {
 interface UseMicrophoneReturn {
   recordingState: RecordingState;
   permissionState: MicrophonePermissionState;
+  errorReason: MicErrorReason | null;
   audioLevel: number; // 0-100 scale for visual indicator
   isSupported: boolean;
   startRecording: () => Promise<boolean>;
@@ -30,6 +59,7 @@ export function useMicrophone(
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
   const [permissionState, setPermissionState] =
     useState<MicrophonePermissionState>("prompt");
+  const [errorReason, setErrorReason] = useState<MicErrorReason | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const isSupported =
     typeof window !== "undefined" &&
@@ -159,21 +189,22 @@ export function useMicrophone(
   }, [computeAudioLevel]);
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setPermissionState("error");
+      setErrorReason("insecure");
+      return false;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach((t) => t.stop());
       setPermissionState("granted");
+      setErrorReason(null);
       return true;
     } catch (err) {
-      logger.error("Microphone permission denied:", err);
-      if (
-        err instanceof DOMException &&
-        (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")
-      ) {
-        setPermissionState("denied");
-      } else {
-        setPermissionState("error");
-      }
+      const reason = classifyMicError(err);
+      logger.error("[useMicrophone] requestPermission failed:", { reason, err });
+      setPermissionState(reason === "denied" ? "denied" : "error");
+      setErrorReason(reason);
       return false;
     }
   }, []);
@@ -181,6 +212,12 @@ export function useMicrophone(
   const startRecording = useCallback(async () => {
     if (!isSupported) {
       setPermissionState("error");
+      setErrorReason("unsupported");
+      return false;
+    }
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setPermissionState("error");
+      setErrorReason("insecure");
       return false;
     }
 
@@ -194,9 +231,34 @@ export function useMicrophone(
       });
       streamRef.current = stream;
       setPermissionState("granted");
+      setErrorReason(null);
 
-      // Set up AnalyserNode for audio level monitoring
-      const audioContext = new AudioContext();
+      // Detect mid-session permission revoke / device unplug. Without
+      // this listener we'd stay in "recording" forever sending empty
+      // chunks while the user thought we were listening.
+      stream.getTracks().forEach((track) => {
+        track.onended = () => {
+          logger.warn("[useMicrophone] track ended unexpectedly (unplug/revoke)");
+          if (mountedRef.current) {
+            setRecordingState("idle");
+            setAudioLevel(0);
+            setErrorReason("not_found");
+          }
+        };
+      });
+
+      // Set up AnalyserNode for audio level monitoring. Use webkit
+      // fallback for older iOS Safari (<14.1).
+      const Ctor: typeof AudioContext =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext ||
+        AudioContext;
+      const audioContext = new Ctor();
+      // iOS Safari starts contexts in "suspended" state — must resume
+      // explicitly or audioLevel stays at 0.
+      if (audioContext.state === "suspended") {
+        audioContext.resume().catch(() => {});
+      }
       audioContextRef.current = audioContext;
       const source = audioContext.createMediaStreamSource(stream);
       const analyser = audioContext.createAnalyser();
@@ -205,12 +267,21 @@ export function useMicrophone(
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      // Set up MediaRecorder
+      // Set up MediaRecorder. Safari doesn't support webm/opus —
+      // fall back to mp4/aac and finally to default (browser-chosen).
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
-        : "audio/webm";
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : MediaRecorder.isTypeSupported("audio/mp4;codecs=mp4a.40.2")
+            ? "audio/mp4;codecs=mp4a.40.2"
+            : MediaRecorder.isTypeSupported("audio/mp4")
+              ? "audio/mp4"
+              : "";
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -242,15 +313,10 @@ export function useMicrophone(
       animFrameRef.current = requestAnimationFrame(monitorAudio);
       return true;
     } catch (err) {
-      logger.error("Failed to start recording:", err);
-      if (
-        err instanceof DOMException &&
-        (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")
-      ) {
-        setPermissionState("denied");
-      } else {
-        setPermissionState("error");
-      }
+      const reason = classifyMicError(err);
+      logger.error("[useMicrophone] startRecording failed:", { reason, err });
+      setPermissionState(reason === "denied" ? "denied" : "error");
+      setErrorReason(reason);
       setRecordingState("idle");
       return false;
     }
@@ -309,6 +375,7 @@ export function useMicrophone(
   return {
     recordingState,
     permissionState,
+    errorReason,
     audioLevel,
     isSupported,
     startRecording,

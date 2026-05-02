@@ -40,6 +40,8 @@ import { telemetry } from "@/lib/telemetry";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useTTS } from "@/hooks/useTTS";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { MicStatusBanner, pickBannerKind } from "@/components/training/MicStatusBanner";
+import { TTSUnlockOverlay } from "@/components/training/TTSUnlockOverlay";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import type { EmotionState, WSMessage } from "@/types";
@@ -992,8 +994,13 @@ export default function TrainingCallPage() {
   // the state of critical call-mode dependencies without opening DevTools.
   // Plain derived values (not hooks) — safe after the early-return.
   const sttSupported = stt.isSupported;
-  const sttError = stt.status === "unsupported" || stt.status === "error";
   const wsDead = connectionState === "disconnected" || connectionState === "error";
+  const bannerKind = pickBannerKind({
+    wsDead,
+    sttSupported,
+    sttErrorCode: stt.errorCode,
+    micErrorReason: null,
+  });
 
   // 2026-04-22: hang-up transition overlay. Shown for the 3.5s between
   // client.hangup/session.ended and the redirect to /results. Covers the
@@ -1181,27 +1188,11 @@ export default function TrainingCallPage() {
         </div>
       )}
 
-      {(wsDead || sttError || !sttSupported) && (
-        <div className="fixed top-[130px] left-0 right-0 z-30 flex justify-center px-4">
-          {sttError && sttSupported && !wsDead ? (
-            // 2026-04-26: actionable retry button on stt error. Earlier
-            // this banner was pointer-events-none → user with denied mic
-            // had no obvious recovery path beyond the small mic icon.
-            <button
-              type="button"
-              onClick={() => stt.startListening()}
-              className="rounded-full bg-amber-500/90 px-4 py-1.5 text-xs font-medium text-black shadow-lg transition hover:bg-amber-400"
-            >
-              Микрофон недоступен — нажмите чтобы включить
-            </button>
-          ) : (
-            <div className="pointer-events-none rounded-full bg-amber-500/90 px-4 py-1.5 text-xs font-medium text-black shadow-lg">
-              {wsDead
-                ? "Нет связи с сервером — переподключаемся…"
-                : "Этот браузер не поддерживает голос. Пишите текстом ниже."}
-            </div>
-          )}
-        </div>
+      {bannerKind && (
+        <MicStatusBanner
+          kind={bannerKind}
+          onRetry={() => stt.startListening()}
+        />
       )}
 
       {/*
@@ -1245,36 +1236,7 @@ export default function TrainingCallPage() {
         </form>
       </div>
 
-      {/*
-        Autoplay-unlock overlay. Browsers (Chrome/Safari strict, iOS
-        Safari especially) block HTMLAudioElement.play() that isn't
-        directly inside a user-gesture callback. The click that routed
-        to this page counts, but by the time WS connects and the first
-        TTS chunk arrives, activation may have expired.
-        useTTS.needsAudioUnlock flips to true whenever audio.play()
-        rejects with NotAllowedError/AbortError. We then render a
-        full-screen button whose onClick calls tts.unlock() — that call
-        stack is a user gesture, so the queued audio replays cleanly.
-      */}
-      {tts.needsAudioUnlock && (
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-          onClick={tts.unlock}
-          role="button"
-          tabIndex={0}
-        >
-          <div className="flex max-w-sm flex-col items-center gap-4 rounded-2xl bg-white/10 px-8 py-10 text-center shadow-2xl">
-            <div className="text-6xl">🔊</div>
-            <div className="text-xl font-semibold text-white">
-              Нажмите для включения звука
-            </div>
-            <div className="text-sm text-white/70">
-              Браузер заблокировал автовоспроизведение. Тапните где-угодно —
-              голос клиента зазвучит немедленно.
-            </div>
-          </div>
-        </div>
-      )}
+      <TTSUnlockOverlay visible={tts.needsAudioUnlock} onUnlock={tts.unlock} />
     </>
   );
 }
