@@ -154,7 +154,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
   useEffect(() => {
     // Fire-and-forget: if progress hasn't been fetched this session, do it
     // once so the constructor sees an accurate level. Cached 60s server-side.
-    fetchGamification().catch(() => {});
+    fetchGamification().catch((err) => logger.error("[CharacterBuilder] gamification fetch failed:", err));
   }, [fetchGamification]);
   const [step, setStep] = useState<Step>(0);
   const [importOpen, setImportOpen] = useState(false);

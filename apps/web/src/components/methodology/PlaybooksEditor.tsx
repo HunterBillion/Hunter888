@@ -25,6 +25,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Pencil, Trash, Sparkle } from "@phosphor-icons/react";
+import { toast } from "sonner";
+import { logger } from "@/lib/logger";
 import {
   type MethodologyChunk,
   type MethodologyKind,
@@ -454,12 +456,14 @@ export function PlaybooksEditor({ canAuthor }: PlaybooksEditorProps) {
     try {
       await deleteMethodology(chunk.id);
       setItems((prev) => prev.filter((c) => c.id !== chunk.id));
+      toast.success("Удалено");
     } catch (e: any) {
-      window.alert(
-        e?.response?.data?.detail ??
-          e?.message ??
-          "Не удалось удалить",
-      );
+      // Earlier: native alert with raw `response.data.detail` — both
+      // blocks the thread and leaks backend internals into a system
+      // dialog. Now: toast with sanitized message + full error to logs.
+      logger.error("[PlaybooksEditor] delete failed:", e);
+      const detail = e?.response?.data?.detail ?? e?.message ?? "Не удалось удалить";
+      toast.error("Ошибка удаления", { description: String(detail) });
     }
   };
 
@@ -482,12 +486,11 @@ export function PlaybooksEditor({ canAuthor }: PlaybooksEditorProps) {
       setItems((prev) =>
         prev.map((c) => (c.id === updated.id ? updated : c)),
       );
+      toast.success("Статус обновлён");
     } catch (e: any) {
-      window.alert(
-        e?.response?.data?.detail ??
-          e?.message ??
-          "Не удалось сменить статус",
-      );
+      logger.error("[PlaybooksEditor] status transition failed:", e);
+      const detail = e?.response?.data?.detail ?? e?.message ?? "Не удалось сменить статус";
+      toast.error("Ошибка смены статуса", { description: String(detail) });
     }
   };
 

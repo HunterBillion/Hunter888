@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Zap, TrendingDown } from "lucide-react";
 import { api } from "@/lib/api";
+import { logger } from "@/lib/logger";
 
 interface DailyXPStatus {
   earned_today: number;
@@ -18,7 +19,7 @@ export function XPDailyProgress({ className = "" }: { className?: string }) {
   useEffect(() => {
     api.get<DailyXPStatus>("/gamification/xp-daily")
       .then(setStatus)
-      .catch(() => {});
+      .catch((err) => logger.error("[XPDailyProgress] xp-daily fetch failed:", err));
   }, []);
 
   if (!status) return null;

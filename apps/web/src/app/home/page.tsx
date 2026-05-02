@@ -62,113 +62,6 @@ interface StoryProgressData {
   progress_pct: number;
 }
 
-interface DailyHookData {
-  weak_points?: string[];
-  focus_recommendation?: string;
-  worst_trap?: string;
-  worst_trap_count?: number;
-}
-
-interface DailyHookResult {
-  headline: string;   // bold primary text
-  subtext: string;    // secondary description
-  emotion: string;    // css color
-  icon: typeof Sun;
-  priority: number;
-}
-
-/**
- * Personalized daily hook — 9-priority system.
- * Returns structured data for dedicated DailyHook card (not cramped into status line).
- */
-function getDailyHook(
-  dashboard: DashboardManager & { daily_hook?: DailyHookData } | null,
-  story: StoryProgressData | null,
-): DailyHookResult {
-  if (!dashboard) return { headline: "Готов к охоте?", subtext: "", emotion: "var(--accent)", icon: Crosshair, priority: 9 };
-
-  const streak = dashboard.gamification?.streak_days ?? 0;
-  const lastScore = dashboard.recent_sessions?.[0]?.score_total ?? null;
-  const totalSessions = dashboard.stats?.total_sessions ?? 0;
-  const hook = (dashboard as { daily_hook?: DailyHookData }).daily_hook;
-  const worstTrap = hook?.worst_trap;
-  const worstTrapCount = hook?.worst_trap_count ?? 0;
-  const weakSkill = hook?.weak_points?.[0];
-
-  // P1/P2 streak hooks removed 2026-04-18 — user feedback: "Серия: N дней"
-  // headline was noisy and duplicated the streak badge in the hero. The streak
-  // counter chip stays visible below the name; no hero headline for streak.
-  void streak; // keep variable referenced, used elsewhere in this function
-
-  // P3: Last score < 50 — revenge
-  if (lastScore !== null && lastScore < 50) {
-    const trapInfo = worstTrap ? `Ловушка '${worstTrap}' сломала тебя.` : "Прошлый звонок не задался.";
-    return {
-      headline: `Вчера ${Math.round(lastScore)}/100`,
-      subtext: `${trapInfo} Цель сегодня — ${Math.min(Math.round(lastScore) + 15, 100)}`,
-      emotion: "var(--danger)", icon: Crosshair, priority: 3,
-    };
-  }
-
-  // P4: Last score 50-70 — focus on weak skill
-  if (lastScore !== null && lastScore >= 50 && lastScore <= 70) {
-    const skillInfo = weakSkill ? `'${weakSkill}' тянет вниз.` : "Есть куда расти.";
-    return {
-      headline: `${Math.round(lastScore)}/100 — неплохо`,
-      subtext: `${skillInfo} Сфокусируйся на слабом месте`,
-      emotion: "var(--warning)", icon: Target, priority: 4,
-    };
-  }
-
-  // P5: Failed trap 2+ times
-  if (worstTrap && worstTrapCount >= 2) {
-    return {
-      headline: `Ловушка '${worstTrap}'`,
-      subtext: `Победила тебя ${worstTrapCount} раз. Сегодня она вернётся`,
-      emotion: "var(--danger)", icon: Crosshair, priority: 5,
-    };
-  }
-
-  // P6: Chapter unlock approaching
-  if (story && story.next_chapter && story.progress_pct >= 70) {
-    return {
-      headline: `Глава ${story.next_chapter} почти открыта`,
-      subtext: `${Math.round(story.progress_pct)}% прогресса. Ещё немного`,
-      emotion: "var(--accent)", icon: Star, priority: 6,
-    };
-  }
-
-  // P6b: New chapter just started
-  if (story && story.chapter_sessions === 0 && story.current_chapter > 1) {
-    return {
-      headline: `Глава ${story.current_chapter}: ${story.chapter_name}`,
-      subtext: "Новый враг. Новые правила",
-      emotion: "var(--accent)", icon: Star, priority: 6,
-    };
-  }
-
-  // P7: New user (day 1)
-  if (totalSessions === 0) {
-    return {
-      headline: "Твой первый клиент ждёт",
-      subtext: "Добро пожаловать, Охотник. Начни прямо сейчас",
-      emotion: "var(--accent)", icon: Crosshair, priority: 7,
-    };
-  }
-
-  // P8: New user (days 2-3)
-  if (totalSessions >= 1 && totalSessions <= 3) {
-    return {
-      headline: "Ты вернулся",
-      subtext: "Хороший знак. Вчера было легко. Сегодня — нет",
-      emotion: "var(--accent)", icon: Lightning, priority: 8,
-    };
-  }
-
-  // P9: Fallback
-  return { headline: "Готов к охоте?", subtext: "", emotion: "var(--accent)", icon: Crosshair, priority: 9 };
-}
-
 // F3: Daily challenges — expanded pool in /lib/daily-challenges.ts
 
 export default function HomePage() {
@@ -837,12 +730,6 @@ export default function HomePage() {
               </div>
             </motion.div>
           )}
-
-          {/* 2026-04-18: Daily Hook panel ("Готов к охоте?" fallback) removed
-              per user feedback — fallback headline for users with no context
-              was empty-looking noise. Specific hooks (bad-trap, worst-skill,
-              story-unlock) were informative but rarely the default state. */}
-          {false && (() => { return null; })()}
 
           {/* Tournament Banner */}
           {!loading && dashboard?.tournament && (

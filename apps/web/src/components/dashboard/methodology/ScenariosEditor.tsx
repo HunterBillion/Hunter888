@@ -428,9 +428,10 @@ function ScenarioVersions({ templateId }: { templateId: string }) {
     (async () => {
       setLoading(true);
       try {
-        // Endpoint TBD by C4.1; for now we surface a friendly note.
-        // The version list is exposed in admin Client Domain panel today;
-        // this preview avoids guessing at an endpoint that doesn't exist.
+        // Versions endpoint is not yet exposed in the public API. The
+        // canonical version list lives in the Client Domain admin panel;
+        // this card surfaces a graceful 404-fallback hint until the
+        // inline preview ships. Avoid leaking sprint codenames into UI.
         const res: { versions: ScenarioVersion[] } = await api.get(
           `/rop/scenarios/${templateId}/versions?limit=10`,
         );
@@ -441,8 +442,7 @@ function ScenarioVersions({ templateId }: { templateId: string }) {
           // Endpoint not built yet — degrade gracefully
           setVersions([]);
           setError(
-            "Список версий по этому шаблону доступен в админ-панели Client Domain. " +
-              "Inline-список появится в C4.1.",
+            "Список версий по этому шаблону доступен в админ-панели Client Domain.",
           );
         } else {
           const msg = err instanceof Error ? err.message : "Ошибка загрузки версий";

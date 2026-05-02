@@ -41,7 +41,13 @@ const MAX_RECENT = 5;
 function getRecentIds(): string[] {
   try {
     const raw = localStorage.getItem(RECENT_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    // Validate shape: must be string[]. Old/corrupted values get
+    // discarded silently (returns []) — safer than `as string[]` cast
+    // which would crash downstream `.filter`/`.map` on a non-array.
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((v): v is string => typeof v === "string");
   } catch { return []; }
 }
 

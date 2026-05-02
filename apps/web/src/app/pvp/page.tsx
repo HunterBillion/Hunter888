@@ -77,7 +77,7 @@ function PvPLobbyContent() {
       .then((data: Record<string, unknown>) => {
         if (typeof data?.arena_points === "number") setArenaPoints(data.arena_points);
       })
-      .catch(() => {});
+      .catch((err) => logger.error("[pvp] arena-points fetch failed:", err));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only init; store actions are stable Zustand refs
 
   // 2026-04-20: auto-refetch рейтинга при возврате на /pvp
@@ -94,7 +94,7 @@ function PvPLobbyContent() {
         .then((data: Record<string, unknown>) => {
           if (typeof data?.arena_points === "number") setArenaPoints(data.arena_points);
         })
-        .catch(() => {});
+        .catch((err) => logger.error("[pvp] arena-points fetch failed:", err));
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);

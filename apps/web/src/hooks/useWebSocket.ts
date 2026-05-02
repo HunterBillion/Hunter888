@@ -164,7 +164,21 @@ export function useWebSocket({
       }
 
       const data = await res.json();
-      setTokens(data.access_token, data.refresh_token, data.csrf_token);
+      // Same shape-guard as the WS-path refresh handler below: a 200 OK
+      // with a malformed body would otherwise crash inside setTokens.
+      if (
+        typeof data?.access_token !== "string" ||
+        typeof data?.refresh_token !== "string"
+      ) {
+        logger.error("[WS] REST refresh returned malformed payload — redirecting to login");
+        window.location.href = "/login";
+        return;
+      }
+      setTokens(
+        data.access_token,
+        data.refresh_token,
+        typeof data.csrf_token === "string" ? data.csrf_token : undefined,
+      );
       logger.log("[WS] Token refreshed via REST, reconnecting...");
       // Reconnect will happen automatically via connect()
     } catch {
@@ -228,13 +242,29 @@ export function useWebSocket({
           // Ignore pong messages
           if (data.type === "pong") return;
 
-          // Handle token refresh responses internally
+          // Handle token refresh responses internally. Both branches
+          // shape-validate `data.data` before destructuring — earlier a
+          // malformed `auth.refreshed` payload would crash inside
+          // setTokens (passing undefined as access token), tearing down
+          // the WS session and leaving the user blacklisted on the next
+          // request. Optional-chain + early return keeps the channel
+          // alive on bad input.
           if (data.type === "auth.refreshed") {
             if (wsRefreshFallbackRef.current) {
               clearTimeout(wsRefreshFallbackRef.current);
               wsRefreshFallbackRef.current = null;
             }
-            setTokens(data.data.access_token, data.data.refresh_token, data.data.csrf_token);
+            const access = data.data?.access_token;
+            const refresh = data.data?.refresh_token;
+            const csrf = data.data?.csrf_token;
+            if (typeof access !== "string" || typeof refresh !== "string") {
+              logger.error("[WS] auth.refreshed payload malformed — ignoring", {
+                has_access: typeof access,
+                has_refresh: typeof refresh,
+              });
+              return;
+            }
+            setTokens(access, refresh, typeof csrf === "string" ? csrf : undefined);
             logger.log("[WS] Token refreshed via WS");
             return;
           }
@@ -243,9 +273,12 @@ export function useWebSocket({
               clearTimeout(wsRefreshFallbackRef.current);
               wsRefreshFallbackRef.current = null;
             }
-            if (data.data.reason === "refresh_expired") {
+            const reason = data.data?.reason;
+            if (reason === "refresh_expired") {
               logger.error("[WS] Refresh token expired, redirecting to login");
               window.location.href = "/login";
+            } else {
+              logger.warn("[WS] auth.refresh_error", { reason: reason ?? "unknown" });
             }
             return;
           }
