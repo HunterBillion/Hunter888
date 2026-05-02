@@ -21,6 +21,8 @@ import { LeagueHeroCard } from "@/components/pvp/LeagueHeroCard";
 // 2026-04-29: pixel unification — единый формат карточек режимов + pixel-иконки.
 import { PixelModeCard } from "@/components/pvp/PixelModeCard";
 import { PixelIcon, type PixelIconName } from "@/components/pvp/PixelIcon";
+// Issue #169 — custom-character picker (PR #142 backend endpoint).
+import { CharacterPicker } from "@/components/pvp/CharacterPicker";
 
 const DUEL_STATUS_LABELS: Record<string, string> = {
   pending: "Ожидание",
@@ -49,6 +51,10 @@ function PvPLobbyContent() {
   const [quizStarting, setQuizStarting] = useState(false);
   const [aiPersonality, setAiPersonality] = useState<string | null>(null);
   const [pveAccepting, setPveAccepting] = useState(false);
+  // Issue #169 — selected custom-character preset id (or null = random
+  // legacy behaviour). Forwarded to ``queue.join`` so the matchmaker
+  // can route the duel to the chosen archetype.
+  const [pickedCharacterId, setPickedCharacterId] = useState<string | null>(null);
   const [arenaPoints, setArenaPoints] = useState<number>(0);
   // 2026-04-20: флаг выставляется в app/pvp/tutorial/page.tsx сразу после
   // завершения туториала, чтобы welcome-баннер на /pvp мгновенно
@@ -147,8 +153,11 @@ function PvPLobbyContent() {
     autoPvERef.current = false;
     searchStartedAtRef.current = Date.now();
     store.setQueueStatus("searching");
-    sendMessage({ type: "queue.join" });
-  }, [sendMessage, store]);
+    // Issue #169 — forward picked custom character id (or omit for random).
+    const payload: Record<string, unknown> = { type: "queue.join" };
+    if (pickedCharacterId) payload.character_id = pickedCharacterId;
+    sendMessage(payload);
+  }, [sendMessage, store, pickedCharacterId]);
 
   const handleCancelQueue = useCallback(() => {
     autoPvERef.current = false;
@@ -456,6 +465,18 @@ function PvPLobbyContent() {
                   )}
                 </motion.button>
               </motion.div>
+
+              {/* Issue #169 — character picker. Custom presets created
+                  in CharacterBuilder + presets shared by colleagues
+                  (is_shared=true) appear here. ``null`` = random
+                  archetype (legacy default). */}
+              <div className="mt-3">
+                <CharacterPicker
+                  selectedId={pickedCharacterId}
+                  onPick={setPickedCharacterId}
+                  disabled={store.queueStatus !== "idle"}
+                />
+              </div>
 
               {/* Tabs */}
               <div className="flex gap-1 rounded-xl p-1" style={{ background: "var(--input-bg)" }}>
