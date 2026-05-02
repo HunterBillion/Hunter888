@@ -206,72 +206,133 @@ def _seed_password(env_key: str, dev_default: str) -> str:
     return dev_default
 
 
+# Preference presets used by both the seed script (fresh dev DB) and
+# the prod backfill migration ``20260502_008_pilot_seed_backfill.py``.
+# Matched on email so a future seed user with the same address
+# automatically picks up the right defaults.
+_PILOT_PREFERENCES: dict[str, dict[str, str]] = {
+    "admin@trainer.local": {
+        "gender": "male", "role_title": "Администратор",
+        "lead_source": "mixed", "primary_contact": "mixed",
+        "specialization": "platform", "experience_level": "senior",
+        "training_mode": "balanced",
+    },
+    "rop1@trainer.local": {
+        "gender": "male", "role_title": "РОП Sales",
+        "lead_source": "mixed", "primary_contact": "mixed",
+        "specialization": "bankruptcy_127fz", "experience_level": "senior",
+        "training_mode": "balanced",
+    },
+    "rop2@trainer.local": {
+        "gender": "male", "role_title": "РОП B2B",
+        "lead_source": "inbound", "primary_contact": "mixed",
+        "specialization": "bankruptcy_127fz", "experience_level": "senior",
+        "training_mode": "balanced",
+    },
+    "method@trainer.local": {
+        "gender": "female", "role_title": "Методолог",
+        "lead_source": "mixed", "primary_contact": "mixed",
+        "specialization": "bankruptcy_127fz", "experience_level": "senior",
+        "training_mode": "balanced",
+    },
+    "manager1@trainer.local": {
+        "gender": "male", "role_title": "Менеджер по продажам",
+        "lead_source": "warm", "primary_contact": "phone",
+        "specialization": "bankruptcy_127fz", "experience_level": "junior",
+        "training_mode": "balanced",
+    },
+    "manager2@trainer.local": {
+        "gender": "female", "role_title": "Старший менеджер по продажам",
+        "lead_source": "warm", "primary_contact": "phone",
+        "specialization": "bankruptcy_127fz", "experience_level": "middle",
+        "training_mode": "intensive",
+    },
+    "manager3@trainer.local": {
+        "gender": "male", "role_title": "Менеджер по продажам B2B",
+        "lead_source": "inbound", "primary_contact": "mixed",
+        "specialization": "bankruptcy_127fz", "experience_level": "middle",
+        "training_mode": "balanced",
+    },
+    "manager4@trainer.local": {
+        "gender": "female", "role_title": "Менеджер по продажам B2B",
+        "lead_source": "inbound", "primary_contact": "mixed",
+        "specialization": "bankruptcy_127fz", "experience_level": "junior",
+        "training_mode": "balanced",
+    },
+}
+
+
+# B5-04 — pilot users land at level 15 so every arena gate
+# (rapid_fire=9, gauntlet=10, mirror=15) is unlocked. Total XP value
+# matches the ``LEVELS`` table threshold in
+# ``apps/api/scripts/seed_levels.py`` to keep level/XP invariants
+# consistent.
+_PILOT_TARGET_LEVEL = 15
+_PILOT_TARGET_TOTAL_XP = 121_700
+
+
 async def _seed_users(db: AsyncSession, teams: dict[str, Team]):
+    def _u(email: str, password_env: str, password_default: str,
+           full_name: str, role: UserRole, team_id) -> User:
+        prefs = _PILOT_PREFERENCES.get(email, {})
+        return User(
+            email=email,
+            hashed_password=hash_password(_seed_password(password_env, password_default)),
+            full_name=full_name,
+            role=role,
+            team_id=team_id,
+            # B5-05: complete profile defaults so POST /api/training/sessions
+            # doesn't 409 with profile_incomplete on first attempt.
+            preferences=prefs,
+            onboarding_completed=True,
+        )
+
     users = [
-        User(
-            email="admin@trainer.local",
-            hashed_password=hash_password(_seed_password("SEED_ADMIN_PASSWORD", "Adm1n!2024")),
-            full_name="Администратор",
-            role=UserRole.admin,
-            team_id=teams["sales"].id,
-        ),
-        User(
-            email="rop1@trainer.local",
-            hashed_password=hash_password(_seed_password("SEED_ROP1_PASSWORD", "Rop1!pass")),
-            full_name="Елена Кузнецова",
-            role=UserRole.rop,
-            team_id=teams["sales"].id,
-        ),
-        User(
-            email="rop2@trainer.local",
-            hashed_password=hash_password(_seed_password("SEED_ROP2_PASSWORD", "Rop2!pass")),
-            full_name="Сергей Волков",
-            role=UserRole.rop,
-            team_id=teams["b2b"].id,
-        ),
+        _u("admin@trainer.local", "SEED_ADMIN_PASSWORD", "Adm1n!2024",
+           "Администратор", UserRole.admin, teams["sales"].id),
+        _u("rop1@trainer.local", "SEED_ROP1_PASSWORD", "Rop1!pass",
+           "Елена Кузнецова", UserRole.rop, teams["sales"].id),
+        _u("rop2@trainer.local", "SEED_ROP2_PASSWORD", "Rop2!pass",
+           "Сергей Волков", UserRole.rop, teams["b2b"].id),
         # Was role=methodologist before 2026-04-26 retirement of that role.
         # Now seeded as ROP attached to the b2b team. Keeps the email
         # method@trainer.local stable so any pilot tester scripts that
         # reference it still log in (now with elevated rop+admin perms).
-        User(
-            email="method@trainer.local",
-            hashed_password=hash_password(_seed_password("SEED_METHOD_PASSWORD", "Method!1")),
-            full_name="Анна Методист",
-            role=UserRole.rop,
-            team_id=teams["b2b"].id,
-        ),
-        User(
-            email="manager1@trainer.local",
-            hashed_password=hash_password(_seed_password("SEED_MGR1_PASSWORD", "Mgr1!pass")),
-            full_name="Иван Петров",
-            role=UserRole.manager,
-            team_id=teams["sales"].id,
-        ),
-        User(
-            email="manager2@trainer.local",
-            hashed_password=hash_password(_seed_password("SEED_MGR2_PASSWORD", "Mgr2!pass")),
-            full_name="Мария Сидорова",
-            role=UserRole.manager,
-            team_id=teams["sales"].id,
-        ),
-        User(
-            email="manager3@trainer.local",
-            hashed_password=hash_password(_seed_password("SEED_MGR3_PASSWORD", "Mgr3!pass")),
-            full_name="Дмитрий Козлов",
-            role=UserRole.manager,
-            team_id=teams["b2b"].id,
-        ),
-        User(
-            email="manager4@trainer.local",
-            hashed_password=hash_password(_seed_password("SEED_MGR4_PASSWORD", "Mgr4!pass")),
-            full_name="Ксения Морозова",
-            role=UserRole.manager,
-            team_id=teams["b2b"].id,
-        ),
+        _u("method@trainer.local", "SEED_METHOD_PASSWORD", "Method!1",
+           "Анна Методист", UserRole.rop, teams["b2b"].id),
+        _u("manager1@trainer.local", "SEED_MGR1_PASSWORD", "Mgr1!pass",
+           "Иван Петров", UserRole.manager, teams["sales"].id),
+        _u("manager2@trainer.local", "SEED_MGR2_PASSWORD", "Mgr2!pass",
+           "Мария Сидорова", UserRole.manager, teams["sales"].id),
+        _u("manager3@trainer.local", "SEED_MGR3_PASSWORD", "Mgr3!pass",
+           "Дмитрий Козлов", UserRole.manager, teams["b2b"].id),
+        _u("manager4@trainer.local", "SEED_MGR4_PASSWORD", "Mgr4!pass",
+           "Ксения Морозова", UserRole.manager, teams["b2b"].id),
     ]
     db.add_all(users)
     await db.flush()
-    print(f"  Users: {len(users)} (1 admin, 3 rop, 4 managers)")
+
+    # B5-04: pre-leveled ManagerProgress so every seeded user can
+    # exercise the full arena out of the box.
+    from app.models.progress import ManagerProgress, SkillConfidence
+    progress_rows = [
+        ManagerProgress(
+            user_id=u.id,
+            current_level=_PILOT_TARGET_LEVEL,
+            current_xp=0,
+            total_xp=_PILOT_TARGET_TOTAL_XP,
+            calibration_complete=True,
+            skill_confidence=SkillConfidence.medium.value,
+        )
+        for u in users
+    ]
+    db.add_all(progress_rows)
+    await db.flush()
+
+    print(
+        f"  Users: {len(users)} (1 admin, 3 rop, 4 managers); "
+        f"ManagerProgress @ level {_PILOT_TARGET_LEVEL}"
+    )
 
 
 # ── Scripts (3 types with unique checkpoints) ──────────────────────

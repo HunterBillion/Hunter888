@@ -190,7 +190,14 @@ _LOGIN_FAIL_TTL = 15 * 60  # 15 minutes in seconds
 
 
 @router.post("/login", response_model=TokenResponse)
-@limiter.limit("5/minute")
+# B5-13: per-IP rate limit raised from 5/min → 15/min. The original
+# 5/min was tuned for credential-stuffing defence on a single user,
+# but office NAT (~10 colleagues logging in at 9:00 sharp) trips it
+# for legitimate use. The per-email failed-attempt lockout below
+# (``_LOGIN_FAIL_MAX = 5`` / 15 min) is the actual brute-force
+# defence — it's failure-keyed and survives the per-IP loosening
+# untouched.
+@limiter.limit("15/minute")
 async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
     _ip = request.client.host if request.client else "unknown"
     _lockout_key = f"login_fail:{body.email}"
