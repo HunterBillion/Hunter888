@@ -138,6 +138,13 @@ ALLOWED_EVENT_TYPES: frozenset[str] = frozenset(
         "knowledge_item.expired",
         "knowledge_item.status_changed",
         "knowledge_item.reviewed",
+        # B5-01 (audit 2026-05-02) — methodology DELETE soft-delete event.
+        # Distinct from ``status_changed`` so the timeline UI can render
+        # "ROP удалил скрипт" with a different chip than a status flip.
+        # Always paired with ``knowledge_item.status_changed`` (target
+        # status: ``outdated``) for back-compat with consumers that
+        # only listen on the status-changed feed.
+        "knowledge_item.deleted",
         # ── TZ-4 §12 conversation policy engine (D5 producer) ─────────────
         "conversation.policy_violation_detected",
         # ── (2026-05-01) Realism telemetry ────────────────────────────────

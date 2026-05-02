@@ -354,15 +354,20 @@ async def populate_single_methodology_chunk_embedding(chunk_id: uuid.UUID) -> bo
         from sqlalchemy import select, update
 
         async with async_session() as db:
+            # B5-01: skip soft-deleted rows. The queue may carry
+            # an id that was enqueued before a DELETE — without this
+            # filter we'd embed a row that is invisible to retrieval.
             row = (
                 await db.execute(
                     select(MethodologyChunk.title, MethodologyChunk.body)
                     .where(MethodologyChunk.id == chunk_id)
+                    .where(MethodologyChunk.is_deleted.is_(False))
                 )
             ).first()
             if row is None:
                 logger.info(
-                    "embedding_live_backfill: methodology chunk %s not found, skipping",
+                    "embedding_live_backfill: methodology chunk %s not found "
+                    "or soft-deleted, skipping",
                     chunk_id,
                 )
                 return False

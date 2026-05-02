@@ -39,6 +39,7 @@ from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -215,6 +216,23 @@ class MethodologyChunk(Base):
     """Bumped on every ``PUT`` (the schema-level optimistic-concurrency
     field). Useful for the history UI and for change-detection in
     embedding-staleness checks."""
+
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        index=True,
+    )
+    """Soft-delete flag (B5-01). Always paired with
+    ``knowledge_status='outdated'`` when flipped to True via
+    ``DELETE /methodology/chunks/{id}``. The combination is what every
+    read site filters on: ``WHERE NOT is_deleted`` is the authoritative
+    visibility gate; ``knowledge_status`` carries the lifecycle
+    semantics. Pre-2026-05-02 the DELETE endpoint did
+    ``await db.delete(chunk)`` (hard delete) — orphaning
+    ``ChunkUsageLog`` rows and breaking the audit timeline. The flag
+    fixes that without forfeiting the table's history."""
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

@@ -44,8 +44,10 @@ from app.core.deps import (
 )
 from app.database import get_db
 from app.models.knowledge_status import (
+    IllegalStatusTransition,
     KnowledgeStatus,
     STATUSES_VISIBLE_IN_RAG,
+    validate_transition,
 )
 from app.models.methodology import MethodologyChunk
 from app.models.user import User
@@ -57,6 +59,8 @@ from app.schemas.methodology import (
     MethodologyChunkUpdate,
     MethodologyStatusUpdate,
 )
+from app.services.client_domain import emit_domain_event
+from app.services.knowledge_review_policy import KNOWLEDGE_GLOBAL_ANCHOR
 
 
 router = APIRouter(prefix="/methodology", tags=["methodology"])
@@ -145,7 +149,11 @@ async def list_methodology_chunks(
         )
         scope_team = effective_team_id
 
-    stmt = select(MethodologyChunk)
+    # Soft-deleted rows (B5-01) never surface in the list endpoint —
+    # they exist only for ChunkUsageLog joins and audit history.
+    stmt = select(MethodologyChunk).where(
+        MethodologyChunk.is_deleted.is_(False)
+    )
     if scope_team is not None:
         stmt = stmt.where(MethodologyChunk.team_id == scope_team)
     if kind is not None:
@@ -323,13 +331,108 @@ async def delete_methodology_chunk(
     user: User = Depends(require_role("admin", "rop")),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """Hard delete. Prefer PATCH status=outdated for soft delete —
-    keeps history + ChunkUsageLog joins. This endpoint exists for
-    "I created a chunk by mistake" cases."""
+    """Soft-delete a methodology chunk (B5-01).
+
+    Pre-2026-05-02 this endpoint did ``await db.delete(chunk)`` (hard
+    delete). Hard delete on a row referenced by ``chunk_usage_logs``
+    (whose FK was relaxed in migration ``20260502_002``) leaves
+    orphaned analytics rows and breaks the audit timeline — there
+    is no way to ask "why did the team's «Скрипт по дорого»
+    disappear?" once the row is gone.
+
+    Now it flips ``is_deleted = True`` + ``knowledge_status =
+    outdated`` and emits two events (``knowledge_item.deleted`` for
+    the timeline chip + ``knowledge_item.status_changed`` for the
+    same fan-out wiki/legal use). The row is invisible to every
+    read site (list, single get, RAG retrieval) but the
+    ChunkUsageLog joins keep working — the team's history is
+    preserved.
+
+    Recovery is intentionally not a flip-back: ``outdated`` is the
+    soft-delete terminal per ``KnowledgeStatus`` docstring. To
+    restore the chunk, author it again as a fresh INSERT — the
+    audit log captures both events.
+    """
     chunk = await check_methodology_team_access(
         user, chunk_id=chunk_id, db=db, mode="write"
     )
-    await db.delete(chunk)
+
+    previous_status = chunk.knowledge_status
+    target_status = KnowledgeStatus.outdated.value
+
+    # Validate: deleting an already-deleted chunk is a no-op via the
+    # ``is_deleted=True`` filter in the gate (404). This branch
+    # protects against the rare race where two ROPs hit DELETE
+    # simultaneously — the second one finds the chunk in `outdated`
+    # state but still un-deleted (idempotent). Either way, the
+    # transition target is `outdated` so the human transition graph
+    # accepts it.
+    try:
+        validate_transition(
+            previous_status, target_status, automated=False
+        )
+    except IllegalStatusTransition as exc:
+        # The only way this fires is if the row is already
+        # `outdated` AND somehow has `is_deleted=False` (data
+        # inconsistency). Fall through with idempotent flip.
+        if previous_status != target_status:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            )
+
+    now = datetime.now(timezone.utc)
+    chunk.is_deleted = True
+    chunk.knowledge_status = target_status
+    chunk.last_reviewed_at = now
+    chunk.last_reviewed_by = user.id
+    chunk.version += 1
+
+    common_payload = {
+        "chunk_id": str(chunk.id),
+        "team_id": str(chunk.team_id),
+        "title": chunk.title,
+        "from_status": previous_status,
+        "to_status": target_status,
+        "reviewed_by": str(user.id),
+        "reviewed_at": now.isoformat(),
+    }
+
+    # Emit BEFORE commit so the event lands in the same transaction
+    # as the row mutation — TZ-1 §15.1 invariant. The helper itself
+    # uses begin_nested + savepoint so a failure here does not
+    # roll back the chunk update unless ``client_domain_strict_emit``
+    # is on (it is, on prod, so failures bubble — that's the
+    # correct behaviour for a critical audit event).
+    await emit_domain_event(
+        db,
+        lead_client_id=KNOWLEDGE_GLOBAL_ANCHOR,
+        event_type="knowledge_item.deleted",
+        actor_type="user",
+        actor_id=user.id,
+        source="methodology_api",
+        aggregate_type="methodology_chunk",
+        aggregate_id=chunk.id,
+        payload=common_payload,
+        idempotency_key=f"methodology.deleted:{chunk.id}",
+    )
+    if previous_status != target_status:
+        await emit_domain_event(
+            db,
+            lead_client_id=KNOWLEDGE_GLOBAL_ANCHOR,
+            event_type="knowledge_item.status_changed",
+            actor_type="user",
+            actor_id=user.id,
+            source="methodology_api",
+            aggregate_type="methodology_chunk",
+            aggregate_id=chunk.id,
+            payload=common_payload,
+            idempotency_key=(
+                f"knowledge_item.status_changed:{chunk.id}:"
+                f"{previous_status}-to-{target_status}:{now.isoformat()}"
+            ),
+        )
+
     await db.commit()
 
 
@@ -349,7 +452,20 @@ async def patch_methodology_status(
     user: User = Depends(require_role("admin", "rop")),
     db: AsyncSession = Depends(get_db),
 ) -> MethodologyChunkOut:
-    """Governance transition.
+    """Governance transition (B5-02, B5-07).
+
+    Validates the requested transition against the canonical graph in
+    :func:`app.models.knowledge_status.validate_transition`. Pre-audit
+    this endpoint did ``chunk.knowledge_status = body.status``
+    unconditionally — letting a ROP do ``outdated → actual`` (recovery
+    from soft-delete) which the docstring explicitly forbids. Now an
+    illegal transition returns ``409`` with structured detail.
+
+    Emits paired ``knowledge_item.reviewed`` (audit) and
+    ``knowledge_item.status_changed`` (fan-out) events so the FE
+    timeline sees the same shape it sees for legal/wiki transitions
+    (B5-02). Pre-audit the methodology PATCH was completely silent
+    — ROPs could flip statuses without a trace.
 
     The note field is required for transitions into ``disputed`` /
     ``outdated`` so future reviewers see why. ``actual`` /
@@ -368,14 +484,138 @@ async def patch_methodology_status(
             ),
         )
 
-    chunk.knowledge_status = body.status
-    chunk.last_reviewed_at = datetime.now(timezone.utc)
+    previous_status = chunk.knowledge_status
+    target_status = body.status
+
+    # Enforce the transition graph (B5-07). DELETE → outdated already
+    # validates separately; this is the only other path into status
+    # mutation, so once both are guarded the graph holds.
+    try:
+        validate_transition(previous_status, target_status, automated=False)
+    except IllegalStatusTransition as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "illegal_status_transition",
+                "message": str(exc),
+                "from_status": previous_status,
+                "to_status": target_status,
+            },
+        )
+
+    now = datetime.now(timezone.utc)
+    chunk.knowledge_status = target_status
+    chunk.last_reviewed_at = now
     chunk.last_reviewed_by = user.id
-    # Version is bumped on status changes too — the change is
-    # reviewable, embedding doesn't need recompute.
+    # Version bumped on status flips too — the change is reviewable,
+    # embedding doesn't need recompute (no body change).
     chunk.version += 1
-    chunk.updated_at = datetime.now(timezone.utc)
+    chunk.updated_at = now
+
+    common_payload = {
+        "chunk_id": str(chunk.id),
+        "team_id": str(chunk.team_id),
+        "title": chunk.title,
+        "from_status": previous_status,
+        "to_status": target_status,
+        "reviewed_by": str(user.id),
+        "reviewed_at": now.isoformat(),
+        "reason": (body.note or None),
+    }
+
+    # B5-02: emit audit + fan-out events. Mirrors
+    # ``knowledge_review_policy.mark_reviewed`` shape exactly so
+    # consumers see one event contract across all knowledge
+    # surfaces (legal/wiki/methodology).
+    await emit_domain_event(
+        db,
+        lead_client_id=KNOWLEDGE_GLOBAL_ANCHOR,
+        event_type="knowledge_item.reviewed",
+        actor_type="user",
+        actor_id=user.id,
+        source="methodology_api",
+        aggregate_type="methodology_chunk",
+        aggregate_id=chunk.id,
+        payload=common_payload,
+        idempotency_key=f"knowledge_item.reviewed:{chunk.id}:{now.isoformat()}",
+    )
+    if previous_status != target_status:
+        await emit_domain_event(
+            db,
+            lead_client_id=KNOWLEDGE_GLOBAL_ANCHOR,
+            event_type="knowledge_item.status_changed",
+            actor_type="user",
+            actor_id=user.id,
+            source="methodology_api",
+            aggregate_type="methodology_chunk",
+            aggregate_id=chunk.id,
+            payload=common_payload,
+            idempotency_key=(
+                f"knowledge_item.status_changed:{chunk.id}:"
+                f"{previous_status}-to-{target_status}:{now.isoformat()}"
+            ),
+        )
 
     await db.commit()
     await db.refresh(chunk)
     return _to_out(chunk)
+
+
+# ── Effectiveness panel (B5-08) ─────────────────────────────────────────
+
+
+@router.get("/effectiveness")
+async def get_methodology_effectiveness(
+    team_id: Optional[uuid.UUID] = Query(
+        None,
+        description=(
+            "Filter by team. Admin may pass any team_id; ROP is "
+            "restricted to their own team."
+        ),
+    ),
+    days: int = Query(30, ge=1, le=365),
+    user: User = Depends(require_role("admin", "rop")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Methodology effectiveness summary (TZ-8 PR-D2 panel).
+
+    Wires the existing ``methodology_telemetry.get_team_methodology_stats``
+    service into a REST surface so the FE methodology dashboard tab
+    can render real numbers ("Скрипт по дорого: использован 47 раз
+    в коуч-режиме, 23 положительных") instead of mocks.
+
+    Pre-2026-05-02 (B5-08) the service existed but had no router —
+    the panel was blind.
+    """
+    role = user.role.value
+    if role == "admin":
+        # Admin must still pick a team — the underlying telemetry
+        # service is keyed on ``team_id`` (no global rollup yet,
+        # tracked in TZ-8 §13 follow-up). When admin omits the
+        # parameter, default to their team_id if any, else 400.
+        scope_team = team_id or user.team_id
+    else:
+        # ROP — must use own team. Cross-team request → 403 via gate.
+        scope_team = team_id or user.team_id
+        if scope_team is not None:
+            await check_methodology_team_access(
+                user, team_id=scope_team, mode="read"
+            )
+
+    if scope_team is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "team_id is required (admin must pass ?team_id=... when "
+                "not assigned to a team)"
+            ),
+        )
+
+    from app.services.methodology_telemetry import get_team_methodology_stats
+
+    stats = await get_team_methodology_stats(
+        db,
+        team_id=scope_team,
+        days=days,
+    )
+    return {"team_id": str(scope_team), "days": days, "items": stats}

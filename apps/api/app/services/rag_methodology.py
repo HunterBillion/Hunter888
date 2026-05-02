@@ -112,6 +112,13 @@ async def retrieve_methodology_context(
                 .where(MethodologyChunk.team_id == team_id)
                 .where(MethodologyChunk.embedding.isnot(None))
                 .where(MethodologyChunk.knowledge_status.in_(visible_statuses))
+                # B5-01 — soft-deleted rows never surface in retrieval.
+                # The status filter above already excludes ``outdated``,
+                # but ``is_deleted=True`` is the authoritative flag and
+                # the two are independent (a chunk could in theory be
+                # soft-deleted while in another status during a botched
+                # transition; this filter catches that).
+                .where(MethodologyChunk.is_deleted.is_(False))
             )
         ).scalar() or 0
         if chunk_count < 5:
@@ -138,6 +145,11 @@ async def retrieve_methodology_context(
         .where(MethodologyChunk.team_id == team_id)
         .where(MethodologyChunk.embedding.isnot(None))
         .where(MethodologyChunk.knowledge_status.in_(visible_statuses))
+        # B5-01 — match the count filter above. Without this, the
+        # candidate pool could include soft-deleted rows (with valid
+        # embeddings but ``outdated`` status hidden via the in_
+        # filter — but the column may drift independently in future).
+        .where(MethodologyChunk.is_deleted.is_(False))
         .order_by("distance")
         .limit(fetch_n)
     )
