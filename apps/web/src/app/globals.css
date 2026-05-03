@@ -640,10 +640,17 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
     }
   }
 
-  /* Desktop: 3-column */
+  /*
+    Desktop: 3-column. 2026-05-03 — right column was too narrow:
+    headings like "ГОВОРЮ / СЛУШАЮ" + "Принятие сделки" wrapped
+    awkwardly, sub-score labels truncated. Bumped right minmax
+    floor 260→320px and the fr from 0.8→1 to give scoring panel
+    room. Center keeps the largest fr so the avatar stays
+    dominant. Same bumps on 1440 / 1800 breakpoints.
+  */
   @media (min-width: 1024px) {
     .training-session-grid {
-      grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.4fr) minmax(260px, 0.8fr);
+      grid-template-columns: minmax(260px, 0.85fr) minmax(320px, 1.3fr) minmax(320px, 1fr);
       align-items: stretch;
       gap: 0.75rem;
     }
@@ -652,7 +659,7 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
 
   @media (min-width: 1440px) {
     .training-session-grid {
-      grid-template-columns: minmax(320px, 1fr) minmax(400px, 1.4fr) minmax(300px, 0.8fr);
+      grid-template-columns: minmax(320px, 0.95fr) minmax(400px, 1.3fr) minmax(360px, 1fr);
       gap: 1rem;
       max-width: 1440px;
       margin-inline: auto;
@@ -661,7 +668,7 @@ body.compact-mode .space-y-2 > * + * { margin-top: 0.25rem; }
 
   @media (min-width: 1800px) {
     .training-session-grid {
-      grid-template-columns: minmax(380px, 1.1fr) minmax(480px, 1.4fr) minmax(340px, 0.7fr);
+      grid-template-columns: minmax(380px, 1fr) minmax(480px, 1.3fr) minmax(400px, 0.95fr);
       gap: 1.25rem;
     }
   }

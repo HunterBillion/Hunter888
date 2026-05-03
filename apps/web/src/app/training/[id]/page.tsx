@@ -2173,6 +2173,18 @@ export default function TrainingSessionPage() {
             padding: "12px",
           }}
         >
+          {/*
+            Coaching whisper — moved from a floating dock into the
+            sidebar header (2026-05-03 fix). The floating version
+            overlapped the third tab "Реакции" and visually felt
+            like a separate hovering panel. Now it lives at the top
+            of the sidebar so coaching hints are visible regardless
+            of which tab is active, without occluding anything.
+          */}
+          <div className="rounded-xl" style={{ background: "rgba(107,77,199,0.08)", border: "1px solid rgba(107,77,199,0.25)", padding: "10px 12px" }}>
+            <WhisperPanel onToggle={(enabled) => sendMessage({ type: "whisper.toggle", data: { enabled } })} />
+          </div>
+
           {/* Pill switcher — same layoutId pattern as /pvp:482 */}
           <div className="flex gap-1 rounded-xl p-1" style={{ background: "rgba(255,255,255,0.04)" }}>
             {([
@@ -2403,31 +2415,6 @@ export default function TrainingSessionPage() {
         </aside>
         </div>
       </main>
-
-      {/*
-        Coaching whisper — floating dock (top-right desktop, top-center
-        mobile). Hoisted out of the right sidebar in the 2026-05-03
-        redesign so AI hints stay visible regardless of which sidebar
-        tab the user is on. Compact width on desktop so it doesn't
-        cover the avatar/chat. On mobile it would overlap the chat
-        too aggressively, so we hide it below `lg:` — coaching kicks
-        in via TrainingToasts there instead.
-      */}
-      <div
-        className="hidden lg:block pointer-events-none fixed z-[60]"
-        style={{ top: 80, right: 24, width: 320 }}
-      >
-        <div className="pointer-events-auto rounded-xl"
-          style={{
-            background: "rgba(20,16,38,0.92)",
-            backdropFilter: "blur(8px)",
-            border: "1px solid rgba(107,77,199,0.4)",
-            padding: "10px 12px",
-          }}
-        >
-          <WhisperPanel onToggle={(enabled) => sendMessage({ type: "whisper.toggle", data: { enabled } })} />
-        </div>
-      </div>
 
       {/* ── Trap Notification ──────────────────────────────── */}
       <TrapNotification event={s.activeTrap} onDismiss={() => s.setActiveTrap(null)} />
