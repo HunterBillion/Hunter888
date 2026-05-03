@@ -2,7 +2,7 @@ import os
 import secrets
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 # Resolve .env paths relative to THIS file, not CWD
@@ -480,6 +480,31 @@ class Settings(BaseSettings):
     # from the original arena audit recommendation; lowering it is an
     # ops decision documented in the change log.
     arena_knowledge_auto_publish_confidence: float = 0.85
+
+    # ── Quiz Arena v2 (Path A) — A0 scaffolding ───────────────────────
+    # Master flag for the deterministic-grader / LLM-explainer redesign
+    # of the knowledge-quiz arena. Design doc:
+    # ``docs/QUIZ_V2_ARENA_DESIGN.md``. While False (default), the
+    # entire v2 pipeline is dormant — no behavior change. While True,
+    # ``ws/knowledge.py`` consults ``quiz_v2.grader`` instead of the
+    # legacy streaming evaluator. Roll out via the user-whitelist
+    # below before flipping globally.
+    quiz_v2_grader_enabled: bool = False
+
+    # Per-user whitelist for early v2 testing (UUIDs as strings, comma
+    # separated in env). When set, ``quiz_v2_grader_enabled`` activates
+    # ONLY for users whose id is in this list — even if the master flag
+    # is False. Empty list (default) means "honor the master flag for
+    # everyone". Used during the staged rollout described in the design
+    # doc §8 phase A6.
+    quiz_v2_grader_user_whitelist: list[str] = Field(default_factory=list)
+
+    # Same shape as ``arena_knowledge_auto_publish_confidence`` —
+    # ``quiz_v2_answer_keys`` rows with ``original_confidence`` ≥ this
+    # threshold auto-publish on backfill; below land in the review
+    # queue with ``is_active=False``. Matches the existing legal-
+    # knowledge-chunk review pipeline (``rop.py:1683``).
+    quiz_v2_answer_key_auto_publish_confidence: float = 0.85
 
     # Content→Arena PR-6: live embedding backfill worker. When True, a
     # background task drains a Redis queue and computes the embedding
