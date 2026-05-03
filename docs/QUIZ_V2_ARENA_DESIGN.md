@@ -161,13 +161,61 @@ Misclassification budget: log every embedding-only match to `chunk_usage_logs` w
 
 **Total: ~6–8 working days + 3 days A/B = ~10 calendar days.** Fits inside pilot window.
 
-## 9. Open questions (need decisions before A1)
+## 9. Open questions
 
-- **Q-bb1.** One-shot backfill for 375 chunks → who reviews? Manual pass via simple admin UI, or LLM-validates LLM via second-opinion judge? Reviewer's eye is cheap at 375; recommend manual.
-- **Q-bb2.** Question-hash stability — questions for the same chunk can phrase differently per session. Hash includes the full prompt? Or just the chunk_id + difficulty rung? Recommend: hash full prompt; allow multiple keys per chunk.
-- **Q-bb3.** When grader.embedding falls back, do we run LLM-as-judge as a tertiary safety net, or trust embedding + log? Recommend: trust + log; reviewable post-hoc.
-- **Q-bb4.** Migration of existing in-flight v1 sessions on rollout: hard cutoff or soft (new sessions → v2, old → v1 dies naturally)? **Already decided: soft.** Confirmed.
-- **Q-bb5.** PvP duels (`/pvp/duel/[id]`) — explicitly out of scope. Separate track. Confirmed.
+### Closed by code evidence (after deeper read of admin/methodology surfaces)
+
+- **Q-bb1 ✅ CLOSED.** ~~Human-review 375 keys vs LLM-second-opinion?~~
+  Both, per the existing ladder. [`knowledge_quiz_validator_v2.py:109`](apps/api/app/services/knowledge_quiz_validator_v2.py:109) provides `validate_semantic(question, correct_answer, manager_answer, rag_context) → ValidationResult{equivalent, partial, score, missing, reason}` with fast-accept prefilter, asymmetric `apply_upgrade` (false→true only), and `rollout_relaxed_validation` flag. Items where `validator_v2.score ≥ 0.85` auto-publish (matches [`config.py:482`](apps/api/app/config.py:482) `arena_knowledge_auto_publish_confidence`); items with `equivalent=false AND partial=false AND score<0.4` land in the existing [`KnowledgeReviewQueue.tsx`](apps/web/src/components/dashboard/methodology/KnowledgeReviewQueue.tsx) UI for ROP/admin manual review. No new review UI needed.
+
+- **Q-bb2 ✅ CLOSED.** ~~Question-hash strategy?~~
+  Mirror `LegalKnowledgeChunk.content_hash` shape ([`models/rag.py:393-395`](apps/api/app/models/rag.py:393)):
+  ```python
+  content_hash = md5(question_text + "::" + canonical_answer)  # String(32) UNIQUE
+  ```
+  Allows multiple keys per `chunk_id` when phrasing differs. Idempotent upsert semantics already proven in legal-chunks seed loader.
+
+- **Q-bb3 ✅ CLOSED.** ~~Deterministic match fails → LLM judge fallback or fail-and-log?~~
+  Exact precedent in [`knowledge_quiz.py:670-730`](apps/api/app/services/knowledge_quiz.py:670) and `:1886-1923`: deterministic prefilter → `validator_v2.validate_semantic` → wrap in `try/except` → `logger.debug(..., exc_info=True)` → swallow. Asymmetric merge via `apply_upgrade` keeps deterministic verdict on judge failure.
+
+- **Q-bb4 ✅ CONFIRMED.** Soft migration (new sessions → v2, old → v1 dies naturally).
+- **Q-bb5 ✅ CONFIRMED.** PvP duels out of scope; separate track.
+
+### New, evidence-based questions (need decision before A1)
+
+These are not "how to build" questions — the code answers those. They are product/operational forks where the code shows two viable patterns and we must pick one.
+
+- **Q-NEW-1. When does `validator_v2` fire in the new grader?**
+  Currently `validator_v2` only fires when primary judge said WRONG. In Path A, primary judge is deterministic. Options:
+  - (a) Only when deterministic = WRONG → mirrors current escalation pattern
+  - (b) Always → +1 LLM call per answer, over-engineered
+  - (c) **Only on embedding-strategy hits** → exact/synonyms/regex/keyword are fast and unambiguous; only cosine match benefits from a second opinion
+  - **Author leans (c).** Cheapest sweet-spot. Deterministic strategies don't need a sanity check; embedding is the only soft one.
+
+- **Q-NEW-2. Which review model do answer-keys follow?**
+  - (a) `legal_knowledge_chunks` model — draft → ≥0.85 auto-publish OR queue → manual review (existing pipeline)
+  - (b) `methodology_chunks` model — ROP/admin writes go straight to `actual`, no review queue (TZ-5 fixed point #2, [`api/methodology.py:170`](apps/api/app/api/methodology.py:170))
+  - (c) **Hybrid:** LLM-generated keys (initial backfill) → queue + `validator_v2` gate; human-edited corrections (future admin UI) → straight to `actual`
+  - **Author leans (c).** The 375-chunk backfill is the LLM-generated case → goes through queue. Future ROP corrections get the methodology-style direct-write since a human is the source of truth.
+
+- **Q-NEW-3. Two flavors of answer-key — `factoid` vs `strategic`?**
+  Chunks split naturally:
+  - **Factoid** ("какая статья регулирует X?") → `expected_answer = chunk.fact_text` directly. No LLM generation needed.
+  - **Strategic** ("как поступить если…?") → `expected_answer = llm_extract(chunk + question_template)`. One-shot at backfill, then reviewed.
+  Schema: `quiz_v2_answer_keys.flavor TEXT NOT NULL CHECK (flavor IN ('factoid','strategic'))`.
+  - **Author leans yes — split the schema.** Drastically simplifies backfill (375 factoid keys generate from existing `chunk.fact_text` without LLM). Strategic flavor is the only LLM-generated subset.
+
+- **Q-NEW-4. Team-scoping for answer-keys?**
+  - `legal_knowledge_chunks` is **global** (no `team_id`)
+  - `methodology_chunks` is **per-team** (mandatory `team_id` FK with `ON DELETE CASCADE`)
+  - Answer-keys derive from legal chunks → naturally global. But if a team has custom methodology, team-specific overrides could give personalized feedback.
+  - (a) **Global** (mirror legal_chunks) — simplest, one canonical answer
+  - (b) Global baseline + optional per-team override — more flexible, more state
+  - **Author leans (a) on launch.** Promote to (b) only if pilot teams ask for it.
+
+### Note on validator_v2 invariant
+
+[`knowledge_quiz_validator_v2.py:197-235`](apps/api/app/services/knowledge_quiz_validator_v2.py:197) `apply_upgrade` is one-direction: it can only convert primary `is_correct=False` → `True`. It **cannot** demote a correct answer. This is the safety property that makes the LLM-judge fallback shippable. The new grader's deterministic verdict is the floor; validator_v2 can only rescue, never break.
 
 ## 10. Coordination
 
@@ -189,7 +237,12 @@ This file is the **single source of truth**. Updates land here as commits to its
 
 ### Open review questions for the backend epic-owner
 
-1. Confirm the reuse-map (§4) is correct. Anything I should reuse that I missed?
-2. Q-bb1, Q-bb2, Q-bb3 above need a call.
-3. The 2 new metrics in `arena_metrics.py` (§4) — naming OK or align to existing convention?
-4. ArenaBus `arena_bus_dual_write_enabled` is OFF in prod. Path A turns it ON as part of A4 rollout. Coordinate with your epic to avoid step-on?
+After deeper read of `/dashboard?tab=methodology` and review-policy modules, three of my four original questions closed against existing code (see §9). The remaining decisions:
+
+1. **Q-NEW-1 — `validator_v2` trigger.** Author leans (c): only fire on embedding-strategy matches. Confirm or pick (a)/(b).
+2. **Q-NEW-2 — review-pipeline model.** Author leans (c) hybrid: LLM-generated → queue, human-edited → direct. Confirm or pick (a)/(b).
+3. **Q-NEW-3 — factoid vs strategic flavor split.** Author leans yes. Confirm or push back.
+4. **Q-NEW-4 — team-scoping.** Author leans (a) global on launch. Confirm.
+5. **Reuse-map check.** §4 maps 11 existing modules. Anything missing? In particular: did I miss `knowledge_review_policy` as the canonical state-machine writer to follow for `quiz_v2_answer_keys` status transitions? (Now added in §9 closure of Q-bb1.)
+6. **Two new metrics in `arena_metrics.py`** (`QUIZ_V2_GRADE_LATENCY`, `QUIZ_V2_VERDICT_DEDUP_HITS`) — naming OK or align to existing convention?
+7. **ArenaBus dual-write flip.** `arena_bus_dual_write_enabled = False` in prod today. Path A turns it ON during A4. Coordinate with your epic to avoid step-on?
