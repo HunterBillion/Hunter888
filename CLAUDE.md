@@ -120,6 +120,29 @@ a duplicate-helpers rebase a month later.
 > **The server is pull-only. Never run `git push` from the server.**
 > Never run destructive git commands there.
 
+### 2.0 Wrong-VM trap (added 2026-05-03 — near-miss with hunter-club)
+
+> **`72.56.38.62` resolves to TWO different VMs.** Only one is Hunter888.
+> SSH may land on either depending on routing/IPv6/timing.
+
+| hostname | Hunter888? | layout |
+|---|---|---|
+| `msk-1-vm-cqax` | ✅ yes | `/opt/hunter888`, 6× Docker containers `hunter888-{api,web,whisper,redis,postgres,nginx}-1` |
+| `msk-1-vm-ofzn` | ❌ NO | hunter-club + techforum + manyasha. The `python3` process on `:8000` is **hunter-club**, NOT Hunter888. The `/root/hunter-*.sh` scripts and `/opt/hunter-club*` dirs all belong to that other project. |
+
+**Mandatory first command after every SSH session:**
+```bash
+hostname
+```
+- `msk-1-vm-cqax` → proceed in `/opt/hunter888`.
+- `msk-1-vm-ofzn` → **disconnect immediately**. Do NOT `cd`, do NOT `git pull`, do NOT touch `/proc/<pid>/cwd`, do NOT edit any `hunter-*` file. Mutating anything on ofzn breaks a different team's production.
+
+If repeat SSH attempts keep landing on ofzn, the user has out-of-band access to cqax (their own ssh-config / VPN / portal console). Ask them to run the deploy themselves rather than improvising on ofzn.
+
+### 2.1 Note on `scripts/deploy-prod.sh`
+
+As of 2026-05-03 the wrapper script described below is **not present on either VM** (verified). Until it lands, the canonical deploy is the **manual docker compose flow** at the bottom of this section. The §4.4 verification rule (`/api/version` must report your local SHA) still applies — without `export RELEASE_SHA=...` before `build`, `release_sha` stays `unknown` (current state of prod, FIND-007).
+
 Reasons:
 - GitHub password auth is disabled — `git push` from the server will
   always fail. If it ever succeeds (personal access token stored), it
