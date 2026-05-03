@@ -586,10 +586,6 @@ app.include_router(api_router, prefix="/api")
 from app.api.arena_lifelines import router as _arena_lifelines_router  # noqa: E402
 app.include_router(_arena_lifelines_router)
 
-# Phase C (2026-04-20): Arena first-match tutorial gate.
-from app.api.tutorial import router as _tutorial_router  # noqa: E402
-app.include_router(_tutorial_router)
-
 # Phase C (2026-04-20): Arena power-ups (×2 XP, future: shield, etc.)
 from app.api.arena_powerups import router as _arena_powerups_router  # noqa: E402
 app.include_router(_arena_powerups_router)

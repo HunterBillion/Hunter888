@@ -34,7 +34,6 @@ const LABEL_MAP: Record<string, string> = {
   teams: "Команды",
   team: "Команда",
   mistakes: "Ошибки",
-  tutorial: "Тренировка",
   quiz: "Знания",
   duel: "Дуэль",
   arena: "Арена",
