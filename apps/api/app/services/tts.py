@@ -1128,6 +1128,15 @@ async def synthesize_speech(
         text = text[:MAX_TEXT_LENGTH]
         logger.warning("TTS text truncated to %d chars", MAX_TEXT_LENGTH)
 
+    # 2026-05-03 prod fix: convert *вздох* / (sigh) / <whisper> markers
+    # into ElevenLabs v3 audio tags ([sighs], [whispers], …) so the
+    # voice performs the sound instead of literally speaking the word.
+    # Pure function; affects both Navy and direct-ElevenLabs paths.
+    from app.services.tts_sanitizer import sanitize_for_tts
+    text = sanitize_for_tts(text)
+    if not text:
+        raise TTSError("Empty text for TTS after sanitization")
+
     mid = model_id or settings.elevenlabs_model
 
     if voice_params:
