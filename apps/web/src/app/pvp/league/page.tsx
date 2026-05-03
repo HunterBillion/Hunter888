@@ -28,6 +28,7 @@ import {
 import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { useNotificationStore } from "@/stores/useNotificationStore";
 
 interface LeagueStanding {
   user_id: string;
@@ -73,6 +74,13 @@ export default function LeaguePage() {
       if (mountedRef.current) setData(d);
     } catch (e) {
       logger.error("league/me fetch failed", e);
+      if (!silent) {
+        useNotificationStore.getState().addToast({
+          type: "error",
+          title: "Не удалось загрузить лигу",
+          body: "Проверь соединение и попробуй обновить страницу.",
+        });
+      }
     } finally {
       if (mountedRef.current) {
         setLoading(false);

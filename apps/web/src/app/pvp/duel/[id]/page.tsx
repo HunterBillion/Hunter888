@@ -8,6 +8,7 @@ import { Swords, Loader2, LogOut } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAuthBootstrap } from "@/hooks/useAuthBootstrap";
 import { usePvPStore } from "@/stores/usePvPStore";
+import { useNotificationStore } from "@/stores/useNotificationStore";
 import { DuelChat } from "@/components/pvp/DuelChat";
 // 2026-05-01: 12-portrait avatar library
 import {
@@ -344,6 +345,13 @@ function DuelPage() {
           logger.error("PvP error:", data.data.detail);
           if (typeof data.data.detail === "string") {
             setStatusNotice(data.data.detail);
+            // 2026-05-03: also surface as a toast — the inline status
+            // banner is easy to miss above the chat scroll.
+            useNotificationStore.getState().addToast({
+              type: "error",
+              title: "Ошибка дуэли",
+              body: data.data.detail,
+            });
           }
           break;
       }
