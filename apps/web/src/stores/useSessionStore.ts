@@ -133,19 +133,10 @@ interface SessionStore {
   scriptHintsEnabled: boolean;
   scriptHintsRefreshKey: number;
 
-  // Real-time scores (from score.hint)
-  realtimeScores: {
-    script_adherence: number;
-    objection_handling: number;
-    communication: number;
-    anti_patterns: number;
-    result: number;
-    chain_traversal: number;
-    trap_handling: number;
-    human_factor: number;
-    realtime_estimate: number;
-    max_possible_realtime: number;
-  } | null;
+  // 2026-05-03: removed `realtimeScores` slice — the consuming
+  // <RealtimeScores> component was deleted in the right-sidebar
+  // redesign. Sub-scores now live in local component state on
+  // /training/[id] (and the call page no longer needs them).
 
   // Trap history (persistent log)
   trapHistory: TrapEvent[];
@@ -242,7 +233,6 @@ interface SessionStore {
   setWhispersEnabled: (enabled: boolean) => void;
   setScriptHintsEnabled: (enabled: boolean) => void;
   refreshScriptHints: () => void;
-  setRealtimeScores: (scores: SessionStore["realtimeScores"]) => void;
   addTrapToHistory: (trap: TrapEvent) => void;
   addEmotionToHistory: (state: EmotionState) => void;
   setDifficultyReason: (reason: string | null) => void;
@@ -316,7 +306,6 @@ const INITIAL_STATE = {
   whispersEnabled: true,
   scriptHintsEnabled: true,
   scriptHintsRefreshKey: 0,
-  realtimeScores: null as SessionStore["realtimeScores"],
   trapHistory: [] as TrapEvent[],
   emotionHistory: [] as { state: EmotionState; timestamp: number }[],
   difficultyReason: null as string | null,
@@ -502,7 +491,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   setWhispersEnabled: (whispersEnabled) => set({ whispersEnabled }),
   setScriptHintsEnabled: (scriptHintsEnabled) => set({ scriptHintsEnabled }),
   refreshScriptHints: () => set((state) => ({ scriptHintsRefreshKey: state.scriptHintsRefreshKey + 1 })),
-  setRealtimeScores: (realtimeScores) => set({ realtimeScores }),
   addTrapToHistory: (trap) =>
     set((s) => ({
       // Cap at 200 entries to prevent unbounded memory growth on long sessions
@@ -596,7 +584,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       checkpointHint: null,
       whispersEnabled: s.whispersEnabled,
       whispers: [],
-      realtimeScores: null,
       trapHistory: [],
       emotionHistory: [],
       difficultyReason: null,

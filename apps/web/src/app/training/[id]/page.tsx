@@ -15,6 +15,9 @@ import {
   MessageSquare,
   Mic,
   Loader2,
+  Target,
+  ListChecks,
+  Activity,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAuthBootstrap } from "@/hooks/useAuthBootstrap";
@@ -246,6 +249,11 @@ export default function TrainingSessionPage() {
   } | null>(null);
   const [preferBrowserSpeech, setPreferBrowserSpeech] = useState(false);
   const [sttWarningDismissed, setSttWarningDismissed] = useState(false);
+  // 2026-05-03 redesign: right-sidebar tab state. Replaces the 9-panel
+  // always-on stack that pushed "Баллы" off-screen on most viewports.
+  // Mirrors the 3-pill switcher used on /pvp ("arena|knowledge|history").
+  type SidebarTab = "score" | "script" | "reactions";
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("score");
 
   // Auto-dismiss STT warning after 5 seconds
   useEffect(() => {
@@ -683,19 +691,12 @@ export default function TrainingSessionPage() {
             realtime_estimate: Number(data.data.realtime_estimate || 0),
             max_possible_realtime: Number(data.data.max_possible_realtime || 0),
           });
-          // Also store in Zustand for RealtimeScores panel
-          s.setRealtimeScores({
-            script_adherence: Number(data.data.script_adherence || 0),
-            objection_handling: Number(data.data.objection_handling || 0),
-            communication: Number(data.data.communication || 0),
-            anti_patterns: Number(data.data.anti_patterns || 0),
-            result: Number(data.data.result || 0),
-            chain_traversal: Number(data.data.chain_traversal || 0),
-            trap_handling: Number(data.data.trap_handling || 0),
-            human_factor: Number(data.data.human_factor || 0),
-            realtime_estimate: Number(data.data.realtime_estimate || 0),
-            max_possible_realtime: Number(data.data.max_possible_realtime || 0),
-          });
+          // 2026-05-03: removed `s.setRealtimeScores(...)` write —
+          // the consuming `<RealtimeScores>` panel was removed during
+          // the redesign and the slice had no other readers. Keeping
+          // a setter that nobody read kept renders alive on every
+          // score.hint and added store churn for no reason. Sub-scores
+          // now render directly from local `scoreHint` useState.
           break;
 
         case "silence.warning":
@@ -2149,185 +2150,284 @@ export default function TrainingSessionPage() {
           </div>
         </section>
 
-        {/* RIGHT: Stats Panel — hierarchy via background intensity + violet border for cohesion */}
+        {/*
+          RIGHT: Stats panel — 2026-05-03 redesign.
+          Mirrors /pvp's 3-pill switcher pattern. Old version stacked
+          9 panels (VibeMeter, TalkListen, Script, Emotion, Whisper,
+          Difficulty, HumanFactor, TrapLog, Score) in one always-on
+          column that on most viewports pushed "Баллы" off-screen and
+          made the page feel like a wall of widgets. Now: compact pill
+          switcher → only one tab at a time. WhisperPanel hoisted out
+          to a floating dock (bottom of this file) so coaching hints
+          aren't gated behind the active tab.
+
+          Hidden below `lg` because mobile gets the chat-only view —
+          the same panels are reachable via /history / /results once
+          the session ends.
+        */}
         <aside
-          className="training-session-panel training-session-panel--stats flex flex-col gap-2.5 overflow-y-auto rounded-2xl"
+          className="training-session-panel training-session-panel--stats hidden lg:flex flex-col gap-3 overflow-y-auto rounded-2xl"
           style={{
             border: "2px solid var(--accent)",
             boxShadow: "0 0 0 1px rgba(107,77,199,0.25), 4px 4px 0 0 rgba(107,77,199,0.15)",
+            padding: "12px",
           }}
         >
-
-          {/* ── PRIMARY: Mood + Acceptance ── */}
-          <div className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.04)" }}>
-            <VibeMeter emotion={s.emotion} />
-            {/* Acceptance bar inline */}
-            <div className="mt-4 pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>Принятие сделки</span>
-                <motion.span
-                  key={acceptanceScore}
-                  initial={{ scale: 1.2 }}
-                  animate={{ scale: 1 }}
-                  className="text-sm font-bold tabular-nums"
-                  style={{ color: acceptanceScore >= 60 ? "#00FF94" : "var(--accent)" }}
-                >
-                  {s.messages.length === 0 ? "—" : `${acceptanceScore}%`}
-                </motion.span>
-              </div>
-              <div className="h-2.5 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
-                <motion.div
-                  className="h-full rounded-full"
-                  animate={{ width: `${acceptanceScore}%` }}
-                  transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          {/* Pill switcher — same layoutId pattern as /pvp:482 */}
+          <div className="flex gap-1 rounded-xl p-1" style={{ background: "rgba(255,255,255,0.04)" }}>
+            {([
+              { key: "score", label: "Балл", Icon: Target },
+              { key: "script", label: "Скрипт", Icon: ListChecks },
+              { key: "reactions", label: "Реакции", Icon: Activity },
+            ] as const).map(({ key, label, Icon }) => {
+              const active = sidebarTab === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSidebarTab(key)}
+                  className="relative flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
                   style={{
-                    background: acceptanceScore >= 60 ? "linear-gradient(90deg, #22c55e, #00FF94)" : "linear-gradient(90deg, #F59E0B, var(--accent))",
+                    color: active ? "white" : "var(--text-muted)",
                   }}
-                />
+                >
+                  {active && (
+                    <motion.div
+                      layoutId="trainingSidebarTab"
+                      className="absolute inset-0 rounded-lg"
+                      style={{ background: "var(--accent)" }}
+                      transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                    />
+                  )}
+                  <span className="relative flex items-center gap-1.5">
+                    <Icon size={13} />
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ─────────────────────────────────────────────────────────
+              TAB: Балл — VibeMeter + Acceptance + TalkListen + total
+              + full 8-field breakdown from score.hint payload.
+              Old version showed only 3 of 8 sub-scores (schema drift
+              since the backend started emitting all 8 in PR #B9).
+              ───────────────────────────────────────────────────── */}
+          {sidebarTab === "score" && (
+            <div className="flex flex-col gap-3">
+              <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+                <VibeMeter emotion={s.emotion} />
+                <div className="mt-4 pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>Принятие сделки</span>
+                    <motion.span
+                      key={acceptanceScore}
+                      initial={{ scale: 1.2 }}
+                      animate={{ scale: 1 }}
+                      className="text-sm font-bold tabular-nums"
+                      style={{ color: acceptanceScore >= 60 ? "#00FF94" : "var(--accent)" }}
+                    >
+                      {s.messages.length === 0 ? "—" : `${acceptanceScore}%`}
+                    </motion.span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
+                    <motion.div
+                      className="h-full rounded-full"
+                      animate={{ width: `${acceptanceScore}%` }}
+                      transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+                      style={{
+                        background: acceptanceScore >= 60 ? "linear-gradient(90deg, #22c55e, #00FF94)" : "linear-gradient(90deg, #F59E0B, var(--accent))",
+                      }}
+                    />
+                  </div>
+                  <div className="mt-1.5 text-xs font-medium" style={{ color: acceptanceScore >= 60 ? "#00FF94" : "var(--text-muted)" }}>
+                    {acceptanceLabel}
+                  </div>
+                </div>
               </div>
-              <div className="mt-1.5 text-xs font-medium" style={{ color: acceptanceScore >= 60 ? "#00FF94" : "var(--text-muted)" }}>
-                {acceptanceLabel}
+
+              <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.025)" }}>
+                <TalkListenRatio talkPercent={s.talkTime + s.listenTime > 0 ? Math.round((s.talkTime / (s.talkTime + s.listenTime)) * 100) : 50} />
               </div>
-            </div>
-          </div>
 
-          {/* ── SECONDARY: Talk/Listen ratio ── */}
-          <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.025)" }}>
-            <TalkListenRatio talkPercent={s.talkTime + s.listenTime > 0 ? Math.round((s.talkTime / (s.talkTime + s.listenTime)) * 100) : 50} />
-          </div>
-
-          {/* ── Script panel (Sprint 3 / Zone 3): merged with stage
-                 progress dots + task / examples / mistakes / skip alert.
-                 Replaced the legacy <StageProgressBar> on 2026-04-23. ── */}
-          <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)" }}>
-            <ScriptPanel
-              compactHeader
-              onCopyExample={(text) => {
-                // Pre-fill the message input with the example. User then
-                // edits + presses Enter. setInput is wired in the store.
-                useSessionStore.getState().setInput(text);
-                if (textareaRef.current) {
-                  textareaRef.current.focus();
-                  // Give React time to flush the value before placing caret.
-                  setTimeout(() => {
-                    if (textareaRef.current) {
-                      textareaRef.current.setSelectionRange(text.length, text.length);
-                    }
-                  }, 0);
-                }
-              }}
-            />
-          </div>
-
-          {/* ── Emotion timeline sparkline ── */}
-          {s.emotionHistory.length >= 2 && (
-            <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.015)" }}>
-              <LiveEmotionTimeline />
+              <div className="rounded-xl p-4 relative overflow-hidden" style={{ background: "rgba(255,255,255,0.05)" }}>
+                <AnimatePresence>
+                  {checkpointFlash && (
+                    <motion.div
+                      className="absolute inset-0 rounded-xl pointer-events-none"
+                      initial={{ opacity: 0.4 }}
+                      animate={{ opacity: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.8 }}
+                      style={{ background: "radial-gradient(circle at center, rgba(61,220,132,0.15) 0%, transparent 70%)" }}
+                    />
+                  )}
+                </AnimatePresence>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>Общий балл</span>
+                  <motion.div
+                    className="text-2xl font-bold tabular-nums"
+                    style={{ color: "var(--accent)" }}
+                    key={Math.round(s.scriptScore)}
+                    initial={{ scale: 1.2, opacity: 0.7 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                  >
+                    {s.messages.length === 0 ? "—" : <>{Math.round(s.scriptScore)}<span className="text-sm font-normal ml-0.5" style={{ color: "var(--text-muted)" }}>/100</span></>}
+                  </motion.div>
+                </div>
+                {scoreHint ? (
+                  // Render ALL 8 layers from the score.hint payload.
+                  // Order matches the backend's logical flow:
+                  // script → objection → communication → anti-pattern
+                  // → result → chain → trap → human factor.
+                  // Each layer caps at 12.5 (=100/8) so width math
+                  // is value/12.5 * 100 — pre-fix used /18.75 which
+                  // assumed a 6-layer split that's no longer accurate.
+                  <div className="mt-3 space-y-2">
+                    {([
+                      ["Скрипт", scoreHint.script_adherence, "var(--accent)"],
+                      ["Возражения", scoreHint.objection_handling, "var(--warning)"],
+                      ["Коммуникация", scoreHint.communication, "var(--info)"],
+                      ["Анти-паттерны", scoreHint.anti_patterns, "var(--danger)"],
+                      ["Результат", scoreHint.result, "#00FF94"],
+                      ["Сценарий", scoreHint.chain_traversal, "var(--magenta)"],
+                      ["Ловушки", scoreHint.trap_handling, "#F59E0B"],
+                      ["Человеч. фактор", scoreHint.human_factor, "#A78BFA"],
+                    ] as const).map(([label, value, color]) => (
+                      <div key={label}>
+                        <div className="mb-0.5 flex items-center justify-between text-[11px]" style={{ color: "var(--text-muted)" }}>
+                          <span>{label}</span>
+                          <span className="tabular-nums font-mono" style={{ color }}>{Math.round(value)}</span>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                          <motion.div
+                            className="h-full rounded-full"
+                            animate={{ width: `${Math.min(100, (value / 12.5) * 100)}%` }}
+                            transition={{ duration: 0.5, ease: "easeOut" }}
+                            style={{ background: color }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
+                    Баллы появятся после первого ответа
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          {/* ── Coaching whisper ── */}
-          <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.015)" }}>
-            <WhisperPanel onToggle={(enabled) => sendMessage({ type: "whisper.toggle", data: { enabled } })} />
-          </div>
+          {/* ─────────────────────────────────────────────────────────
+              TAB: Скрипт — ScriptPanel + DifficultyIndicator
+              ───────────────────────────────────────────────────── */}
+          {sidebarTab === "script" && (
+            <div className="flex flex-col gap-3">
+              <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+                <ScriptPanel
+                  compactHeader
+                  onCopyExample={(text) => {
+                    useSessionStore.getState().setInput(text);
+                    if (textareaRef.current) {
+                      textareaRef.current.focus();
+                      setTimeout(() => {
+                        if (textareaRef.current) {
+                          textareaRef.current.setSelectionRange(text.length, text.length);
+                        }
+                      }, 0);
+                    }
+                  }}
+                />
+              </div>
+              <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.025)" }}>
+                <DifficultyIndicator
+                  effectiveDifficulty={s.effectiveDifficulty}
+                  modifier={0}
+                  mode={s.difficultyMode}
+                  trend={s.difficultyTrend}
+                  goodStreak={s.goodStreak}
+                  badStreak={s.badStreak}
+                  hadComeback={false}
+                />
+              </div>
+            </div>
+          )}
 
-          {/* ── Difficulty indicator ── */}
-          <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.01)" }}>
-            <DifficultyIndicator
-              effectiveDifficulty={s.effectiveDifficulty}
-              modifier={0}
-              mode={s.difficultyMode}
-              trend={s.difficultyTrend}
-              goodStreak={s.goodStreak}
-              badStreak={s.badStreak}
-              hadComeback={false}
-            />
-          </div>
-
-          {/* ── Human factors + Consequences — only when present ── */}
-          {(s.humanFactors.length > 0 || s.consequences.length > 0) && (
-            <div className="rounded-xl p-3 space-y-2">
+          {/* ─────────────────────────────────────────────────────────
+              TAB: Реакции — Emotion timeline + HumanFactors + TrapLog
+              + Consequences. Empty-state banner so the tab doesn't
+              render an empty card on session start.
+              ───────────────────────────────────────────────────── */}
+          {sidebarTab === "reactions" && (
+            <div className="flex flex-col gap-3">
+              {s.emotionHistory.length >= 2 ? (
+                <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <LiveEmotionTimeline />
+                </div>
+              ) : (
+                <div className="rounded-xl p-4 text-xs" style={{ background: "rgba(255,255,255,0.02)", color: "var(--text-muted)" }}>
+                  Карта эмоций появится после нескольких реплик
+                </div>
+              )}
               {s.humanFactors.length > 0 && (
-                <div>
+                <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.025)" }}>
                   <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Факторы</div>
                   <HumanFactorIcons factors={s.humanFactors} />
                 </div>
               )}
               {s.consequences.length > 0 && (
-                <div className="space-y-1.5">
-                  {s.consequences.slice(-2).reverse().map((consequence, index) => (
-                    <div key={`${consequence.call}-${consequence.type}-${index}`} className="rounded-lg px-3 py-2.5 text-sm" style={{ background: "var(--danger-muted)", color: "var(--text-secondary)" }}>
+                <div className="rounded-xl p-3 space-y-1.5">
+                  <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Последствия</div>
+                  {s.consequences.slice(-3).reverse().map((consequence, index) => (
+                    <div
+                      key={`${consequence.call}-${consequence.type}-${index}`}
+                      className="rounded-lg px-3 py-2.5 text-sm"
+                      style={{ background: "var(--danger-muted)", color: "var(--text-secondary)" }}
+                    >
                       <span className="font-semibold" style={{ color: "var(--danger)" }}>{(consequence.type || "event").replace(/_/g, " ")}</span>
                       <span className="ml-2 line-clamp-1">{consequence.detail}</span>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
-          )}
-
-          {/* ── Trap log (collapsible) ── */}
-          {s.trapHistory.length > 0 && (
-            <div className="rounded-xl p-3">
-              <TrapLog />
-            </div>
-          )}
-
-          {/* ── Score — compact with breakdown ── */}
-          <div className="rounded-xl p-4 relative overflow-hidden" style={{ background: "rgba(255,255,255,0.02)" }}>
-            <AnimatePresence>
-              {checkpointFlash && (
-                <motion.div
-                  className="absolute inset-0 rounded-xl pointer-events-none"
-                  initial={{ opacity: 0.4 }}
-                  animate={{ opacity: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.8 }}
-                  style={{ background: "radial-gradient(circle at center, rgba(61,220,132,0.15) 0%, transparent 70%)" }}
-                />
+              {s.trapHistory.length > 0 && (
+                <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.015)" }}>
+                  <TrapLog />
+                </div>
               )}
-            </AnimatePresence>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>Баллы</span>
-              <motion.div
-                className="text-xl font-bold tabular-nums"
-                style={{ color: "var(--accent)" }}
-                key={Math.round(s.scriptScore)}
-                initial={{ scale: 1.2, opacity: 0.7 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 500, damping: 25 }}
-              >
-                {s.messages.length === 0 ? "—" : <>{Math.round(s.scriptScore)}<span className="text-sm font-normal ml-0.5" style={{ color: "var(--text-muted)" }}>/100</span></>}
-              </motion.div>
             </div>
-            {scoreHint && (
-              <div className="mt-3 space-y-2.5">
-                {[
-                  ["Возражения", scoreHint.objection_handling, "var(--warning)"],
-                  ["Коммуникация", scoreHint.communication, "var(--info)"],
-                  ["Человеческий фактор", scoreHint.human_factor, "var(--magenta)"],
-                ].map(([label, value, color]) => (
-                  <div key={label as string}>
-                    <div className="mb-1 flex items-center justify-between" style={{ color: "var(--text-muted)" }}>
-                      <span className="font-pixel text-xs uppercase tracking-wider">{label as string}</span>
-                      <span className="font-pixel text-xs tabular-nums" style={{ color: color as string }}>{Math.round(value as number)}</span>
-                    </div>
-                    <div className="h-2 w-full rounded-none pixel-border" style={{ "--pixel-border-color": "rgba(255,255,255,0.08)" } as React.CSSProperties}>
-                      <motion.div
-                        className="h-full rounded-none"
-                        animate={{ width: `${Math.min(100, ((value as number) / 18.75) * 100)}%` }}
-                        transition={{ duration: 0.5, ease: "easeOut" }}
-                        style={{ background: color as string }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
         </aside>
         </div>
       </main>
+
+      {/*
+        Coaching whisper — floating dock (top-right desktop, top-center
+        mobile). Hoisted out of the right sidebar in the 2026-05-03
+        redesign so AI hints stay visible regardless of which sidebar
+        tab the user is on. Compact width on desktop so it doesn't
+        cover the avatar/chat. On mobile it would overlap the chat
+        too aggressively, so we hide it below `lg:` — coaching kicks
+        in via TrainingToasts there instead.
+      */}
+      <div
+        className="hidden lg:block pointer-events-none fixed z-[60]"
+        style={{ top: 80, right: 24, width: 320 }}
+      >
+        <div className="pointer-events-auto rounded-xl"
+          style={{
+            background: "rgba(20,16,38,0.92)",
+            backdropFilter: "blur(8px)",
+            border: "1px solid rgba(107,77,199,0.4)",
+            padding: "10px 12px",
+          }}
+        >
+          <WhisperPanel onToggle={(enabled) => sendMessage({ type: "whisper.toggle", data: { enabled } })} />
+        </div>
+      </div>
 
       {/* ── Trap Notification ──────────────────────────────── */}
       <TrapNotification event={s.activeTrap} onDismiss={() => s.setActiveTrap(null)} />
