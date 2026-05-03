@@ -415,23 +415,11 @@ function PvPLobbyContent() {
                 <LeagueHeroCard />
               </div>
 
-              {/* 2026-04-20: 5 плиток (Лига/Команды/Ошибки/Турнир/Тренировка)
-                  УДАЛЕНЫ. Пользователь: «много разного шрифта, навигация
-                  сложная». Плитки давали 5 доп-кликабельных элементов
-                  на уровне 3, дублируя ссылки из Header (Lig/Teams) и
-                  tournament widget внутри Knowledge-таба. Теперь — одна
-                  тонкая строка текст-ссылок для второстепенного доступа. */}
-              <div
-                className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 t-label-mono"
-                style={{ color: "var(--text-muted)" }}
-              >
-                <span>Быстро →</span>
-                <a href="/pvp/tutorial" className="hover:text-[var(--accent)] transition">Тренировка</a>
-                <a href="/pvp/league" className="hover:text-[var(--accent)] transition">Лига</a>
-                <a href="/pvp/teams" className="hover:text-[var(--accent)] transition">Команды</a>
-                <a href="/pvp/tournament" className="hover:text-[var(--accent)] transition">Турнир</a>
-                <a href="/pvp/mistakes" className="hover:text-[var(--accent)] transition">Ошибки</a>
-              </div>
+              {/* 2026-05-02: «Быстро →» строка УДАЛЕНА полностью (была введена
+                  2026-04-20). Пользователь: «никто не понимает зачем это надо,
+                  они потворяют основные панели навигации». Тренировка/Лига/
+                  Команды/Турнир/Ошибки уже доступны из Header — дубликаты
+                  на странице лобби только мешают. */}
             </div>
           )}
 
@@ -641,53 +629,66 @@ function PvPLobbyContent() {
                         </div>
                       </div>
 
-                      {/* ═══ Category selection for themed mode ═══ */}
+                      {/* ═══ Category selection — pixel chips (2026-05-02) ═══ */}
                       {quizMode === "themed" && (
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}>
                           <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--success)" }}>
-                            ▸ SELECT CATEGORY {quizCategory && <span className="ml-2" style={{ color: "var(--accent)" }}>● {quizCategory}</span>}
+                            ▸ ВЫБЕРИ ТЕМУ {quizCategory && <span className="ml-2" style={{ color: "var(--accent)" }}>● {quizCategory}</span>}
                           </p>
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {[
-                              { id: "eligibility", label: "Условия подачи", emoji: "📋" },
-                              { id: "procedure", label: "Порядок процедуры", emoji: "⚙️" },
-                              { id: "property", label: "Имущество", emoji: "🏠" },
-                              { id: "consequences", label: "Последствия", emoji: "⚠️" },
-                              { id: "costs", label: "Расходы", emoji: "💰" },
-                              { id: "creditors", label: "Кредиторы", emoji: "🏦" },
-                              { id: "documents", label: "Документы", emoji: "📄" },
-                              { id: "timeline", label: "Сроки", emoji: "⏳" },
-                              { id: "court", label: "Суд", emoji: "⚖️" },
-                              { id: "rights", label: "Права должника", emoji: "🛡️" },
-                            ].map((cat) => {
+                            {([
+                              { id: "eligibility", label: "Условия подачи", icon: "book" as PixelIconName },
+                              { id: "procedure", label: "Порядок процедуры", icon: "ladder" as PixelIconName },
+                              { id: "property", label: "Имущество", icon: "castle" as PixelIconName },
+                              { id: "consequences", label: "Последствия", icon: "skull" as PixelIconName },
+                              { id: "costs", label: "Расходы", icon: "target" as PixelIconName },
+                              { id: "creditors", label: "Кредиторы", icon: "group" as PixelIconName },
+                              { id: "documents", label: "Документы", icon: "book" as PixelIconName },
+                              { id: "timeline", label: "Сроки", icon: "bolt" as PixelIconName },
+                              { id: "court", label: "Суд", icon: "castle" as PixelIconName },
+                              { id: "rights", label: "Права должника", icon: "shield" as PixelIconName },
+                            ] as const).map((cat) => {
                               const active = quizCategory === cat.id;
                               return (
                                 <motion.button
                                   key={cat.id}
                                   type="button"
-                                  whileHover={{ y: -1 }}
-                                  whileTap={{ y: 1, scale: 0.97 }}
+                                  whileHover={active ? {} : { x: -1, y: -1 }}
+                                  whileTap={{ x: 2, y: 2, transition: { duration: 0.05 } }}
+                                  transition={{ type: "spring", stiffness: 600, damping: 30 }}
                                   onClick={() => setQuizCategory(cat.id)}
-                                  className="px-3 py-2.5 text-left text-xs font-medium relative overflow-hidden"
+                                  className="flex items-center gap-2 px-3 py-2 text-left relative"
                                   style={{
-                                    background: active ? "rgba(16,185,129,0.18)" : "var(--input-bg)",
-                                    color: active ? "var(--success)" : "var(--text-secondary)",
+                                    background: active
+                                      ? "color-mix(in srgb, var(--success) 14%, var(--bg-panel))"
+                                      : "var(--bg-panel)",
                                     border: `2px solid ${active ? "var(--success)" : "var(--border-color)"}`,
                                     borderRadius: 0,
                                     boxShadow: active
-                                      ? "3px 3px 0 0 var(--success), inset 0 0 12px rgba(16,185,129,0.12)"
-                                      : "2px 2px 0 0 rgba(0,0,0,0.12)",
-                                    transition: "box-shadow 100ms, background 100ms",
+                                      ? "3px 3px 0 0 var(--success), 0 0 12px color-mix(in srgb, var(--success) 35%, transparent)"
+                                      : "2px 2px 0 0 var(--border-color)",
+                                    cursor: "pointer",
+                                    transition: "background 120ms",
                                   }}
                                 >
-                                  <span className="text-base mr-1">{cat.emoji}</span>
-                                  <span className="font-pixel uppercase tracking-wide text-[10px]">{cat.label}</span>
+                                  <PixelIcon name={cat.icon} size={20} color={active ? "var(--success)" : "var(--text-muted)"} />
+                                  <span
+                                    className="font-pixel uppercase"
+                                    style={{
+                                      color: active ? "var(--success)" : "var(--text-primary)",
+                                      fontSize: 11,
+                                      letterSpacing: "0.1em",
+                                      lineHeight: 1.15,
+                                    }}
+                                  >
+                                    {cat.label}
+                                  </span>
                                   {active && (
                                     <span
                                       aria-hidden
                                       className="absolute top-1 right-1 font-pixel text-[9px]"
                                       style={{ color: "var(--success)" }}
-                                    >✓</span>
+                                    >▶ OK</span>
                                   )}
                                 </motion.button>
                               );
@@ -696,66 +697,49 @@ function PvPLobbyContent() {
                         </motion.div>
                       )}
 
-                      {/* ═══ AI Personality selector (themed/free_dialog) ═══ */}
+                      {/* ═══ AI Examiner selector — pixel mode cards (2026-05-02) ═══ */}
                       {quizMode && quizMode !== "blitz" && (
                         <motion.div
                           initial={{ opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0 }}
                         >
                           <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
-                            ▸ SELECT EXAMINER
+                            ▸ ВЫБЕРИ ЭКЗАМЕНАТОРА
                           </p>
                           <div className="grid grid-cols-2 gap-2">
                             {([
-                              { id: "professor", emoji: "🎓", name: "Профессор Кодексов", desc: "Академичный, с юмором" },
-                              { id: "detective", emoji: "🔍", name: "Арбитражный Следопыт", desc: "Кейсы и расследования" },
-                            ] as const).map(({ id, emoji, name, desc }) => {
-                              const active = aiPersonality === id;
-                              return (
-                                <motion.button
-                                  key={id}
-                                  type="button"
-                                  whileHover={{ y: -1 }}
-                                  whileTap={{ y: 1, scale: 0.98 }}
-                                  onClick={() => setAiPersonality(active ? null : id)}
-                                  className="p-3 text-left text-xs"
-                                  style={{
-                                    background: active ? "var(--accent-muted)" : "var(--input-bg)",
-                                    color: active ? "var(--accent)" : "var(--text-secondary)",
-                                    border: `2px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
-                                    borderRadius: 0,
-                                    boxShadow: active
-                                      ? "3px 3px 0 0 var(--accent), 3px 3px 0 2px rgba(0,0,0,0.15)"
-                                      : "2px 2px 0 0 rgba(0,0,0,0.1)",
-                                    transition: "box-shadow 120ms",
-                                  }}
-                                >
-                                  <span className="text-xl mr-1">{emoji}</span>
-                                  <span className="font-pixel uppercase text-[11px] tracking-wide">{name}</span>
-                                  <p className="mt-1 text-[10px]" style={{ color: "var(--text-muted)" }}>{desc}</p>
-                                  {active && (
-                                    <span className="font-pixel text-[9px] mt-1 inline-block" style={{ color: "var(--accent)" }}>▸ SELECTED</span>
-                                  )}
-                                </motion.button>
-                              );
-                            })}
+                              { id: "professor", icon: "book" as PixelIconName, name: "Профессор Кодексов", desc: "Академичный, с юмором" },
+                              { id: "detective", icon: "target" as PixelIconName, name: "Арбитражный Следопыт", desc: "Кейсы и расследования" },
+                            ] as const).map(({ id, icon, name, desc }) => (
+                              <PixelModeCard
+                                key={id}
+                                iconName={icon}
+                                name={name}
+                                desc={desc}
+                                accent="var(--accent)"
+                                active={aiPersonality === id}
+                                onClick={() => setAiPersonality(aiPersonality === id ? null : id)}
+                              />
+                            ))}
                           </div>
                         </motion.div>
                       )}
 
-                      {/* Blitz mode: show auto-assigned personality */}
+                      {/* Blitz mode: pixel auto-assigned badge */}
                       {quizMode === "blitz" && (
                         <div
-                          className="px-3 py-2 font-pixel text-xs uppercase tracking-wide"
+                          className="inline-flex items-center gap-2 px-3 py-2 font-pixel text-xs uppercase tracking-wide"
                           style={{
-                            background: "rgba(245,158,11,0.1)",
+                            background: "color-mix(in srgb, var(--warning) 12%, var(--bg-panel))",
                             color: "var(--warning)",
                             border: "2px solid var(--warning)",
                             borderRadius: 0,
-                            boxShadow: "3px 3px 0 0 rgba(245,158,11,0.4)",
+                            boxShadow: "3px 3px 0 0 var(--warning)",
+                            letterSpacing: "0.14em",
                           }}
                         >
-                          ⚡ EXAMINER: БЛИЦ-МАСТЕР (auto)
+                          <PixelIcon name="bolt" size={14} color="var(--warning)" />
+                          ЭКЗАМЕНАТОР: БЛИЦ-МАСТЕР (авто)
                         </div>
                       )}
 
