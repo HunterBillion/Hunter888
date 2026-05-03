@@ -210,6 +210,9 @@ from app.models.methodology import MethodologyChunk, MethodologyKind
 # Anonymous FE telemetry collector (alembic 20260502_005). Read-only ORM
 # wrapper; bulk inserts use Core insert() for batch efficiency.
 from app.models.analytics_event import AnalyticsEvent
+# Quiz Arena v2 (Path A) — pre-computed answer keys for the deterministic
+# grader. Migration 20260503_001. See docs/QUIZ_V2_ARENA_DESIGN.md.
+from app.models.quiz_v2 import QuizV2AnswerKey
 
 __all__ = [
     "User",
@@ -420,4 +423,6 @@ __all__ = [
     "MethodologyKind",
     # Anonymous FE telemetry (alembic 20260502_005)
     "AnalyticsEvent",
+    # Quiz Arena v2 — Path A grader storage (alembic 20260503_001)
+    "QuizV2AnswerKey",
 ]
