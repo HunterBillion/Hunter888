@@ -576,7 +576,28 @@ export default function TrainingSessionPage() {
         }
 
         case "stt.unavailable":
-        case "stt.error":
+        case "stt.error": {
+          // 2026-05-03 prod bug fix: when backend rejects short audio
+          // ("Audio too short (433 bytes)") it sends stt.unavailable
+          // but the previous handler forgot to clear `transcription.status`
+          // — left at "transcribing" from when audio.end was sent. The
+          // "Распознаю: речь..." indicator stays on screen forever, even
+          // though the request already finished. User reports
+          // "бесконечное распознавание речи" maps exactly to this.
+          // Reset status + surface the backend message via toast so user
+          // knows what happened.
+          s.setTranscription({ status: "idle", partial: "", final: "" });
+          const msg =
+            (data.data?.message as string | undefined) ||
+            "Не удалось распознать. Попробуйте говорить чуть длиннее.";
+          import("@/stores/useNotificationStore").then(({ useNotificationStore }) => {
+            useNotificationStore.getState().addToast({
+              title: "Распознавание не удалось",
+              body: msg,
+              type: "warning",
+            });
+          }).catch(() => {/* notification store unavailable */});
+
           if (speech.isSupported) {
             setPreferBrowserSpeech(true);
             s.setSttAvailable(true);
@@ -586,6 +607,7 @@ export default function TrainingSessionPage() {
             s.setTextMode(true);
           }
           break;
+        }
 
         case "emotion.update":
           if (data.data.current) {
@@ -1337,6 +1359,25 @@ export default function TrainingSessionPage() {
     if (microphone.recordingState === "recording" && !preferBrowserSpeech) {
       const blob = await microphone.stopRecording();
       s.setMicActive(false);
+      // 2026-05-03 prod bug guard: a tap (vs hold) produces a ~400-byte
+      // blob that backend Whisper rejects as "Audio too short", which
+      // emits stt.unavailable. We pre-empt that round-trip when the
+      // blob is implausibly small for actual speech (~2 KB ≈ 80 ms of
+      // opus). User gets immediate feedback instead of waiting for the
+      // backend response.
+      const TOO_SHORT_BYTES = 2_048;
+      if (blob && blob.size > 0 && blob.size < TOO_SHORT_BYTES) {
+        s.setTranscription({ status: "idle", partial: "", final: "" });
+        try {
+          const { useNotificationStore } = await import("@/stores/useNotificationStore");
+          useNotificationStore.getState().addToast({
+            title: "Слишком короткое нажатие",
+            body: "Удерживайте кнопку микрофона и говорите хотя бы секунду.",
+            type: "warning",
+          });
+        } catch { /* notification store unavailable */ }
+        return;
+      }
       if (blob && blob.size > 0) {
         try {
           s.setTranscription({ status: "transcribing", partial: "", final: "" });
