@@ -1768,7 +1768,7 @@ async def evaluate_answer_streaming(
 
     try:
         async for token in generate_response_stream(
-            system_prompt=AI_EXAMINER_PROMPT,
+            system_prompt=personality_prompt or AI_EXAMINER_PROMPT,
             messages=stream_messages,
             emotion_state="curious",
             task_type="judge",
