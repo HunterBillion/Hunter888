@@ -438,6 +438,12 @@ _CSRF_EXEMPT_PREFIXES = (
     "/api/auth/oauth",
     "/api/health",
     "/api/subscription/webhook/",
+    "/api/analytics/events",    # 2026-05-03: telemetry ingestion — sendBeacon cannot
+                                #   send custom headers (X-CSRF-Token), so authed
+                                #   browsers got 403 on unload-flush. Industry
+                                #   precedent: PostHog/Sentry mark capture endpoints
+                                #   csrf_exempt. Risk surface is "forge an analytics
+                                #   row" (low); endpoint already rate-limited 120/min.
     "/ws/",
     "/docs",
     "/redoc",
