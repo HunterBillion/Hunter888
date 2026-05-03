@@ -2,7 +2,7 @@
 
 > Design doc + coordination thread.
 > Author: claude (worktree `funny-hugle-a50ca9`).
-> Status: **DRAFT — pending review**.
+> Status: **READY FOR REVIEW** — all 9 open questions decided. Awaiting epic-owner sign-off on reuse-map and ArenaBus coordination, then A0 starts.
 > Last updated: 2026-05-03.
 
 ## 1. Why this exists
@@ -100,24 +100,34 @@ The user's coordination context flagged six merged epics. Verified each in repo 
 
 ```sql
 CREATE TABLE quiz_v2_answer_keys (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    chunk_id        UUID NOT NULL REFERENCES legal_knowledge_chunks(id) ON DELETE CASCADE,
-    question_hash   TEXT NOT NULL,           -- stable hash of generated question prompt
-    expected_answer TEXT NOT NULL,           -- canonical reference answer
-    match_strategy  TEXT NOT NULL,           -- 'exact' | 'synonyms' | 'regex' | 'keyword' | 'embedding'
-    match_config    JSONB NOT NULL DEFAULT '{}',  -- per-strategy config
-    synonyms        TEXT[] NOT NULL DEFAULT '{}',
-    article_ref     TEXT,                    -- "ст. 213.11 127-ФЗ"
-    generated_by    TEXT NOT NULL,           -- model id
-    generated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    reviewed        BOOLEAN NOT NULL DEFAULT FALSE,
-    reviewed_at     TIMESTAMPTZ,
-    UNIQUE (chunk_id, question_hash)
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    chunk_id           UUID NOT NULL REFERENCES legal_knowledge_chunks(id) ON DELETE CASCADE,
+    team_id            UUID REFERENCES teams(id) ON DELETE CASCADE,  -- NULL = global baseline
+    question_hash      VARCHAR(32) NOT NULL,    -- md5(question_text + "::" + canonical_answer)
+    flavor             TEXT NOT NULL CHECK (flavor IN ('factoid','strategic')),
+    expected_answer    TEXT NOT NULL,           -- canonical reference answer
+    match_strategy     TEXT NOT NULL,           -- 'exact' | 'synonyms' | 'regex' | 'keyword' | 'embedding'
+    match_config       JSONB NOT NULL DEFAULT '{}',  -- per-strategy config
+    synonyms           TEXT[] NOT NULL DEFAULT '{}',
+    article_ref        TEXT,                    -- "ст. 213.11 127-ФЗ"
+    knowledge_status   TEXT NOT NULL DEFAULT 'needs_review',  -- mirrors legal_knowledge_chunks (actual|disputed|outdated|needs_review)
+    is_active          BOOLEAN NOT NULL DEFAULT FALSE,
+    source             TEXT NOT NULL,           -- 'llm_backfill' | 'admin_editor' | 'seed_loader'
+    original_confidence NUMERIC(4,3),           -- immutable; matches arena_knowledge_auto_publish_confidence pattern
+    generated_by       TEXT,                    -- model id (NULL for human-authored)
+    generated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    reviewed_by        UUID REFERENCES users(id),
+    reviewed_at        TIMESTAMPTZ,
+    UNIQUE (chunk_id, question_hash, team_id)   -- NULL counts as distinct value → team can override global
 );
+CREATE INDEX ix_quiz_v2_answer_keys_lookup ON quiz_v2_answer_keys(chunk_id, question_hash, team_id);
 CREATE INDEX ix_quiz_v2_answer_keys_chunk ON quiz_v2_answer_keys(chunk_id);
+CREATE INDEX ix_quiz_v2_answer_keys_status ON quiz_v2_answer_keys(knowledge_status) WHERE is_active = false;
 ```
 
-**Why `(chunk_id, question_hash)`:** one chunk can spawn multiple distinct questions over time. The hash anchors the key to the exact prompt phrasing. If question generation drifts, we can detect orphan keys and regenerate.
+**Why `(chunk_id, question_hash, team_id)`:** one chunk can spawn multiple distinct questions over time; each phrasing has its own hash. `team_id=NULL` is the global baseline; team rows override per Q-NEW-4. Lookup at grade time: try team-specific first, fall back to global.
+
+**Why mirror `legal_knowledge_chunks` columns** (`knowledge_status`, `is_active`, `source`, `original_confidence`, `reviewed_by/at`): so the existing review-policy state machine ([`knowledge_review_policy.py:273`](apps/api/app/services/knowledge_review_policy.py:273) `mark_reviewed`) and review-queue UI ([`KnowledgeReviewQueue.tsx`](apps/web/src/components/dashboard/methodology/KnowledgeReviewQueue.tsx)) can be reused with minimal copy. Auto-publish gate reads `original_confidence ≥ arena_knowledge_auto_publish_confidence` (0.85) — same anti-tamper pattern as [`rop.py:1683`](apps/api/app/api/rop.py:1683).
 
 ### 6.2. Redis session state (extends `quiz_v2/memory.py`)
 
@@ -181,37 +191,25 @@ Misclassification budget: log every embedding-only match to `chunk_usage_logs` w
 - **Q-bb4 ✅ CONFIRMED.** Soft migration (new sessions → v2, old → v1 dies naturally).
 - **Q-bb5 ✅ CONFIRMED.** PvP duels out of scope; separate track.
 
-### New, evidence-based questions (need decision before A1)
+### Closed by product owner decision (2026-05-03)
 
-These are not "how to build" questions — the code answers those. They are product/operational forks where the code shows two viable patterns and we must pick one.
+- **Q-NEW-1 ✅ DECIDED — (b) `validator_v2` always.**
+  Every answer gets a validator_v2 LLM call regardless of deterministic strategy used. Cost: +1 LLM call per submitted answer (`task_type="judge"`, max_tokens=220, prefer_provider="cloud"). Mitigation: validator_v2's `_fast_accept` prefilter ([`knowledge_quiz_validator_v2.py:77`](apps/api/app/services/knowledge_quiz_validator_v2.py:77)) short-circuits substring/normalized matches without an LLM call, so factoid-heavy traffic largely skips the network. `apply_upgrade` is one-direction (false→true only), so validator can never demote a deterministic-correct verdict.
+  **Implementation:** in `grader.py`, after deterministic verdict is emitted, always invoke `validator_v2.validate_semantic(...)` and merge via `apply_upgrade`. Wrap in `try/except → logger.debug → swallow` (precedent in [`knowledge_quiz.py:1897`](apps/api/app/services/knowledge_quiz.py:1897)). Track call volume + LLM cost via new metric `QUIZ_V2_VALIDATOR_LLM_CALLS{result}`.
 
-- **Q-NEW-1. When does `validator_v2` fire in the new grader?**
-  Currently `validator_v2` only fires when primary judge said WRONG. In Path A, primary judge is deterministic. Options:
-  - (a) Only when deterministic = WRONG → mirrors current escalation pattern
-  - (b) Always → +1 LLM call per answer, over-engineered
-  - (c) **Only on embedding-strategy hits** → exact/synonyms/regex/keyword are fast and unambiguous; only cosine match benefits from a second opinion
-  - **Author leans (c).** Cheapest sweet-spot. Deterministic strategies don't need a sanity check; embedding is the only soft one.
+- **Q-NEW-2 ✅ DECIDED — (c) hybrid.**
+  LLM-generated keys (initial backfill of 375 chunks + future regenerations) → land in review queue with `is_active=False`, gated by `validator_v2.score ≥ 0.85` for auto-publish. Human-edited corrections via future admin UI → write straight to `actual` (mirrors `methodology_chunks` direct-write pattern at [`api/methodology.py:170`](apps/api/app/api/methodology.py:170)).
+  **Implementation:** `quiz_v2_answer_keys` follows the `legal_knowledge_chunks` review lifecycle for LLM-authored rows; new endpoint `POST /admin/quiz-v2/answer-keys/{id}/edit` (ROP/admin) bypasses the gate and writes directly with `actual` status + `source='admin_editor'` audit trail.
 
-- **Q-NEW-2. Which review model do answer-keys follow?**
-  - (a) `legal_knowledge_chunks` model — draft → ≥0.85 auto-publish OR queue → manual review (existing pipeline)
-  - (b) `methodology_chunks` model — ROP/admin writes go straight to `actual`, no review queue (TZ-5 fixed point #2, [`api/methodology.py:170`](apps/api/app/api/methodology.py:170))
-  - (c) **Hybrid:** LLM-generated keys (initial backfill) → queue + `validator_v2` gate; human-edited corrections (future admin UI) → straight to `actual`
-  - **Author leans (c).** The 375-chunk backfill is the LLM-generated case → goes through queue. Future ROP corrections get the methodology-style direct-write since a human is the source of truth.
+- **Q-NEW-3 ✅ DECIDED — yes, split `flavor`.**
+  Schema includes `flavor TEXT NOT NULL CHECK (flavor IN ('factoid','strategic'))`. Factoid: `expected_answer = chunk.fact_text` (no LLM at backfill, 100% of factoid keys generated deterministically). Strategic: `expected_answer = llm_extract(chunk + question_template)` (one-shot LLM at backfill, then reviewed). The 375 chunks split is unknown until classifier runs at A1; expected ratio ~70% factoid / 30% strategic based on chunk content patterns.
 
-- **Q-NEW-3. Two flavors of answer-key — `factoid` vs `strategic`?**
-  Chunks split naturally:
-  - **Factoid** ("какая статья регулирует X?") → `expected_answer = chunk.fact_text` directly. No LLM generation needed.
-  - **Strategic** ("как поступить если…?") → `expected_answer = llm_extract(chunk + question_template)`. One-shot at backfill, then reviewed.
-  Schema: `quiz_v2_answer_keys.flavor TEXT NOT NULL CHECK (flavor IN ('factoid','strategic'))`.
-  - **Author leans yes — split the schema.** Drastically simplifies backfill (375 factoid keys generate from existing `chunk.fact_text` without LLM). Strategic flavor is the only LLM-generated subset.
-
-- **Q-NEW-4. Team-scoping for answer-keys?**
-  - `legal_knowledge_chunks` is **global** (no `team_id`)
-  - `methodology_chunks` is **per-team** (mandatory `team_id` FK with `ON DELETE CASCADE`)
-  - Answer-keys derive from legal chunks → naturally global. But if a team has custom methodology, team-specific overrides could give personalized feedback.
-  - (a) **Global** (mirror legal_chunks) — simplest, one canonical answer
-  - (b) Global baseline + optional per-team override — more flexible, more state
-  - **Author leans (a) on launch.** Promote to (b) only if pilot teams ask for it.
+- **Q-NEW-4 ✅ DECIDED — (b) global baseline + optional per-team override.**
+  Schema gains nullable `team_id UUID REFERENCES teams(id) ON DELETE CASCADE`. Lookup precedence at grade time:
+  1. Try `(chunk_id, question_hash, team_id=<caller_team>)` first
+  2. Fall back to `(chunk_id, question_hash, team_id=NULL)` (global baseline)
+  Backfill of 375 chunks → global rows only (`team_id=NULL`). Per-team overrides are authored by ROP via the future admin UI (Q-NEW-2 hybrid path → direct-write `actual`). Team-scoped lookup uses existing `_filter_session_by_caller_team` / `_scope_check_session` helpers ([`api/rop.py:857/888`](apps/api/app/api/rop.py:857)).
+  **Implementation:** add composite index `ix_quiz_v2_answer_keys_lookup ON quiz_v2_answer_keys(chunk_id, question_hash, team_id)`. UNIQUE constraint becomes `UNIQUE (chunk_id, question_hash, team_id)` — `NULL` is treated as distinct value in PG, so a team can override the same `(chunk_id, question_hash)` pair.
 
 ### Note on validator_v2 invariant
 
@@ -237,12 +235,11 @@ This file is the **single source of truth**. Updates land here as commits to its
 
 ### Open review questions for the backend epic-owner
 
-After deeper read of `/dashboard?tab=methodology` and review-policy modules, three of my four original questions closed against existing code (see §9). The remaining decisions:
+All product/architectural questions (Q-bb1..5, Q-NEW-1..4) are decided — see §9. Two infrastructure-coordination items remain for the epic-owner:
 
-1. **Q-NEW-1 — `validator_v2` trigger.** Author leans (c): only fire on embedding-strategy matches. Confirm or pick (a)/(b).
-2. **Q-NEW-2 — review-pipeline model.** Author leans (c) hybrid: LLM-generated → queue, human-edited → direct. Confirm or pick (a)/(b).
-3. **Q-NEW-3 — factoid vs strategic flavor split.** Author leans yes. Confirm or push back.
-4. **Q-NEW-4 — team-scoping.** Author leans (a) global on launch. Confirm.
-5. **Reuse-map check.** §4 maps 11 existing modules. Anything missing? In particular: did I miss `knowledge_review_policy` as the canonical state-machine writer to follow for `quiz_v2_answer_keys` status transitions? (Now added in §9 closure of Q-bb1.)
-6. **Two new metrics in `arena_metrics.py`** (`QUIZ_V2_GRADE_LATENCY`, `QUIZ_V2_VERDICT_DEDUP_HITS`) — naming OK or align to existing convention?
-7. **ArenaBus dual-write flip.** `arena_bus_dual_write_enabled = False` in prod today. Path A turns it ON during A4. Coordinate with your epic to avoid step-on?
+1. **Reuse-map sanity check (§4).** 11 existing modules mapped. New addition after deeper inventory: `knowledge_review_policy.py` as the canonical state-machine writer that `quiz_v2_answer_keys` mimics. Anything else I'm about to duplicate accidentally?
+2. **Three new metrics in `arena_metrics.py`** — naming alignment:
+   - `QUIZ_V2_GRADE_LATENCY` (Histogram, labels: strategy, outcome)
+   - `QUIZ_V2_VERDICT_DEDUP_HITS` (Counter, labels: reason)
+   - `QUIZ_V2_VALIDATOR_LLM_CALLS` (Counter, labels: result) — added per Q-NEW-1 (b) decision
+3. **ArenaBus dual-write flip.** `arena_bus_dual_write_enabled = False` in prod today (verified 2026-05-03 via SSH). Path A turns it ON during A4. Coordinate with your epic — does this block anything in your roadmap?
