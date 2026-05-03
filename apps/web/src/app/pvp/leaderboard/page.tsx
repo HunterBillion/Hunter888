@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Trophy, Shield, TrendingUp, Crown, Medal, Plus } from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -41,6 +42,7 @@ function getRankIcon(rank: number) {
 }
 
 export default function PvPLeaderboardPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const store = usePvPStore();
   const [tierFilter, setTierFilter] = useState("all");
@@ -97,6 +99,7 @@ export default function PvPLeaderboardPage() {
               </div>
               {isAdmin && (
                 <motion.button
+                  type="button"
                   onClick={handleCreateSeason}
                   className="btn-neon flex items-center gap-2 text-xs"
                   whileTap={{ scale: 0.97 }}
@@ -150,6 +153,7 @@ export default function PvPLeaderboardPage() {
             {TIERS.map((t) => (
               <motion.button
                 key={t.key}
+                type="button"
                 onClick={() => setTierFilter(t.key)}
                 className="rounded-lg px-3 py-1.5 font-mono text-xs transition-all"
                 style={{
@@ -174,7 +178,7 @@ export default function PvPLeaderboardPage() {
               description="Вызовите соперника на поединок, чтобы заявить о себе в рейтинге"
               illustration={<img src="/pixel/empty/empty-arena.png" alt="" className="w-24 h-24 mx-auto mb-2 opacity-80" />}
               actionLabel="Начать бой"
-              onAction={() => window.location.href = "/pvp"}
+              onAction={() => router.push("/pvp")}
             />
           ) : (
             <div className="mt-6 space-y-3">
@@ -240,6 +244,7 @@ export default function PvPLeaderboardPage() {
 
 
 function ArenaLeaderboardSection() {
+  const router = useRouter();
   const kStore = useKnowledgeStore();
   const [period, setPeriod] = useState<"week" | "month" | "all">("all");
 
@@ -263,6 +268,7 @@ function ArenaLeaderboardSection() {
         {ARENA_PERIODS.map((t) => (
           <motion.button
             key={t.key}
+            type="button"
             onClick={() => setPeriod(t.key)}
             className="rounded-lg px-3 py-1.5 font-mono text-xs transition-all"
             style={{
@@ -287,7 +293,7 @@ function ArenaLeaderboardSection() {
           description="Начните изучение 127-ФЗ и займите место в рейтинге"
           illustration={<img src="/pixel/empty/knight-waiting.png" alt="" className="w-24 h-24 mx-auto mb-2 opacity-80" />}
           actionLabel="К Арене"
-          onAction={() => window.location.href = "/pvp?tab=knowledge"}
+          onAction={() => router.push("/pvp?tab=knowledge")}
         />
       ) : (
         <div className="mt-4 space-y-3">
