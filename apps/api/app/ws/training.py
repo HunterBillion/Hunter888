@@ -2281,6 +2281,23 @@ async def _generate_character_reply(
         "удачи вам", "бывайте", "прощайте",
     )
     _ai_reply_text = (llm_result.content or "").strip()
+    # 2026-05-03 (BUG 1 fix): explicit [END_CALL] marker per system-prompt rule 9.
+    # Industry pattern (Vapi endCallPhrases, custom stop-tokens). When LLM emits the
+    # marker we trust its hangup intent regardless of emotion/msg_count gates and
+    # strip the marker before TTS so it's never spoken or shown to user.
+    from app.services.end_call_marker import detect_and_strip as _detect_end_call
+    _has_end_call_marker, _ai_reply_text = _detect_end_call(_ai_reply_text)
+    if _has_end_call_marker:
+        # Mirror back into llm_result so downstream consumers (TTS, transcript,
+        # FE history) never see the marker.
+        try:
+            llm_result.content = _ai_reply_text
+        except Exception:
+            pass
+        logger.info(
+            "AI emitted [END_CALL] marker (session=%s, snippet=%r) — explicit hangup intent",
+            session_id, _ai_reply_text[:80],
+        )
     _ai_reply_lower = _ai_reply_text.lower()
     # ── P1 (2026-04-29) Coaching mistake detector — record AI turn ──
     # Feed assistant char volume into the talk-ratio rolling window so
@@ -2316,18 +2333,35 @@ async def _generate_character_reply(
     # transition to hangup directly (that handler runs above and is
     # unaffected by this check).
     _AI_FAREWELL_MIN_MESSAGES = 8
-    _can_ai_end = (
+    # 2026-05-03 (BUG 1 fix): two-tier trust.
+    #   * EXPLICIT marker [END_CALL] → trust the LLM's hangup intent. Only
+    #     keep a minimal sanity floor (msg_count >= 4) so a bot can't end on
+    #     turn 1 due to a buggy first reply. No emotion gate, no question gate.
+    #   * SUBSTRING-only ("до свидания" without marker) → keep the strict
+    #     legacy gates because the LLM frequently improvises dramatic exits
+    #     it doesn't actually mean — the gates were tightened in v3 for that
+    #     specific regression and this branch must not reopen it.
+    _MARKER_MIN_MESSAGES = 4
+    _can_ai_end_explicit = (
+        _has_end_call_marker
+        and _msg_count_for_ai_farewell >= _MARKER_MIN_MESSAGES
+        and not state.get("user_initiated_farewell")
+        and not state.get("ai_initiated_farewell")
+    )
+    _can_ai_end_legacy = (
         _ai_farewell_hit
+        and not _has_end_call_marker  # marker path takes precedence
         and not _is_question
         and _msg_count_for_ai_farewell >= _AI_FAREWELL_MIN_MESSAGES
         and (current_emotion == "hostile")
         and not state.get("user_initiated_farewell")
         and not state.get("ai_initiated_farewell")
     )
+    _can_ai_end = _can_ai_end_explicit or _can_ai_end_legacy
     logger.debug(
-        "ai_farewell check session=%s hit=%s qtn=%s msgs=%d emo=%s → %s",
-        session_id, _ai_farewell_hit, _is_question,
-        _msg_count_for_ai_farewell, current_emotion, _can_ai_end,
+        "ai_farewell check session=%s marker=%s hit=%s qtn=%s msgs=%d emo=%s → explicit=%s legacy=%s",
+        session_id, _has_end_call_marker, _ai_farewell_hit, _is_question,
+        _msg_count_for_ai_farewell, current_emotion, _can_ai_end_explicit, _can_ai_end_legacy,
     )
     if _can_ai_end:
         state["ai_initiated_farewell"] = True
