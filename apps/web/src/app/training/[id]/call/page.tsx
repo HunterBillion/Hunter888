@@ -647,23 +647,14 @@ export default function TrainingCallPage() {
           break;
         }
 
-        case "score.hint": {
-          const d = data.data as Record<string, unknown>;
-          const num = (k: string) => Number(d[k] ?? 0);
-          s.setRealtimeScores({
-            script_adherence: num("script_adherence"),
-            objection_handling: num("objection_handling"),
-            communication: num("communication"),
-            anti_patterns: num("anti_patterns"),
-            result: num("result"),
-            chain_traversal: num("chain_traversal"),
-            trap_handling: num("trap_handling"),
-            human_factor: num("human_factor"),
-            realtime_estimate: num("realtime_estimate"),
-            max_possible_realtime: num("max_possible_realtime"),
-          });
+        case "score.hint":
+          // 2026-05-03: dropped `s.setRealtimeScores(...)` write —
+          // the <RealtimeScores> consumer was removed in the
+          // sidebar redesign and nothing else reads the slice.
+          // Call mode shows score live via the in-call UI; if a
+          // breakdown panel reappears it should subscribe directly
+          // here.
           break;
-        }
 
         case "session.ended":
           // 2026-04-22: dedupe with client.hangup. If client.hangup fired
