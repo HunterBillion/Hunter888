@@ -40,6 +40,12 @@ const SFX_URLS: Record<SFXName, string> = {
 };
 
 const STORAGE_KEY = "hunter888:sfx_muted";
+// 2026-05-03: bridge с глобальным mute из useSound.ts (Phase 8 sound engine).
+// Settings UI пишет в эти ключи; useSFX (legacy движок для tick/heartbeat) ДО
+// этой правки их игнорировал — пользователь жал «Mute» в /settings, а tick
+// всё равно играл. Теперь читаем ВСЕ три ключа: если ХОТЬ ОДИН говорит muted
+// — звук не играет.
+const GLOBAL_MUTE_KEYS = ["vh-sounds-muted", "vh_sound", STORAGE_KEY] as const;
 
 // Module-scoped audio cache — shared across all useSFX() callers.
 const cache: Partial<Record<SFXName, HTMLAudioElement>> = {};
@@ -56,7 +62,15 @@ function getOrCreate(name: SFXName): HTMLAudioElement | null {
 
 function readMuted(): boolean {
   if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(STORAGE_KEY) === "1";
+  // 2026-05-03: читаем ВСЕ глобальные mute-ключи. Если любой выставлен — mute.
+  // Также — если master volume == 0 в localStorage, считаем что муто.
+  for (const key of GLOBAL_MUTE_KEYS) {
+    const v = window.localStorage.getItem(key);
+    if (v === "1" || v === "off") return true;
+  }
+  const master = window.localStorage.getItem("vh-vol-master");
+  if (master !== null && Number(master) === 0) return true;
+  return false;
 }
 
 function writeMuted(muted: boolean) {

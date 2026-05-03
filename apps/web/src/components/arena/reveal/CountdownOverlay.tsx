@@ -14,7 +14,9 @@
 
 import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { sfx } from "@/components/arena/sfx/useSFX";
+// 2026-05-03: sfx import УДАЛЁН — tick/round_start звуки убраны по запросу
+// пользователя («убери вообще везде отсчёт и звуком бесит»). Визуальный
+// 3-2-1 overlay сохранён — это полезный сигнал готовности к раунду.
 
 interface Props {
   open: boolean;
@@ -42,16 +44,12 @@ export function CountdownOverlay({
       doneRef.current = false;
       return;
     }
-    // Pre-fire sound for immediate feedback
-    sfx.play("tick");
+    // 2026-05-03: sfx.play() removed — silent countdown.
     let step = 0;
     const t = setInterval(() => {
       step += 1;
-      if (step < start) {
-        sfx.play("tick");
-      } else {
+      if (step >= start) {
         clearInterval(t);
-        sfx.play("round_start");
         if (!doneRef.current) {
           doneRef.current = true;
           onDone?.();

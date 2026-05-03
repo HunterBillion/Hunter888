@@ -122,11 +122,12 @@ function DuelPage() {
     return () => { aborted = true; };
   }, [duelId, authReady]);
 
-  // Safety timeout: if WS hasn't delivered duel.brief/duel.state within 10s,
+  // Safety timeout: if WS hasn't delivered duel.brief/duel.state within 6s,
   // show "Cannot connect" escape hatch instead of an infinite spinner.
+  // 2026-05-03: 10s → 6s (пользователь жаловался на «вечную загрузку»).
   useEffect(() => {
     if (store.duelBrief || store.duelResult || earlyExit) return;
-    const t = setTimeout(() => setLoadTimeout(true), 10000);
+    const t = setTimeout(() => setLoadTimeout(true), 6000);
     return () => clearTimeout(t);
   }, [store.duelBrief, store.duelResult, earlyExit]);
 
@@ -531,10 +532,13 @@ function DuelPage() {
       );
     }
 
-    // Normal loading state — pixel-styled
+    // Normal loading state — pixel-styled.
+    // 2026-05-03: добавлена кнопка «Назад на арену» в самом spinner-е, чтобы
+    // пользователь мог уйти не дожидаясь 10-сек таймаута. Раньше «вечная
+    // загрузка» — теперь всегда есть escape hatch.
     return (
       <div
-        className="flex h-screen flex-col items-center justify-center"
+        className="flex h-screen flex-col items-center justify-center px-6 gap-5"
         style={{
           background: "var(--bg-primary)",
           backgroundImage: `
@@ -554,9 +558,23 @@ function DuelPage() {
             borderRadius: 0,
           }}
         />
-        <span className="mt-5 font-pixel text-sm uppercase tracking-widest" style={{ color: "var(--accent)", textShadow: "0 0 6px var(--accent-glow)" }}>
+        <span className="font-pixel text-sm uppercase tracking-widest text-center" style={{ color: "var(--accent)", textShadow: "0 0 6px var(--accent-glow)" }}>
           ▶ ПОДКЛЮЧЕНИЕ К АРЕНЕ
         </span>
+        <button
+          onClick={() => router.push("/pvp")}
+          className="mt-4 px-5 py-2.5 font-pixel text-xs uppercase tracking-widest"
+          style={{
+            background: "transparent",
+            color: "var(--text-muted)",
+            border: "2px solid var(--border-color)",
+            borderRadius: 0,
+            boxShadow: "2px 2px 0 0 var(--border-color)",
+            cursor: "pointer",
+          }}
+        >
+          ← Назад на арену
+        </button>
         <div className="mt-2 flex gap-1">
           {[0, 1, 2, 3].map((i) => (
             <motion.span

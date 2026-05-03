@@ -20,7 +20,9 @@
 import * as React from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowLeftRight } from "lucide-react";
-import { useSound } from "@/hooks/useSound";
+// 2026-05-03: useSound import УДАЛЁН — heartbeat sfx убран по запросу
+// пользователя («убери вообще везде отсчёт и звуком бесит»). Визуальный
+// pulse ring и shake цифр оставлены — это полезная информация, не звук.
 
 interface Props {
   roundNumber: number;
@@ -87,18 +89,8 @@ export function RoundIndicator({
   const isLow = remaining <= 30 && remaining > 10;
   const isHeartbeat = remaining <= 5 && remaining > 0;
 
-  // 2026-05-01 (Фаза 8): heartbeat sfx последние 5 секунд раунда.
-  // Срабатывает на каждой смене целочисленной секунды, не уважает rAF.
-  const { playSound } = useSound();
-  const lastSecRef = React.useRef<number>(-1);
-  React.useEffect(() => {
-    const intSec = Math.floor(remaining);
-    if (intSec === lastSecRef.current) return;
-    lastSecRef.current = intSec;
-    if (isHeartbeat && intSec > 0 && !reducedMotion) {
-      playSound("heartbeat");
-    }
-  }, [remaining, isHeartbeat, reducedMotion, playSound]);
+  // 2026-05-03: heartbeat sfx УДАЛЁН (раздражал — каждую секунду 5 раз).
+  // Визуальный pulse ring + shake цифр последних 3 сек оставлены.
   const ringColor = isCritical
     ? "var(--danger)"
     : isLow
