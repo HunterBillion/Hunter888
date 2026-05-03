@@ -389,6 +389,18 @@ function KnowledgeSessionPage() {
           break;
         }
 
+        case "quiz.moderation": {
+          // Server stripped the input as profanity / jailbreak. Question stays
+          // active — show the coach line and let the user retype without
+          // burning an attempt.
+          store.addMessage({
+            type: "system",
+            content: (data.message as string) || "Сформулируйте ответ заново.",
+          });
+          store.setIsTyping(false);
+          break;
+        }
+
         default:
           logger.warn("[Knowledge WS] Unknown message type:", type);
       }

@@ -624,6 +624,7 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
                         category=state.category,
                         difficulty=diff,
                         question_number=state.current_question,
+                        previous_questions=state.previous_questions,
                         user_weak_areas=weak_areas,
                         used_chunk_ids=state.asked_chunk_ids,
                     )
@@ -728,7 +729,29 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
     # Security: filter user input (jailbreak + profanity)
     if detect_jailbreak(text):
         logger.warning("Jailbreak attempt in knowledge quiz from user")
-    text, _input_violations = filter_user_input(text)
+    text, input_violations = filter_user_input(text)
+
+    # 2026-05-03: surface moderation to user instead of silently scoring as wrong.
+    # Previously the cleaned/empty text fell into evaluate_answer_streaming and
+    # was recorded as "✖ НЕВЕРНО / Не удалось получить разбор" — punishing the
+    # user for input the LLM safety filter had stripped, with no explanation.
+    # New behavior: emit quiz.moderation, do NOT count as an attempt, keep the
+    # current question active so the user can retype.
+    if input_violations and any(
+        v in input_violations for v in ("profanity", "jailbreak_attempt")
+    ):
+        reason = "profanity" if "profanity" in input_violations else "jailbreak_attempt"
+        coach_msg = (
+            "Коллега, давайте по делу — без брани. Сформулируйте ответ заново."
+            if reason == "profanity"
+            else "Это похоже на обход правил. Ответьте по теме вопроса."
+        )
+        await _send(ws, "quiz.moderation", {
+            "question_number": state.current_question,
+            "reason": reason,
+            "message": coach_msg,
+        })
+        return
 
     # 2026-04-18: removed legacy "human_moment retry" path.
     # Reason: it intercepted off-topic / typo replies BEFORE the garbage
@@ -751,8 +774,13 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
     #   chunk events  → text appears token-by-token for slow LLM path
     #   final event   → structured feedback when done
     # Client sees immediate ✓/✖ + streaming explanation instead of 5-8s silence.
+    # 2026-05-03: thread personality.system_prompt into the streaming evaluator
+    # so detective/professor/blitz characters actually shape the LLM voice.
+    # Previously this was computed and discarded, leaving the quiz with the
+    # generic AI_EXAMINER_PROMPT regardless of which personality the user
+    # picked. evaluate_answer_streaming has accepted the parameter since 2026-04-18
+    # but the call site never passed it.
     personality_prompt = state.personality.system_prompt if state.personality else None
-    _ = personality_prompt  # reserved for future streaming prompt flavor
     result = None
     stream_question_id = state.current_question
     async with async_session() as db:
@@ -764,6 +792,7 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
                     question=state.current_q,
                     user_answer=text,
                     mode=state.mode,
+                    personality_prompt=personality_prompt,
                 ):
                     etype = event.get("type")
                     if etype == "verdict":
