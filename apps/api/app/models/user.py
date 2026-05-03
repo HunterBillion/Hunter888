@@ -42,11 +42,6 @@ class User(Base):
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     preferences: Mapped[dict | None] = mapped_column(JSONB, default=dict)
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    # Phase C (2026-04-20): Arena-specific tutorial completion. NULL = show
-    # "Новичок? Пройди тренировку" banner on /pvp and gate the first match.
-    arena_tutorial_completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None,
-    )
     google_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
     yandex_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

@@ -56,15 +56,6 @@ function PvPLobbyContent() {
   // can route the duel to the chosen archetype.
   const [pickedCharacterId, setPickedCharacterId] = useState<string | null>(null);
   const [arenaPoints, setArenaPoints] = useState<number>(0);
-  // 2026-04-20: флаг выставляется в app/pvp/tutorial/page.tsx сразу после
-  // завершения туториала, чтобы welcome-баннер на /pvp мгновенно
-  // исчез — раньше он отображался повторно даже после прохождения.
-  const [tutorialCompleted, setTutorialCompleted] = useState(false);
-  useEffect(() => {
-    try {
-      setTutorialCompleted(localStorage.getItem("arena_tutorial_completed") === "1");
-    } catch { /* storage disabled */ }
-  }, []);
   const inviteSentRef = useRef(false);
   const autoPvERef = useRef(false);
   const searchStartedAtRef = useRef<number | null>(null);
@@ -81,7 +72,7 @@ function PvPLobbyContent() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only init; store actions are stable Zustand refs
 
   // 2026-04-20: auto-refetch рейтинга при возврате на /pvp
-  // (из /pvp/duel/[id], /pvp/tutorial, /pvp/quiz/*). Раньше юзер проходил
+  // (из /pvp/duel/[id], /pvp/quiz/*). Раньше юзер проходил
   // калибровку, возвращался — а шкала «Калибровка 0/10» оставалась прежней
   // до ручного reload. Теперь каждый раз когда вкладка снова видима,
   // перетягиваем rating + myDuels + arena-points.
@@ -293,14 +284,14 @@ function PvPLobbyContent() {
                 <PixelInfoButton
                   title="Как устроена Арена"
                   sections={[
-                    { icon: Sword, label: "С чего начать", text: "Новичок? Пройди короткую разминку (2 мин) — покажем подсказки и таймер. Потом жми большую кнопку «Найти соперника» — подберём равного по уровню." },
+                    { icon: Sword, label: "С чего начать", text: "Жми «Найти соперника» — подберём равного по уровню. Если очередь пустая — отправим к боту автоматически." },
                     { icon: Target, label: "3 вкладки ниже", text: "«Дуэли» — играть в реальном времени. «Знания ФЗ-127» — тренируй право (квизы и голосом). «История» — все твои прошлые бои + разборы." },
                     { icon: Lightning, label: "Режимы дуэли (PvP)", text: "Классическая — 2 раунда со сменой ролей. Скоростной — 5 мини-раундов по 2 мин. Испытание — 3-5 дуэлей подряд. 2v2 — в паре против пары (открывается с ур. 12)." },
                     { icon: Sparkle, label: "Режимы без людей (PvE)", text: "Стандартный бот, лестница ботов (5 штук растёт сложность), штурм боссов, зеркальный матч против своего стиля." },
                     { icon: Trophy, label: "Рейтинг и калибровка", text: "Первые 10 дуэлей — калибровка, рейтинг прыгает. Потом стабильная Glicko-2 система: 8 тиров Iron → Grandmaster. Peak tier не теряется." },
                     { icon: Brain, label: "После боя", text: "AI-судья разбирает оба раунда: что сработало, где провалил. Плюс очки XP и Arena Points (AP) для покупок. Твоя история — во вкладке «История»." },
                   ]}
-                  footer="Короткий путь: «Разминка» → «Найти соперника» → бой → разбор → рейтинг"
+                  footer="Короткий путь: «Найти соперника» → бой → разбор → рейтинг"
                 />
                 {/* Кнопка «Рейтинг» — pixel (2026-05-03). Header дублирует
                     /pvp/leaderboard, но эта кнопка остаётся как accent CTA
@@ -397,90 +388,12 @@ function PvPLobbyContent() {
             </div>
           )}
 
-          {/* Rating card or calibration prompt.
-              2026-04-20: welcome показывается ТОЛЬКО если
-                (а) дуэлей ещё 0
-                (б) туториал НЕ пройден (флаг в localStorage ставится
-                    в app/pvp/tutorial/page.tsx:handleFinish)
-              Раньше: если юзер прошёл туториал и ни одной дуэли — баннер
-              встречал его снова. Теперь — нет. */}
+          {/* Rating card. Tutorial removed 2026-05-03: first-time users
+              see the rating card directly and click "Найти соперника"; if
+              the queue is empty they auto-fall to PvE per matchmaker logic. */}
           {store.rating && !store.ratingLoading && (
             <div className="mt-6">
-              {store.rating.total_duels === 0 && !tutorialCompleted ? (
-                /* Welcome screen — pixel (2026-05-03) */
-                <div
-                  className="flex flex-col items-center py-10 text-center px-6"
-                  style={{
-                    background: "var(--bg-panel)",
-                    outline: "2px solid var(--accent)",
-                    outlineOffset: -2,
-                    boxShadow: "4px 4px 0 0 var(--accent)",
-                    borderRadius: 0,
-                  }}
-                >
-                  <PixelIcon name="sword" size={48} color="var(--accent)" />
-                  <h2
-                    className="font-pixel uppercase mt-3 mb-2"
-                    style={{
-                      color: "var(--text-primary)",
-                      fontSize: 22,
-                      letterSpacing: "0.16em",
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    Готов к первой дуэли?
-                  </h2>
-                  <p className="text-sm mb-5 max-w-md" style={{ color: "var(--text-secondary)" }}>
-                    Короткая разминка с наставником — покажем подсказки, таймер и разбор.
-                    Займёт пару минут, потом сразу на Арену.
-                  </p>
-                  <div className="flex flex-col items-center gap-3">
-                    {/* Главная CTA — Разминка (туториал). «Сразу в бой» убрана
-                        как отдельная кнопка (мешала новичкам случайно скипнуть
-                        обучение); вынесена в text-link под главной кнопкой. */}
-                    <motion.button
-                      onClick={() => router.push("/pvp/tutorial")}
-                      whileHover={{ x: -1, y: -1 }}
-                      whileTap={{ x: 2, y: 2 }}
-                      className="font-pixel inline-flex items-center gap-2"
-                      style={{
-                        padding: "12px 28px",
-                        background: "var(--accent)",
-                        color: "#fff",
-                        border: "2px solid var(--accent)",
-                        borderRadius: 0,
-                        fontSize: 14,
-                        letterSpacing: "0.18em",
-                        textTransform: "uppercase",
-                        boxShadow: "4px 4px 0 0 #000, 0 0 16px var(--accent-glow)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <PixelIcon name="bolt" size={16} color="#fff" />
-                      Разминка · 2 мин
-                    </motion.button>
-                    <button
-                      className="font-pixel"
-                      style={{
-                        background: "transparent",
-                        color: "var(--text-muted)",
-                        border: "none",
-                        fontSize: 11,
-                        letterSpacing: "0.14em",
-                        textTransform: "uppercase",
-                        cursor: "pointer",
-                        textDecoration: "underline",
-                        textUnderlineOffset: 4,
-                      }}
-                      onClick={handleFindMatch}
-                    >
-                      Пропустить · сразу в бой
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <RatingCard rating={store.rating} />
-              )}
+              <RatingCard rating={store.rating} />
 
               {/* Arena Points — pixel chip (2026-05-03) */}
               <div
