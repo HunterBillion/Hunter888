@@ -496,7 +496,8 @@ function DuelPage() {
             </p>
             <div className="flex gap-3">
               <button
-                onClick={() => { setLoadTimeout(false); window.location.reload(); }}
+                type="button"
+                onClick={() => { setLoadTimeout(false); router.refresh(); }}
                 className="flex-1 py-3 px-4 font-pixel text-sm uppercase tracking-widest"
                 style={{
                   background: "var(--input-bg)",
@@ -673,13 +674,16 @@ function DuelPage() {
         </div>
       )}
 
-      {/* Header */}
+      {/* Header — 2026-05-03: opponent name + tier + mode now visible.
+          Backend already sends store.duelBrief.opponent + is_pve via
+          ws/pvp.py:duel.brief; frontend just consumes. */}
       <header
         className="h-14 shrink-0 flex items-center justify-between px-6 z-20"
         style={{ background: "var(--glass-bg)", borderBottom: "1px solid var(--border-color)", backdropFilter: "blur(20px)" }}
       >
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={() => setShowExitConfirm(true)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
             style={{ background: "var(--danger-muted)", color: "var(--danger)", border: "1px solid var(--danger-muted)" }}
@@ -690,11 +694,37 @@ function DuelPage() {
           </button>
           <Swords size={18} style={{ color: "var(--accent)" }} />
           <span className="font-display font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
-            PVP ДУЭЛЬ
+            {store.duelBrief?.is_pve ? "PVE · БОТ" : "PVP · КЛАССИКА"}
           </span>
         </div>
-        <div className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-          {store.duelBrief?.scenario_title || "Сценарий"}
+        <div className="flex flex-col items-end leading-tight">
+          <div className="font-mono text-xs flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+            {store.duelBrief?.opponent ? (
+              <>
+                <span style={{ color: "var(--text-muted)" }}>vs</span>
+                <span className="font-bold uppercase tracking-wider">
+                  {store.duelBrief.opponent.name}
+                </span>
+                {store.duelBrief.opponent.tier && (
+                  <span
+                    className="px-1.5 py-0.5 text-[10px] uppercase tracking-widest rounded"
+                    style={{
+                      background: "var(--accent-muted)",
+                      color: "var(--accent)",
+                      border: "1px solid var(--accent)",
+                    }}
+                  >
+                    {store.duelBrief.opponent.tier}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span style={{ color: "var(--text-muted)" }}>Подбор соперника…</span>
+            )}
+          </div>
+          <div className="font-mono text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+            {store.duelBrief?.scenario_title || ""}
+          </div>
         </div>
       </header>
 

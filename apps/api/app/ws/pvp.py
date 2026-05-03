@@ -904,6 +904,11 @@ async def _send_duel_state(user_id: uuid.UUID, session: dict[str, Any]) -> None:
         "lifelines_remaining": lifelines_remaining,
         "you": you_card,
         "opponent": opp_card,
+        # 2026-05-03: surface PvE flag + bot mode so the duel header
+        # can render "PvP · Классика" vs "PvE · Бот" without a second
+        # REST round-trip.
+        "is_pve": session.get("is_pve", False),
+        "pve_mode": session.get("pve_mode"),
     })
     await _send_to_user(user_id, "duel.state", {
         "duel_id": str(session["duel_id"]),
