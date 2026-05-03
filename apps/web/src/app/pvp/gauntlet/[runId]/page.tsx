@@ -11,7 +11,7 @@ import { PageAuthGate } from "@/components/layout/PageAuthGate";
 import { useSFX } from "@/components/arena/sfx/useSFX";
 // Phase A (2026-04-20) — Arena visual parity
 import { CoachingCard, type CoachingPayload } from "@/components/arena/reveal/CoachingCard";
-import { CountdownOverlay } from "@/components/arena/reveal/CountdownOverlay";
+// 2026-05-03: CountdownOverlay removed per user feedback (no countdowns).
 import { ArenaAudioPlayer } from "@/components/pvp/ArenaAudioPlayer";
 import { useLifelines } from "@/components/arena/hooks/useLifelines";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -68,7 +68,6 @@ function GauntletPage() {
   });
   const [coachingOpen, setCoachingOpen] = useState(false);
   const [coachingPayload, setCoachingPayload] = useState<CoachingPayload | null>(null);
-  const [countdownOpen, setCountdownOpen] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const speech = useSpeechRecognition({
     lang: "ru-RU",
@@ -112,7 +111,7 @@ function GauntletPage() {
           setMessages([]);
           setMessagesLeft(d.message_limit || 8);
           startTimer(d.time_limit || 600);
-          setCountdownOpen(true);    // Phase A — pre-duel countdown
+          // 2026-05-03: pre-duel countdown removed per user feedback.
           setAudioUrl(null);
           sfx.play("round_start");
           break;
@@ -507,13 +506,7 @@ function GauntletPage() {
         </motion.div>
       )}
 
-      {/* Phase A overlays */}
-      <CountdownOverlay
-        open={countdownOpen}
-        accentColor={theme.accent}
-        label={`ДУЭЛЬ ${currentDuel}`}
-        onDone={() => setCountdownOpen(false)}
-      />
+      {/* Phase A overlays — 2026-05-03 countdown removed */}
       <CoachingCard
         open={coachingOpen}
         accentColor={theme.accent}

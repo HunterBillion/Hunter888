@@ -13,7 +13,7 @@ import { PageAuthGate } from "@/components/layout/PageAuthGate";
 import { useSFX } from "@/components/arena/sfx/useSFX";
 // Phase A (2026-04-20) — Arena visual parity across 5 modes
 import { CoachingCard, type CoachingPayload } from "@/components/arena/reveal/CoachingCard";
-import { CountdownOverlay } from "@/components/arena/reveal/CountdownOverlay";
+// 2026-05-03: CountdownOverlay removed per user feedback (no countdowns).
 import { ArenaAudioPlayer } from "@/components/pvp/ArenaAudioPlayer";
 import { useLifelines } from "@/components/arena/hooks/useLifelines";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -66,7 +66,6 @@ function RapidFirePage() {
   });
   const [coachingOpen, setCoachingOpen] = useState(false);
   const [coachingPayload, setCoachingPayload] = useState<CoachingPayload | null>(null);
-  const [countdownOpen, setCountdownOpen] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const speech = useSpeechRecognition({
     lang: "ru-RU",
@@ -113,7 +112,7 @@ function RapidFirePage() {
           setMessages([]);
           setMessagesLeft(d.message_limit || 5);
           startTimer(d.time_limit || 120);
-          setCountdownOpen(true);      // Phase A — 3..2..1 before round
+          // 2026-05-03: 3-2-1 countdown removed per user feedback.
           setAudioUrl(null);            // reset previous narration
           sfx.play("round_start");
           break;
@@ -453,13 +452,7 @@ function RapidFirePage() {
         </motion.div>
       )}
 
-      {/* Phase A overlays: countdown + coaching */}
-      <CountdownOverlay
-        open={countdownOpen}
-        accentColor={theme.accent}
-        label={`РАУНД ${currentRound}`}
-        onDone={() => setCountdownOpen(false)}
-      />
+      {/* Phase A overlays: coaching only — 2026-05-03 countdown removed */}
       <CoachingCard
         open={coachingOpen}
         accentColor={theme.accent}

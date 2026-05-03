@@ -15,7 +15,6 @@ import {
   resolveOpponentAvatar,
 } from "@/components/pvp/PixelAvatarLibrary";
 import { useGamificationStore } from "@/stores/useGamificationStore";
-import { RoundIndicator } from "@/components/pvp/RoundIndicator";
 import { DuelResult } from "@/components/pvp/DuelResult";
 import { PvPVictoryScreen } from "@/components/pvp/PvPVictoryScreen";
 import { Confetti } from "@/components/ui/Confetti";
@@ -28,12 +27,11 @@ import type { PvPDuel } from "@/types";
 import { useSFX } from "@/components/arena/sfx/useSFX";
 // Phase A (2026-04-20): visual parity with Arena Quiz —
 //  • CoachingCard shows what the player SHOULD have said post-round
-//  • CountdownOverlay 3..2..1 before each round
 //  • ArenaAudioPlayer renders TTS narration from pvp.audio_ready
 //  • useLifelines wires hint/skip quota (Duel: 0/1/0) to the REST API
 //  • useSpeechRecognition gives a floating mic that appends to chat input
+//  (CountdownOverlay 3-2-1 removed 2026-05-03 per user feedback.)
 import { CoachingCard, type CoachingPayload } from "@/components/arena/reveal/CoachingCard";
-import { CountdownOverlay } from "@/components/arena/reveal/CountdownOverlay";
 import { ArenaAudioPlayer } from "@/components/pvp/ArenaAudioPlayer";
 import { useLifelines } from "@/components/arena/hooks/useLifelines";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -88,8 +86,6 @@ function DuelPage() {
   const [judgeDegraded, setJudgeDegraded] = useState<
     { round_number: number; reason: string } | null
   >(null);
-  const [countdownOpen, setCountdownOpen] = useState(false);
-  const [countdownRound, setCountdownRound] = useState<number | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const speech = useSpeechRecognition({
     lang: "ru-RU",
@@ -180,9 +176,8 @@ function DuelPage() {
           // Issue #168 — clear the degraded-judge banner when a new
           // round starts. Each banner is scoped to a single round.
           setJudgeDegraded(null);
-          // Phase A — pre-round 3..2..1 countdown instead of raw auto-start
-          setCountdownRound(Number(d.round || 1));
-          setCountdownOpen(true);
+          // 2026-05-03: pre-round 3-2-1 countdown removed per user feedback —
+          // no countdowns anywhere in the arena flow.
           sfx.play("round_start");
           break;
 
@@ -731,16 +726,7 @@ function DuelPage() {
         </div>
       )}
 
-      {/* Round indicator */}
-      {store.myRole && (
-        <div className="px-4 py-2 z-20">
-          <RoundIndicator
-            roundNumber={store.roundNumber}
-            myRole={store.myRole}
-            timeRemaining={store.timeRemaining}
-          />
-        </div>
-      )}
+      {/* Round indicator — 2026-05-03: countdown ring + mm:ss removed per user feedback. */}
 
       {/* Character brief for client role */}
       {store.myRole === "client" && store.duelBrief?.character_brief && (
@@ -907,13 +893,7 @@ function DuelPage() {
         />
       </div>
 
-      {/* Phase A — pre-round 3..2..1 + post-round CoachingCard overlays */}
-      <CountdownOverlay
-        open={countdownOpen}
-        accentColor={theme.accent}
-        label={countdownRound ? `РАУНД ${countdownRound}` : undefined}
-        onDone={() => setCountdownOpen(false)}
-      />
+      {/* 2026-05-03: pre-round 3..2..1 overlay removed per user feedback. */}
       <CoachingCard
         open={coachingOpen}
         accentColor={theme.accent}
