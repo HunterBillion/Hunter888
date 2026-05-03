@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Loader2, Lock } from "lucide-react";
-import { Sword, Trophy, Lightning, BookOpen, Brain, Clock, Target, Sparkle } from "@phosphor-icons/react";
+import { Sword, Trophy, Lightning, Brain, Target, Sparkle } from "@phosphor-icons/react";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
@@ -260,12 +260,16 @@ function PvPLobbyContent() {
                     color: connectionState === "error" ? "var(--danger)" : "var(--warning)",
                   } as React.CSSProperties}
                 >
-                  <Loader2 size={16} className="animate-spin" />
+                  {connectionState === "error" ? (
+                    <PixelIcon name="skull" size={16} color="var(--danger)" />
+                  ) : (
+                    <Loader2 size={16} className="animate-spin" />
+                  )}
                   {connectionState === "error"
-                    ? "⚠ ОШИБКА ПОДКЛЮЧЕНИЯ К PVP СЕРВЕРУ"
+                    ? "ОШИБКА ПОДКЛЮЧЕНИЯ К PVP СЕРВЕРУ"
                     : connectionState === "reconnecting"
-                      ? "↻ ПЕРЕПОДКЛЮЧЕНИЕ..."
-                      : "◎ ПОДКЛЮЧЕНИЕ К PVP..."}
+                      ? "ПЕРЕПОДКЛЮЧЕНИЕ..."
+                      : "ПОДКЛЮЧЕНИЕ К PVP..."}
                 </div>
               </motion.div>
             )}
@@ -274,7 +278,8 @@ function PvPLobbyContent() {
           <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="text-2xl">⚔️</span>
+                {/* 2026-05-03: ⚔️ эмодзи → PixelIcon (единственное эмодзи на странице, выпадало из стиля) */}
+                <PixelIcon name="sword" size={32} color="var(--accent)" />
                 <div>
                   <h1 className="font-pixel text-xl sm:text-2xl uppercase tracking-widest pixel-glow" style={{ color: "var(--text-primary)" }}>
                     PVP Арена
@@ -297,12 +302,29 @@ function PvPLobbyContent() {
                   ]}
                   footer="Короткий путь: «Разминка» → «Найти соперника» → бой → разбор → рейтинг"
                 />
+                {/* Кнопка «Рейтинг» — pixel (2026-05-03). Header дублирует
+                    /pvp/leaderboard, но эта кнопка остаётся как accent CTA
+                    рядом с info-button — частый use-case на лобби. */}
                 <motion.button
                   onClick={() => router.push("/pvp/leaderboard")}
-                  className="btn-neon flex items-center gap-2 text-xs"
-                  whileTap={{ scale: 0.97 }}
+                  whileHover={{ x: -1, y: -1 }}
+                  whileTap={{ x: 2, y: 2 }}
+                  className="flex items-center gap-2 font-pixel"
+                  style={{
+                    padding: "8px 14px",
+                    background: "var(--bg-panel)",
+                    color: "var(--accent)",
+                    border: "2px solid var(--accent)",
+                    borderRadius: 0,
+                    fontSize: 12,
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    boxShadow: "3px 3px 0 0 var(--accent)",
+                    cursor: "pointer",
+                  }}
                 >
-                  <Trophy weight="duotone" size={14} /> Рейтинг
+                  <PixelIcon name="shield" size={14} color="var(--accent)" />
+                  Рейтинг
                 </motion.button>
               </div>
             </div>
@@ -310,17 +332,30 @@ function PvPLobbyContent() {
 
           {/* Info modal replaced 2026-04-18 by unified <PixelInfoButton /> above */}
 
-          {/* Season banner */}
+          {/* Season banner — pixel (2026-05-03) */}
           {store.activeSeason && (
             <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               transition={{ delay: 0.1 }}
-              className="mt-4 rounded-xl p-3 flex items-center gap-3"
-              style={{ background: "rgba(212,168,75,0.06)", border: "1px solid rgba(212,168,75,0.15)" }}
+              className="mt-4 p-3 flex items-center gap-3"
+              style={{
+                background: "color-mix(in srgb, var(--gf-xp) 10%, var(--bg-panel))",
+                outline: "2px solid var(--gf-xp)",
+                outlineOffset: -2,
+                boxShadow: "3px 3px 0 0 var(--gf-xp)",
+                borderRadius: 0,
+              }}
             >
-              <Lightning weight="duotone" size={16} style={{ color: "var(--rank-gold)" }} />
-              <span className="font-medium text-xs" style={{ color: "var(--text-secondary)" }}>
+              <PixelIcon name="bolt" size={16} color="var(--gf-xp)" />
+              <span
+                className="font-pixel uppercase"
+                style={{
+                  color: "var(--gf-xp)",
+                  fontSize: 12,
+                  letterSpacing: "0.14em",
+                }}
+              >
                 {store.activeSeason.name}
               </span>
             </motion.div>
@@ -333,7 +368,7 @@ function PvPLobbyContent() {
             </div>
           )}
 
-          {/* Rating failed: no data and not loading */}
+          {/* Rating failed — pixel retry (2026-05-03) */}
           {!store.rating && !store.ratingLoading && (
             <div className="mt-6 flex flex-col items-center py-8 text-center">
               <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>
@@ -341,8 +376,21 @@ function PvPLobbyContent() {
               </p>
               <motion.button
                 onClick={() => store.fetchRating()}
-                className="btn-neon text-sm px-4 py-2"
-                whileTap={{ scale: 0.97 }}
+                whileHover={{ x: -1, y: -1 }}
+                whileTap={{ x: 2, y: 2 }}
+                className="font-pixel"
+                style={{
+                  padding: "8px 16px",
+                  background: "var(--accent)",
+                  color: "#fff",
+                  border: "2px solid var(--accent)",
+                  borderRadius: 0,
+                  fontSize: 12,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  boxShadow: "3px 3px 0 0 #000, 0 0 12px var(--accent-glow)",
+                  cursor: "pointer",
+                }}
               >
                 Повторить
               </motion.button>
@@ -359,33 +407,74 @@ function PvPLobbyContent() {
           {store.rating && !store.ratingLoading && (
             <div className="mt-6">
               {store.rating.total_duels === 0 && !tutorialCompleted ? (
-                <div className="flex flex-col items-center py-10 text-center">
-                  <Sword weight="duotone" size={40} style={{ color: "var(--accent)" }} className="mb-3" />
-                  <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
+                /* Welcome screen — pixel (2026-05-03) */
+                <div
+                  className="flex flex-col items-center py-10 text-center px-6"
+                  style={{
+                    background: "var(--bg-panel)",
+                    outline: "2px solid var(--accent)",
+                    outlineOffset: -2,
+                    boxShadow: "4px 4px 0 0 var(--accent)",
+                    borderRadius: 0,
+                  }}
+                >
+                  <PixelIcon name="sword" size={48} color="var(--accent)" />
+                  <h2
+                    className="font-pixel uppercase mt-3 mb-2"
+                    style={{
+                      color: "var(--text-primary)",
+                      fontSize: 22,
+                      letterSpacing: "0.16em",
+                      lineHeight: 1.2,
+                    }}
+                  >
                     Готов к первой дуэли?
                   </h2>
                   <p className="text-sm mb-5 max-w-md" style={{ color: "var(--text-secondary)" }}>
                     Короткая разминка с наставником — покажем подсказки, таймер и разбор.
                     Займёт пару минут, потом сразу на Арену.
                   </p>
-                  <div className="flex flex-wrap items-center justify-center gap-2">
-                    <button
-                      className="px-5 py-2.5 rounded-lg text-white font-medium text-sm hover:brightness-110 transition"
-                      style={{ background: "var(--accent)" }}
+                  <div className="flex flex-col items-center gap-3">
+                    {/* Главная CTA — Разминка (туториал). «Сразу в бой» убрана
+                        как отдельная кнопка (мешала новичкам случайно скипнуть
+                        обучение); вынесена в text-link под главной кнопкой. */}
+                    <motion.button
                       onClick={() => router.push("/pvp/tutorial")}
+                      whileHover={{ x: -1, y: -1 }}
+                      whileTap={{ x: 2, y: 2 }}
+                      className="font-pixel inline-flex items-center gap-2"
+                      style={{
+                        padding: "12px 28px",
+                        background: "var(--accent)",
+                        color: "#fff",
+                        border: "2px solid var(--accent)",
+                        borderRadius: 0,
+                        fontSize: 14,
+                        letterSpacing: "0.18em",
+                        textTransform: "uppercase",
+                        boxShadow: "4px 4px 0 0 #000, 0 0 16px var(--accent-glow)",
+                        cursor: "pointer",
+                      }}
                     >
-                      Разминка (2 мин)
-                    </button>
+                      <PixelIcon name="bolt" size={16} color="#fff" />
+                      Разминка · 2 мин
+                    </motion.button>
                     <button
-                      className="px-5 py-2.5 rounded-lg font-medium text-sm transition"
+                      className="font-pixel"
                       style={{
                         background: "transparent",
                         color: "var(--text-muted)",
-                        border: "1px solid var(--border-color)",
+                        border: "none",
+                        fontSize: 11,
+                        letterSpacing: "0.14em",
+                        textTransform: "uppercase",
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                        textUnderlineOffset: 4,
                       }}
                       onClick={handleFindMatch}
                     >
-                      Сразу в бой
+                      Пропустить · сразу в бой
                     </button>
                   </div>
                 </div>
@@ -393,19 +482,37 @@ function PvPLobbyContent() {
                 <RatingCard rating={store.rating} />
               )}
 
-              {/* Arena Points balance */}
+              {/* Arena Points — pixel chip (2026-05-03) */}
               <div
-                className="mt-3 flex items-center gap-2 rounded-xl px-4 py-2"
+                className="mt-3 inline-flex items-center gap-2 px-4 py-2"
                 style={{
-                  background: "color-mix(in srgb, var(--gf-xp) 8%, transparent)",
-                  border: "1px solid color-mix(in srgb, var(--gf-xp) 20%, transparent)",
+                  background: "color-mix(in srgb, var(--gf-xp) 12%, var(--bg-panel))",
+                  outline: "2px solid var(--gf-xp)",
+                  outlineOffset: -2,
+                  boxShadow: "2px 2px 0 0 var(--gf-xp)",
+                  borderRadius: 0,
                 }}
               >
-                <Lightning weight="fill" size={16} style={{ color: "var(--gf-xp)" }} />
-                <span className="font-mono text-sm font-bold" style={{ color: "var(--gf-xp)" }}>
-                  {arenaPoints} AP
+                <PixelIcon name="bolt" size={16} color="var(--gf-xp)" />
+                <span
+                  className="font-pixel"
+                  style={{
+                    color: "var(--gf-xp)",
+                    fontSize: 18,
+                    letterSpacing: "0.04em",
+                    lineHeight: 1,
+                  }}
+                >
+                  {arenaPoints}
                 </span>
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                <span
+                  className="font-pixel uppercase"
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: 11,
+                    letterSpacing: "0.14em",
+                  }}
+                >
                   Arena Points
                 </span>
               </div>
@@ -466,27 +573,41 @@ function PvPLobbyContent() {
                 />
               </div>
 
-              {/* Tabs */}
-              <div className="flex gap-1 rounded-xl p-1" style={{ background: "var(--input-bg)" }}>
-                {(["arena", "knowledge", "history"] as const).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTab(t)}
-                    className="relative flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-medium text-sm tracking-wide"
-                    style={{ color: tab === t ? "var(--text-primary)" : "var(--text-muted)" }}
-                  >
-                    {tab === t && (
-                      <motion.div
-                        layoutId="pvpTab"
-                        className="absolute inset-0 rounded-lg"
-                        style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)" }}
-                      />
-                    )}
-                    <span className="relative z-10 flex items-center gap-1">
-                      {t === "arena" ? "Дуэли" : t === "knowledge" ? "Знания ФЗ-127" : "История"}
-                    </span>
-                  </button>
-                ))}
+              {/* Tabs — pixel chips (2026-05-03 deep-cleanup) */}
+              <div className="flex flex-wrap gap-2">
+                {(["arena", "knowledge", "history"] as const).map((t) => {
+                  const active = tab === t;
+                  const label = t === "arena" ? "Дуэли" : t === "knowledge" ? "Знания ФЗ-127" : "История";
+                  const icon: PixelIconName = t === "arena" ? "sword" : t === "knowledge" ? "book" : "ladder";
+                  return (
+                    <motion.button
+                      key={t}
+                      type="button"
+                      onClick={() => setTab(t)}
+                      whileHover={active ? {} : { x: -1, y: -1 }}
+                      whileTap={{ x: 2, y: 2, transition: { duration: 0.05 } }}
+                      transition={{ type: "spring", stiffness: 600, damping: 30 }}
+                      className="flex items-center gap-2 px-4 py-2.5 font-pixel relative"
+                      style={{
+                        background: active ? "var(--accent)" : "var(--bg-panel)",
+                        color: active ? "#fff" : "var(--text-primary)",
+                        border: `2px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
+                        borderRadius: 0,
+                        fontSize: 13,
+                        letterSpacing: "0.12em",
+                        textTransform: "uppercase",
+                        boxShadow: active
+                          ? "3px 3px 0 0 #000, 0 0 12px var(--accent-glow)"
+                          : "2px 2px 0 0 var(--border-color)",
+                        cursor: "pointer",
+                        transition: "background 120ms, color 120ms",
+                      }}
+                    >
+                      <PixelIcon name={icon} size={16} color={active ? "#fff" : "var(--text-muted)"} />
+                      {label}
+                    </motion.button>
+                  );
+                })}
               </div>
 
               {/* Arena (Duels) */}
@@ -496,7 +617,7 @@ function PvPLobbyContent() {
                     <div className="space-y-4">
                       {/* PvP Mode Selection — pixel unified (2026-04-29) */}
                       <div>
-                        <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>SELECT MODE — PVP</p>
+                        <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>▸ РЕЖИМЫ ДУЭЛЕЙ — PVP</p>
                         <div className="grid grid-cols-2 gap-2">
                           {([
                             { code: "classic", name: "Классическая дуэль", desc: "2 раунда, смена ролей", icon: "sword" as PixelIconName, level: 1 },
@@ -523,7 +644,7 @@ function PvPLobbyContent() {
 
                       {/* PvE Mode Selection — pixel unified */}
                       <div>
-                        <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>SELECT MODE — PVE</p>
+                        <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>▸ РЕЖИМЫ С БОТАМИ — PVE</p>
                         <div className="grid grid-cols-2 gap-2">
                           {([
                             { code: "standard", name: "Стандартный бот", desc: "Обычная PvE дуэль", icon: "robot" as PixelIconName, level: 1 },
@@ -548,25 +669,10 @@ function PvPLobbyContent() {
                         </div>
                       </div>
 
-                      {/* Quick info — pixel card (was glass-panel) */}
-                      <div
-                        className="flex items-center gap-3 p-4"
-                        style={{
-                          background: "var(--bg-panel)",
-                          outline: "2px solid var(--accent)",
-                          outlineOffset: -2,
-                          boxShadow: "3px 3px 0 0 var(--accent)",
-                          borderRadius: 0,
-                        }}
-                      >
-                        <PixelIcon name="sword" size={28} color="var(--accent)" />
-                        <div>
-                          <p className="font-pixel text-sm uppercase" style={{ color: "var(--text-primary)", letterSpacing: "0.1em" }}>Голосовая дуэль</p>
-                          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-                            Два раунда · смена ролей · Glicko-2 рейтинг
-                          </p>
-                        </div>
-                      </div>
+                      {/* 2026-05-03 deep-cleanup: «Голосовая дуэль» quick-info
+                          УДАЛЕНА. Subtitle «Дуэли 1 на 1 · Glicko-2 рейтинг» в
+                          шапке страницы уже передаёт ту же информацию — этот
+                          блок был полным дубликатом. */}
 
                       {/* How it works — pixel cards (was glass-panel) */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -609,7 +715,7 @@ function PvPLobbyContent() {
                     <div className="space-y-4">
                       {/* Quiz mode selection — pixel unified (2026-04-29) */}
                       <div>
-                        <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>SELECT MODE — QUIZ</p>
+                        <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>▸ ВЫБЕРИ КВИЗ</p>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           {([
                             { mode: "free_dialog" as const, icon: "book" as PixelIconName, label: "Свободный диалог", desc: "Без ограничений", color: "var(--accent)" },
@@ -804,72 +910,15 @@ function PvPLobbyContent() {
                         </motion.button>
                       )}
 
-                      {/* Tournament widget */}
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="mt-4 rounded-xl p-4 cursor-pointer"
-                        style={{
-                          background: "linear-gradient(135deg, rgba(212,168,75,0.06), rgba(255,165,0,0.03))",
-                          border: "1px solid rgba(212,168,75,0.15)",
-                        }}
-                        onClick={() => router.push("/pvp/tournament")}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <Trophy weight="duotone" size={20} style={{ color: "var(--rank-gold)" }} />
-                          <span className="text-sm font-bold" style={{ color: "var(--rank-gold)" }}>Турнир недели</span>
-                          <span className="ml-auto text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-                            Подробнее →
-                          </span>
-                        </div>
-                        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                          Соревнуйтесь за призы и место на подиуме
-                        </p>
-                      </motion.div>
-
-                      {/* PvP Arena Knowledge Section */}
-                      <div className="mt-6 pt-4" style={{ borderTop: "1px solid var(--glass-border)" }}>
-                        <p className="text-xs font-semibold tracking-wide mb-3" style={{ color: "var(--text-muted)" }}>
-                          PvP арена знаний
-                        </p>
-                        <div className="grid grid-cols-2 gap-3">
-                          <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => {
-                              // Navigate to knowledge WS and send pvp.find_opponent
-                              router.push("/pvp/arena/lobby?mode=2");
-                            }}
-                            className="glass-panel rounded-xl p-4 text-left"
-                            style={{ borderColor: "var(--accent)", borderWidth: 1 }}
-                          >
-                            <Sword weight="duotone" size={20} style={{ color: "var(--accent)" }} />
-                            <p className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                              Дуэль 1 на 1
-                            </p>
-                            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                              2 игрока · 10 раундов
-                            </p>
-                          </motion.button>
-                          <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => {
-                              router.push("/pvp/arena/lobby?mode=4");
-                            }}
-                            className="glass-panel rounded-xl p-4 text-left"
-                            style={{ borderColor: "var(--warning)", borderWidth: 1 }}
-                          >
-                            <Trophy weight="duotone" size={20} style={{ color: "var(--warning)" }} />
-                            <p className="mt-2 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                              Командный бой
-                            </p>
-                            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                              4 игрока · 10 раундов
-                            </p>
-                          </motion.button>
-                        </div>
-                      </div>
+                      {/* 2026-05-03 deep-cleanup:
+                          1) «Турнир недели» виджет — УДАЛЁН.
+                             Был дубль /pvp/tournament из Header. Привязка к
+                             ФЗ-127 искусственная.
+                          2) «PvP арена знаний» (Дуэль 1 на 1 / Командный бой)
+                             — УДАЛЕНО. Это был второй набор PvP-режимов в табе
+                             про право, путал пользователей. Основные PvP/PvE
+                             режимы — в табе «Дуэли». Сценарий /pvp/arena/lobby
+                             доступен через прямой URL если кому-то нужен. */}
                     </div>
                   </motion.div>
                 )}
@@ -884,11 +933,14 @@ function PvPLobbyContent() {
                         <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
                       </div>
                     ) : store.myDuels.length === 0 ? (
-                      <div className="mt-12 text-center">
-                        <Sword weight="duotone" size={32} style={{ color: "var(--text-muted)" }} />
-                        <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>Ещё нет дуэлей</p>
+                      <div className="mt-12 text-center flex flex-col items-center gap-3">
+                        <PixelIcon name="sword" size={32} color="var(--text-muted)" />
+                        <p className="font-pixel text-xs uppercase" style={{ color: "var(--text-muted)", letterSpacing: "0.18em" }}>
+                          Ещё нет дуэлей
+                        </p>
                       </div>
                     ) : (
+                      /* History items — pixel cards (2026-05-03) */
                       <div className="mt-6 space-y-3">
                         {store.myDuels.map((duel, i) => {
                           const isP1 = store.rating?.user_id === duel.player1_id;
@@ -897,40 +949,86 @@ function PvPLobbyContent() {
                           const myDelta = isP1 ? duel.player1_rating_delta : duel.player2_rating_delta;
                           const isWinner = duel.winner_id === store.rating?.user_id;
                           const ratingApplied = duel.rating_change_applied && !duel.is_pve;
+                          const accent = duel.is_draw ? "var(--warning)" : isWinner ? "var(--success)" : "var(--danger)";
 
                           return (
                             <motion.div
                               key={duel.id}
-                              initial={{ opacity: 0, x: -12 }}
-                              animate={{ opacity: 1, x: 0 }}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
                               transition={{ delay: i * 0.05 }}
-                              className="glass-panel p-4 flex items-center gap-4 cursor-pointer"
+                              whileHover={{ x: -1, y: -1 }}
+                              className="p-4 flex items-center gap-4 cursor-pointer"
                               style={{
-                                borderLeft: `3px solid ${duel.is_draw ? "var(--warning)" : isWinner ? "var(--success)" : "var(--danger)"}`,
+                                background: "var(--bg-panel)",
+                                outline: `2px solid ${accent}`,
+                                outlineOffset: -2,
+                                boxShadow: `3px 3px 0 0 ${accent}`,
+                                borderRadius: 0,
                               }}
                               onClick={() => router.push(`/pvp/duel/${duel.id}`)}
                             >
                               <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span
+                                    className="font-pixel uppercase"
+                                    style={{
+                                      color: accent,
+                                      fontSize: 13,
+                                      letterSpacing: "0.14em",
+                                    }}
+                                  >
                                     {duel.is_draw ? "Ничья" : isWinner ? "Победа" : "Поражение"}
                                   </span>
-                                  <span className="font-medium text-xs px-1.5 py-0.5 rounded" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>
+                                  <span
+                                    className="font-pixel uppercase"
+                                    style={{
+                                      padding: "1px 6px",
+                                      background: "var(--bg-secondary)",
+                                      border: "1px solid var(--border-color)",
+                                      color: "var(--text-muted)",
+                                      fontSize: 10,
+                                      letterSpacing: "0.12em",
+                                    }}
+                                  >
                                     {DUEL_STATUS_LABELS[duel.status] || duel.status}
                                   </span>
-                                  {duel.is_pve && <span className="font-medium text-xs" style={{ color: "var(--warning)" }}>PvE</span>}
+                                  {duel.is_pve && (
+                                    <span
+                                      className="font-pixel uppercase"
+                                      style={{
+                                        padding: "1px 6px",
+                                        background: "color-mix(in srgb, var(--warning) 12%, transparent)",
+                                        border: "1px solid var(--warning)",
+                                        color: "var(--warning)",
+                                        fontSize: 10,
+                                        letterSpacing: "0.14em",
+                                      }}
+                                    >PvE</span>
+                                  )}
                                 </div>
-                                <div className="mt-1 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                                <div
+                                  className="mt-1 font-pixel"
+                                  style={{
+                                    color: "var(--text-muted)",
+                                    fontSize: 12,
+                                    letterSpacing: "0.04em",
+                                  }}
+                                >
                                   {formatTime(duel.created_at)} · {Math.round(myScore)} vs {Math.round(oppScore)}
                                 </div>
                               </div>
                               <div
-                                className="font-mono text-sm font-bold"
-                                style={{ color: ratingApplied ? (myDelta >= 0 ? "var(--success)" : "var(--danger)") : "var(--warning)" }}
+                                className="font-pixel"
+                                style={{
+                                  color: ratingApplied ? (myDelta >= 0 ? "var(--success)" : "var(--danger)") : "var(--warning)",
+                                  fontSize: 16,
+                                  letterSpacing: "0.04em",
+                                }}
                               >
-                                {ratingApplied ? `${myDelta >= 0 ? "+" : ""}${Math.round(myDelta)}` : "Без рейтинга"}
+                                {ratingApplied ? `${myDelta >= 0 ? "+" : ""}${Math.round(myDelta)}` : "—"}
                               </div>
-                              <ArrowRight size={14} style={{ color: "var(--text-muted)" }} />
+                              <ArrowRight size={16} style={{ color: "var(--text-muted)" }} />
                             </motion.div>
                           );
                         })}
@@ -962,74 +1060,12 @@ function PvPLobbyContent() {
         )}
       </AnimatePresence>
 
-      {/* PvE offer modal — legacy fallback */}
-      <AnimatePresence>
-        {store.pvEOffer && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[300] flex items-center justify-center p-4"
-            style={{ background: "var(--overlay-bg)", backdropFilter: "blur(8px)" }}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="glass-panel rounded-2xl p-6 max-w-sm w-full"
-              style={{ border: "1px solid rgba(212,168,75,0.2)" }}
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <Lightning weight="duotone" size={20} style={{ color: "var(--warning)" }} />
-                <h3 className="font-display text-lg font-bold" style={{ color: "var(--text-primary)" }}>
-                  Дуэль с AI-ботом
-                </h3>
-              </div>
-              <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
-                {store.pvEOffer}
-              </p>
-              <div className="flex gap-3">
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  className="flex-1 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-2"
-                  style={{ background: "var(--success)", color: "var(--bg-primary)" }}
-                  disabled={pveAccepting}
-                  onClick={async () => {
-                    if (pveAccepting) return;
-                    store.setPvEOffer(null);
-                    store.resetQueue();
-                    setPveAccepting(true);
-                    try {
-                      const data = (await api.post("/pvp/accept-pve", {})) as { duel_id?: string };
-                      if (data?.duel_id) {
-                        router.push(`/pvp/duel/${data.duel_id}`);
-                        return;
-                      }
-                    } catch {
-                      // Fallback to WS
-                      sendMessage({ type: "pve.accept" });
-                    } finally {
-                      setPveAccepting(false);
-                    }
-                  }}
-                >
-                  {pveAccepting ? <Loader2 size={14} className="animate-spin" /> : "Играть с AI"}
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  className="flex-1 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wide btn-neon"
-                  onClick={() => {
-                    sendMessage({ type: "queue.leave" });
-                    store.resetQueue();
-                  }}
-                >
-                  Отмена
-                </motion.button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* 2026-05-03 deep-cleanup: PvE-offer модалка УДАЛЕНА.
+          Это был legacy fallback по WS-сообщению `pve.offer`, но handler
+          выше (case "pve.offer") сразу вызывает store.setPvEOffer(null) —
+          модалка фактически unreachable, dead code. Если в будущем
+          понадобится PvE-offer flow, возрождать через MatchmakingOverlay
+          с pixel-стилем, не возвращать старую glass-panel модалку. */}
     </AuthLayout>
   );
 }
