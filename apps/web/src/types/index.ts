@@ -1878,6 +1878,13 @@ export interface CharacterBrief {
   behavior: string;
 }
 
+export interface DuelPlayerCard {
+  id: string;
+  name: string;
+  tier: string;
+  avatar_url: string | null;
+}
+
 export interface DuelBrief {
   duel_id: string;
   your_role: "seller" | "client";
@@ -1888,6 +1895,13 @@ export interface DuelBrief {
   scenario_title: string | null;
   round_number: number;
   time_limit_seconds: number;
+  // 2026-05-03: surface server-side player cards (already sent in
+  // ws/pvp.py:_match_found_payload + duel.brief). Frontend now consumes
+  // them so duel header can show opponent name/tier/avatar + mode.
+  you?: DuelPlayerCard;
+  opponent?: DuelPlayerCard;
+  is_pve?: boolean;
+  pve_mode?: string | null;
 }
 
 // ─── Arena Knowledge PvP Types ─────────────────────────────────────────────

@@ -71,14 +71,18 @@ class AuthErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState
               {this.state.error?.message || "Произошла непредвиденная ошибка"}
             </p>
             <button
+              type="button"
               onClick={() => {
+                // 2026-05-03: don't full-reload — just clear the boundary
+                // and let React re-render. Full reload kills auth bootstrap
+                // + WS reconnect for what is often a transient component
+                // error.
                 this.setState({ hasError: false, error: null });
-                window.location.reload();
               }}
               className="inline-flex items-center justify-center gap-2 font-bold tracking-wide uppercase rounded-xl px-5 py-2.5 text-sm transition-all duration-200 mx-auto" style={{ background: "var(--glass-bg)", color: "var(--text-primary)", border: "1px solid var(--accent)" }}
             >
               <RefreshCw size={14} />
-              Перезагрузить
+              Попробовать снова
             </button>
           </div>
         </div>
