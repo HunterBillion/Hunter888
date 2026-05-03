@@ -28,6 +28,7 @@ import {
 import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { useNotificationStore } from "@/stores/useNotificationStore";
 
 interface TeamRow {
   rank: number;
@@ -68,6 +69,11 @@ export default function TeamsLeaderboardPage() {
       setRows(Array.isArray(data) ? data : []);
     } catch (e) {
       logger.error("teams leaderboard load failed", e);
+      useNotificationStore.getState().addToast({
+        type: "error",
+        title: "Не удалось загрузить лидерборд команд",
+        body: "Проверь соединение и попробуй обновить страницу.",
+      });
     } finally {
       setLoading(false);
     }

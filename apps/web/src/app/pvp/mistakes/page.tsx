@@ -35,6 +35,7 @@ import {
 import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { useNotificationStore } from "@/stores/useNotificationStore";
 
 interface QueueItem {
   question_text: string;
@@ -159,6 +160,11 @@ export default function ReviewPage() {
       setQueue(queueResp.items ?? []);
     } catch (e) {
       logger.error("review/srs load failed", e);
+      useNotificationStore.getState().addToast({
+        type: "error",
+        title: "Не удалось загрузить ошибки",
+        body: "Проверь соединение и попробуй обновить страницу.",
+      });
     } finally {
       setLoading(false);
     }

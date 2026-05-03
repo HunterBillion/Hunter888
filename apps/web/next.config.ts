@@ -27,6 +27,10 @@ const nextConfig: NextConfig = {
       { source: "/methodologist/arena-content", destination: "/dashboard?tab=methodology&sub=arena", permanent: true },
       { source: "/methodologist/scenarios", destination: "/dashboard?tab=methodology&sub=scenarios", permanent: true },
       { source: "/methodologist/scoring", destination: "/dashboard?tab=methodology&sub=scoring", permanent: true },
+      // 2026-05-03 — /pvp/tutorial removed entirely (PR #204). Permanent
+      // redirect to /pvp so any cached browser tab / bookmark / WhatsApp
+      // link goes straight to the arena instead of showing a 404.
+      { source: "/pvp/tutorial", destination: "/pvp", permanent: true },
     ];
   },
 
