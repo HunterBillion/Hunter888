@@ -919,7 +919,7 @@ function DuelPage() {
           // 2026-05-01 (12-portrait library): свой аватар — реактивный
           // hook usePlayerAvatar(level), соперник — по архетипу из duelBrief.
           selfAvatar={selfAvatar}
-          opponentAvatar={store.duelBrief?.opponent?.avatar_url || resolveOpponentAvatar(store.duelBrief?.archetype ?? null)}
+          opponentAvatar={resolveOpponentAvatar(store.duelBrief?.archetype ?? null)}
         />
       </div>
 
