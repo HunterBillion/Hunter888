@@ -141,7 +141,7 @@ If repeat SSH attempts keep landing on ofzn, the user has out-of-band access to 
 
 ### 2.1 Note on `scripts/deploy-prod.sh`
 
-As of 2026-05-03 the wrapper script described below is **not present on either VM** (verified). Until it lands, the canonical deploy is the **manual docker compose flow** at the bottom of this section. The §4.4 verification rule (`/api/version` must report your local SHA) still applies — without `export RELEASE_SHA=...` before `build`, `release_sha` stays `unknown` (current state of prod, FIND-007).
+As of **2026-05-04** the wrapper script lands on cqax (`/opt/hunter888/scripts/deploy-prod.sh`, 65 lines, exec-bit set) and is the canonical deploy path — verified by FIND-008 deploy-loop on 2026-05-04T11:57Z (`/api/version` reported the deployed sha back, FIND-007 closed). Use the script. Operators **must not** run `docker compose build` directly: the env-var-dropping flow that produced `release_sha=unknown` is the regression this script exists to prevent.
 
 Reasons:
 - GitHub password auth is disabled — `git push` from the server will
