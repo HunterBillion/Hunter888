@@ -1891,6 +1891,35 @@ async def _generate_character_reply(
                 _cp = state.get("custom_params") or {}
                 _session_mode = _cp.get("session_mode") or "chat"
                 _tone = _cp.get("tone")  # constructor v2, 2026-04-21
+                # P2 (2026-05-03): pass *only* the end_call tool spec when
+                # the granular flag is on. Avoids flipping ``mcp_enabled``
+                # globally (too broad — would activate every registered
+                # tool). Local + OpenAI branches honour ``tools=``; gemini /
+                # claude ignore the kwarg and fall through to the
+                # ``[END_CALL]`` substring fallback path.
+                _end_call_tools_spec: list[dict] | None = None
+                if (
+                    _session_mode in ("call", "center")
+                    and getattr(settings, "end_call_tool_enabled", False)
+                ):
+                    try:
+                        from app.mcp.registry import ToolRegistry as _ToolRegistry
+                        if _ToolRegistry.has("end_call"):
+                            _end_call_tool = _ToolRegistry.get("end_call")
+                            _end_call_tools_spec = [{
+                                "type": "function",
+                                "function": {
+                                    "name": _end_call_tool.name,
+                                    "description": _end_call_tool.description,
+                                    "parameters": _end_call_tool.parameters_schema,
+                                },
+                            }]
+                    except Exception:
+                        logger.debug(
+                            "end_call tool spec build failed for session %s",
+                            session_id, exc_info=True,
+                        )
+                        _end_call_tools_spec = None
                 llm_result = await generate_response(
                     system_prompt=extra_system,
                     messages=messages,
@@ -1904,6 +1933,7 @@ async def _generate_character_reply(
                     difficulty=state.get("base_difficulty"),
                     # 2026-04-29 (TZ-4.5 PR 4): cross-session memory.
                     persona_facts=_persona_facts,
+                    tools=_end_call_tools_spec,
                 )
     except LLMError as e:
         logger.error("LLM failed for session %s: %s", session_id, e)
@@ -2317,6 +2347,42 @@ async def _generate_character_reply(
         "удачи вам", "бывайте", "прощайте",
     )
     _ai_reply_text = (llm_result.content or "").strip()
+    # P2 (2026-05-03): real ``end_call`` tool invocation — primary explicit
+    # hangup signal, replaces the ``[END_CALL]`` string-marker hack. The
+    # LLM picks a 1-line ``tools=[end_call]`` spec right next to its
+    # message array, which is structurally far more prominent than a
+    # literal token at the tail of a 6-7K-token system prompt. We mirror
+    # the result onto ``_has_end_call_marker`` so the downstream branch
+    # (``_can_ai_end_explicit``) treats the tool-call exactly like the
+    # marker — same gates, same WS event, same _auto_end_after_ai_farewell
+    # 3.5s grace. The string marker stays as a fallback for the case
+    # where the model bypasses the tool.
+    _end_call_tool_args: dict | None = None
+    _tool_calls = getattr(llm_result, "tool_calls", None) or []
+    for _tc in _tool_calls:
+        if (_tc or {}).get("name") == "end_call":
+            _args = (_tc or {}).get("arguments") or {}
+            if isinstance(_args, dict):
+                _end_call_tool_args = _args
+                break
+    if _end_call_tool_args is not None:
+        _tool_phrase = (_end_call_tool_args.get("phrase") or "").strip()
+        _tool_reason = (_end_call_tool_args.get("reason") or "other").strip()
+        # If the model invoked the tool *without* producing text alongside,
+        # use the ``phrase`` argument as the spoken reply so TTS / transcript
+        # / FE all show a coherent farewell.
+        if not _ai_reply_text and _tool_phrase:
+            _ai_reply_text = _tool_phrase
+            try:
+                llm_result.content = _ai_reply_text
+            except Exception:
+                pass
+        logger.info(
+            "AI fired end_call tool (session=%s, reason=%s, phrase=%r) — "
+            "explicit hangup via real LLM tool",
+            session_id, _tool_reason, _tool_phrase[:80],
+        )
+
     # 2026-05-03 (BUG 1 fix): explicit [END_CALL] marker per system-prompt rule 9.
     # Industry pattern (Vapi endCallPhrases, custom stop-tokens). When LLM emits the
     # marker we trust its hangup intent regardless of emotion/msg_count gates and
@@ -2334,6 +2400,11 @@ async def _generate_character_reply(
             "AI emitted [END_CALL] marker (session=%s, snippet=%r) — explicit hangup intent",
             session_id, _ai_reply_text[:80],
         )
+    # The tool-call path counts as an explicit-marker signal for the
+    # downstream gate (``_can_ai_end_explicit``). Always set after the
+    # substring-marker detector ran so we never lose either source.
+    if _end_call_tool_args is not None:
+        _has_end_call_marker = True
     _ai_reply_lower = _ai_reply_text.lower()
     # ── P1 (2026-04-29) Coaching mistake detector — record AI turn ──
     # Feed assistant char volume into the talk-ratio rolling window so

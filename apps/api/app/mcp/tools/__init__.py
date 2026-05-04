@@ -14,12 +14,14 @@ Adding a new tool:
 # Importing each module triggers ``@tool`` decorator → ToolRegistry.register.
 # Ordering is stable so the openai_tools_spec list is deterministic.
 from app.mcp.tools import (  # noqa: F401 — side-effect registration
+    end_call,
     fetch_archetype_profile,
     generate_image,
     get_geolocation_context,
 )
 
 __all__ = [
+    "end_call",
     "fetch_archetype_profile",
     "generate_image",
     "get_geolocation_context",

@@ -183,6 +183,7 @@ async def _call_with_backoff(
     retry_on_timeout_only: bool = False,
     max_tokens: int | None = None,
     temperature: float | None = None,
+    tools: list[dict] | None = None,
 ) -> "LLMResponse | None":
     """Call an LLM provider with exponential backoff + jitter and circuit breaker.
 
@@ -204,7 +205,16 @@ async def _call_with_backoff(
 
     for attempt in range(max_attempts):
         try:
-            response = await call_fn(system, messages, timeout, max_tokens, temperature)
+            # P2 (2026-05-03): tools forwarded as kwarg so providers that
+            # don't support tool-calling (gemini/claude/scripted) can ignore
+            # it without changing their positional-arg signature.
+            if tools is not None:
+                response = await call_fn(
+                    system, messages, timeout, max_tokens, temperature,
+                    tools=tools,
+                )
+            else:
+                response = await call_fn(system, messages, timeout, max_tokens, temperature)
             async with lock:
                 health.record_success()
             logger.info(
@@ -857,10 +867,13 @@ def _build_system_prompt(
         f"9. ЗАВЕРШЕНИЕ ЗВОНКА: если ты решил, что пора закончить разговор (тебе грубят, тратят твоё время, "
         f"ты уже сказал что не хочешь, или спокойно прощаешься после полезного разговора) — "
         f"произнеси прощальную фразу естественно ('Всё, до свидания', 'Извините, мне пора, всего доброго', "
-        f"'Спасибо, я подумаю, до встречи' и т.п.) И В ТОТ ЖЕ ОТВЕТ В САМОМ КОНЦЕ добавь служебный "
-        f"маркер: [END_CALL]. Маркер не виден пользователю — он сигнал системе автоматически положить трубку. "
-        f"НЕ используй маркер для угроз ('или я положу трубку!') — только когда ты ДЕЙСТВИТЕЛЬНО заканчиваешь. "
-        f"Ставь маркер ОДИН раз в конце реплики, без скобок и пояснений.\n"
+        f"'Спасибо, я подумаю, до встречи' и т.п.) И ОДНОВРЕМЕННО вызови инструмент "
+        f"`end_call(reason, phrase)` — это основной способ повесить трубку. `reason` — одно-два слова "
+        f"(insulted, off_topic, no_value, polite_close, escalation, other), `phrase` — твоя финальная "
+        f"реплика. Если по какой-то причине инструмент недоступен — В САМОМ КОНЦЕ ответа добавь резервный "
+        f"маркер: [END_CALL] (он не виден пользователю, это сигнал системе автоматически положить трубку). "
+        f"НЕ используй ни инструмент, ни маркер для угроз ('или я положу трубку!') — только когда ты "
+        f"ДЕЙСТВИТЕЛЬНО заканчиваешь. Ставь маркер ОДИН раз в конце реплики, без скобок и пояснений.\n"
         f"10. У ТЕБЯ ЕСТЬ СВОЯ ЦЕЛЬ В ЭТОМ ЗВОНКЕ. У тебя реальная жизненная проблема (долги, кредиторы, "
         f"возможное банкротство — то, по поводу чего тебе и звонят). Если менеджер ведёт разговор НЕ ПО ТЕМЕ "
         f"3 хода подряд и больше (болтовня, посторонние темы, не задаёт вопросов про твою ситуацию) — "
@@ -1545,12 +1558,21 @@ async def _call_gemini(
     timeout: float,
     max_tokens: int | None = None,
     temperature: float | None = None,
+    *,
+    tools: list[dict] | None = None,
 ) -> LLMResponse:
     """Call Gemini API directly via REST (no SDK dependency).
 
     Uses the generateContent endpoint with system_instruction.
     Free tier: 15 RPM, 1500 req/day, 1M tokens/min.
     Docs: https://ai.google.dev/gemini-api/docs/text-generation
+
+    ``tools`` is accepted for signature parity with the OpenAI-style
+    branches (so ``_call_with_backoff`` can pass it uniformly) but is
+    silently ignored — Gemini's tool-calling REST shape is incompatible
+    with the OpenAI spec we use elsewhere. The end_call signal will fall
+    through to the ``[END_CALL]`` substring fallback when this branch
+    answers the call.
     """
     client = _get_gemini_client()
     if client is None:
@@ -1776,8 +1798,17 @@ async def _call_claude(
     timeout: float,
     max_tokens: int | None = None,
     temperature: float | None = None,
+    *,
+    tools: list[dict] | None = None,
 ) -> LLMResponse:
-    """Call Claude API. Raises LLMError on failure."""
+    """Call Claude API. Raises LLMError on failure.
+
+    ``tools`` is accepted for signature parity with the OpenAI-style
+    branches; Claude's native tool-calling shape differs from the OpenAI
+    spec our pipeline uses, so this branch silently ignores it. The
+    end_call signal then falls through to ``[END_CALL]`` substring
+    detection downstream.
+    """
     client = _get_claude_client()
     if client is None:
         raise LLMError("Claude API key not configured")
@@ -2216,6 +2247,13 @@ async def generate_response(
     # as a returning acquaintance. Default None → cold-start (back-
     # compat for non-call callers like anti_cheat / coach / report).
     persona_facts: dict | None = None,
+    # P2 (2026-05-03): optional OpenAI-style tools spec, forwarded to the
+    # underlying provider when it supports tool-calling (local/openai). The
+    # WS pipeline passes ``[end_call_spec]`` here so the LLM can invoke a
+    # real ``end_call`` function instead of relying on the ``[END_CALL]``
+    # string marker. Gemini/Claude branches accept the kwarg for parity
+    # but ignore it — those callers fall through to the substring fallback.
+    tools: list[dict] | None = None,
 ) -> LLMResponse:
     """Generate character response with hybrid LLM routing.
 
@@ -2536,6 +2574,7 @@ async def generate_response(
                     max_attempts=3, retry_on_timeout_only=False,
                     max_tokens=_forwarded_max_tokens,
                     temperature=temperature,
+                    tools=tools,
                 )
                 if resp is not None:
                     return await _apply_filter(resp)
@@ -2546,6 +2585,7 @@ async def generate_response(
                     max_attempts=3, retry_on_timeout_only=False,
                     max_tokens=_forwarded_max_tokens,
                     temperature=temperature,
+                    tools=tools,
                 )
                 if resp is not None:
                     resp.is_fallback = True
@@ -2558,6 +2598,7 @@ async def generate_response(
                     max_attempts=3, retry_on_timeout_only=False,
                     max_tokens=_forwarded_max_tokens,
                     temperature=temperature,
+                    tools=tools,
                 )
                 if resp is not None:
                     return await _apply_filter(resp)
@@ -2569,6 +2610,7 @@ async def generate_response(
                     max_attempts=3, retry_on_timeout_only=False,
                     max_tokens=_forwarded_max_tokens,
                     temperature=temperature,
+                    tools=tools,
                 )
                 if resp is not None:
                     resp.is_fallback = True
@@ -2581,6 +2623,7 @@ async def generate_response(
                 max_attempts=3, retry_on_timeout_only=False,
                 max_tokens=_forwarded_max_tokens,
                 temperature=temperature,
+                tools=tools,
             )
             if resp is not None:
                 resp.is_fallback = True
@@ -2592,6 +2635,7 @@ async def generate_response(
                 max_attempts=2,
                 max_tokens=_forwarded_max_tokens,
                 temperature=temperature,
+                tools=tools,
             )
             if resp is not None:
                 resp.is_fallback = True
