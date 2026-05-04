@@ -1050,10 +1050,38 @@ async def get_my_league_timeline_endpoint(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """7-day weekly XP timeline (me vs cohort median) for sparkline."""
-    from app.services.weekly_league import get_my_league_timeline
+    """7-day weekly XP timeline (me vs cohort median) for sparkline.
 
-    return await get_my_league_timeline(user.id, db)
+    The endpoint is decorative (powers a small sparkline on /pvp).
+    Any internal error returns an empty timeline instead of 500 so the
+    surrounding LeagueHeroCard renders without the sparkline rather
+    than the whole card breaking.
+    """
+    from datetime import datetime, timedelta, timezone
+    from app.services.weekly_league import get_my_league_timeline
+    import logging
+    log = logging.getLogger(__name__)
+
+    try:
+        return await get_my_league_timeline(user.id, db)
+    except Exception as exc:
+        log.warning("/league/me/timeline failed for user=%s: %s", user.id, exc, exc_info=True)
+        # Build a zero-filled fallback so the frontend still renders.
+        now = datetime.now(timezone.utc)
+        monday = (now - timedelta(days=now.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0,
+        )
+        return {
+            "week_start": monday.isoformat(),
+            "days": [
+                {"date": (monday + timedelta(days=i)).date().isoformat(),
+                 "my_xp": 0, "median_xp": 0}
+                for i in range(7)
+            ],
+            "my_total": 0,
+            "median_total": 0,
+            "delta_vs_median": 0,
+        }
 
 
 @router.get("/league/me")

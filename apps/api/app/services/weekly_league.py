@@ -167,65 +167,111 @@ async def get_my_league_timeline(
     showing my pace against the median of my league group.
 
     Source: session_history.xp_earned grouped by date(created_at).
+
+    Failure mode: this is a non-critical decoration on /pvp. Any error
+    must NOT bubble up — the hero card on /pvp is more important than
+    the sparkline. We return a zero-filled timeline on any internal
+    error, so the frontend renders without the sparkline.
     """
     from app.models.progress import SessionHistory
 
     week_start = _current_week_start()
-    membership = await ensure_membership(user_id, db)
+
+    def _empty_timeline() -> dict[str, Any]:
+        days = [
+            {"date": (week_start + timedelta(days=i)).date().isoformat(),
+             "my_xp": 0, "median_xp": 0}
+            for i in range(7)
+        ]
+        return {
+            "week_start": week_start.isoformat(),
+            "days": days,
+            "my_total": 0,
+            "median_total": 0,
+            "delta_vs_median": 0,
+        }
+
+    try:
+        membership = await ensure_membership(user_id, db)
+    except Exception as exc:
+        logger.warning("league_timeline: ensure_membership failed: %s", exc)
+        return _empty_timeline()
 
     # ── My daily XP ────────────────────────────────────────────────
-    my_rows = await db.execute(
-        select(
-            func.date_trunc("day", SessionHistory.created_at).label("day"),
-            func.coalesce(func.sum(SessionHistory.xp_earned), 0).label("xp"),
+    my_by_day: dict[str, int] = {}
+    try:
+        my_rows = await db.execute(
+            select(
+                func.date_trunc("day", SessionHistory.created_at).label("day"),
+                func.coalesce(func.sum(SessionHistory.xp_earned), 0).label("xp"),
+            )
+            .where(
+                SessionHistory.user_id == user_id,
+                SessionHistory.created_at >= week_start,
+            )
+            .group_by(func.date_trunc("day", SessionHistory.created_at))
         )
-        .where(
-            SessionHistory.user_id == user_id,
-            SessionHistory.created_at >= week_start,
-        )
-        .group_by(func.date_trunc("day", SessionHistory.created_at))
-    )
-    my_by_day: dict[str, int] = {
-        row.day.date().isoformat(): int(row.xp) for row in my_rows
-    }
+        for row in my_rows:
+            day = row.day
+            if day is None:
+                continue
+            # date_trunc may return datetime or date depending on driver
+            iso = day.date().isoformat() if hasattr(day, "date") else str(day)
+            my_by_day[iso] = int(row.xp or 0)
+    except Exception as exc:
+        logger.warning("league_timeline: my_xp query failed: %s", exc)
+        # Continue with empty my_by_day — still useful to show the median.
 
     # ── Cohort median (or 0 if no group) ───────────────────────────
     cohort_user_ids: list[uuid.UUID] = []
     if membership.group_id:
-        gres = await db.execute(
-            select(WeeklyLeagueGroup).where(
-                WeeklyLeagueGroup.id == membership.group_id
+        try:
+            gres = await db.execute(
+                select(WeeklyLeagueGroup).where(
+                    WeeklyLeagueGroup.id == membership.group_id
+                )
             )
-        )
-        group = gres.scalar_one_or_none()
-        if group and group.standings:
-            for entry in group.standings:
-                try:
-                    cohort_user_ids.append(uuid.UUID(entry["user_id"]))
-                except (ValueError, KeyError, TypeError):
-                    continue
+            group = gres.scalar_one_or_none()
+            if group and group.standings:
+                for entry in group.standings:
+                    if not isinstance(entry, dict):
+                        continue
+                    raw_uid = entry.get("user_id")
+                    if not raw_uid:
+                        continue
+                    try:
+                        cohort_user_ids.append(uuid.UUID(str(raw_uid)))
+                    except (ValueError, TypeError):
+                        continue
+        except Exception as exc:
+            logger.warning("league_timeline: cohort lookup failed: %s", exc)
 
     cohort_by_day: dict[str, list[int]] = {}
     if cohort_user_ids:
-        crows = await db.execute(
-            select(
-                func.date_trunc("day", SessionHistory.created_at).label("day"),
-                SessionHistory.user_id,
-                func.coalesce(func.sum(SessionHistory.xp_earned), 0).label("xp"),
+        try:
+            crows = await db.execute(
+                select(
+                    func.date_trunc("day", SessionHistory.created_at).label("day"),
+                    SessionHistory.user_id,
+                    func.coalesce(func.sum(SessionHistory.xp_earned), 0).label("xp"),
+                )
+                .where(
+                    SessionHistory.user_id.in_(cohort_user_ids),
+                    SessionHistory.created_at >= week_start,
+                )
+                .group_by(
+                    func.date_trunc("day", SessionHistory.created_at),
+                    SessionHistory.user_id,
+                )
             )
-            .where(
-                SessionHistory.user_id.in_(cohort_user_ids),
-                SessionHistory.created_at >= week_start,
-            )
-            .group_by(
-                func.date_trunc("day", SessionHistory.created_at),
-                SessionHistory.user_id,
-            )
-        )
-        for row in crows:
-            cohort_by_day.setdefault(row.day.date().isoformat(), []).append(
-                int(row.xp)
-            )
+            for row in crows:
+                day = row.day
+                if day is None:
+                    continue
+                iso = day.date().isoformat() if hasattr(day, "date") else str(day)
+                cohort_by_day.setdefault(iso, []).append(int(row.xp or 0))
+        except Exception as exc:
+            logger.warning("league_timeline: cohort xp query failed: %s", exc)
 
     days: list[dict[str, Any]] = []
     for i in range(7):

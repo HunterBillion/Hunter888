@@ -58,7 +58,7 @@ async def is_question_seen(session_id: uuid.UUID, text: str) -> bool:
         r = get_redis()
         return bool(await r.sismember(_HASH_SET_KEY.format(sid=session_id), question_hash(text)))
     except Exception as exc:
-        logger.warning("quiz_state_store.is_question_seen failed: %s", exc)
+        logger.error("quiz_state_store.is_question_seen failed (Redis down?): %s", exc, exc_info=True)
         return False  # Fail-open — better to risk one repeat than to hang generation
 
 
@@ -72,7 +72,11 @@ async def mark_question_seen(session_id: uuid.UUID, text: str) -> None:
         pipe.expire(key, _TTL_SECONDS)
         await pipe.execute()
     except Exception as exc:
-        logger.warning("quiz_state_store.mark_question_seen failed: %s", exc)
+        logger.error(
+            "quiz_state_store.mark_question_seen failed (Redis down?): %s",
+            exc,
+            exc_info=True,
+        )
 
 
 async def save_snapshot(session_id: uuid.UUID, snapshot: dict[str, Any]) -> None:
