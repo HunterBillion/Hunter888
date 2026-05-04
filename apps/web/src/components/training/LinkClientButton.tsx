@@ -197,8 +197,8 @@ export function LinkClientButton({
           : "Привязать к карточке CRM-клиента. После привязки можно прикреплять документы из звонка, и данные сессии сохранятся в карточке клиента."}
         className={
           isCall
-            ? "flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-3 text-xs text-white transition-opacity hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-30"
-            : "flex h-[40px] shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+            ? "flex h-8 shrink-0 items-center gap-1 rounded-full bg-white/15 px-2 text-xs text-white transition-opacity hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-30"
+            : "flex h-[40px] shrink-0 items-center gap-1 rounded-xl px-2 text-xs transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
         }
         style={isCall ? undefined : {
           background: "var(--input-bg)",
@@ -206,11 +206,14 @@ export function LinkClientButton({
           color: linked ? "var(--text-primary)" : "var(--accent)",
         }}
       >
+        {/* 2026-05-04 (input-bar fix): сompact mode — when linked we only
+            show the icon + truncated name (max 80px), and when not linked
+            we use a short label «Клиент» (was «Привязать клиента»: too wide
+            for the input row, ate ~50% of the textarea width). Tooltip on
+            the button still spells out the full action. */}
         {linked ? <UserIcon size={14} /> : <Link2 size={14} />}
-        {/* NEW-7: bumped max-w 140 → 160 to match increased text-sm font;
-            still truncated so a long client name can't blow up the row. */}
-        <span className={linked ? "max-w-[160px] truncate" : "whitespace-nowrap"}>
-          {linked ? linked.full_name : "Привязать клиента"}
+        <span className={linked ? "max-w-[80px] truncate" : "whitespace-nowrap"}>
+          {linked ? linked.full_name : "Клиент"}
         </span>
       </button>
 

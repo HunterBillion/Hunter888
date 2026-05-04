@@ -874,7 +874,19 @@ export default function TrainingCallPage() {
     const trimmed = textInput.trim();
     if (!trimmed) return;
     if (connectionState !== "connected") {
+      // 2026-05-04 (call-mode text fix): user reports "I type, AI doesn't
+      // respond" — root cause was a silent WS-not-connected return that
+      // cleared neither the input nor surfaced any feedback. Now we show
+      // a toast so the user knows WHY the message didn't go through.
       logger.warn("[call] cannot send text — WS not connected", { connectionState });
+      try {
+        const { toast } = require("sonner") as { toast: { error: (msg: string, opts?: unknown) => void } };
+        toast.error("Звонок не подключён", {
+          description: "Проверьте интернет и нажмите «Принять» снова.",
+        });
+      } catch {
+        // If toast lib unavailable, the warn() above is the only signal.
+      }
       return;
     }
     sendMessage({ type: "text.message", data: { content: trimmed } });
@@ -1228,6 +1240,28 @@ export default function TrainingCallPage() {
           }}
           className="flex w-full max-w-lg items-center gap-2 rounded-full bg-black/50 px-4 py-2 ring-1 ring-white/10 backdrop-blur-md"
         >
+          {/* 2026-05-04 (call-mode text fix): inline WS status dot so the
+              user sees the connection state at a glance — green dot when
+              connected, red pulsing dot when not. The previous diagnostic
+              banner only shows for `wsDead`, but `connectionState`
+              transient states (connecting / reconnecting) silently
+              disabled the input with no UX feedback.  */}
+          <span
+            className="flex h-2 w-2 shrink-0 rounded-full"
+            style={{
+              background: connectionState === "connected" ? "#22c55e" : "#ef4444",
+              boxShadow: connectionState === "connected"
+                ? "0 0 6px #22c55e"
+                : "0 0 6px #ef4444",
+              animation: connectionState === "connected" ? undefined : "pulse 1s infinite",
+            }}
+            title={
+              connectionState === "connected"
+                ? "Звонок подключён"
+                : `WS: ${connectionState} — нажмите «Принять» снова если не восстановится`
+            }
+            aria-label={`WS status: ${connectionState}`}
+          />
           <LinkClientButton
             sessionId={id}
             variant="call"
@@ -1242,7 +1276,11 @@ export default function TrainingCallPage() {
             type="text"
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
-            placeholder="Или напишите текстом…"
+            placeholder={
+              connectionState === "connected"
+                ? "Или напишите текстом…"
+                : "Подключаемся… (или нажмите «Принять» заново)"
+            }
             aria-label="Сообщение клиенту текстом"
             className="flex-1 bg-transparent text-sm text-white placeholder:text-white/40 outline-none"
             disabled={connectionState !== "connected"}
