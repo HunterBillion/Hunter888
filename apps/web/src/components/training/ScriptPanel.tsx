@@ -385,12 +385,6 @@ export default function ScriptPanel({
                     style={{ color: "var(--accent)" }}
                   >
                     💬 Примеры фраз
-                    <span
-                      className="ml-1.5 normal-case font-normal opacity-60"
-                      style={{ letterSpacing: 0 }}
-                    >
-                      (тап = вставить)
-                    </span>
                   </div>
                   <ul className="space-y-1.5">
                     {guidance.examples.map((ex, i) => (

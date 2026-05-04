@@ -827,6 +827,7 @@ export default function TrainingSessionPage() {
             early_pricing: "alert-triangle",
             repeated_argument: "rotate-cw",
             talk_ratio_high: "volume-2",
+            mode_switch_to_on_task: "compass",
           };
           s.addWhisper({
             type: "stage",
@@ -2342,12 +2343,17 @@ export default function TrainingSessionPage() {
                 <ScriptPanel
                   compactHeader
                   onCopyExample={(text) => {
-                    useSessionStore.getState().setInput(text);
+                    // B6 (2026-05-03): APPEND to existing input instead of REPLACE
+                    // so users don't lose what they've already typed when tapping
+                    // an example phrase from the script panel.
+                    const cur = useSessionStore.getState().input ?? "";
+                    const next = cur.trim() ? cur + (cur.endsWith(" ") ? "" : " ") + text : text;
+                    useSessionStore.getState().setInput(next);
                     if (textareaRef.current) {
                       textareaRef.current.focus();
                       setTimeout(() => {
                         if (textareaRef.current) {
-                          textareaRef.current.setSelectionRange(text.length, text.length);
+                          textareaRef.current.setSelectionRange(next.length, next.length);
                         }
                       }, 0);
                     }
@@ -2444,12 +2450,15 @@ export default function TrainingSessionPage() {
           screens this drawer auto-opens on stage.update + stage.skipped. */}
       <ScriptDrawer
         onCopyExample={(text) => {
-          useSessionStore.getState().setInput(text);
+          // B6 (2026-05-03): APPEND to existing input instead of REPLACE.
+          const cur = useSessionStore.getState().input ?? "";
+          const next = cur.trim() ? cur + (cur.endsWith(" ") ? "" : " ") + text : text;
+          useSessionStore.getState().setInput(next);
           if (textareaRef.current) {
             textareaRef.current.focus();
             setTimeout(() => {
               if (textareaRef.current) {
-                textareaRef.current.setSelectionRange(text.length, text.length);
+                textareaRef.current.setSelectionRange(next.length, next.length);
               }
             }, 0);
           }

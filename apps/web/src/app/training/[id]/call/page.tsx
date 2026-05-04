@@ -631,6 +631,7 @@ export default function TrainingCallPage() {
             early_pricing: "alert-triangle",
             repeated_argument: "rotate-cw",
             talk_ratio_high: "volume-2",
+            mode_switch_to_on_task: "compass",
           };
           s.addWhisper({
             type: "stage",
@@ -1053,7 +1054,8 @@ export default function TrainingCallPage() {
         onCopyExample={(text) => {
           // On call page the main input is the voice mic, but we do
           // have a fallback text field — pre-fill it with the example.
-          setTextInput(text);
+          // B6 (2026-05-03): APPEND to existing text instead of REPLACE.
+          setTextInput((cur) => (cur.trim() ? cur + (cur.endsWith(" ") ? "" : " ") + text : text));
         }}
       />
       <PhoneCallMode
@@ -1094,7 +1096,8 @@ export default function TrainingCallPage() {
           // so handleCopy fell through to navigator.clipboard (silent).
           // Now a tap pre-fills the fallback text input — same UX as the
           // mobile ScriptDrawer that already had this wiring.
-          setTextInput(text);
+          // B6 (2026-05-03): APPEND to existing text instead of REPLACE.
+          setTextInput((cur) => (cur.trim() ? cur + (cur.endsWith(" ") ? "" : " ") + text : text));
         }}
         micSlot={
           <button
