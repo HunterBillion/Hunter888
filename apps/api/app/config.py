@@ -223,8 +223,13 @@ class Settings(BaseSettings):
     # emits ``coaching.mistake`` WS events (monologue, no_open_question,
     # early_pricing, repeated_argument, talk_ratio_high). UI binding is
     # P2 — for now the events go to console for verification.
-    # When False (default): detector is not called, no events emitted.
-    coaching_mistake_detector_v1: bool = False
+    # When False: detector is not called, no events emitted.
+    # 2026-05-03 (BUG 3 fix): default flipped to True. Production audit found
+    # coaching was silent across all sessions because the flag was never
+    # set in env. New mode-switch detector (BUG 3) runs unconditionally and
+    # is independent of this flag; flipping the default re-enables the
+    # original 5-rule detector too so managers see real-time hints.
+    coaching_mistake_detector_v1: bool = True
 
     # ── IL-2 (2026-04-30) ElevenLabs Streaming Endpoint ──────────────────
     # Switches synthesize_speech() from /v1/text-to-speech/{voice_id} to
