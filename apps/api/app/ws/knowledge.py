@@ -552,6 +552,34 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
     state.hint_used_for_current = False
     state.hint_tier_used = 0
 
+    # 2026-05-04 ADAPTIVE: in free_dialog mode (where no category is
+    # forced by the user), bias 40% of questions toward the user's
+    # weakest category. Themed/blitz are user-controlled — don't override.
+    # Only fires when there's a clear weak spot (≥3 answers, accuracy
+    # ≤65%); otherwise weakest_cat is None and behaviour is unchanged.
+    # `category_override` is a per-call override — does NOT mutate
+    # state.category, so subsequent questions can drift to other topics.
+    category_override: str | None = None
+    if (
+        state.mode == QuizMode.free_dialog
+        and not state.category
+        and state.current_question > 1
+    ):
+        try:
+            import random as _rnd
+            if _rnd.random() < 0.4:
+                from app.services.weak_categories import get_weakest_category
+                async with async_session() as _db_weak:
+                    weak = await get_weakest_category(state.user_id, _db_weak)
+                if weak:
+                    category_override = weak
+                    logger.info(
+                        "adaptive bias: q%d → weak category %s",
+                        state.current_question, weak,
+                    )
+        except Exception as exc:
+            logger.debug("adaptive bias non-fatal: %s", exc)
+
     question: QuizQuestion | None = None
 
     # ── SRS Review Mode: serve questions from preloaded queue ──
@@ -642,7 +670,11 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
                     question = await generate_question(
                         db,
                         mode=state.mode,
-                        category=state.category,
+                        # 2026-05-04: adaptive bias — `category_override`
+                        # set above when this question is one of the
+                        # 40% targeted at the user's weak category.
+                        # Falls back to the user-chosen state.category.
+                        category=category_override or state.category,
                         difficulty=diff,
                         question_number=state.current_question,
                         previous_questions=state.previous_questions,
@@ -654,7 +686,7 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
                 # Fallback: hardcoded question so the quiz doesn't hang
                 question = QuizQuestion(
                     question_text="Какие последствия наступают для должника после признания его банкротом согласно ФЗ-127?",
-                    category=state.category or "general",
+                    category=category_override or state.category or "general",
                     difficulty=diff,
                     expected_article="ФЗ-127",
                     question_number=state.current_question,
