@@ -1677,6 +1677,55 @@ async def calculate_scores(
             session_id, user_msg_count, completeness,
         )
 
+    # ── α (BUG B3 v3): LLM-as-judge nudge over the full transcript ──
+    # Single shot at finalize time, range [-8, +5], fail-soft to 0.
+    # Skip entirely on tiny conversations (cost guard — too short to score
+    # meaningfully) and on any unexpected error (so a flaky LLM never
+    # breaks finalize).
+    judge_verdict = None
+    judge_score = 0.0
+    if len(user_messages) >= 4:
+        try:
+            from app.services.scoring_llm_judge import judge_transcript
+            _custom_params = session.custom_params or {}
+            _archetype = (
+                _custom_params.get("archetype_code")
+                or _custom_params.get("archetype")
+            )
+            _emotion_arc = [
+                e.get("state") or e.get("emotion") or ""
+                for e in emotion_timeline
+                if isinstance(e, dict)
+            ]
+            _call_outcome = str(
+                (session.scoring_details or {}).get("call_outcome") or "unknown"
+            )
+            _redis = None
+            try:
+                from app.core.redis_pool import get_redis
+                _redis = get_redis()
+            except Exception:
+                _redis = None
+            judge_verdict = await judge_transcript(
+                session_id=str(session_id),
+                user_messages=user_messages,
+                assistant_messages=assistant_messages,
+                archetype=_archetype,
+                emotion_arc=_emotion_arc,
+                call_outcome=_call_outcome,
+                redis_client=_redis,
+            )
+            judge_score = float(judge_verdict.score_adjust)
+        except Exception:
+            logger.exception(
+                "LLM judge failed for session %s — fail-soft to 0", session_id
+            )
+            judge_verdict = None
+            judge_score = 0.0
+    all_details["judge"] = (
+        judge_verdict.model_dump() if judge_verdict is not None else None
+    )
+
     # ── Total: sum all layers, clamp to 0-100 ──
     total = (
         float(script_score or 0)       # L1: 0-22.5
@@ -1689,6 +1738,7 @@ async def calculate_scores(
         + float(human_score or 0)      # L8: 0-15
         + float(narrative_score or 0)  # L9: 0-10
         + float(legal_score or 0)      # L10: -5 to +5
+        + float(judge_score or 0)      # α: LLM judge nudge, [-8, +5]
     )
     total = max(0.0, min(100.0, total))
 
