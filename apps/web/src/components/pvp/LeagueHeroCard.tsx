@@ -3,21 +3,19 @@
 /**
  * LeagueHeroCard — Duolingo-style weekly-league hero widget for /pvp.
  *
- * Phase B (2026-04-20). Shows the player their current cohort position
- * prominently, with:
- *   • large tier badge + rank
- *   • promotion / demotion / safe zone indicator with live countdown to
- *     Sunday 23:59 reset
- *   • podium top-3 preview
- *   • weekly XP + CTA link to the full league page `/pvp/league`
+ * Phase B (2026-04-20). Phase C (2026-05-04): merged into /leaderboard
+ * tabs. CTA buttons now deep-link into `/leaderboard?tab=league|teams`.
  *
- * Data source: `GET /gamification/league/me` — already returns
- *   { tier, tier_name, rank, weekly_xp, standings[...],
- *     promotion_zone, demotion_zone, days_remaining }
+ * Shows the player their current cohort position prominently:
+ *   • tier badge + rank
+ *   • promotion / demotion / safe zone indicator
+ *   • days countdown to Sunday 23:59 reset (correct russian plurals)
+ *   • 7-day sparkline of weekly_xp vs cohort median (live trajectory)
+ *   • podium top-3 preview using same crown palette as /leaderboard
  *
- * When the league hasn't been formed yet (Monday 08:00 cron hasn't run
- * or user is brand new) we show a gentle "формируется в понедельник"
- * empty state instead of hiding.
+ * Endpoints:
+ *   GET /gamification/league/me       — tier/rank/standings
+ *   GET /gamification/league/me/timeline — daily XP me vs cohort median
  */
 
 import Link from "next/link";
@@ -31,6 +29,7 @@ import {
   Clock,
   ArrowRight,
   Crown,
+  Building2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
@@ -55,6 +54,20 @@ interface LeagueData {
   demotion_zone: number;
   days_remaining: number;
   week_start?: string;
+}
+
+interface TimelinePoint {
+  date: string;
+  my_xp: number;
+  median_xp: number;
+}
+
+interface TimelineData {
+  week_start: string;
+  days: TimelinePoint[];
+  my_total: number;
+  median_total: number;
+  delta_vs_median: number;
 }
 
 const TIER_PALETTE: Record<
@@ -93,6 +106,17 @@ const TIER_PALETTE: Record<
   },
 };
 
+function pluralizeDays(days: number): string {
+  if (days === 0) return "сегодня сброс";
+  const abs = Math.abs(days);
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
+  if (mod100 >= 11 && mod100 <= 14) return `${days} дней`;
+  if (mod10 === 1) return `${days} день`;
+  if (mod10 >= 2 && mod10 <= 4) return `${days} дня`;
+  return `${days} дней`;
+}
+
 function zoneMeta(rank: number, promo: number, demo: number) {
   if (rank > 0 && rank <= promo) {
     return {
@@ -118,14 +142,78 @@ function zoneMeta(rank: number, promo: number, demo: number) {
   };
 }
 
+/**
+ * Tiny 7-point dual-line sparkline. Pure SVG, ~80x32. Shows me vs cohort
+ * median as cumulative weekly XP. Filled area on `me` so the eye picks
+ * the player's own trajectory immediately.
+ */
+function Sparkline({
+  days,
+  accent,
+}: {
+  days: TimelinePoint[];
+  accent: string;
+}) {
+  const W = 96;
+  const H = 32;
+  const pad = 2;
+
+  // Cumulative — gameification feel ("my line goes up").
+  const cumMe: number[] = [];
+  const cumMed: number[] = [];
+  let me = 0;
+  let med = 0;
+  for (const p of days) {
+    me += p.my_xp;
+    med += p.median_xp;
+    cumMe.push(me);
+    cumMed.push(med);
+  }
+  const max = Math.max(1, ...cumMe, ...cumMed);
+
+  const xAt = (i: number) =>
+    pad + ((W - 2 * pad) * i) / Math.max(1, days.length - 1);
+  const yAt = (v: number) => H - pad - ((H - 2 * pad) * v) / max;
+
+  const linePath = (vals: number[]) =>
+    vals
+      .map((v, i) => `${i === 0 ? "M" : "L"} ${xAt(i).toFixed(2)} ${yAt(v).toFixed(2)}`)
+      .join(" ");
+
+  const areaPath = `${linePath(cumMe)} L ${xAt(cumMe.length - 1).toFixed(2)} ${H - pad} L ${pad} ${H - pad} Z`;
+
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden>
+      <path d={areaPath} fill={accent} opacity={0.18} />
+      <path
+        d={linePath(cumMed)}
+        fill="none"
+        stroke="#94a3b8"
+        strokeWidth={1.25}
+        strokeDasharray="2 2"
+        opacity={0.7}
+      />
+      <path d={linePath(cumMe)} fill="none" stroke={accent} strokeWidth={1.75} />
+    </svg>
+  );
+}
+
 export function LeagueHeroCard() {
   const [data, setData] = useState<LeagueData | null>(null);
+  const [timeline, setTimeline] = useState<TimelineData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchLeague = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     try {
-      const d = await api.get<LeagueData>("/gamification/league/me");
+      const [d, t] = await Promise.all([
+        api.get<LeagueData>("/gamification/league/me"),
+        api.get<TimelineData>("/gamification/league/me/timeline").catch((err) => {
+          logger.error("league timeline fetch failed", err);
+          return null;
+        }),
+      ]);
       setData(d);
+      setTimeline(t);
     } catch (err) {
       logger.error("LeagueHeroCard fetch failed", err);
     } finally {
@@ -134,15 +222,13 @@ export function LeagueHeroCard() {
   }, []);
 
   useEffect(() => {
-    fetchLeague();
-  }, [fetchLeague]);
+    fetchAll();
+  }, [fetchAll]);
 
   const palette = data ? TIER_PALETTE[data.tier] ?? TIER_PALETTE[0] : TIER_PALETTE[0];
   const zone = useMemo(
     () =>
-      data
-        ? zoneMeta(data.rank, data.promotion_zone, data.demotion_zone)
-        : null,
+      data ? zoneMeta(data.rank, data.promotion_zone, data.demotion_zone) : null,
     [data],
   );
 
@@ -186,14 +272,20 @@ export function LeagueHeroCard() {
   }
 
   const ZoneIcon = zone!.icon;
-  // Days remaining — backend gives float days; show rounded + hint.
   const days = Math.max(0, Math.round(data.days_remaining));
-  const daysLabel =
-    days === 0
-      ? "сегодня сброс"
-      : days === 1
-        ? "1 день до сброса"
-        : `${days} ${days < 5 ? "дня" : "дней"} до сброса`;
+  const daysLabel = days === 0 ? "сегодня сброс" : pluralizeDays(days);
+
+  // Crown palette MUST match /leaderboard PodiumCard for visual continuity.
+  const crownColor = (rank: number) =>
+    rank === 1
+      ? "var(--rank-gold, #F7D154)"
+      : rank === 2
+        ? "var(--rank-silver, #C8CDD3)"
+        : "var(--rank-bronze, #C88A56)";
+
+  const deltaSign = (timeline?.delta_vs_median ?? 0) >= 0 ? "+" : "";
+  const deltaColor =
+    (timeline?.delta_vs_median ?? 0) >= 0 ? "#4ade80" : "#f87171";
 
   return (
     <motion.div
@@ -254,14 +346,17 @@ export function LeagueHeroCard() {
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                 из {data.group_size}
               </span>
-              <span className="text-xs font-mono ml-1" style={{ color: "var(--text-muted)" }}>
+              <span
+                className="text-xs font-mono ml-1"
+                style={{ color: "var(--text-muted)" }}
+              >
                 · {data.weekly_xp} XP
               </span>
             </div>
           </div>
         </div>
 
-        {/* ─ Zone + countdown ─ */}
+        {/* ─ Zone + sparkline + countdown ─ */}
         <div className="md:pl-3 md:border-l md:border-white/5 md:ml-2 space-y-2">
           <div className="flex items-center gap-2">
             <ZoneIcon size={16} style={{ color: zone!.color }} />
@@ -275,7 +370,35 @@ export function LeagueHeroCard() {
           <div className="text-xs" style={{ color: "var(--text-muted)" }}>
             {zone!.sub}
           </div>
-          <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+
+          {timeline && timeline.days.length > 0 && (
+            <div
+              className="flex items-center gap-2 pt-1"
+              title="Накопленный XP за неделю — ты vs медиана когорты"
+            >
+              <Sparkline days={timeline.days} accent={palette.accent} />
+              <div className="leading-tight">
+                <div
+                  className="text-[10px] uppercase tracking-wider"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  vs медиана
+                </div>
+                <div
+                  className="text-sm font-mono font-semibold tabular-nums"
+                  style={{ color: deltaColor }}
+                >
+                  {deltaSign}
+                  {timeline.delta_vs_median} XP
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div
+            className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-widest"
+            style={{ color: "var(--text-muted)" }}
+          >
             <Clock size={11} />
             {daysLabel}
           </div>
@@ -293,17 +416,7 @@ export function LeagueHeroCard() {
                 key={p.user_id}
                 className="flex flex-col items-center w-[74px] text-center"
               >
-                <Crown
-                  size={14}
-                  style={{
-                    color:
-                      p.rank === 1
-                        ? "#facc15"
-                        : p.rank === 2
-                          ? "#cbd5e1"
-                          : "#f59e0b",
-                  }}
-                />
+                <Crown size={14} style={{ color: crownColor(p.rank) }} />
                 <div
                   className="mt-1 rounded-lg px-1.5 py-1 w-full"
                   style={{
@@ -315,7 +428,9 @@ export function LeagueHeroCard() {
                 >
                   <div
                     className="text-[11px] font-semibold truncate"
-                    style={{ color: p.is_me ? palette.accent : "var(--text-primary)" }}
+                    style={{
+                      color: p.is_me ? palette.accent : "var(--text-primary)",
+                    }}
                   >
                     {p.full_name.split(" ")[0]}
                   </div>
@@ -333,27 +448,31 @@ export function LeagueHeroCard() {
       </div>
 
       {/* ─ CTA ─ */}
-      <div className="relative mt-4 flex items-center justify-between">
-        <div className="hidden md:flex items-center gap-2 text-[11px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+      <div className="relative mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div
+          className="flex items-center gap-2 text-[11px] uppercase tracking-widest"
+          style={{ color: "var(--text-muted)" }}
+        >
           <span>промо: топ-{data.promotion_zone}</span>
           <span>·</span>
           <span>вылет: #{data.demotion_zone}+</span>
         </div>
         <div className="flex items-center gap-2">
           <Link
-            href="/pvp/teams"
+            href="/leaderboard?tab=teams"
             className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all"
             style={{
               background: "transparent",
               color: palette.accent,
               border: `1px solid ${palette.accent}55`,
             }}
-            title="Лидерборд команд компании"
+            title="Лидерборд офисов продаж"
           >
+            <Building2 size={13} />
             Команды
           </Link>
           <Link
-            href="/pvp/league"
+            href="/leaderboard?tab=league"
             className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all"
             style={{
               background: palette.accent,

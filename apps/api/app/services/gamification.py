@@ -3462,10 +3462,19 @@ async def get_team_leaderboard(
     db: AsyncSession,
     period: str = "week",
     limit: int = 10,
-) -> list[dict]:
-    """Team leaderboard: weighted average score of all team members.
+    my_team_id: uuid.UUID | None = None,
+) -> dict:
+    """Team leaderboard: Bayesian-shrunk average score per team.
 
-    Visible to ROP role. Teams ranked by average score.
+    Open to all authenticated users (internal transparency).
+
+    Ranking score = (n*avg + k*global_avg) / (n+k) where k=10. This
+    prevents a single team with 1 session at 95 from outranking a 20-
+    person team averaging 80 across 100 sessions. Frontend still gets
+    raw `avg_score` for display alongside the shrunk `score`.
+
+    Returns {rows: [...], my_team_row: {...}|null, total_teams: N} so
+    the user always sees their own team even if it's outside the top.
     """
     from app.models.user import User, Team
 
@@ -3476,7 +3485,7 @@ async def get_team_leaderboard(
     else:
         since = datetime.min.replace(tzinfo=timezone.utc)
 
-    result = await db.execute(
+    base_q = (
         select(
             User.team_id,
             Team.name.label("team_name"),
@@ -3494,23 +3503,57 @@ async def get_team_leaderboard(
         )
         .group_by(User.team_id, Team.name)
         .having(func.count(TrainingSession.id) >= 3)
-        .order_by(func.avg(TrainingSession.score_total).desc())
-        .limit(limit)
     )
-    rows = result.all()
 
-    return [
-        {
-            "rank": i + 1,
-            "team_id": str(row[0]),
-            "team_name": row[1],
-            "active_members": row[2],
-            "total_sessions": row[3],
-            "avg_score": round(float(row[4]), 1),
-            "total_score": round(float(row[5]), 1),
-        }
-        for i, row in enumerate(rows)
-    ]
+    result = await db.execute(base_q)
+    raw_rows = result.all()
+
+    if not raw_rows:
+        return {"rows": [], "my_team_row": None, "total_teams": 0}
+
+    # Bayesian shrinkage: score = (n*avg + k*global_avg)/(n+k)
+    K = 10
+    total_sessions_all = sum(int(r[3]) for r in raw_rows)
+    total_score_all = sum(float(r[5]) for r in raw_rows)
+    global_avg = (total_score_all / total_sessions_all) if total_sessions_all else 0.0
+
+    enriched: list[dict] = []
+    for r in raw_rows:
+        n = int(r[3])
+        avg = float(r[4])
+        shrunk = (n * avg + K * global_avg) / (n + K)
+        enriched.append(
+            {
+                "team_id": str(r[0]),
+                "team_name": r[1],
+                "active_members": int(r[2]),
+                "total_sessions": n,
+                "avg_score": round(avg, 1),
+                "score": round(shrunk, 1),
+                "total_score": round(float(r[5]), 1),
+            }
+        )
+
+    enriched.sort(key=lambda x: x["score"], reverse=True)
+    for i, row in enumerate(enriched):
+        row["rank"] = i + 1
+
+    top = enriched[:limit]
+    my_team_row = None
+    if my_team_id is not None:
+        mine = next(
+            (e for e in enriched if e["team_id"] == str(my_team_id)), None
+        )
+        # Only attach as separate row if not already in top slice
+        if mine and not any(t["team_id"] == mine["team_id"] for t in top):
+            my_team_row = mine
+
+    return {
+        "rows": top,
+        "my_team_row": my_team_row,
+        "total_teams": len(enriched),
+        "global_avg": round(global_avg, 1),
+    }
 
 
 # ═════════════════════════════════════════════════════════════════════════════

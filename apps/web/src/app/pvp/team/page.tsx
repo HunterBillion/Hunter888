@@ -1,10 +1,11 @@
-// B5-12: redirect for stale `/pvp/team` (singular) bookmarks.
+// Redirect for stale `/pvp/team` (singular) bookmarks.
 //
-// The teams hub is at `/pvp/teams` (plural). The `/pvp/team/[teamId]`
-// dynamic route is for individual team views. A bare `/pvp/team`
-// without a teamId previously 404'd; now it redirects to the hub.
+// The teams leaderboard now lives at `/leaderboard?tab=teams` (merged
+// from the standalone `/pvp/teams` page in 2026-05-04 phase C). The
+// `/pvp/team/[teamId]` dynamic route still exists for individual team
+// views; this bare entry redirects to the unified leaderboard.
 import { redirect } from "next/navigation";
 
 export default function PvPTeamIndexPage() {
-  redirect("/pvp/teams");
+  redirect("/leaderboard?tab=teams");
 }

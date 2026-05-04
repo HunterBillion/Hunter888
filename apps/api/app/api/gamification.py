@@ -486,8 +486,15 @@ async def team_leaderboard(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Team leaderboard: ranked by average score. Visible to ROP+."""
-    return await get_team_leaderboard(db, period=period)
+    """Team leaderboard: Bayesian-shrunk average score per team.
+
+    Open to all authenticated users (internal transparency motivates
+    cross-office competition). Returns top-10 teams + the caller's own
+    team (if outside top-10) + global_avg for context.
+    """
+    return await get_team_leaderboard(
+        db, period=period, my_team_id=user.team_id
+    )
 
 
 # ── Skill Mastery ────────────────────────────────────────────────────────────
@@ -1036,6 +1043,17 @@ async def purchase_freeze(
 # ═══════════════════════════════════════════════════════════════════════════
 # Weekly League — social pressure engine
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.get("/league/me/timeline")
+async def get_my_league_timeline_endpoint(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """7-day weekly XP timeline (me vs cohort median) for sparkline."""
+    from app.services.weekly_league import get_my_league_timeline
+
+    return await get_my_league_timeline(user.id, db)
 
 
 @router.get("/league/me")

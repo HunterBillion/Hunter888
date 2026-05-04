@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, Trophy, Calendar, Swords, BookOpen, Crown } from "lucide-react";
+import { Loader2, Trophy, Calendar, Swords, BookOpen, Crown, Building2 } from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -10,6 +11,8 @@ import { logger } from "@/lib/logger";
 import { PodiumCard, type PodiumEntry } from "@/components/leaderboard/PodiumCard";
 import { LeaderboardTable, type LeaderboardRow } from "@/components/leaderboard/LeaderboardTable";
 import { TPBreakdown, type TPBreakdownData } from "@/components/leaderboard/TPBreakdown";
+import { LeagueTab } from "@/components/leaderboard/LeagueTab";
+import { TeamsTab } from "@/components/leaderboard/TeamsTab";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 
 /** Hunter Score row from GET /gamification/leaderboard/hunters */
@@ -36,19 +39,55 @@ interface WeeklyTpEntry {
   is_me: boolean;
 }
 
-type Tab = "hunter" | "week" | "month" | "arena" | "knowledge";
+type Tab = "hunter" | "league" | "teams" | "week" | "month" | "arena" | "knowledge";
 
 const TABS: { key: Tab; label: string; icon: typeof Trophy }[] = [
   { key: "hunter", label: "Охотник", icon: Crown },
+  { key: "league", label: "Лига", icon: Trophy },
+  { key: "teams", label: "Команды", icon: Building2 },
   { key: "week", label: "Неделя", icon: Calendar },
   { key: "month", label: "Месяц", icon: Trophy },
   { key: "arena", label: "Арена", icon: Swords },
   { key: "knowledge", label: "Знания", icon: BookOpen },
 ];
 
-export default function LeaderboardPage() {
+const VALID_TABS: Tab[] = ["hunter", "league", "teams", "week", "month", "arena", "knowledge"];
+
+export default function LeaderboardPageWrapper() {
+  // useSearchParams requires a Suspense boundary in Next 14 app router.
+  return (
+    <Suspense fallback={null}>
+      <LeaderboardPage />
+    </Suspense>
+  );
+}
+
+function LeaderboardPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<Tab>("hunter");
+  const params = useSearchParams();
+  const router = useRouter();
+  const initialTab = (() => {
+    const t = params?.get("tab");
+    return t && (VALID_TABS as string[]).includes(t) ? (t as Tab) : "hunter";
+  })();
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+
+  // Reflect ?tab= in URL when user clicks tabs (so sharable + back-button works).
+  const switchTab = useCallback(
+    (next: Tab) => {
+      setActiveTab(next);
+      const url = next === "hunter" ? "/leaderboard" : `/leaderboard?tab=${next}`;
+      router.replace(url, { scroll: false });
+    },
+    [router],
+  );
+
+  // Re-sync if user navigates with browser back/forward.
+  useEffect(() => {
+    const t = params?.get("tab");
+    const next = t && (VALID_TABS as string[]).includes(t) ? (t as Tab) : "hunter";
+    setActiveTab(next);
+  }, [params]);
 
   // Hunter tab state
   const [hunters, setHunters] = useState<HunterEntry[]>([]);
@@ -242,7 +281,7 @@ export default function LeaderboardPage() {
               return (
                 <button
                   key={t.key}
-                  onClick={() => setActiveTab(t.key)}
+                  onClick={() => switchTab(t.key)}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all shrink-0"
                   style={{
                     background: active ? "var(--accent)" : "transparent",
@@ -264,7 +303,11 @@ export default function LeaderboardPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.18 }}
-              className="grid gap-5 md:grid-cols-[1fr_320px]"
+              className={
+                activeTab === "hunter" || activeTab === "week"
+                  ? "grid gap-5 md:grid-cols-[1fr_320px]"
+                  : "grid gap-5"
+              }
             >
               <div className="space-y-5 min-w-0">
                 {activeTab === "hunter" && (
@@ -308,6 +351,10 @@ export default function LeaderboardPage() {
                     )}
                   </>
                 )}
+
+                {activeTab === "league" && <LeagueTab />}
+
+                {activeTab === "teams" && <TeamsTab />}
 
                 {activeTab === "month" && (
                   <>
