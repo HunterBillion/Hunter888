@@ -205,6 +205,10 @@ export default function TrainingSessionPage() {
       useSessionStore.getState().reset();
       wsTimersRef.current.forEach(clearTimeout);
       wsTimersRef.current = [];
+      if (hangupFallbackTimerRef.current) {
+        clearTimeout(hangupFallbackTimerRef.current);
+        hangupFallbackTimerRef.current = null;
+      }
     };
   }, [routeId]);
 
@@ -213,6 +217,17 @@ export default function TrainingSessionPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wsTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const sessionEndedRef = useRef<{ score: number | null; xp: number | null; levelUp: boolean }>({ score: null, xp: null, levelUp: false });
+  // 2026-05-04: dedupe session.end sends. Three independent paths fire it
+  // (handleEnd button, C3 auto-fire 3s after client.hangup, HangupModal
+  // "К результатам" button). Without a guard, two of them fire on every
+  // hangup → backend logs `error: session_completed` and the FE waits
+  // 10–60s for the redirect because the second send confuses the timing.
+  const sessionEndSentRef = useRef(false);
+  // 2026-05-04: track if we've armed the post-hangup fallback redirect.
+  // session.ended is the canonical signal but if WS is slow / the event is
+  // dropped, this 5s fallback navigates to /results so the user is never
+  // stuck on the chat UI behind a closed hangup modal.
+  const hangupFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const storyBootstrappedRef = useRef(false);
   // 2026-04-18 audit fix: in story-mode, each new call spawns a NEW
   // TrainingSession backend-side. The URL's `routeId` stays the initial
@@ -553,6 +568,12 @@ export default function TrainingSessionPage() {
               // backend auto-ended via silence/hangup (user didn't click).
               s.setSessionState("completed");
               setEnding(true);
+              // 2026-05-04: success path — cancel the 5s fallback so we
+              // don't double-navigate (success replace already lands).
+              if (hangupFallbackTimerRef.current) {
+                clearTimeout(hangupFallbackTimerRef.current);
+                hangupFallbackTimerRef.current = null;
+              }
               router.replace(`/results/${currentSessionIdRef.current || routeId}`);
             }
           }
@@ -738,10 +759,17 @@ export default function TrainingSessionPage() {
           });
           s.setShowHangupModal(true);
           // C3 fix: auto-send session.end for single-call hangup after 3s
-          // so backend can clean up (no zombie sessions)
+          // so backend can clean up (no zombie sessions).
+          // 2026-05-04: dedupe via sessionEndSentRef — if the user clicks
+          // "К результатам" before this 3s timer fires, the click path
+          // already sent session.end and we must not double-send (backend
+          // replies with error: session_completed and the timing of the
+          // redirect drifts by 10–60s).
           if (!canContinue) {
             wsTimersRef.current.push(
               setTimeout(() => {
+                if (sessionEndSentRef.current) return;
+                sessionEndSentRef.current = true;
                 sendMessage({ type: "session.end", data: {} });
               }, 3000),
             );
@@ -1316,9 +1344,35 @@ export default function TrainingSessionPage() {
   // takes 5-15s to score + AI-coach + RAG, but the click should never feel
   // unresponsive. Overlay self-renders phase progress while we wait for
   // session.ended WS event to fire the actual redirect.
+  // 2026-05-04: dedupe send + arm fallback redirect so the user is never
+  // stuck if session.ended is delayed/dropped (5s timeout → /results).
   const handleEnd = () => {
     setEnding(true);
-    sendMessage({ type: "session.end", data: {} });
+    if (!sessionEndSentRef.current) {
+      sessionEndSentRef.current = true;
+      sendMessage({ type: "session.end", data: {} });
+    }
+    armHangupFallback();
+  };
+
+  // 2026-05-04: 5s fallback navigation if session.ended never arrives.
+  // The session.ended handler at line ~547 calls router.replace; this
+  // fallback covers the worst case where WS is slow / event dropped.
+  // Idempotent — re-arming resets the timer.
+  const armHangupFallback = () => {
+    if (hangupFallbackTimerRef.current) clearTimeout(hangupFallbackTimerRef.current);
+    hangupFallbackTimerRef.current = setTimeout(() => {
+      const st = useSessionStore.getState();
+      // Don't fight the success path — if session.ended already fired
+      // we'll be on /results already and this is a no-op. router.replace
+      // is safe to call from an old route that already navigated.
+      if (st.sessionState === "completed") return;
+      const sid = currentSessionIdRef.current || routeId;
+      // Mark completed so the navigation doesn't trigger a "session active"
+      // re-render loop on the dead chat.
+      s.setSessionState("completed");
+      router.replace(`/results/${sid}`);
+    }, 5000);
   };
 
   const handleMicPress = async () => {
@@ -2619,6 +2673,19 @@ export default function TrainingSessionPage() {
           }
         }}
         onResults={() => {
+          // 2026-05-04 prod bug fix: previously this handler closed the
+          // modal then fire-and-forget'd session.end. The chat UI behind
+          // the modal became visible (user reports "вернулся в чат"),
+          // and the actual redirect waited 10–60s for session.ended.
+          // Now we:
+          //   1. show the SessionEndingOverlay immediately so the dead
+          //      chat is masked,
+          //   2. send session.end exactly once (deduped via ref so the
+          //      C3 auto-fire can't double-fire),
+          //   3. arm the 5s fallback navigation so the user is never
+          //      stuck if session.ended is delayed/dropped.
+          // The success path remains: session.ended → router.replace at
+          // line ~556 fires <100ms after backend finishes scoring.
           s.setShowHangupModal(false);
           s.setHangupData(null);
           if (s.storyMode && s.storyId) {
@@ -2630,7 +2697,12 @@ export default function TrainingSessionPage() {
             s.setSessionState("completed");
             setTimeout(() => router.push(`/stories/${s.storyId}`), 900);
           } else {
-            sendMessage({ type: "session.end", data: {} });
+            setEnding(true);
+            if (!sessionEndSentRef.current) {
+              sessionEndSentRef.current = true;
+              sendMessage({ type: "session.end", data: {} });
+            }
+            armHangupFallback();
           }
         }}
       />
