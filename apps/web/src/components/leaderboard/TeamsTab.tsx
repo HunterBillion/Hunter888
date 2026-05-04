@@ -17,6 +17,7 @@ import {
   Users,
   TrendingUp,
   RefreshCw,
+  Sparkles,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
@@ -142,21 +143,37 @@ export function TeamsTab() {
         <div
           className="rounded-2xl p-8 text-center"
           style={{
-            background: "var(--bg-panel)",
-            border: "1px solid var(--border-color)",
+            background: `linear-gradient(135deg, ${accent}10 0%, var(--bg-panel) 100%)`,
+            border: `1px solid ${accent}33`,
           }}
         >
-          <Trophy size={28} style={{ color: accent }} className="mx-auto mb-3" />
           <div
-            className="font-semibold mb-1"
+            className="inline-flex h-12 w-12 items-center justify-center rounded-2xl mb-3"
+            style={{ background: `${accent}22`, color: accent }}
+          >
+            <Trophy size={22} />
+          </div>
+          <h3
+            className="text-base font-semibold mb-1"
             style={{ color: "var(--text-primary)" }}
           >
-            Лидерборд пуст
-          </div>
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Команда попадает в рейтинг после 3+ завершённых сессий за период.
-            Попробуй ещё позже или расширь период.
+            Команд пока недостаточно для рейтинга
+          </h3>
+          <p
+            className="text-sm mb-4 max-w-md mx-auto"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Команда попадает сюда после 3+ завершённых сессий за период.
+            Подключи коллег или расширь период до «Месяц»/«Всё время».
           </p>
+          <a
+            href="/training"
+            className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold"
+            style={{ background: accent, color: "#0b0b14" }}
+          >
+            <Sparkles size={14} />
+            Открыть тренировку
+          </a>
         </div>
       ) : (
         <>
@@ -181,62 +198,64 @@ export function TeamsTab() {
             </span>
           </div>
 
-          {/* Podium — top 3 */}
+          {/* Podium — flex centers 1/2/3 entries cleanly (no empty grid slots) */}
           {podium.length > 0 && (
-            <div className="grid grid-cols-3 gap-3 md:gap-4 items-end mb-5">
-              {[2, 1, 3].map((displayRank) => {
-                const row = podium.find((r) => r.rank === displayRank);
-                if (!row) return <div key={displayRank} />;
-                const isFirst = row.rank === 1;
-                const height = isFirst ? 170 : row.rank === 2 ? 140 : 120;
-                const crown = RANK_CROWN[row.rank];
-                const mine = myRow?.team_id === row.team_id;
-                return (
-                  <motion.div
-                    key={row.team_id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 * row.rank }}
-                    className="rounded-2xl p-3 md:p-4 flex flex-col items-center text-center"
-                    style={{
-                      height,
-                      background: mine
-                        ? `${accent}1a`
-                        : "rgba(255,255,255,0.03)",
-                      border: `2px solid ${mine ? accent : `${crown}66`}`,
-                      boxShadow: isFirst
-                        ? `0 18px 36px -16px ${crown}99`
-                        : undefined,
-                    }}
-                  >
-                    <Crown size={isFirst ? 24 : 18} style={{ color: crown }} />
-                    <div
-                      className="mt-1 font-mono font-bold text-sm tabular-nums"
-                      style={{ color: crown }}
+            <div className="flex items-end justify-center gap-3 md:gap-4 mb-5 flex-wrap">
+              {(podium.length >= 3
+                ? [podium.find((r) => r.rank === 2), podium.find((r) => r.rank === 1), podium.find((r) => r.rank === 3)]
+                : podium
+              )
+                .filter(Boolean)
+                .map((row) => {
+                  const r = row as TeamRow;
+                  const isFirst = r.rank === 1;
+                  const height = isFirst ? 170 : r.rank === 2 ? 140 : 120;
+                  const crown = RANK_CROWN[r.rank] ?? "var(--text-muted)";
+                  const mine = myRow?.team_id === r.team_id;
+                  return (
+                    <motion.div
+                      key={r.team_id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1 * r.rank }}
+                      className="rounded-2xl p-3 md:p-4 flex flex-col items-center text-center"
+                      style={{
+                        width: 180,
+                        maxWidth: "100%",
+                        height,
+                        background: mine ? `${accent}1a` : "rgba(255,255,255,0.03)",
+                        border: `2px solid ${mine ? accent : `${crown}66`}`,
+                        boxShadow: isFirst ? `0 18px 36px -16px ${crown}99` : undefined,
+                      }}
                     >
-                      #{row.rank}
-                    </div>
-                    <div
-                      className="font-semibold text-sm md:text-base line-clamp-2 mt-1 leading-tight"
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      {row.team_name}
-                    </div>
-                    <div
-                      className="mt-auto font-mono text-lg md:text-xl font-black tabular-nums"
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      {row.score.toFixed(1)}
-                    </div>
-                    <div
-                      className="text-[10px] uppercase tracking-wider"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      adj · raw {row.avg_score.toFixed(1)}
-                    </div>
-                  </motion.div>
-                );
-              })}
+                      <Crown size={isFirst ? 24 : 18} style={{ color: crown }} />
+                      <div
+                        className="mt-1 font-mono font-bold text-sm tabular-nums"
+                        style={{ color: crown }}
+                      >
+                        #{r.rank}
+                      </div>
+                      <div
+                        className="font-semibold text-sm md:text-base line-clamp-2 mt-1 leading-tight"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        {r.team_name}
+                      </div>
+                      <div
+                        className="mt-auto font-mono text-lg md:text-xl font-black tabular-nums"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        {r.score.toFixed(1)}
+                      </div>
+                      <div
+                        className="text-[10px] uppercase tracking-wider"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        adj · raw {r.avg_score.toFixed(1)}
+                      </div>
+                    </motion.div>
+                  );
+                })}
             </div>
           )}
 
