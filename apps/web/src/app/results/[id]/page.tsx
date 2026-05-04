@@ -112,46 +112,111 @@ export default function ResultsPage() {
   const [tournamentError, setTournamentError] = useState("");
   const [previousSkillRadar, setPreviousSkillRadar] = useState<Record<string, number> | null>(null);
 
+  // 2026-05-04 (v2): poll until backend has finished writing score_total +
+  // (optionally) the LLM-judge verdict. The training-page hangup fallback
+  // navigates here in 5s — but backend's completion_policy + judge call
+  // can take 8–60s after that. Without polling, the user sees a
+  // half-rendered report (no judge card, score_total=null, message
+  // count short) and assumes the session crashed.
+  //
+  // Stop polling when EITHER:
+  //   (a) score_total is set AND (judge present OR transcript too short
+  //       to qualify for judge — heuristic: < 4 user messages),
+  //   (b) loadError set,
+  //   (c) 30s budget exhausted (renders whatever we have — better than
+  //       infinite spinner).
+  //
+  // While polling: show a "processing" hint via `processing` state so
+  // the page renders a small banner above the (possibly partial) report
+  // instead of a hard skeleton — UX-wise this is gentler than swapping
+  // in a full skeleton on every poll cycle.
+  const [processing, setProcessing] = useState(true);
+
   useEffect(() => {
-    api
-      .get(`/training/sessions/${params.id}`)
-      .then((data) => {
-        setResult(data);
-        // Trigger achievement toast based on score
-        const score = data?.session?.score_total;
-        if (score !== null && score !== undefined) {
-          if (score >= 90) {
-            setTimeout(() => setAchievement({ id: "ace", title: "Ас переговоров", description: "Набрано 90+ баллов за сессию", icon: "🏆" }), 1500);
-            // Emit perfect-score celebration
-            setTimeout(() => {
-              window.dispatchEvent(new CustomEvent("gamification", { detail: { type: "perfect-score", score } }));
-            }, 800);
-          } else if (score >= 70) {
-            setTimeout(() => setAchievement({ id: "good", title: "Уверенный старт", description: "Набрано 70+ баллов за сессию", icon: "⭐" }), 1500);
-          }
-        }
+    let cancelled = false;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 15;          // 15 × 2s = 30s budget
+    const POLL_INTERVAL_MS = 2000;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
-        // Fetch previous session for skill radar comparison
-        api.get<Array<{ id: string; scoring_details?: Record<string, unknown> }>>("/training/history?limit=5")
-          .then((history) => {
-            const currentId = String(params.id);
-            const prev = history.find((h) => h.id !== currentId && h.scoring_details?._skill_radar);
-            if (prev) {
-              setPreviousSkillRadar(prev.scoring_details?._skill_radar as Record<string, number>);
+    const isFullyScored = (data: SessionResultResponse | null): boolean => {
+      if (!data?.session) return false;
+      const sess = data.session;
+      // Hard fail: backend marked the session terminal but with no scores
+      // (rare race). Treat as "done" so we don't spin forever.
+      if (sess.status === "abandoned" || sess.status === "error") return true;
+      if (sess.score_total === null || sess.score_total === undefined) return false;
+      // Judge runs only on transcripts with enough user turns. If the
+      // transcript is short, skip the judge check.
+      const breakdown = data.score_breakdown as Record<string, unknown> | null;
+      const userMsgCount = (breakdown?._user_message_count as number) ?? 0;
+      const judgeRequired = userMsgCount >= 4;
+      const judgePresent = Boolean(breakdown?.judge);
+      return !judgeRequired || judgePresent;
+    };
+
+    const fetchOnce = (isFirst: boolean) => {
+      api
+        .get<SessionResultResponse>(`/training/sessions/${params.id}`)
+        .then((data) => {
+          if (cancelled) return;
+          setResult(data);
+          if (isFirst) setLoading(false);
+          if (isFullyScored(data) || attempts >= MAX_ATTEMPTS - 1) {
+            setProcessing(false);
+            // Trigger achievement toast based on score (only once, when
+            // we know the score is final).
+            const score = data?.session?.score_total;
+            if (score !== null && score !== undefined) {
+              if (score >= 90) {
+                setTimeout(() => setAchievement({ id: "ace", title: "Ас переговоров", description: "Набрано 90+ баллов за сессию", icon: "🏆" }), 1500);
+                setTimeout(() => {
+                  window.dispatchEvent(new CustomEvent("gamification", { detail: { type: "perfect-score", score } }));
+                }, 800);
+              } else if (score >= 70) {
+                setTimeout(() => setAchievement({ id: "good", title: "Уверенный старт", description: "Набрано 70+ баллов за сессию", icon: "⭐" }), 1500);
+              }
             }
-          })
-          .catch(() => { /* optional: previous radar not critical */ });
-      })
-      .catch((err) => {
-        logger.error("Failed to load results:", err);
-        setLoadError(err instanceof Error ? err.message : "Не удалось загрузить результаты сессии");
-      })
-      .finally(() => setLoading(false));
+            return;
+          }
+          attempts += 1;
+          pollTimer = setTimeout(() => fetchOnce(false), POLL_INTERVAL_MS);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          logger.error("Failed to load results:", err);
+          setLoadError(err instanceof Error ? err.message : "Не удалось загрузить результаты сессии");
+          setProcessing(false);
+          if (isFirst) setLoading(false);
+        });
+    };
 
-    // Check active tournament
+    fetchOnce(true);
+
+    // Fetch previous session for skill radar comparison (one-shot)
+    api.get<Array<{ id: string; scoring_details?: Record<string, unknown> }>>("/training/history?limit=5")
+      .then((history) => {
+        if (cancelled) return;
+        const currentId = String(params.id);
+        const prev = history.find((h) => h.id !== currentId && h.scoring_details?._skill_radar);
+        if (prev) {
+          setPreviousSkillRadar(prev.scoring_details?._skill_radar as Record<string, number>);
+        }
+      })
+      .catch(() => { /* optional: previous radar not critical */ });
+
+    // Check active tournament (one-shot)
     api.get("/tournament/active")
-      .then((data: ActiveTournamentResponse) => setTournament(data))
+      .then((data: ActiveTournamentResponse) => {
+        if (cancelled) return;
+        setTournament(data);
+      })
       .catch((err) => { logger.error("Failed to load active tournament:", err); });
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
   }, [params.id]);
 
   const submitToTournament = async () => {
@@ -329,6 +394,25 @@ export default function ResultsPage() {
       <div className="app-page flex flex-col min-h-screen" style={{ display: showVerdict && hasScores ? "none" : undefined }}>
         <Breadcrumb items={[{ label: "История", href: "/history" }, { label: "Результат" }]} />
         <BackButton href="/training" label="К тренировкам" />
+
+        {/* 2026-05-04 (v2): "processing" banner shown while we poll for
+            score_total + LLM-judge to land. The training-page hangup
+            fallback can navigate here in 5s — but the judge call alone
+            takes up to 8s. Without this banner the user sees a blank
+            score and an empty judge-verdict card and assumes a crash. */}
+        {processing && (
+          <div
+            className="mt-3 mb-4 flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm"
+            style={{
+              borderColor: "rgba(120,140,255,0.3)",
+              background: "rgba(120,140,255,0.06)",
+              color: "var(--text-muted)",
+            }}
+          >
+            <Loader2 size={16} className="animate-spin" />
+            Подсчёт результатов... Обычно занимает 5–15 секунд.
+          </div>
+        )}
 
         {/* Completeness warning for short conversations */}
         {completeness < 0.6 && (
