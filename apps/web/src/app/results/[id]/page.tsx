@@ -494,15 +494,20 @@ export default function ResultsPage() {
           </div>
         </motion.header>
 
-        {/* B3 v3: AI-judge verdict + per-mistake breakdown */}
-        {result.score_breakdown?.judge && (
-          <div className="mb-6">
-            <JudgeVerdictCard judge={result.score_breakdown.judge} />
-          </div>
-        )}
-        <div className="mb-8">
-          <MistakesBreakdown items={result.score_breakdown?.anti_patterns?.detected ?? []} />
-        </div>
+        {/*
+          NEW-8 (2026-05-04): JudgeVerdictCard + MistakesBreakdown were
+          originally inserted HERE (between header and the
+          pentagram + emotion-timeline grid below). On standard laptop
+          viewports the two cards together pushed the pentagram column
+          ~700px down — users reported "пентаграмма исчезла, ничего не вижу"
+          (URL: /results/46cca1a2-…). PR #224 added them too aggressively.
+
+          Fix: render them BELOW the existing two-column grid so the
+          pentagram + emotion timeline remain the first thing visible
+          after the score header. Cards are not removed — they re-appear
+          immediately after the grid (still above XP / story / soft-skills /
+          L1-L10 / weak-legal sections).
+        */}
 
         {/* XP Rewards banner */}
         {result.xp_breakdown && (
@@ -633,6 +638,18 @@ export default function ResultsPage() {
               </motion.div>
             )}
           </div>
+        </div>
+
+        {/* NEW-8: judge verdict + mistakes breakdown rendered AFTER the
+            pentagram + emotion-timeline grid, so the score visualisation
+            appears first and the verbose AI text doesn't push it offscreen. */}
+        {result.score_breakdown?.judge && (
+          <div className="mt-8">
+            <JudgeVerdictCard judge={result.score_breakdown.judge} />
+          </div>
+        )}
+        <div className="mt-6">
+          <MistakesBreakdown items={result.score_breakdown?.anti_patterns?.detected ?? []} />
         </div>
 
         {story && (

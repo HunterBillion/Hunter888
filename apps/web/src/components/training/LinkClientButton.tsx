@@ -188,13 +188,17 @@ export function LinkClientButton({
         disabled={disabled}
         onClick={openPopover}
         aria-label={linked ? "Сменить CRM-клиента" : "Привязать CRM-клиента к сессии"}
+        // NEW-7: explicit 1-2 sentence tooltip in Russian — users were
+        // asking "что делает кнопка Привязать клиента". Browsers render
+        // <title> on hover; that's enough for a quick answer without a
+        // popover dependency.
         title={linked
-          ? `CRM-клиент: ${linked.full_name} — нажмите чтобы сменить`
-          : "Привязать клиента — нужно для прикрепления документов"}
+          ? `CRM-клиент: ${linked.full_name}. Нажмите, чтобы сменить — все вложения и итоги сессии будут сохраняться в карточке выбранного клиента.`
+          : "Привязать к карточке CRM-клиента. После привязки можно прикреплять документы из звонка, и данные сессии сохранятся в карточке клиента."}
         className={
           isCall
             ? "flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-3 text-xs text-white transition-opacity hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-30"
-            : "flex h-[40px] shrink-0 items-center gap-1.5 rounded-xl px-3 text-xs transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+            : "flex h-[40px] shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
         }
         style={isCall ? undefined : {
           background: "var(--input-bg)",
@@ -203,7 +207,9 @@ export function LinkClientButton({
         }}
       >
         {linked ? <UserIcon size={14} /> : <Link2 size={14} />}
-        <span className={linked ? "max-w-[140px] truncate" : undefined}>
+        {/* NEW-7: bumped max-w 140 → 160 to match increased text-sm font;
+            still truncated so a long client name can't blow up the row. */}
+        <span className={linked ? "max-w-[160px] truncate" : "whitespace-nowrap"}>
           {linked ? linked.full_name : "Привязать клиента"}
         </span>
       </button>

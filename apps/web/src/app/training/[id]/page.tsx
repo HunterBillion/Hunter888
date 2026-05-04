@@ -28,8 +28,11 @@ import { MicCheck } from "@/components/training/MicCheck";
 import ChatMessage from "@/components/training/ChatMessage";
 import { PinnedMessagesBar } from "@/components/training/PinnedMessagesBar";
 import { QuoteReplyBadge } from "@/components/training/QuoteReplyBadge";
-import { SessionAttachmentButton } from "@/components/training/SessionAttachmentButton";
 import { LinkClientButton } from "@/components/training/LinkClientButton";
+// NEW-6/7 (2026-05-04): SessionAttachmentButton moved into a kebab menu
+// so the textarea regains ~70%+ of the input row. Direct import kept for
+// the call view where we apply the same kebab pattern.
+import { InputBarMoreMenu } from "@/components/training/InputBarMoreMenu";
 // 2026-04-20: CallButton убран из chat-header. Переключение в голосовой
 // режим теперь происходит на CRM-карточке клиента (/clients/[id]),
 // через отдельные кнопки «Написать / Позвонить» — до входа в сессию,
@@ -1993,11 +1996,13 @@ export default function TrainingSessionPage() {
                   onCancel={() => s.clearPendingQuote()}
                 />
                 <div className="flex items-end gap-2">
+                  {/* NEW-6/7: primary chip = LinkClient. Tertiary actions
+                      (paperclip) live in the kebab so the textarea is wide. */}
                   <LinkClientButton
                     sessionId={routeId}
                     disabled={s.sessionState !== "ready"}
                   />
-                  <SessionAttachmentButton
+                  <InputBarMoreMenu
                     sessionId={routeId}
                     disabled={s.sessionState !== "ready"}
                   />
@@ -2180,11 +2185,12 @@ export default function TrainingSessionPage() {
             <div className="lg:hidden">
               {s.textMode ? (
                 <div className="flex items-end gap-2">
+                  {/* NEW-6/7: same kebab pattern as desktop bar above. */}
                   <LinkClientButton
                     sessionId={routeId}
                     disabled={s.sessionState !== "ready"}
                   />
-                  <SessionAttachmentButton
+                  <InputBarMoreMenu
                     sessionId={routeId}
                     disabled={s.sessionState !== "ready"}
                   />
