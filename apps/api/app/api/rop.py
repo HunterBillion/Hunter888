@@ -934,6 +934,16 @@ async def update_chunk(
         new_values=new_values,
         request=request,
     )
+
+    # Snapshot the values we need in the response BEFORE commit —
+    # SQLAlchemy expires attributes on commit by default, and the next
+    # access triggers a sync lazy-load that the async session can't
+    # service without a greenlet wrapper (MissingGreenlet error).
+    chunk_id_str = str(chunk.id)
+    updated_at_iso = (
+        chunk.updated_at.isoformat() if chunk.updated_at is not None else None
+    )
+
     await db.commit()
 
     # The `before_update` listener (apps/api/app/models/rag.py) nulls
@@ -944,9 +954,9 @@ async def update_chunk(
     await _enqueue_chunk_safely(chunk.id)
 
     return {
-        "id": str(chunk.id),
+        "id": chunk_id_str,
         "message": "Chunk updated",
-        "updated_at": chunk.updated_at.isoformat() if chunk.updated_at else None,
+        "updated_at": updated_at_iso,
     }
 
 
