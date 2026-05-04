@@ -646,7 +646,34 @@ export default function ResultsPage() {
             appears first and the verbose AI text doesn't push it offscreen. */}
         {result.score_breakdown?.judge && (
           <div className="mt-8">
-            <JudgeVerdictCard judge={result.score_breakdown.judge} />
+            <JudgeVerdictCard
+              judge={result.score_breakdown.judge}
+              // P4 (2026-05-04): clicking a chip scrolls to the cited
+              // user message in the transcript pane. We use the user-only
+              // message stream the judge prompt enumerates (M[i]) — find
+              // the i-th user role message in `result.messages`, locate
+              // its DOM anchor, scroll into view and pulse-highlight.
+              onJumpToMessage={(idx) => {
+                if (idx < 0 || !Array.isArray(result.messages)) return;
+                let userTurnSeen = -1;
+                let targetMsgId: string | null = null;
+                for (const m of result.messages) {
+                  if (m.role === "user") {
+                    userTurnSeen += 1;
+                    if (userTurnSeen === idx) {
+                      targetMsgId = String(m.id ?? "");
+                      break;
+                    }
+                  }
+                }
+                if (!targetMsgId) return;
+                const el = document.querySelector(`[data-msg-id="${targetMsgId}"]`);
+                if (!el) return;
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                el.classList.add("ring-2", "ring-yellow-400/70");
+                setTimeout(() => el.classList.remove("ring-2", "ring-yellow-400/70"), 2200);
+              }}
+            />
           </div>
         )}
         <div className="mt-6">
@@ -1097,6 +1124,7 @@ export default function ResultsPage() {
             {messages.map((msg, idx) => (
               <div
                 key={msg.id}
+                data-msg-id={String(msg.id)}
                 className={`flex gap-3 rounded-lg p-2 transition-colors ${msg.role === "user" ? "cursor-pointer hover:ring-1 hover:ring-[var(--accent)]" : ""}`}
                 style={{ background: msg.role !== "user" ? "var(--input-bg)" : "transparent" }}
                 onClick={() => {
