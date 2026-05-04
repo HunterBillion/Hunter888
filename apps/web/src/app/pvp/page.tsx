@@ -238,7 +238,10 @@ function PvPLobbyContent() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
       >
-        <div className="app-page">
+        {/* 2026-05-04: extra bottom padding on /pvp — without it the
+            last panel (history list / friends panel) sat flush against
+            the viewport bottom edge. ~3cm of breathing room. */}
+        <div className="app-page pb-24 md:pb-32">
           {/* Connection status banner — smooth slide-in */}
           <AnimatePresence>
             {connectionState !== "connected" && (
