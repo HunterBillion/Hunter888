@@ -522,6 +522,42 @@ def filter_ai_output(text: str) -> tuple[str, list[str]]:
     violations = []
     filtered = _safe_truncate(text)
 
+    # 2026-05-04 (NEW-1 prod incident): strip leaked LLM reasoning / tool blocks.
+    # Production session showed AI reply ending with literal text:
+    #   "Понятно. Тогда кто это?## Test Output Reasoning We need answer as
+    #    client persona. ... Already crafted."
+    # Different LLM providers leak inner planning under different markers.
+    # Cut at the FIRST occurrence of any of these — everything after is
+    # provider-internal noise that must never reach the user.
+    _REASONING_MARKERS = (
+        r"##\s*Test\s*Output",          # navy.api / generic chain-of-thought tag
+        r"##\s*Reasoning",
+        r"##\s*Analysis",
+        r"##\s*Thought",
+        r"<\s*/?\s*think\b",            # <think> / </think> blocks
+        r"<\s*/?\s*reasoning\b",
+        r"<\s*/?\s*analysis\b",
+        r"<\s*/?\s*scratchpad\b",
+        r"\[ASSISTANT[_\- ]REASONING\]",
+        r"\[INTERNAL\]",
+        r"```\s*(?:json|tool|function|reasoning)\b",  # leaked code-fences
+        r"\bAnswer\s*:\s*",             # rare but seen — model writes "Answer:" header
+    )
+    import re as _re_leak
+    _LEAK_RE = _re_leak.compile(
+        "|".join(f"(?:{p})" for p in _REASONING_MARKERS),
+        flags=_re_leak.IGNORECASE,
+    )
+    _m = _LEAK_RE.search(filtered)
+    if _m:
+        # Cut everything from the marker onwards. Trim trailing punctuation /
+        # whitespace artefacts so the cut looks natural in chat.
+        filtered = filtered[: _m.start()].rstrip(" \t\n.,:;-—")
+        if not filtered.endswith((".", "!", "?", "…")) and filtered:
+            filtered += "."
+        violations.append("reasoning_leak")
+        logger.warning("AI reasoning leak stripped (marker=%r)", _m.group(0)[:30])
+
     # Length cap
     if len(filtered) > MAX_AI_RESPONSE_LENGTH:
         filtered = filtered[:MAX_AI_RESPONSE_LENGTH]
