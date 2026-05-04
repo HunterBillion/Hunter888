@@ -80,6 +80,15 @@ class Settings(BaseSettings):
     local_llm_model: str = "gemma4:e2b"
     local_llm_enabled: bool = False  # Disabled by default; enable for local dev
     local_llm_api_key: str = "ollama"  # Ollama doesn't require key; LM Studio may
+    # 2026-05-04 (latency-fix): faster model for the persona / character role.
+    # User reported >1.5s response is too slow. The persona role doesn't need
+    # Opus-grade reasoning — natural Russian dialog is enough. When set,
+    # ``generate_response(task_type="roleplay")`` and the streaming sibling
+    # use this model instead of ``local_llm_model``. Empty string = no
+    # override (back-compat). Tested values on navy.api: ``claude-haiku-4-5``,
+    # ``gpt-4o-mini``, ``gemini-2.5-flash``. Haiku is the recommended default
+    # for Russian dialog quality.
+    local_llm_persona_model: str = ""
     # Context window of the local LLM — controls when auto-router pushes to cloud.
     # 128K fits Claude/GPT-4/Gemini Pro via navy.api. Set to 6000 for local Gemma 4 (limited).
     local_llm_context_window: int = 128000

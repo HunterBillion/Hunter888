@@ -32,7 +32,7 @@ import { LinkClientButton } from "@/components/training/LinkClientButton";
 // NEW-6/7 (2026-05-04): SessionAttachmentButton moved into a kebab menu
 // so the textarea regains ~70%+ of the input row. Direct import kept for
 // the call view where we apply the same kebab pattern.
-import { InputBarMoreMenu } from "@/components/training/InputBarMoreMenu";
+import { SessionAttachmentButton } from "@/components/training/SessionAttachmentButton";
 // 2026-04-20: CallButton убран из chat-header. Переключение в голосовой
 // режим теперь происходит на CRM-карточке клиента (/clients/[id]),
 // через отдельные кнопки «Написать / Позвонить» — до входа в сессию,
@@ -2002,7 +2002,7 @@ export default function TrainingSessionPage() {
                     sessionId={routeId}
                     disabled={s.sessionState !== "ready"}
                   />
-                  <InputBarMoreMenu
+                  <SessionAttachmentButton
                     sessionId={routeId}
                     disabled={s.sessionState !== "ready"}
                   />
@@ -2190,7 +2190,7 @@ export default function TrainingSessionPage() {
                     sessionId={routeId}
                     disabled={s.sessionState !== "ready"}
                   />
-                  <InputBarMoreMenu
+                  <SessionAttachmentButton
                     sessionId={routeId}
                     disabled={s.sessionState !== "ready"}
                   />

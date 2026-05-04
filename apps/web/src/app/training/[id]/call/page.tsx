@@ -38,7 +38,7 @@ import ScriptDrawer from "@/components/training/ScriptDrawer";
 import { LinkClientButton } from "@/components/training/LinkClientButton";
 // NEW-6/7 (2026-05-04): same kebab pattern as the chat view — paperclip
 // moved into a dropdown so the input field is the main focus.
-import { InputBarMoreMenu } from "@/components/training/InputBarMoreMenu";
+import { SessionAttachmentButton } from "@/components/training/SessionAttachmentButton";
 import { telemetry } from "@/lib/telemetry";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useTTS } from "@/hooks/useTTS";
@@ -1267,7 +1267,7 @@ export default function TrainingCallPage() {
             variant="call"
             disabled={connectionState !== "connected"}
           />
-          <InputBarMoreMenu
+          <SessionAttachmentButton
             sessionId={id}
             variant="call"
             disabled={connectionState !== "connected"}
