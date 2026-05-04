@@ -52,15 +52,28 @@ REDIS_VOICE_TTL = 7200  # 2 hours
 # Conjunctions for pause injection (Russian)
 _CONJUNCTIONS = ["но", "однако", "хотя", "впрочем", "зато"]
 
-# Hesitation bank (base set, extended by factor-specific pools)
-_HESITATIONS = ["ну...", "э-э...", "это...", "как бы...", "ну это...", "в общем...", "значит...", "вот..."]
+# Hesitation bank — BUG B2 fix (2026-05-04)
+# Previously contained literal Russian filler words ("ну...", "э-э...", "как бы...")
+# that were prepended to the LLM reply ONLY in the TTS path, not in the visible
+# chat. Result: user heard "ну, у меня долг" but read just "у меня долг" —
+# audio/text mismatch. Industry approach (Pipecat, LiveKit) is to trust the LLM
+# for filler words and only inject paralinguistic CUES (pauses, breath sounds)
+# that don't add words the listener can read back.
+#
+# What we keep:
+#   * Plain ellipsis "..." — natural pause, no spoken word, ElevenLabs handles
+#     it as a soft pause.
+#   * "*вздох*" / "*выдох*" / "*вдох*" / "*пауза*" — these are TRANSFORMED to
+#     real ElevenLabs v3 audio tags ([sighs]/[exhales]/[inhales]) by
+#     services/tts_sanitizer.sanitize_for_tts() before synthesis (PR #207).
+#     They produce real breath sounds, not spoken words.
+_HESITATIONS = ["...", "..."]
 
-# Factor-specific hesitation/breathing pools
 _FACTOR_HESITATIONS = {
-    "fatigue": ["*вздох*", "так...", "ну...", "это...", "подождите..."],
-    "anxiety": ["а-а...", "ну...", "это...", "вот...", "как бы..."],
+    "fatigue": ["*вздох*", "...", "..."],
+    "anxiety": ["...", "*вдох*"],
     "anger": [],  # anger doesn't hesitate — it accelerates
-    "sarcasm": ["ну-у...", "а-а...", "хм..."],
+    "sarcasm": ["...", "хм..."],  # "хм" is paralinguistic, kept; "ну-у" dropped
 }
 
 _FACTOR_BREATHING = {
