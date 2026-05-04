@@ -4674,6 +4674,17 @@ async def _handle_audio_chunk(
         except Exception:
             logger.debug("Coaching mistake detector failed (audio) for %s", session_id, exc_info=True)
 
+    # ── 2026-05-03 (BUG 3 fix) Mode-switch — audio path ──
+    # Same nudge as the text path. Independent of mistake_detector_v1 flag.
+    try:
+        from app.services.coach_mode_switch import evaluate_mode_switch as _coach_eval_ms_a
+        from app.core.redis_pool import get_redis as _get_redis_ms_a
+        _ms_tip_a = await _coach_eval_ms_a(_get_redis_ms_a(), str(session_id), stt_result.text)
+        if _ms_tip_a is not None:
+            await _send(ws, "coaching.mistake", _ms_tip_a.to_payload())
+    except Exception:
+        logger.debug("Mode-switch detector (audio) failed for %s", session_id, exc_info=True)
+
     # Generate character response (with fail-safe: ensure UI isn't stuck
     # on "avatar typing" if the LLM path raises something other than the
     # explicit LLMError it already handles).
@@ -5239,6 +5250,20 @@ async def _handle_text_message(
                 await _send(ws, "coaching.mistake", _m_t.to_payload())
         except Exception:
             logger.debug("Coaching mistake detector failed (text) for %s", session_id, exc_info=True)
+
+    # ── 2026-05-03 (BUG 3 fix) Mode-switch coaching tip ──
+    # Detects "trolling → on-task" pivot and emits one well-timed nudge so
+    # the manager doesn't barrel into a pitch right after the user finally
+    # got serious. Independent of mistake_detector_v1 flag — adds zero
+    # latency (regex-only), no LLM cost.
+    try:
+        from app.services.coach_mode_switch import evaluate_mode_switch as _coach_eval_ms
+        from app.core.redis_pool import get_redis as _get_redis_ms
+        _ms_tip = await _coach_eval_ms(_get_redis_ms(), str(session_id), content)
+        if _ms_tip is not None:
+            await _send(ws, "coaching.mistake", _ms_tip.to_payload())
+    except Exception:
+        logger.debug("Mode-switch detector failed for %s", session_id, exc_info=True)
 
     try:
         await _generate_character_reply(ws, session_id, state)
