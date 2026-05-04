@@ -126,9 +126,98 @@ def test_stream_openai_compat_exists() -> None:
 
 
 def test_build_keepalive_http_client_constructible() -> None:
-    """Should not raise even if h2 isn't installed (graceful degradation)."""
+    """Constructible with the expected http2 + keepalive limits.
+    `httpx[http2]` is mandatory in pyproject so h2 is always present.
+    """
     client = llm_mod._build_keepalive_http_client()
     assert client is not None
     # cleanup
     import asyncio
     asyncio.get_event_loop().run_until_complete(client.aclose())
+
+
+# ── Streaming smoke (stubbed — critic-fix #10) ───────────────────────────────
+
+
+class _StubChoice:
+    def __init__(self, content: str | None) -> None:
+        self.delta = type("D", (), {"content": content})()
+
+
+class _StubChunk:
+    def __init__(self, content: str | None) -> None:
+        self.choices = [_StubChoice(content)]
+
+
+class _StubAsyncIterator:
+    def __init__(self, chunks: list[_StubChunk]) -> None:
+        self._chunks = chunks
+        self._i = 0
+
+    def __aiter__(self) -> "_StubAsyncIterator":
+        return self
+
+    async def __anext__(self) -> _StubChunk:
+        if self._i >= len(self._chunks):
+            raise StopAsyncIteration
+        c = self._chunks[self._i]
+        self._i += 1
+        return c
+
+
+class _StubChatCompletions:
+    def __init__(self, chunks: list[_StubChunk]) -> None:
+        self._chunks = chunks
+        self.calls: list[dict] = []
+
+    async def create(self, **kwargs):  # noqa: ANN001
+        self.calls.append(kwargs)
+        return _StubAsyncIterator(self._chunks)
+
+
+class _StubChat:
+    def __init__(self, chunks: list[_StubChunk]) -> None:
+        self.completions = _StubChatCompletions(chunks)
+
+
+class _StubClient:
+    def __init__(self, chunks: list[_StubChunk]) -> None:
+        self.chat = _StubChat(chunks)
+
+
+@pytest.mark.asyncio
+async def test_stream_openai_compat_yields_tokens(monkeypatch) -> None:
+    """End-to-end: monkeypatch _get_local_client to return a stub whose
+    chat.completions.create returns an async iterator of fake chunks.
+    Verify _stream_openai_compat yields the concatenated tokens.
+
+    A regression that breaks the `async for chunk in stream` body or the
+    `delta.content` access path will fail this test.
+    """
+    chunks = [
+        _StubChunk("Здра"),
+        _StubChunk("вствуй"),
+        _StubChunk(", "),
+        _StubChunk(None),         # null delta — must be skipped, not crash
+        _StubChunk("слушаю"),
+        _StubChunk(""),           # empty delta — must be skipped silently
+        _StubChunk("."),
+    ]
+    stub = _StubClient(chunks)
+    monkeypatch.setattr(llm_mod, "_get_local_client", lambda: stub)
+    monkeypatch.setattr(llm_mod.settings, "local_llm_url", "https://api.navy/v1")
+    monkeypatch.setattr(llm_mod.settings, "local_llm_enabled", True)
+    monkeypatch.setattr(llm_mod.settings, "local_llm_model", "gpt-5.4")
+
+    tokens = []
+    async for tok in llm_mod._stream_openai_compat(
+        system_prompt="SYS",
+        messages=[{"role": "user", "content": "привет"}],
+        timeout=10.0,
+    ):
+        tokens.append(tok)
+
+    assert "".join(tokens) == "Здравствуй, слушаю."
+    # Verify the stub got the streaming kwarg.
+    assert stub.chat.completions.calls[-1]["stream"] is True
+    assert stub.chat.completions.calls[-1]["model"] == "gpt-5.4"

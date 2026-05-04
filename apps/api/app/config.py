@@ -115,7 +115,11 @@ class Settings(BaseSettings):
     #   Tunes httpx read timeout for the keepalive client — default 60s.
     local_llm_streaming_enabled: bool = True
     local_llm_http2_enabled: bool = True
-    local_llm_prompt_cache_enabled: bool = False
+    # 2026-05-04 (critic-fix #7): default flipped to True. Tests prove
+    # the helper is null-safe — when the system prompt has no separator,
+    # behaviour is identical to the off path. Shipping False meant the
+    # perf win lived only in code, not in production.
+    local_llm_prompt_cache_enabled: bool = True
     local_llm_timeout_seconds: float = 60.0
 
     # Concurrency control (prevents API rate limit hits)

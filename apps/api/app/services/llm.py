@@ -396,12 +396,11 @@ def _build_keepalive_http_client() -> httpx.AsyncClient:
         max_connections=50,
         keepalive_expiry=30.0,
     )
-    try:
-        return httpx.AsyncClient(http2=use_h2, timeout=timeout, limits=limits)
-    except ImportError:
-        # h2 extra not installed — degrade gracefully to HTTP/1.1 keepalive.
-        logger.warning("h2 not installed; falling back to HTTP/1.1 (still keepalive-pooled)")
-        return httpx.AsyncClient(http2=False, timeout=timeout, limits=limits)
+    # `httpx[http2]` is mandatory in pyproject.toml — the `h2` extra is
+    # always installed in any deployable environment. The previous
+    # try/except ImportError fallback (critic-fix #12) was dead code that
+    # contradicted the dependency declaration; dropped.
+    return httpx.AsyncClient(http2=use_h2, timeout=timeout, limits=limits)
 
 
 def _get_local_client() -> openai.AsyncOpenAI | None:
@@ -707,14 +706,33 @@ async def get_embeddings_batch(texts: list[str]) -> list[list[float]] | None:
 
 
 async def close_llm_clients() -> None:
-    """Close all LLM and embedding HTTP clients on shutdown."""
-    global _gemini_http_client, _embedding_http_client
+    """Close all LLM and embedding HTTP clients on shutdown.
+
+    2026-05-04 (Plan A critic-fix #2): the new ``_local_client`` and
+    ``_openai_client`` wrap a custom ``httpx.AsyncClient`` (HTTP/2
+    keepalive pool). Without explicit shutdown, dev hot-reload + prod
+    lifespan stop leak the connection pool every reload — exactly the
+    pool this PR introduced.
+    """
+    global _gemini_http_client, _embedding_http_client, _local_client, _openai_client
     if _gemini_http_client is not None:
         await _gemini_http_client.aclose()
         _gemini_http_client = None
     if _embedding_http_client is not None:
         await _embedding_http_client.aclose()
         _embedding_http_client = None
+    if _local_client is not None:
+        try:
+            await _local_client.close()
+        except Exception:
+            logger.debug("local LLM client close failed (non-fatal)", exc_info=True)
+        _local_client = None
+    if _openai_client is not None:
+        try:
+            await _openai_client.close()
+        except Exception:
+            logger.debug("OpenAI client close failed (non-fatal)", exc_info=True)
+        _openai_client = None
 
 
 def _build_system_prompt(
