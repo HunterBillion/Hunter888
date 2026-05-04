@@ -1650,8 +1650,16 @@ async def evaluate_answer_streaming(
         return
 
     # ── RAG + common-error pre-check ───────────────────────────────────────
+    # 2026-05-04 FRONT-2 fix: retrieval is keyed on the QUESTION ONLY,
+    # not "question + user_answer". The combined query was the root
+    # cause of LLM-judge false-negatives on correct off-topic answers
+    # (audit Problem 1): an answer about алименты pulled алименты-
+    # adjacent chunks instead of the question's actual subject (61.2),
+    # so the LLM judged against the wrong context. The user-answer is
+    # already passed to the judge as its own message — we don't need
+    # to bias retrieval with it.
     rag_context = await retrieve_legal_context(
-        f"{question.question_text} {user_answer}", db, top_k=5
+        question.question_text, db, top_k=5
     )
     if rag_context.has_results:
         answer_lower = user_answer.lower()
@@ -1676,6 +1684,51 @@ async def evaluate_answer_streaming(
     from app.services.scenario_engine import _sanitize_db_prompt
     from app.services.llm import generate_response_stream
     context_str = rag_context.to_prompt_context() if rag_context.has_results else ""
+
+    # 2026-05-04 FRONT-2: canonical-answer fallback. If RAG was sparse
+    # (context_str empty), pull a curated canonical entry instead of
+    # letting the LLM improvise blind. Also short-circuits when the
+    # user answer hits a known wrong_hint.
+    canonical_entry = None
+    if not context_str:
+        try:
+            from app.services.canonical_answers import find_canonical, has_wrong_hint
+            canonical_entry = find_canonical(
+                question.question_text,
+                category=question.category if question.category else None,
+            )
+            if canonical_entry:
+                # Short-circuit: explicit known-wrong substring match.
+                wrong = has_wrong_hint(canonical_entry, user_answer)
+                if wrong:
+                    fb = QuizFeedback(
+                        is_correct=False,
+                        explanation=(
+                            f"Распространённая ошибка: «{wrong}». "
+                            f"Правильно: {canonical_entry.canonical}"
+                        ),
+                        article_reference=canonical_entry.article,
+                        score_delta=_score_delta(False, difficulty),
+                        correct_answer_summary=canonical_entry.canonical,
+                    )
+                    yield {
+                        "type": "verdict", "is_correct": False,
+                        "correct_answer": canonical_entry.canonical,
+                        "article_reference": canonical_entry.article,
+                        "score_delta": fb.score_delta,
+                        "fast_path": "canonical_wrong_hint",
+                    }
+                    yield {"type": "final", "feedback": fb}
+                    return
+                # Otherwise feed the canonical answer into the judge as
+                # the authoritative reference instead of empty context.
+                context_str = (
+                    f"Эталонный ответ (методология): {canonical_entry.canonical}\n"
+                    f"Источник: {canonical_entry.article}"
+                )
+        except Exception as exc:
+            logger.warning("canonical_answers lookup failed: %s", exc, exc_info=True)
+
     sanitized_answer = _sanitize_db_prompt(user_answer, "user_answer")
 
     stream_messages = [

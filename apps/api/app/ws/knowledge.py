@@ -294,12 +294,27 @@ class _SoloQuizState:
                 self.consecutive_incorrect = 0
         return self.current_difficulty
 
-    def should_follow_up(self) -> bool:
-        """Check if this is a follow-up turn (every 3rd answer in free_dialog)."""
+    def should_follow_up(self, last_correct: bool) -> bool:
+        """Whether to shoot a deepening follow-up after this answer.
+
+        2026-05-04 FRONT-2: tightened from "every 3rd answer in free_dialog"
+        (which fired even after garbage answers, breaking the UX) to:
+          • free_dialog mode only
+          • last answer must be correct
+          • consecutive_correct ≥ 2 (sustained competence, not a fluke)
+          • every 4th qualifying answer (was 3rd — softer cadence)
+        Counter only increments on qualifying answers. Garbage / wrong
+        answers do not advance it, so the user isn't ambushed by a
+        follow-up immediately after typing nonsense.
+        """
         if self.mode != QuizMode.free_dialog:
             return False
+        if not last_correct:
+            return False
+        if self.consecutive_correct < 2:
+            return False
         self.follow_up_counter += 1
-        return self.follow_up_counter % 3 == 0
+        return self.follow_up_counter % 4 == 0
 
 
 # ── Session limits for free_dialog ──
@@ -879,13 +894,56 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
         except (TimeoutError, Exception) as exc:
             logger.warning("evaluate_answer_streaming timeout/error: %s", exc)
 
+    # 2026-05-04 FRONT-2: non-streaming fallback when streaming failed.
+    # Was: leave result=None → emit "Не удалось получить разбор" placeholder.
+    # Now: try the non-streaming evaluate_answer once. If THAT also
+    # fails, build a feedback that at least cites the canonical answer
+    # so the user gets value instead of a dead-end string. The user
+    # reported seeing the placeholder on ~5/8 wrong answers in
+    # free_dialog — root cause is cloud LLM hiccup with no retry.
+    if result is None:
+        try:
+            from app.services.knowledge_quiz import evaluate_answer
+            async with async_session() as db2, asyncio.timeout(20):
+                result = await evaluate_answer(
+                    db2,
+                    question=state.current_q,
+                    user_answer=text,
+                    mode=state.mode,
+                    personality_prompt=personality_prompt,
+                )
+            if result is not None:
+                logger.info("eval fallback (non-streaming) succeeded after streaming failure")
+        except Exception as exc:
+            logger.warning("eval fallback also failed: %s", exc)
+
     if result is None:
         from app.services.knowledge_quiz import QuizFeedback
+        # Last-resort: synthesize a non-blame verdict with the canonical
+        # answer if we have one. Don't penalize — this is OUR failure,
+        # not the user's. score_delta=0 instead of -2.
+        canonical_hint = None
+        if state.current_q is not None:
+            canonical_hint = (
+                getattr(state.current_q, "blitz_answer", None)
+                or getattr(state.current_q, "expected_article", None)
+            )
+        if canonical_hint:
+            explanation = (
+                f"Не удалось разобрать ответ автоматически. Эталон: {canonical_hint}. "
+                f"Сверься с ним и продолжай — балл за этот вопрос не снимаем."
+            )
+        else:
+            explanation = (
+                "Не удалось оценить ответ — возможно, проблема с сетью. "
+                "Балл за этот вопрос не снимаем, продолжаем."
+            )
         result = QuizFeedback(
             is_correct=False,
-            explanation="Не удалось оценить ответ из-за таймаута. Попробуйте ответить развёрнуто.",
-            article_reference="",
+            explanation=explanation,
+            article_reference=getattr(state.current_q, "expected_article", "") or "",
             score_delta=0.0,
+            correct_answer_summary=canonical_hint,
         )
 
     # Calculate score delta
@@ -898,7 +956,11 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
             speed_bonus = calculate_blitz_speed_bonus(response_time_ms)
             score_delta += speed_bonus
     else:
-        score_delta = -2.0
+        # 2026-05-04 FRONT-2: respect score_delta=0 set by the evaluator-
+        # failure fallback (above). The user shouldn't be penalised for
+        # our LLM hiccup. Only assign the standard −2 if no fallback
+        # path overrode it.
+        score_delta = result.score_delta if result.score_delta == 0 else -2.0
         state.incorrect += 1
     state.score += score_delta
 
@@ -1029,7 +1091,7 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
     await _send_progress(ws, state)
 
     # V2: Check for follow-up question
-    if state.should_follow_up() and state.current_q:
+    if state.should_follow_up(last_correct=bool(result.is_correct)) and state.current_q:
         follow_up_text = await generate_follow_up(
             state.current_q,
             text,
@@ -1128,15 +1190,26 @@ async def _handle_hint(ws: WebSocket, state: _SoloQuizState) -> None:
 
 
 async def _send_progress(ws: WebSocket, state: _SoloQuizState) -> None:
-    """Send current quiz progress."""
-    await _send(ws, "quiz.progress", {
+    """Send current quiz progress.
+
+    2026-05-04 FRONT-2: piggy-back `time_left_now` on every progress
+    event. Per user choice (option в) we don't run a per-second
+    server tick — too chatty. Instead the client gets a fresh
+    server-truthful time_left whenever ANYTHING happens (answer sent,
+    skip, hint). This corrects clock drift without 60 ws/min.
+    """
+    payload = {
         "current": state.current_question,
         "total": state.total_questions,
         "correct": state.correct,
         "incorrect": state.incorrect,
         "skipped": state.skipped,
         "score": state.score,
-    })
+    }
+    if state.time_limit and state.question_start_time:
+        elapsed = time.time() - state.question_start_time
+        payload["time_left_now"] = max(0, int(state.time_limit - elapsed))
+    await _send(ws, "quiz.progress", payload)
 
 
 async def _save_answer(
