@@ -469,10 +469,24 @@ def _score_communication(user_messages: list[str]) -> tuple[float, dict]:
     return min(20.0, score) * V3_RESCALE, details
 
 
-async def _score_anti_patterns(user_messages: list[str]) -> tuple[float, dict]:
+async def _score_anti_patterns(
+    user_messages: list[str],
+    *,
+    mistake_counts: dict[str, int] | None = None,
+) -> tuple[float, dict]:
     """L4: Anti-patterns (0 to -11.25 penalty after rescale).
 
     false promises(-5) + intimidation(-5) + incorrect info(-5) = -15 → ×0.75 = -11.25
+
+    Parameters
+    ----------
+    mistake_counts : optional ``{type: count}`` dict from
+        ``mistake_aggregator.fetch_counts`` (BUG B3 v3 — β). When present,
+        adds capped per-type penalties for monologue / talk_ratio_high /
+        repeated_argument so absence-of-skill habits visible in the
+        real-time coaching toasts also depress the final score. The
+        existing ``-15.0`` floor at the end of this function bounds the
+        combined L4 penalty unchanged.
     """
     from app.services.script_checker import detect_anti_patterns
 
@@ -548,6 +562,39 @@ async def _score_anti_patterns(user_messages: list[str]) -> tuple[float, dict]:
                 "score": 1.0,
                 "penalty": zero_oq_penalty * V3_RESCALE,
                 "note": "За весь разговор не задано ни одного открытого вопроса",
+            })
+
+    # 2026-05-04 (BUG B3 v3 — β): aggregate penalties from real-time
+    # mistake_detector firings. Toasts were visible in-session but the
+    # scoring engine never saw them, so monologue / talk-ratio / repeat
+    # habits had ZERO impact on the final score. Counts come from
+    # ``mistake_aggregator.fetch_counts`` (Redis-backed, refreshed each
+    # firing). Per-firing weights are deliberately conservative and
+    # capped per-type because they aggregate across a long session;
+    # the existing ``max(-15.0, penalty)`` floor below still bounds the
+    # combined L4 penalty.
+    if mistake_counts:
+        aggregate_penalties = {
+            "monologue": -1.5,         # per firing, capped at 3 firings
+            "talk_ratio_high": -2.0,   # per firing, capped at 2 firings
+            "repeated_argument": -1.0, # per firing, capped at 3 firings
+            # no_open_question intentionally OMITTED — already covered
+            # by the absence-based zero_open_questions penalty above.
+            # early_pricing OMITTED — different stage-aware logic should
+            # handle that, separate spike.
+        }
+        for mtype, per_pen in aggregate_penalties.items():
+            n = int(mistake_counts.get(mtype, 0) or 0)
+            if n <= 0:
+                continue
+            cap_n = 2 if mtype == "talk_ratio_high" else 3
+            applied = per_pen * min(n, cap_n)
+            penalty += applied
+            details["detected"].append({
+                "category": f"mistake_{mtype}",
+                "score": float(n),
+                "penalty": applied * V3_RESCALE,
+                "note": f"{mtype} сработало {n} раз(а) за разговор",
             })
 
     penalty = max(-15.0, penalty) * V3_RESCALE
@@ -1468,7 +1515,21 @@ async def calculate_scores(
     all_details["communication"] = comm_details
 
     # ── L4: Anti-patterns (-11.25 penalty) ──
-    anti_penalty, anti_details = await _score_anti_patterns(user_messages)
+    # 2026-05-04 (BUG B3 v3 — β): also feed real-time mistake_detector
+    # firings into L4 so monologue/talk-ratio/repeat habits visible in
+    # the in-session toasts actually move the final score. fetch_counts
+    # returns {} on missing key or Redis hiccup, in which case L4 keeps
+    # its pre-β behaviour.
+    mistake_counts: dict[str, int] = {}
+    try:
+        from app.services.mistake_aggregator import fetch_counts as _fetch_mistake_counts
+        from app.core.redis_pool import get_redis as _get_redis
+        mistake_counts = await _fetch_mistake_counts(_get_redis(), str(session_id))
+    except Exception:
+        logger.debug("mistake_aggregator.fetch_counts failed for %s", session_id, exc_info=True)
+    anti_penalty, anti_details = await _score_anti_patterns(
+        user_messages, mistake_counts=mistake_counts,
+    )
     all_details["anti_patterns"] = anti_details
 
     # ── L5: Result (7.5 pts) ──
