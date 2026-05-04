@@ -172,6 +172,26 @@ class LegalKnowledgeChunk(Base):
     )
     source_ref: Mapped[str | None] = mapped_column(String(2000), nullable=True)
 
+    # ── Audit-2026-05-04 §PR-2 ────────────────────────────────────────────────
+    # Provenance: who created / last touched this chunk. NULL on the 375
+    # prod chunks present at migration time (seeded before column existed).
+    # Filled forward by apps/api/app/api/rop.py.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    last_edited_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Soft-delete sentinel — DELETE handler flips this instead of dropping
+    # the row. Preserves analytics history (chunk_usage_logs.chunk_id),
+    # FK targets (legal_validation_results.knowledge_chunk_id), and the
+    # ability to undo within the audit retention window.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
 
 class ChunkUsageLog(Base):
     """Log of every RAG chunk retrieval and its outcome.
