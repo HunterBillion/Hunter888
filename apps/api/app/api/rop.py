@@ -997,6 +997,12 @@ async def delete_chunk(
 
     chunk.deleted_at = datetime.now(timezone.utc)
     chunk.last_edited_by = user.id
+    # Free up the content_hash slot — the column has a global UNIQUE
+    # constraint that includes tombstones, so a methodologist editing
+    # a live chunk to match an old soft-deleted version's text would
+    # otherwise hit IntegrityError. Tombstones don't need a hash —
+    # they're not surfaced for dedup or RAG anyway.
+    chunk.content_hash = None
 
     await write_audit_log(
         db,
