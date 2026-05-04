@@ -30,7 +30,7 @@ Endpoints (paths shown without prefix — both `/rop/*` and
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.core.rate_limit import limiter
 from fastapi import (
@@ -1031,6 +1031,81 @@ async def _enqueue_chunk_safely(chunk_id: uuid.UUID) -> None:
         await enqueue_chunk(chunk_id)
     except Exception:  # pragma: no cover — best-effort; logged centrally
         logger.warning("arena: enqueue_chunk failed", exc_info=True)
+
+
+@router.get("/arena/queue-status")
+@limiter.limit("60/minute")
+async def arena_queue_status(
+    request: Request,
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    """Backfill queue + index health for the Arena panel.
+
+    Surfaces the metrics that pre-fix were buried in INFO logs
+    (`embedding_live_backfill.queue_length` was implemented but never
+    exposed to any endpoint). Methodologists and operators get a one-
+    look answer to:
+
+      * Is the live worker keeping up with edits?
+        (`queue_length` ≈ chunks waiting to be re-embedded)
+      * How many chunks are RAG-invisible right now?
+        (`embedding_null_count` — `embedding IS NULL` after listener
+        invalidation, before worker pickup)
+      * How fresh is the search index?
+        (`updated_in_last_hour` — recent edits)
+
+    Read-only; rop+admin can call. No PII surfaced.
+    """
+    from sqlalchemy import and_, func as sa_func
+
+    from app.models.rag import LegalKnowledgeChunk
+    from app.services.embedding_live_backfill import (
+        methodology_queue_length,
+        queue_length,
+        wiki_queue_length,
+    )
+
+    legal_q = await queue_length()
+    wiki_q = await wiki_queue_length()
+    method_q = await methodology_queue_length()
+
+    cutoff_1h = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    # Count chunks the panel would consider "active" (not soft-deleted).
+    base_filter = and_(LegalKnowledgeChunk.deleted_at.is_(None))
+    total = (await db.execute(
+        select(sa_func.count()).select_from(LegalKnowledgeChunk).where(base_filter)
+    )).scalar() or 0
+    embedding_null = (await db.execute(
+        select(sa_func.count()).select_from(LegalKnowledgeChunk).where(
+            and_(base_filter, LegalKnowledgeChunk.embedding.is_(None))
+        )
+    )).scalar() or 0
+    embedding_v2_null = (await db.execute(
+        select(sa_func.count()).select_from(LegalKnowledgeChunk).where(
+            and_(base_filter, LegalKnowledgeChunk.embedding_v2.is_(None))
+        )
+    )).scalar() or 0
+    updated_recent = (await db.execute(
+        select(sa_func.count()).select_from(LegalKnowledgeChunk).where(
+            and_(base_filter, LegalKnowledgeChunk.updated_at >= cutoff_1h)
+        )
+    )).scalar() or 0
+
+    return {
+        "queue": {
+            "legal_chunks": int(legal_q),
+            "wiki_pages": int(wiki_q),
+            "methodology_chunks": int(method_q),
+        },
+        "chunks": {
+            "total_active": int(total),
+            "embedding_null": int(embedding_null),
+            "embedding_v2_null": int(embedding_v2_null),
+            "updated_in_last_hour": int(updated_recent),
+        },
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
