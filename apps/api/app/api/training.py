@@ -1349,9 +1349,15 @@ async def link_session_to_crm_client(
     Errors:
       404 — session not found / not owned by current user
       404 — real_client not found / not owned by current user
-      409 — session already linked to a *different* client
-            (detail carries the existing real_client_id so the FE can show
-            "уже привязан к другому клиенту")
+
+    2026-05-04 (γ): swap-allowed. Previously a different real_client_id
+    returned 409 — but the user has no UI path to "unlink first then
+    relink" so they were stuck with whatever client they picked first.
+    Now PATCH overwrites; the previous client stays in CRM (we only
+    change which client this *session*'s artefacts get associated with
+    going forward; prior attachments keep their FK to the old client
+    via the Attachment table directly). Idempotent same-client repeat
+    is still a no-op 200.
     """
     session = (await db.execute(
         select(TrainingSession).where(
@@ -1361,19 +1367,6 @@ async def link_session_to_crm_client(
     )).scalar_one_or_none()
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.SESSION_NOT_FOUND)
-
-    if (
-        session.real_client_id is not None
-        and session.real_client_id != body.real_client_id
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "session_already_linked",
-                "message": "Сессия уже привязана к другому CRM-клиенту",
-                "real_client_id": str(session.real_client_id),
-            },
-        )
 
     client = (await db.execute(
         select(RealClient).where(
@@ -1387,7 +1380,7 @@ async def link_session_to_crm_client(
             detail="CRM-клиент не найден",
         )
 
-    if session.real_client_id is None:
+    if session.real_client_id != body.real_client_id:
         session.real_client_id = body.real_client_id
         await db.flush()
         await db.commit()
