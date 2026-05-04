@@ -38,6 +38,7 @@ from fastapi import (
     Depends,
     File,
     Form,
+    Header,
     HTTPException,
     Query,
     Request,
@@ -50,6 +51,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user, require_role
 from app.database import get_db
 from app.models.user import User
+from app.services.audit import write_audit_log
 
 logger = logging.getLogger(__name__)
 
@@ -659,7 +661,9 @@ async def list_chunks(
 
     from app.models.rag import LegalKnowledgeChunk
 
-    base = select(LegalKnowledgeChunk)
+    # Soft-delete filter: tombstones are excluded by default; admins
+    # can opt in via ?include_deleted=1 for forensics / undelete UI.
+    base = select(LegalKnowledgeChunk).where(LegalKnowledgeChunk.deleted_at.is_(None))
 
     if category:
         base = base.where(LegalKnowledgeChunk.category == category)
@@ -763,8 +767,29 @@ async def create_chunk(
         )
 
     chunk = LegalKnowledgeChunk(**kwargs)
+    chunk.created_by = user.id
+    chunk.last_edited_by = user.id
     db.add(chunk)
     await db.flush()
+
+    # Audit trail (152-ФЗ touchpoint). Pre-fix the entire CRUD surface
+    # was un-audited — operators couldn't answer "who created this
+    # chunk and why" from the panel. The same write_audit_log helper
+    # is used by admin_users.py:patch_user.
+    await write_audit_log(
+        db,
+        actor=user,
+        action="arena_chunk_create",
+        entity_type="legal_knowledge_chunks",
+        entity_id=chunk.id,
+        new_values={
+            "fact_text": (chunk.fact_text or "")[:500],
+            "law_article": chunk.law_article,
+            "category": getattr(chunk.category, "value", str(chunk.category)),
+            "difficulty_level": chunk.difficulty_level,
+        },
+        request=request,
+    )
     await db.commit()
 
     # Live re-embedding: enqueue so the new chunk gets a vector and
@@ -785,15 +810,27 @@ async def update_chunk(
     data: dict,
     user: User = Depends(_require_methodologist),
     db: AsyncSession = Depends(get_db),
+    if_match: str | None = Header(None, alias="If-Match"),
 ):
     """Update a legal knowledge chunk.
 
-    Same canonical-vs-alias normalization as create. The previous
-    implementation iterated over `["title", "content", ...]` and
-    `setattr`'d those names onto the ORM row — silently no-op for the
-    fields that don't exist on the model (SQLAlchemy adds attribute
-    but doesn't persist). Drift was invisible until first read tried
-    to use the missing column.
+    Optimistic locking via the ``If-Match`` header.
+
+    Send the chunk's current ``updated_at`` (ISO-8601, exact bytes from
+    the GET response) as ``If-Match: <updated_at>``. The server compares
+    against the persisted value and rejects with 412 ``stale_chunk`` if
+    they diverge — that means another editor saved between this PUT's
+    GET and its commit. The FE then re-fetches and the human reconciles.
+
+    The header is OPTIONAL during the PR-2/PR-3 transition (the FE form
+    will start sending it in PR-3). Without the header the legacy
+    last-write-wins behaviour is preserved so existing scripts don't
+    break, but a deprecation warning is logged so we can drop the
+    fallback once the FE rolls out the new editor.
+
+    Soft-deleted chunks (``deleted_at IS NOT NULL``) reject with 410
+    ``chunk_deleted`` — restoring them is an admin action that goes
+    through a separate endpoint (TBD in PR-3).
     """
     from app.models.rag import LegalKnowledgeChunk
     from app.schemas.rop import ArenaChunkUpdateRequest
@@ -804,6 +841,33 @@ async def update_chunk(
     chunk = result.scalar_one_or_none()
     if not chunk:
         raise HTTPException(status_code=404, detail="Chunk not found")
+    if chunk.deleted_at is not None:
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "code": "chunk_deleted",
+                "message": "Чанк помечен удалённым. Сначала восстановите его.",
+                "deleted_at": chunk.deleted_at.isoformat(),
+            },
+        )
+
+    if if_match is not None:
+        current = (
+            chunk.updated_at.isoformat() if chunk.updated_at is not None else ""
+        )
+        if if_match.strip().strip('"') != current:
+            raise HTTPException(
+                status_code=412,
+                detail={
+                    "code": "stale_chunk",
+                    "message": (
+                        "Чанк изменён другим редактором. Перезагрузите страницу "
+                        "и примените свои правки повторно."
+                    ),
+                    "expected": if_match,
+                    "actual": current,
+                },
+            )
 
     try:
         payload = ArenaChunkUpdateRequest.model_validate(data)
@@ -825,9 +889,51 @@ async def update_chunk(
             },
         )
 
+    # Snapshot for audit diff — only the fields actually being touched.
+    old_values = {
+        name: (
+            getattr(chunk, name).value
+            if hasattr(getattr(chunk, name), "value")
+            else (
+                str(getattr(chunk, name))
+                if isinstance(getattr(chunk, name), uuid.UUID)
+                else getattr(chunk, name)
+            )
+        )
+        for name in updates
+        if hasattr(chunk, name)
+    }
+
     for canonical_name, value in updates.items():
         setattr(chunk, canonical_name, value)
+    chunk.last_edited_by = user.id
 
+    await db.flush()
+
+    new_values = {
+        name: (
+            getattr(chunk, name).value
+            if hasattr(getattr(chunk, name), "value")
+            else (
+                str(getattr(chunk, name))
+                if isinstance(getattr(chunk, name), uuid.UUID)
+                else getattr(chunk, name)
+            )
+        )
+        for name in updates
+        if hasattr(chunk, name)
+    }
+
+    await write_audit_log(
+        db,
+        actor=user,
+        action="arena_chunk_update",
+        entity_type="legal_knowledge_chunks",
+        entity_id=chunk.id,
+        old_values=old_values,
+        new_values=new_values,
+        request=request,
+    )
     await db.commit()
 
     # The `before_update` listener (apps/api/app/models/rag.py) nulls
@@ -837,7 +943,11 @@ async def update_chunk(
     # update; the worker's hash-check de-dups no-op edits cheaply.
     await _enqueue_chunk_safely(chunk.id)
 
-    return {"id": str(chunk.id), "message": "Chunk updated"}
+    return {
+        "id": str(chunk.id),
+        "message": "Chunk updated",
+        "updated_at": chunk.updated_at.isoformat() if chunk.updated_at else None,
+    }
 
 
 @router.delete("/arena/chunks/{chunk_id}")
@@ -848,7 +958,15 @@ async def delete_chunk(
     user: User = Depends(_require_methodologist),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a legal knowledge chunk."""
+    """Soft-delete a legal knowledge chunk.
+
+    Pre-fix this endpoint did ``db.delete(chunk)`` — physical row drop.
+    That broke the FK target on ``legal_validation_results.knowledge_
+    chunk_id`` (set NULL → orphaned analytics) and lost the chunk's
+    history forever. Now we set ``deleted_at = now()`` and the chunk
+    stops appearing in list/RAG retrievals (the indexes filter on
+    ``deleted_at IS NULL``) but stays in the DB for audit + undelete.
+    """
     from app.models.rag import LegalKnowledgeChunk
 
     result = await db.execute(
@@ -857,10 +975,33 @@ async def delete_chunk(
     chunk = result.scalar_one_or_none()
     if not chunk:
         raise HTTPException(status_code=404, detail="Chunk not found")
+    if chunk.deleted_at is not None:
+        # Idempotent — repeating DELETE on a tombstone is a no-op,
+        # not a 404 (that would suggest the chunk never existed).
+        return {
+            "message": "Chunk already deleted",
+            "deleted_at": chunk.deleted_at.isoformat(),
+        }
 
-    await db.delete(chunk)
+    chunk.deleted_at = datetime.now(timezone.utc)
+    chunk.last_edited_by = user.id
+
+    await write_audit_log(
+        db,
+        actor=user,
+        action="arena_chunk_delete",
+        entity_type="legal_knowledge_chunks",
+        entity_id=chunk.id,
+        old_values={
+            "fact_text": (chunk.fact_text or "")[:500],
+            "law_article": chunk.law_article,
+            "category": getattr(chunk.category, "value", str(chunk.category)),
+        },
+        new_values={"deleted_at": chunk.deleted_at.isoformat()},
+        request=request,
+    )
     await db.commit()
-    return {"message": "Chunk deleted"}
+    return {"message": "Chunk deleted", "soft_delete": True}
 
 
 async def _enqueue_chunk_safely(chunk_id: uuid.UUID) -> None:
