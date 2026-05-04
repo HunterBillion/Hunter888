@@ -172,6 +172,16 @@ interface KnowledgeState {
   nextMsgId(): string;
   addMessage(msg: Omit<QuizMessage, "id" | "timestamp">): void;
   appendToLastMessage(text: string): void;
+  /**
+   * Update the last feedback message in place, used when the final
+   * `quiz.feedback` event arrives after the streaming `quiz.feedback.verdict`
+   * + `quiz.feedback.chunk` sequence. Prevents the duplicate bubble bug
+   * where verdict creates an empty bubble, chunks fill it, then final
+   * adds a SECOND bubble with the same content. Returns true if a
+   * feedback bubble was found and updated, false otherwise (caller can
+   * fall back to addMessage).
+   */
+  finalizeLastFeedback(patch: Partial<QuizMessage>): boolean;
   updateProgress(p: {
     correct: number;
     incorrect: number;
@@ -317,6 +327,30 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
       };
       return { messages: [...s.messages.slice(0, idx), updated] };
     });
+  },
+
+  finalizeLastFeedback: (patch) => {
+    const { messages } = get();
+    // Walk backwards — the streaming verdict bubble is the most recent
+    // feedback in normal flow, but skip past unrelated trailing messages.
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].type === "feedback") {
+        const merged: QuizMessage = { ...messages[i], ...patch };
+        set({
+          messages: [
+            ...messages.slice(0, i),
+            merged,
+            ...messages.slice(i + 1),
+          ],
+        });
+        return true;
+      }
+      // If a different message type sits between verdict and final
+      // (shouldn't happen in current backend), bail and let caller fall
+      // back so we never silently swallow a feedback event.
+      if (messages[i].type === "question") return false;
+    }
+    return false;
   },
 
   updateProgress: (p) =>
