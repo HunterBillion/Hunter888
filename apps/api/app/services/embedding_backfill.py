@@ -228,10 +228,21 @@ async def populate_legal_chunk_embeddings(db: AsyncSession) -> int:
 
         for row, emb in zip(batch, embeddings):
             if emb and len(emb) > 0:
+                # Write both embedding and embedding_v2 — same vector,
+                # same model — so the v1→v2 reader switch is a no-op
+                # for the cold-sweep population path. Pre-fix this
+                # function only wrote v1, leaving v2 NULL on every
+                # row → enabling RAG_LEGAL_USE_V2 dropped retrieval
+                # to zero coverage until offline scripts ran.
                 await db.execute(
                     update(LegalKnowledgeChunk)
                     .where(LegalKnowledgeChunk.id == row.id)
-                    .values(embedding=emb, embedding_model=current_model)
+                    .values(
+                        embedding=emb,
+                        embedding_model=current_model,
+                        embedding_v2=emb,
+                        embedding_v2_model=current_model,
+                    )
                 )
                 updated += 1
 
