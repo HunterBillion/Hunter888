@@ -91,6 +91,33 @@ class Settings(BaseSettings):
     # If empty, falls back to local_llm_api_key (Ollama legacy).
     local_embedding_api_key: str = ""
 
+    # 2026-05-04 (Plan A — perf audit). Three knobs added together:
+    #
+    # local_llm_streaming_enabled
+    #   Routes character-reply traffic through `_stream_openai_compat`
+    #   (navy.api / cloud) or `_stream_ollama` (private). When False, the
+    #   blocking `generate_response` path runs — slower (full-response
+    #   wait), used as a safety toggle if streaming regresses.
+    #
+    # local_llm_http2_enabled
+    #   Builds the shared httpx.AsyncClient with http2=True so navy.api
+    #   connection setup pays once per pool instead of per call. Falls
+    #   back to HTTP/1.1 keepalive if the `h2` extra isn't installed.
+    #
+    # local_llm_prompt_cache_enabled
+    #   Splits the system prompt into [stable_prefix, dynamic_suffix] as
+    #   two consecutive system messages so navy.api / OpenAI prefix
+    #   caching can match the stable head across turns. Default False
+    #   until production measurement confirms navy honours the prefix
+    #   cache hit-rate; safe to flip on with no schema impact.
+    #
+    # local_llm_timeout_seconds
+    #   Tunes httpx read timeout for the keepalive client — default 60s.
+    local_llm_streaming_enabled: bool = True
+    local_llm_http2_enabled: bool = True
+    local_llm_prompt_cache_enabled: bool = False
+    local_llm_timeout_seconds: float = 60.0
+
     # Concurrency control (prevents API rate limit hits)
     max_concurrent_llm_calls: int = 15
 

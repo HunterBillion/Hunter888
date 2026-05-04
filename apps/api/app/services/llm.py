@@ -367,13 +367,51 @@ def _get_gemini_client() -> httpx.AsyncClient | None:
     return _gemini_http_client
 
 
+def _build_keepalive_http_client() -> httpx.AsyncClient:
+    """Shared httpx client tuned for navy.api / OpenAI-compat traffic.
+
+    2026-05-04 (Plan A — perf audit): the previous default `httpx.AsyncClient()`
+    inside the OpenAI SDK negotiated HTTP/1.1 fresh per call. Production logs
+    over a 6h window showed p50 LLM latency = 12.5 s, p95 = 29.7 s, with
+    100 % of 56 calls > 9.3 s. Connection setup + lack of keepalive accounts
+    for ~30-40 % of that tail. A single shared HTTP/2 client with a
+    keepalive pool collapses that tail.
+
+    Settings:
+      * ``local_llm_http2_enabled`` — flips ``http2=True`` on the transport.
+        Requires the ``h2`` extra (``httpx[http2]``); falls back to HTTP/1
+        if the dep is absent so deploys don't hard-fail.
+      * Pool sizes are conservative: 20 keepalive / 50 max — this is one
+        client shared across all workers, so we don't need huge limits.
+    """
+    use_h2 = bool(getattr(settings, "local_llm_http2_enabled", True))
+    timeout = httpx.Timeout(
+        connect=5.0,
+        read=float(getattr(settings, "local_llm_timeout_seconds", 60.0)),
+        write=15.0,
+        pool=2.0,
+    )
+    limits = httpx.Limits(
+        max_keepalive_connections=20,
+        max_connections=50,
+        keepalive_expiry=30.0,
+    )
+    try:
+        return httpx.AsyncClient(http2=use_h2, timeout=timeout, limits=limits)
+    except ImportError:
+        # h2 extra not installed — degrade gracefully to HTTP/1.1 keepalive.
+        logger.warning("h2 not installed; falling back to HTTP/1.1 (still keepalive-pooled)")
+        return httpx.AsyncClient(http2=False, timeout=timeout, limits=limits)
+
+
 def _get_local_client() -> openai.AsyncOpenAI | None:
-    """Get OpenAI-compatible client for local LLM (LM Studio / Ollama / CLIProxyAPI)."""
+    """Get OpenAI-compatible client for local LLM (LM Studio / Ollama / CLIProxyAPI / navy.api)."""
     global _local_client
     if _local_client is None and settings.local_llm_enabled:
         _local_client = openai.AsyncOpenAI(
             base_url=settings.local_llm_url,
             api_key=settings.local_llm_api_key,
+            http_client=_build_keepalive_http_client(),
         )
     return _local_client
 
@@ -393,7 +431,10 @@ def _get_claude_client():
 def _get_openai_client() -> openai.AsyncOpenAI | None:
     global _openai_client
     if _openai_client is None and settings.openai_api_key:
-        _openai_client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
+        _openai_client = openai.AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            http_client=_build_keepalive_http_client(),
+        )
     return _openai_client
 
 
@@ -1622,6 +1663,17 @@ async def _call_local_llm(
 
     start = time.monotonic()
 
+    # 2026-05-04 (Plan A): prompt-cache splice for the public cloud path.
+    # Re-build oai_messages via the cache-aware helper UNLESS this is the
+    # private Ollama path (which builds its own payload below and doesn't
+    # benefit from prefix-cache structure).
+    if not _is_private_ollama and getattr(settings, "local_llm_prompt_cache_enabled", False):
+        if raw_messages is not None:
+            oai_messages = _build_oai_messages_with_cache(system_prompt, [])
+            oai_messages.extend(raw_messages)
+        else:
+            oai_messages = _build_oai_messages_with_cache(system_prompt, messages)
+
     if _is_private_ollama:
         # Ollama native: use /api/chat with think:false (disables Gemma thinking mode).
         ollama_base = settings.local_llm_url.replace("/v1", "").rstrip("/")
@@ -2538,7 +2590,7 @@ async def generate_response(
 # ║ STREAMING LLM (Phase 1 — text-level streaming)                           ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
 
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 
 async def _stream_ollama(
@@ -2594,6 +2646,151 @@ async def _stream_ollama(
         raise LLMError("Local LLM not reachable for streaming")
     except httpx.ReadTimeout:
         raise LLMError("Local LLM stream timeout")
+
+
+def _split_system_prompt_for_cache(system_prompt: str) -> tuple[str, str | None]:
+    """Split the assembled system prompt into [stable_prefix, dynamic_suffix].
+
+    2026-05-04 (Plan A): prompt caching opportunity. ``_build_system_prompt``
+    joins parts with ``"\\n\\n---\\n\\n"`` — character, guardrails, emotion
+    block, persona_facts, scenario. The first two (character + guardrails)
+    don't change inside a session; the rest (emotion / facts / scenario)
+    can mutate per-turn. Splitting them into two system messages lets
+    navy.api / OpenAI auto-prefix caching match the stable head across
+    turns without us writing provider-specific cache markers.
+
+    If the prompt isn't structured (e.g. no "---" separators), we send it
+    as one message — no cache benefit but no regression.
+    """
+    if not system_prompt or "\n\n---\n\n" not in system_prompt:
+        return system_prompt or "", None
+    parts = system_prompt.split("\n\n---\n\n")
+    if len(parts) <= 2:
+        # Two parts → first is character+guardrails (stable), second is
+        # everything else (dynamic). Cleanest case.
+        return parts[0], parts[1] if len(parts) == 2 else None
+    # 3+ parts → keep first two as stable head (character + guardrails),
+    # join the rest as dynamic. The emotion block (always at index 2)
+    # changes by emotion key; treating it as dynamic is correct.
+    stable = "\n\n---\n\n".join(parts[:2])
+    dynamic = "\n\n---\n\n".join(parts[2:])
+    return stable, dynamic
+
+
+def _build_oai_messages_with_cache(
+    system_prompt: str,
+    history_messages: list[dict],
+) -> list[dict]:
+    """Construct OpenAI-compatible messages with optional cache splice.
+
+    Returns a flat list ready to be passed as ``messages=`` to the SDK.
+    When ``local_llm_prompt_cache_enabled`` is true and the system prompt
+    has a recognisable structure, emits TWO system messages so cloud
+    providers with prefix caching (OpenAI, navy.api proxy) can hit the
+    cached prefix on subsequent turns of the same session.
+    """
+    cache_on = bool(getattr(settings, "local_llm_prompt_cache_enabled", False))
+    if not cache_on:
+        out: list[dict] = [{"role": "system", "content": system_prompt}]
+        for msg in history_messages:
+            out.append({"role": msg["role"], "content": msg["content"]})
+        return out
+    stable, dynamic = _split_system_prompt_for_cache(system_prompt)
+    out = [{"role": "system", "content": stable}]
+    if dynamic:
+        out.append({"role": "system", "content": dynamic})
+    for msg in history_messages:
+        out.append({"role": msg["role"], "content": msg["content"]})
+    return out
+
+
+def _is_private_local_url() -> bool:
+    """Heuristic: are we pointing at a private-network Ollama (Mac Mini)
+    or at a public OpenAI-compatible endpoint (navy.api / cloud)?
+
+    Mirrors the detection in `_call_local_llm` so streaming behaviour
+    matches blocking behaviour. Public URLs use the OpenAI SDK streaming
+    path; private URLs use the Ollama-native /api/chat streaming path.
+    """
+    url = (settings.local_llm_url or "").lower()
+    return any(h in url for h in (
+        "://localhost", "://127.", "://192.168.", "://10.",
+        "://172.16.", "://172.17.", "://172.18.", "://172.19.",
+        "://172.2", "://172.30.", "://172.31.",
+    ))
+
+
+async def _stream_openai_compat(
+    system_prompt: str,
+    messages: list[dict],
+    timeout: float,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+) -> AsyncGenerator[str, None]:
+    """Stream tokens from an OpenAI-compatible cloud endpoint (navy.api).
+
+    2026-05-04 (Plan A): the prior streaming path only covered Ollama
+    private-network and Gemini. Production traffic actually routes to
+    navy.api (a cloud OpenAI-compat proxy) which has neither a private
+    URL nor a Gemini key — so `generate_response_stream` always fell
+    through to the blocking `generate_response`, killing perceived
+    latency (p50 12.5 s, p95 29.7 s of full-response wait).
+
+    This function fixes that by calling `client.chat.completions.create
+    (..., stream=True)` and yielding `delta.content` as it arrives,
+    using the shared keepalive HTTP/2 client built in `_get_local_client`.
+
+    Caller is `generate_response_stream`; this function is opaque to
+    private-network detection — only called when ``not _is_private_local_url()``.
+    """
+    if not settings.local_llm_enabled or not settings.local_llm_url:
+        raise LLMError("Local LLM not enabled")
+
+    client = _get_local_client()
+    if client is None:
+        raise LLMError("Local LLM client not configured")
+
+    # Cache-aware system-message splice — same helper the blocking path uses
+    # so the cache key is identical across stream/blocking entry points.
+    oai_messages = _build_oai_messages_with_cache(system_prompt, messages)
+
+    kwargs: dict[str, Any] = {
+        "model": settings.local_llm_model,
+        "messages": oai_messages,
+        "stream": True,
+        # Match historical caps from the blocking path so behaviour is
+        # bit-for-bit identical apart from the streaming wrapper.
+        "max_tokens": max_tokens if max_tokens is not None else 800,
+    }
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    else:
+        kwargs["temperature"] = 0.85
+
+    try:
+        stream = await asyncio.wait_for(
+            client.chat.completions.create(**kwargs),
+            timeout=min(timeout, 15.0),
+        )
+    except asyncio.TimeoutError:
+        raise LLMError("Local LLM stream connect timeout")
+    except openai.APIConnectionError as e:
+        raise LLMError(f"Local LLM stream connect error: {e}")
+    except openai.APIStatusError as e:
+        raise LLMError(f"Local LLM stream HTTP {e.status_code}: {str(e)[:200]}")
+
+    try:
+        async for chunk in stream:
+            try:
+                token = chunk.choices[0].delta.content or ""
+            except (IndexError, AttributeError):
+                continue
+            if token:
+                yield token
+    except Exception as e:
+        # Surface as LLMError so the caller can fall back to blocking
+        # path or another provider, instead of the WS handler crashing.
+        raise LLMError(f"Local LLM stream error: {e}")
 
 
 async def _stream_gemini(
@@ -2861,16 +3058,28 @@ async def generate_response_stream(
 
         try:
             if resolved == "local" and settings.local_llm_enabled:
-                async for token in _stream_ollama(
-                    full_system, trimmed, 60.0,
-                    max_tokens=_stream_max_tokens,
-                    temperature=_stream_temperature,
-                ):
-                    full_response_buf.append(token)
-                    yield token
-                streamed = True
-        except LLMError:
-            logger.debug("Ollama streaming failed, trying Gemini")
+                # 2026-05-04 (Plan A): pick the right streaming branch
+                # based on whether the configured URL is a private Ollama
+                # endpoint or a public OpenAI-compatible proxy (navy.api).
+                # Previously the public path silently fell through to the
+                # blocking response — burning the entire LLM latency before
+                # FE saw a single chunk.
+                _streaming_enabled = bool(getattr(settings, "local_llm_streaming_enabled", True))
+                if _streaming_enabled:
+                    if _is_private_local_url():
+                        _streamer = _stream_ollama
+                    else:
+                        _streamer = _stream_openai_compat
+                    async for token in _streamer(
+                        full_system, trimmed, 60.0,
+                        max_tokens=_stream_max_tokens,
+                        temperature=_stream_temperature,
+                    ):
+                        full_response_buf.append(token)
+                        yield token
+                    streamed = True
+        except LLMError as e:
+            logger.debug("Local streaming failed (%s), trying Gemini", e)
 
         if not streamed:
             try:
