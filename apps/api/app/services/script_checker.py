@@ -64,6 +64,39 @@ ANTI_PATTERNS = {
         "можно выехать за границу",
         "ограничений не будет",
     ],
+    # 2026-05-04 (BUG B3 fix): rudeness/disrespect to the AI client.
+    # Production session showed a manager hammering a hostile-grief
+    # scenario ("game with dead son"), insulting the client repeatedly,
+    # asking zero questions — and walking away with 34/100. The L4 layer
+    # had no category for the manager BEING rude (it only flagged
+    # misleading the client). These embedding-based phrases catch
+    # paraphrased insults too — semantic similarity matches "идиот" to
+    # "тупой" / "дурак" etc. When fired, scoring.py applies a -5 cap
+    # via category_penalties (see scoring.py L4 anti-patterns).
+    "disrespect_to_client": [
+        "идиот",
+        "дурак",
+        "дура",
+        "тупой",
+        "тупая",
+        "придурок",
+        "иди нахуй",
+        "пошёл нахуй",
+        "пошла нахуй",
+        "заткнись",
+        "ты что дура",
+        "вы что идиот",
+        "вы тупой",
+        "не тупите",
+        "хватит тупить",
+        "иди к чёрту",
+        "отвали",
+        "хам",
+        "хамло",
+        "что за бред несёшь",
+        "сами вы дурак",
+        "вы вообще идиот",
+    ],
 }
 
 # ─── Embedding cache (in-memory, per process, bounded) ──────────────────────

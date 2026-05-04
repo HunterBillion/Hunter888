@@ -486,6 +486,18 @@ async def _score_anti_patterns(user_messages: list[str]) -> tuple[float, dict]:
         "false_promises": -5.0,
         "intimidation": -5.0,
         "incorrect_info": -5.0,
+        # 2026-05-04 (BUG B3 fix): rudeness/disrespect penalty.
+        # Slightly heavier than the misleading-client categories because
+        # it represents an unrecoverable client experience — the AI
+        # client will hang up and the manager loses the lead. Without
+        # this knob a session where the manager hurls insults still
+        # accrued ~30+ baseline points from L1/L8 (verified prod
+        # session f517266a-e127-4c38-aea9-ab47b90e81ad scored 34/100).
+        # The -7.0 cap × V3_RESCALE 0.75 = -5.25 visible deduction;
+        # combined with hangup L5=0 it now caps that pattern around
+        # 25 instead of 34 and surfaces a "вы были грубы → клиент
+        # повесил трубку" line in the breakdown.
+        "disrespect_to_client": -7.0,
     }
 
     # Per-category cap: only the worst detection counts per category
@@ -509,6 +521,34 @@ async def _score_anti_patterns(user_messages: list[str]) -> tuple[float, dict]:
             "score": item["score"],
             "penalty": pen * V3_RESCALE,
         })
+
+    # 2026-05-04 (BUG B3 fix): zero-open-questions penalty.
+    # The mistake_detector emits a "no_open_question" coaching event in
+    # real-time but its state is Redis-only and gets reset before
+    # calculate_scores runs. Direct check on the full user_messages
+    # array catches sessions where the manager NEVER asked a single
+    # open question — a strong red flag a rule-based scorer should not
+    # silently miss. Conservative: only fires after >=4 user messages
+    # so we don't punish a 1-2-turn session that ended early.
+    _OPEN_Q_RE = re.compile(
+        r"\b(как|почему|зачем|что|когда|где|куда|откуда|расскажите|опишите|поделитесь|"
+        r"какой|какая|какие|сколько|какая ситуация|в чём|в чем)\b",
+        flags=re.IGNORECASE,
+    )
+    if len(user_messages) >= 4:
+        any_open_q = any(
+            "?" in m and _OPEN_Q_RE.search(m or "")
+            for m in user_messages
+        )
+        if not any_open_q:
+            zero_oq_penalty = -4.0
+            penalty += zero_oq_penalty
+            details["detected"].append({
+                "category": "zero_open_questions",
+                "score": 1.0,
+                "penalty": zero_oq_penalty * V3_RESCALE,
+                "note": "За весь разговор не задано ни одного открытого вопроса",
+            })
 
     penalty = max(-15.0, penalty) * V3_RESCALE
     return penalty, details
