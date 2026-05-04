@@ -18,7 +18,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Trophy, Building2, Crown, Swords } from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { LeagueTab } from "@/components/leaderboard/LeagueTab";
@@ -128,49 +128,57 @@ function LeaderboardPage() {
             />
           </motion.div>
 
-          {/* Tabs */}
-          <div
-            className="flex gap-1 mb-6 p-1 rounded-xl overflow-x-auto"
-            style={{
-              background: "var(--input-bg)",
-              border: "1px solid var(--border-color)",
-            }}
-          >
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              const active = activeTab === t.key;
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => switchTab(t.key)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all shrink-0"
-                  style={{
-                    background: active ? "var(--accent)" : "transparent",
-                    color: active ? "#fff" : "var(--text-secondary)",
-                    boxShadow: active ? "0 2px 10px var(--accent-glow)" : "none",
-                  }}
-                >
-                  <Icon size={14} />
-                  {t.label}
-                </button>
-              );
-            })}
+          {/* Tabs — horizontally centered. 2026-05-04 polish: outer
+              wrapper centers; inner pill scrolls on overflow without
+              forcing a stretch on desktop. AnimatePresence removed —
+              the unmount/remount cycle was the visible "lag" the user
+              reported. Plain CSS opacity transition is enough. */}
+          <div className="flex justify-center mb-6">
+            <div
+              className="inline-flex gap-1 p-1 rounded-xl max-w-full overflow-x-auto"
+              style={{
+                background: "var(--input-bg)",
+                border: "1px solid var(--border-color)",
+              }}
+            >
+              {TABS.map((t) => {
+                const Icon = t.icon;
+                const active = activeTab === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => switchTab(t.key)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0"
+                    style={{
+                      background: active ? "var(--accent)" : "transparent",
+                      color: active ? "#fff" : "var(--text-secondary)",
+                      boxShadow: active ? "0 2px 10px var(--accent-glow)" : "none",
+                    }}
+                  >
+                    <Icon size={14} />
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <AnimatePresence mode="wait">
+          {/* Tab content. We keep `key={activeTab}` to bust the React
+              tree on tab switch (so nested useEffect cleanups fire
+              cleanly), but drop AnimatePresence — the entry-exit
+              dance was producing the perceptible jank on click. */}
+          <div key={activeTab} className="leaderboard-tab-content">
             <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.18 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.12, ease: "linear" }}
             >
               {activeTab === "league" && <LeagueTab />}
               {activeTab === "company" && <CompanyTab />}
               {activeTab === "teams" && <TeamsTab />}
               {activeTab === "duels" && <DuelsTab />}
             </motion.div>
-          </AnimatePresence>
+          </div>
         </div>
       </div>
     </AuthLayout>

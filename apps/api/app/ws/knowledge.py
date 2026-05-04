@@ -721,6 +721,11 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
         "total_questions": state.total_questions,
         "hint_available": hint_available,
         "current_difficulty": state.current_difficulty,
+        # 2026-05-04: include time_limit on every question so frontend
+        # can RESET its countdown on each new question. Without this
+        # the timer ran down to 0 on q1 and never restarted (user
+        # report: "таймер показывает ноль").
+        "time_limit": state.time_limit,
     }
 
     # ── quiz_v2: wrap question with narrative frame (2026-04-18) ─────────
