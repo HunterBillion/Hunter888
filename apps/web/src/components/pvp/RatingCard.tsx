@@ -50,6 +50,10 @@ export function RatingCard({ rating: r }: Props) {
   const winRate = r.total_duels > 0 ? Math.round((r.wins / r.total_duels) * 100) : 0;
   const placementLeft = Math.max(0, 10 - r.placement_count);
   const nextTier = r.placement_done ? getNextTier(r.rating, tier) : null;
+  // 2026-05-04 onboarding: detect "fresh account" so the card shows
+  // an explainer instead of looking like an empty stats dashboard.
+  // 0 duels + max RD + at-default rating ≈ untouched account.
+  const isFreshAccount = r.total_duels === 0 && r.placement_count === 0;
   const streakIcon = r.current_streak > 0
     ? <TrendUp weight="duotone" size={14} style={{ color: "var(--success)" }} />
     : r.current_streak < 0
@@ -98,31 +102,66 @@ export function RatingCard({ rating: r }: Props) {
             </div>
           )}
         </div>
+
+        {/* 2026-05-04 onboarding: explainer line ONLY for fresh accounts.
+            Without this, "1500 / RD 350 / 0 побед / 0%" looked like a
+            broken dashboard ("у меня нет данных, всё нули"). */}
+        {isFreshAccount && (
+          <div
+            className="mt-4 px-4 py-3 text-sm leading-relaxed"
+            style={{
+              background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+              borderRadius: 0,
+              color: "var(--text-secondary)",
+            }}
+          >
+            <div className="font-pixel text-xs uppercase tracking-widest mb-1.5" style={{ color: "var(--accent)" }}>
+              ▸ ПОЧЕМУ 1500 И RD 350?
+            </div>
+            <div>
+              <strong>1500</strong> — стандартный стартовый рейтинг.{" "}
+              <strong>RD 350</strong> — высокая неопределённость:
+              система пока не знает твой реальный уровень.
+            </div>
+            <div className="mt-1.5">
+              Сыграй <strong>10 калибровочных дуэлей</strong> — рейтинг
+              стабилизируется и ты получишь свой настоящий тир. Первая
+              дуэль начинается по кнопке <strong>«Найти соперника»</strong> выше.
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 p-6 md:grid-cols-4">
-        <div className="text-center">
-          <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Побед</div>
-          <div className="font-display text-2xl font-bold" style={{ color: "var(--success)" }}>{r.wins}</div>
-        </div>
-        <div className="text-center">
-          <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Поражений</div>
-          <div className="font-display text-2xl font-bold" style={{ color: "var(--danger)" }}>{r.losses}</div>
-        </div>
-        <div className="text-center">
-          <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Процент побед</div>
-          <div className="font-display text-2xl font-bold" style={{ color: "var(--accent)" }}>{winRate}%</div>
-        </div>
-        <div className="text-center">
-          <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Серия</div>
-          <div className="font-display text-2xl font-bold flex items-center justify-center gap-1">
-            {streakIcon}
-            <span style={{ color: r.current_streak > 0 ? "var(--success)" : r.current_streak < 0 ? "var(--danger)" : "var(--text-muted)" }}>
-              {Math.abs(r.current_streak)}
-            </span>
+      {/* 2026-05-04 onboarding: skip the "0 побед / 0% / —" block on
+          a fresh account. Showing four zeros looks like the user lost
+          everything; instead the explainer above tells them what to
+          do next. The block returns the moment any duel completes. */}
+      {!isFreshAccount && (
+        <div className="grid grid-cols-2 gap-4 p-6 md:grid-cols-4">
+          <div className="text-center">
+            <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Побед</div>
+            <div className="font-display text-2xl font-bold" style={{ color: "var(--success)" }}>{r.wins}</div>
+          </div>
+          <div className="text-center">
+            <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Поражений</div>
+            <div className="font-display text-2xl font-bold" style={{ color: "var(--danger)" }}>{r.losses}</div>
+          </div>
+          <div className="text-center">
+            <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Процент побед</div>
+            <div className="font-display text-2xl font-bold" style={{ color: "var(--accent)" }}>{winRate}%</div>
+          </div>
+          <div className="text-center">
+            <div className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>Серия</div>
+            <div className="font-display text-2xl font-bold flex items-center justify-center gap-1">
+              {streakIcon}
+              <span style={{ color: r.current_streak > 0 ? "var(--success)" : r.current_streak < 0 ? "var(--danger)" : "var(--text-muted)" }}>
+                {Math.abs(r.current_streak)}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Rank progress bar */}
       {nextTier && (
