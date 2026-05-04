@@ -83,6 +83,18 @@ _STAGE_DIR_RE: Final[re.Pattern[str]] = re.compile(
 # Collapse runs of whitespace introduced by stripped markers.
 _WS_RE: Final[re.Pattern[str]] = re.compile(r"[ \t]{2,}")
 
+# 2026-05-04 (NEW-10 / B2 v2): leading filler words the LLM writes that
+# show up as awkward spoken syllables ("ну…, у меня долг" → "у меня долг").
+# Match only at SENTENCE START (after `^` or after `.!?…`) so mid-sentence
+# uses survive. Excludes "это"/"так"/"вот" — those are real words too often
+# ("Это правда", "Так нельзя", "Вот мой телефон") and we'd over-strip.
+_LEADING_FILLER_RE: Final[re.Pattern[str]] = re.compile(
+    r"(^|(?<=[.!?…])\s+)"
+    r"(?:ну|э-э|эм|эээ|эмм|как бы|ну это|в общем|значит|хм|мм)"
+    r"(?:[,…]|\.{1,3})?\s+",
+    flags=re.IGNORECASE,
+)
+
 
 def _normalise_inner(token: str) -> str:
     """Lowercase + strip punctuation/whitespace for lookup."""
@@ -101,29 +113,36 @@ def sanitize_for_tts(text: str) -> str:
     >>> sanitize_for_tts("(нервный вздох) что вы хотите")
     '[sighs] что вы хотите'
     >>> sanitize_for_tts("так... *неизвестное* и точка")
-    'так...  и точка'
+    'так... и точка'
     >>> sanitize_for_tts('пауза <break time="500ms"/> ок')
     'пауза <break time="500ms"/> ок'
     """
-    if not text or ("*" not in text and "(" not in text and "<" not in text):
+    if not text:
         return text
 
-    def _repl(m: re.Match[str]) -> str:
-        inner_raw = m.group(1) or m.group(2) or m.group(3) or ""
-        key = _normalise_inner(inner_raw)
-        if not key:
+    if "*" in text or "(" in text or "<" in text:
+        def _repl(m: re.Match[str]) -> str:
+            inner_raw = m.group(1) or m.group(2) or m.group(3) or ""
+            key = _normalise_inner(inner_raw)
+            if not key:
+                return ""
+            tag = RU_TO_AUDIO_TAG.get(key) or EN_TO_AUDIO_TAG.get(key)
+            if tag:
+                return f"[{tag}]"
             return ""
-        # Russian first (more common in this codebase)
-        tag = RU_TO_AUDIO_TAG.get(key) or EN_TO_AUDIO_TAG.get(key)
-        if tag:
-            return f"[{tag}]"
-        # Unknown marker (e.g. "*пауза*") → drop. Better silence than
-        # the model speaking the literal word.
-        return ""
 
-    out = _STAGE_DIR_RE.sub(_repl, text)
-    out = _WS_RE.sub(" ", out)
-    return out.strip()
+        text = _STAGE_DIR_RE.sub(_repl, text)
+
+    # 2026-05-04 (NEW-10 / B2 v2): collapse leading filler words.
+    # The LLM itself ("ну, у меня долг…", "э-э слушайте…", "как бы…") writes
+    # spoken filler that shows up in audio but is mostly noise. Stripping at
+    # SENTENCE START is safe — mid-sentence "ну" is usually intentional
+    # ("ну и что"). Preserve the leading-context capture so the sentence
+    # boundary stays intact ("Понятно. Ну я подумаю." → "Понятно. я подумаю.").
+    text = _LEADING_FILLER_RE.sub(r"\1", text)
+
+    text = _WS_RE.sub(" ", text)
+    return text.strip()
 
 
 __all__ = ["sanitize_for_tts", "RU_TO_AUDIO_TAG", "EN_TO_AUDIO_TAG"]
