@@ -3,7 +3,9 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.models.rag import LegalCategory
 
 
 # ---------------------------------------------------------------------------
@@ -121,11 +123,27 @@ class ArenaChunkCreateRequest(BaseModel):
     they are folded into `law_article` / `fact_text` by `to_orm_kwargs`.
     Once the FE migrates to canonical names (planned for C5.1), remove
     the alias fields.
+
+    Audit-2026-05-04 hardening:
+      * `extra="forbid"` so `is_active` / `knowledge_status` / unknown
+        fields raise 422 instead of silently dropping under a 200 OK.
+        Pre-fix: `PUT {"is_active": false}` → 200 "Updated", but the
+        flag never reached the ORM — operator believed the chunk was
+        retired, RAG kept serving it.
+      * `category: LegalCategory` so an unknown value raises 422 with
+        a readable enum-list, not a 500 from the DB-layer enum cast.
+      * Both create and update enforce `min_length=10` / `max_length=20000`
+        on every text alias — the bare `content`/`title` fallbacks used to
+        slip past the create validator and (worse) the update validator
+        had no min_length at all, allowing `PUT {"fact_text":""}` to
+        empty out a real chunk.
     """
 
-    fact_text: str | None = Field(None, min_length=10)
+    model_config = ConfigDict(extra="forbid")
+
+    fact_text: str | None = Field(None, min_length=10, max_length=20000)
     law_article: str | None = Field(None, max_length=100)
-    category: str
+    category: LegalCategory
     common_errors: list[str] = Field(default_factory=list)
     match_keywords: list[str] = Field(default_factory=list)
     correct_response_hint: str | None = None
@@ -136,7 +154,7 @@ class ArenaChunkCreateRequest(BaseModel):
     tags: list[str] = Field(default_factory=list)
     # ── Legacy aliases (deprecated, accepted during transition) ──
     title: str | None = Field(None, max_length=300)
-    content: str | None = None
+    content: str | None = Field(None, min_length=10, max_length=20000)
     article_reference: str | None = Field(None, max_length=100)
 
     def to_orm_kwargs(self) -> dict:
@@ -177,11 +195,21 @@ class ArenaChunkCreateRequest(BaseModel):
 
 class ArenaChunkUpdateRequest(BaseModel):
     """Partial update — only fields explicitly set are written. Same
-    alias rules as create."""
+    alias rules as create.
 
-    fact_text: str | None = None
-    law_article: str | None = None
-    category: str | None = None
+    Audit-2026-05-04: empty-string `fact_text`/`content` would have
+    silently wiped the chunk's text under a 200 "Updated" response (and
+    the SQLAlchemy `before_update` listener then null'd the embedding,
+    making the wreckage invisible to RAG). Both fields are now bounded
+    `min_length=10`. Same `extra="forbid"` policy as create — fields
+    like `is_active` / `knowledge_status` aren't in the schema; passing
+    them used to return 200 OK with no effect on the chunk."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fact_text: str | None = Field(None, min_length=10, max_length=20000)
+    law_article: str | None = Field(None, max_length=100)
+    category: LegalCategory | None = None
     common_errors: list[str] | None = None
     match_keywords: list[str] | None = None
     correct_response_hint: str | None = None
@@ -191,9 +219,9 @@ class ArenaChunkUpdateRequest(BaseModel):
     question_templates: list[dict] | None = None
     tags: list[str] | None = None
     # ── Legacy aliases ──
-    title: str | None = None
-    content: str | None = None
-    article_reference: str | None = None
+    title: str | None = Field(None, max_length=300)
+    content: str | None = Field(None, min_length=10, max_length=20000)
+    article_reference: str | None = Field(None, max_length=100)
 
     def to_orm_kwargs(self) -> dict:
         """Same alias resolution as the create request, but only sets
@@ -228,7 +256,13 @@ class ArenaChunkUpdateRequest(BaseModel):
 
 class ArenaChunkResponse(BaseModel):
     """Response uses canonical names ONLY. FE adapts via local mapping
-    if a UI label like "Заголовок" is desired."""
+    if a UI label like "Заголовок" is desired.
+
+    Audit-2026-05-04: previously the API hand-truncated `fact_text` to
+    `[:200] + "..."` for every list-row, so the UI literally never saw
+    the tail of any chunk (375/375 affected on prod). Truncation is
+    gone — FE renders full text, with optional clamp via CSS.
+    """
 
     id: uuid.UUID
     fact_text: str
@@ -243,6 +277,10 @@ class ArenaChunkResponse(BaseModel):
     question_templates: list[dict] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     created_at: datetime
+    updated_at: datetime | None = None
+    # Diagnostics so the FE can flag "embedding pending" rows.
+    embedding_ready: bool = False
+    retrieval_count: int = 0
 
 
 class ArenaChunkListResponse(BaseModel):
