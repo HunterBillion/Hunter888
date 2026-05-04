@@ -647,40 +647,50 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
                     generation_strategy="timeout_fallback",
                 )
 
-            # 2026-05-04 BUG #2: dedup against Redis-backed seen-set.
-            # The LLM/template/fallback paths can produce a question text
-            # that was already served (chunk_id=None bypasses the
-            # in-memory chunk dedup, and reconnect wipes that set anyway).
-            # Single retry with the duplicate added to previous_questions
-            # — that's the strongest hint generate_question accepts.
-            try:
-                from app.services.quiz_state_store import is_question_seen
-                if (
-                    question is not None
-                    and state.mode != QuizMode.srs_review  # SRS intentionally repeats
-                    and await is_question_seen(state.session_id, question.question_text)
-                ):
-                    logger.info(
-                        "dup question detected (q=%d), regenerating once",
-                        state.current_question,
-                    )
-                    state.previous_questions.append(question.question_text)
-                    try:
+    # 2026-05-04 BUG #2 (hotfix v2): dedup against Redis-backed seen-set.
+    # ALL question sources (blitz pool / SRS / LLM / template / fallback)
+    # are checked here, not just LLM — the user reported the same
+    # blitz-pool question ("холодильник") served 3 times in one quiz
+    # in free_dialog mode. SRS is intentionally exempt (it repeats by
+    # design). For non-LLM sources we don't regenerate (the pool may be
+    # the only source of truth for that category) — we just log so the
+    # operator sees how often it happens.
+    try:
+        from app.services.quiz_state_store import is_question_seen
+        if (
+            question is not None
+            and state.mode != QuizMode.srs_review
+            and await is_question_seen(state.session_id, question.question_text)
+        ):
+            strategy = getattr(question, "generation_strategy", "unknown")
+            logger.warning(
+                "dup question detected (q=%d, mode=%s, strategy=%s)",
+                state.current_question, state.mode, strategy,
+            )
+            # LLM-strategy: try one regen with the dup added to the
+            # previous_questions hint. Other strategies: accept the dup
+            # (the alternative is hanging the quiz when a small pool
+            # has no more questions for that category).
+            if strategy in ("llm", "fallback", "timeout_fallback", "unknown"):
+                state.previous_questions.append(question.question_text)
+                try:
+                    async with async_session() as db:
+                        weak_areas2 = await get_user_weak_areas(state.user_id, db)
                         async with asyncio.timeout(15):
                             question = await generate_question(
                                 db,
                                 mode=state.mode,
                                 category=state.category,
-                                difficulty=diff,
+                                difficulty=state.current_difficulty,
                                 question_number=state.current_question,
                                 previous_questions=state.previous_questions,
-                                user_weak_areas=weak_areas,
+                                user_weak_areas=weak_areas2,
                                 used_chunk_ids=state.asked_chunk_ids,
                             )
-                    except Exception:
-                        logger.warning("regen after dup failed — accepting dup")
-            except Exception:
-                logger.debug("dup check skipped", exc_info=True)
+                except Exception:
+                    logger.warning("regen after dup failed — accepting dup")
+    except Exception:
+        logger.error("dup check threw unexpectedly", exc_info=True)
 
     state.current_q = question
     # Track question text for dedup

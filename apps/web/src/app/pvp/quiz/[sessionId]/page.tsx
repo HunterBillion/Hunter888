@@ -78,9 +78,11 @@ function KnowledgeSessionPage() {
   // Pre-validation hint shown under input when answer is rejected.
   const [validationError, setValidationError] = useState<string | null>(null);
   // Whether the current question allows hints (from quiz.question payload).
-  // Single source of truth — backend sets this per question, frontend
-  // never guesses by mode anymore.
-  const [hintAvailable, setHintAvailable] = useState<boolean>(true);
+  // 2026-05-04 hotfix: default seeded from URL mode synchronously so the
+  // button doesn't flicker visible-for-1s in blitz before the first
+  // WS message updates it. Backend payload still overrides per question.
+  const isBlitzByUrl = urlMode === "blitz" || urlMode === "rapid_blitz";
+  const [hintAvailable, setHintAvailable] = useState<boolean>(!isBlitzByUrl);
   // Tiered-hint state for the current question (resets on new question).
   // tier=null means "no hint used yet"; tiersRemaining=0 disables the button.
   const [hintTier, setHintTier] = useState<number | null>(null);
