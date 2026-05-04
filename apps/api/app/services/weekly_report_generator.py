@@ -29,10 +29,19 @@ async def generate_weekly_report(
     Covers the last 7 days (Monday to Sunday).
     """
     now = datetime.now(timezone.utc)
-    # Find the start of the reporting week (last Monday)
+    # Reporting window covers the full week that just ended (Mon..Sun).
+    # When called any day, ``week_end`` is the upcoming/current Monday
+    # (exclusive upper bound) and ``week_start`` is the previous Monday.
+    # The earlier code did ``week_start = week_end - timedelta(days=weekday)``,
+    # which on Mondays produced an empty zero-day window
+    # (week_start == week_end == today). FIND-009 — the
+    # /dashboard/rop/weekly-digest endpoint reported "1 May – 1 May"
+    # all of Monday until the first session of the new week trickled in.
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
     days_since_monday = now.weekday()  # 0=Mon
-    week_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = week_end - timedelta(days=days_since_monday)
+    this_monday = midnight - timedelta(days=days_since_monday)
+    week_end = this_monday  # exclusive
+    week_start = this_monday - timedelta(days=7)
     prev_week_start = week_start - timedelta(days=7)
 
     # Check if report already exists for this week
@@ -270,9 +279,14 @@ async def get_team_weekly_digest(team_id: uuid.UUID, db: AsyncSession) -> dict:
     team_name = team.name if team else "Team"
 
     now = datetime.now(timezone.utc)
+    # Same window logic as ``generate_weekly_report`` — the digest must
+    # describe the full week that just ended, not an empty zero-day
+    # window when "today is Monday". See FIND-009.
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
     days_since_monday = now.weekday()
-    week_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = week_end - timedelta(days=days_since_monday)
+    this_monday = midnight - timedelta(days=days_since_monday)
+    week_end = this_monday  # exclusive upper bound
+    week_start = this_monday - timedelta(days=7)
 
     # Get all team members' reports for this week
     members_r = await db.execute(

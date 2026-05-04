@@ -33,7 +33,7 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
@@ -77,13 +77,15 @@ class BulkAssignResponse(BaseModel):
     assigned: int
     skipped: int
     errors: int
+    notifications_sent: int = 0
+    notifications_failed: int = 0
     rows: list[BulkAssignRowResult]
 
 
 @router.post("/assignments/bulk", response_model=BulkAssignResponse)
 @limiter.limit("5/minute")
 async def bulk_assign_training(
-    request,  # noqa: ARG001 — required by limiter
+    request: Request,  # noqa: ARG001 — required by limiter
     body: BulkAssignRequest,
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
@@ -153,7 +155,11 @@ async def bulk_assign_training(
         await db.commit()
 
     # Best-effort WS fan-out AFTER commit so notifications don't fire on
-    # rolled-back rows. Failure to notify is not a failure of the assign.
+    # rolled-back rows. Failure to notify is not a failure of the assign,
+    # but we count successes/failures so the FE can render
+    # "50 assigned, 3 без WS — обновятся при следующем входе".
+    notify_ok = 0
+    notify_fail = 0
     if assigned > 0:
         try:
             from app.ws.notifications import send_ws_notification
@@ -171,9 +177,16 @@ async def bulk_assign_training(
                             "deadline": body.deadline or "без дедлайна",
                         },
                     )
+                    notify_ok += 1
                 except Exception:
-                    pass  # one ROP's broken WS shouldn't break the batch
+                    notify_fail += 1
+                    logger.warning(
+                        "ws notify failed for bulk assign",
+                        extra={"user_id": str(uid), "assignment_id": str(aid)},
+                        exc_info=True,
+                    )
         except Exception:
+            notify_fail += len(assignments_to_notify) - notify_ok
             logger.warning("ws notifications failed for bulk assign", exc_info=True)
 
     return BulkAssignResponse(
@@ -182,6 +195,8 @@ async def bulk_assign_training(
         assigned=assigned,
         skipped=skipped,
         errors=errors,
+        notifications_sent=notify_ok,
+        notifications_failed=notify_fail,
         rows=rows,
     )
 
@@ -347,7 +362,7 @@ MAX_CSV_BYTES = 1 * 1024 * 1024  # 1 MB
 @router.post("/users/import-csv", response_model=CsvImportResponse)
 @limiter.limit("3/minute")
 async def import_users_csv(
-    request,  # noqa: ARG001 — required by limiter
+    request: Request,  # noqa: ARG001 — required by limiter
     file: UploadFile = File(...),
     user: User = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
