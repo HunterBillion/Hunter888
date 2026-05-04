@@ -517,8 +517,17 @@ export const api = {
     request(path, { signal: opts?.signal }) as Promise<T>,
   post: <T = any>(path: string, body: unknown, opts?: { signal?: AbortSignal }): Promise<T> =>
     request(path, { method: "POST", body: JSON.stringify(body), signal: opts?.signal }) as Promise<T>,
-  put: <T = any>(path: string, body: unknown, opts?: { signal?: AbortSignal }): Promise<T> =>
-    request(path, { method: "PUT", body: JSON.stringify(body), signal: opts?.signal }) as Promise<T>,
+  put: <T = any>(
+    path: string,
+    body: unknown,
+    opts?: { signal?: AbortSignal; headers?: Record<string, string> },
+  ): Promise<T> =>
+    request(path, {
+      method: "PUT",
+      body: JSON.stringify(body),
+      signal: opts?.signal,
+      headers: opts?.headers,
+    }) as Promise<T>,
   patch: <T = any>(path: string, body?: unknown, opts?: { signal?: AbortSignal }): Promise<T> =>
     request(path, {
       method: "PATCH",
