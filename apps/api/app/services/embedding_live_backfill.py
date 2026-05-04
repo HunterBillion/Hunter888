@@ -256,10 +256,38 @@ async def populate_single_legal_chunk_embedding(chunk_id: uuid.UUID) -> bool:
                     chunk_id,
                 )
                 return False
+            # Audit-2026-05-04 PR-4: write BOTH embedding (v1) and
+            # embedding_v2. The v2 column was added by migration
+            # 20260417_005 as a shadow column for the gemini → next-gen
+            # transition; pre-fix only offline scripts wrote it, so any
+            # chunk created or edited live had `embedding_v2 = NULL`.
+            # If the operator flips `RAG_LEGAL_USE_V2=1` the retrieval
+            # path silently drops every recently-edited chunk because
+            # it filters `embedding_v2 IS NOT NULL`. Writing both
+            # columns from the same vector keeps the model behind v2
+            # the same — gemini-embedding-001@768 — and lets the toggle
+            # be flipped at any time without re-running offline backfill.
+            #
+            # `onupdate=func.now()` on `updated_at` only fires when the
+            # column is NOT in the SET clause. Pass the column reference
+            # to itself (`SET updated_at = updated_at`) so the column
+            # IS in SET but its value is unchanged — and the embedding
+            # write doesn't bump the optimistic-lock token. Pre-fix the
+            # methodologist would GET a chunk, click Save, the live
+            # worker's UPDATE fires between GET and PUT, `updated_at`
+            # bumps, the methodologist's If-Match becomes stale, server
+            # returns 412 "Чанк изменён другим редактором" with no
+            # visible diff. They'd refresh, see the same chunk, save,
+            # succeed — but the UX is broken on every fast-typing edit.
             await db.execute(
                 update(LegalKnowledgeChunk)
                 .where(LegalKnowledgeChunk.id == chunk_id)
-                .values(embedding=embeddings[0])
+                .values(
+                    embedding=embeddings[0],
+                    embedding_v2=embeddings[0],
+                    embedding_v2_model="gemini-embedding-001",
+                    updated_at=LegalKnowledgeChunk.__table__.c.updated_at,
+                )
             )
             await db.commit()
             return True
