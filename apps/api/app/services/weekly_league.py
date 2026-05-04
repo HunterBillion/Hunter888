@@ -158,6 +158,104 @@ async def get_my_league(user_id: uuid.UUID, db: AsyncSession) -> LeagueSnapshot 
     )
 
 
+async def get_my_league_timeline(
+    user_id: uuid.UUID, db: AsyncSession
+) -> dict[str, Any]:
+    """Per-day XP timeline for the current week — me vs cohort median.
+
+    Returns 7 datapoints (Mon..Sun) so the frontend can draw a sparkline
+    showing my pace against the median of my league group.
+
+    Source: session_history.xp_earned grouped by date(created_at).
+    """
+    from app.models.progress import SessionHistory
+
+    week_start = _current_week_start()
+    membership = await ensure_membership(user_id, db)
+
+    # ── My daily XP ────────────────────────────────────────────────
+    my_rows = await db.execute(
+        select(
+            func.date_trunc("day", SessionHistory.created_at).label("day"),
+            func.coalesce(func.sum(SessionHistory.xp_earned), 0).label("xp"),
+        )
+        .where(
+            SessionHistory.user_id == user_id,
+            SessionHistory.created_at >= week_start,
+        )
+        .group_by(func.date_trunc("day", SessionHistory.created_at))
+    )
+    my_by_day: dict[str, int] = {
+        row.day.date().isoformat(): int(row.xp) for row in my_rows
+    }
+
+    # ── Cohort median (or 0 if no group) ───────────────────────────
+    cohort_user_ids: list[uuid.UUID] = []
+    if membership.group_id:
+        gres = await db.execute(
+            select(WeeklyLeagueGroup).where(
+                WeeklyLeagueGroup.id == membership.group_id
+            )
+        )
+        group = gres.scalar_one_or_none()
+        if group and group.standings:
+            for entry in group.standings:
+                try:
+                    cohort_user_ids.append(uuid.UUID(entry["user_id"]))
+                except (ValueError, KeyError, TypeError):
+                    continue
+
+    cohort_by_day: dict[str, list[int]] = {}
+    if cohort_user_ids:
+        crows = await db.execute(
+            select(
+                func.date_trunc("day", SessionHistory.created_at).label("day"),
+                SessionHistory.user_id,
+                func.coalesce(func.sum(SessionHistory.xp_earned), 0).label("xp"),
+            )
+            .where(
+                SessionHistory.user_id.in_(cohort_user_ids),
+                SessionHistory.created_at >= week_start,
+            )
+            .group_by(
+                func.date_trunc("day", SessionHistory.created_at),
+                SessionHistory.user_id,
+            )
+        )
+        for row in crows:
+            cohort_by_day.setdefault(row.day.date().isoformat(), []).append(
+                int(row.xp)
+            )
+
+    days: list[dict[str, Any]] = []
+    for i in range(7):
+        d = (week_start + timedelta(days=i)).date().isoformat()
+        my_xp = my_by_day.get(d, 0)
+        bucket = cohort_by_day.get(d, [])
+        if bucket:
+            bucket_sorted = sorted(bucket)
+            mid = len(bucket_sorted) // 2
+            median_xp = (
+                bucket_sorted[mid]
+                if len(bucket_sorted) % 2 == 1
+                else (bucket_sorted[mid - 1] + bucket_sorted[mid]) // 2
+            )
+        else:
+            median_xp = 0
+        days.append({"date": d, "my_xp": my_xp, "median_xp": int(median_xp)})
+
+    my_total = sum(p["my_xp"] for p in days)
+    median_total = sum(p["median_xp"] for p in days)
+
+    return {
+        "week_start": week_start.isoformat(),
+        "days": days,
+        "my_total": my_total,
+        "median_total": median_total,
+        "delta_vs_median": my_total - median_total,
+    }
+
+
 async def form_weekly_groups(db: AsyncSession) -> int:
     """Form league groups for the current week. Called Monday 08:00.
 
