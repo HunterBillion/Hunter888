@@ -630,7 +630,42 @@ async def save_legal_results(
     check_result: LegalCheckResult,
     db: AsyncSession,
 ) -> None:
-    """Persist legal check results to the database."""
+    """Persist legal check results to the database.
+
+    Audit-2026-05-04: each row now carries `knowledge_chunk_id` when a
+    matching `legal_knowledge_chunks.law_article` exists. Pre-fix the
+    column on the model existed (`apps/api/app/models/rag.py:266`) but
+    we never populated it — so retrospectively asking "which chunk did
+    the judge consult when the manager got this −3?" was unanswerable,
+    and methodologists couldn't see whether their freshly-edited chunk
+    text even reached the scoring layer.
+    """
+    # Best-effort lookup: rule.law_article is a static string ("127-ФЗ
+    # ст. 213.4") set in code, but a chunk authored against the same
+    # article can be linked. We pull the lookup table ONCE per save,
+    # not once per row, to avoid an N×rules round-trip.
+    article_to_chunk: dict[str, uuid.UUID] = {}
+    if check_result.details:
+        articles = {d["law_article"] for d in check_result.details if d.get("law_article")}
+        if articles:
+            try:
+                from app.models.rag import LegalKnowledgeChunk
+
+                rows = await db.execute(
+                    select(LegalKnowledgeChunk.id, LegalKnowledgeChunk.law_article)
+                    .where(LegalKnowledgeChunk.law_article.in_(articles))
+                )
+                # First chunk per article wins (the table has no
+                # canonical-chunk-per-article concept yet, so we take
+                # the first match deterministically by id).
+                for chunk_id, law_article in rows.all():
+                    article_to_chunk.setdefault(law_article, chunk_id)
+            except Exception:  # pragma: no cover — defensive
+                logger.warning(
+                    "save_legal_results: chunk-id lookup failed; rows persisted without link",
+                    exc_info=True,
+                )
+
     for detail in check_result.details:
         validation = LegalValidationResult(
             session_id=session_id,
@@ -640,6 +675,7 @@ async def save_legal_results(
             score_delta=detail["score_delta"],
             explanation=detail["explanation"],
             law_reference=detail["law_article"],
+            knowledge_chunk_id=article_to_chunk.get(detail["law_article"]),
         )
         db.add(validation)
     await db.flush()

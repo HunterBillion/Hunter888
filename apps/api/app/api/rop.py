@@ -44,7 +44,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, select, types as sqltypes
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user, require_role
@@ -631,7 +631,9 @@ async def update_scoring_config(
 # ═══════════════════════════════════════════════════════════════════════════
 
 @router.get("/arena/chunks")
+@limiter.limit("60/minute")
 async def list_chunks(
+    request: Request,
     category: str | None = Query(None),
     difficulty: int | None = Query(None, ge=1, le=5),
     search: str | None = Query(None),
@@ -643,12 +645,18 @@ async def list_chunks(
     """List legal knowledge chunks with filters.
 
     Response keeps the legacy `title` / `content` / `article_reference`
-    aliases for the FE ArenaContentEditor (PR #47). Internally these
-    map to canonical ORM columns `law_article` / `fact_text` /
-    `law_article` (so a Pydantic schema would round-trip cleanly).
-    Once the FE migrates to canonical names (planned C5.1), drop the
-    aliases from the response shape.
+    aliases for the FE ArenaContentEditor — but `content` now equals
+    the FULL `fact_text`, not the `[:200] + "..."` truncation that hid
+    the tail of every chunk on prod (375/375 affected). The FE clamps
+    visually via CSS; the API speaks truth.
+
+    Search now matches across `fact_text || law_article || tags ||
+    match_keywords || court_case_reference` so the methodologist's
+    queries like "несостоятельность" / "304-ЭС17" / a tag name don't
+    return zero hits when the term is present in a non-text field.
     """
+    from sqlalchemy import or_
+
     from app.models.rag import LegalKnowledgeChunk
 
     base = select(LegalKnowledgeChunk)
@@ -658,13 +666,20 @@ async def list_chunks(
     if difficulty:
         base = base.where(LegalKnowledgeChunk.difficulty_level == difficulty)
     if search:
-        # Search the canonical column (`fact_text`) — the legacy code
-        # tried `LegalKnowledgeChunk.content.ilike(...)` which would
-        # raise AttributeError because the model has no `content` column.
-        # That code path was unreachable on the previous deploy because
-        # callers never sent ?search=…; now the bug is fixed and the
-        # endpoint works for search queries too.
-        base = base.where(LegalKnowledgeChunk.fact_text.ilike(f"%{search}%"))
+        like = f"%{search}%"
+        base = base.where(
+            or_(
+                LegalKnowledgeChunk.fact_text.ilike(like),
+                LegalKnowledgeChunk.law_article.ilike(like),
+                LegalKnowledgeChunk.court_case_reference.ilike(like),
+                LegalKnowledgeChunk.correct_response_hint.ilike(like),
+                # JSONB match_keywords / tags — cast to text so ILIKE works
+                # even before we add a proper trigram index. Avoids the
+                # "методолог искал по тегу — 0 хитов" workflow trap.
+                func.cast(LegalKnowledgeChunk.match_keywords, sqltypes.String).ilike(like),
+                func.cast(LegalKnowledgeChunk.tags, sqltypes.String).ilike(like),
+            )
+        )
 
     total_r = await db.execute(select(func.count()).select_from(base.subquery()))
     total = total_r.scalar() or 0
@@ -685,9 +700,11 @@ async def list_chunks(
                 "fact_text": c.fact_text,
                 "law_article": c.law_article,
                 # Legacy aliases for backward-compat with FE
-                # ArenaContentEditor (PR #47). Map to canonical columns.
+                # ArenaContentEditor. Map to canonical columns. `content`
+                # is now FULL fact_text — the [:200] truncation pre-fix
+                # made the UI lossy on every chunk.
                 "title": c.law_article or str(c.id),
-                "content": (c.fact_text[:200] + "...") if c.fact_text and len(c.fact_text) > 200 else (c.fact_text or ""),
+                "content": c.fact_text or "",
                 "article_reference": c.law_article,
                 # Other canonical fields
                 "category": c.category.value if hasattr(c.category, 'value') else str(c.category),
@@ -700,6 +717,11 @@ async def list_chunks(
                 "question_templates": list(c.question_templates or []),
                 "tags": list(c.tags or []),
                 "created_at": c.created_at.isoformat() if c.created_at else None,
+                "updated_at": c.updated_at.isoformat() if getattr(c, "updated_at", None) else None,
+                # Diagnostics — lets the FE flag "embedding pending"
+                # rows (NULL means RAG can't find this chunk yet).
+                "embedding_ready": c.embedding is not None,
+                "retrieval_count": int(getattr(c, "retrieval_count", 0) or 0),
             }
             for c in chunks
         ],
@@ -745,6 +767,13 @@ async def create_chunk(
     await db.flush()
     await db.commit()
 
+    # Live re-embedding: enqueue so the new chunk gets a vector and
+    # becomes RAG-discoverable before the next API restart. Pre-fix the
+    # only path through `enqueue_chunk` was the auto-publish import flow
+    # (line ~1718) — manually-created chunks waited until cold sweep,
+    # which only runs at boot.
+    await _enqueue_chunk_safely(chunk.id)
+
     return {"id": str(chunk.id), "message": "Chunk created"}
 
 
@@ -787,11 +816,27 @@ async def update_chunk(
                 "message": f"Некорректный payload: {exc}",
             },
         )
+    if not updates:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "arena_chunk_no_fields",
+                "message": "Нечего обновлять — payload не содержит изменяемых полей.",
+            },
+        )
 
     for canonical_name, value in updates.items():
         setattr(chunk, canonical_name, value)
 
     await db.commit()
+
+    # The `before_update` listener (apps/api/app/models/rag.py) nulls
+    # `embedding` whenever `fact_text` or `law_article` change. Without
+    # the enqueue here the chunk is invisible to RAG until the next
+    # cold sweep at API restart — i.e. for hours-to-days. Enqueue every
+    # update; the worker's hash-check de-dups no-op edits cheaply.
+    await _enqueue_chunk_safely(chunk.id)
+
     return {"id": str(chunk.id), "message": "Chunk updated"}
 
 
@@ -816,6 +861,23 @@ async def delete_chunk(
     await db.delete(chunk)
     await db.commit()
     return {"message": "Chunk deleted"}
+
+
+async def _enqueue_chunk_safely(chunk_id: uuid.UUID) -> None:
+    """Best-effort enqueue for live embedding backfill.
+
+    The live worker is gated by `arena_embedding_live_backfill_enabled`
+    and a healthy Redis connection. Both can be off — when they are,
+    we'd rather still return 200 from the CRUD path than fail the whole
+    edit because the indexer is down. The eventual-consistency story is
+    that the next cold sweep (API boot) picks up the row anyway.
+    """
+    try:
+        from app.services.embedding_live_backfill import enqueue_chunk
+
+        await enqueue_chunk(chunk_id)
+    except Exception:  # pragma: no cover — best-effort; logged centrally
+        logger.warning("arena: enqueue_chunk failed", exc_info=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
