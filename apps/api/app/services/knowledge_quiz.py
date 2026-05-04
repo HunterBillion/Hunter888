@@ -53,12 +53,29 @@ class QuizQuestion:
 
 @dataclass
 class QuizFeedback:
-    """Evaluation result for a user's answer."""
+    """Evaluation result for a user's answer.
+
+    2026-05-04 FRONT-3: introduced `verdict_level` for nuanced grading.
+    Was binary correct/wrong — now 4 buckets so the UI can show
+    "почти" / "знаешь, но не по теме" rather than slamming "✖ Неверно"
+    on every imperfect answer.
+
+    Mapping from LLM score (0-10):
+        ≥8  → "correct"  (✓ Верно — full XP)
+        5-7 → "partial"  (🟡 Почти — half XP, missing details)
+        2-4 → "off_topic"(📍 Знаешь, но не по теме — 0 XP, no penalty)
+        <2  → "wrong"    (✖ Неверно — penalty)
+
+    `is_correct` is preserved for legacy callers; True iff
+    verdict_level == "correct".
+    """
     is_correct: bool
     explanation: str
     article_reference: str | None = None
     score_delta: float = 0.0
     correct_answer_summary: str | None = None
+    verdict_level: str = "correct"  # "correct" | "partial" | "off_topic" | "wrong"
+    llm_score: float | None = None  # 0-10 raw score from LLM (None if not available)
 
 
 @dataclass
@@ -1731,6 +1748,12 @@ async def evaluate_answer_streaming(
 
     sanitized_answer = _sanitize_db_prompt(user_answer, "user_answer")
 
+    # 2026-05-04 FRONT-3: 4-line nuanced verdict format. Adds an explicit
+    # SCORE 0-10 line which lets the UI render "Почти" / "Не по теме"
+    # buckets instead of slamming binary ✖ on imperfect answers.
+    # Scoring rubric (exact thresholds in QuizFeedback docstring):
+    #   8-10 = верно          5-7 = почти (упустил детали)
+    #   2-4  = не по теме     0-1 = неверно
     stream_messages = [
         {"role": "assistant", "content": json.dumps(
             {"type": "question", "question_text": question.question_text, "category": question.category},
@@ -1739,10 +1762,19 @@ async def evaluate_answer_streaming(
         {"role": "user", "content": sanitized_answer},
         {"role": "user", "content": (
             f"Оцени ответ пользователя. Формат ответа СТРОГО:\n"
-            f"1-я строка: ВЕРДИКТ: верно | неверно\n"
+            f"1-я строка: ВЕРДИКТ: верно | почти | не по теме | неверно\n"
             f"2-я строка: ОТВЕТ: <краткий правильный ответ в 1 фразе>\n"
             f"3-я строка: СТАТЬЯ: <ссылка на статью или «нет»>\n"
-            f"Далее — развёрнутое объяснение на 2-3 предложения.\n\n"
+            f"4-я строка: SCORE: <целое 0-10>\n"
+            f"Далее — развёрнутое объяснение на 2-3 предложения. "
+            f"Если вердикт «почти» — укажи что упустил. "
+            f"Если «не по теме» — укажи что ответил по другому факту, "
+            f"и какой факт реально спрашивали.\n\n"
+            f"ШКАЛА SCORE:\n"
+            f"  8-10 = ответ полностью правильный по сути и по теме\n"
+            f"  5-7  = правильно по сути, но упущены важные детали\n"
+            f"  2-4  = знание корректное, но НЕ ПО ТЕМЕ ВОПРОСА\n"
+            f"  0-1  = ответ ошибочный или бессодержательный\n\n"
             f"Правовой контекст:\n{context_str}"
         )},
     ]
@@ -1750,9 +1782,11 @@ async def evaluate_answer_streaming(
     # Accumulate raw tokens; parse header lines first, then stream explanation
     buffer = ""
     verdict_emitted = False
-    is_correct_final = False
+    verdict_level_final: str = "wrong"  # 4-bucket: correct|partial|off_topic|wrong
+    is_correct_final = False  # legacy mirror of (verdict_level_final == "correct")
     correct_hint_final: str | None = None
     article_final: str | None = question.expected_article
+    llm_score_final: float | None = None
     explanation_chars: list[str] = []
     header_done = False
 
@@ -1766,37 +1800,82 @@ async def evaluate_answer_streaming(
     #   - Returns JSON-like text despite being asked for plain lines
     # The fix: try the strict parse first, fall back to regex scan over
     # the full buffer as soon as 60+ chars have arrived.
-    def _try_parse_header(text: str) -> tuple[bool, str | None, str | None, str] | None:
-        """Return (is_correct, correct_hint, article, remainder) or None."""
+    def _verdict_level_from(verdict_word: str, score: float | None) -> str:
+        """Map LLM verdict word + numeric score → 4-bucket level.
+
+        Score (when present) is authoritative. Word is fallback when
+        SCORE line is absent. Defaults to "wrong" when ambiguous to
+        keep the legacy is_correct path safe.
+        """
+        if score is not None:
+            if score >= 8:
+                return "correct"
+            if score >= 5:
+                return "partial"
+            if score >= 2:
+                return "off_topic"
+            return "wrong"
+        w = (verdict_word or "").strip().lower()
+        if "почти" in w:
+            return "partial"
+        if "не по теме" in w or "off" in w or "off_topic" in w:
+            return "off_topic"
+        if w in ("верно", "true", "yes") or "верно" in w and "не верно" not in w and "неверно" not in w:
+            return "correct"
+        return "wrong"
+
+    def _try_parse_header(text: str):
+        """Return (verdict_level, correct_hint, article, score, remainder)
+        or None. verdict_level is one of correct/partial/off_topic/wrong.
+        score is float 0-10 or None.
+        """
         import re as _re
 
         t = text.replace("\r\n", "\n").replace("\r", "\n")
 
-        # Path A: strict 3-line format.
+        # Path A: strict 4-line format (post-2026-05-04). Tolerates the
+        # legacy 3-line format too — score parsing is best-effort.
         if t.count("\n") >= 3:
-            parts = t.split("\n", 3)
+            parts = t.split("\n", 4)
             l0 = parts[0].strip().lower()
-            if "верно" in l0 or "неверно" in l0 or "не верно" in l0:
-                correct_flag = ("верно" in l0) and ("неверно" not in l0) and ("не верно" not in l0)
+            verdict_word_re = _re.search(
+                r"(не\s*по\s*теме|почти|неверно|не\s*верно|верно)",
+                l0, flags=_re.IGNORECASE,
+            )
+            if verdict_word_re:
+                verdict_word = verdict_word_re.group(1).lower()
                 hint = None
-                if ":" in parts[1]:
+                if len(parts) > 1 and ":" in parts[1]:
                     hint = parts[1].split(":", 1)[1].strip() or None
                 art = None
-                if ":" in parts[2]:
+                if len(parts) > 2 and ":" in parts[2]:
                     cand = parts[2].split(":", 1)[1].strip()
                     if cand and cand.lower() not in ("нет", "—", "-", "none"):
                         art = cand
-                return correct_flag, hint, art, parts[3] if len(parts) > 3 else ""
+                # Score line (4th line) — best-effort parse
+                score: float | None = None
+                remainder_idx = 3
+                if len(parts) > 3:
+                    score_match = _re.search(r"(\d+(?:[.,]\d+)?)", parts[3])
+                    score_kw = parts[3].lower()
+                    if score_match and ("score" in score_kw or "балл" in score_kw or "оценка" in score_kw):
+                        try:
+                            score = min(10.0, max(0.0, float(score_match.group(1).replace(",", "."))))
+                            remainder_idx = 4
+                        except ValueError:
+                            pass
+                level = _verdict_level_from(verdict_word, score)
+                remainder = parts[remainder_idx] if len(parts) > remainder_idx else ""
+                return level, hint, art, score, remainder
 
-        # Path B: permissive regex scan — handles inline / markdown / JSON.
+        # Path B: permissive regex scan — handles inline/markdown/JSON.
         m_verdict = _re.search(
             r"(?:верд[ие]кт|verdict|is_correct)[^\n]{0,40}?"
-            r"(верно|неверно|не верно|true|false|yes|no)",
+            r"(не\s*по\s*теме|почти|неверно|не\s*верно|верно|true|false|yes|no)",
             t, flags=_re.IGNORECASE,
         )
         if m_verdict:
-            raw = m_verdict.group(1).lower()
-            correct_flag = raw in ("верно", "true", "yes")
+            verdict_word = m_verdict.group(1).lower()
             hint_match = _re.search(
                 r"(?:ответ|correct_answer|answer)[^\n]{0,80}?[:«\"]\s*([^\n\"»]{3,200})",
                 t, flags=_re.IGNORECASE,
@@ -1805,17 +1884,26 @@ async def evaluate_answer_streaming(
                 r"(?:статья|article|article_reference)[^\n]{0,40}?[:«\"]\s*([^\n\"»]{2,80})",
                 t, flags=_re.IGNORECASE,
             )
+            score_match = _re.search(
+                r"(?:score|балл|оценка)[^\n]{0,20}?[:=]\s*(\d+(?:[.,]\d+)?)",
+                t, flags=_re.IGNORECASE,
+            )
             hint = hint_match.group(1).strip().rstrip(",.;:") if hint_match else None
             art = None
             if art_match:
                 cand = art_match.group(1).strip().rstrip(",.;:")
                 if cand.lower() not in ("нет", "—", "-", "none"):
                     art = cand
-            # Everything after the first sentence boundary is treated as
-            # the explanation body.
+            score: float | None = None
+            if score_match:
+                try:
+                    score = min(10.0, max(0.0, float(score_match.group(1).replace(",", "."))))
+                except ValueError:
+                    pass
+            level = _verdict_level_from(verdict_word, score)
             body_split = _re.split(r"(?<=[.!?])\s+", t, maxsplit=1)
             body = body_split[1] if len(body_split) > 1 else ""
-            return correct_flag, hint, art, body
+            return level, hint, art, score, body
 
         return None
 
@@ -1837,16 +1925,31 @@ async def evaluate_answer_streaming(
                     # Not enough yet; keep streaming.
                     continue
 
-                is_correct_final, correct_hint_final, parsed_art, remainder = parsed
+                verdict_level_final, correct_hint_final, parsed_art, llm_score_final, remainder = parsed
+                is_correct_final = verdict_level_final == "correct"
                 if parsed_art:
                     article_final = parsed_art
+
+                # 2026-05-04 FRONT-3: score_delta now respects verdict
+                # buckets — partial = half-XP, off_topic = 0 (don't
+                # penalize when user knows but mis-aimed), wrong = -2.
+                if verdict_level_final == "correct":
+                    sd = _score_delta(True, difficulty)
+                elif verdict_level_final == "partial":
+                    sd = _score_delta(True, difficulty, partial=0.5) if "partial" in _score_delta.__code__.co_varnames else _score_delta(True, difficulty) * 0.5
+                elif verdict_level_final == "off_topic":
+                    sd = 0.0
+                else:  # wrong
+                    sd = _score_delta(False, difficulty)
 
                 yield {
                     "type": "verdict",
                     "is_correct": is_correct_final,
+                    "verdict_level": verdict_level_final,
+                    "llm_score": llm_score_final,
                     "correct_answer": correct_hint_final,
                     "article_reference": article_final,
-                    "score_delta": _score_delta(is_correct_final, difficulty),
+                    "score_delta": sd,
                     "fast_path": "llm_stream",
                 }
                 verdict_emitted = True
@@ -1875,18 +1978,27 @@ async def evaluate_answer_streaming(
     if not verdict_emitted:
         parsed = _try_parse_header(buffer) if buffer else None
         if parsed is not None:
-            is_correct_final, correct_hint_final, parsed_art, remainder = parsed
+            verdict_level_final, correct_hint_final, parsed_art, llm_score_final, remainder = parsed
+            is_correct_final = verdict_level_final == "correct"
             if parsed_art:
                 article_final = parsed_art
             if remainder:
                 explanation_chars.append(remainder)
             verdict_emitted = True
+            sd = (
+                _score_delta(True, difficulty) if verdict_level_final == "correct"
+                else _score_delta(True, difficulty) * 0.5 if verdict_level_final == "partial"
+                else 0.0 if verdict_level_final == "off_topic"
+                else _score_delta(False, difficulty)
+            )
             yield {
                 "type": "verdict",
                 "is_correct": is_correct_final,
+                "verdict_level": verdict_level_final,
+                "llm_score": llm_score_final,
                 "correct_answer": correct_hint_final,
                 "article_reference": article_final,
-                "score_delta": _score_delta(is_correct_final, difficulty),
+                "score_delta": sd,
                 "fast_path": "llm_stream_recovered",
             }
         else:
@@ -1913,11 +2025,14 @@ async def evaluate_answer_streaming(
 
             if rescued:
                 is_correct_final = True
+                verdict_level_final = "correct"
                 correct_hint_final = expected or None
                 verdict_emitted = True
                 yield {
                     "type": "verdict",
                     "is_correct": True,
+                    "verdict_level": "correct",
+                    "llm_score": 8.0,
                     "correct_answer": correct_hint_final,
                     "article_reference": article_final,
                     "score_delta": _score_delta(True, difficulty),
@@ -1927,9 +2042,12 @@ async def evaluate_answer_streaming(
                     f"Верно! {expected}" if expected else "Верно!"
                 )
             else:
+                verdict_level_final = "wrong"
                 yield {
                     "type": "verdict",
                     "is_correct": False,
+                    "verdict_level": "wrong",
+                    "llm_score": 0.0,
                     "correct_answer": question.blitz_answer,
                     "article_reference": question.expected_article,
                     "score_delta": _score_delta(False, difficulty),
@@ -1998,12 +2116,35 @@ async def evaluate_answer_streaming(
     # ── Final event with full structured feedback ──
     explanation_full = "".join(explanation_chars).strip()
     if not explanation_full and correct_hint_final:
-        explanation_full = f"{'Верно!' if is_correct_final else 'Неверно.'} {correct_hint_final}"
+        # 2026-05-04 FRONT-3: nuanced verdict-level message instead of
+        # binary "Верно!/Неверно.".
+        prefix = {
+            "correct": "Верно!",
+            "partial": "Почти. ",
+            "off_topic": "Знание корректное, но вопрос был о другом. ",
+            "wrong": "Неверно. ",
+        }.get(verdict_level_final, "Неверно. ")
+        explanation_full = f"{prefix}{correct_hint_final}"
+    # Final score_delta respects verdict bucket (see also per-level
+    # logic above where verdict is yielded).
+    if verdict_emitted:
+        if verdict_level_final == "correct":
+            final_sd = _score_delta(True, difficulty)
+        elif verdict_level_final == "partial":
+            final_sd = _score_delta(True, difficulty) * 0.5
+        elif verdict_level_final == "off_topic":
+            final_sd = 0.0
+        else:
+            final_sd = _score_delta(False, difficulty)
+    else:
+        final_sd = 0.0
     fb = QuizFeedback(
         is_correct=is_correct_final if verdict_emitted else False,
         explanation=explanation_full or "Не удалось получить разбор.",
         article_reference=article_final,
-        score_delta=_score_delta(is_correct_final, difficulty) if verdict_emitted else 0.0,
+        score_delta=final_sd,
         correct_answer_summary=correct_hint_final,
+        verdict_level=verdict_level_final if verdict_emitted else "wrong",
+        llm_score=llm_score_final,
     )
     yield {"type": "final", "feedback": fb}

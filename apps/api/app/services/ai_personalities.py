@@ -349,13 +349,42 @@ def get_personality_reaction(
     is_correct: bool,
     streak: int,
     correct_answer: str | None = None,
+    verdict_level: str | None = None,
 ) -> str:
     """Get a contextual reaction from the personality.
 
-    Checks streak milestones first, then picks a random reaction.
-    For incorrect answers, substitutes {answer} placeholder.
+    2026-05-04 FRONT-3: extended for 4-bucket verdicts. When
+    `verdict_level` is one of "partial" / "off_topic", we wrap the
+    nearest-fitting reaction with a tone modifier instead of treating
+    the answer as fully wrong (the old binary path slammed
+    "Любопытная интерпретация, но закон говорит иначе" on a partially
+    correct answer — that felt unfair to the user).
+
+    Reaction selection per level:
+      correct   → streak_reactions[streak] OR random correct_reactions
+      partial   → "Хорошо, но не до конца." + nearest incorrect_reactions
+                  trimmed (nuance signal)
+      off_topic → "Знание верное, но не на этот вопрос." (single canonical
+                  phrase across personalities; their voice can wrap it later)
+      wrong     → random incorrect_reactions
+
+    Keeps backward compat: when verdict_level is None, behaves exactly
+    like the old binary version.
     """
-    # Check streak milestone reactions first
+    # 4-bucket nuanced path
+    if verdict_level == "partial":
+        return (
+            "Хорошо, но не до конца. "
+            + random.choice(personality.incorrect_reactions).rstrip(".!?…")
+            + "."
+        )
+    if verdict_level == "off_topic":
+        return (
+            "Любопытно, но это ответ на другой вопрос. "
+            "Внимательнее к формулировке — что именно спрашивали."
+        )
+
+    # Legacy binary path (verdict_level None / correct / wrong)
     if is_correct and streak in personality.streak_reactions:
         return personality.streak_reactions[streak]
 

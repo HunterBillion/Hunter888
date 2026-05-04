@@ -984,6 +984,8 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
         logger.warning("quiz_v2.ws.record_answer failed: %s", _v2_exc)
 
     # V2: Get personality reaction
+    # 2026-05-04 FRONT-3: pass verdict_level so partial / off_topic
+    # get nuanced wording instead of binary "Любопытная интерпретация…".
     personality_comment = ""
     if state.personality:
         personality_comment = get_personality_reaction(
@@ -991,6 +993,7 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
             result.is_correct,
             state.consecutive_correct,
             correct_answer=result.correct_answer_summary,
+            verdict_level=getattr(result, "verdict_level", None),
         )
 
     # Save to DB
@@ -1050,8 +1053,12 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
         state.srs_current_item = None  # reset for next question
 
     # Send feedback with V2 fields
+    # 2026-05-04 FRONT-3: include verdict_level + llm_score so the
+    # frontend can render 4-bucket UI (correct/partial/off_topic/wrong).
     feedback_data: dict = {
         "is_correct": result.is_correct,
+        "verdict_level": getattr(result, "verdict_level", "correct" if result.is_correct else "wrong"),
+        "llm_score": getattr(result, "llm_score", None),
         "explanation": result.explanation,
         "article_reference": result.article_reference,
         "score_delta": score_delta,
@@ -1062,6 +1069,8 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
     }
     if speed_bonus > 0:
         feedback_data["speed_bonus"] = speed_bonus
+    # Always send correct_answer when not fully correct so the UI can
+    # show the canonical reference for partial / off_topic / wrong too.
     if not result.is_correct:
         feedback_data["correct_answer"] = result.correct_answer_summary
     await _send(ws, "quiz.feedback", feedback_data)

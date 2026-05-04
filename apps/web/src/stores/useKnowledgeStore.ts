@@ -5,11 +5,17 @@ import type { ArenaPlayer, ArenaRoundResult, ArenaFinalResults, ArenaChallenge }
 export type QuizMode = "free_dialog" | "blitz" | "themed" | "pvp";
 export type QuizStatus = "idle" | "selecting" | "connecting" | "active" | "completed";
 
+export type VerdictLevel = "correct" | "partial" | "off_topic" | "wrong";
+
 export interface QuizMessage {
   id: string;
   type: "question" | "answer" | "feedback" | "system" | "hint" | "follow_up";
   content: string;
   isCorrect?: boolean;
+  // 2026-05-04 FRONT-3: 4-bucket verdict for nuanced UI rendering.
+  // Falls back to deriving from isCorrect when absent (legacy events).
+  verdictLevel?: VerdictLevel;
+  llmScore?: number; // 0-10, if backend provided it
   articleRef?: string;
   explanation?: string;
   correctAnswer?: string;   // 2026-04-18: expected answer, shown separately when answer is wrong

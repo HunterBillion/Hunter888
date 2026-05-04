@@ -310,11 +310,19 @@ function KnowledgeSessionPage() {
           const correctAns = typeof data.correct_answer === "string" ? data.correct_answer : undefined;
           const articleRef = typeof data.article_reference === "string" ? data.article_reference : undefined;
           const isCorrect = Boolean(data.is_correct);
+          // 2026-05-04 FRONT-3: 4-bucket verdict from backend
+          const verdictLevel =
+            typeof data.verdict_level === "string"
+              ? (data.verdict_level as "correct" | "partial" | "off_topic" | "wrong")
+              : isCorrect ? "correct" : "wrong";
+          const llmScore = typeof data.llm_score === "number" ? data.llm_score : undefined;
           store.setIsTyping(false);
           store.addMessage({
             type: "feedback",
             content: "",              // will be filled by chunk events
             isCorrect,
+            verdictLevel,
+            llmScore,
             correctAnswer: correctAns,
             articleRef,
             explanation: "",
@@ -361,10 +369,16 @@ function KnowledgeSessionPage() {
           // been filling. We finalize it in place rather than appending
           // a second bubble. Fall back to addMessage for clients that
           // never received a verdict (legacy/race).
+          const verdictLevel =
+            (typeof data.verdict_level === "string" ? data.verdict_level : null) as
+              | "correct" | "partial" | "off_topic" | "wrong" | null;
+          const llmScore = typeof data.llm_score === "number" ? data.llm_score : undefined;
           const patch = {
             type: "feedback" as const,
             content: feedbackContent,
             isCorrect: data.is_correct as boolean,
+            verdictLevel: verdictLevel ?? (data.is_correct ? "correct" : "wrong"),
+            llmScore,
             explanation: data.explanation as string | undefined,
             articleRef: (data.article_ref || data.article_reference) as string | undefined,
             correctAnswer: (data.correct_answer || data.correct_answer_summary) as string | undefined,
@@ -1675,11 +1689,46 @@ function MessageBubble({ message }: { message: QuizMessage }) {
     );
   }
 
-  // ═══ Feedback message — green/red pixel with speed bonus
+  // ═══ Feedback message — 4-bucket nuanced verdict (2026-05-04 FRONT-3)
   if (isFeedback) {
     const correct = message.isCorrect;
-    const color = correct ? "var(--success)" : "var(--danger)";
-    const bgColor = correct ? "var(--success-muted)" : "var(--danger-muted)";
+    // verdictLevel is the new source of truth. Falls back to
+    // is_correct → correct/wrong for legacy messages.
+    const level: "correct" | "partial" | "off_topic" | "wrong" =
+      message.verdictLevel ?? (correct ? "correct" : "wrong");
+
+    // Palette per bucket:
+    //   correct   → green (success)
+    //   partial   → amber (warning) — "почти, упустил детали"
+    //   off_topic → blue  (accent-cool) — "знаешь, но не по теме"
+    //   wrong     → red   (danger)
+    const palette: Record<typeof level, { color: string; bg: string; label: string; icon: typeof CheckCircle2 }> = {
+      correct: {
+        color: "var(--success)",
+        bg: "var(--success-muted)",
+        label: "▸ ВЕРНО! +XP",
+        icon: CheckCircle2,
+      },
+      partial: {
+        color: "var(--warning)",
+        bg: "color-mix(in srgb, var(--warning) 15%, transparent)",
+        label: "🟡 Почти — упустил детали",
+        icon: CheckCircle2,
+      },
+      off_topic: {
+        color: "#60a5fa",
+        bg: "rgba(96,165,250,0.15)",
+        label: "📍 Знание верное, но не по теме",
+        icon: CheckCircle2,
+      },
+      wrong: {
+        color: "var(--danger)",
+        bg: "var(--danger-muted)",
+        label: "✖ Неверно",
+        icon: XCircle,
+      },
+    };
+    const { color, bg: bgColor, label: verdictLabel, icon: VerdictIcon } = palette[level];
 
     // 2026-05-04 dedup: the LLM judge usually puts the correct answer
     // INTO `explanation`, then backend ALSO sends a separate
@@ -1714,7 +1763,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
             boxShadow: `2px 2px 0 0 ${color}`,
           }}
         >
-          {correct ? <CheckCircle2 size={14} style={{ color }} /> : <XCircle size={14} style={{ color }} />}
+          <VerdictIcon size={14} style={{ color }} />
         </div>
         <div
           className="max-w-[90%] sm:max-w-[80%] px-4 py-3"
@@ -1729,10 +1778,20 @@ function MessageBubble({ message }: { message: QuizMessage }) {
             className="font-pixel text-[13px] uppercase tracking-widest mb-2"
             style={{ color, textShadow: `0 0 6px ${color}` }}
           >
-            {correct ? "▸ ВЕРНО! +XP" : "✖ Неверно"}
+            {verdictLabel}
+            {typeof message.llmScore === "number" && (
+              <span
+                className="ml-2 text-[10px]"
+                style={{ color: "var(--text-muted)", opacity: 0.7 }}
+              >
+                {Math.round(message.llmScore)}/10
+              </span>
+            )}
           </div>
-          {/* If WRONG: show ONE canonical right-answer block. */}
-          {!correct && rightAnswer && (
+          {/* If NOT fully correct: show canonical right-answer block.
+              Now appears for partial / off_topic / wrong — user always
+              sees what the right answer was, even when "почти". */}
+          {level !== "correct" && rightAnswer && (
             <div
               className="px-3 py-2 mb-2"
               style={{
@@ -1753,15 +1812,15 @@ function MessageBubble({ message }: { message: QuizMessage }) {
             </div>
           )}
           {/* If CORRECT: short confirmation if there's an explanation. */}
-          {correct && explanation && (
+          {level === "correct" && explanation && (
             <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
               {explanation}
             </p>
           )}
-          {/* "📖 Объяснение" block ONLY if it adds material beyond the
-              already-shown right answer. Skips the duplicate the user
-              flagged 2026-05-04. */}
-          {!correct && explanationAddsValue && (
+          {/* "📖 Объяснение" block ONLY when it adds material beyond
+              the right-answer block (substring check both ways).
+              Renders for partial / off_topic / wrong. */}
+          {level !== "correct" && explanationAddsValue && (
             <div className="mt-1 text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
               <span style={{ color: "var(--text-muted)" }}>📖 </span>
               {explanation}
