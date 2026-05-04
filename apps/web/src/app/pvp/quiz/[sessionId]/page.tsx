@@ -1681,6 +1681,24 @@ function MessageBubble({ message }: { message: QuizMessage }) {
     const color = correct ? "var(--success)" : "var(--danger)";
     const bgColor = correct ? "var(--success-muted)" : "var(--danger-muted)";
 
+    // 2026-05-04 dedup: the LLM judge usually puts the correct answer
+    // INTO `explanation`, then backend ALSO sends a separate
+    // `correctAnswer` field with the same text. Rendering both makes
+    // the card show "✖ Неверно — За 3 года... ст. 61.2 / ▸ ПРАВИЛЬНО:
+    // За 3 года... ст. 61.2" — same string twice. Strategy: pick ONE
+    // canonical "right answer" string (correctAnswer wins, falls back
+    // to explanation), and only show explanation as a SEPARATE
+    // "📖 Объяснение" block if it adds material beyond the right answer.
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+    const rightAnswer = (message.correctAnswer || "").trim();
+    const explanation = (message.explanation || "").trim();
+    const explanationAddsValue =
+      explanation.length > 0 &&
+      (!rightAnswer ||
+        // explanation differs materially from rightAnswer (not a substring/superset)
+        (!norm(rightAnswer).includes(norm(explanation)) &&
+          !norm(explanation).includes(norm(rightAnswer))));
+
     return (
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -1708,33 +1726,45 @@ function MessageBubble({ message }: { message: QuizMessage }) {
           }}
         >
           <div
-            className="font-pixel text-[13px] uppercase tracking-widest mb-1"
+            className="font-pixel text-[13px] uppercase tracking-widest mb-2"
             style={{ color, textShadow: `0 0 6px ${color}` }}
           >
-            {correct ? "▸ ВЕРНО! +XP" : "✖ НЕВЕРНО"}
+            {correct ? "▸ ВЕРНО! +XP" : "✖ Неверно"}
           </div>
-          {message.explanation && (
-            <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-              {message.explanation}
-            </p>
-          )}
-          {/* 2026-04-18: dedicated "ПРАВИЛЬНО" block — always visible when wrong answer + correct known */}
-          {!message.isCorrect && message.correctAnswer && (
+          {/* If WRONG: show ONE canonical right-answer block. */}
+          {!correct && rightAnswer && (
             <div
-              className="mt-3 px-3 py-2"
+              className="px-3 py-2 mb-2"
               style={{
                 background: "rgba(34,197,94,0.08)",
                 border: "2px solid var(--success)",
                 borderRadius: 0,
-                boxShadow: "2px 2px 0 0 rgba(34,197,94,0.35)",
               }}
             >
-              <div className="font-pixel text-[13px] uppercase tracking-widest mb-1" style={{ color: "var(--success)" }}>
-                ▸ ПРАВИЛЬНО
+              <div
+                className="font-pixel text-[12px] uppercase tracking-widest mb-1"
+                style={{ color: "var(--success)" }}
+              >
+                Правильный ответ
               </div>
               <div className="text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>
-                {message.correctAnswer}
+                {rightAnswer}
               </div>
+            </div>
+          )}
+          {/* If CORRECT: short confirmation if there's an explanation. */}
+          {correct && explanation && (
+            <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+              {explanation}
+            </p>
+          )}
+          {/* "📖 Объяснение" block ONLY if it adds material beyond the
+              already-shown right answer. Skips the duplicate the user
+              flagged 2026-05-04. */}
+          {!correct && explanationAddsValue && (
+            <div className="mt-1 text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+              <span style={{ color: "var(--text-muted)" }}>📖 </span>
+              {explanation}
             </div>
           )}
           {message.articleRef && (
