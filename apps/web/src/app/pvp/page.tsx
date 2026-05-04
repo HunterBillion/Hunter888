@@ -18,6 +18,12 @@ import { AppIcon } from "@/components/ui/AppIcon";
 import { logger } from "@/lib/logger";
 // Phase B (2026-04-20): Duolingo-style weekly league hero widget
 import { LeagueHeroCard } from "@/components/pvp/LeagueHeroCard";
+// 2026-05-04: revive DailyDrillCard on /pvp hero. Was disabled on /home
+// behind a `false &&` gate but the backend (/gamification/daily-drill +
+// /complete) is fully implemented — chest reward, streak celebration,
+// freeze logic. Free entry-point for new users: "сегодня сделай эту
+// 3-минутную симуляцию".
+import DailyDrillCard from "@/components/gamification/DailyDrillCard";
 // 2026-04-29: pixel unification — единый формат карточек режимов + pixel-иконки.
 import { PixelModeCard } from "@/components/pvp/PixelModeCard";
 import { PixelIcon, type PixelIconName } from "@/components/pvp/PixelIcon";
@@ -430,6 +436,17 @@ function PvPLobbyContent() {
                 </span>
               </div>
 
+              {/* 2026-05-04: Daily drill — primary daily entry-point.
+                  Above the league widget because the league updates
+                  weekly, while the drill is the "что сделать сегодня"
+                  CTA. New users see ONE pulsing CTA rather than
+                  scanning 8+ options. */}
+              <div className="mt-4">
+                <DailyDrillCard
+                  drillStreak={store.rating ? Math.max(0, store.rating.current_streak ?? 0) : 0}
+                />
+              </div>
+
               {/* Phase B — Weekly League hero widget (Duolingo cohort) */}
               <div className="mt-4">
                 <LeagueHeroCard />
@@ -528,64 +545,19 @@ function PvPLobbyContent() {
                 {tab === "arena" && (
                   <motion.div key="arena" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
                     <div className="space-y-4">
-                      {/* PvP Mode Selection — pixel unified (2026-04-29) */}
-                      <div>
-                        <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>▸ РЕЖИМЫ ДУЭЛЕЙ — PVP</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {([
-                            { code: "classic", name: "Классическая дуэль", desc: "2 раунда, смена ролей", icon: "sword" as PixelIconName, level: 1 },
-                            { code: "rapid", name: "Скоростной бой", desc: "5 мини-раундов по 2 мин", icon: "bolt" as PixelIconName, level: 5 },
-                            { code: "gauntlet", name: "Испытание", desc: "3-5 дуэлей подряд", icon: "castle" as PixelIconName, level: 8 },
-                            { code: "team2v2", name: "Командный 2v2", desc: "Команда из 2 продавцов", icon: "group" as PixelIconName, level: 12 },
-                          ] as const).map((mode) => {
-                            const userLevel = store.rating ? Math.max(1, Math.floor(store.rating.total_duels / 2) + 1) : 1;
-                            const locked = userLevel < mode.level;
-                            return (
-                              <PixelModeCard
-                                key={mode.code}
-                                iconName={mode.icon}
-                                name={mode.name}
-                                desc={mode.desc}
-                                accent="var(--accent)"
-                                locked={locked}
-                                lockLevel={mode.level}
-                              />
-                            );
-                          })}
-                        </div>
-                      </div>
+                      {/* 2026-05-04 cleanup: removed 8 dead mode cards
+                          (4 PvP + 4 PvE). They had no `onClick` — clicking
+                          them did literally nothing. 6 of 8 were also
+                          shown locked at lvl 5/8/12, which scared new
+                          users into thinking the platform was broken.
+                          The single working entrypoint is the
+                          "Найти соперника" button above; matchmaking
+                          server picks PvP/PvE automatically.
 
-                      {/* PvE Mode Selection — pixel unified */}
-                      <div>
-                        <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>▸ РЕЖИМЫ С БОТАМИ — PVE</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {([
-                            { code: "standard", name: "Стандартный бот", desc: "Обычная PvE дуэль", icon: "robot" as PixelIconName, level: 1 },
-                            { code: "ladder", name: "Лестница ботов", desc: "5 ботов, рост сложности", icon: "ladder" as PixelIconName, level: 5 },
-                            { code: "boss", name: "Штурм боссов", desc: "3 уникальных босса", icon: "skull" as PixelIconName, level: 8 },
-                            { code: "mirror", name: "Зеркальный матч", desc: "Играй против себя", icon: "mirror" as PixelIconName, level: 12 },
-                          ] as const).map((mode) => {
-                            const userLevel = store.rating ? Math.max(1, Math.floor(store.rating.total_duels / 2) + 1) : 1;
-                            const locked = userLevel < mode.level;
-                            return (
-                              <PixelModeCard
-                                key={mode.code}
-                                iconName={mode.icon}
-                                name={mode.name}
-                                desc={mode.desc}
-                                accent="var(--success)"
-                                locked={locked}
-                                lockLevel={mode.level}
-                              />
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* 2026-05-03 deep-cleanup: «Голосовая дуэль» quick-info
-                          УДАЛЕНА. Subtitle «Дуэли 1 на 1 · Glicko-2 рейтинг» в
-                          шапке страницы уже передаёт ту же информацию — этот
-                          блок был полным дубликатом. */}
+                          When per-mode duels are reintroduced (story
+                          modes, boss raids, etc), they should be
+                          live functional cards with onClick → queue.join
+                          payload extension, NOT cosmetic placeholders. */}
 
                       {/* How it works — pixel cards (was glass-panel) */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
