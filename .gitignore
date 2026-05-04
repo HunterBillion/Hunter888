@@ -74,5 +74,8 @@ apps/api/scripts/legal_ingest/logs/
 nohup.out
 *.nohup.out
 
-# Claude Code local config (персональное, не для репо)
-.claude/
+# Claude Code local config (персональное, не для репо).
+# Исключение: .claude/skills/ — проектные скиллы коммитятся, чтобы все worktrees видели их.
+.claude/*
+!.claude/skills/
+!.claude/skills/**
