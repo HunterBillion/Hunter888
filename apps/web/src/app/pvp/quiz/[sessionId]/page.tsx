@@ -1423,7 +1423,7 @@ function KnowledgeSessionPage() {
               onKeyDown={handleKeyDown}
               placeholder={
                 speech.status === "listening"
-                  ? "◉ Говорите…"
+                  ? (speech.interimText ? "" : "◉ Говорите…")
                   : "▸ ВВЕДИТЕ ОТВЕТ ИЛИ НАЖМИТЕ 🎤"
               }
               rows={1}
@@ -1436,14 +1436,26 @@ function KnowledgeSessionPage() {
               }}
               disabled={store.status !== "active"}
             />
-            {/* 2026-04-20: live interim transcript — шёпот справа, чтобы
-                юзер видел что именно распозналось ДО вставки в input. */}
+            {/* 2026-05-04 voice overlay: interim transcript shown
+                INSIDE the input area as a right-aligned ghost line —
+                no more separate "▸ ..." line below the input.
+                Padding-aligned with the textarea so the typing zone
+                feels unified (Discord-style ghost preview).
+                When the user types or finalises speech, this disappears
+                and the value lives in the textarea normally. */}
             {speech.status === "listening" && speech.interimText && (
               <div
-                className="absolute right-2 bottom-0 translate-y-full mt-1 max-w-[60%] truncate text-[11px]"
-                style={{ color: "var(--accent)" }}
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-mono truncate max-w-[55%]"
+                style={{
+                  color: "var(--text-muted)",
+                  opacity: 0.7,
+                  fontFamily: "var(--font-mono, monospace)",
+                }}
+                title="распознаётся… отпустите микрофон чтобы вставить"
               >
-                ▸ {speech.interimText}
+                {store.input ? "… " : ""}
+                {speech.interimText}
               </div>
             )}
           </div>
