@@ -1017,18 +1017,34 @@ async def rop_member_sessions(
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """List training sessions for a specific team member (ROP access)."""
-    if not user.team_id:
-        return {"sessions": [], "total": 0}
+    """List training sessions for a specific team member.
 
-    # Verify the manager belongs to the same team
-    manager_uuid = uuid.UUID(manager_id)
-    member_r = await db.execute(
-        select(User).where(User.id == manager_uuid, User.team_id == user.team_id)
-    )
+    Scope contract — mirrors /dashboard/team/member/{id}:
+      * admin: any team member.
+      * rop:   only managers with the same ``team_id``.
+
+    Returns 403 on cross-team access (NOT a 200 with ``{error:...}`` —
+    earlier soft-fail confused the FE between "no data" and "no access").
+    """
+    is_admin = getattr(user.role, "value", str(user.role)) == "admin"
+
+    try:
+        manager_uuid = uuid.UUID(manager_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="manager_id must be a UUID")
+
+    if not is_admin and not user.team_id:
+        raise HTTPException(
+            status_code=403,
+            detail="ROP без команды: попросите администратора привязать вас к команде.",
+        )
+
+    member_r = await db.execute(select(User).where(User.id == manager_uuid))
     member = member_r.scalar_one_or_none()
-    if not member:
-        return {"sessions": [], "total": 0, "error": "Manager not in your team"}
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+    if not is_admin and member.team_id != user.team_id:
+        raise HTTPException(status_code=403, detail="Member not in your team")
 
     sessions_r = await db.execute(
         select(TrainingSession).where(
@@ -1060,16 +1076,38 @@ async def rop_member_sessions(
 async def rop_export_pdf(
     request: Request,
     period: str = Query("week", pattern="^(week|month)$"),
+    team_id: str | None = Query(None, description="Admin-only override; ROP always uses own team"),
     user: User = Depends(require_role("rop", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Export team report as PDF."""
-    if not user.team_id:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "No team assigned"}, status_code=400)
+    """Export team report as PDF.
+
+    For admin without ``team_id`` query param the endpoint exports the
+    admin's own ``team_id`` if any; otherwise 400 with a clear message
+    (the report is always team-scoped — there's no "all teams" PDF).
+    """
+    is_admin = getattr(user.role, "value", str(user.role)) == "admin"
+
+    target_team_id: uuid.UUID | None = None
+    if team_id and is_admin:
+        try:
+            target_team_id = uuid.UUID(team_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Некорректный team_id")
+    elif user.team_id:
+        target_team_id = user.team_id
+
+    if target_team_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Для экспорта отчёта администратор должен указать ?team_id=<uuid>, "
+                "либо быть привязан к команде."
+            ),
+        )
 
     from app.services.rop_export import generate_team_report_pdf
-    pdf_bytes = await generate_team_report_pdf(user.team_id, user.full_name, period, db)
+    pdf_bytes = await generate_team_report_pdf(target_team_id, user.full_name, period, db)
 
     from fastapi.responses import Response
     return Response(

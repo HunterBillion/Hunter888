@@ -23,7 +23,10 @@ ARG BUILD_TIME=unknown
 ENV RELEASE_SHA=$RELEASE_SHA
 ENV BUILD_TIME=$BUILD_TIME
 
-RUN pip install --no-cache-dir uv \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv \
     && groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser \
     && mkdir -p /app/uploads && chown -R appuser:appuser /app
 
