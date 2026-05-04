@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 
 from app.core.rate_limit import limiter
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -569,6 +569,260 @@ async def api_get_audit_log(
         page=page,
         per_page=per_page,
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CLIENT FROM SESSION — bridge AI ClientProfile → CRM RealClient (BUG NEW-4)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@router.post(
+    "/from-session/{session_id}",
+    response_model=ClientResponse,
+)
+@limiter.limit("10/minute")
+async def api_create_client_from_session(
+    session_id: uuid.UUID,
+    request: Request,
+    response: Response,
+    user: User = Depends(require_role("manager", "rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Создать карточку CRM-клиента, перенося реальные данные из тренировочной
+    сессии (ClientProfile + сводка результатов).
+
+    BUG NEW-4 fix: предыдущая кнопка "Добавить в CRM" отправляла лишь
+    full_name + 4 поля и теряла весь профиль клиента (долг, кредиторы,
+    история, доход). Этот endpoint читает ClientProfile сессии и собирает
+    полноценную карточку RealClient.
+
+    Идемпотентен: если RealClient с metadata_["source_session_id"] == session_id
+    уже создан — возвращает его (200) вместо создания дубля. Иначе 201.
+
+    Errors:
+      404 — сессия не найдена / не принадлежит пользователю.
+      422 — для сессии не сгенерирован ClientProfile (нечего переносить).
+    """
+    from decimal import Decimal as _Decimal
+
+    from app.models.roleplay import ClientProfile
+
+    # ── 1. Verify session ownership ──────────────────────────────────────
+    session = (await db.execute(
+        select(TrainingSession).where(
+            TrainingSession.id == session_id,
+            TrainingSession.user_id == user.id,
+        )
+    )).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Сессия не найдена",
+        )
+
+    # ── 2. Idempotency: existing RealClient for this session? ────────────
+    # Three lookup paths (defence-in-depth):
+    #   a) session.real_client_id already set → return that client
+    #   b) any RealClient with metadata_->>source_session_id == session_id
+    if session.real_client_id is not None:
+        existing = (await db.execute(
+            select(RealClient).where(
+                RealClient.id == session.real_client_id,
+                RealClient.is_active == True,  # noqa: E712
+                RealClient.manager_id == user.id,
+            )
+        )).scalar_one_or_none()
+        if existing is not None:
+            response.status_code = status.HTTP_200_OK
+            return _client_to_response(existing)
+
+    sid_str = str(session_id)
+    # JSONB ->> '<key>' = '<val>' is the canonical lookup. metadata_ uses
+    # the "metadata" SQL column name (mapped_column("metadata", ...)).
+    existing_by_meta = (await db.execute(
+        select(RealClient).where(
+            RealClient.is_active == True,  # noqa: E712
+            RealClient.manager_id == user.id,
+            RealClient.metadata_["source_session_id"].astext == sid_str,
+        )
+    )).scalar_one_or_none()
+    if existing_by_meta is not None:
+        # Backfill the link if it isn't there yet so subsequent calls hit (a).
+        if session.real_client_id != existing_by_meta.id:
+            session.real_client_id = existing_by_meta.id
+            await db.flush()
+        response.status_code = status.HTTP_200_OK
+        return _client_to_response(existing_by_meta)
+
+    # ── 3. Load ClientProfile (canonical source) ─────────────────────────
+    profile = (await db.execute(
+        select(ClientProfile).where(ClientProfile.session_id == session_id)
+    )).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Для этой сессии не сгенерирован профиль клиента — "
+                "нечего переносить в CRM"
+            ),
+        )
+
+    # ── 4. Build payload ─────────────────────────────────────────────────
+    # full_name: strip trailing ", <age>" suffix that some display labels
+    # pile onto character_name. ClientProfile.full_name is already clean
+    # ("Анна Дмитриевна Козлова"), but we defensively strip just in case.
+    full_name = (profile.full_name or "Клиент из тренировки").strip()
+    # Drop a trailing ", <digits>" age suffix if present.
+    import re as _re
+    full_name = _re.sub(r",\s*\d{1,3}\s*$", "", full_name).strip()
+    if not full_name:
+        full_name = "Клиент из тренировки"
+
+    creditors_list = list(profile.creditors or [])
+    income_val = profile.income
+    family_summary = None  # ClientProfile doesn't store family — skip
+    story_summary: str | None = None
+    if profile.breaking_point:
+        story_summary = profile.breaking_point.strip()
+    elif profile.crm_notes:
+        story_summary = profile.crm_notes.strip()
+    elif profile.fears:
+        try:
+            story_summary = "; ".join(str(f) for f in (profile.fears or [])[:3])
+        except Exception:  # noqa: BLE001
+            story_summary = None
+
+    debt_details: dict = {
+        "creditors_list": creditors_list,
+        "income": income_val,
+        "income_type": profile.income_type,
+        "city": profile.city,
+        "archetype_code": profile.archetype_code,
+        "story_summary": story_summary,
+    }
+    # Also populate "creditors" key — _client_to_response surfaces it
+    # directly to the FE under client.creditors.
+    if creditors_list:
+        debt_details["creditors"] = creditors_list
+
+    # debt_amount: ClientProfile.total_debt is integer (rubles).
+    debt_amount: _Decimal | None = None
+    if profile.total_debt is not None:
+        try:
+            debt_amount = _Decimal(int(profile.total_debt))
+        except Exception:  # noqa: BLE001
+            debt_amount = None
+
+    # notes — short Russian summary, ≤ 200 chars.
+    started_label = (
+        session.started_at.strftime("%Y-%m-%d") if session.started_at else "—"
+    )
+    score_label = (
+        f"{int(round(session.score_total))}/100"
+        if session.score_total is not None else "—"
+    )
+    short_story = (story_summary or "").strip()
+    if len(short_story) > 150:
+        short_story = short_story[:147] + "…"
+    notes_full = (
+        f"Тренировка {started_label} · Балл {score_label} · "
+        f"Архетип: {profile.archetype_code}"
+    )
+    if short_story:
+        notes_full = f"{notes_full} · {short_story}"
+    if len(notes_full) > 500:
+        notes_full = notes_full[:497] + "…"
+
+    # status — score-based heuristic.
+    score_val = session.score_total or 0.0
+    new_status = ClientStatus.contacted if score_val >= 70 else ClientStatus.new
+
+    # ── 5. Create RealClient row directly (bypass create_client because
+    # that helper enforces phone-based dedup which is not relevant here —
+    # AI personas may share phones with real leads, and we own the
+    # source_session_id idempotency above). ───────────────────────────────
+    from app.services.audit import (
+        CLIENT_AUDIT_FIELDS,
+        model_to_audit_dict,
+        write_audit_log,
+    )
+    from app.services.client_domain import emit_client_event, ensure_lead_client
+
+    client = RealClient(
+        id=uuid.uuid4(),
+        manager_id=user.id,
+        full_name=full_name,
+        phone=None,  # AI personas don't carry real phones
+        email=None,
+        status=new_status,
+        is_active=True,
+        debt_amount=debt_amount,
+        debt_details=debt_details,
+        source="training",
+        notes=notes_full,
+        lost_count=0,
+        last_status_change_at=datetime.now(timezone.utc),
+        metadata_={
+            "source_session_id": sid_str,
+            "source_archetype": profile.archetype_code,
+            "source_profile_id": str(profile.id),
+        },
+    )
+    db.add(client)
+    await ensure_lead_client(db, client=client, owner_user=user)
+
+    audit_payload = model_to_audit_dict(client, CLIENT_AUDIT_FIELDS)
+    # Decimal isn't JSON-serializable on every dialect (SQLite tests). Cast
+    # to float so the audit row survives without losing precision-relevant
+    # information (we only need approximate logging here).
+    if "debt_amount" in audit_payload and audit_payload["debt_amount"] is not None:
+        try:
+            audit_payload["debt_amount"] = float(audit_payload["debt_amount"])
+        except Exception:  # noqa: BLE001
+            audit_payload["debt_amount"] = None
+    audit_payload["source_session_id"] = sid_str
+    await write_audit_log(
+        db,
+        actor=user,
+        action="create_client_from_session",
+        entity_type="real_clients",
+        entity_id=client.id,
+        new_values=audit_payload,
+        request=request,
+    )
+
+    await emit_client_event(
+        db,
+        client=client,
+        event_type="lead_client.created",
+        actor_type="user",
+        actor_id=user.id,
+        source="clients_from_session",
+        payload={
+            "client_id": str(client.id),
+            "manager_id": str(user.id),
+            "full_name": client.full_name,
+            "status": client.status.value,
+            "source": client.source,
+            "source_session_id": sid_str,
+        },
+        aggregate_type="real_client",
+        aggregate_id=client.id,
+        idempotency_key=f"lead-client:create:{client.id}",
+    )
+
+    # ── 6. Link session → client (so future re-opens auto-bind). ─────────
+    session.real_client_id = client.id
+    await db.flush()
+    await db.refresh(client)
+
+    # 201 by default for newly-created; FastAPI lets us override the
+    # response code via the Response object, but since the schema is the
+    # same we keep it simple and rely on the default 200 — the FE only
+    # cares about the body. We explicitly set 201 via status code below.
+    response.status_code = status.HTTP_201_CREATED
+    return _client_to_response(client)
 
 
 @router.get("/{client_id}", response_model=ClientResponse)

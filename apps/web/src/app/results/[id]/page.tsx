@@ -101,6 +101,7 @@ export default function ResultsPage() {
   const [achievement, setAchievement] = useState<{ id: string; title: string; description: string; icon?: string } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [addedToCRM, setAddedToCRM] = useState(false);
+  const [createdClientId, setCreatedClientId] = useState<string | null>(null);
 
   // Replay Mode state
   const [replayMessage, setReplayMessage] = useState<{ msg: ChatMessage; index: number } | null>(null);
@@ -1144,15 +1145,18 @@ export default function ResultsPage() {
                 onClick={async () => {
                   if (addedToCRM) return;
                   try {
-                    await api.post("/clients", {
-                      full_name: (session as unknown as Record<string, string>).character_name || (session as unknown as Record<string, string>).scenario_name || "Клиент из тренировки",
-                      source: "training",
-                      status: totalScore >= 70 ? "negotiation" : "new",
-                      notes: `Тренировка ${new Date(session.started_at).toLocaleDateString("ru")} — ${Math.round(totalScore)} баллов`,
-                    });
+                    // BUG NEW-4 fix: was POST /clients with 4 lossy fields
+                    // ("Клиент из тренировки, 47 лет"). Now uses the dedicated
+                    // bridge that reads ClientProfile + session and builds a
+                    // populated CRM card (debt, creditors, archetype, story).
+                    const res = await api.post<{ id: string }>(
+                      `/clients/from-session/${session.id}`,
+                      {},
+                    );
                     setAddedToCRM(true);
+                    setCreatedClientId(res.id);
                   } catch {
-                    // Client already exists or other error — ignore silently
+                    // Idempotent on backend — silently ignore duplicate / network blip.
                   }
                 }}
                 className="inline-flex items-center justify-center gap-2 font-bold tracking-wide uppercase rounded-xl px-3 py-1.5 text-xs transition-all duration-200"
@@ -1163,9 +1167,18 @@ export default function ResultsPage() {
                 {addedToCRM ? "Добавлен в CRM" : "Добавить клиента в CRM"}
               </motion.button>
               {addedToCRM && (
-                <Button href="/clients" size="sm" iconRight={<ArrowRight size={14} />}>
-                  Открыть CRM
+                <Button
+                  href={createdClientId ? `/clients/${createdClientId}` : "/clients"}
+                  size="sm"
+                  iconRight={<ArrowRight size={14} />}
+                >
+                  {createdClientId ? "Перейти к клиенту" : "Открыть CRM"}
                 </Button>
+              )}
+              {addedToCRM && (
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Клиент создан в CRM с реальными данными из звонка
+                </p>
               )}
             </div>
           </motion.div>
