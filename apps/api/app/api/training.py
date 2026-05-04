@@ -1316,6 +1316,89 @@ async def upload_session_attachment(
     return result.attachment
 
 
+class LinkClientRequest(BaseModel):
+    real_client_id: uuid.UUID
+
+
+class LinkClientResponse(BaseModel):
+    session_id: uuid.UUID
+    real_client_id: uuid.UUID
+    real_client_name: str
+
+
+@router.patch(
+    "/sessions/{session_id}/link-client",
+    response_model=LinkClientResponse,
+)
+@limiter.limit("5/minute")
+async def link_session_to_crm_client(
+    session_id: uuid.UUID,
+    request: Request,
+    body: LinkClientRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Привязать сессию тренировки к карточке CRM-клиента.
+
+    Closes the BUG B7 UX gap: the paperclip in a training session refused
+    uploads with 400 ("Сессия не привязана к CRM-клиенту") and the user had
+    no UI path to perform the link. This endpoint sets
+    ``TrainingSession.real_client_id`` after verifying the user owns both
+    the session and the client.
+
+    Errors:
+      404 — session not found / not owned by current user
+      404 — real_client not found / not owned by current user
+      409 — session already linked to a *different* client
+            (detail carries the existing real_client_id so the FE can show
+            "уже привязан к другому клиенту")
+    """
+    session = (await db.execute(
+        select(TrainingSession).where(
+            TrainingSession.id == session_id,
+            TrainingSession.user_id == user.id,
+        )
+    )).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.SESSION_NOT_FOUND)
+
+    if (
+        session.real_client_id is not None
+        and session.real_client_id != body.real_client_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "session_already_linked",
+                "message": "Сессия уже привязана к другому CRM-клиенту",
+                "real_client_id": str(session.real_client_id),
+            },
+        )
+
+    client = (await db.execute(
+        select(RealClient).where(
+            RealClient.id == body.real_client_id,
+            RealClient.manager_id == user.id,
+        )
+    )).scalar_one_or_none()
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CRM-клиент не найден",
+        )
+
+    if session.real_client_id is None:
+        session.real_client_id = body.real_client_id
+        await db.flush()
+        await db.commit()
+
+    return LinkClientResponse(
+        session_id=session.id,
+        real_client_id=client.id,
+        real_client_name=client.full_name,
+    )
+
+
 @router.get("/sessions/{session_id}", response_model=SessionResultResponse)
 async def get_session(
     session_id: uuid.UUID,

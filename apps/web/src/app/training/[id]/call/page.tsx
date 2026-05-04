@@ -36,6 +36,7 @@ import CallDialingOverlay from "@/components/training/phone/CallDialingOverlay";
 import CallEndingTransition from "@/components/training/phone/CallEndingTransition";
 import ScriptDrawer from "@/components/training/ScriptDrawer";
 import { SessionAttachmentButton } from "@/components/training/SessionAttachmentButton";
+import { LinkClientButton } from "@/components/training/LinkClientButton";
 import { telemetry } from "@/lib/telemetry";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useTTS } from "@/hooks/useTTS";
@@ -1225,6 +1226,11 @@ export default function TrainingCallPage() {
           }}
           className="flex w-full max-w-lg items-center gap-2 rounded-full bg-black/50 px-4 py-2 ring-1 ring-white/10 backdrop-blur-md"
         >
+          <LinkClientButton
+            sessionId={id}
+            variant="call"
+            disabled={connectionState !== "connected"}
+          />
           <SessionAttachmentButton
             sessionId={id}
             variant="call"

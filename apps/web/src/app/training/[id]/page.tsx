@@ -29,6 +29,7 @@ import ChatMessage from "@/components/training/ChatMessage";
 import { PinnedMessagesBar } from "@/components/training/PinnedMessagesBar";
 import { QuoteReplyBadge } from "@/components/training/QuoteReplyBadge";
 import { SessionAttachmentButton } from "@/components/training/SessionAttachmentButton";
+import { LinkClientButton } from "@/components/training/LinkClientButton";
 // 2026-04-20: CallButton убран из chat-header. Переключение в голосовой
 // режим теперь происходит на CRM-карточке клиента (/clients/[id]),
 // через отдельные кнопки «Написать / Позвонить» — до входа в сессию,
@@ -1912,6 +1913,10 @@ export default function TrainingSessionPage() {
                   onCancel={() => s.clearPendingQuote()}
                 />
                 <div className="flex items-end gap-2">
+                  <LinkClientButton
+                    sessionId={routeId}
+                    disabled={s.sessionState !== "ready"}
+                  />
                   <SessionAttachmentButton
                     sessionId={routeId}
                     disabled={s.sessionState !== "ready"}
@@ -2095,6 +2100,10 @@ export default function TrainingSessionPage() {
             <div className="lg:hidden">
               {s.textMode ? (
                 <div className="flex items-end gap-2">
+                  <LinkClientButton
+                    sessionId={routeId}
+                    disabled={s.sessionState !== "ready"}
+                  />
                   <SessionAttachmentButton
                     sessionId={routeId}
                     disabled={s.sessionState !== "ready"}
