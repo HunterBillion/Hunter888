@@ -29,6 +29,8 @@ import { PixelModeCard } from "@/components/pvp/PixelModeCard";
 import { PixelIcon, type PixelIconName } from "@/components/pvp/PixelIcon";
 // Issue #169 — custom-character picker (PR #142 backend endpoint).
 import { CharacterPicker } from "@/components/pvp/CharacterPicker";
+// 2026-05-04: full-RAG transparency view ("видеть всё что AI знает").
+import { KnowledgeBaseBrowser } from "@/components/pvp/KnowledgeBaseBrowser";
 
 const DUEL_STATUS_LABELS: Record<string, string> = {
   pending: "Ожидание",
@@ -48,8 +50,11 @@ function PvPLobbyContent() {
   // 3.1: Pre-select knowledge tab + category from URL params
   const tabParam = searchParams.get("tab");
   const categoryParam = searchParams.get("category");
-  const [tab, setTab] = useState<"arena" | "knowledge" | "history">(
-    tabParam === "knowledge" ? "knowledge" : tabParam === "history" ? "history" : "arena"
+  const [tab, setTab] = useState<"arena" | "knowledge" | "history" | "rag">(
+    tabParam === "knowledge" ? "knowledge"
+      : tabParam === "history" ? "history"
+      : tabParam === "rag" ? "rag"
+      : "arena"
   );
   // showInfoModal state removed 2026-04-18 — now handled by PixelInfoButton component.
   const [quizMode, setQuizMode] = useState<"free_dialog" | "blitz" | "themed" | null>(null);
@@ -506,12 +511,22 @@ function PvPLobbyContent() {
                 />
               </div>
 
-              {/* Tabs — pixel chips (2026-05-03 deep-cleanup) */}
+              {/* Tabs — pixel chips. 2026-05-04: added "База ФЗ-127" tab
+                  (RAG transparency view) per user request "видеть всё
+                  что AI знает". */}
               <div className="flex flex-wrap gap-2">
-                {(["arena", "knowledge", "history"] as const).map((t) => {
+                {(["arena", "knowledge", "rag", "history"] as const).map((t) => {
                   const active = tab === t;
-                  const label = t === "arena" ? "Дуэли" : t === "knowledge" ? "Знания ФЗ-127" : "История";
-                  const icon: PixelIconName = t === "arena" ? "sword" : t === "knowledge" ? "book" : "ladder";
+                  const label =
+                    t === "arena" ? "Дуэли"
+                    : t === "knowledge" ? "Знания ФЗ-127"
+                    : t === "rag" ? "База ФЗ-127"
+                    : "История";
+                  const icon: PixelIconName =
+                    t === "arena" ? "sword"
+                    : t === "knowledge" ? "book"
+                    : t === "rag" ? "book"
+                    : "ladder";
                   return (
                     <motion.button
                       key={t}
@@ -808,6 +823,21 @@ function PvPLobbyContent() {
                              режимы — в табе «Дуэли». Сценарий /pvp/arena/lobby
                              доступен через прямой URL если кому-то нужен. */}
                     </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* База ФЗ-127 — RAG transparency view (2026-05-04) */}
+              <AnimatePresence mode="wait">
+                {tab === "rag" && (
+                  <motion.div
+                    key="rag"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    <KnowledgeBaseBrowser />
                   </motion.div>
                 )}
               </AnimatePresence>
