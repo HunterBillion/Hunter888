@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -24,7 +25,6 @@ import {
   Star,
   Zap,
   Mic,
-  MicOff,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -115,13 +115,41 @@ function KnowledgeSessionPage() {
       store.setInput(next);
     },
   });
-  const handleMicToggle = useCallback(() => {
-    if (!speech.isSupported) return;
-    if (speech.status === "listening") {
-      speech.stopListening();
-    } else {
+  // 2026-05-04 mic redesign — hybrid hold-to-talk + tap-to-toggle.
+  //
+  //   • PointerDown: arms a press timer + remembers whether we
+  //     started a listening session at this moment.
+  //   • PointerUp: if held ≥ 250ms → stop (release-to-stop hold).
+  //     Otherwise it was a short tap — leave the session running
+  //     (toggle mode); the NEXT tap will stop it.
+  //   • Click also triggers as fallback for keyboard activation.
+  const micPressStartRef = useRef<number | null>(null);
+  const micStartedThisPressRef = useRef<boolean>(false);
+
+  const handleMicPointerDown = useCallback(() => {
+    if (!speech.isSupported || store.status !== "active") return;
+    micPressStartRef.current = Date.now();
+    if (speech.status !== "listening") {
       speech.startListening();
+      micStartedThisPressRef.current = true;
+    } else {
+      micStartedThisPressRef.current = false;
     }
+  }, [speech, store.status]);
+
+  const finishMicPress = useCallback(() => {
+    const start = micPressStartRef.current;
+    micPressStartRef.current = null;
+    if (!start || !speech.isSupported) return;
+    const heldMs = Date.now() - start;
+    if (heldMs >= 250) {
+      // Hold-to-talk path: release stops the session unconditionally.
+      if (speech.status === "listening") speech.stopListening();
+    } else if (!micStartedThisPressRef.current) {
+      // Short tap on an already-listening button → stop (toggle off).
+      if (speech.status === "listening") speech.stopListening();
+    }
+    micStartedThisPressRef.current = false;
   }, [speech]);
   // quiz_v2: narrative case briefing (2026-04-18)
   const [caseIntro, setCaseIntro] = useState<{
@@ -166,8 +194,17 @@ function KnowledgeSessionPage() {
               total: data.total_questions as number,
             });
           }
-          if (typeof data.time_limit === "number") {
-            store.setTimeLeft(data.time_limit as number);
+          // 2026-05-04: schema alignment — backend sends both names
+          // depending on event (`time_limit_per_question` on
+          // quiz.ready, `time_limit` on quiz.session_started + per
+          // question). Accept either to remove drift between handlers.
+          const tl = (typeof data.time_limit === "number"
+            ? data.time_limit
+            : typeof data.time_limit_per_question === "number"
+              ? data.time_limit_per_question
+              : null) as number | null;
+          if (tl !== null && tl > 0) {
+            store.setTimeLeft(tl);
           }
           break;
         }
@@ -258,6 +295,13 @@ function KnowledgeSessionPage() {
           // Reset tiered-hint counters for the new question.
           setHintTier(null);
           setHintTiersRemaining(null);
+          // 2026-05-04: reset countdown on each question. Backend now
+          // sends `time_limit` per question (not just on quiz.ready).
+          // Without this the client timer ran down to 0 on q1 and
+          // never restarted — that's the "таймер показывает 0" bug.
+          if (typeof data.time_limit === "number" && data.time_limit > 0) {
+            store.setTimeLeft(data.time_limit as number);
+          }
           break;
         }
 
@@ -531,6 +575,18 @@ function KnowledgeSessionPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [store.messages.length, store.isTyping]);
+
+  // 2026-05-04: textarea auto-resize. The fixed 120px maxHeight from
+  // before truncated long structured answers (statute citations,
+  // multi-paragraph reasoning), forcing the user to scroll inside the
+  // input. Now grows up to ~10 lines, then scrolls inside the box.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const cap = 240; // ~10 lines @ 14px line-height
+    el.style.height = `${Math.min(cap, el.scrollHeight)}px`;
+  }, [store.input]);
 
   // #6 fix: Sanitize user input — strip control chars, cap length
   const MAX_ANSWER_LENGTH = 2000;
@@ -811,17 +867,19 @@ function KnowledgeSessionPage() {
               )}
             </AnimatePresence>
 
-            {/* V2: Difficulty indicator */}
+            {/* V2: Difficulty indicator — single line, no star-row.
+                User flagged "звёзды в ряд = плохо" 2026-05-04. */}
             {store.currentDifficulty > 0 && (
               <div className="mt-2 text-center">
-                <span className="font-mono text-sm tracking-wider" style={{ color: "var(--text-muted)" }}>
-                  СЛОЖНОСТЬ{" "}
-                </span>
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <span key={i} style={{ color: i < store.currentDifficulty ? "var(--warning)" : "var(--text-muted)", fontSize: "14px" }}>
-                    <Star size={12} style={{ color: "var(--rank-gold)" }} />
+                <span
+                  className="font-mono text-xs uppercase tracking-widest"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Достигнутая сложность:{" "}
+                  <span style={{ color: "var(--warning)" }}>
+                    {store.currentDifficulty}/5
                   </span>
-                ))}
+                </span>
               </div>
             )}
 
@@ -867,31 +925,65 @@ function KnowledgeSessionPage() {
               </div>
             )}
 
-            {/* Weak categories — highlight areas needing improvement */}
+            {/* "Разбор полётов" — weak categories with direct CTA to
+                drill that category. 2026-05-04: this is the new headline
+                of the completion card per user feedback ("звёзды в ряд
+                = плохо, нужен разбор полётов"). Hidden if everything
+                is ≥60% — no point showing an empty alarm. */}
             {Array.isArray(results.category_progress) && (() => {
               const weak = (results.category_progress as Array<{ category: string; correct: number; total: number }>)
-                .filter(c => c.total > 0 && (c.correct / c.total) < 0.6);
+                .filter(c => c.total > 0 && (c.correct / c.total) < 0.6)
+                .sort((a, b) => (a.correct / a.total) - (b.correct / b.total));
               if (weak.length === 0) return null;
               return (
                 <div
-                  className="mt-4 rounded-xl p-4"
+                  className="mt-6 rounded-xl p-4"
                   style={{
-                    background: "color-mix(in srgb, var(--warning) 6%, transparent)",
-                    border: "1px solid color-mix(in srgb, var(--warning) 20%, transparent)",
+                    background: "color-mix(in srgb, var(--warning) 8%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--warning) 28%, transparent)",
                   }}
                 >
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="font-mono text-sm uppercase tracking-widest font-bold" style={{ color: "var(--warning)" }}>
-                      Слабые категории ФЗ-127
+                  <div className="flex items-center gap-2 mb-3">
+                    <Target size={14} style={{ color: "var(--warning)" }} />
+                    <span
+                      className="font-mono text-sm uppercase tracking-widest font-bold"
+                      style={{ color: "var(--warning)" }}
+                    >
+                      Разбор полётов
                     </span>
                   </div>
-                  <ul className="space-y-1">
-                    {weak.map(c => (
-                      <li key={c.category} className="flex items-start gap-2 text-sm" style={{ color: "var(--text-secondary)" }}>
-                        <span style={{ color: "var(--danger)", flexShrink: 0 }}>→</span>
-                        <span><strong>{c.category}</strong> — {c.correct}/{c.total} ({Math.round((c.correct / c.total) * 100)}%). Рекомендуем дополнительную тренировку.</span>
-                      </li>
-                    ))}
+                  <ul className="space-y-2">
+                    {weak.map(c => {
+                      const pct = Math.round((c.correct / c.total) * 100);
+                      const drillHref = `/pvp/quiz?mode=blitz&category=${encodeURIComponent(c.category)}`;
+                      return (
+                        <li
+                          key={c.category}
+                          className="flex items-center justify-between gap-3 text-sm"
+                          style={{ color: "var(--text-secondary)" }}
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate">
+                              <strong>{c.category}</strong>{" "}
+                              <span style={{ color: "var(--text-muted)" }}>
+                                — {c.correct}/{c.total} ({pct}%)
+                              </span>
+                            </div>
+                          </div>
+                          <Link
+                            href={drillHref}
+                            className="shrink-0 inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold uppercase tracking-widest"
+                            style={{
+                              background: "var(--warning)",
+                              color: "#0b0b14",
+                            }}
+                          >
+                            Подтянуть
+                            <ArrowRight size={11} />
+                          </Link>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               );
@@ -1304,7 +1396,8 @@ function KnowledgeSessionPage() {
               className="flex-1 resize-none bg-transparent px-3 py-2.5 text-sm outline-none placeholder:opacity-50"
               style={{
                 color: "var(--text-primary)",
-                maxHeight: "120px",
+                maxHeight: "240px",
+                overflowY: "auto",
                 fontFamily: "var(--font-mono, monospace)",
               }}
               disabled={store.status !== "active"}
@@ -1321,49 +1414,21 @@ function KnowledgeSessionPage() {
             )}
           </div>
 
-          {/* 2026-04-20: Mic toggle button.
-              Pixel-стиль совпадает с hint/skip/send. Цвет:
-                danger (красный) во время записи — явный signal,
-                border-accent в покое.
-              Если браузер не поддерживает Web Speech API — кнопка
-              disabled с tooltip-объяснением. */}
-          <motion.button
-            onClick={handleMicToggle}
+          {/* 2026-05-04 mic redesign:
+                - hold-to-talk + tap-to-toggle hybrid (see handlers above)
+                - pulsing red ring + animated 4-bar waveform when listening
+                - tooltip clarifies hold vs tap to remove "что эта кнопка делает"
+              The waveform is pseudo (no real audio level from Web Speech
+              API); a future PR can swap to MediaRecorder analyser. */}
+          <MicButton
+            isListening={speech.status === "listening"}
+            isSupported={speech.isSupported}
             disabled={store.status !== "active" || !speech.isSupported}
-            whileTap={{ y: 2 }}
-            className="flex h-11 w-11 shrink-0 items-center justify-center disabled:opacity-40"
-            style={{
-              background:
-                speech.status === "listening"
-                  ? "var(--danger)"
-                  : "var(--input-bg)",
-              border:
-                speech.status === "listening"
-                  ? "2px solid var(--danger)"
-                  : "2px solid var(--accent)",
-              borderRadius: 0,
-              color:
-                speech.status === "listening" ? "#fff" : "var(--accent)",
-              boxShadow:
-                speech.status === "listening"
-                  ? "2px 2px 0 0 #000"
-                  : "2px 2px 0 0 var(--accent-muted)",
-              transition: "box-shadow 120ms, transform 120ms, background 120ms",
-            }}
-            title={
-              !speech.isSupported
-                ? "Голосовой ввод не поддерживается в этом браузере"
-                : speech.status === "listening"
-                ? "Остановить запись"
-                : "Голосовой ответ"
-            }
-            aria-label={
-              speech.status === "listening" ? "Остановить микрофон" : "Включить микрофон"
-            }
-            aria-pressed={speech.status === "listening"}
-          >
-            {speech.status === "listening" ? <MicOff size={16} /> : <Mic size={16} />}
-          </motion.button>
+            onPointerDown={handleMicPointerDown}
+            onPointerUp={finishMicPress}
+            onPointerLeave={finishMicPress}
+            onPointerCancel={finishMicPress}
+          />
 
           {/* Send — pixel arcade accent */}
           <motion.button
@@ -1400,6 +1465,114 @@ function KnowledgeSessionPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/* ─── Mic Button Component ──────────────────────────────────────────────── */
+
+/**
+ * Hybrid hold-to-talk + tap-to-toggle mic button with pulsing-ring
+ * recording indicator and pseudo-waveform animation. The waveform is
+ * decorative (Web Speech API doesn't expose audio level); a follow-up
+ * can swap to a real analyser via MediaRecorder if needed.
+ */
+function MicButton({
+  isListening,
+  isSupported,
+  disabled,
+  onPointerDown,
+  onPointerUp,
+  onPointerLeave,
+  onPointerCancel,
+}: {
+  isListening: boolean;
+  isSupported: boolean;
+  disabled: boolean;
+  onPointerDown: () => void;
+  onPointerUp: () => void;
+  onPointerLeave: () => void;
+  onPointerCancel: () => void;
+}) {
+  const tooltip = !isSupported
+    ? "Голосовой ввод не поддерживается в этом браузере"
+    : isListening
+      ? "Идёт запись… отпусти или нажми ещё раз для остановки"
+      : "Голосовой ответ — удерживай или коротко тапни";
+
+  return (
+    <motion.button
+      type="button"
+      disabled={disabled}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerLeave}
+      onPointerCancel={onPointerCancel}
+      whileTap={{ y: 2 }}
+      className="relative flex h-11 w-11 shrink-0 items-center justify-center disabled:opacity-40 select-none"
+      style={{
+        background: isListening ? "var(--danger)" : "var(--input-bg)",
+        border: isListening ? "2px solid var(--danger)" : "2px solid var(--accent)",
+        borderRadius: 0,
+        color: isListening ? "#fff" : "var(--accent)",
+        boxShadow: isListening ? "2px 2px 0 0 #000" : "2px 2px 0 0 var(--accent-muted)",
+        transition: "box-shadow 120ms, transform 120ms, background 120ms",
+        touchAction: "none",
+      }}
+      title={tooltip}
+      aria-label={isListening ? "Идёт запись голоса" : "Запись голосового ответа"}
+      aria-pressed={isListening}
+    >
+      {isListening ? (
+        <>
+          <MicWaveform />
+          {/* Pulsing recording ring */}
+          <motion.span
+            aria-hidden
+            initial={{ opacity: 0.6, scale: 1 }}
+            animate={{ opacity: [0.6, 0, 0.6], scale: [1, 1.5, 1] }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut" }}
+            className="pointer-events-none absolute inset-0"
+            style={{
+              border: "2px solid var(--danger)",
+              borderRadius: 0,
+            }}
+          />
+        </>
+      ) : (
+        <Mic size={16} />
+      )}
+    </motion.button>
+  );
+}
+
+function MicWaveform() {
+  // 4-bar pseudo waveform. Each bar oscillates with a unique delay
+  // so the group looks organic. Random heights chosen at compile-time
+  // for stability — no per-frame state churn.
+  const bars = [
+    { d: 0.0, h: [40, 90, 50] },
+    { d: 0.1, h: [70, 30, 80] },
+    { d: 0.2, h: [55, 95, 45] },
+    { d: 0.3, h: [35, 70, 55] },
+  ];
+  return (
+    <span className="inline-flex h-4 items-end gap-[2px]" aria-hidden>
+      {bars.map((b, i) => (
+        <motion.span
+          key={i}
+          className="block w-[2px] bg-current"
+          initial={{ height: `${b.h[0]}%` }}
+          animate={{ height: b.h.map((p) => `${p}%`) }}
+          transition={{
+            duration: 0.6,
+            repeat: Infinity,
+            delay: b.d,
+            ease: "easeInOut",
+          }}
+          style={{ minHeight: 3 }}
+        />
+      ))}
+    </span>
   );
 }
 
