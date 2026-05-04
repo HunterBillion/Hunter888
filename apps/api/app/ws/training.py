@@ -5703,6 +5703,26 @@ async def _handle_session_end(
 
             session.scoring_details = enriched_details
 
+            # 2026-05-04 (NEW-5 fix): early commit of scoring_details.
+            # Production sessions 46cca1a2 / 82fa1cd1 lost their LLM-judge
+            # verdict (it WAS computed and cached in Redis) because something
+            # in the post-finalize enrichment block below raised, the WS
+            # exception handler at line ~7341 opened a fresh DB transaction,
+            # and scoring_details was never committed. Flushing+committing
+            # NOW makes scoring durable independent of downstream crashes.
+            # The enrichment block then runs in its own transaction; if that
+            # fails, the user still sees a complete results page.
+            try:
+                await db.flush()
+                await db.commit()
+            except Exception:
+                logger.exception(
+                    "Early scoring_details commit failed for session=%s — "
+                    "downstream enrichment may also fail; will continue and "
+                    "rely on outer transaction.",
+                    session_id,
+                )
+
         # ── TZ-2 Phase 1B: post-finalize enrichment via shared helper ──
         # Replaces three formerly-inline blocks (RAG feedback capture,
         # SessionHistory creation, ManagerProgress XP award) with a single
