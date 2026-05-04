@@ -935,10 +935,12 @@ async def update_chunk(
         request=request,
     )
 
-    # Snapshot the values we need in the response BEFORE commit —
-    # SQLAlchemy expires attributes on commit by default, and the next
-    # access triggers a sync lazy-load that the async session can't
-    # service without a greenlet wrapper (MissingGreenlet error).
+    # `flush` triggered the UPDATE that fires server-side `onupdate=now()`
+    # on the `updated_at` column, which SQLAlchemy then marks expired
+    # on the instance. Touching the attribute synchronously in the
+    # response builder = MissingGreenlet on async session. Refresh
+    # explicitly so the value is materialized via the async path.
+    await db.refresh(chunk, attribute_names=["updated_at"])
     chunk_id_str = str(chunk.id)
     updated_at_iso = (
         chunk.updated_at.isoformat() if chunk.updated_at is not None else None
