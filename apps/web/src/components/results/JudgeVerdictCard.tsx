@@ -2,10 +2,42 @@
 
 import { motion } from "framer-motion";
 import { Gavel } from "lucide-react";
-import type { JudgeVerdictData } from "@/types";
+import type {
+  JudgeFlagItem,
+  JudgeStrengthItem,
+  JudgeVerdictData,
+} from "@/types";
 
 interface JudgeVerdictCardProps {
   judge: JudgeVerdictData;
+  // P4 (2026-05-04): clicking a flag/strength chip scrolls the
+  // transcript to message_index. Wired by /results/[id]/page so a
+  // missing handler is graceful (chips become non-interactive).
+  onJumpToMessage?: (messageIndex: number) => void;
+}
+
+// Normalises legacy `string` flags into the anchored object shape.
+function normalizeFlag(x: JudgeFlagItem | string): JudgeFlagItem {
+  if (typeof x === "string") {
+    return { label: x, message_index: -1, excerpt: "", fix_example: "" };
+  }
+  return {
+    label: x.label ?? "",
+    message_index: typeof x.message_index === "number" ? x.message_index : -1,
+    excerpt: x.excerpt ?? "",
+    fix_example: x.fix_example ?? "",
+  };
+}
+
+function normalizeStrength(x: JudgeStrengthItem | string): JudgeStrengthItem {
+  if (typeof x === "string") {
+    return { label: x, message_index: -1, excerpt: "" };
+  }
+  return {
+    label: x.label ?? "",
+    message_index: typeof x.message_index === "number" ? x.message_index : -1,
+    excerpt: x.excerpt ?? "",
+  };
 }
 
 interface VerdictMeta {
@@ -74,13 +106,17 @@ function formatAdjust(n: number): string {
   return String(n);
 }
 
-export default function JudgeVerdictCard({ judge }: JudgeVerdictCardProps) {
+export default function JudgeVerdictCard({ judge, onJumpToMessage }: JudgeVerdictCardProps) {
   const meta = getVerdictMeta(judge.verdict);
   const adjust = Number(judge.score_adjust ?? 0);
   const adjustColor = adjust >= 0 ? "var(--success)" : "var(--danger)";
 
-  const strengths = Array.isArray(judge.strengths) ? judge.strengths : [];
-  const redFlags = Array.isArray(judge.red_flags) ? judge.red_flags : [];
+  const strengths = (Array.isArray(judge.strengths) ? judge.strengths : [])
+    .map(normalizeStrength)
+    .filter((x) => x.label.length > 0);
+  const redFlags = (Array.isArray(judge.red_flags) ? judge.red_flags : [])
+    .map(normalizeFlag)
+    .filter((x) => x.label.length > 0);
 
   return (
     <motion.div
@@ -147,19 +183,30 @@ export default function JudgeVerdictCard({ judge }: JudgeVerdictCardProps) {
           </div>
           {strengths.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {strengths.map((s, i) => (
-                <span
-                  key={`strength-${i}`}
-                  className="inline-flex items-center rounded-full px-3 py-1 text-xs font-mono"
-                  style={{
-                    background: "rgba(61,220,132,0.10)",
-                    border: "1px solid rgba(61,220,132,0.35)",
-                    color: "var(--success)",
-                  }}
-                >
-                  {s}
-                </span>
-              ))}
+              {strengths.map((s, i) => {
+                const clickable = s.message_index >= 0 && Boolean(onJumpToMessage);
+                const tooltip = s.excerpt ? `Цитата: «${s.excerpt}»` : undefined;
+                return (
+                  <button
+                    key={`strength-${i}`}
+                    type="button"
+                    title={tooltip}
+                    onClick={clickable ? () => onJumpToMessage?.(s.message_index) : undefined}
+                    disabled={!clickable}
+                    className={
+                      "inline-flex items-center rounded-full px-3 py-1 text-xs font-mono transition-colors " +
+                      (clickable ? "cursor-pointer hover:bg-emerald-500/20" : "cursor-default")
+                    }
+                    style={{
+                      background: "rgba(61,220,132,0.10)",
+                      border: "1px solid rgba(61,220,132,0.35)",
+                      color: "var(--success)",
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -177,19 +224,33 @@ export default function JudgeVerdictCard({ judge }: JudgeVerdictCardProps) {
           </div>
           {redFlags.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {redFlags.map((f, i) => (
-                <span
-                  key={`flag-${i}`}
-                  className="inline-flex items-center rounded-full px-3 py-1 text-xs font-mono"
-                  style={{
-                    background: "rgba(239,68,68,0.10)",
-                    border: "1px solid rgba(239,68,68,0.35)",
-                    color: "var(--danger)",
-                  }}
-                >
-                  {f}
-                </span>
-              ))}
+              {redFlags.map((f, i) => {
+                const clickable = f.message_index >= 0 && Boolean(onJumpToMessage);
+                const tooltipParts: string[] = [];
+                if (f.excerpt) tooltipParts.push(`Цитата: «${f.excerpt}»`);
+                if (f.fix_example) tooltipParts.push(`Лучше так: ${f.fix_example}`);
+                const tooltip = tooltipParts.join("\n\n") || undefined;
+                return (
+                  <button
+                    key={`flag-${i}`}
+                    type="button"
+                    title={tooltip}
+                    onClick={clickable ? () => onJumpToMessage?.(f.message_index) : undefined}
+                    disabled={!clickable}
+                    className={
+                      "inline-flex items-center rounded-full px-3 py-1 text-xs font-mono transition-colors " +
+                      (clickable ? "cursor-pointer hover:bg-red-500/20" : "cursor-default")
+                    }
+                    style={{
+                      background: "rgba(239,68,68,0.10)",
+                      border: "1px solid rgba(239,68,68,0.35)",
+                      color: "var(--danger)",
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>
