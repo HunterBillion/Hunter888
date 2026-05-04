@@ -56,6 +56,8 @@ import StageBreakdown from "@/components/results/StageBreakdown";
 import ScriptProgressReport from "@/components/results/ScriptProgressReport";
 import AICoachSection from "@/components/results/AICoachSection";
 import ScoreLayersBreakdown from "@/components/results/ScoreLayersBreakdown";
+import JudgeVerdictCard from "@/components/results/JudgeVerdictCard";
+import MistakesBreakdown from "@/components/results/MistakesBreakdown";
 import ReplayModal from "@/components/results/ReplayModal";
 import { AchievementToast } from "@/components/gamification/AchievementToast";
 import { PostSessionVerdict } from "@/components/results/PostSessionVerdict";
@@ -407,6 +409,16 @@ export default function ResultsPage() {
             </Link>
           </div>
         </motion.header>
+
+        {/* B3 v3: AI-judge verdict + per-mistake breakdown */}
+        {result.score_breakdown?.judge && (
+          <div className="mb-6">
+            <JudgeVerdictCard judge={result.score_breakdown.judge} />
+          </div>
+        )}
+        <div className="mb-8">
+          <MistakesBreakdown items={result.score_breakdown?.anti_patterns?.detected ?? []} />
+        </div>
 
         {/* XP Rewards banner */}
         {result.xp_breakdown && (

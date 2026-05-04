@@ -476,6 +476,23 @@ export interface CheckpointResultItem {
   time?: string;
 }
 
+export interface DetectedItem {
+  category: string;
+  score?: number;
+  penalty?: number;
+  note?: string;
+}
+
+export interface JudgeVerdictData {
+  verdict: "excellent" | "good" | "mixed" | "poor" | "red_flag";
+  score_adjust: number;
+  rationale_ru: string;
+  red_flags: string[];
+  strengths: string[];
+  model_used?: string;
+  latency_ms?: number;
+}
+
 export interface ScoreBreakdown {
   script_adherence?: {
     score: number;
@@ -492,11 +509,13 @@ export interface ScoreBreakdown {
   anti_patterns?: {
     score: number;
     triggered?: string[];
+    detected?: DetectedItem[];
   };
   result?: {
     score: number;
     details?: Record<string, unknown>;
   };
+  judge?: JudgeVerdictData | null;
 }
 
 export interface SessionResultResponse {
