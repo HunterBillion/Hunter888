@@ -152,6 +152,13 @@ class Settings(BaseSettings):
     # ``generate_image`` / ``get_geolocation_context`` / ``fetch_archetype_profile``
     # are implemented and the pilot run smokes clean.
     mcp_enabled: bool = False
+    # P2 (2026-05-03): granular gate for the ``end_call`` tool. Independent
+    # of ``mcp_enabled`` so we can ship the real-tool hangup path without
+    # flipping all MCP tools globally. When True the WS pipeline passes
+    # *only* the ``end_call`` spec to ``generate_response`` (via the new
+    # ``tools=`` arg) and detects ``LLMResponse.tool_calls`` to fire the
+    # same hangup branch the ``[END_CALL]`` string marker triggers.
+    end_call_tool_enabled: bool = True
     # Hard ceiling on handler execution, independent of per-tool timeouts.
     mcp_tool_timeout_s: int = 30
     # Navy.api settings for the first real MCP tool (image generation).
