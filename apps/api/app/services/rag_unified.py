@@ -411,4 +411,22 @@ async def retrieve_all_context(
         result.retrieval_ms,
     )
 
+    # PR-5 observability: surface "RAG returned zero legal chunks" as
+    # WARN with the query verbatim so an operator grepping for
+    # `rag_zero_hits` in the logs can build a tally of which user
+    # questions had no chunk match. Pre-fix this was silent — the AI
+    # judge fell through to method="v2_empty" with no signal that the
+    # base needed a new chunk. The methodologist is the one who
+    # closes the gap, but they had no way to discover it.
+    if (
+        context_type in {"call", "training", "free_dialog"}
+        and result.legal_chunks_count == 0
+        and query
+    ):
+        logger.warning(
+            "rag_zero_hits: query=%r context=%s — no legal chunk matched; consider authoring one",
+            query[:200],
+            context_type,
+        )
+
     return result
