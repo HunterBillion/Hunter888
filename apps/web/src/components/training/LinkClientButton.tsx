@@ -176,28 +176,10 @@ export function LinkClientButton({
     }
   };
 
-  // ── Linked state: static chip ────────────────────────────────────────────
-  if (linked) {
-    return (
-      <div
-        className={
-          isCall
-            ? "flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-3 text-xs text-white"
-            : "flex h-[40px] shrink-0 items-center gap-1.5 rounded-xl px-3 text-xs"
-        }
-        style={isCall ? undefined : {
-          background: "var(--input-bg)",
-          border: "1px solid var(--border-color)",
-          color: "var(--text-primary)",
-        }}
-        title={`CRM-клиент: ${linked.full_name}`}
-      >
-        <UserIcon size={14} />
-        <span className="max-w-[140px] truncate">{linked.full_name}</span>
-      </div>
-    );
-  }
-
+  // ── Linked state: chip is now a button — clicking opens the same popover
+  // so the user can SWAP the linked client. Backend PATCH was made
+  // swap-allowed in 2026-05-04 (γ); previously a different real_client_id
+  // returned 409 with no UI path to recover.
   // ── Unlinked state: "Привязать клиента" button + popover ────────────────
   return (
     <div ref={popoverRef} className="relative shrink-0">
@@ -205,21 +187,25 @@ export function LinkClientButton({
         type="button"
         disabled={disabled}
         onClick={openPopover}
-        aria-label="Привязать CRM-клиента к сессии"
-        title="Привязать клиента — нужно для прикрепления документов"
+        aria-label={linked ? "Сменить CRM-клиента" : "Привязать CRM-клиента к сессии"}
+        title={linked
+          ? `CRM-клиент: ${linked.full_name} — нажмите чтобы сменить`
+          : "Привязать клиента — нужно для прикрепления документов"}
         className={
           isCall
             ? "flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-3 text-xs text-white transition-opacity hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-30"
-            : "flex h-[40px] shrink-0 items-center gap-1.5 rounded-xl px-3 text-xs transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+            : "flex h-[40px] shrink-0 items-center gap-1.5 rounded-xl px-3 text-xs transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
         }
         style={isCall ? undefined : {
           background: "var(--input-bg)",
           border: "1px solid var(--border-color)",
-          color: "var(--accent)",
+          color: linked ? "var(--text-primary)" : "var(--accent)",
         }}
       >
-        <Link2 size={14} />
-        <span>Привязать клиента</span>
+        {linked ? <UserIcon size={14} /> : <Link2 size={14} />}
+        <span className={linked ? "max-w-[140px] truncate" : undefined}>
+          {linked ? linked.full_name : "Привязать клиента"}
+        </span>
       </button>
 
       {open && (
@@ -241,7 +227,7 @@ export function LinkClientButton({
             className="mb-1.5 px-1.5 py-1 text-[10px] uppercase tracking-wide"
             style={isCall ? { color: "rgba(255,255,255,0.5)" } : { color: "var(--text-muted)" }}
           >
-            CRM-клиенты
+            {linked ? "Сменить клиента" : "CRM-клиенты"}
           </div>
 
           {loading ? (
