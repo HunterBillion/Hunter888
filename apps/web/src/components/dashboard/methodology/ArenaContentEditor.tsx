@@ -59,10 +59,24 @@ interface Chunk {
   retrieval_count: number;
 }
 
-const CATEGORIES = [
-  "eligibility", "procedure", "property", "consequences", "costs",
-  "creditors", "documents", "timeline", "court", "rights",
+// Бэкенд хранит enum-коды (eligibility/procedure/...). UI показывает русские
+// названия, но в payload отправляет канонический код. Один источник правды:
+const CATEGORIES: { code: string; label: string }[] = [
+  { code: "eligibility",  label: "Условия подачи" },
+  { code: "procedure",    label: "Процедуры" },
+  { code: "property",     label: "Имущество" },
+  { code: "consequences", label: "Последствия" },
+  { code: "costs",        label: "Расходы" },
+  { code: "creditors",    label: "Кредиторы" },
+  { code: "documents",    label: "Документы" },
+  { code: "timeline",     label: "Сроки" },
+  { code: "court",        label: "Суд" },
+  { code: "rights",       label: "Права" },
 ];
+
+const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
+  CATEGORIES.map(({ code, label }) => [code, label]),
+);
 
 const DEFAULT_FORM = {
   title: "",
@@ -319,8 +333,8 @@ export function ArenaContentEditor() {
           }}
         >
           <option value="">Все категории</option>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
+          {CATEGORIES.map(({ code, label }) => (
+            <option key={code} value={code}>{label}</option>
           ))}
         </select>
         <input
@@ -378,8 +392,8 @@ export function ArenaContentEditor() {
                 color: "var(--text-primary)",
               }}
             >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
+              {CATEGORIES.map(({ code, label }) => (
+                <option key={code} value={code}>{label}</option>
               ))}
             </select>
             <input
@@ -571,8 +585,8 @@ export function ArenaContentEditor() {
                           color: "var(--text-primary)",
                         }}
                       >
-                        {CATEGORIES.map((c) => (
-                          <option key={c} value={c}>{c}</option>
+                        {CATEGORIES.map(({ code, label }) => (
+                          <option key={code} value={code}>{label}</option>
                         ))}
                       </select>
                       <input
@@ -660,19 +674,20 @@ export function ArenaContentEditor() {
                           {chunk.title || chunk.law_article}
                         </span>
                         <span
-                          className="rounded px-1.5 py-0.5 text-xs font-mono"
+                          className="rounded px-1.5 py-0.5 text-xs"
                           style={{
                             background: "var(--accent-muted)",
                             color: "var(--accent)",
                           }}
                         >
-                          {chunk.category}
+                          {CATEGORY_LABEL[chunk.category] ?? chunk.category}
                         </span>
                         <span
                           className="text-xs font-mono"
                           style={{ color: "var(--text-muted)" }}
+                          title={`Сложность ${chunk.difficulty_level} из 5`}
                         >
-                          D{chunk.difficulty_level}
+                          Слож. {chunk.difficulty_level}
                         </span>
                         {chunk.is_court_practice && (
                           <span
