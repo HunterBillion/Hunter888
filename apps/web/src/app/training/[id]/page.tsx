@@ -52,6 +52,14 @@ import WhisperPanel from "@/components/training/WhisperPanel";
 import { HangupModal } from "@/components/training/HangupModal";
 import SessionEndingOverlay from "@/components/training/SessionEndingOverlay";
 import { telemetry } from "@/lib/telemetry";
+import {
+  createHangupCoordinatorState,
+  markEndSent,
+  armFallback as armFallbackImpl,
+  cancelFallback as cancelFallbackImpl,
+  resetForNewSession as resetHangupCoordinator,
+  type HangupCoordinatorState,
+} from "@/lib/hangupCoordinator";
 import { TrapNotification, type TrapEvent } from "@/components/training/TrapNotification";
 import { ClientCard, type ClientCardData } from "@/components/training/ClientCard";
 import { ClientCardMini } from "@/components/training/ClientCardMini";
@@ -201,14 +209,17 @@ export default function TrainingSessionPage() {
     // 2026-04-18: auto-skip MicCheck gate. Must run inside an effect, NOT
     // during render (caused "Cannot update a component while rendering" error).
     useSessionStore.getState().setMicChecked(true);
+    // 2026-05-04 (v2): belt-and-suspenders reset — `session.started` and
+    // `session.resumed` handlers also clear these refs, but if the route
+    // changes (story-mode pivot, deep link from /results back into another
+    // session) the parent may keep the component mounted. Resetting on
+    // routeId change guarantees the dedupe slate is clean for the new id.
+    resetHangupCoordinator(hangupRef.current);
     return () => {
       useSessionStore.getState().reset();
       wsTimersRef.current.forEach(clearTimeout);
       wsTimersRef.current = [];
-      if (hangupFallbackTimerRef.current) {
-        clearTimeout(hangupFallbackTimerRef.current);
-        hangupFallbackTimerRef.current = null;
-      }
+      cancelFallbackImpl(hangupRef.current, { reason: "unmount" });
     };
   }, [routeId]);
 
@@ -217,17 +228,12 @@ export default function TrainingSessionPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wsTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const sessionEndedRef = useRef<{ score: number | null; xp: number | null; levelUp: boolean }>({ score: null, xp: null, levelUp: false });
-  // 2026-05-04: dedupe session.end sends. Three independent paths fire it
-  // (handleEnd button, C3 auto-fire 3s after client.hangup, HangupModal
-  // "К результатам" button). Without a guard, two of them fire on every
-  // hangup → backend logs `error: session_completed` and the FE waits
-  // 10–60s for the redirect because the second send confuses the timing.
-  const sessionEndSentRef = useRef(false);
-  // 2026-05-04: track if we've armed the post-hangup fallback redirect.
-  // session.ended is the canonical signal but if WS is slow / the event is
-  // dropped, this 5s fallback navigates to /results so the user is never
-  // stuck on the chat UI behind a closed hangup modal.
-  const hangupFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 2026-05-04 (v2): hangup coordinator — owns the dedupe slate +
+  // fallback timer for the post-hangup race. See @/lib/hangupCoordinator
+  // for the contract; the page uses it through the four wrappers below.
+  // Extracted to a pure module so it can be unit-tested without booting
+  // the whole page (see __tests__/hangup-flow.test.tsx).
+  const hangupRef = useRef<HangupCoordinatorState>(createHangupCoordinatorState());
   const storyBootstrappedRef = useRef(false);
   // 2026-04-18 audit fix: in story-mode, each new call spawns a NEW
   // TrainingSession backend-side. The URL's `routeId` stays the initial
@@ -368,6 +374,12 @@ export default function TrainingSessionPage() {
           if (data.data.session_id) {
             currentSessionIdRef.current = data.data.session_id as string;
           }
+          // 2026-05-04 (v2): reset session.end dedupe + clear any stale
+          // hangup-fallback timer for the new session. Story-mode reuses
+          // the same component instance across multiple calls — without
+          // this reset, the second/third call would silently skip
+          // session.end (the dedupe ref stays true forever).
+          resetHangupCoordinator(hangupRef.current);
           if (data.data.character_name) s.setCharacterName(data.data.character_name as string);
           if (data.data.initial_emotion) s.setEmotion(data.data.initial_emotion as EmotionState);
           if (data.data.scenario_title) s.setScenarioTitle(data.data.scenario_title as string);
@@ -570,10 +582,12 @@ export default function TrainingSessionPage() {
               setEnding(true);
               // 2026-05-04: success path — cancel the 5s fallback so we
               // don't double-navigate (success replace already lands).
-              if (hangupFallbackTimerRef.current) {
-                clearTimeout(hangupFallbackTimerRef.current);
-                hangupFallbackTimerRef.current = null;
-              }
+              // 2026-05-04 (v2): emits a console.info so the
+              // fallback-fire-rate dashboard has a denominator.
+              cancelFallbackImpl(hangupRef.current, {
+                reason: "ack",
+                sessionId: currentSessionIdRef.current || routeId,
+              });
               router.replace(`/results/${currentSessionIdRef.current || routeId}`);
             }
           }
@@ -768,9 +782,17 @@ export default function TrainingSessionPage() {
           if (!canContinue) {
             wsTimersRef.current.push(
               setTimeout(() => {
-                if (sessionEndSentRef.current) return;
-                sessionEndSentRef.current = true;
-                sendMessage({ type: "session.end", data: {} });
+                // 2026-05-04 (v2): also arm the 5s router-fallback for
+                // the silent-user path. Previously, if the user did NOT
+                // click "К результатам" and session.ended was delayed
+                // by 60s (slow scoring / WS lag), they were stuck on
+                // the dead chat behind the modal. armHangupFallback()
+                // navigates to /results in 5s if session.ended doesn't
+                // arrive first (the success path cancels it).
+                armHangupFallback();
+                if (markEndSent(hangupRef.current)) {
+                  sendMessage({ type: "session.end", data: {} });
+                }
               }, 3000),
             );
           }
@@ -1027,6 +1049,10 @@ export default function TrainingSessionPage() {
           if (data.data.session_id) {
             currentSessionIdRef.current = data.data.session_id as string;
           }
+          // 2026-05-04 (v2): a resumed session is by definition not yet
+          // ended — clear the dedupe ref so a subsequent hangup can
+          // actually fire session.end.
+          resetHangupCoordinator(hangupRef.current);
           // 2026-04-18 audit fix: restore story HUD state on reconnect.
           // Without this, a reconnect in the middle of a 5-call chain
           // showed "call 0/0" and the story HUD bar disappeared.
@@ -1348,31 +1374,31 @@ export default function TrainingSessionPage() {
   // stuck if session.ended is delayed/dropped (5s timeout → /results).
   const handleEnd = () => {
     setEnding(true);
-    if (!sessionEndSentRef.current) {
-      sessionEndSentRef.current = true;
+    if (markEndSent(hangupRef.current)) {
       sendMessage({ type: "session.end", data: {} });
     }
     armHangupFallback();
   };
 
-  // 2026-05-04: 5s fallback navigation if session.ended never arrives.
-  // The session.ended handler at line ~547 calls router.replace; this
-  // fallback covers the worst case where WS is slow / event dropped.
-  // Idempotent — re-arming resets the timer.
+  // 2026-05-04 (v2): thin wrapper around the pure coordinator. Owns the
+  // navigation side-effect (router.replace) since the coordinator is
+  // intentionally DOM-free. Logs are baked into the coordinator's
+  // default loggers (console.warn) so the dashboard sees them.
   const armHangupFallback = () => {
-    if (hangupFallbackTimerRef.current) clearTimeout(hangupFallbackTimerRef.current);
-    hangupFallbackTimerRef.current = setTimeout(() => {
-      const st = useSessionStore.getState();
-      // Don't fight the success path — if session.ended already fired
-      // we'll be on /results already and this is a no-op. router.replace
-      // is safe to call from an old route that already navigated.
-      if (st.sessionState === "completed") return;
-      const sid = currentSessionIdRef.current || routeId;
-      // Mark completed so the navigation doesn't trigger a "session active"
-      // re-render loop on the dead chat.
-      s.setSessionState("completed");
-      router.replace(`/results/${sid}`);
-    }, 5000);
+    const sid = currentSessionIdRef.current || routeId;
+    armFallbackImpl(hangupRef.current, {
+      sessionId: sid,
+      onFire: (firedSid) => {
+        const st = useSessionStore.getState();
+        // Don't fight the success path — if session.ended already
+        // moved us to /results, just bail.
+        if (st.sessionState === "completed") return;
+        // Mark completed so the navigation doesn't trigger a
+        // "session active" re-render loop on the dead chat.
+        s.setSessionState("completed");
+        router.replace(`/results/${firedSid}`);
+      },
+    });
   };
 
   const handleMicPress = async () => {
@@ -2698,8 +2724,7 @@ export default function TrainingSessionPage() {
             setTimeout(() => router.push(`/stories/${s.storyId}`), 900);
           } else {
             setEnding(true);
-            if (!sessionEndSentRef.current) {
-              sessionEndSentRef.current = true;
+            if (markEndSent(hangupRef.current)) {
               sendMessage({ type: "session.end", data: {} });
             }
             armHangupFallback();
