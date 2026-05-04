@@ -1317,6 +1317,42 @@ async def _generate_character_reply(
     if state.get("fake_transition_prompt"):
         extra_system += "\n\n" + state["fake_transition_prompt"]
 
+    # 2026-05-04 (NEW-9 / B4 v2): proactive return-to-topic.
+    # The system-prompt rule 10 (added in PR #215) asked the LLM to bring
+    # up debts on its own when the manager wandered. In testing the LLM
+    # ignored the rule entirely on multiple sessions. Server-side
+    # detection via coach_mode_switch already counts off-task turns into
+    # Redis. Here we read that state and INJECT an explicit per-turn
+    # instruction when ≥3 of the last 6 manager turns are off_task.
+    # Deterministic, runs every turn, costs nothing — bypasses LLM
+    # rule-following lottery.
+    try:
+        from app.services.coach_mode_switch import REDIS_KEY_FMT as _MS_KEY, _SwitchState
+        from app.core.redis_pool import get_redis as _get_redis_ms_inj
+        _r_ms_inj = _get_redis_ms_inj()
+        _ms_raw = await _r_ms_inj.get(_MS_KEY.format(session_id=str(session_id)))
+        _ms_state = _SwitchState.from_json(_ms_raw)
+        _off_task_in_window = sum(1 for m in _ms_state.window if m == "off_task")
+        if _off_task_in_window >= 3 and not state.get("ai_proactively_returned"):
+            extra_system += (
+                "\n\n## ПРОАКТИВНЫЙ ВОЗВРАТ К ДЕЛУ — обязательно\n"
+                "Менеджер уже несколько ходов подряд говорит НЕ ПО ТЕМЕ. "
+                "В этом ответе ты ОБЯЗАН первой или второй фразой САМ вспомнить "
+                "о своей реальной проблеме (долги/банкротство) от первого лица. "
+                "Примеры: «Слушайте, а у вас знакомых юристов нет? У меня тут долги, "
+                "не знаю что делать», «Кстати, раз уж разговор идёт — у меня тут "
+                "реально 800 тысяч долгов висит, может посоветуете?», "
+                "«А вы вообще по поводу долгов звоните, да? У меня там проблемы». "
+                "Это ОДИН раз за разговор — не повторяй в следующих ответах."
+            )
+            state["ai_proactively_returned"] = True
+            logger.info(
+                "Proactive return-to-topic injected (session=%s, off_task=%d)",
+                session_id, _off_task_in_window,
+            )
+    except Exception:
+        logger.debug("Proactive return-to-topic injection failed for %s", session_id, exc_info=True)
+
     # 2026-04-22: Manager-initiated farewell — inject closing instruction.
     # When the manager said "до свидания" / "спасибо за время" etc., the AI
     # should give one short polite closing reply (~10 words). After this turn
