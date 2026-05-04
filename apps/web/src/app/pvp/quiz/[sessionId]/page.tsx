@@ -420,6 +420,12 @@ function KnowledgeSessionPage() {
             current: p.current ?? store.currentQuestion,
             total: p.total ?? store.totalQuestions,
           });
+          // 2026-05-04 FRONT-2: sync client timer with server-truth on
+          // every progress event. Client setInterval keeps ticking
+          // between events; this just corrects drift cheaply.
+          if (typeof p.time_left_now === "number" && p.time_left_now >= 0) {
+            store.setTimeLeft(p.time_left_now);
+          }
           break;
         }
 
@@ -1082,6 +1088,18 @@ function KnowledgeSessionPage() {
           <div className="flex items-center gap-3">
             <motion.button
               onClick={() => {
+                // 2026-05-04 FRONT-2: send `quiz.end` so the server
+                // marks the session completed and we get a results
+                // payload, instead of leaving it dangling as
+                // "abandoned" on disconnect. Best-effort — if WS is
+                // already closed we just navigate.
+                try {
+                  if (store.status === "active") {
+                    sendMessage({ type: "quiz.end" });
+                  }
+                } catch {
+                  /* WS may be down — proceed to navigate anyway */
+                }
                 store.reset();
                 router.push("/pvp");
               }}
@@ -1097,6 +1115,8 @@ function KnowledgeSessionPage() {
                 boxShadow: "2px 2px 0 0 var(--border-color)",
                 transition: "box-shadow 140ms ease-out, transform 140ms ease-out",
               }}
+              title="Завершить квиз и выйти"
+              aria-label="Завершить квиз и выйти"
             >
               <ChevronLeft size={22} />
             </motion.button>
