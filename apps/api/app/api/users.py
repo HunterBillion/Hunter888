@@ -137,6 +137,7 @@ class UserListItem(BaseModel):
     email: str
     full_name: str
     role: str
+    team_id: uuid.UUID | None = None
     team_name: str | None = None
     is_active: bool
     avatar_url: str | None = None
@@ -560,6 +561,7 @@ async def list_users(
             email=u.email,
             full_name=u.full_name,
             role=u.role.value,
+            team_id=u.team_id,
             team_name=u.team.name if u.team else None,
             is_active=u.is_active,
             avatar_url=u.avatar_url,
