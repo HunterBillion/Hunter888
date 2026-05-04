@@ -184,6 +184,7 @@ async def _call_with_backoff(
     max_tokens: int | None = None,
     temperature: float | None = None,
     tools: list[dict] | None = None,
+    model_override: str | None = None,
 ) -> "LLMResponse | None":
     """Call an LLM provider with exponential backoff + jitter and circuit breaker.
 
@@ -208,10 +209,16 @@ async def _call_with_backoff(
             # P2 (2026-05-03): tools forwarded as kwarg so providers that
             # don't support tool-calling (gemini/claude/scripted) can ignore
             # it without changing their positional-arg signature.
+            # 2026-05-04: model_override added for the local provider's
+            # persona-role fast-model swap. Other providers ignore the kwarg.
+            _kwargs: dict = {}
             if tools is not None:
+                _kwargs["tools"] = tools
+            if model_override and provider_name == "local":
+                _kwargs["model_override"] = model_override
+            if _kwargs:
                 response = await call_fn(
-                    system, messages, timeout, max_tokens, temperature,
-                    tools=tools,
+                    system, messages, timeout, max_tokens, temperature, **_kwargs,
                 )
             else:
                 response = await call_fn(system, messages, timeout, max_tokens, temperature)
@@ -1671,6 +1678,7 @@ async def _call_local_llm(
     *,
     tools: list[dict] | None = None,
     raw_messages: list[dict] | None = None,
+    model_override: str | None = None,
 ) -> LLMResponse:
     """Call local LLM.
 
@@ -1757,8 +1765,13 @@ async def _call_local_llm(
     client = _get_local_client()
     if client is None:
         raise LLMError("Local LLM client not configured")
+    # 2026-05-04 (latency-fix): persona-role uses a faster model when
+    # `local_llm_persona_model` is configured. Caller passes
+    # `model_override="<persona model>"` for `task_type="roleplay"`. Falls
+    # back to `local_llm_model` for everything else.
+    _effective_model = model_override or settings.local_llm_model
     kwargs: dict = {
-        "model": settings.local_llm_model,
+        "model": _effective_model,
         "messages": oai_messages,
         # max_tokens=None preserves the historical 800 cap.
         "max_tokens": max_tokens if max_tokens is not None else 800,
@@ -2551,9 +2564,27 @@ async def generate_response(
     timeout = float(settings.llm_timeout_seconds)
     semaphore = _get_llm_semaphore(task_type)
 
+    # 2026-05-04 (latency-fix): pick faster persona-model when configured
+    # AND we're generating a character roleplay reply. Other task_types
+    # (judge / coach / report / structured) still use the main model
+    # because they need stronger reasoning. Forwarded as `model_override`
+    # to `_call_with_backoff` only for the `local` provider — gemini /
+    # claude / openai branches keep their own model fields.
+    _persona_model_override: str | None = None
+    if (
+        task_type == "roleplay"
+        and getattr(settings, "local_llm_persona_model", "")
+    ):
+        _persona_model_override = settings.local_llm_persona_model
+        logger.debug(
+            "persona_model override active: %s (was %s)",
+            _persona_model_override, settings.local_llm_model,
+        )
+
     logger.info(
-        "LLM route: prefer=%s → resolved=%s, task=%s, prompt_tokens≈%d, max_tokens=%d",
+        "LLM route: prefer=%s → resolved=%s, task=%s, prompt_tokens≈%d, max_tokens=%d, persona_override=%s",
         prefer_provider, resolved_provider, task_type, prompt_tokens, effective_max_tokens,
+        _persona_model_override or "-",
     )
 
     async def _apply_filter(resp: LLMResponse) -> LLMResponse:
@@ -2586,6 +2617,7 @@ async def generate_response(
                     max_tokens=_forwarded_max_tokens,
                     temperature=temperature,
                     tools=tools,
+                    model_override=_persona_model_override,
                 )
                 if resp is not None:
                     resp.is_fallback = True
@@ -2599,6 +2631,7 @@ async def generate_response(
                     max_tokens=_forwarded_max_tokens,
                     temperature=temperature,
                     tools=tools,
+                    model_override=_persona_model_override,
                 )
                 if resp is not None:
                     return await _apply_filter(resp)
@@ -2788,6 +2821,8 @@ async def _stream_openai_compat(
     timeout: float,
     max_tokens: int | None = None,
     temperature: float | None = None,
+    *,
+    model_override: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream tokens from an OpenAI-compatible cloud endpoint (navy.api).
 
@@ -2816,8 +2851,10 @@ async def _stream_openai_compat(
     # so the cache key is identical across stream/blocking entry points.
     oai_messages = _build_oai_messages_with_cache(system_prompt, messages)
 
+    # 2026-05-04 (latency-fix): persona-role override.
+    _effective_model = model_override or settings.local_llm_model
     kwargs: dict[str, Any] = {
-        "model": settings.local_llm_model,
+        "model": _effective_model,
         "messages": oai_messages,
         "stream": True,
         # Match historical caps from the blocking path so behaviour is
@@ -3130,12 +3167,24 @@ async def generate_response_stream(
                 if _streaming_enabled:
                     if _is_private_local_url():
                         _streamer = _stream_ollama
+                        _stream_kwargs: dict[str, Any] = {}
                     else:
                         _streamer = _stream_openai_compat
+                        # 2026-05-04 (latency-fix): persona model override.
+                        # Streaming path mirrors the blocking path: when
+                        # task_type=="roleplay" AND local_llm_persona_model
+                        # is configured, swap to the faster model.
+                        _stream_kwargs = {}
+                        if (
+                            task_type == "roleplay"
+                            and getattr(settings, "local_llm_persona_model", "")
+                        ):
+                            _stream_kwargs["model_override"] = settings.local_llm_persona_model
                     async for token in _streamer(
                         full_system, trimmed, 60.0,
                         max_tokens=_stream_max_tokens,
                         temperature=_stream_temperature,
+                        **_stream_kwargs,
                     ):
                         full_response_buf.append(token)
                         yield token
