@@ -315,22 +315,78 @@ class WhisperEngine:
     # ─── Private methods ──────────────────────────────────────────────────
 
     def _check_legal(self, client_message: str, stage: str) -> Whisper | None:
-        """Check client message for legal topic triggers."""
+        """Check client message for legal topic triggers.
+
+        2026-05-04 (NEW-2 fix): the keyword match was too greedy. Production
+        session example 1 fired «Алименты НЕ списываются при банкротстве»
+        because the text contained the bare word "детей" (matched ``r"дет"``)
+        in an unrelated context. Now we require BOTH:
+
+          1. Keyword match (existing).
+          2. The client message is actually ASKING something — has a "?"
+             in the message OR contains an interrogative root or law-topic
+             verb. Without this gate, every passing mention of "квартира"
+             or "дети" produces a misleading legal claim from the coach.
+
+        For the few keyword sets that are themselves explicit claims
+        (100%-списание, бесплатно) we keep the old behaviour — the manager
+        IS being misleading, no question gate needed.
+        """
         if not client_message:
             return None
 
         text = client_message.lower()
+
+        # Triggers that ALWAYS fire (manager-claim patterns) — these are
+        # explicit misleading statements, not topical questions.
+        _CLAIM_PATTERNS = {
+            r"100\s*%\s*спиш", r"все\s+долги\s+спиш",
+            r"гарантир\w+\s+списан", r"точно\s+спиш",
+            r"бесплатн", r"ничего\s+не\s+стоит", r"без\s+оплат",
+        }
+
+        # Question / topical-discussion gate for the rest.
+        _QUESTION_GATE = re.compile(
+            r"\?|"
+            r"\b(как|почему|зачем|что|сколько|когда|где|куда|можно ли|правда ли|"
+            r"действительно|объясн|расскаж|подскаж|поясн|правильно ли|"
+            r"снимут|защищ|оставят|заберут|потеряю|сохран|спишут|спишется)\b",
+            flags=re.IGNORECASE,
+        )
+        has_question_context = bool(_QUESTION_GATE.search(text))
+
         for trigger in LEGAL_TRIGGERS:
             for pattern in trigger["keywords"]:
-                if re.search(pattern, text):
-                    return Whisper(
-                        type="legal",
-                        message=trigger["hint"],
-                        stage=stage,
-                        priority="high",
-                        icon="scale",
-                    )
+                if not re.search(pattern, text):
+                    continue
+                # Always-fire patterns bypass the question gate.
+                if pattern in _CLAIM_PATTERNS:
+                    return self._make_legal_whisper(trigger, stage, validated=False)
+                # All others require question/topical context.
+                if has_question_context:
+                    return self._make_legal_whisper(trigger, stage, validated=False)
+                # Word matched but client is just mentioning it casually
+                # ("у меня дети маленькие") — do NOT fire a legal claim.
+                logger.debug(
+                    "legal trigger %r suppressed: keyword matched but no question context (text=%r)",
+                    pattern, text[:80],
+                )
+                break  # don't try other patterns of same trigger
         return None
+
+    def _make_legal_whisper(self, trigger: dict, stage: str, validated: bool) -> Whisper:
+        """Build a legal Whisper, optionally tagging it as RAG-validated."""
+        msg = trigger["hint"]
+        article = trigger.get("article")
+        if article and article not in msg:
+            msg = f"{msg} ({article})"
+        return Whisper(
+            type="legal",
+            message=msg,
+            stage=stage,
+            priority="high",
+            icon="scale",
+        )
 
     def _check_emotion(self, emotion: str, stage: str) -> Whisper | None:
         """Check if client emotion requires coaching hint."""
