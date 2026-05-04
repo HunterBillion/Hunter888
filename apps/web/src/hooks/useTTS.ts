@@ -1,5 +1,17 @@
 "use client";
 
+// ---------------------------------------------------------------------------
+// Deferred blob revoke pattern (prod incident 2026-05-04):
+// `URL.revokeObjectURL(url)` must NOT fire before the <audio> element has
+// actually opened the blob (i.e. before `loadeddata`). Eager revoke racing
+// `routeThroughPhoneBand` (MediaElementAudioSourceNode) caused
+// `ERR_FILE_NOT_FOUND` on `blob:` URLs and ~10% of sentences silently
+// dropped with "[TTS] ✗ chunk media error 1". `safeRevoke()` below defers
+// the revoke to `loadeddata` if the element hasn't loaded yet, with a
+// hard 30s safety timeout to prevent leaks. See MDN:
+// https://developer.mozilla.org/docs/Web/API/URL/createObjectURL#memory_management
+// ---------------------------------------------------------------------------
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { logger } from "@/lib/logger";
 
@@ -544,6 +556,25 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
         audio.volume = volumeRef.current;
         audioRef.current = audio;
 
+        // Deferred-revoke bookkeeping (see top-of-file comment).
+        let loaded = false;
+        audio.onloadeddata = () => {
+          loaded = true;
+        };
+        const safeRevoke = () => {
+          if (loaded) {
+            URL.revokeObjectURL(url);
+          } else {
+            audio.addEventListener(
+              "loadeddata",
+              () => URL.revokeObjectURL(url),
+              { once: true },
+            );
+            // Hard safety: revoke after 30s no matter what so we don't leak.
+            setTimeout(() => URL.revokeObjectURL(url), 30_000);
+          }
+        };
+
         // Phone-band filter (call mode only) — must run BEFORE audio.play()
         // since MediaElementAudioSourceNode can be created exactly once per
         // HTMLAudioElement. Falls through silently if Web Audio is unavailable.
@@ -569,7 +600,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
           setSpeaking(false);
           stopAudioLevelSimulation();
           stopDurationCountdown();
-          URL.revokeObjectURL(url);
+          safeRevoke();
           objectUrlRef.current = null;
           audioRef.current = null;
           opts?.onEnded?.();
@@ -592,7 +623,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
           setSpeaking(false);
           stopAudioLevelSimulation();
           stopDurationCountdown();
-          URL.revokeObjectURL(url);
+          safeRevoke();
           objectUrlRef.current = null;
           audioRef.current = null;
           opts?.onEnded?.();
@@ -635,7 +666,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
           setSpeaking(false);
           stopAudioLevelSimulation();
           stopDurationCountdown();
-          URL.revokeObjectURL(url);
+          safeRevoke();
           objectUrlRef.current = null;
           audioRef.current = null;
           opts?.onEnded?.();
@@ -936,15 +967,37 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
       { type: "audio/mpeg" },
     );
     const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
+    let audio = new Audio(url);
     audio.volume = volumeRef.current;
     audioRef.current = audio;
+
+    // Deferred-revoke bookkeeping (see top-of-file comment). The flag and
+    // helper close over `url` (immutable), but `audio` may be reassigned by
+    // the one-shot retry below — we reattach `onloadeddata` in the retry too.
+    let loaded = false;
+    audio.onloadeddata = () => {
+      loaded = true;
+    };
+    const safeRevoke = () => {
+      if (loaded) {
+        URL.revokeObjectURL(url);
+      } else {
+        audio.addEventListener(
+          "loadeddata",
+          () => URL.revokeObjectURL(url),
+          { once: true },
+        );
+        // Hard safety: revoke after 30s no matter what so we don't leak.
+        setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      }
+    };
+
     // Phone-band filter on chunk path too — same constraint: route before play().
     if (phoneBandFilter) {
       routeThroughPhoneBand(audio);
     }
     const advance = (failed: boolean = false) => {
-      URL.revokeObjectURL(url);
+      safeRevoke();
       playingChunkRef.current = false;
       nextExpectedIndexRef.current += 1;
       // Audit Pattern 4 #10: when chunks fail one-by-one, the fallback
@@ -972,9 +1025,39 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
       }
       playNextChunk();
     };
+    // One-shot retry on MEDIA_ERR_ABORTED (code 1) — the specific error we
+    // see when the blob URL race fires before `loadeddata`. NOTE: we cannot
+    // re-route the retry through `routeThroughPhoneBand` because
+    // MediaElementAudioSourceNode can be created exactly once per
+    // HTMLAudioElement and we'd be creating a fresh element here. The retry
+    // therefore plays "dry" (no phone-band filter); for a chunk we'd have
+    // dropped entirely, this is a strictly better fallback.
+    let retried = false;
     audio.onended = () => advance(false);
     audio.onerror = () => {
-      console.warn("[TTS] ✗ chunk media error", chunk.index);
+      const code = audio.error?.code ?? 0;
+      console.warn("[TTS] ✗ chunk media error", chunk.index, "code", code);
+      if (!retried && (code === MediaError.MEDIA_ERR_ABORTED || code === 1)) {
+        retried = true;
+        console.warn("[TTS] ↻ chunk", chunk.index, "retry (code 1)");
+        audio = new Audio(url);
+        audio.volume = volumeRef.current;
+        audioRef.current = audio;
+        audio.onloadeddata = () => {
+          loaded = true;
+        };
+        audio.onended = () => advance(false);
+        audio.onerror = () => {
+          const code2 = audio.error?.code ?? 0;
+          console.warn("[TTS] ✗ chunk", chunk.index, "retry failed code", code2);
+          advance(true);
+        };
+        audio.play().catch((err) => {
+          console.warn("[TTS] ✗ chunk", chunk.index, "retry play failed:", err?.name, err?.message);
+          advance(true);
+        });
+        return;
+      }
       advance(true);
     };
     setSpeaking(true);
