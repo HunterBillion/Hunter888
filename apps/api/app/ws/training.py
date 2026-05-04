@@ -2332,15 +2332,18 @@ async def _generate_character_reply(
     # session continues. For rare cases the emotion FSM can still
     # transition to hangup directly (that handler runs above and is
     # unaffected by this check).
-    _AI_FAREWELL_MIN_MESSAGES = 8
-    # 2026-05-03 (BUG 1 fix): two-tier trust.
+    # 2026-05-04 (BUG 1 follow-up): two-tier trust with a weighted scorer
+    # for the substring-fallback path. Hard-AND of {hostile, msg>=8} from
+    # the v3 gate threw away every weaker but valid signal — production
+    # session (kid-died-prank) had AI saying "до свидания" four times
+    # while emotion was 'callback' (FSM rule, not 'hostile') and call
+    # never ended. Weighted scorer in app.services.hangup_decision picks
+    # this up via rudeness_detected + msg_count + not_question signals.
+    #
     #   * EXPLICIT marker [END_CALL] → trust the LLM's hangup intent. Only
     #     keep a minimal sanity floor (msg_count >= 4) so a bot can't end on
-    #     turn 1 due to a buggy first reply. No emotion gate, no question gate.
-    #   * SUBSTRING-only ("до свидания" without marker) → keep the strict
-    #     legacy gates because the LLM frequently improvises dramatic exits
-    #     it doesn't actually mean — the gates were tightened in v3 for that
-    #     specific regression and this branch must not reopen it.
+    #     turn 1 due to a buggy first reply.
+    #   * SUBSTRING without marker → weighted decision (see hangup_decision.py).
     _MARKER_MIN_MESSAGES = 4
     _can_ai_end_explicit = (
         _has_end_call_marker
@@ -2348,20 +2351,34 @@ async def _generate_character_reply(
         and not state.get("user_initiated_farewell")
         and not state.get("ai_initiated_farewell")
     )
-    _can_ai_end_legacy = (
-        _ai_farewell_hit
-        and not _has_end_call_marker  # marker path takes precedence
-        and not _is_question
-        and _msg_count_for_ai_farewell >= _AI_FAREWELL_MIN_MESSAGES
-        and (current_emotion == "hostile")
+
+    from app.services.hangup_decision import HangupSignals as _HangupSignals, decide_hangup as _decide_hangup
+    _hangup_decision = _decide_hangup(_HangupSignals(
+        substring_hit=_ai_farewell_hit and not _has_end_call_marker,
+        is_question=_is_question,
+        msg_count=int(_msg_count_for_ai_farewell or 0),
+        emotion=str(current_emotion or ""),
+        rudeness_detected=bool(state.get("rudeness_detected", False)),
+        ai_said_farewell_before=bool(state.get("ai_initiated_farewell_seen_count", 0) > 0),
+    ))
+    # Track repeated AI farewells as a soft signal for the next-turn scorer.
+    if _ai_farewell_hit and not _has_end_call_marker:
+        state["ai_initiated_farewell_seen_count"] = int(state.get("ai_initiated_farewell_seen_count", 0)) + 1
+
+    _can_ai_end_weighted = (
+        _hangup_decision.should_end
         and not state.get("user_initiated_farewell")
         and not state.get("ai_initiated_farewell")
     )
-    _can_ai_end = _can_ai_end_explicit or _can_ai_end_legacy
+    _can_ai_end = _can_ai_end_explicit or _can_ai_end_weighted
     logger.debug(
-        "ai_farewell check session=%s marker=%s hit=%s qtn=%s msgs=%d emo=%s → explicit=%s legacy=%s",
+        "ai_farewell check session=%s marker=%s hit=%s qtn=%s msgs=%d emo=%s rude=%s "
+        "score=%.2f thr=%.2f breakdown=%s → explicit=%s weighted=%s",
         session_id, _has_end_call_marker, _ai_farewell_hit, _is_question,
-        _msg_count_for_ai_farewell, current_emotion, _can_ai_end_explicit, _can_ai_end_legacy,
+        _msg_count_for_ai_farewell, current_emotion,
+        bool(state.get("rudeness_detected", False)),
+        _hangup_decision.score, _hangup_decision.threshold, _hangup_decision.breakdown,
+        _can_ai_end_explicit, _can_ai_end_weighted,
     )
     if _can_ai_end:
         state["ai_initiated_farewell"] = True
