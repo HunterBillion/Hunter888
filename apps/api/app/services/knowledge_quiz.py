@@ -445,6 +445,15 @@ def _is_garbage_answer(answer: str) -> tuple[bool, str]:
     Returns (is_garbage, reason). If True, caller skips LLM and marks
     is_correct=False. Prevents the "привет → ✓ Верно" lenience bug
     and the "не знаю, ты кто" + "да но мне всё равно" follow-ups.
+
+    2026-05-04 (real-prod fix): "Алибек" = 6 chars without digits and
+    was passing through to the LLM, which then said "✓ Верно" because
+    the prompt was too lenient. The threshold was 6 (strictly less);
+    any 6-letter random word (name, greeting, gibberish) slipped past.
+    Tightened to: an answer that has NO digits AND NO legal marker
+    word is rejected unless it's at least 12 chars (≈ 2-3 short
+    Russian words). Names, greetings, and short gibberish all get
+    caught now.
     """
     a = (answer or "").strip().lower()
     if not a:
@@ -453,8 +462,18 @@ def _is_garbage_answer(answer: str) -> tuple[bool, str]:
     stripped = a.rstrip("!?.,;:-)( \n")
     if not stripped:
         return True, "Пустой ответ."
-    # Too short to contain a legal fact (< 6 chars, no digits)
-    if len(stripped) < 6 and not any(c.isdigit() for c in stripped):
+    # No-digits + no-legal-markers + short → garbage. Was `< 6` only,
+    # which let through 6-letter names like "Алибек". Now requires
+    # 12+ chars OR a digit OR a legal marker.
+    legal_markers = (
+        "ст.", "ст ", "статья", "пункт", "банкрот", "управляющ",
+        "кредитор", "залог", "имуществ", "должник", "просрочк",
+        "срок", "ипотек", "алимент", "процедур", "арбитраж", "фз",
+        "127-фз", "229-фз", "гпк", "ск рф", "коап",
+    )
+    has_digits = any(c.isdigit() for c in stripped)
+    has_legal = any(m in stripped for m in legal_markers)
+    if len(stripped) < 12 and not has_digits and not has_legal:
         return True, "Слишком короткий ответ — нужна конкретика: статья, сумма или срок."
     # Exact match
     for token in _GARBAGE_EXACT:
