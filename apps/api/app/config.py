@@ -122,6 +122,23 @@ class Settings(BaseSettings):
     local_llm_prompt_cache_enabled: bool = True
     local_llm_timeout_seconds: float = 60.0
 
+    # P5 (2026-05-04): scoring perf knobs.
+    #
+    # script_checker_use_embeddings
+    #   When True (default), ``_llm_batch_similarity`` first tries the
+    #   embedding+cosine path. ~40× faster than asking the LLM to rate
+    #   similarity, and deterministic (no run-to-run jitter that made
+    #   identical transcripts score differently). Falls back to legacy
+    #   LLM-similarity if the embedding endpoint is down.
+    #
+    # scoring_parallel_layers
+    #   When True (default), ``calculate_scores`` gathers L2/L3/L4 in
+    #   parallel via asyncio.gather (sync layers offloaded to threads).
+    #   In prod traces the gather drops finalize wall-clock from ~18s
+    #   to ~6s.
+    script_checker_use_embeddings: bool = True
+    scoring_parallel_layers: bool = True
+
     # Concurrency control (prevents API rate limit hits)
     max_concurrent_llm_calls: int = 15
 

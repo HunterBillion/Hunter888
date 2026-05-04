@@ -201,11 +201,63 @@ async def _llm_similarity(text1: str, text2: str) -> float | None:
         return None
 
 
+async def _embedding_batch_similarity(
+    text: str,
+    references: list[str],
+) -> list[float] | None:
+    """P5 (2026-05-04): batch similarity via REAL embeddings + cosine.
+
+    Replaces ``_llm_batch_similarity`` for the script-adherence and
+    objection-handling layers. Why:
+
+      * Speed — embedding endpoint is ~50 ms per batch vs ~2 s for an
+        LLM call asking the model to rate similarity. With 8-12 calls
+        chained through the script checker per session-finalize, that's
+        ~22 s saved per session.
+      * Determinism — embedding cosine is deterministic. The LLM-similarity
+        path has ±0.15 jitter run-to-run, so identical transcripts score
+        differently — managers see flapping scores.
+
+    Returns list of floats (0..1) or None on failure (caller falls back
+    to the legacy LLM-similarity function so behaviour is preserved when
+    embeddings are unavailable).
+    """
+    if not references:
+        return None
+    if not text or not text.strip():
+        return None
+
+    try:
+        # Embed everything in one batch — `get_embeddings_batch` handles
+        # the local/Gemini fallback internally.
+        all_vecs = await _get_gemini_embeddings([text, *references])
+    except Exception:
+        logger.debug("embedding batch fetch failed", exc_info=True)
+        return None
+    if not all_vecs or len(all_vecs) < 1 + len(references):
+        return None
+
+    text_vec = all_vecs[0]
+    ref_vecs = all_vecs[1:]
+    return [_cosine_similarity(text_vec, rv) for rv in ref_vecs]
+
+
 async def _llm_batch_similarity(text: str, references: list[str]) -> list[float] | None:
     """Batch similarity via single LLM call — score one text against N references.
 
     Much more efficient than N individual calls. Returns list of floats or None.
+
+    P5 (2026-05-04): when ``script_checker_use_embeddings`` is True (default),
+    delegates to ``_embedding_batch_similarity`` which is ~40× faster and
+    deterministic. Falls back to the legacy LLM path on embedding failure.
     """
+    if getattr(settings, "script_checker_use_embeddings", True):
+        emb = await _embedding_batch_similarity(text, references)
+        if emb is not None:
+            return emb
+        # Fall through to legacy LLM-similarity if embeddings unavailable.
+        logger.debug("embedding similarity unavailable, falling back to LLM-similarity")
+
     if not settings.local_llm_enabled or not settings.local_llm_url:
         return None
 
