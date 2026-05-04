@@ -483,12 +483,31 @@ export interface DetectedItem {
   note?: string;
 }
 
+// P4 (2026-05-04) — judge red_flags / strengths anchored to transcript.
+// Old sessions stored these as plain strings. The FE accepts BOTH shapes
+// (string OR object) and the components handle the union — the backend
+// also normalises old-shape on read via _normalize_judge_dict.
+
+export interface JudgeFlagItem {
+  label: string;
+  message_index: number; // 0-based index into user-only message stream; -1 = generic
+  excerpt: string;
+  fix_example: string;
+}
+
+export interface JudgeStrengthItem {
+  label: string;
+  message_index: number; // -1 allowed for generic
+  excerpt: string;
+}
+
 export interface JudgeVerdictData {
   verdict: "excellent" | "good" | "mixed" | "poor" | "red_flag";
   score_adjust: number;
   rationale_ru: string;
-  red_flags: string[];
-  strengths: string[];
+  // Union of new (objects) and legacy (strings) — components normalise on render.
+  red_flags: Array<JudgeFlagItem | string>;
+  strengths: Array<JudgeStrengthItem | string>;
   model_used?: string;
   latency_ms?: number;
 }
