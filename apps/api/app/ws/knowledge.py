@@ -248,6 +248,11 @@ class _SoloQuizState:
         self.skipped: int = 0
         self.score: float = 0.0
         self.hint_used_for_current: bool = False
+        # 2026-05-04: tiered hints. Tier 0 = none used yet, 1 = topic
+        # disclosed (-1pt), 2 = article disclosed (-2pt cumulative), 3
+        # = opener disclosed (-4pt cumulative). Bigger reveal = bigger
+        # cost, so the player has skin-in-the-game on each request.
+        self.hint_tier_used: int = 0
 
         self.current_q: QuizQuestion | None = None
         self.question_start_time: float = 0.0
@@ -530,6 +535,7 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
 
     state.current_question += 1
     state.hint_used_for_current = False
+    state.hint_tier_used = 0
 
     question: QuizQuestion | None = None
 
@@ -641,6 +647,41 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
                     generation_strategy="timeout_fallback",
                 )
 
+            # 2026-05-04 BUG #2: dedup against Redis-backed seen-set.
+            # The LLM/template/fallback paths can produce a question text
+            # that was already served (chunk_id=None bypasses the
+            # in-memory chunk dedup, and reconnect wipes that set anyway).
+            # Single retry with the duplicate added to previous_questions
+            # — that's the strongest hint generate_question accepts.
+            try:
+                from app.services.quiz_state_store import is_question_seen
+                if (
+                    question is not None
+                    and state.mode != QuizMode.srs_review  # SRS intentionally repeats
+                    and await is_question_seen(state.session_id, question.question_text)
+                ):
+                    logger.info(
+                        "dup question detected (q=%d), regenerating once",
+                        state.current_question,
+                    )
+                    state.previous_questions.append(question.question_text)
+                    try:
+                        async with asyncio.timeout(15):
+                            question = await generate_question(
+                                db,
+                                mode=state.mode,
+                                category=state.category,
+                                difficulty=diff,
+                                question_number=state.current_question,
+                                previous_questions=state.previous_questions,
+                                user_weak_areas=weak_areas,
+                                used_chunk_ids=state.asked_chunk_ids,
+                            )
+                    except Exception:
+                        logger.warning("regen after dup failed — accepting dup")
+            except Exception:
+                logger.debug("dup check skipped", exc_info=True)
+
     state.current_q = question
     # Track question text for dedup
     if question:
@@ -648,6 +689,16 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
     state.question_start_time = time.time()
     if question.chunk_id:
         state.asked_chunk_ids.add(question.chunk_id)
+
+    # 2026-05-04: persist text-level dedup in Redis. The chunk_id-only
+    # in-memory set bypassed LLM/template/fallback questions (chunk_id
+    # is None for those) and was lost on WS reconnect. Hash-based set
+    # in Redis closes both gaps.
+    try:
+        from app.services.quiz_state_store import mark_question_seen
+        await mark_question_seen(state.session_id, question.question_text)
+    except Exception:
+        logger.debug("mark_question_seen non-fatal", exc_info=True)
 
     # V2: Add personality comment and hint_available flag
     hint_available = state.mode != QuizMode.blitz
@@ -938,6 +989,27 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
         feedback_data["correct_answer"] = result.correct_answer_summary
     await _send(ws, "quiz.feedback", feedback_data)
 
+    # 2026-05-04: persist counters snapshot for reconnect resilience.
+    # Cheap (~200B JSON) and fire-and-forget — failure logs but doesn't
+    # block the answer flow.
+    try:
+        from app.services.quiz_state_store import save_snapshot
+        await save_snapshot(state.session_id, {
+            "current_question": state.current_question,
+            "correct": state.correct,
+            "incorrect": state.incorrect,
+            "score": state.score,
+            "consecutive_correct": state.consecutive_correct,
+            "consecutive_incorrect": state.consecutive_incorrect,
+            "current_difficulty": state.current_difficulty,
+            "best_streak": state.best_streak,
+            "previous_questions": state.previous_questions[-30:],  # bounded
+            "asked_chunk_ids": [str(c) for c in state.asked_chunk_ids],
+            "mode": state.mode.value if hasattr(state.mode, "value") else str(state.mode),
+        })
+    except Exception:
+        logger.debug("save_snapshot non-fatal", exc_info=True)
+
     # Send progress
     await _send_progress(ws, state)
 
@@ -977,31 +1049,66 @@ async def _handle_skip(ws: WebSocket, state: _SoloQuizState) -> None:
 
 
 async def _handle_hint(ws: WebSocket, state: _SoloQuizState) -> None:
-    """Send a hint for the current question with a penalty."""
+    """Tiered hint system (3 levels of progressively heavier reveal).
+
+    Tier 1 (-1pt): topic / category — broad pointer
+    Tier 2 (-2pt cumulative): article reference — narrow pointer
+    Tier 3 (-4pt cumulative): opener — first words / key noun of answer
+
+    Each click escalates one tier. After tier 3 there is nothing more
+    to reveal short of giving the full answer, so further clicks return
+    `hint_exhausted`. The frontend reads `tier`, `tiers_remaining`, and
+    `cumulative_penalty` from the response to update the button label.
+    """
     if state.finished or state.current_q is None:
         await _send_error(ws, "No active question", "no_question")
         return
 
-    # V2: Block hints in blitz mode
+    # Block hints in blitz mode (frontend already hides the button via
+    # `hint_available` flag, but defend in depth).
     if state.mode == QuizMode.blitz:
         await _send_error(ws, "Подсказки недоступны в блиц-режиме!", "hint_blocked_blitz")
         return
 
-    if state.hint_used_for_current:
-        await _send_error(ws, "Hint already used for this question", "hint_already_used")
+    # Cap at 3 tiers.
+    if state.hint_tier_used >= 3:
+        await _send_error(ws, "Подсказки исчерпаны для этого вопроса", "hint_exhausted")
         return
 
-    state.hint_used_for_current = True
-    penalty = -2.0
-    state.score += penalty
+    state.hint_tier_used += 1
+    state.hint_used_for_current = True  # legacy flag (used in scoring)
 
-    # V2: Use guiding hint generator with personality
-    personality_name = state.personality.name if state.personality else None
-    hint_text = await generate_guiding_hint(state.current_q, personality_name)
+    # Cumulative penalties: -1, -2 (total), -4 (total). Per-click delta
+    # is the difference, so the score moves by the increment only.
+    penalty_by_tier = {1: -1.0, 2: -1.0, 3: -2.0}
+    cumulative_by_tier = {1: -1.0, 2: -2.0, 3: -4.0}
+    delta = penalty_by_tier[state.hint_tier_used]
+    state.score += delta
+
+    q = state.current_q
+    tier = state.hint_tier_used
+
+    if tier == 1:
+        topic = q.category or "общая часть ФЗ-127"
+        text = f"Категория вопроса: {topic}. Подумай, какой раздел закона регулирует эту тему."
+    elif tier == 2:
+        article = q.expected_article or "ФЗ-127"
+        text = f"Ищи ответ в {article}. Если знаешь номер пункта/части — назови их явно."
+    else:
+        # Tier 3 — LLM-generated guiding hint with the personality voice.
+        personality_name = state.personality.name if state.personality else None
+        try:
+            text = await generate_guiding_hint(q, personality_name)
+        except Exception as exc:
+            logger.warning("guiding_hint generation failed at tier 3: %s", exc)
+            text = "Начни ответ с конкретного факта (статья, срок, сумма)."
 
     await _send(ws, "quiz.hint", {
-        "text": hint_text,
-        "penalty": penalty,
+        "tier": tier,
+        "text": text,
+        "penalty_delta": delta,
+        "cumulative_penalty": cumulative_by_tier[tier],
+        "tiers_remaining": max(0, 3 - tier),
     })
 
 
@@ -1091,6 +1198,13 @@ async def _finish_solo_quiz(ws: WebSocket, state: _SoloQuizState) -> None:
             await end_session_v2(state.session_id)
     except Exception as _v2_exc:
         logger.warning("quiz_v2.ws.end_session failed: %s", _v2_exc)
+
+    # 2026-05-04: clear Redis dedup/snapshot for the finished session.
+    try:
+        from app.services.quiz_state_store import clear_session
+        await clear_session(state.session_id)
+    except Exception:
+        logger.debug("clear_session non-fatal", exc_info=True)
 
     # Update DB session and calculate results
     async with async_session() as db:

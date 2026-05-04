@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen,
@@ -53,7 +53,19 @@ export default function KnowledgeSessionPageWrapper() {
 function KnowledgeSessionPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const sessionId = params.sessionId as string;
+
+  // 2026-05-04: read mode from URL synchronously so the hint button (and
+  // any other mode-gated UI) renders correctly on first paint, before
+  // the WS `quiz.session_started` event arrives. Without this the store
+  // defaults to "free_dialog" and a blitz user briefly sees the hint
+  // button — clicking it produced a "Подсказки недоступны в блиц-режиме"
+  // toast, which was the user-visible bug.
+  const urlMode = useMemo(() => {
+    const m = searchParams?.get("mode");
+    return (m && typeof m === "string") ? m : null;
+  }, [searchParams]);
 
   const store = useKnowledgeStore();
   const { playSound } = useSound();
@@ -63,6 +75,27 @@ function KnowledgeSessionPage() {
 
   const [showResults, setShowResults] = useState(false);
   const [hintLoading, setHintLoading] = useState(false);
+  // Pre-validation hint shown under input when answer is rejected.
+  const [validationError, setValidationError] = useState<string | null>(null);
+  // Whether the current question allows hints (from quiz.question payload).
+  // Single source of truth — backend sets this per question, frontend
+  // never guesses by mode anymore.
+  const [hintAvailable, setHintAvailable] = useState<boolean>(true);
+  // Tiered-hint state for the current question (resets on new question).
+  // tier=null means "no hint used yet"; tiersRemaining=0 disables the button.
+  const [hintTier, setHintTier] = useState<number | null>(null);
+  const [hintTiersRemaining, setHintTiersRemaining] = useState<number | null>(null);
+
+  // Initialize store.mode from URL on mount so blitz UI is correct
+  // before the first WS message. The WS handler still re-inits when
+  // `quiz.session_started` arrives — that's idempotent.
+  useEffect(() => {
+    if (urlMode && urlMode !== store.mode) {
+      store.init(urlMode as typeof store.mode, store.category ?? undefined);
+    }
+    // Run once on mount (and whenever URL mode actually changes).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlMode]);
 
   // 2026-04-20: голосовой ответ в knowledge quiz. Владельцу было важно
   // чтобы "во всей панели" работал голос — TTS для intro здесь уже есть
@@ -213,6 +246,16 @@ function KnowledgeSessionPage() {
           }
           // Clear pending follow-up
           store.setPendingFollowUp(null);
+          // 2026-05-04: trust backend's hint_available flag per question,
+          // not a hardcoded mode check on the client.
+          if (typeof data.hint_available === "boolean") {
+            setHintAvailable(data.hint_available);
+          }
+          // Clear stale validation error when a new question lands.
+          setValidationError(null);
+          // Reset tiered-hint counters for the new question.
+          setHintTier(null);
+          setHintTiersRemaining(null);
           break;
         }
 
@@ -266,18 +309,27 @@ function KnowledgeSessionPage() {
             playSound("incorrect", 0.3);
           }
 
-          store.addMessage({
-            type: "feedback",
+          // 2026-05-04: dedup the verdict+final double-bubble. If the
+          // streaming verdict arrived first (normal blitz path), it
+          // already created an empty feedback bubble that chunks have
+          // been filling. We finalize it in place rather than appending
+          // a second bubble. Fall back to addMessage for clients that
+          // never received a verdict (legacy/race).
+          const patch = {
+            type: "feedback" as const,
             content: feedbackContent,
             isCorrect: data.is_correct as boolean,
             explanation: data.explanation as string | undefined,
             articleRef: (data.article_ref || data.article_reference) as string | undefined,
-            // 2026-04-18: surface correct answer prominently in the bubble
             correctAnswer: (data.correct_answer || data.correct_answer_summary) as string | undefined,
             personalityComment,
             speedBonus,
             avatarEmoji: currentPersonality2?.avatarEmoji,
-          });
+          };
+          const finalized = store.finalizeLastFeedback(patch);
+          if (!finalized) {
+            store.addMessage(patch);
+          }
           // V2: Update streak & difficulty
           if (typeof data.streak === "number") {
             store.setStreak(data.streak as number, (data.best_streak as number) ?? store.bestStreak);
@@ -336,10 +388,26 @@ function KnowledgeSessionPage() {
 
         case "hint":
         case "quiz.hint": {
+          // 2026-05-04: tiered hint payload — show tier label inline so
+          // the user understands what level of reveal they got and how
+          // many more they can request.
+          const hintText = (data.content || data.text) as string;
+          const tier = typeof data.tier === "number" ? (data.tier as number) : null;
+          const tiersRemaining = typeof data.tiers_remaining === "number"
+            ? (data.tiers_remaining as number)
+            : null;
+          const cumPenalty = typeof data.cumulative_penalty === "number"
+            ? (data.cumulative_penalty as number)
+            : null;
+          const header = tier
+            ? `▸ ПОДСКАЗКА ${tier}/3${cumPenalty !== null ? `  (${cumPenalty} pt)` : ""}`
+            : "▸ ПОДСКАЗКА";
           store.addMessage({
             type: "hint",
-            content: (data.content || data.text) as string,
+            content: `${header}\n${hintText}`,
           });
+          setHintTier(tier ?? null);
+          setHintTiersRemaining(tiersRemaining ?? null);
           setHintLoading(false);
           break;
         }
@@ -464,16 +532,40 @@ function KnowledgeSessionPage() {
 
   // #6 fix: Sanitize user input — strip control chars, cap length
   const MAX_ANSWER_LENGTH = 2000;
+  const MIN_ANSWER_LENGTH = 3;
   const sanitizeInput = (raw: string): string => {
     // Remove zero-width and control characters (keep newlines/tabs)
     // eslint-disable-next-line no-control-regex
     return raw.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\u200B-\u200F\uFEFF]/g, "").slice(0, MAX_ANSWER_LENGTH);
   };
 
+  // 2026-05-04: client-side pre-validation. Stops mash-typed garbage like
+  // "\u0440\u0430"/"\u043E\u0432"/"\u043E\u0430" from being sent to the WS where it costs an LLM
+  // evaluation and gets scored as "\u0441\u043B\u0438\u0448\u043A\u043E\u043C \u043A\u043E\u0440\u043E\u0442\u043A\u0438\u0439 \u043E\u0442\u0432\u0435\u0442". Strict by
+  // user request: option (\u0430) \u2014 min 3 non-whitespace chars, no semantic
+  // requirement (no digit/keyword check). Returns null if valid, or a
+  // user-facing message explaining the rejection.
+  const validateAnswer = (text: string): string | null => {
+    const stripped = text.replace(/\s+/g, "");
+    if (stripped.length < MIN_ANSWER_LENGTH) {
+      return `\u041E\u0442\u0432\u0435\u0442 \u0441\u043B\u0438\u0448\u043A\u043E\u043C \u043A\u043E\u0440\u043E\u0442\u043A\u0438\u0439 \u2014 \u043C\u0438\u043D\u0438\u043C\u0443\u043C ${MIN_ANSWER_LENGTH} \u0441\u0438\u043C\u0432\u043E\u043B\u0430.`;
+    }
+    return null;
+  };
+
   // Send answer
   const handleSend = useCallback(() => {
     const text = sanitizeInput(store.input.trim());
     if (!text || store.status !== "active") return;
+
+    const reason = validateAnswer(text);
+    if (reason) {
+      setValidationError(reason);
+      // Don't clear input \u2014 let the user fix it.
+      inputRef.current?.focus();
+      return;
+    }
+    setValidationError(null);
 
     store.addMessage({ type: "answer", content: text });
     sendMessage({ type: "answer", content: text });
@@ -1114,14 +1206,22 @@ function KnowledgeSessionPage() {
         }}
       >
         <div className="mx-auto flex max-w-3xl items-end gap-3">
-          {/* Hint button — pixel amber. 2026-04-18: hidden in blitz (hints not available, user was seeing error toast). */}
-          {store.mode !== "blitz" && (
+          {/* Hint button — pixel amber. 2026-05-04: source of truth is the
+              backend `hint_available` flag from the quiz.question payload
+              (covers blitz + rapid_blitz + future no-hint modes). The
+              previous `mode !== "blitz"` check missed rapid_blitz and
+              had a race with the WS init message. */}
+          {hintAvailable && (
           <motion.button
             onClick={handleHint}
-            disabled={hintLoading || store.status !== "active"}
+            disabled={
+              hintLoading ||
+              store.status !== "active" ||
+              (hintTiersRemaining !== null && hintTiersRemaining <= 0)
+            }
             whileHover={{ y: -1 }}
             whileTap={{ y: 2 }}
-            className="flex h-11 w-11 shrink-0 items-center justify-center disabled:opacity-40"
+            className="relative flex h-11 min-w-11 shrink-0 items-center justify-center gap-1 px-2 disabled:opacity-40"
             style={{
               background: "rgba(245,158,11,0.12)",
               border: "2px solid var(--warning)",
@@ -1130,10 +1230,25 @@ function KnowledgeSessionPage() {
               boxShadow: "2px 2px 0 0 var(--warning)",
               transition: "box-shadow 120ms, transform 120ms",
             }}
-            title="Подсказка"
+            title={
+              hintTier !== null
+                ? `Подсказка ${hintTier}/3 · ещё ${hintTiersRemaining ?? 0}`
+                : "Подсказка (3 уровня, штраф растёт)"
+            }
             aria-label="Подсказка"
           >
-            {hintLoading ? <Loader2 size={16} className="animate-spin" /> : <Lightbulb size={16} />}
+            {hintLoading ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <>
+                <Lightbulb size={16} />
+                {hintTier !== null && (
+                  <span className="font-pixel text-[10px] leading-none">
+                    {hintTier}/3
+                  </span>
+                )}
+              </>
+            )}
           </motion.button>
           )}
 
@@ -1172,7 +1287,11 @@ function KnowledgeSessionPage() {
             <textarea
               ref={inputRef}
               value={store.input}
-              onChange={(e) => store.setInput(e.target.value)}
+              onChange={(e) => {
+                store.setInput(e.target.value);
+                // Clear validation hint as soon as the user starts editing.
+                if (validationError) setValidationError(null);
+              }}
               onKeyDown={handleKeyDown}
               placeholder={
                 speech.status === "listening"
@@ -1265,6 +1384,18 @@ function KnowledgeSessionPage() {
             <span className="hidden sm:inline">SEND</span>
           </motion.button>
         </div>
+        {/* 2026-05-04: client-side validation hint. Replaces the old
+            backend-rejection UX where mash-typed answers ("ра", "ов")
+            cost an LLM eval and produced a feedback bubble. Now we
+            never send them — we tell the user inline what's wrong. */}
+        {validationError && (
+          <div
+            className="mx-auto mt-2 max-w-3xl px-1 text-xs"
+            style={{ color: "var(--danger, #ef4444)" }}
+          >
+            ▸ {validationError}
+          </div>
+        )}
       </div>
     </div>
   );
