@@ -4680,6 +4680,7 @@ async def _handle_audio_chunk(
     if settings.coaching_mistake_detector_v1:
         try:
             from app.services.mistake_detector import evaluate_user_turn as _coach_eval_a
+            from app.services.mistake_aggregator import record_fired as _coach_record_a
             from app.core.redis_pool import get_redis as _get_redis_coach_a
             _r_coach_a = _get_redis_coach_a()
             _stage_for_coach = _coach_audio_stage if _coach_audio_stage is not None else state.get("current_stage", 1)
@@ -4688,6 +4689,10 @@ async def _handle_audio_chunk(
             )
             for _m_a in _fired_a:
                 await _send(ws, "coaching.mistake", _m_a.to_payload())
+            # 2026-05-04 (BUG B3 v3 — β): persist firings for L4 scoring.
+            # Same try/except as the WS emit so a Redis hiccup here can't
+            # break the existing real-time coaching contract.
+            await _coach_record_a(_r_coach_a, str(session_id), _fired_a)
         except Exception:
             logger.debug("Coaching mistake detector failed (audio) for %s", session_id, exc_info=True)
 
@@ -5257,6 +5262,7 @@ async def _handle_text_message(
     if settings.coaching_mistake_detector_v1:
         try:
             from app.services.mistake_detector import evaluate_user_turn as _coach_eval_t
+            from app.services.mistake_aggregator import record_fired as _coach_record_t
             from app.core.redis_pool import get_redis as _get_redis_coach_t
             _r_coach_t = _get_redis_coach_t()
             _stage_for_coach_t = state.get("current_stage", 1) or 1
@@ -5265,6 +5271,10 @@ async def _handle_text_message(
             )
             for _m_t in _fired_t:
                 await _send(ws, "coaching.mistake", _m_t.to_payload())
+            # 2026-05-04 (BUG B3 v3 — β): persist firings for L4 scoring.
+            # Same try/except as the WS emit so a Redis hiccup here can't
+            # break the existing real-time coaching contract.
+            await _coach_record_t(_r_coach_t, str(session_id), _fired_t)
         except Exception:
             logger.debug("Coaching mistake detector failed (text) for %s", session_id, exc_info=True)
 
