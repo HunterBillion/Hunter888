@@ -350,6 +350,94 @@ async def accept_pve(
     return {"duel_id": str(duel.id), "is_pve": True, "difficulty": duel.difficulty.value}
 
 
+# ---------------------------------------------------------------------------
+# Dispute verdict (PR-C 2026-05-05)
+#
+# User on prod: "нельзя оспорить" — DuelStatus.disputed enum value already
+# existed (models/pvp.py:40, "Under manual review") but no endpoint or WS
+# command ever set it. The judge was final.
+#
+# This endpoint flips the duel to ``disputed`` status and stamps the user's
+# reason into ``pve_metadata["dispute"]`` for the methodology team to
+# review. Re-judging through a different LLM provider is intentionally
+# deferred to a follow-up — the priority for this PR is closing the user's
+# explicit "нельзя оспорить" complaint with a working button + audit trail.
+#
+# Constraints: only completed duels can be disputed; only the participants;
+# only once per duel; rate-limited to prevent abuse.
+# ---------------------------------------------------------------------------
+
+@router.post("/duels/{duel_id}/dispute")
+@limiter.limit("3/hour")
+async def dispute_duel(
+    request: Request,
+    duel_id: uuid.UUID,
+    payload: dict | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """File a dispute against the AI judge's verdict on a completed duel.
+
+    Body (optional): ``{"reason": "<user-provided text up to 500 chars>"}``
+
+    Returns 202 with a confirmation message; the methodology team reviews
+    flagged duels manually. No second judge run is performed in this PR
+    — that's a follow-up that needs careful handling around rating recalc.
+    """
+    result = await db.execute(select(PvPDuel).where(PvPDuel.id == duel_id))
+    duel = result.scalar_one_or_none()
+    if not duel:
+        raise HTTPException(status_code=404, detail=err.DUEL_NOT_FOUND)
+    if duel.player1_id != user.id and duel.player2_id != user.id:
+        raise HTTPException(status_code=403, detail=err.NOT_A_PARTICIPANT)
+    if duel.status != DuelStatus.completed:
+        # Only completed duels carry a verdict to dispute. Cancelled /
+        # disputed / in-flight rows return 409 so the FE can show a clear
+        # "this duel doesn't have a verdict yet / can't be disputed" toast.
+        raise HTTPException(
+            status_code=409,
+            detail="Оспорить можно только завершённую дуэль с вердиктом.",
+        )
+
+    # Idempotency: if dispute already filed, surface the existing record.
+    existing = (duel.pve_metadata or {}).get("dispute") if isinstance(duel.pve_metadata, dict) else None
+    if existing:
+        return {
+            "duel_id": str(duel.id),
+            "status": "already_disputed",
+            "filed_at": existing.get("filed_at"),
+        }
+
+    reason = ""
+    if isinstance(payload, dict):
+        raw = payload.get("reason")
+        if isinstance(raw, str):
+            reason = raw.strip()[:500]
+
+    # Stamp dispute metadata. We DO NOT clear winner_id / totals — those
+    # remain as the original verdict; only `status` flips so downstream
+    # dashboards can filter "duels under review".
+    meta = duel.pve_metadata if isinstance(duel.pve_metadata, dict) else {}
+    meta = dict(meta)  # JSONB mutation safety
+    meta["dispute"] = {
+        "filed_by": str(user.id),
+        "filed_at": datetime.now(timezone.utc).isoformat(),
+        "reason": reason or None,
+        "status": "pending",
+    }
+    duel.pve_metadata = meta
+    duel.status = DuelStatus.disputed
+    db.add(duel)
+    await db.commit()
+
+    return {
+        "duel_id": str(duel.id),
+        "status": "dispute_filed",
+        "message": "Спор отправлен на ручной разбор. Команда методологии"
+                   " свяжется с тобой через приложение.",
+    }
+
+
 @router.post("/challenge/{target_user_id}")
 @limiter.limit("10/minute")
 async def challenge_friend(
