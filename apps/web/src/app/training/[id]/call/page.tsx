@@ -225,11 +225,29 @@ export default function TrainingCallPage() {
 
   // --- STT (continuous, forwards recognized text to WS) -------------------
   const sttSendRef = useRef<((text: string) => void) | null>(null);
+  // PR-C (barge-in feedback): when STT detects the user starting to
+  // speak while TTS is mid-reply, send audio.interrupted to the backend
+  // so it can rewrite history with what the manager actually heard.
+  // ``audioRef.current.currentTime`` × ~14 chars/sec (Russian TTS avg)
+  // gives a rough char count that's good enough for the prompt cue —
+  // the LLM only needs to know "got cut early" vs "got most of it".
+  const interruptSendRef = useRef<((playedChars: number) => void) | null>(null);
   const stt = useSpeechRecognition({
     lang: "ru-RU",
     onResult: (text) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+      // Barge-in detection: TTS still speaking when user-speech text arrives.
+      if (tts.speaking) {
+        const ct = tts.audioRef?.current?.currentTime ?? 0;
+        const playedChars = Math.max(0, Math.round(ct * 14));
+        try {
+          interruptSendRef.current?.(playedChars);
+        } catch {
+          /* non-blocking */
+        }
+        try { tts.stop(); } catch { /* noop */ }
+      }
       sttSendRef.current?.(trimmed);
     },
   });
@@ -748,6 +766,16 @@ export default function TrainingCallPage() {
     sttSendRef.current = (text: string) => {
       if (!text || connectionState !== "connected") return;
       sendMessage({ type: "text.message", data: { content: text } });
+    };
+    // PR-C: barge-in feedback channel. The STT handler computes
+    // played_chars from the still-running audio element and pushes the
+    // event through this ref so the backend can rewrite history before
+    // the next text.message arrives. Order matters — interrupt FIRST,
+    // text.message SECOND, so the LLM sees the truncated assistant
+    // turn when generating the response.
+    interruptSendRef.current = (playedChars: number) => {
+      if (connectionState !== "connected") return;
+      sendMessage({ type: "audio.interrupted", data: { played_chars: playedChars } });
     };
   }, [sendMessage, connectionState]);
 

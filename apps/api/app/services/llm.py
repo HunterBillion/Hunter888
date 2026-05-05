@@ -2180,6 +2180,95 @@ async def _log_token_usage(response: "LLMResponse", user_id: str | None = None) 
     )
 
 
+def build_call_cognitive_modifier(
+    *,
+    interrupted_last_turn: bool = False,
+    interrupted_played_chars: int | None = None,
+    user_silent_seconds: float | None = None,
+    distraction_hint: str | None = None,
+) -> str:
+    """PR-C cognitive-model modifier for **voice call** sessions only.
+
+    Audit finding KRITICHNO-3/4: chat and call shared the same LLM
+    instructions modulo phone register. Real phone calls differ from
+    chat in four dimensions the AI ignored:
+
+      1. **Working memory limited to recent turns** — on a phone you
+         only crisply remember the last 4-5 lines, not the entire
+         transcript. Pre-fix the AI quoted message #1 verbatim during
+         minute 8 of a call.
+      2. **Barge-in awareness** — when the manager interrupted the AI
+         mid-sentence, the FE called ``tts.stop()`` but the backend
+         logged the FULL would-be reply into history. Next turn the
+         AI referred to «как я только что сказал» about content the
+         manager never heard. The new ``audio.interrupted`` WS event
+         (PR-C) updates message history with what the manager
+         ACTUALLY heard; this modifier surfaces that as a behavioural
+         hint.
+      3. **Distraction** — real callers tune out, drop attention,
+         miss a word. Pre-fix our AI was always at 100% focus. We
+         occasionally inject a ping that asks the AI to ask for a
+         repeat (driven by call-length-proportional probability,
+         decided in the WS handler).
+      4. **Silence as pressure** — pre-fix silence_watchdog only fired
+         a one-shot warning before hangup. With the proactive prompt
+         hint the AI itself can break the silence with a probing
+         question, the way a real client would.
+
+    All four cues are OPTIONAL — caller passes only what's true at
+    the time of generation. Empty input → empty string (no-op), so
+    chat sessions and the regular call flow are unaffected.
+    """
+    parts: list[str] = []
+
+    # 1. Working-memory limit
+    parts.append(
+        "[ВОСПРИЯТИЕ_ЗВОНКА] Это голосовой звонок, не текстовый чат. "
+        "Ты помнишь ДОСЛОВНО только последние 4-5 реплик. Всё, что "
+        "сказано раньше — помнишь смутно, общими впечатлениями. Не "
+        "цитируй точно, не ссылайся на «как вы сказали в начале» — "
+        "по телефону так не помнят."
+    )
+
+    # 2. Barge-in awareness — only when actually interrupted
+    if interrupted_last_turn:
+        chars = interrupted_played_chars or 0
+        if chars > 0:
+            parts.append(
+                f"[ПЕРЕБИЛИ] Менеджер перебил тебя. Ты успел сказать "
+                f"только ~{chars} символов твоей прошлой реплики — "
+                "остального он НЕ слышал. Не ссылайся на оборванное; "
+                "если хочешь — переспроси «вы что хотели сказать?» "
+                "или отреагируй на то, что услышал от менеджера."
+            )
+        else:
+            parts.append(
+                "[ПЕРЕБИЛИ] Менеджер перебил тебя в самом начале реплики. "
+                "Считай, ты ничего ещё не сказал — реагируй на его слова "
+                "с нуля."
+            )
+
+    # 3. Distraction — caller-supplied hint string (e.g. «отвлёкся»,
+    # «звук мешает»). The WS handler decides when to emit; here we
+    # just bind the hint to a behavioural cue.
+    if distraction_hint:
+        parts.append(f"[ОТВЛЁК] {distraction_hint}")
+
+    # 4. Pause = pressure — fired by silence_watchdog before hangup.
+    # The number is the seconds of silence the manager has held.
+    if user_silent_seconds is not None and user_silent_seconds >= 4:
+        parts.append(
+            f"[МОЛЧАНИЕ] Менеджер молчит {int(user_silent_seconds)} секунд. "
+            "По телефону это давит. Сам прерви тишину — переспроси «алло, "
+            "вы тут?» или поторопи: «ну так что, я слушаю». Только если ты "
+            "сам сейчас НЕ ждёшь его ответа специально."
+        )
+
+    if not parts:
+        return ""
+    return "\n\n## ЗВОНОК — когнитивная модель\n" + "\n".join(parts)
+
+
 def build_call_mode_modifier(difficulty: int = 5, tone: str | None = None) -> str:
     """Difficulty-aware system-prompt modifier for phone-call training.
 
@@ -2403,6 +2492,10 @@ async def generate_response(
     # client knows which step of the sales funnel the manager is on, what
     # they've already covered, and whether they're stalling/skipping.
     current_stage_info: dict | None = None,
+    # PR-C (call cognitive model): one-turn cues for the call-only
+    # cognitive modifier. Structured dict — see build_call_cognitive_modifier.
+    # Ignored in chat mode (only injected when session_mode in {call, center}).
+    call_cognitive: dict | None = None,
     # P2 (2026-05-03): optional OpenAI-style tools spec, forwarded to the
     # underlying provider when it supports tool-calling (local/openai). The
     # WS pipeline passes ``[end_call_spec]`` here so the LLM can invoke a
@@ -2664,6 +2757,18 @@ async def generate_response(
             except Exception:
                 pass
         full_system = full_system + build_call_mode_modifier(_diff, tone=tone)
+        # PR-C: cognitive-model modifier — working-memory limit, barge-in
+        # awareness, distraction, silence-as-pressure. Only when there
+        # are call-cognitive cues to inject; baseline call sessions still
+        # get just the call_mode modifier above.
+        try:
+            cog_block = build_call_cognitive_modifier(**(call_cognitive or {}))
+        except TypeError:
+            # Defensive: caller passed unexpected keys → fall back to
+            # the baseline (working-memory only) by ignoring the dict.
+            cog_block = build_call_cognitive_modifier()
+        if cog_block:
+            full_system = full_system + cog_block
 
     # Bug 1 fix (User-first 2026-04-29): explicit short-reply directive
     # for blocking path. Same reasoning as the streaming path —
@@ -3129,6 +3234,8 @@ async def generate_response_stream(
     client_history: str | None = None,
     # PR-B (stage-aware AI): see generate_response. Stream path parity.
     current_stage_info: dict | None = None,
+    # PR-C (call cognitive model): see generate_response for shape.
+    call_cognitive: dict | None = None,
     # 2026-05-01: explicit temperature override. None + adaptive flag +
     # call mode → adaptive_temperature_for_emotion(). None otherwise =
     # provider's historical default (0.85). Judges/coaches that need
@@ -3271,6 +3378,13 @@ async def generate_response_stream(
             except Exception:
                 pass
         full_system = full_system + build_call_mode_modifier(_diff_s, tone=tone)
+        # PR-C: cognitive-model modifier (parity with generate_response).
+        try:
+            cog_block_s = build_call_cognitive_modifier(**(call_cognitive or {}))
+        except TypeError:
+            cog_block_s = build_call_cognitive_modifier()
+        if cog_block_s:
+            full_system = full_system + cog_block_s
 
     # Bug 1 fix (User-first 2026-04-29): max_tokens alone doesn't make
     # replies short — modern Russian-tuned LLMs hit the cap by writing
@@ -3435,6 +3549,9 @@ async def generate_response_stream(
         # PR-B: stage info also needs to flow through the fallback so a
         # provider hiccup doesn't drop the AI back to stage-blind mode.
         current_stage_info=current_stage_info,
+        # PR-C: cognitive cues survive the fallback so a stream hiccup
+        # doesn't silently drop barge-in awareness or distraction.
+        call_cognitive=call_cognitive,
     )
     if response and response.content:
         yield response.content
