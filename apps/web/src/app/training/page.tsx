@@ -33,6 +33,7 @@ import CharacterBuilder from "@/components/training/CharacterBuilder";
 import { useTrainingStore } from "@/stores/useTrainingStore";
 import { ARCHETYPES, getDifficultyColor } from "@/lib/archetypes";
 import { ArchetypeCard } from "@/components/training/ArchetypeCard";
+import { ScenarioCatalogCard } from "@/components/training/ScenarioCatalogCard";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import type { Scenario } from "@/types";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -562,11 +563,15 @@ function ScenariosTab({
                 (a, b) => Math.abs(a.difficulty - scenario.difficulty) - Math.abs(b.difficulty - scenario.difficulty)
               )[0];
             if (!arch) return null;
+            // 2026-05-05 redesign: replaced uniform ArchetypeCard size="full"
+            // with ScenarioCatalogCard — type-driven palette + difficulty
+            // meter + clear primary action + collapsible weakness. Old
+            // ArchetypeCard stays for /training/archetypes gallery and
+            // constructor preview.
             return (
-              <ArchetypeCard
+              <ScenarioCatalogCard
                 key={scenario.id}
                 arch={arch}
-                size="full"
                 scenario={scenario}
                 isStarting={starting?.scenarioId === scenario.id}
                 onStart={onStart}
