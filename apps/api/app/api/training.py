@@ -481,8 +481,8 @@ async def start_session(
         if settings.tz2_guard_lead_client_access_enabled:
             from app.services.runtime_guard_engine import evaluate_lead_client_access_guard
             from app.services.runtime_metrics import record_blocked_start
-            access_violation = evaluate_lead_client_access_guard(
-                user=user, real_client=real_client_lookup,
+            access_violation = await evaluate_lead_client_access_guard(
+                user=user, real_client=real_client_lookup, db=db,
             )
             if access_violation is not None:
                 record_blocked_start(
@@ -502,9 +502,33 @@ async def start_session(
                 )
             real_client = real_client_lookup
         else:
-            # Legacy inline path: enforce manager_id == user.id with a 404
-            # response (not 403 — historical behaviour the FE handles).
-            if real_client_lookup.manager_id != user.id:
+            # Legacy inline path. BUG-FIX 2026-05-05 (audit-feedback):
+            # previously this path enforced ``manager_id == user.id`` and
+            # returned 404 — which blocked admin AND ROP from training
+            # against any client they didn't personally own. The user
+            # opening the CRM card under admin role couldn't even click
+            # «Тренировка» because of a 404 here. We now mirror the
+            # role-aware logic from ``evaluate_lead_client_access_guard``:
+            # admin passes through, manager only own clients, ROP only
+            # team's clients. Methodologist hits the require_role gate
+            # earlier and never gets here.
+            user_role_legacy = (getattr(user.role, "value", None) or str(user.role)).lower()
+            _allowed = False
+            if user_role_legacy == "admin":
+                _allowed = True
+            elif real_client_lookup.manager_id == user.id:
+                _allowed = True
+            elif user_role_legacy == "rop" and user.team_id is not None and real_client_lookup.manager_id is not None:
+                # Verify the client's owner is on the same team. One small SELECT
+                # — same shape as the guard-engine path, but inline so we don't
+                # depend on the feature flag being flipped.
+                from app.models.user import User as _User
+                _owner_team = (await db.execute(
+                    select(_User.team_id).where(_User.id == real_client_lookup.manager_id)
+                )).scalar_one_or_none()
+                if _owner_team is not None and _owner_team == user.team_id:
+                    _allowed = True
+            if not _allowed:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="real_client_not_found",
@@ -1368,13 +1392,33 @@ async def link_session_to_crm_client(
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.SESSION_NOT_FOUND)
 
+    # BUG-FIX 2026-05-05 (CRM-binding): role-aware client lookup.
+    # Previously hard-locked to ``manager_id == user.id`` which prevented
+    # admin and ROP from linking an orphan session to a teammate's
+    # client during post-hoc bookkeeping (the «Привязать к CRM» flow on
+    # /results). Same matrix as session start: admin/own/ROP-team.
+    user_role_link = (getattr(user.role, "value", None) or str(user.role)).lower()
     client = (await db.execute(
-        select(RealClient).where(
-            RealClient.id == body.real_client_id,
-            RealClient.manager_id == user.id,
-        )
+        select(RealClient).where(RealClient.id == body.real_client_id)
     )).scalar_one_or_none()
     if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CRM-клиент не найден",
+        )
+    _link_allowed = False
+    if user_role_link == "admin":
+        _link_allowed = True
+    elif client.manager_id == user.id:
+        _link_allowed = True
+    elif user_role_link == "rop" and user.team_id is not None and client.manager_id is not None:
+        from app.models.user import User as _ULink
+        _owner_team_link = (await db.execute(
+            select(_ULink.team_id).where(_ULink.id == client.manager_id)
+        )).scalar_one_or_none()
+        if _owner_team_link is not None and _owner_team_link == user.team_id:
+            _link_allowed = True
+    if not _link_allowed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="CRM-клиент не найден",
@@ -1937,8 +1981,41 @@ async def training_history(
             if story_session.client_story_id is not None:
                 story_sessions_map[story_session.client_story_id].append(story_session)
 
+    # BUG-FIX 2026-05-05 (CRM-binding audit): pre-compute roll-up of
+    # sessions per real_client_id so the FE doesn't show one «одиночная
+    # тренировка» row per call to the same client. Story sessions are
+    # excluded — they already group via client_story_id below. The roll-up
+    # uses ALL completed sessions for the user (not just the limited
+    # window) so the count is accurate even when the most recent calls
+    # paginate off-screen.
+    real_client_ids = {
+        s.real_client_id for s in recent_sessions
+        if s.real_client_id is not None and s.client_story_id is None
+    }
+    crm_session_map: dict[uuid.UUID, list[TrainingSession]] = defaultdict(list)
+    crm_name_map: dict[uuid.UUID, str] = {}
+    if real_client_ids:
+        from app.models.client import RealClient
+        crm_sessions_result = await db.execute(
+            select(TrainingSession).where(
+                TrainingSession.user_id == user.id,
+                TrainingSession.real_client_id.in_(real_client_ids),
+                TrainingSession.client_story_id.is_(None),
+            ).order_by(TrainingSession.started_at.asc())
+        )
+        for s in crm_sessions_result.scalars().all():
+            if s.real_client_id is not None:
+                crm_session_map[s.real_client_id].append(s)
+        clients_result = await db.execute(
+            select(RealClient.id, RealClient.full_name).where(
+                RealClient.id.in_(real_client_ids),
+            )
+        )
+        crm_name_map = {row[0]: row[1] for row in clients_result.all()}
+
     items: list[HistoryEntryResponse] = []
     seen_story_ids: set[uuid.UUID] = set()
+    seen_crm_ids: set[uuid.UUID] = set()
 
     for session in recent_sessions:
         if session.client_story_id and session.client_story_id in story_map:
@@ -1963,6 +2040,40 @@ async def training_history(
                     calls_completed=story_summary.completed_calls,
                     avg_score=story_summary.avg_score,
                     best_score=story_summary.best_score,
+                )
+            )
+            continue
+
+        # CRM-client grouping (BUG-FIX). Triggers when the session is
+        # bound to a real CRM client and is not part of a story.
+        if (
+            session.real_client_id is not None
+            and session.real_client_id in crm_session_map
+            and session.real_client_id not in seen_crm_ids
+        ):
+            seen_crm_ids.add(session.real_client_id)
+            crm_sessions = crm_session_map[session.real_client_id]
+            scores = [s.score_total for s in crm_sessions if s.score_total is not None]
+            from app.schemas.training import HistoryCrmClientSummary
+            crm_summary = HistoryCrmClientSummary(
+                real_client_id=session.real_client_id,
+                full_name=crm_name_map.get(session.real_client_id, "Клиент CRM"),
+                sessions_count=len(crm_sessions),
+                avg_score=(sum(scores) / len(scores)) if scores else None,
+                best_score=max(scores) if scores else None,
+                last_session_at=max(s.started_at for s in crm_sessions),
+            )
+            latest = max(crm_sessions, key=lambda s: s.started_at)
+            items.append(
+                HistoryEntryResponse(
+                    kind="crm_client",
+                    sort_at=latest.started_at,
+                    latest_session=_session_to_response(latest),
+                    crm_client=crm_summary,
+                    sessions=[_story_call_summary(s) for s in crm_sessions],
+                    calls_completed=len(crm_sessions),
+                    avg_score=crm_summary.avg_score,
+                    best_score=crm_summary.best_score,
                 )
             )
             continue

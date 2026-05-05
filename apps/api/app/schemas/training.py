@@ -299,11 +299,28 @@ class StorySummaryResponse(BaseModel):
     latest_session_id: uuid.UUID | None = None
 
 
+class HistoryCrmClientSummary(BaseModel):
+    """BUG-FIX 2026-05-05: history-page grouping by CRM client.
+
+    Sessions with the same ``real_client_id`` previously appeared as N
+    separate «одиночная тренировка» entries — making /history useless for
+    seeing the relationship arc with a returning client. This summary
+    rolls them up into one entry per (user, real_client) pair.
+    """
+    real_client_id: uuid.UUID
+    full_name: str
+    sessions_count: int
+    avg_score: float | None = None
+    best_score: float | None = None
+    last_session_at: datetime
+
+
 class HistoryEntryResponse(BaseModel):
-    kind: str
+    kind: str  # "story" | "session" | "crm_client"
     sort_at: datetime
     latest_session: SessionResponse
     story: StorySummaryResponse | None = None
+    crm_client: HistoryCrmClientSummary | None = None
     sessions: list[StoryCallSummary] = []
     calls_completed: int = 1
     avg_score: float | None = None
