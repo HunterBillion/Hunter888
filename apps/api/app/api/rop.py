@@ -1483,6 +1483,9 @@ async def import_scenario_material(
         forced_route_type=forced_route_type,
     )
     await db.commit()
+    # See note on update_scenario_draft below — without refresh,
+    # _draft_to_response triggers sync lazy-loads on expired attributes.
+    await db.refresh(draft)
 
     response = _draft_to_response(draft, attachment_filename=attachment.filename)
     response["message"] = (
@@ -1716,6 +1719,12 @@ async def update_scenario_draft(
         draft.status = "edited"
 
     await db.commit()
+    # After commit() SQLAlchemy expires every attribute on `draft`.
+    # _draft_to_response touches `updated_at` / `created_at` / `confidence`
+    # etc., and any of those would trigger a sync lazy-load → MissingGreenlet
+    # in this async context. Refresh once so the serializer reads from a
+    # warm row. Same fix as PR #249 in arena (refresh after flush).
+    await db.refresh(draft)
     return _draft_to_response(draft)
 
 
