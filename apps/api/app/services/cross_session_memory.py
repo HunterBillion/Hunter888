@@ -151,6 +151,136 @@ def _format_outcome(outcome: str | None) -> str:
     return mapping.get(outcome, outcome.replace("_", " "))
 
 
+# PR-A.1 (audit fix from prod feedback): user opened the banner and
+# said «очень мало контекста — главный вопрос, будет ли AI помнить
+# факты». The original summary was outcome+score+emotion only — the
+# AI knew the call ended badly but not WHY. These extractors mine the
+# transcript so the next session's LLM gets the substance.
+
+# Manager-promise patterns. Conservative — false positives in a system
+# prompt make the AI accuse the manager of breaking promises that
+# never existed. Patterns lowercased; matched on raw lower text.
+_PROMISE_PATTERNS = (
+    "отправлю", "отправим", "пришлю", "пришлём", "вышлю", "вышлем",
+    "перезвоню", "перезвоним", "позвоню завтра", "позвоню позже",
+    "наберу вас", "напишу", "подготовлю", "составлю", "согласую",
+    "уточню и вернусь", "уточню и перезвоню",
+    "договоримся на завтра", "созвонимся завтра", "созвонимся позже",
+)
+
+# Client-objection patterns. Same conservative bias.
+_OBJECTION_PATTERNS = (
+    ("дорого", "цена/деньги"),
+    ("это сколько", "цена/деньги"),
+    ("нет денег", "цена/деньги"),
+    ("не нужно", "не нужно"),
+    ("не интересно", "не нужно"),
+    ("посоветуюсь", "нужно посоветоваться"),
+    ("посоветоваться", "нужно посоветоваться"),
+    ("обсудить с", "нужно посоветоваться"),
+    ("подумать", "нужно подумать"),
+    ("не сейчас", "не сейчас"),
+    ("позже", "не сейчас"),
+    ("не хочу", "не хочу/отказ"),
+    ("спам", "раздражение от звонка"),
+    ("надоели", "раздражение от звонка"),
+    ("мне нельзя", "опасения"),
+    ("боюсь", "опасения"),
+    ("банкрот", "опасения по банкротству"),
+    ("работа", "влияние на работу"),
+    ("кто это", "не помнит звонок"),
+    ("откуда у вас", "вопрос откуда данные"),
+)
+
+# Persona-fact slots surfaced inline in the summary. Anything else
+# lives in the dedicated facts block — keeps the lead-in tight.
+_HIGHLIGHT_SLOTS = {
+    "total_debt": "сумма долга",
+    "creditors": "кредиторы",
+    "income": "доход",
+    "family_status": "семья",
+    "property_status": "имущество",
+}
+
+
+def _extract_promises(messages: list[dict]) -> list[str]:
+    """Pull short manager-promise excerpts from prior call's messages.
+
+    Returns up to 2 distinct promises in chronological order. Each
+    excerpt is trimmed to 80 chars so a long monologue doesn't bloat
+    the system prompt. Dedup on keyword family: «отправлю на почту»
+    and «отправлю смету» count as one promise, not two.
+    """
+    found: list[str] = []
+    seen: set[str] = set()
+    for m in messages:
+        if m.get("role") != "assistant":  # manager's side in our schema
+            continue
+        text = (m.get("content") or "").strip()
+        if not text:
+            continue
+        low = text.lower()
+        for kw in _PROMISE_PATTERNS:
+            if kw in low:
+                excerpt = text[:80].rstrip()
+                key = kw.split()[0]
+                if key in seen:
+                    break
+                seen.add(key)
+                found.append(excerpt)
+                if len(found) >= 2:
+                    return found
+                break
+    return found
+
+
+def _extract_objections(messages: list[dict]) -> list[str]:
+    """Pull distinct client-objection categories from prior call.
+
+    Returns up to 2 category labels (Russian, lowercase). Categories
+    are stable across phrasing so the AI sees a clean signal.
+    """
+    found: list[str] = []
+    seen: set[str] = set()
+    for m in messages:
+        if m.get("role") != "user":  # client side in our schema
+            continue
+        text = (m.get("content") or "").strip().lower()
+        if not text:
+            continue
+        for needle, label in _OBJECTION_PATTERNS:
+            if needle in text:
+                if label in seen:
+                    continue
+                seen.add(label)
+                found.append(label)
+                if len(found) >= 2:
+                    return found
+    return found
+
+
+def _persona_highlights(facts: dict) -> list[str]:
+    """Render up to 3 high-value persona facts as «label: value» pairs."""
+    out: list[str] = []
+    for slot, label in _HIGHLIGHT_SLOTS.items():
+        if slot not in facts:
+            continue
+        raw = facts[slot]
+        value: str | None = None
+        if isinstance(raw, str):
+            value = raw
+        elif isinstance(raw, dict):
+            v = raw.get("value")
+            if isinstance(v, (str, int, float)):
+                value = str(v)
+        if not value:
+            continue
+        out.append(f"{label}: {value}")
+        if len(out) >= 3:
+            break
+    return out
+
+
 def render_summary(
     *,
     completed_at: datetime | None,
@@ -158,19 +288,37 @@ def render_summary(
     score_total: float | None,
     terminal_outcome: str | None,
     judge_rationale: str | None,
+    # PR-A.1 audit-fix params. All optional — older callers (and the
+    # negative-cache path) keep working with a None set, producing
+    # the legacy short summary.
+    call_index: int | None = None,
+    total_completed: int | None = None,
+    messages: list[dict] | None = None,
+    persona_facts: dict | None = None,
 ) -> str:
     """Build the Russian-language summary string.
 
-    Format (template in module docstring):
+    PR-A.1 enriched format:
 
-        «В прошлый звонок (вчера) клиент завершил на эмоции HOSTILE.
+        «Это уже 4-й звонок к этому клиенту (всего завершённых: 3).
+         В прошлый звонок (вчера) клиент завершил на эмоции HOSTILE.
          Менеджер получил 42/100. Краткая причина окончания: бросил
-         трубку. Судья отметил: грубый перебой клиента.»
+         трубку. Клиент возражал по: цена/деньги, нужно посоветоваться.
+         Менеджер обещал: «отправлю смету»; «перезвоню завтра».
+         Известные факты: сумма долга: 1.2 млн.
+         Судья отметил: грубый перебой клиента.»
 
     Trimmed to ``_MAX_SUMMARY_CHARS``.
     """
     age_label = _humanize_age(completed_at)
     parts: list[str] = []
+    # Lead with the call counter so the AI immediately knows whether
+    # this is a returning relationship or just a second contact.
+    if call_index and call_index >= 2:
+        parts.append(
+            f"Это уже {call_index}-й звонок к этому клиенту "
+            f"(всего завершённых: {total_completed or call_index - 1})."
+        )
     emo = (closing_emotion or "cold").upper()
     parts.append(
         f"В прошлый звонок ({age_label}) клиент завершил на эмоции {emo}."
@@ -185,6 +333,36 @@ def render_summary(
     parts.append(
         f"Краткая причина окончания: {_format_outcome(terminal_outcome)}."
     )
+
+    # PR-A.1: extracted objections + promises. The substance the AI
+    # needs to react contextually («вы обещали смету — где?»).
+    if messages:
+        try:
+            objections = _extract_objections(messages)
+            if objections:
+                parts.append(
+                    "Клиент возражал по: " + ", ".join(objections) + "."
+                )
+        except Exception:  # pragma: no cover — extractor must never crash render
+            logger.debug("xsession: objection extraction failed", exc_info=True)
+        try:
+            promises = _extract_promises(messages)
+            if promises:
+                parts.append(
+                    "Менеджер обещал: «" + "»; «".join(promises) + "»."
+                )
+        except Exception:  # pragma: no cover
+            logger.debug("xsession: promise extraction failed", exc_info=True)
+
+    # PR-A.1: persona facts inline — highest-value slots only.
+    if persona_facts:
+        try:
+            highlights = _persona_highlights(persona_facts)
+            if highlights:
+                parts.append("Известные факты: " + "; ".join(highlights) + ".")
+        except Exception:  # pragma: no cover
+            logger.debug("xsession: persona highlights failed", exc_info=True)
+
     if judge_rationale:
         # Strip to a single sentence — the judge rationale is sometimes
         # a paragraph; we want one line so the system prompt stays lean.
@@ -332,12 +510,60 @@ async def fetch_last_session_summary(
 
     closing_emotion = extract_closing_emotion(prior.emotion_timeline)
     rationale = _judge_rationale(prior.scoring_details)
+
+    # PR-A.1 (audit-fix): pull supplementary signal so the summary the
+    # AI sees is substantive, not a one-liner. All three lookups are
+    # opportunistic — if any throws we fall back to the legacy short
+    # summary rather than 500 the caller. Total cost on cache miss =
+    # three small SELECTs, gated behind the 1h Redis TTL.
+    total_completed = 0
+    try:
+        from sqlalchemy import func as _sa_func
+        cnt_stmt = select(_sa_func.count(TrainingSession.id)).where(
+            TrainingSession.user_id == user_id,
+            TrainingSession.real_client_id == real_client_id,
+            TrainingSession.status == SessionStatus.completed,
+        )
+        total_completed = int((await db.execute(cnt_stmt)).scalar() or 0)
+    except Exception:
+        logger.debug("xsession: completed-count lookup failed", exc_info=True)
+
+    transcript_msgs: list[dict] = []
+    try:
+        from app.models.training import Message
+        msg_stmt = (
+            select(Message.role, Message.content)
+            .where(Message.session_id == prior.id)
+            .order_by(Message.sequence_number.asc())
+            .limit(40)  # last call rarely longer than 40 turns; cheap.
+        )
+        rows = (await db.execute(msg_stmt)).all()
+        for r in rows:
+            role_v = r[0].value if hasattr(r[0], "value") else str(r[0])
+            transcript_msgs.append({"role": role_v, "content": r[1] or ""})
+    except Exception:
+        logger.debug("xsession: transcript fetch failed", exc_info=True)
+
+    persona_facts: dict | None = None
+    try:
+        from app.services import persona_memory as _pm
+        persona_row = await _pm.get_for_lead(db, lead_client_id=real_client_id)
+        if persona_row is not None and persona_row.confirmed_facts:
+            persona_facts = dict(persona_row.confirmed_facts)
+    except Exception:
+        logger.debug("xsession: persona facts lookup failed", exc_info=True)
+
     summary = render_summary(
         completed_at=prior.ended_at or prior.created_at,
         closing_emotion=closing_emotion,
         score_total=prior.score_total,
         terminal_outcome=prior.terminal_outcome,
         judge_rationale=rationale,
+        # PR-A.1 enrichment params.
+        call_index=total_completed + 1,
+        total_completed=total_completed,
+        messages=transcript_msgs,
+        persona_facts=persona_facts,
     )
 
     if redis is not None:
