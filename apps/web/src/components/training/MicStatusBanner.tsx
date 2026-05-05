@@ -83,13 +83,19 @@ const COPY: Record<MicBannerKind, BannerCopy> = {
   },
   stt_unsupported: {
     title: "Голос в этом браузере не работает",
-    hint: "Веб-Speech API нет в вашем браузере. Используйте Chrome, Edge или Safari ≥ 14.1, или продолжайте текстом снизу.",
+    hint: "Откройте x-hunter.expert в Google Chrome или Microsoft Edge — там голосовой ввод работает стабильно. В Brave включите «Speech Recognition» в Shield-настройках сайта. В Safari нужна версия ≥ 14.1. Текстовый ввод снизу работает в любом браузере.",
     action: null,
     severity: "info",
   },
   stt_network: {
-    title: "Сеть распознавания не отвечает",
-    hint: "Проверьте интернет — Web Speech API использует облачную модель. Можно писать текстом, пока чиним.",
+    // 2026-05-05: refined after prod feedback. Banner used to say only
+    // «проверьте интернет» — but the real cause for 90% of users is
+    // Brave's Shield blocking the Web Speech cloud, or Safari/Firefox
+    // not exposing the API at all. Shifted to a concrete remediation
+    // that names the browsers + Brave-specific toggle the user can
+    // try without opening DevTools.
+    title: "Голосовое распознавание заблокировано",
+    hint: "Web Speech API использует облако Google. В Brave его блокирует Shields — откройте Shields этого сайта и включите «Speech Recognition». В Safari/Firefox API нет — лучше Chrome или Edge. Текстовый ввод снизу работает прямо сейчас, без переключения браузера.",
     action: { label: "Повторить", kind: "retry" },
     severity: "warn",
   },
