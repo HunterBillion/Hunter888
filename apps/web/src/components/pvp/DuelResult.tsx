@@ -2,10 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Minus, ChevronDown, PlayCircle } from "lucide-react";
+import { ArrowRight, Minus, ChevronDown, PlayCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { Trophy, TrendUp, TrendDown, BookOpen, Lightning } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
+import { api } from "@/lib/api";
+import { useNotificationStore } from "@/stores/useNotificationStore";
+import { logger } from "@/lib/logger";
 
 interface PlayerBreakdown {
   selling_score: number;
@@ -66,6 +69,40 @@ export function DuelResult({
   turningPoint,
 }: Props) {
   const [showDetails, setShowDetails] = useState(false);
+  // PR-C (2026-05-05): "Оспорить вердикт" — POST /api/pvp/duels/{id}/dispute.
+  // Disabled after first click to enforce one-shot per duel; success clears
+  // the loader and shows a confirmation toast.
+  const [disputing, setDisputing] = useState(false);
+  const [disputed, setDisputed] = useState(false);
+  const handleDispute = async () => {
+    if (!duelId || disputing || disputed) return;
+    setDisputing(true);
+    try {
+      const res = await api.post(`/pvp/duels/${duelId}/dispute`, {}) as {
+        status?: string;
+        message?: string;
+      };
+      setDisputed(true);
+      const status = res?.status;
+      const body = status === "already_disputed"
+        ? "Этот спор уже подан ранее."
+        : (res?.message || "Спор отправлен на ручной разбор. Команда методологии свяжется через приложение.");
+      useNotificationStore.getState().addToast({
+        title: "Оспаривание принято",
+        body,
+        type: "success",
+      });
+    } catch (e) {
+      logger.error("Failed to file dispute:", e);
+      useNotificationStore.getState().addToast({
+        title: "Ошибка",
+        body: "Не удалось отправить спор. Попробуйте ещё раз.",
+        type: "error",
+      });
+    } finally {
+      setDisputing(false);
+    }
+  };
 
   // Emit PvP win celebration event
   useEffect(() => {
@@ -346,7 +383,7 @@ export function DuelResult({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1.4 }}
-            className="mt-3 text-center"
+            className="mt-3 text-center flex flex-col items-center gap-2"
           >
             <Link
               href={`/pvp/duel/${duelId}?replay=true`}
@@ -355,6 +392,26 @@ export function DuelResult({
             >
               <PlayCircle size={14} /> Посмотреть повтор
             </Link>
+            {/* PR-C (2026-05-05): "Оспорить вердикт" — closes the user's
+                explicit "нельзя оспорить" complaint. One-shot per duel,
+                rate-limited 3/hour on the backend. */}
+            <button
+              type="button"
+              onClick={handleDispute}
+              disabled={disputing || disputed}
+              className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md transition-colors"
+              style={{
+                color: disputed ? "var(--text-muted)" : "var(--warning, #facc15)",
+                background: "rgba(0,0,0,0.25)",
+                border: `1px solid ${disputed ? "var(--border-color)" : "color-mix(in srgb, var(--warning, #facc15) 40%, transparent)"}`,
+                cursor: disputing || disputed ? "not-allowed" : "pointer",
+                opacity: disputed ? 0.6 : 1,
+              }}
+              title={disputed ? "Спор уже подан" : "Оспорить решение AI-судьи"}
+            >
+              {disputing ? <Loader2 size={12} className="animate-spin" /> : <AlertTriangle size={12} />}
+              {disputed ? "Спор подан" : "Не согласен с оценкой"}
+            </button>
           </motion.div>
         )}
       </motion.div>
