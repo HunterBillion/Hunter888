@@ -69,11 +69,13 @@ interface PvPState {
   queueStatus: QueueStatus;
   queuePosition: number;
   estimatedWait: number;
-  pvEOffer: string | null;
   matchedOpponentRating: number | null;
 
   // Duel
-  currentDuel: PvPDuel | null;
+  // PR-cleanup (2026-05-05): removed `pvEOffer` and `currentDuel` —
+  // both written-only with no consumer. The PvE-offer modal was deleted
+  // 2026-04-XX (see comment in pvp/page.tsx) and the case "pve.offer"
+  // WS handler now no-ops; `currentDuel` was never assigned anywhere.
   duelBrief: DuelBrief | null;
   myRole: "seller" | "client" | null;
   roundNumber: number;
@@ -103,7 +105,6 @@ interface PvPState {
   setQueuePosition: (pos: number, est: number) => void;
   setMatchedOpponentRating: (rating: number | null) => void;
   resetQueue: () => void;
-  setPvEOffer: (msg: string | null) => void;
   setDuelBrief: (brief: DuelBrief) => void;
   setMyRole: (role: "seller" | "client") => void;
   setRoundNumber: (n: number) => void;
@@ -123,9 +124,7 @@ export const usePvPStore = create<PvPState>((set, get) => ({
   queueStatus: "idle",
   queuePosition: 0,
   estimatedWait: 0,
-  pvEOffer: null,
   matchedOpponentRating: null,
-  currentDuel: null,
   duelBrief: null,
   myRole: null,
   roundNumber: 0,
@@ -204,10 +203,8 @@ export const usePvPStore = create<PvPState>((set, get) => ({
     queueStatus: "idle",
     queuePosition: 0,
     estimatedWait: 0,
-    pvEOffer: null,
     matchedOpponentRating: null,
   }),
-  setPvEOffer: (pvEOffer) => set({ pvEOffer }),
   setDuelBrief: (duelBrief) => set({ duelBrief, queueStatus: "in_duel" }),
   setMyRole: (myRole) => set({ myRole }),
   setRoundNumber: (roundNumber) => set({ roundNumber }),
@@ -245,9 +242,7 @@ export const usePvPStore = create<PvPState>((set, get) => ({
     queueStatus: "idle",
     queuePosition: 0,
     estimatedWait: 0,
-    pvEOffer: null,
     matchedOpponentRating: null,
-    currentDuel: null,
     duelBrief: null,
     myRole: null,
     roundNumber: 0,
