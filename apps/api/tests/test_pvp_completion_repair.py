@@ -208,6 +208,120 @@ async def test_reaper_skips_already_terminal_duel(db_session, monkeypatch):
     assert duel.terminal_outcome is None  # we did NOT stamp it post-hoc
 
 
+# ── 3. Disconnect-cancel SQL path — the main path this PR exists for ────
+
+
+@pytest.mark.asyncio
+async def test_cancel_duel_in_db_stamps_terminal_columns(db_session):
+    """Direct exercise of the disconnect-cancel SQL half. Pre-fix this path
+    wrote status=cancelled but left terminal_* NULL — exactly the 7/11 prod
+    bug. After fix the row should have outcome=pvp_abandoned and
+    reason=opponent_disconnected."""
+    from app.models.pvp import DuelStatus
+    from app.ws.pvp import _cancel_duel_in_db
+
+    duel = await _make_stuck_duel(db_session, DuelStatus.round_1, age_minutes=2)
+
+    flipped = await _cancel_duel_in_db(db_session, duel.id)
+    await db_session.commit()
+    await db_session.refresh(duel)
+
+    assert flipped is True
+    assert duel.status == DuelStatus.cancelled
+    assert duel.terminal_outcome == "pvp_abandoned"
+    assert duel.terminal_reason == "opponent_disconnected"
+    assert duel.completed_at is not None
+    assert duel.duration_seconds is not None and duel.duration_seconds >= 0
+
+
+@pytest.mark.asyncio
+async def test_cancel_duel_in_db_skips_already_completed(db_session):
+    """A completed duel must not be re-touched — this guards the rare
+    case where _finalize_duel finished while the disconnect-grace task
+    was sleeping its 60s."""
+    from app.models.pvp import DuelStatus
+    from app.ws.pvp import _cancel_duel_in_db
+
+    duel = await _make_stuck_duel(db_session, DuelStatus.completed, age_minutes=1)
+
+    flipped = await _cancel_duel_in_db(db_session, duel.id)
+    await db_session.commit()
+    await db_session.refresh(duel)
+
+    assert flipped is False
+    assert duel.status == DuelStatus.completed
+    assert duel.terminal_outcome is None  # never re-stamped
+
+
+@pytest.mark.asyncio
+async def test_cancel_duel_in_db_skips_judging(db_session):
+    """Review fix #1: do NOT cancel a duel mid-judging. Pre-fix this path
+    would race the judge and overwrite a completed/win row."""
+    from app.models.pvp import DuelStatus
+    from app.ws.pvp import _cancel_duel_in_db
+
+    duel = await _make_stuck_duel(db_session, DuelStatus.judging, age_minutes=1)
+
+    flipped = await _cancel_duel_in_db(db_session, duel.id)
+    await db_session.commit()
+    await db_session.refresh(duel)
+
+    assert flipped is False
+    assert duel.status == DuelStatus.judging
+    assert duel.terminal_outcome is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_duel_in_db_idempotent_on_repeat(db_session):
+    """Two sequential cancel calls must produce the same row state and
+    not corrupt terminal_outcome on the second pass."""
+    from app.models.pvp import DuelStatus
+    from app.ws.pvp import _cancel_duel_in_db
+
+    duel = await _make_stuck_duel(db_session, DuelStatus.round_1, age_minutes=2)
+
+    flipped_1 = await _cancel_duel_in_db(db_session, duel.id)
+    await db_session.commit()
+    flipped_2 = await _cancel_duel_in_db(db_session, duel.id)
+    await db_session.commit()
+    await db_session.refresh(duel)
+
+    assert flipped_1 is True
+    assert flipped_2 is False  # already terminal — short-circuit
+    assert duel.status == DuelStatus.cancelled
+    assert duel.terminal_outcome == "pvp_abandoned"
+    assert duel.terminal_reason == "opponent_disconnected"
+
+
+@pytest.mark.asyncio
+async def test_cancel_duel_in_db_concurrent_with_gather(db_session):
+    """Concurrent gather of two cancel calls must converge on a single
+    cancelled row. SQLite serialises writes per connection, so this
+    test verifies functional convergence rather than true row-level
+    contention (Postgres provides that via with_for_update)."""
+    import asyncio
+    from app.models.pvp import DuelStatus
+    from app.ws.pvp import _cancel_duel_in_db
+
+    duel = await _make_stuck_duel(db_session, DuelStatus.round_1, age_minutes=2)
+
+    # Two concurrent cancel calls on the same row + a single commit.
+    a, b = await asyncio.gather(
+        _cancel_duel_in_db(db_session, duel.id),
+        _cancel_duel_in_db(db_session, duel.id),
+    )
+    await db_session.commit()
+    await db_session.refresh(duel)
+
+    # Exactly one call should have observed the non-terminal state and
+    # flipped it; the other call should have hit the terminal-status
+    # short-circuit. Convergent state: cancelled + pvp_abandoned.
+    assert {a, b} == {True, False}
+    assert duel.status == DuelStatus.cancelled
+    assert duel.terminal_outcome == "pvp_abandoned"
+    assert duel.terminal_reason == "opponent_disconnected"
+
+
 @pytest.mark.asyncio
 async def test_reaper_handles_all_non_terminal_states(db_session, monkeypatch):
     """Reaper must catch every non-terminal status: pending/round_1/swap/round_2/judging."""

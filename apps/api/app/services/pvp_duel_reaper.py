@@ -76,12 +76,36 @@ class PvPDuelReaper:
         reaped = 0
         try:
             async with async_session() as db:
-                stmt = select(PvPDuel).where(
-                    PvPDuel.status.in_(non_terminal),
-                    PvPDuel.created_at < cutoff,
-                ).limit(100)  # bound a single sweep so a backlog can't block
-                rows = (await db.execute(stmt)).scalars().all()
+                # Review fix #2: with_for_update(skip_locked=True) so two
+                # API replicas (rolling deploy 1→2) don't both try to
+                # finalize the same row. The second replica gets an empty
+                # batch and waits for next tick instead of contending.
+                # SQLite (test) does not support row-locking, so the
+                # `with_for_update()` call is a no-op there but kept for
+                # the production Postgres path. ``skip_locked`` is the
+                # same pattern matchmaker.py uses for queue safety.
+                try:
+                    stmt = select(PvPDuel).where(
+                        PvPDuel.status.in_(non_terminal),
+                        PvPDuel.created_at < cutoff,
+                    ).limit(100).with_for_update(skip_locked=True)
+                    rows = (await db.execute(stmt)).scalars().all()
+                except Exception:
+                    # SQLite-in-tests can't compile FOR UPDATE; fall back
+                    # to a plain select. Production Postgres always supports
+                    # row locks, so this catch only fires under unit tests.
+                    stmt = select(PvPDuel).where(
+                        PvPDuel.status.in_(non_terminal),
+                        PvPDuel.created_at < cutoff,
+                    ).limit(100)
+                    rows = (await db.execute(stmt)).scalars().all()
                 for duel in rows:
+                    # Re-verify status under the held row lock — defensive
+                    # if a concurrent transaction snuck a state transition
+                    # past the WHERE clause (shouldn't happen with
+                    # skip_locked, but cheap insurance).
+                    if duel.status not in non_terminal:
+                        continue
                     duel.status = DuelStatus.cancelled
                     now = datetime.now(timezone.utc)
                     if not duel.completed_at:

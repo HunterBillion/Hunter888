@@ -953,6 +953,67 @@ async def _cleanup_duel_runtime(duel_id: uuid.UUID) -> None:
     cleanup_bot_state(str(duel_id))
 
 
+async def _cancel_duel_in_db(db, duel_id: uuid.UUID) -> bool:
+    """DB-only half of the disconnect-cancel flow. Returns True if the row
+    was flipped to cancelled in this call, False if it was already terminal
+    or in judging (judging short-circuits — see review fix #1).
+
+    Extracted from ``_cancel_duel_after_disconnect`` so the integration
+    test can exercise the SQL/finalize path without standing up
+    ``_active_connections``/``_duel_sessions``/Redis. Consumed by both
+    the live disconnect-grace task and the test suite.
+    """
+    duel = (
+        await db.execute(
+            select(PvPDuel).where(PvPDuel.id == duel_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if not duel or duel.status in (
+        DuelStatus.completed,
+        DuelStatus.cancelled,
+        DuelStatus.judging,
+    ):
+        return False
+    _prev_state = getattr(duel.status, "value", str(duel.status))
+    duel.status = DuelStatus.cancelled
+    ARENA_DUEL_STATE_TRANSITIONS.labels(from_state=_prev_state, to_state="cancelled").inc()
+    completed_at = datetime.now(timezone.utc)
+    duel.completed_at = completed_at
+    if duel.created_at:
+        # Normalise tz to handle the SQLite-naive vs Postgres-aware split.
+        created = duel.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        duel.duration_seconds = max(
+            0, int((completed_at - created).total_seconds())
+        )
+    try:
+        from app.services.completion_policy import (
+            TerminalOutcome,
+            TerminalReason,
+            finalize_pvp_duel,
+        )
+        _result = await finalize_pvp_duel(
+            db,
+            duel=duel,
+            outcome=TerminalOutcome.pvp_abandoned,
+            reason=TerminalReason.opponent_disconnected,
+        )
+        ARENA_FINALIZE_ATTEMPTS.labels(
+            outcome="abandoned",
+            already_completed=str(_result.already_completed).lower(),
+        ).inc()
+    except Exception:
+        logger.warning(
+            "completion_policy stamp failed (disconnect-cancel) for duel %s",
+            duel.id, exc_info=True,
+        )
+        ARENA_FINALIZE_ATTEMPTS.labels(
+            outcome="stamp_failed", already_completed="false"
+        ).inc()
+    return True
+
+
 async def _cancel_duel_after_disconnect(user_id: uuid.UUID, duel_id: uuid.UUID) -> None:
     # Bind ``correlation_id = duel_id`` for every log emitted from this task.
     # Each ``asyncio.create_task`` gets a fresh contextvar copy (PEP 567), so
@@ -975,43 +1036,9 @@ async def _cancel_duel_after_disconnect(user_id: uuid.UUID, duel_id: uuid.UUID) 
             _snap_p2 = session["player2_id"]
 
         async with async_session() as db:
-            duel = (await db.execute(select(PvPDuel).where(PvPDuel.id == duel_id))).scalar_one_or_none()
-            if not duel or duel.status in (DuelStatus.completed, DuelStatus.cancelled):
+            flipped = await _cancel_duel_in_db(db, duel_id)
+            if not flipped:
                 return
-            _prev_state = getattr(duel.status, "value", str(duel.status))
-            duel.status = DuelStatus.cancelled
-            ARENA_DUEL_STATE_TRANSITIONS.labels(from_state=_prev_state, to_state="cancelled").inc()
-            duel.completed_at = datetime.now(timezone.utc)
-            if duel.created_at:
-                duel.duration_seconds = max(
-                    0,
-                    int((duel.completed_at - duel.created_at).total_seconds()),
-                )
-            # PR-1 (2026-05-05): close the §3.3 invariant — terminal_outcome
-            # was NULL on every disconnect-cancel before this. 7/11 prod duels
-            # had unstamped terminal columns because this path bypassed the
-            # completion policy. Stamp inside the same transaction.
-            try:
-                from app.services.completion_policy import (
-                    TerminalOutcome,
-                    TerminalReason,
-                    finalize_pvp_duel,
-                )
-                await finalize_pvp_duel(
-                    db,
-                    duel=duel,
-                    outcome=TerminalOutcome.pvp_abandoned,
-                    reason=TerminalReason.opponent_disconnected,
-                )
-                ARENA_FINALIZE_ATTEMPTS.labels(
-                    outcome="abandoned", already_completed="false"
-                ).inc()
-            except Exception:
-                logger.warning(
-                    "completion_policy stamp failed (disconnect-cancel) for duel %s",
-                    duel.id, exc_info=True,
-                )
-            db.add(duel)
             await db.commit()
 
         for participant_id in [_snap_p1, _snap_p2]:
@@ -1513,7 +1540,10 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
                     "completion_policy stamp failed (judge_error) for duel %s",
                     duel.id, exc_info=True,
                 )
-            db.add(duel)
+                # Review fix #3: emit metric so a swallowed stamp is visible.
+                ARENA_FINALIZE_ATTEMPTS.labels(
+                    outcome="stamp_failed", already_completed="false"
+                ).inc()
             await db.commit()
             for uid in [session["player1_id"], session["player2_id"]]:
                 if uid != BOT_ID:
@@ -1570,6 +1600,10 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
                 "completion_policy stamp failed (pvp) for duel %s",
                 duel.id, exc_info=True,
             )
+            # Review fix #3: emit metric so a swallowed stamp is visible.
+            ARENA_FINALIZE_ATTEMPTS.labels(
+                outcome="stamp_failed", already_completed="false"
+            ).inc()
 
         p1_delta = 0.0
         p2_delta = 0.0
