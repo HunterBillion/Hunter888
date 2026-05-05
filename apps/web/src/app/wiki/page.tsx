@@ -69,10 +69,13 @@ export default function MyWikiPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Redirect admin/rop to dashboard wiki tab (consolidated in Панель РОП)
+  // Redirect admin/rop to the canonical Wiki sub-tab inside Контент.
+  // (`?tab=wiki` doesn't exist as a top-level tab — wiki is one of the
+  // sub-tabs under content. Without &sub=wiki the user lands on the
+  // first sub-tab «РОПы», which is wrong.)
   useEffect(() => {
     if (role === "admin" || role === "rop") {
-      router.replace("/dashboard?tab=wiki");
+      router.replace("/dashboard?tab=content&sub=wiki");
       return;
     }
     if (!userId) return;

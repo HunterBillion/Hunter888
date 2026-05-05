@@ -38,6 +38,7 @@ import { logger } from "@/lib/logger";
 import { toast } from "sonner";
 import { ImportWizard } from "@/components/methodology/ImportWizard";
 import { ImportHistory } from "@/components/methodology/ImportHistory";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 interface Chunk {
   id: string;
@@ -109,6 +110,8 @@ export function ArenaContentEditor() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importRefreshKey, setImportRefreshKey] = useState(0);
+  const [pendingDelete, setPendingDelete] = useState<Chunk | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Debounce search input → 300ms after last keystroke flushes to query.
   useEffect(() => {
@@ -248,10 +251,14 @@ export function ArenaContentEditor() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Удалить чанк? Это soft-delete — историю можно будет восстановить.")) return;
+  const requestDelete = (chunk: Chunk) => setPendingDelete(chunk);
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
     try {
-      await api.delete(`/rop/arena/chunks/${id}`);
+      await api.delete(`/rop/arena/chunks/${pendingDelete.id}`);
+      setPendingDelete(null);
       fetchChunks();
       toast.success("Чанк удалён");
     } catch (err) {
@@ -259,6 +266,8 @@ export function ArenaContentEditor() {
       toast.error("Ошибка удаления чанка", {
         description: err instanceof Error ? err.message : undefined,
       });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -748,7 +757,7 @@ export function ArenaContentEditor() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDelete(chunk.id)}
+                        onClick={() => requestDelete(chunk)}
                         className="p-1.5 rounded-lg hover:bg-red-500/10"
                         title="Удалить (soft-delete)"
                         aria-label="Удалить чанк"
@@ -811,6 +820,30 @@ export function ArenaContentEditor() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => { if (!open && !deleting) setPendingDelete(null); }}
+        title="Удалить чанк из базы ФЗ-127?"
+        description={
+          <div className="space-y-2">
+            <p>
+              Чанк <strong>«{pendingDelete?.title ?? ""}»</strong> будет
+              исключён из ответов AI-судьи и из режима «Арена знаний». Это
+              soft-delete: при необходимости запись можно восстановить через
+              «События клиентов» или поддержку.
+            </p>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+              База ФЗ-127 — юридически значимая. Удаляйте только если чанк
+              ошибочный или дублирует другой.
+            </p>
+          </div>
+        }
+        confirmLabel="Удалить чанк"
+        destructive
+        busy={deleting}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

@@ -52,7 +52,21 @@ export function Benchmark() {
   }
 
   if (!data || data.skills.length === 0) {
-    return null;
+    // Don't return null — silently disappearing makes the user think
+    // the page is broken or that the widget didn't load. State the
+    // gating threshold so they know what to expect.
+    return (
+      <div className="text-center py-6 px-4" style={{ color: "var(--text-muted)" }}>
+        <ChartBar size={24} weight="duotone" style={{ color: "var(--text-muted)", opacity: 0.5, margin: "0 auto 10px" }} />
+        <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+          Сравнение с платформой ещё не доступно
+        </p>
+        <p className="text-xs mt-2 max-w-md mx-auto">
+          Бенчмарк строится после ~10 сессий команды — данных пока
+          недостаточно для статистически значимого среза.
+        </p>
+      </div>
+    );
   }
 
   return (

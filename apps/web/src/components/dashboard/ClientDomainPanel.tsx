@@ -40,6 +40,8 @@ import { toast } from "sonner";
 
 import { api, ApiError } from "@/lib/api";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { formatDateTimeFull } from "@/lib/utils";
 
 type ClientDomainView = "health" | "ops" | "events" | "followups";
 
@@ -133,14 +135,7 @@ const HEALTH_COLORS: Record<HealthStatus, { bg: string; fg: string; border: stri
 function formatTimestamp(iso: string | null): string {
   if (!iso) return "—";
   try {
-    return new Date(iso).toLocaleString("ru-RU", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+    return formatDateTimeFull(iso);
   } catch {
     return iso;
   }
@@ -370,6 +365,7 @@ export function ClientDomainPanel() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "refresh" | "self-test" | "repair-events" | "repair-projections">(null);
+  const [pendingRepair, setPendingRepair] = useState<null | "events" | "projections">(null);
   const [selfTest, setSelfTest] = useState<SelfTestResult | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [view, setView] = useState<ClientDomainView>("health");
@@ -448,35 +444,35 @@ export function ClientDomainPanel() {
     }
   }, [load]);
 
-  const runRepair = useCallback(
-    async (kind: "events" | "projections") => {
-      const confirmMsg =
+  const requestRepair = useCallback((kind: "events" | "projections") => {
+    setPendingRepair(kind);
+  }, []);
+
+  const confirmRepair = useCallback(async () => {
+    if (!pendingRepair) return;
+    const kind = pendingRepair;
+    setBusy(kind === "events" ? "repair-events" : "repair-projections");
+    try {
+      const endpoint =
         kind === "events"
-          ? "Backfill DomainEvent для legacy-интеракций. Идемпотентно (ключ repair:client_interaction:<id>). Продолжить?"
-          : "Создать отсутствующие projection-строки для событий без timeline-записи. Продолжить?";
-      if (!window.confirm(confirmMsg)) return;
-      setBusy(kind === "events" ? "repair-events" : "repair-projections");
-      try {
-        const endpoint =
-          kind === "events"
-            ? "/admin/client-domain/repair/events"
-            : "/admin/client-domain/repair/projections";
-        const result = await api.post<{ repaired_events?: number; repaired_projections?: number }>(
-          endpoint,
-          {},
-        );
-        const count = result.repaired_events ?? result.repaired_projections ?? 0;
-        toast.success(`Репейр завершён · обновлено записей: ${count}`);
-        await load();
-      } catch (err) {
-        const msg = err instanceof ApiError ? err.message : String(err);
-        toast.error(`Репейр не удался: ${msg}`);
-      } finally {
-        setBusy(null);
-      }
-    },
-    [load],
-  );
+          ? "/admin/client-domain/repair/events"
+          : "/admin/client-domain/repair/projections";
+      const result = await api.post<{ repaired_events?: number; repaired_projections?: number }>(
+        endpoint,
+        {},
+      );
+      const count = result.repaired_events ?? result.repaired_projections ?? 0;
+      toast.success(`Репейр завершён · обновлено записей: ${count}`);
+      setPendingRepair(null);
+      await load();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : String(err);
+      toast.error(`Репейр не удался: ${msg}`);
+      // keep dialog open for retry
+    } finally {
+      setBusy(null);
+    }
+  }, [pendingRepair, load]);
 
   // ── render ────────────────────────────────────────────────────────────
 
@@ -694,7 +690,7 @@ export function ClientDomainPanel() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => runRepair("events")}
+              onClick={() => requestRepair("events")}
               disabled={busy !== null}
               className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition disabled:opacity-50"
               style={{
@@ -712,7 +708,7 @@ export function ClientDomainPanel() {
             </button>
             <button
               type="button"
-              onClick={() => runRepair("projections")}
+              onClick={() => requestRepair("projections")}
               disabled={busy !== null}
               className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition disabled:opacity-50"
               style={{
@@ -1119,6 +1115,44 @@ export function ClientDomainPanel() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={pendingRepair !== null}
+        onOpenChange={(open) => { if (!open && busy === null) setPendingRepair(null); }}
+        title={
+          pendingRepair === "events"
+            ? "Запустить backfill DomainEvent?"
+            : "Создать недостающие projection-строки?"
+        }
+        description={
+          pendingRepair === "events" ? (
+            <div className="space-y-2">
+              <p>
+                Дозаполнит <strong>DomainEvent</strong> для legacy-интеракций,
+                у которых эта запись ещё не создана. Идемпотентно по ключу
+                <code> repair:client_interaction:&lt;id&gt; </code> — повторный
+                запуск безопасен.
+              </p>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+                Запускать после миграций или замеченного провала parity.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p>
+                Создаст <strong>projection-строки</strong> для DomainEvent
+                без соответствующей записи в timeline. Идемпотентно.
+              </p>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+                Используется когда projector упал или пропустил часть событий.
+              </p>
+            </div>
+          )
+        }
+        confirmLabel="Запустить"
+        busy={busy === "repair-events" || busy === "repair-projections"}
+        onConfirm={confirmRepair}
+      />
     </div>
   );
 }

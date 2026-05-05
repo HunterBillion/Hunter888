@@ -1,29 +1,32 @@
 "use client";
 
 /**
- * MethodologyPanel — sub-tabs for /dashboard "Методология":
- *   1. РОПы          — list of users with role=rop scoped to the caller's
- *                      team (ROP sees own team, admin sees all teams).
- *                      Server enforces scope via apps/api/app/api/users.py.
- *   2. Сессии        — paginated browse of every training session in scope.
- *                      Migrated 2026-04-26 from /methodologist/sessions
- *                      standalone page.
- *   3. Контент арены — CRUD for ФЗ-127 knowledge chunks. Migrated from
- *                      /methodologist/arena-content standalone page.
- *   4. Сценарии      — placeholder for the constructor (TZ-3 will fill it
- *                      with draft-publish lifecycle UI).
- *   5. Скоринг       — placeholder for scoring weights config.
- *   6. Wiki          — corporate knowledge base, reuses <WikiDashboard>.
- *   7. Отзывы        — admin-only moderation queue.
+ * ContentPanel — sub-tabs for /dashboard "Контент" (formerly "Методология"
+ * — renamed 2026-05-05 because non-engineers read "Methodology" as something
+ * they don't own; in production this is "everything that fills training":
+ * scenarios, knowledge, plays, AI-quality oversight, wiki).
  *
- * URL deep-link via `?sub=...` query param so a permanent redirect from
- * the retired /methodologist/* pages can land on the right sub-tab.
+ *   РОПы            — users with role=rop scoped to caller's team.
+ *   Сессии          — every training session in scope.
+ *   База ФЗ-127     — global knowledge chunks (was "Контент арены").
+ *   Сценарии        — scenario constructor (draft → publish lifecycle).
+ *   Плейбуки        — per-team playbooks (opener / objection / closing).
+ *                     Distinct from "База ФЗ-127" — see boundary doc.
+ *   Ревью знаний    — TTL queue for legal_knowledge chunks.
+ *   AI-собеседник   — aggregate AI quality oversight (was "Качество AI").
+ *   Wiki            — corporate knowledge base, reuses <WikiDashboard>.
+ *   Отзывы          — admin-only moderation queue.
+ *
+ * URL deep-link via `?sub=...`. Server-side redirects in next.config.ts
+ * map retired `/methodologist/*` paths to the canonical sub-tabs; in-app
+ * `?tab=methodology` legacy URLs are normalised to `?tab=content` by the
+ * dashboard page itself.
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail } from "lucide-react";
-import { BookOpen, Brain, Star, FileText, Database, Sliders, Stack, Shield, Sparkle } from "@phosphor-icons/react";
+import { BookOpen, Brain, Star, FileText, Database, Stack, Shield, Sparkle } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
@@ -31,7 +34,10 @@ import { roleName } from "@/lib/guards";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import { TeamKpiPanel } from "@/components/methodology/TeamKpiPanel";
-import { TeamAnalyticsWidget } from "@/components/methodology/TeamAnalyticsWidget";
+// TeamAnalyticsWidget removed from this sub-tab 2026-05-05 — it duplicated
+// the team-wide charts already on `?tab=team` (the merged Команда tab).
+// The widget itself still lives at apps/web/src/components/methodology/
+// TeamAnalyticsWidget.tsx in case it's needed somewhere else later.
 import { BulkAssignModal } from "@/components/methodology/BulkAssignModal";
 import { CsvImportModal } from "@/components/methodology/CsvImportModal";
 
@@ -95,7 +101,6 @@ type SubTab =
   | "playbooks"
   | "knowledge_review"
   | "ai_quality"
-  | "scoring"
   | "wiki"
   | "reviews";
 
@@ -112,13 +117,23 @@ function RopList({ isAdminCaller }: { isAdminCaller: boolean }) {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    // Methodologist role retired 2026-04-26 — ROPs inherited the methodology
-    // surface. We list rop role here (server scopes to caller's team for rop
-    // viewers, returns all teams for admin viewers).
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
     api.get<UserListItem[]>("/users/?role=rop&limit=200")
-      .then((data) => setItems(Array.isArray(data) ? data : []))
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Ошибка загрузки"))
-      .finally(() => setLoading(false));
+      .then((data) => {
+        if (cancelled) return;
+        setItems(Array.isArray(data) ? data : []);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Ошибка загрузки");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [refreshKey]);
 
   if (loading) return <DashboardSkeleton />;
@@ -173,7 +188,6 @@ function RopList({ isAdminCaller }: { isAdminCaller: boolean }) {
   if (items.length === 0) {
     return (
       <>
-        <TeamAnalyticsWidget refreshKey={refreshKey} />
         {toolbar}
         <TeamKpiPanel refreshKey={refreshKey} />
         <div className="glass-panel rounded-xl p-8 text-center">
@@ -190,7 +204,6 @@ function RopList({ isAdminCaller }: { isAdminCaller: boolean }) {
 
   return (
     <>
-      <TeamAnalyticsWidget refreshKey={refreshKey} />
       {toolbar}
       <TeamKpiPanel refreshKey={refreshKey} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -229,42 +242,29 @@ function RopList({ isAdminCaller }: { isAdminCaller: boolean }) {
   );
 }
 
-function PlaceholderTab({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <div className="glass-panel rounded-xl p-8 text-center">
-      <Stack size={32} weight="duotone" style={{ color: "var(--text-muted)", margin: "0 auto 12px", opacity: 0.5 }} />
-      <h3 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
-        {title}
-      </h3>
-      <p className="mt-2 text-sm max-w-md mx-auto" style={{ color: "var(--text-muted)" }}>
-        {subtitle}
-      </p>
-    </div>
-  );
-}
-
 const SUB_TABS: { id: SubTab; label: string; icon: typeof BookOpen; adminOnly?: boolean }[] = [
   { id: "rops", label: "РОПы", icon: Brain },
   { id: "sessions", label: "Сессии", icon: FileText },
-  { id: "arena", label: "Контент арены", icon: Database },
+  // Was "Контент арены" — non-engineers couldn't tell whether "arena"
+  // was the training mode, the rating system, or a separate product.
+  // The chunks themselves are scoped to ФЗ-127, so the label says so.
+  { id: "arena", label: "База ФЗ-127", icon: Database },
   { id: "scenarios", label: "Сценарии", icon: Stack },
-  // TZ-8 PR-C — per-team playbooks (opener / objection / closing /
-  // discovery / persona_tone / counter_fact / process). Authored by
-  // ROP+admin, surfaces in coach + judge RAG of the same team.
-  // Distinct from "Контент арены" (global ФЗ-127 facts) — see TZ-8 §1
-  // for the boundary contract.
-  { id: "playbooks", label: "Методология", icon: Sparkle },
-  // TZ-4 §8 — TTL review queue. Visible to ROP+admin (the
-  // POST /admin/knowledge/{id}/review endpoint also gates on those
-  // roles, so a pilot manager seeing the tab gets a 403 anyway —
-  // hiding it preemptively keeps the nav uncluttered).
+  // Per-team playbooks (opener / objection / closing / discovery /
+  // persona_tone / counter_fact / process). Authored by ROP+admin,
+  // surfaces in coach + judge RAG of the same team. Distinct from the
+  // global "База ФЗ-127" — playbooks are team-private.
+  { id: "playbooks", label: "Плейбуки", icon: Sparkle },
+  // TTL review queue for legal_knowledge chunks. Visible to ROP+admin —
+  // the POST /admin/knowledge/{id}/review endpoint gates on those roles
+  // anyway, so the tab is hidden from managers preemptively to keep
+  // the nav uncluttered.
   { id: "knowledge_review", label: "Ревью знаний", icon: Shield },
-  // TZ-4 §13.4.1 — aggregate AI quality oversight. Lives here
-  // because the failure modes are about AI craft (policy violations,
-  // persona drift), not people-management (Команда tab keeps that
-  // focus). Backend gate: rop|admin.
-  { id: "ai_quality", label: "Качество AI", icon: Sparkle },
-  { id: "scoring", label: "Скоринг", icon: Sliders },
+  // Aggregate AI quality oversight: persona conflicts, policy
+  // violations of the AI client. Was "Качество AI" — too abstract;
+  // "AI-собеседник" makes the subject explicit (the client persona,
+  // not the judge / coach). Backend gate: rop|admin.
+  { id: "ai_quality", label: "AI-собеседник", icon: Sparkle },
   { id: "wiki", label: "Wiki", icon: BookOpen },
   { id: "reviews", label: "Отзывы", icon: Star, adminOnly: true },
 ];
@@ -272,11 +272,16 @@ const SUB_TABS: { id: SubTab; label: string; icon: typeof BookOpen; adminOnly?: 
 export function MethodologyPanel({ isAdminCaller }: Props) {
   const searchParams = useSearchParams();
 
-  // Deep-link: /dashboard?tab=methodology&sub=arena lands on the right
+  // Deep-link: /dashboard?tab=content&sub=arena lands on the right
   // sub-tab. Used by the Next.js redirects from the retired
   // /methodologist/* paths (next.config.ts) and by the ROP nav menu.
+  // Reading the raw string (not searchParams ref) keeps re-sync below
+  // immune to unrelated query-param churn (e.g. `?modal=...`) that would
+  // otherwise yank the user back to whatever `?sub=` is in the URL.
+  // `scoring` was retired 2026-05-05 (placeholder removed); legacy
+  // bookmarks are caught here and redirected to `rops`.
+  const subParam = searchParams.get("sub");
   const initialSub = useMemo<SubTab>(() => {
-    const raw = searchParams.get("sub");
     const allowed: SubTab[] = [
       "rops",
       "sessions",
@@ -285,12 +290,15 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
       "playbooks",
       "knowledge_review",
       "ai_quality",
-      "scoring",
       "wiki",
       "reviews",
     ];
-    return (allowed.includes(raw as SubTab) ? (raw as SubTab) : "rops") as SubTab;
-  }, [searchParams]);
+    if (!allowed.includes(subParam as SubTab)) return "rops";
+    // Non-admin landing on adminOnly sub via deep-link → graceful fallback
+    // instead of the empty AnimatePresence (which renders a blank panel).
+    if (subParam === "reviews" && !isAdminCaller) return "rops";
+    return subParam as SubTab;
+  }, [subParam, isAdminCaller]);
 
   const [active, setActive] = useState<SubTab>(initialSub);
 
@@ -306,20 +314,20 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
       {/* Tab title with i-tooltip */}
       <div className="flex items-center justify-between">
         <h2 className="font-display text-base tracking-wider" style={{ color: "var(--text-secondary)" }}>
-          МЕТОДОЛОГИЯ
+          КОНТЕНТ
         </h2>
         <PixelInfoButton
-          title="Методология"
+          title="Контент"
           sections={[
-            { label: "Сценарии", text: "Шаблоны разговоров для тренировок. Версионирование (TZ-3): правки попадают к менеджерам только после кнопки «Опубликовать»." },
-            { label: "Контент Арены", text: "База знаний для квизов: вопросы, варианты ответов, цитаты из 127-ФЗ. Что менеджер видит в режиме «Арена знаний»." },
-            { label: "Скоринг", text: "Веса L1-L10 для оценки сессии. Изменения вступают в силу для НОВЫХ сессий — старые остаются на старых весах." },
+            { label: "Сценарии", text: "Шаблоны разговоров для тренировок. Правки попадают к менеджерам только после кнопки «Опубликовать»." },
+            { label: "База ФЗ-127", text: "Вопросы и цитаты из 127-ФЗ — то, что менеджер видит в режиме «Арена знаний»." },
             { label: "Сессии", text: "Просмотр любой сессии любого менеджера команды. Можно ревьюить, оставлять комментарии, отмечать как кейс." },
-            { label: "Ревью знаний", text: "Очередь legal_knowledge чанков на проверку (TZ-4 §8). Помеченные disputed/needs_review автоматически исключаются из ответов AI." },
-            { label: "Качество AI", text: "Агрегаты по всей команде: персона-конфликты, нарушения политики разговора (TZ-4 §10). Помогает ловить regression в работе AI после деплоя." },
+            { label: "Плейбуки", text: "Скрипты команды: открытие, отработка возражений, закрытие. Подмешиваются в подсказки AI-коуча и судьи." },
+            { label: "Ревью знаний", text: "Очередь чанков на проверку. Помеченные «спорно» / «устарело» автоматически исключаются из ответов AI." },
+            { label: "AI-собеседник", text: "Агрегаты ошибок AI-клиента по команде: персона-конфликты, нарушения политики разговора. Помогает ловить regression в работе AI после деплоя." },
             { label: "Wiki", text: "Корпоративная база: лучшие практики, регламенты. Автосинтез из успешных диалогов." },
           ]}
-          footer="Раньше методолог был отдельной ролью. С апреля 2026 эти инструменты — часть Дашборда ROP."
+          footer="Всё, что наполняет тренировки. Раньше это была отдельная роль методолога — с апреля 2026 инструменты у РОПа."
         />
       </div>
 
@@ -376,7 +384,6 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
           {active === "playbooks" && <PlaybooksEditor canAuthor={true} />}
           {active === "knowledge_review" && <KnowledgeReviewQueue />}
           {active === "ai_quality" && <AiQualityPanel />}
-          {active === "scoring" && <PlaceholderTab title="Скоринг" subtitle="Управление весами скоринговых слоёв (L1–L10) — в дорожной карте." />}
           {active === "wiki" && <WikiDashboard />}
           {active === "reviews" && isAdminCaller && <ReviewsAdmin />}
         </motion.div>

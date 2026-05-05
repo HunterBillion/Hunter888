@@ -72,8 +72,16 @@ export function TeamHeatmap() {
 
   if (!data || data.rows.length === 0) {
     return (
-      <div className="text-center py-6 text-sm" style={{ color: "var(--text-muted)" }}>
-        Нет данных для отображения
+      <div className="text-center py-8 px-4" style={{ color: "var(--text-muted)" }}>
+        <Flame size={28} weight="duotone" style={{ color: "var(--text-muted)", opacity: 0.5, margin: "0 auto 12px" }} />
+        <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+          Тепловая карта появится после первых сессий
+        </p>
+        <p className="text-xs mt-2 max-w-md mx-auto">
+          Чтобы увидеть слабые навыки команды, менеджеры должны провести
+          хотя бы по одной тренировке. Назначить задание можно во вкладке
+          «Команда» через кнопку «Массовое назначение».
+        </p>
       </div>
     );
   }

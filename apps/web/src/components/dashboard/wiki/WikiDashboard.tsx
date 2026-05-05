@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, Loader2 } from "lucide-react";
-import { Warning } from "@phosphor-icons/react";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import type {
   View,
   DetailTab,
@@ -64,7 +64,7 @@ export function WikiDashboard() {
 
   // Action state
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [pendingReanalyze, setPendingReanalyze] = useState<string | null>(null);
 
   // ── Data loading ──
 
@@ -136,9 +136,13 @@ export function WikiDashboard() {
 
   // ── Action handlers ──
 
+  // Bridges legacy `showMessage(text, type)` call sites onto sonner so
+  // the project has a single toast system. Kept as a thin shim instead
+  // of a full search-and-replace because the call-site shape (string +
+  // "success"/"error") is identical to sonner's `toast.success/error`.
   const showMessage = (text: string, type: "success" | "error") => {
-    setActionMessage({ text, type });
-    setTimeout(() => setActionMessage(null), 4000);
+    if (type === "success") toast.success(text);
+    else toast.error(text);
   };
 
   const handleIngestAll = useCallback(async (managerId: string) => {
@@ -242,18 +246,29 @@ export function WikiDashboard() {
     }
   }, [selectedManager]);
 
-  const handleReanalyze = useCallback(async (managerId: string) => {
+  const requestReanalyze = useCallback((managerId: string) => {
+    // Re-analysis runs an LLM pipeline over the manager's full session
+    // history — it's billable and slow. Surface a confirmation so the
+    // user doesn't trigger it by accident.
+    setPendingReanalyze(managerId);
+  }, []);
+
+  const confirmReanalyze = useCallback(async () => {
+    if (!pendingReanalyze) return;
+    const managerId = pendingReanalyze;
     setActionLoading("reanalyze");
     try {
       const res = await api.post(`/wiki/manager/${managerId}/reanalyze`, {});
       showMessage(res.message || "Re-analysis started", "success");
       if (selectedManager) openManager(selectedManager);
+      setPendingReanalyze(null);
     } catch (err: any) {
       showMessage(err.message || "Re-analysis failed", "error");
+      // Keep the modal open on failure so the user can retry.
     } finally {
       setActionLoading(null);
     }
-  }, [selectedManager, openManager]);
+  }, [pendingReanalyze, selectedManager, openManager]);
 
   // ── Compare handler ──
   const handleCompare = useCallback(async () => {
@@ -294,35 +309,7 @@ export function WikiDashboard() {
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        {/* Action message toast */}
-        <AnimatePresence>
-          {actionMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              style={{
-                position: "fixed",
-                top: 20,
-                right: 20,
-                zIndex: 1000,
-                padding: "0.75rem 1.25rem",
-                borderRadius: 10,
-                background: actionMessage.type === "success" ? "var(--success-muted)" : "var(--danger-muted)",
-                border: `1px solid ${actionMessage.type === "success" ? "var(--success-muted)" : "var(--danger-muted)"}`,
-                color: actionMessage.type === "success" ? "var(--success)" : "var(--danger)",
-                fontSize: "0.875rem",
-                fontWeight: 500,
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-              }}
-            >
-              {actionMessage.type === "success" ? <CheckCircle size={16} /> : <Warning size={16} weight="duotone" />}
-              {actionMessage.text}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Notifications go through sonner (mounted globally in root layout) — no local toast container needed. */}
 
         {view === "list" ? (
           <ManagerListView
@@ -369,10 +356,32 @@ export function WikiDashboard() {
             onDailySynthesis={() => handleDailySynthesis(selectedManager!.manager_id)}
             onWeeklySynthesis={() => handleWeeklySynthesis(selectedManager!.manager_id)}
             onChangeStatus={(status) => handleChangeStatus(selectedManager!.manager_id, status)}
-            onReanalyze={() => handleReanalyze(selectedManager!.manager_id)}
+            onReanalyze={() => requestReanalyze(selectedManager!.manager_id)}
             actionLoading={actionLoading}
           />
         )}
+
+      <ConfirmDialog
+        open={pendingReanalyze !== null}
+        onOpenChange={(open) => { if (!open && actionLoading !== "reanalyze") setPendingReanalyze(null); }}
+        title="Запустить переанализ?"
+        description={
+          <div className="space-y-2">
+            <p>
+              Переанализ прогоняет LLM по всей истории сессий менеджера и
+              перезаписывает страницы wiki. Операция платная и небыстрая
+              (1–3 минуты в зависимости от объёма истории).
+            </p>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+              Запускайте, если изменилась модель / промпт-шаблон или
+              wiki заметно расходится с тем, что показывают сессии.
+            </p>
+          </div>
+        }
+        confirmLabel="Запустить"
+        busy={actionLoading === "reanalyze"}
+        onConfirm={confirmReanalyze}
+      />
     </div>
   );
 }

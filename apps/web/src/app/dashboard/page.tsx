@@ -11,6 +11,7 @@ import {
   ChevronDown,
   FileBarChart,
   Database,
+  Download,
 } from "lucide-react";
 import {
   UsersThree,
@@ -36,24 +37,27 @@ import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { ClientStats } from "@/components/clients/ClientStats";
 import { TrainingRecommendations } from "@/components/clients/TrainingRecommendations";
 import { KnowledgeDashboardWidget } from "@/components/dashboard/KnowledgeDashboardWidget";
-import { OceanProfileWidget } from "@/components/dashboard/OceanProfileWidget";
 import { TeamHeatmap } from "@/components/dashboard/TeamHeatmap";
 import { WeakLinks } from "@/components/dashboard/WeakLinks";
 import { Benchmark } from "@/components/dashboard/Benchmark";
-import { WeeklyReport } from "@/components/dashboard/WeeklyReport";
 import { TeamTrendChart } from "@/components/dashboard/TeamTrendChart";
 import { ActivityChart } from "@/components/dashboard/ActivityChart";
 import { AlertPanel } from "@/components/dashboard/AlertPanel";
-import BehaviorProfileCard from "@/components/behavior/BehaviorProfileCard";
+// BehaviorProfileCard / OceanProfileWidget / WeeklyReport intentionally
+// not imported here — they belong to drill-down `/dashboard/team/[id]`
+// (the per-manager view) and to the dedicated «Отчёты» tab respectively.
+// Bringing them back into the team-overview was the dup we fixed
+// 2026-05-05.
 import { ActivityFeed } from "@/components/activity/ActivityFeed";
 import { useActivityFeed } from "@/hooks/useActivityFeed";
-import type { DashboardROP, TeamMember, PipelineStats } from "@/types";
-import { useNotificationStore } from "@/stores/useNotificationStore";
+import type { DashboardROP, PipelineStats } from "@/types";
+import { toast } from "sonner";
 import { scoreColor } from "@/lib/utils";
 import { getApiBaseUrl } from "@/lib/public-origin";
 import { logger } from "@/lib/logger";
 import dynamic from "next/dynamic";
 import { DashboardSkeleton as WikiFallback } from "@/components/ui/Skeleton";
+import { type TabId, resolveTabParam } from "@/lib/dashboard-tabs";
 
 const ReportsDashboard = dynamic(
   () => import("@/components/dashboard/ReportsDashboard").then((m) => m.ReportsDashboard),
@@ -77,16 +81,13 @@ const SystemPanel = dynamic(
 
 /* ─── Constants ──────────────────────────────────────────────────────────── */
 
-type TabId = "overview" | "analytics" | "team" | "tournament" | "activity" | "methodology" | "reports" | "system";
-
 const TABS: { id: TabId; label: string; icon: any; adminOnly?: boolean }[] = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
-  { id: "analytics", label: "Аналитика", icon: ChartBar },
   { id: "team", label: "Команда", icon: UsersThree },
   { id: "tournament", label: "Турнир", icon: Trophy },
-  { id: "activity", label: "Активность", icon: ShieldWarning },
-  { id: "methodology", label: "Методология", icon: BookOpen },
+  { id: "content", label: "Контент", icon: BookOpen },
   { id: "reports", label: "Отчёты", icon: FileBarChart },
+  { id: "audit", label: "Аудит-журнал", icon: ShieldWarning },
   { id: "system", label: "Система", icon: Database, adminOnly: true },
 ];
 
@@ -125,20 +126,38 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [pipelineStats, setPipelineStats] = useState<PipelineStats[]>([]);
 
-  // Tab state — synced with URL
-  const tabParam = searchParams.get("tab") as TabId | null;
+  // Tab state — synced with URL. resolveTabParam handles:
+  //  - legacy ids (`methodology` → `content`, etc.)
+  //  - garbage / retired ids → fallback to `overview`
+  //  - missing param → null (keep React-state default).
+  // The URL is rewritten in place when `rawTabParam !== resolved` so
+  // the address bar always matches the rendered tab.
+  const rawTabParam = searchParams.get("tab");
+  const tabParam = resolveTabParam(rawTabParam);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
 
   useEffect(() => {
-    if (tabParam && TABS.some((t) => t.id === tabParam)) {
-      setActiveTab(tabParam);
+    if (!tabParam) return;
+    setActiveTab(tabParam);
+    // Normalise the URL whenever what's in the bar doesn't match what we
+    // actually rendered: legacy alias, unknown garbage id, or `system`
+    // requested by a non-admin (caught below — no fallback yet, but this
+    // pattern stays consistent for future role-based gates).
+    if (rawTabParam && rawTabParam !== tabParam && typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", tabParam);
+      window.history.replaceState(null, "", url.toString());
     }
-  }, [tabParam]);
+  }, [tabParam, rawTabParam]);
 
   const switchTab = useCallback((id: TabId) => {
     setActiveTab(id);
     const url = new URL(window.location.href);
     url.searchParams.set("tab", id);
+    // Stale `?sub=` from a sibling tab (e.g. methodology→arena) would otherwise
+    // leak into the next tab and resurface when the user comes back, jumping
+    // them past the default sub-tab. Drop it on every top-tab switch.
+    url.searchParams.delete("sub");
     window.history.replaceState(null, "", url.toString());
   }, []);
 
@@ -183,7 +202,7 @@ export default function DashboardPage() {
       .then((stats: PipelineStats[]) => setPipelineStats(stats))
       .catch((err) => {
         logger.error("Failed to load pipeline stats:", err);
-        useNotificationStore.getState().addToast({ title: "Воронка продаж", body: "Не удалось загрузить статистику воронки", type: "error" });
+        toast.error("Не удалось загрузить статистику воронки", { description: "Воронка продаж" });
       });
   }, [user]);
 
@@ -191,7 +210,7 @@ export default function DashboardPage() {
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/dashboard/rop/export?period=week`, { credentials: "include" });
       if (!res.ok) {
-        useNotificationStore.getState().addToast({ title: "Ошибка экспорта", body: `Не удалось скачать отчёт (${res.status})`, type: "error" });
+        toast.error(`Не удалось скачать отчёт (${res.status})`, { description: "Ошибка экспорта" });
         return;
       }
       const blob = await res.blob();
@@ -199,10 +218,18 @@ export default function DashboardPage() {
       const a = document.createElement("a");
       a.href = url;
       a.download = "team_report.pdf";
-      a.click();
-      URL.revokeObjectURL(url);
+      // Firefox <87 requires the anchor in the DOM for `.click()` to
+      // initiate the download. Append/remove inside try/finally so we
+      // never leak a stray <a> on a synchronous click failure.
+      document.body.appendChild(a);
+      try {
+        a.click();
+      } finally {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
     } catch (err) {
-      useNotificationStore.getState().addToast({ title: "Ошибка экспорта", body: "Не удалось скачать PDF-отчёт. Проверьте соединение.", type: "error" });
+      toast.error("Не удалось скачать PDF-отчёт. Проверьте соединение.", { description: "Ошибка экспорта" });
       logger.error("PDF export failed:", err);
     }
   }, []);
@@ -240,18 +267,32 @@ export default function DashboardPage() {
                   КОМАНДА
                 </h1>
               </div>
-              <PixelInfoButton
-                title="Панель РОП"
-                sections={[
-                  { icon: ChartBar, label: "Обзор", text: "Ключевые метрики команды: активность, средний балл, TP за неделю, вовлечённость" },
-                  { icon: UsersThree, label: "Команда", text: "Список менеджеров с рейтингами, сравнение между собой, выявление отстающих" },
-                  { icon: Target, label: "Тепловая карта", text: "Где команда слабее всего: возражения, техники, знания" },
-                  { icon: Trophy, label: "Сравнение", text: "Сравнение вашей команды с другими командами/компаниями (анонимно)" },
-                  { icon: TrendUp, label: "Отдача", text: "Сколько тренировок → сколько закрытых сделок. Во вкладке «Отчёты» можно выгрузить PDF" },
-                  { icon: BookOpen, label: "База знаний", text: "Корпоративные знания: скрипты возражений, регламенты. Автосинтез из успешных диалогов" },
-                ]}
-                footer="Быстрые действия: PDF-экспорт (вкладка «Отчёты»), массовая рассылка заданий (вкладка «Команда»)"
-              />
+              <div className="flex items-center gap-2">
+                {data && (
+                  <button
+                    type="button"
+                    onClick={handleExportPdf}
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors"
+                    style={{ background: "var(--glass-bg)", color: "var(--text-secondary)", border: "1px solid var(--glass-border)" }}
+                    title="Скачать сводный PDF-отчёт за неделю"
+                  >
+                    <Download size={14} />
+                    <span className="hidden sm:inline">PDF за неделю</span>
+                  </button>
+                )}
+                <PixelInfoButton
+                  title="Панель РОП"
+                  sections={[
+                    { icon: ChartBar, label: "Обзор", text: "Ключевые метрики команды: активность, средний балл, TP за неделю, вовлечённость" },
+                    { icon: UsersThree, label: "Команда", text: "Список менеджеров с рейтингами, сравнение между собой, выявление отстающих" },
+                    { icon: Target, label: "Тепловая карта", text: "Где команда слабее всего: возражения, техники, знания" },
+                    { icon: Trophy, label: "Сравнение", text: "Сравнение вашей команды с другими командами/компаниями (анонимно)" },
+                    { icon: TrendUp, label: "Отдача", text: "Сколько тренировок → сколько закрытых сделок." },
+                    { icon: BookOpen, label: "База знаний", text: "Корпоративные знания: скрипты возражений, регламенты. Автосинтез из успешных диалогов" },
+                  ]}
+                  footer="Быстрые действия: PDF-экспорт (кнопка справа от заголовка), массовая рассылка заданий — во вкладке «Команда»."
+                />
+              </div>
             </div>
             <p className="mt-2 font-medium text-sm tracking-wide" style={{ color: "var(--text-muted)" }}>
               {data?.team.is_admin_view 
@@ -449,7 +490,7 @@ export default function DashboardPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {sortedMembers.map((m, i) => {
+                              {sortedMembers.map((m) => {
                                 const avatarColor = getAvatarColor(m.id);
                                 return (
                                   <motion.tr
@@ -457,7 +498,17 @@ export default function DashboardPage() {
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
                                     transition={{ duration: 0.2 }}
-                                    className="transition-all group table-row-accent"
+                                    onClick={() => router.push(`/dashboard/team/${m.id}`)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        router.push(`/dashboard/team/${m.id}`);
+                                      }
+                                    }}
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-label={`Открыть карточку: ${m.full_name}`}
+                                    className="transition-all group table-row-accent cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
                                     style={{ borderBottom: "1px solid var(--border-color)" }}
                                   >
                                     <td className="px-5 py-4">
@@ -510,16 +561,16 @@ export default function DashboardPage() {
                                     <td className="px-5 py-4 font-mono" style={{ color: "var(--text-secondary)" }}>
                                       {m.sessions_this_week}
                                     </td>
-                                    <td className="px-5 py-4">
-                                      <motion.button
-                                        onClick={() => router.push(`/dashboard/team/${m.id}`)}
-                                        className="flex items-center gap-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                                    {/* Visual hint that the row is clickable. The action lives on
+                                        the <tr> itself (whole row is the hit target on touch & desktop). */}
+                                    <td className="px-5 py-4" aria-hidden="true">
+                                      <motion.div
+                                        className="flex items-center gap-1 text-xs transition-opacity opacity-40 group-hover:opacity-100"
                                         style={{ color: "var(--accent)" }}
                                         whileHover={{ x: 3 }}
-                                        title="Изучить как методолог"
                                       >
                                         <ArrowRight size={14} />
-                                      </motion.button>
+                                      </motion.div>
                                     </td>
                                   </motion.tr>
                                 );
@@ -531,23 +582,40 @@ export default function DashboardPage() {
                     </div>
                   )}
 
-                  {/* ═══════════ TAB: ANALYTICS ══════════════════════════════ */}
-                  {activeTab === "analytics" && (
-                    <div className="space-y-8">
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <TeamTrendChart />
-                        <ActivityChart />
-                      </div>
+                  {/* ═══════════ TAB: TEAM (merged: ex-analytics + ex-team) ═══ */}
+                  {activeTab === "team" && (
+                    <div className="space-y-6">
+                      {/* Алерты идут первыми — то, что требует внимания «прямо сейчас». */}
+                      <AlertPanel />
 
+                      {/* Слабые звенья команды — кто отстаёт и почему. */}
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         className="rounded-2xl p-5"
                         style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(20px)" }}
                       >
+                        <WeakLinks />
+                      </motion.div>
+
+                      {/* Тренды + активность — общая динамика. */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <TeamTrendChart />
+                        <ActivityChart />
+                      </div>
+
+                      {/* Тепловая карта навыков — где команда слабее всего. */}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.05 }}
+                        className="rounded-2xl p-5"
+                        style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(20px)" }}
+                      >
                         <TeamHeatmap />
                       </motion.div>
 
+                      {/* Бенчмарк — сравнение с платформой. Скрывается до 10+ сессий. */}
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -558,37 +626,9 @@ export default function DashboardPage() {
                         <Benchmark />
                       </motion.div>
 
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.2 }}
-                        className="rounded-2xl p-5"
-                        style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(20px)" }}
-                      >
-                        <WeeklyReport />
-                      </motion.div>
-                    </div>
-                  )}
-
-                  {/* ═══════════ TAB: TEAM ════════════════════════════════════ */}
-                  {activeTab === "team" && (
-                    <div className="space-y-5">
-                      <AlertPanel />
-
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="rounded-2xl p-5"
-                        style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(20px)" }}
-                      >
-                        <WeakLinks />
-                      </motion.div>
-
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <BehaviorProfileCard />
-                        <OceanProfileWidget />
-                      </div>
-
+                      {/* Рекомендации тренировок. BehaviorProfile / Ocean раньше
+                          были тут, но это профиль ОДНОГО менеджера, без выбора;
+                          их место — на drill-down странице /dashboard/team/[id]. */}
                       <TrainingRecommendations />
                     </div>
                   )}
@@ -695,15 +735,15 @@ export default function DashboardPage() {
                     </div>
                   )}
 
-                  {/* ═══════════ TAB: ACTIVITY ══════════════════════════════ */}
-                  {activeTab === "activity" && (
+                  {/* ═══════════ TAB: AUDIT (152-ФЗ audit log) ══════════════ */}
+                  {activeTab === "audit" && (
                     <div>
                       <AuditLogPanel scope={user?.role === "admin" ? "all" : "team"} />
                     </div>
                   )}
 
-                  {/* ═══════════ TAB: METHODOLOGY (Методологи + Wiki + Reviews) ═══ */}
-                  {activeTab === "methodology" && (
+                  {/* ═══════════ TAB: CONTENT (РОПы + База ФЗ-127 + Сценарии + Плейбуки + Wiki + AI-quality + Отзывы) ═══ */}
+                  {activeTab === "content" && (
                     <div>
                       <MethodologyPanel isAdminCaller={isAdmin(user)} />
                     </div>

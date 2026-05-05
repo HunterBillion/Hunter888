@@ -5,7 +5,7 @@
  *
  * Mounted from two places:
  *   - /admin/audit-log (admin-only, full system scope)
- *   - /dashboard tab "Активность" (admin → all; ROP → own team only,
+ *   - /dashboard tab "Аудит-журнал" (admin → all; ROP → own team only,
  *     enforced server-side via require_role("admin","rop") + actor.team_id
  *     subquery in apps/api/app/api/clients.py::api_get_audit_log)
  *
@@ -39,6 +39,7 @@ import {
   Zap,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { formatDateTimeFull } from "@/lib/utils";
 
 interface AuditLogEntry {
   id: string;
@@ -95,12 +96,45 @@ const ROLE_LABELS: Record<string, string> = {
   system:       "Система",
 };
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString("ru-RU", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  });
+
+/**
+ * Russian plural form for audit-log row counts.
+ *   1, 21, 31… → "запись"
+ *   2-4, 22-24, 32-34… → "записи"
+ *   0, 5-20, 25-30, 100… → "записей"
+ * `total < 5` ladder is wrong for {11..14}, {21..24}, etc.
+ */
+export function pluralizeEntries(n: number): string {
+  const abs = Math.abs(n) % 100;
+  const last = abs % 10;
+  if (abs > 10 && abs < 20) return "записей";
+  if (last === 1) return "запись";
+  if (last >= 2 && last <= 4) return "записи";
+  return "записей";
+}
+
+/**
+ * `<input type="date">` returns "YYYY-MM-DD". `new Date(s).toISOString()`
+ * parses that as UTC midnight, then converts to UTC ISO — which for any
+ * browser TZ east of UTC shifts the boundary to "earlier than the user
+ * meant". Russian users picking "from 2026-05-05" otherwise miss the
+ * 00:00–03:00 MSK slice. Build the boundary in local time and convert.
+ */
+export function localDateBoundary(date: string, mode: "start" | "end"): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (m) {
+    const [, y, mo, d] = m;
+    const local = mode === "start"
+      ? new Date(Number(y), Number(mo) - 1, Number(d), 0, 0, 0, 0)
+      : new Date(Number(y), Number(mo) - 1, Number(d), 23, 59, 59, 999);
+    return local.toISOString();
+  }
+  // Defensive fallback — `<input type="date">` only emits "YYYY-MM-DD" or
+  // empty (gated upstream), so this branch should be unreachable. Don't
+  // throw on garbage: hand back the original string and let the backend
+  // validator surface the error.
+  const fallback = new Date(date);
+  return Number.isNaN(fallback.getTime()) ? date : fallback.toISOString();
 }
 
 function actionBadge(action: string) {
@@ -184,8 +218,8 @@ export function AuditLogPanel({ scope = "all" }: Props) {
       params.set("per_page", String(perPage));
       if (filterAction) params.set("action", filterAction);
       if (filterEntity) params.set("entity_type", filterEntity);
-      if (filterDateFrom) params.set("date_from", new Date(filterDateFrom).toISOString());
-      if (filterDateTo) params.set("date_to", new Date(filterDateTo).toISOString());
+      if (filterDateFrom) params.set("date_from", localDateBoundary(filterDateFrom, "start"));
+      if (filterDateTo) params.set("date_to", localDateBoundary(filterDateTo, "end"));
 
       const resp: AuditLogResponse = await api.get(`/clients/audit-log?${params.toString()}`);
       setEntries(resp.items);
@@ -250,7 +284,7 @@ export function AuditLogPanel({ scope = "all" }: Props) {
             )}
           </motion.button>
           <span style={{ color: "var(--text-muted)", fontSize: 14 }}>
-            {total} {total === 1 ? "запись" : total < 5 ? "записи" : "записей"}
+            {total} {pluralizeEntries(total)}
           </span>
         </div>
       </motion.div>
@@ -414,7 +448,7 @@ export function AuditLogPanel({ scope = "all" }: Props) {
                   }}
                 >
                   <span style={{ fontSize: 14, color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
-                    {formatDate(entry.created_at)}
+                    {formatDateTimeFull(entry.created_at)}
                   </span>
                   <div>{actionBadge(entry.action)}</div>
                   <span style={{ fontSize: 14, color: "var(--text-secondary)" }}>

@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Users as UsersIcon, AlertCircle, Pencil, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { roleName } from "@/lib/guards";
+import { formatDateFull } from "@/lib/utils";
 
 interface UserListItem {
   id: string;
@@ -48,13 +49,12 @@ const ROLE_BADGE_COLOR: Record<string, string> = {
   manager: "#22c55e",
 };
 
+// Defensive wrapper around the shared helper — UsersAdminPanel
+// occasionally renders rows from API responses that may be malformed in
+// staging; the try/catch keeps the table from crashing on a bad row.
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString("ru-RU", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
+    return formatDateFull(iso);
   } catch {
     return iso;
   }
