@@ -43,6 +43,7 @@ import { telemetry } from "@/lib/telemetry";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useTTS } from "@/hooks/useTTS";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useMicrophone } from "@/hooks/useMicrophone";
 import { MicStatusBanner, pickBannerKind } from "@/components/training/MicStatusBanner";
 import { TTSUnlockOverlay } from "@/components/training/TTSUnlockOverlay";
 import { toast } from "sonner";
@@ -251,6 +252,26 @@ export default function TrainingCallPage() {
       sttSendRef.current?.(trimmed);
     },
   });
+
+  // PR-F (Whisper fallback for call mode): Web Speech API depends on
+  // Google's cloud, which Brave blocks by default and Safari/Firefox
+  // don't expose at all. When that path errors out we still want voice
+  // to work, so we fall back to MediaRecorder + backend Whisper — the
+  // same pipeline chat already uses (audio.end with full processing).
+  //
+  // Trigger conditions: SpeechRecognition reported a network error or
+  // the API isn't supported in the current browser. The fallback is
+  // push-to-talk (hold the button while speaking) — continuous-mode
+  // streaming with VAD belongs to a future PR; push-to-talk is shipped
+  // now because it gets call-mode actually working everywhere TODAY.
+  const sttBlocked =
+    !stt.isSupported ||
+    stt.errorCode === "network" ||
+    stt.errorCode === "service-not-allowed" ||
+    stt.errorCode === "language-not-supported";
+  const microphoneFallback = useMicrophone({});
+  const [pushTalkActive, setPushTalkActive] = useState(false);
+  const sendAudioBlobRef = useRef<((blob: Blob) => void) | null>(null);
 
   // --- Mount guard: verify session_mode, hydrate store --------------------
   useEffect(() => {
@@ -777,7 +798,57 @@ export default function TrainingCallPage() {
       if (connectionState !== "connected") return;
       sendMessage({ type: "audio.interrupted", data: { played_chars: playedChars } });
     };
+    // PR-F: Whisper-fallback sender. Reads the recorded blob into base64
+    // and ships it as audio.end (NOT transcribe_only=true — we want the
+    // backend to STT it AND generate the next reply atomically, the
+    // same end-to-end behaviour Web Speech gives us). Defensive about
+    // empty / tiny blobs that mean «mic was held for half a second».
+    sendAudioBlobRef.current = async (blob: Blob) => {
+      if (connectionState !== "connected") return;
+      if (!blob || blob.size < 2_048) return;
+      try {
+        const buf = await blob.arrayBuffer();
+        let binary = "";
+        const bytes = new Uint8Array(buf);
+        const chunkSize = 0x8000; // avoid stack overflow on large blobs
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode(
+            ...bytes.subarray(i, i + chunkSize),
+          );
+        }
+        const audio = btoa(binary);
+        sendMessage({
+          type: "audio.end",
+          data: {
+            audio,
+            mime_type: blob.type || "audio/webm",
+          },
+        });
+      } catch (err) {
+        logger.warn("[call] audio.end serialise failed", err);
+      }
+    };
   }, [sendMessage, connectionState]);
+
+  // PR-F: push-to-talk handlers. ``onPointerDown`` starts MediaRecorder;
+  // ``onPointerUp``/``onPointerLeave`` stops + fires the audio.end ref.
+  // Holding < 0.4s is treated as a misclick — we just bail without
+  // sending anything (size guard in the ref also catches it server-
+  // side). Pointer events instead of mouse/touch separately so phones
+  // and trackpads behave identically.
+  const pushTalkStart = useCallback(async () => {
+    if (!microphoneFallback.isSupported) return;
+    setPushTalkActive(true);
+    const ok = await microphoneFallback.startRecording();
+    if (!ok) setPushTalkActive(false);
+  }, [microphoneFallback]);
+
+  const pushTalkStop = useCallback(async () => {
+    if (!pushTalkActive) return;
+    setPushTalkActive(false);
+    const blob = await microphoneFallback.stopRecording();
+    if (blob) sendAudioBlobRef.current?.(blob);
+  }, [microphoneFallback, pushTalkActive]);
 
   // Kick-start the session on WS ready. The chat flow sends
   // session.start with the REST-created session_id; backend resumes
@@ -1250,6 +1321,57 @@ export default function TrainingCallPage() {
           kind={bannerKind}
           onRetry={() => stt.startListening()}
         />
+      )}
+
+      {/* PR-F (Whisper fallback for call): when Web Speech API is
+          blocked by the browser (Brave Shields) or unsupported (Safari
+          old / Firefox), expose a push-to-talk button that records a
+          blob and POSTs it to the backend Whisper pipeline. The button
+          sits above the text input so the user can choose: voice (PTT)
+          or keyboard. The pre-existing text input below still works
+          regardless. */}
+      {sttBlocked && microphoneFallback.isSupported && callAccepted && (
+        <div
+          className="fixed bottom-[88px] left-1/2 z-30 -translate-x-1/2 flex flex-col items-center gap-2"
+          aria-live="polite"
+        >
+          <button
+            type="button"
+            onPointerDown={pushTalkStart}
+            onPointerUp={pushTalkStop}
+            onPointerLeave={() => { if (pushTalkActive) pushTalkStop(); }}
+            onPointerCancel={pushTalkStop}
+            disabled={connectionState !== "connected"}
+            className="flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white transition-all"
+            style={{
+              background: pushTalkActive
+                ? "linear-gradient(135deg, #ff5f57 0%, #c01f1f 100%)"
+                : "linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)",
+              boxShadow: pushTalkActive
+                ? "0 0 0 6px rgba(255,95,87,0.25), 0 0 24px rgba(255,95,87,0.6)"
+                : "0 4px 16px -4px rgba(124,58,237,0.6)",
+              transform: pushTalkActive ? "scale(1.05)" : "scale(1)",
+              transition: "transform 0.1s, box-shadow 0.15s, background 0.15s",
+              opacity: connectionState === "connected" ? 1 : 0.5,
+              touchAction: "none",
+            }}
+            title="Удерживайте для записи. Whisper-fallback активен."
+          >
+            {pushTalkActive ? <MicOff size={18} /> : <Mic size={18} />}
+            <span>{pushTalkActive ? "Говорите…" : "Удерживайте чтобы говорить"}</span>
+          </button>
+          <div
+            className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+            style={{
+              background: "rgba(124,58,237,0.18)",
+              color: "#c4b5fd",
+              border: "1px solid rgba(124,58,237,0.4)",
+            }}
+            title="Голосовой ввод через сервер вместо браузерного Web Speech API"
+          >
+            🔁 Резервный режим (Whisper)
+          </div>
+        </div>
       )}
 
       {/*
