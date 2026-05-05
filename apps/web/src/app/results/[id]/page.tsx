@@ -50,6 +50,7 @@ const EmotionTimeline = dynamic(() => import("@/components/results/EmotionTimeli
 import TrapResults from "@/components/results/TrapResults";
 import SoftSkillsCard from "@/components/results/SoftSkillsCard";
 import ClientReveal from "@/components/results/ClientReveal";
+import { LinkClientButton } from "@/components/training/LinkClientButton";
 import AIRecommendations from "@/components/results/AIRecommendations";
 import CheckpointProgress from "@/components/results/CheckpointProgress";
 import StageBreakdown from "@/components/results/StageBreakdown";
@@ -1053,6 +1054,36 @@ export default function ResultsPage() {
             <ClientReveal clientCard={result.client_card} />
           </div>
         )}
+
+        {/* BUG-FIX 2026-05-05 (CRM-binding): post-hoc link UI for orphan
+            sessions. User feedback: «зашёл на результаты — нет «привязать
+            к CRM», тренировка остаётся вне CRM-карточки и не подтягивает
+            cross-session память на следующих звонках». LinkClientButton
+            already exists for the in-training UI (chat page); reusing it
+            here gives /results parity. Self-hides when the session is
+            already linked to a CRM client (LinkClientButton renders the
+            chip-only view in that case). */}
+        {(() => {
+          const sessLoose = session as unknown as {
+            id: string;
+            real_client_id?: string | null;
+          };
+          const initial = sessLoose.real_client_id && result.client_card
+            ? {
+                id: sessLoose.real_client_id,
+                full_name: (result.client_card as { name?: string }).name || "Клиент CRM",
+              }
+            : null;
+          return (
+            <div className="mt-4 flex items-center justify-end">
+              <LinkClientButton
+                sessionId={sessLoose.id}
+                initialLinkedClient={initial}
+                variant="chat"
+              />
+            </div>
+          );
+        })()}
 
         {/* Transcript */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="glass-panel mt-6 p-6 rounded-2xl">

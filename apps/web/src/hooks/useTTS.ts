@@ -927,7 +927,17 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     (v: boolean) => {
       setEnabled(v);
       if (!v) {
+        // BUG-FIX 2026-05-05: ``stop()`` only kills the currently-playing
+        // sentence; the streaming queue (``pendingChunksRef``) and any
+        // queued couple-utterances kept playing one-by-one after mute.
+        // Now we also flush both queues so nothing else fires until the
+        // user re-enables.
         stop();
+        pendingChunksRef.current.clear();
+        nextExpectedIndexRef.current = 0;
+        playingChunkRef.current = false;
+        coupleQueueRef.current = [];
+        couplePlayingRef.current = false;
       }
     },
     [stop]
@@ -1083,6 +1093,15 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
 
   const queueAudioChunk = useCallback(
     (chunk: { audio: string; index: number; isLast: boolean }) => {
+      // BUG-FIX 2026-05-05 (mute audit): user reported the speaker
+      // toggle did nothing mid-message. Root cause: ``queueAudioChunk``
+      // and the chunk queue downstream had no enabled-check, so already-
+      // queued sentences kept arriving and playing even after the user
+      // pressed mute. Now we drop the chunk on the floor if TTS is
+      // disabled — same behaviour as ``playAudio`` / ``playAudioMessage``.
+      if (!enabled) {
+        return;
+      }
       // New turn detection: if we receive index 0 while idle, reset state
       if (chunk.index === 0 && !playingChunkRef.current && pendingChunksRef.current.size === 0) {
         nextExpectedIndexRef.current = 0;
@@ -1090,7 +1109,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
       pendingChunksRef.current.set(chunk.index, chunk);
       playNextChunk();
     },
-    [playNextChunk],
+    [enabled, playNextChunk],
   );
 
   // ---------------------------------------------------------------------------

@@ -254,36 +254,66 @@ def evaluate_end_guards(
 # ── Phase 4 guards (deferred) — each opt-in via settings flag ─────────────
 
 
-def evaluate_lead_client_access_guard(
+async def evaluate_lead_client_access_guard(
     *,
     user: Any,
     real_client: Any | None,
+    db: Any | None = None,
 ) -> GuardViolation | None:
     """RBAC: the user requesting a session against ``real_client`` must
-    own it. Admin role passes through.
+    have access to it through ownership, team, or admin role.
 
-    Mirrors the inline check at ``api/training.py:464-475``. Caller
-    passes the already-loaded ``real_client`` so we don't issue a
-    second SELECT — this guard is pure validation.
+    Access matrix (BUG-FIX 2026-05-05 — admin/ROP were previously
+    blocked from running training against any client they didn't
+    personally own, breaking demo/coaching/cross-team review flows):
+
+      * ``admin``      — any client (for ops, audit, escalation).
+      * ``manager``    — only own clients (``client.manager_id == user.id``).
+      * ``rop``        — clients of any manager in ROP's team.
+      * ``methodologist`` — DENIED (read-only role; cannot generate
+        training data that would pollute the analytics pipeline).
+
+    Caller passes the already-loaded ``real_client`` so this guard
+    avoids a second SELECT for the ownership check. The team-membership
+    branch is the only one that issues a DB read, and only when role==rop.
 
     Returns a violation if access is denied; None when access is OK
     (including the simulation case where ``real_client`` is None — no
     client to gate against).
-
-    Why a separate function (not a member of ``evaluate_start_guards``):
-    the engine signature accepts only ids, not loaded entities, by
-    design (cheap pure validation). RBAC needs the loaded entity to
-    avoid a second SELECT on the hot path.
     """
     if real_client is None:
         return None
     user_role = (getattr(user, "role", None) or "").lower()
+    if hasattr(user_role, "value"):  # Enum
+        user_role = user_role.value.lower()
     if user_role == "admin":
         return None
+
     owner_id = getattr(real_client, "manager_id", None)
     user_id = getattr(user, "id", None)
+
+    # Owner path (manager hitting own client).
     if owner_id is not None and owner_id == user_id:
         return None
+
+    # Team-lead path (ROP hitting a teammate's client). Requires DB to
+    # check whether the client's owner is on the same team. Skipped if
+    # caller didn't supply db — keeps the guard backwards-compatible
+    # with old call sites that only passed the user/client pair.
+    if user_role == "rop" and db is not None and owner_id is not None:
+        user_team_id = getattr(user, "team_id", None)
+        if user_team_id is not None:
+            try:
+                from sqlalchemy import select as _select
+                from app.models.user import User as _User
+                owner_row = (await db.execute(
+                    _select(_User.team_id).where(_User.id == owner_id)
+                )).scalar_one_or_none()
+                if owner_row is not None and owner_row == user_team_id:
+                    return None
+            except Exception:
+                logger.debug("rop team-access check failed", exc_info=True)
+
     return GuardViolation(
         code=GUARD_LEAD_CLIENT_ACCESS_DENIED,
         message=(
