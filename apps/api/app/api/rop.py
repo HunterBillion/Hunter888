@@ -560,6 +560,66 @@ async def publish_scenario(
     }
 
 
+@router.get("/scenarios/{scenario_id}/versions")
+async def list_scenario_versions(
+    scenario_id: uuid.UUID,
+    limit: int = 10,
+    user: User = Depends(_require_methodologist),
+    db: AsyncSession = Depends(get_db),
+):
+    """List the immutable publish history of a scenario template.
+
+    Returns the most recent ``limit`` versions ordered by
+    ``version_number DESC``. Each row is the snapshot taken at the moment
+    of ``POST /scenarios/{id}/publish`` — see ScenarioVersion contract in
+    apps/api/app/models/scenario.py:303 (the snapshot is never mutated
+    after the publish commit).
+
+    Frontend consumes this from
+    apps/web/src/components/dashboard/methodology/ScenariosEditor.tsx
+    to render the version timeline under each row. Was missing until
+    2026-05-05; the FE already had a graceful 404 fallback ("История
+    версий пока недоступна") so deploys without this endpoint were safe.
+    """
+    from app.models.scenario import ScenarioTemplate, ScenarioVersion
+
+    # 404 if the template doesn't exist or isn't visible to this caller —
+    # the helper bubbles up the standard scoping (RAG/team-private
+    # templates are gated at the read layer, see _require_methodologist).
+    template = await db.get(ScenarioTemplate, scenario_id)
+    if template is None:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+
+    # Bound the requested page so a misconfigured client can't pull
+    # thousands of snapshots in one request.
+    safe_limit = max(1, min(limit, 50))
+
+    rows = await db.execute(
+        select(ScenarioVersion)
+        .where(ScenarioVersion.template_id == scenario_id)
+        .order_by(ScenarioVersion.version_number.desc())
+        .limit(safe_limit)
+    )
+    versions = rows.scalars().all()
+
+    return {
+        "template_id": str(scenario_id),
+        "versions": [
+            {
+                "id": str(v.id),
+                "version_number": v.version_number,
+                "status": v.status,
+                "content_hash": v.content_hash,
+                "schema_version": v.schema_version,
+                "published_at": v.published_at.isoformat() if v.published_at else None,
+                "created_at": v.created_at.isoformat() if v.created_at else None,
+                "created_by": str(v.created_by) if v.created_by else None,
+            }
+            for v in versions
+        ],
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # SCORING CONFIG
 # ═══════════════════════════════════════════════════════════════════════════

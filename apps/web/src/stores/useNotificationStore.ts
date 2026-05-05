@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { toast as sonnerToast } from "sonner";
 
 export interface NotificationItem {
   id: string;
@@ -87,6 +88,34 @@ export const useNotificationStore = create<NotificationState>((set) => {
   setUnread: (n) => set({ unread: n }),
   setWsConnected: (connected) => set({ wsConnected: connected }),
   addToast: (toast) => {
+    // 2026-05-05 — Plain toast routing was duplicated between this
+    // legacy store and `sonner`. The store stays as the home for
+    // *interactive* toasts (PvP duel invites with their own UI: Accept
+    // / Decline action buttons rendered by NotificationBell), and
+    // everything else goes through sonner (the project-wide default
+    // toast surface, mounted in components/providers/Providers).
+    //
+    // Heuristic: a toast that carries a `challenger_id` or a real-time
+    // `pvp_invitation` type is always interactive — keep it here.
+    // Anything else (plain success/error/info from a click handler,
+    // background fetch failure) is fire-and-forget — route to sonner so
+    // the user sees ONE consistent toast style across the app.
+    const isInteractive = toast.type === "pvp_invitation" || !!toast.challenger_id;
+    if (!isInteractive) {
+      // Map legacy `type` to sonner's named methods. Unknown types
+      // (and empty / undefined) fall back to a neutral toast so we
+      // never silently drop a notification.
+      const t = toast.type;
+      if (t === "error") sonnerToast.error(toast.title, toast.body ? { description: toast.body } : undefined);
+      else if (t === "success") sonnerToast.success(toast.title, toast.body ? { description: toast.body } : undefined);
+      else if (t === "warn" || t === "warning") sonnerToast.warning(toast.title, toast.body ? { description: toast.body } : undefined);
+      else if (t === "info") sonnerToast.info(toast.title, toast.body ? { description: toast.body } : undefined);
+      else sonnerToast(toast.title, toast.body ? { description: toast.body } : undefined);
+      return;
+    }
+
+    // Interactive path (kept for PvP duel invites & similar):
+    // dedupe + keep last 5 + auto-dismiss after 5s.
     const id = `toast-${++_toastCounter}`;
     set((s) => {
       const dedupeKey = toast.dedupe_key || `${toast.type}:${toast.title}:${toast.body}`;
@@ -95,7 +124,6 @@ export const useNotificationStore = create<NotificationState>((set) => {
         toasts: [...filtered, { ...toast, id, ts: Date.now(), dedupe_key: dedupeKey }].slice(-5),
       };
     });
-    // Auto-dismiss after 5s
     setTimeout(() => {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
     }, 5000);
