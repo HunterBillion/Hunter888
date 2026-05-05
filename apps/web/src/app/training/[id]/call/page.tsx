@@ -1232,20 +1232,12 @@ export default function TrainingCallPage() {
         microphone is broken / denied / browser doesn't support STT.
         Push-to-talk mic remains in the control row for voice users.
       */}
-      <div className="fixed bottom-0 left-0 right-0 z-20 flex justify-center bg-gradient-to-t from-black/70 to-transparent px-4 pb-3 pt-10">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            sendText();
-          }}
-          className="flex w-full max-w-lg items-center gap-2 rounded-full bg-black/50 px-4 py-2 ring-1 ring-white/10 backdrop-blur-md"
-        >
-          {/* 2026-05-04 (call-mode text fix): inline WS status dot so the
-              user sees the connection state at a glance — green dot when
-              connected, red pulsing dot when not. The previous diagnostic
-              banner only shows for `wsDead`, but `connectionState`
-              transient states (connecting / reconnecting) silently
-              disabled the input with no UX feedback.  */}
+      <div className="fixed bottom-0 left-0 right-0 z-20 flex flex-col items-center bg-gradient-to-t from-black/70 to-transparent px-4 pb-3 pt-10">
+        {/* 2026-05-04 (radical redesign): chip + paperclip + WS-status dot
+            in a tiny secondary bar ABOVE the input. The text input itself
+            then takes the full max-w-lg width. User feedback: «панель
+            ввода главная — остальное куда хочешь убирай». */}
+        <div className="mb-1.5 flex w-full max-w-lg items-center gap-2 px-2">
           <span
             className="flex h-2 w-2 shrink-0 rounded-full"
             style={{
@@ -1272,23 +1264,31 @@ export default function TrainingCallPage() {
             variant="call"
             disabled={connectionState !== "connected"}
           />
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            sendText();
+          }}
+          className="flex w-full max-w-lg items-center gap-2 rounded-full bg-black/50 px-4 py-2 ring-1 ring-white/10 backdrop-blur-md"
+        >
           <input
             type="text"
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
             placeholder={
               connectionState === "connected"
-                ? "Или напишите текстом…"
+                ? "Введите сообщение клиенту…"
                 : "Подключаемся… (или нажмите «Принять» заново)"
             }
             aria-label="Сообщение клиенту текстом"
-            className="flex-1 bg-transparent text-sm text-white placeholder:text-white/40 outline-none"
+            className="flex-1 bg-transparent px-2 text-base text-white placeholder:text-white/40 outline-none"
             disabled={connectionState !== "connected"}
           />
           <button
             type="submit"
             disabled={!textInput.trim() || connectionState !== "connected"}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white transition-opacity hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-30"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15 text-white transition-opacity hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-30"
             aria-label="Отправить сообщение"
           >
             ▶
