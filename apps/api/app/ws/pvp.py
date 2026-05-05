@@ -82,6 +82,22 @@ class PvPDuelRedis:
             data["ready"] = list(str(x) for x in data["ready"])
         if "difficulty" in data and hasattr(data["difficulty"], "value"):
             data["difficulty"] = data["difficulty"].value
+        # 2026-05-05 hotfix: ``player_names`` is keyed by ``duel.player1_id``
+        # / ``player2_id``, which asyncpg returns as ``pgproto.UUID``
+        # objects (not stdlib ``uuid.UUID``). ``json.dumps(default=str)``
+        # serializes UUID *values* but raises on UUID *keys* — and
+        # ``default=`` only fires for unknown values, never keys.
+        # Without this normalization every PvE duel raised
+        # ``TypeError: keys must be str, int, float, bool or None``
+        # inside ``_handle_duel_ready`` → the bot never replied, the
+        # match silently died at the very first ``привет``. The bug
+        # predates PR-1 but became diagnosable through the prod logs
+        # PR-1 left behind. Stringify every dict-key here defensively
+        # so any future UUID-keyed sub-dict doesn't reintroduce it.
+        for fld in ("player_names",):
+            v = data.get(fld)
+            if isinstance(v, dict):
+                data[fld] = {str(k): val for k, val in v.items()}
         await r.set(f"{cls._PREFIX}{duel_id}", json.dumps(data, default=str), ex=cls._TTL)
         # Reverse index for fast user->duel lookup
         for key in ("player1_id", "player2_id"):
