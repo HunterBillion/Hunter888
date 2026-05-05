@@ -3047,6 +3047,10 @@ async def _generate_character_reply(
                 whispers_enabled=state.get("whispers_enabled", True),
                 stage_message_count=_cur_stage_msg,
                 stage_number=_cur_stage_num if isinstance(_cur_stage_num, int) else None,
+                # PR-D: personalised weak-area heads-up. Loaded once
+                # per session at session.start (see ~line 3777). Empty
+                # list = pre-PR-D bit-for-bit behaviour.
+                user_weak_areas=state.get("user_weak_areas") or [],
             )
             if _whisper:
                 await _send(ws, "whisper.coaching", _whisper)
@@ -3865,6 +3869,26 @@ async def _handle_session_start(
                         "xsession memory load failed for session %s",
                         session.id, exc_info=True,
                     )
+
+            # PR-D (Realtime coach): pre-load user-specific weak areas
+            # so the WhisperEngine can offer proactive, personalised
+            # heads-ups. Read once at session.start, stash in state.
+            # Same opportunistic-failure discipline as the cross-session
+            # summary above — never fail session.start over coach data.
+            try:
+                from app.services.rag_feedback import get_user_weak_areas
+                _wa = await get_user_weak_areas(db, user_id=session.user_id, days=30)
+                if _wa:
+                    state["user_weak_areas"] = list(_wa)
+                    logger.info(
+                        "PR-D: loaded %d weak-area entries for session %s",
+                        len(_wa), session.id,
+                    )
+            except Exception:
+                logger.debug(
+                    "PR-D: weak-area lookup failed for session %s",
+                    session.id, exc_info=True,
+                )
 
             # Load or generate client profile
             client_card = None
