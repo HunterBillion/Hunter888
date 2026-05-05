@@ -26,12 +26,33 @@ MIN_MESSAGES_FOR_WHISPER = 2  # Don't whisper until manager has sent 2+ messages
 
 # Priority values (higher = more important, sent first)
 PRIORITY_MAP = {
+    "personal": 4,  # PR-D — beats everything; user-specific weak-area heads-up
     "legal": 3,
     "emotion": 2,
     "script": 2,  # 2026-04-23 Sprint 3/7: stuck-on-stage educational hint
     "stage": 1,
     "objection": 1,
     "transition": 1,
+}
+
+# PR-D — map weak-area categories (from rag_feedback.get_user_weak_areas)
+# to the sales-funnel stages where they bite hardest. Pre-fix the coach
+# was generic; this lets the engine fire a heads-up «у тебя слабость в
+# [категория] — вот сейчас этот этап» BEFORE the manager fumbles.
+WEAK_AREA_STAGE_MAP: dict[str, list[str]] = {
+    "qualification": ["qualification"],
+    "objections": ["objections"],
+    "presentation": ["presentation"],
+    "closing": ["closing", "appointment"],
+    "rapport": ["greeting", "contact"],
+    "discovery": ["qualification"],
+    "needs_analysis": ["qualification"],
+    # Legal-knowledge categories from KnowledgeQuiz (best-effort fuzzy):
+    # they're more likely to bite during objections/presentation when
+    # the client questions legal claims.
+    "legal": ["objections", "presentation"],
+    "127_fz": ["objections"],
+    "consequences": ["objections", "presentation"],
 }
 
 # 2026-04-23 Sprint 3 (plan §3.1.5) — script-stuck hints. Frontend
@@ -211,6 +232,14 @@ class WhisperEngine:
         # Used by _check_script_stuck to detect «завис на этапе».
         stage_message_count: int | None = None,
         stage_number: int | None = None,
+        # PR-D (Realtime coach): pre-loaded user-specific context. The
+        # WS handler reads these once on session.start and passes them
+        # into every whisper call so the engine can offer PROACTIVE,
+        # personalised hints («у тебя слабость в выявлении бюджета —
+        # сейчас идеальный момент»), not just reactive generic ones.
+        # Both fields default to None → pre-PR-D behaviour bit-for-bit.
+        user_weak_areas: list[dict] | None = None,
+        prior_coach_notes: list[str] | None = None,
     ) -> dict | None:
         """Analyze context and generate a whisper if appropriate.
 
@@ -259,6 +288,19 @@ class WhisperEngine:
         objection = self._check_objection(last_client_message, current_stage)
         if objection:
             candidates.append(objection)
+
+        # 5. PR-D — personalised weak-area hint. Triggers when the
+        # manager is on a stage that maps to one of their known weak
+        # categories from past sessions. Fires only at the *start* of
+        # the stage (first 1-3 turns) so it lands as a heads-up, not
+        # a post-mortem. Highest priority — it's the differentiator vs
+        # generic coaching.
+        if user_weak_areas:
+            personal = self._check_personal_weakness(
+                user_weak_areas, current_stage, stage_message_count,
+            )
+            if personal:
+                candidates.append(personal)
 
         if not candidates:
             return None
@@ -452,6 +494,67 @@ class WhisperEngine:
             stage=stage_label,
             priority="high",
             icon="target",
+        )
+
+    def _check_personal_weakness(
+        self,
+        weak_areas: list[dict],
+        current_stage: str,
+        stage_message_count: int | None,
+    ) -> Whisper | None:
+        """PR-D: surface user-specific weak-area heads-up.
+
+        Fires once per stage entry (turns 1-3) when the current stage
+        maps to one of the user's known weak categories. Beats every
+        other whisper type because it's the most actionable signal —
+        a personalised «осторожно, это твой слабый этап» lands far
+        harder than yet another generic stage hint.
+
+        ``weak_areas`` shape: ``[{"category": "...", "error_rate": 0.65,
+        "total_answers": 12}, ...]`` from rag_feedback or
+        knowledge_quiz. Categories are matched fuzzy against
+        ``WEAK_AREA_STAGE_MAP``.
+
+        Returns None if (a) the manager has already settled on the
+        stage (>3 turns — past the heads-up window), (b) no weak area
+        maps to this stage, or (c) error_rate < 0.4 (too soft to call
+        a weakness).
+        """
+        # Heads-up window only — beyond turn 3 the moment to "warn" has
+        # passed; the manager is committed to whatever they're doing.
+        if stage_message_count is not None and stage_message_count > 3:
+            return None
+        # Find the worst-performing weak area that maps to this stage.
+        best_match: dict | None = None
+        best_rate: float = 0.0
+        for area in weak_areas or []:
+            cat = (area.get("category") or "").lower().strip()
+            rate = float(area.get("error_rate") or 0)
+            if rate < 0.4:  # not weak enough to flag
+                continue
+            mapped_stages = WEAK_AREA_STAGE_MAP.get(cat) or []
+            if current_stage in mapped_stages and rate > best_rate:
+                best_match = area
+                best_rate = rate
+        if best_match is None:
+            return None
+
+        cat_label = str(best_match.get("category") or "")
+        # Build a short, actionable hint — no shaming, framed as «это
+        # твой шанс отработать слабый этап». Mentions the failure rate
+        # so the trainee knows the system has data, not just opinion.
+        rate_pct = int(round(best_rate * 100))
+        msg = (
+            f"⚡ Это твой слабый этап ({cat_label}, ошибки {rate_pct}%). "
+            "Сейчас идеальный момент отработать осознанно — "
+            "сделай паузу, выбери одну ключевую фразу, и не торопись."
+        )
+        return Whisper(
+            type="personal",
+            message=msg,
+            stage=current_stage,
+            priority="high",
+            icon="zap",  # WhisperPanel must support; fallback is generic
         )
 
     def _check_objection(self, client_message: str, stage: str) -> Whisper | None:
