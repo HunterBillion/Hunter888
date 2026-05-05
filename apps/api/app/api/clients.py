@@ -4,8 +4,11 @@ REST API — Модуль «Связь с клиентом» (Agent 7).
 ТЗ v2, разделы 5.1–5.4.
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 from app.core.rate_limit import limiter
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
@@ -898,6 +901,59 @@ async def api_list_attachments(
         .order_by(Attachment.created_at.desc())
     )
     return list(result.scalars().all())
+
+
+@router.get("/{client_id}/ai-memory")
+async def api_client_ai_memory(
+    client_id: uuid.UUID,
+    user: User = Depends(require_role("manager", "rop", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """PR-A: что AI помнит про этого клиента из прошлой тренировки.
+
+    Возвращает 1-3 предложения резюме предыдущей завершённой сессии для
+    пары (manager, real_client). Это ровно тот текст, который backend
+    инжектит в system_prompt при следующем session.start — поэтому
+    продажник видит именно ту память, на которую будет опираться ИИ.
+    Returns ``{summary: null}`` если прошлой сессии нет или пара ещё
+    не использовалась — UI рендерит "ИИ помнит вас в первый раз" в
+    этом случае.
+    """
+    client = await get_client(db, client_id=client_id, user=user)
+    # РОПы и админы могут смотреть память чужих менеджеров — нам нужен
+    # тот manager_id, для которого AI готовит контекст. Манагер видит
+    # только свою собственную память (поведение consistent с ws/training).
+    manager_id = client.manager_id if user.role in {UserRole.rop, UserRole.admin} else user.id
+    if manager_id is None:
+        return {"summary": None, "facts": {}}
+    from app.services.cross_session_memory import fetch_last_session_summary
+    summary = await fetch_last_session_summary(
+        db,
+        user_id=manager_id,
+        real_client_id=client_id,
+    )
+    # Persona facts (TZ-4.5): что ИИ узнал о менеджере по слотам. Эти
+    # тоже идут в system_prompt — показываем рядом, чтобы продажник
+    # понимал, на чём ИИ строит реакции.
+    #
+    # ACL/data-shape note: MemoryPersona is keyed by lead_client_id (TZ-1
+    # canonical anchor), and RealClient.lead_client_id is nullable —
+    # client_domain.py:312 uses ``client.lead_client_id or client.id`` as
+    # the canonical id. Mirror that fallback here so this endpoint matches
+    # the WS bootstrap behaviour (training.py:1517 snapshot path).
+    facts: dict = {}
+    canonical_lead_id = client.lead_client_id or client.id
+    try:
+        from app.services import persona_memory as _pm
+        persona = await _pm.get_for_lead(db, lead_client_id=canonical_lead_id)
+        if persona is not None and persona.confirmed_facts:
+            facts = dict(persona.confirmed_facts)
+    except Exception:
+        logger.debug("ai-memory: persona facts load failed", exc_info=True)
+    return {
+        "summary": summary,
+        "facts": facts,
+    }
 
 
 @router.get("/{client_id}/next-best-action")
