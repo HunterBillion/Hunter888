@@ -525,6 +525,24 @@ async def finalize_training_session(
                 session.id, exc_info=True,
             )
 
+    # PR-A (cross-session memory): drop the cached summary for this
+    # (manager, real_client) pair so the NEXT session.start reads a
+    # fresh summary that includes THIS just-finalized session. Best-
+    # effort — eviction failure must never block finalization, so the
+    # call is wrapped and any exception is swallowed inside the helper.
+    if session.real_client_id is not None and manager_id is not None:
+        try:
+            from app.services.cross_session_memory import evict_summary_cache
+            await evict_summary_cache(
+                user_id=manager_id,
+                real_client_id=session.real_client_id,
+            )
+        except Exception:
+            logger.debug(
+                "completion_policy.xsession_evict_failed session=%s",
+                session.id, exc_info=True,
+            )
+
     logger.info(
         "completion_policy.finalized",
         extra={

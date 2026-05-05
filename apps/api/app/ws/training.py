@@ -1711,6 +1711,10 @@ async def _generate_character_reply(
                 difficulty=state.get("base_difficulty"),
                 # 2026-04-29 (TZ-4.5 PR 4): cross-session memory.
                 persona_facts=_persona_facts,
+                # PR-A: prior-session summary. Loaded once per session at
+                # _handle_session_start and stored in state — see comment
+                # there for the full lookup chain.
+                client_history=state.get("prior_session_summary"),
             ):
                 _streamed_text += token
                 _chunk_buffer += token
@@ -1933,6 +1937,8 @@ async def _generate_character_reply(
                     difficulty=state.get("base_difficulty"),
                     # 2026-04-29 (TZ-4.5 PR 4): cross-session memory.
                     persona_facts=_persona_facts,
+                    # PR-A: prior-session summary (parity with stream path).
+                    client_history=state.get("prior_session_summary"),
                     tools=_end_call_tools_spec,
                 )
     except LLMError as e:
@@ -3695,6 +3701,44 @@ async def _handle_session_start(
             state["stt_failure_count"] = 0
             state["custom_params"] = custom_params
             state["base_difficulty"] = custom_difficulty or (scenario.difficulty if scenario else 5)
+
+            # PR-A (cross-session memory): for sessions linked to a real
+            # CRM client, load the prior-call summary so the AI greets a
+            # returning manager in context (cold reception if last call
+            # ended hostile, "did you send the quote?" if a promise was
+            # made, etc.). Stash on state — _generate_character_reply
+            # forwards it into generate_response_stream / generate_response.
+            #
+            # Cache lookup is in-process O(ms) on Redis hit; first call
+            # for a (manager, client) pair takes one extra Postgres read
+            # (still cheaper than the LLM call that follows).
+            if session.real_client_id:
+                try:
+                    from app.services.cross_session_memory import (
+                        fetch_last_session_summary,
+                    )
+                    _prior_summary = await fetch_last_session_summary(
+                        db,
+                        user_id=session.user_id,
+                        real_client_id=session.real_client_id,
+                        skip_session_id=session.id,
+                    )
+                    if _prior_summary:
+                        state["prior_session_summary"] = _prior_summary
+                        logger.info(
+                            "xsession memory loaded for session %s "
+                            "(real_client=%s, %d chars)",
+                            session.id,
+                            session.real_client_id,
+                            len(_prior_summary),
+                        )
+                except Exception:
+                    # Memory load is opportunistic — never fail session.start
+                    # because we couldn't compute a summary.
+                    logger.debug(
+                        "xsession memory load failed for session %s",
+                        session.id, exc_info=True,
+                    )
 
             # Load or generate client profile
             client_card = None

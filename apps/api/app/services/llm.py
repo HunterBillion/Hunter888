@@ -758,6 +758,7 @@ def _build_system_prompt(
     emotion_state: str,
     scenario_prompt: str = "",
     persona_facts: dict | None = None,
+    client_history: str | None = None,
 ) -> str:
     """Combine character prompt + guardrails + emotion context + scenario injection.
 
@@ -904,6 +905,20 @@ def _build_system_prompt(
             facts_block = ""
         if facts_block:
             parts.append(facts_block)
+    # PR-A (cross-session memory): inject prior-call summary so the AI
+    # client greets a returning manager with context, not as a stranger.
+    # This is the single point where cross_session_memory.fetch_last_session_summary
+    # output meets the prompt — wired through _generate_character_reply.
+    if client_history:
+        history_block = (
+            "## Прошлая встреча с этим менеджером\n"
+            f"{client_history.strip()}\n\n"
+            "ВАЖНО: ты ПОМНИШЬ этот разговор. Если он был неприятным — "
+            "будь холоднее, можешь напомнить «вы мне уже звонили». Если "
+            "менеджер обещал что-то сделать и теперь звонит снова — "
+            "СПРОСИ, выполнил ли. Это твоё право как клиента."
+        )
+        parts.append(history_block)
     if scenario_prompt:
         parts.append(scenario_prompt)
     return "\n\n---\n\n".join(parts)
@@ -2260,6 +2275,10 @@ async def generate_response(
     # as a returning acquaintance. Default None → cold-start (back-
     # compat for non-call callers like anti_cheat / coach / report).
     persona_facts: dict | None = None,
+    # PR-A (cross-session memory): rendered summary of the prior completed
+    # session for the same (user, real_client) pair. None = first contact
+    # or non-CRM session — falls back to cold-start behaviour.
+    client_history: str | None = None,
     # P2 (2026-05-03): optional OpenAI-style tools spec, forwarded to the
     # underlying provider when it supports tool-calling (local/openai). The
     # WS pipeline passes ``[end_call_spec]`` here so the LLM can invoke a
@@ -2419,6 +2438,7 @@ async def generate_response(
             character_prompt, guardrails, emotion_state,
             scenario_prompt=scenario_prompt,
             persona_facts=persona_facts,
+            client_history=client_history,
         )
         # Budget cap for extra_system (from training.py: scenario context, client_profile,
         # objections, stage, traps). Raised from 1600→5000 chars now that large-context
@@ -2977,6 +2997,11 @@ async def generate_response_stream(
     # at the bottom of the system prompt so it's the freshest context
     # the LLM sees.
     persona_facts: dict | None = None,
+    # PR-A (cross-session memory): see generate_response for semantics.
+    # Stream path is the dominant traffic — without this hook the
+    # returning-client memory only worked in non-streaming completions
+    # (which is roughly never).
+    client_history: str | None = None,
     # 2026-05-01: explicit temperature override. None + adaptive flag +
     # call mode → adaptive_temperature_for_emotion(). None otherwise =
     # provider's historical default (0.85). Judges/coaches that need
@@ -3078,6 +3103,19 @@ async def generate_response_stream(
             _facts_block_s = ""
         if _facts_block_s:
             full_system = full_system + "\n\n" + _facts_block_s
+
+    # PR-A (cross-session memory) — stream path parity. Same block as
+    # _build_system_prompt; appended after persona_facts so the LLM sees
+    # facts and prior-call summary as adjacent context.
+    if client_history:
+        full_system = full_system + "\n\n" + (
+            "## Прошлая встреча с этим менеджером\n"
+            f"{client_history.strip()}\n\n"
+            "ВАЖНО: ты ПОМНИШЬ этот разговор. Если он был неприятным — "
+            "будь холоднее, можешь напомнить «вы мне уже звонили». Если "
+            "менеджер обещал что-то сделать и теперь звонит снова — "
+            "СПРОСИ, выполнил ли. Это твоё право как клиента."
+        )
 
     # ── Call-mode modifier (parity with generate_response) ──
     # Without this the stream path (90% of actual traffic) ignored the

@@ -18,6 +18,7 @@ import { PageSkeleton } from "@/components/ui/Skeleton";
 import { ClientTimeline } from "@/components/clients/ClientTimeline";
 import { ClientAttachments } from "@/components/clients/ClientAttachments";
 import { ClientMemorySection } from "@/components/clients/ClientMemorySection";
+import { AIRemembersBanner } from "@/components/clients/AIRemembersBanner";
 // 2026-04-23 Sprint 6 — «deja-vu» widget на CRM-карточке при открытии
 // через ?retrain=...&from=... (пришёл с /results → "Повторить с клиентом").
 import { RetrainWidget } from "@/components/clients/RetrainWidget";
@@ -270,6 +271,11 @@ export default function ClientDetailPage() {
       <div className="panel-grid-bg min-h-screen">
         <div className="app-page max-w-4xl">
         <Breadcrumb items={[{ label: "Клиенты", href: "/clients" }, { label: client.full_name }]} />
+        {/* PR-A: «ИИ помнит этого клиента» — видимый сразу при открытии,
+            до timeline. Это и есть user-visible эффект cross-session
+            памяти: продажник до начала тренировки понимает, на какой
+            контекст ИИ будет опираться. */}
+        <AIRemembersBanner clientId={id} />
         {/* Back + status */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
           <div className="mb-4">
