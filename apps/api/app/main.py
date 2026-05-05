@@ -279,6 +279,24 @@ async def lifespan(application: FastAPI):
         except Exception:
             logger.warning("Lifespan: failed to start embedding live-backfill worker", exc_info=True)
 
+    # PR-1 (2026-05-05): PvP duel reaper. Closes duels stuck in
+    # round_1/swap/round_2/judging when the worker that owned the
+    # in-memory _disconnect_tasks dict died. Always on — there's no
+    # tradeoff to having stale rows hang around the leaderboard.
+    application.state.pvp_duel_reaper_task = None
+    try:
+        from app.services.pvp_duel_reaper import PvPDuelReaper
+        _pvp_reaper = PvPDuelReaper()
+        application.state.pvp_duel_reaper_task = asyncio.create_task(
+            _pvp_reaper.run_forever()
+        )
+        logger.info("Lifespan: pvp duel reaper started")
+    except Exception:
+        logger.warning(
+            "Lifespan: failed to start pvp duel reaper",
+            exc_info=True,
+        )
+
     # TZ-8 PR-E: review-TTL auto-flip scheduler. Held in app.state so
     # the shutdown hook can cancel cleanly. The bulk UPDATE inside is
     # idempotent, so a partial rollback at cancellation just means the
@@ -330,6 +348,16 @@ async def lifespan(application: FastAPI):
         _ttl_task.cancel()
         try:
             await _ttl_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    # PR-1: stop pvp duel reaper. Single-tick UPDATE is idempotent,
+    # so cancellation mid-sweep just means the next tick re-runs.
+    _reaper_task = getattr(application.state, "pvp_duel_reaper_task", None)
+    if _reaper_task is not None:
+        _reaper_task.cancel()
+        try:
+            await _reaper_task
         except (asyncio.CancelledError, Exception):
             pass
 

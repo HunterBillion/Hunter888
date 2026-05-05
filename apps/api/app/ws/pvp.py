@@ -987,6 +987,30 @@ async def _cancel_duel_after_disconnect(user_id: uuid.UUID, duel_id: uuid.UUID) 
                     0,
                     int((duel.completed_at - duel.created_at).total_seconds()),
                 )
+            # PR-1 (2026-05-05): close the §3.3 invariant — terminal_outcome
+            # was NULL on every disconnect-cancel before this. 7/11 prod duels
+            # had unstamped terminal columns because this path bypassed the
+            # completion policy. Stamp inside the same transaction.
+            try:
+                from app.services.completion_policy import (
+                    TerminalOutcome,
+                    TerminalReason,
+                    finalize_pvp_duel,
+                )
+                await finalize_pvp_duel(
+                    db,
+                    duel=duel,
+                    outcome=TerminalOutcome.pvp_abandoned,
+                    reason=TerminalReason.opponent_disconnected,
+                )
+                ARENA_FINALIZE_ATTEMPTS.labels(
+                    outcome="abandoned", already_completed="false"
+                ).inc()
+            except Exception:
+                logger.warning(
+                    "completion_policy stamp failed (disconnect-cancel) for duel %s",
+                    duel.id, exc_info=True,
+                )
             db.add(duel)
             await db.commit()
 
@@ -1469,6 +1493,26 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
             duel.round_1_data = {"messages": round1_messages}
             duel.round_2_data = {"messages": round2_messages}
             duel.completed_at = datetime.now(timezone.utc)
+            # PR-1 (2026-05-05): the judge_error path was the second source of
+            # NULL terminal_outcome rows in prod. Without rating data we still
+            # owe the policy a stamp — pvp_abandoned/judge_failed.
+            try:
+                from app.services.completion_policy import (
+                    TerminalOutcome,
+                    TerminalReason,
+                    finalize_pvp_duel,
+                )
+                await finalize_pvp_duel(
+                    db,
+                    duel=duel,
+                    outcome=TerminalOutcome.pvp_abandoned,
+                    reason=TerminalReason.judge_failed,
+                )
+            except Exception:
+                logger.warning(
+                    "completion_policy stamp failed (judge_error) for duel %s",
+                    duel.id, exc_info=True,
+                )
             db.add(duel)
             await db.commit()
             for uid in [session["player1_id"], session["player2_id"]]:
