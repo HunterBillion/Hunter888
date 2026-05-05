@@ -226,12 +226,21 @@ function DuelPage() {
           break;
 
         case "duel.message":
+          // 2026-05-05 hotfix: pass through ``client_msg_id`` and
+          // ``server_msg_id`` from the echo payload so usePvPStore.addMessage
+          // can dedup the optimistic render. Backend ws/pvp.py:1996 emits
+          // ``client_msg_id`` when the sender originated the message; without
+          // forwarding it here every user message rendered twice (optimistic
+          // bubble + WS echo as a fresh row) — the visible "дублирует" bug
+          // user reported on duel 02bd9a42.
           store.addMessage({
             id: store.nextMsgId(),
             sender_role: (typeof d.sender_role === "string" ? d.sender_role : "client") as "seller" | "client",
             text: String(d.text || ""),
             round: Number(d.round || 1),
             timestamp: new Date().toISOString(),
+            client_msg_id: typeof d.client_msg_id === "string" ? d.client_msg_id : undefined,
+            server_msg_id: typeof d.server_msg_id === "string" ? d.server_msg_id : undefined,
           });
           break;
 
