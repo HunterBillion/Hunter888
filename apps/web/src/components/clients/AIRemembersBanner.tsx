@@ -65,6 +65,13 @@ export function AIRemembersBanner({ clientId }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    // Reset local view BEFORE the new request so navigating between
+    // clients (A → B) does not flash A's memory while B's request is
+    // in flight. Without this reset the previous client's facts hang
+    // around for the duration of the network round-trip.
+    setData(null);
+    setLoading(true);
+    setExpanded(false);
     (async () => {
       try {
         const resp = await api.get<AIMemoryResponse>(`/clients/${clientId}/ai-memory`);

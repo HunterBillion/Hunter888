@@ -3286,6 +3286,13 @@ async def generate_response_stream(
         # blocking fallback so the fallback voice matches what the
         # streaming path would have used.
         temperature=_stream_temperature,
+        # PR-A audit fix: stream-fallback used to silently drop
+        # persona_facts and client_history because they weren't on the
+        # forward list. The result was a degraded "cold-start" voice
+        # whenever streaming failed (LLM provider hiccup, stream parse
+        # error). Now full memory parity with the stream path.
+        persona_facts=persona_facts,
+        client_history=client_history,
     )
     if response and response.content:
         yield response.content

@@ -718,6 +718,29 @@ async def _handle_session_resume(
         state["fake_transition_prompt"] = ""
         state["stt_failure_count"] = 0
 
+        # PR-A audit fix: parity with _handle_session_start. Without this,
+        # a WS reconnect mid-conversation drops the prior-call summary
+        # from state and the AI silently cold-starts on the next reply.
+        # Cache hit path = O(ms), so it's safe to repeat on every resume.
+        if session.real_client_id:
+            try:
+                from app.services.cross_session_memory import (
+                    fetch_last_session_summary,
+                )
+                _prior_summary = await fetch_last_session_summary(
+                    db_resume,
+                    user_id=session.user_id,
+                    real_client_id=session.real_client_id,
+                    skip_session_id=session.id,
+                )
+                if _prior_summary:
+                    state["prior_session_summary"] = _prior_summary
+            except Exception:
+                logger.debug(
+                    "xsession memory restore failed for resumed session %s",
+                    session.id, exc_info=True,
+                )
+
         # C2 fix: restore story mode fields from session record.
         # 2026-04-18 audit fix: also restore total_calls, personality profile,
         # relationship_score, lifecycle_state, accumulated events. Without

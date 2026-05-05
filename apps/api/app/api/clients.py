@@ -935,10 +935,17 @@ async def api_client_ai_memory(
     # Persona facts (TZ-4.5): что ИИ узнал о менеджере по слотам. Эти
     # тоже идут в system_prompt — показываем рядом, чтобы продажник
     # понимал, на чём ИИ строит реакции.
+    #
+    # ACL/data-shape note: MemoryPersona is keyed by lead_client_id (TZ-1
+    # canonical anchor), and RealClient.lead_client_id is nullable —
+    # client_domain.py:312 uses ``client.lead_client_id or client.id`` as
+    # the canonical id. Mirror that fallback here so this endpoint matches
+    # the WS bootstrap behaviour (training.py:1517 snapshot path).
     facts: dict = {}
+    canonical_lead_id = client.lead_client_id or client.id
     try:
         from app.services import persona_memory as _pm
-        persona = await _pm.get_for_lead(db, lead_client_id=client_id)
+        persona = await _pm.get_for_lead(db, lead_client_id=canonical_lead_id)
         if persona is not None and persona.confirmed_facts:
             facts = dict(persona.confirmed_facts)
     except Exception:

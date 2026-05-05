@@ -7,8 +7,18 @@ breakage in production — the helper had been deployed for weeks but
 its output was never reaching the LLM. These tests fail on the pre-fix
 code (no ``client_history`` parameter / no injection block) and pass
 after PR-A.
+
+§4.1 CLAUDE.md compliance: the concurrent-fetch test below uses
+``asyncio.gather`` rather than sequential awaits so a future regression
+where Redis cache writes race with reads (e.g. someone "optimizes"
+away the negative-cache tombstone) actually fails the test.
 """
 from __future__ import annotations
+
+import asyncio
+import uuid
+
+import pytest
 
 from app.services.llm import _build_system_prompt
 
@@ -82,3 +92,76 @@ def test_client_history_strips_surrounding_whitespace():
     assert "тест" in out
     # No double-blank between the header and the body.
     assert "## Прошлая встреча с этим менеджером\nтест" in out
+
+
+@pytest.mark.asyncio
+async def test_fetch_summary_no_race_under_parallel_load():
+    """§4.1 CLAUDE.md regression fence — five parallel fetches of the
+    SAME (user, real_client) pair must all return the same summary,
+    not a mix of cache-hit and cache-miss results.
+
+    Without the negative-cache tombstone, a fresh CRM client opened in
+    five tabs simultaneously would hit the DB five times and a
+    misordered Redis SET could leave one task seeing an empty cache
+    value while the others see the real summary. Pre-emptive coverage
+    so a future "skip the empty-string tombstone" optimization fails
+    here loudly instead of silently degrading the feature.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.services import cross_session_memory as xsm
+
+    # In-memory Redis stub so we can observe the real read/write order.
+    storage: dict[str, str] = {}
+    redis_stub = MagicMock()
+    redis_stub.get = AsyncMock(side_effect=lambda k: storage.get(k))
+
+    async def _set(k: str, v: str, ex: int | None = None) -> None:
+        storage[k] = v
+
+    redis_stub.set = AsyncMock(side_effect=_set)
+
+    # Patch the DB read so all parallel branches converge on the same
+    # synthetic prior session — the test's job is to verify cache
+    # arbitration, not DB lookup correctness (covered elsewhere).
+    user_id = uuid.uuid4()
+    real_client_id = uuid.uuid4()
+
+    fake_session = MagicMock()
+    fake_session.ended_at = None
+    fake_session.created_at = None
+    fake_session.emotion_timeline = [{"state": "hostile"}]
+    fake_session.scoring_details = {"judge": {"rationale_ru": "OK"}}
+    fake_session.score_total = 50
+    fake_session.terminal_outcome = "hangup"
+
+    async def _fake_load(*args, **kwargs):
+        await asyncio.sleep(0.01)  # simulate DB latency
+        return fake_session
+
+    db_stub = MagicMock()  # never touched once we patch _load_prior_session
+
+    # Monkey-patch the loader so the test is hermetic.
+    original_loader = xsm._load_prior_session
+    xsm._load_prior_session = _fake_load
+    try:
+        results = await asyncio.gather(*[
+            xsm.fetch_last_session_summary(
+                db_stub,
+                user_id=user_id,
+                real_client_id=real_client_id,
+                redis_client=redis_stub,
+            )
+            for _ in range(5)
+        ])
+    finally:
+        xsm._load_prior_session = original_loader
+
+    # All five calls must agree on the same non-empty summary. A race
+    # would manifest as one of the results being None (saw an empty
+    # tombstone written by a sibling) while the others see real text.
+    assert all(r == results[0] for r in results), (
+        f"race detected: {set(results)}"
+    )
+    assert results[0] is not None
+    assert "HOSTILE" in results[0]
