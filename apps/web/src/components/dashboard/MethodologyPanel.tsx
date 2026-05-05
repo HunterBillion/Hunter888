@@ -10,8 +10,6 @@
  *   Сессии          — every training session in scope.
  *   База ФЗ-127     — global knowledge chunks (was "Контент арены").
  *   Сценарии        — scenario constructor (draft → publish lifecycle).
- *   Плейбуки        — per-team playbooks (opener / objection / closing).
- *                     Distinct from "База ФЗ-127" — see boundary doc.
  *   Ревью знаний    — TTL queue for legal_knowledge chunks.
  *   AI-собеседник   — aggregate AI quality oversight (was "Качество AI").
  *   Wiki            — corporate knowledge base, reuses <WikiDashboard>.
@@ -76,11 +74,9 @@ const AiQualityPanel = dynamic(
   { loading: () => <DashboardSkeleton />, ssr: false }
 );
 
-// TZ-8 PR-C — per-team playbooks editor.
-const PlaybooksEditor = dynamic(
-  () => import("@/components/methodology/PlaybooksEditor").then((m) => m.PlaybooksEditor),
-  { loading: () => <DashboardSkeleton />, ssr: false }
-);
+// PlaybooksEditor — UI retired 2026-05-05; backend remains. The editor
+// component file at apps/web/src/components/methodology/PlaybooksEditor.tsx
+// is intentionally kept on disk for if we re-add the surface elsewhere.
 
 interface UserListItem {
   id: string;
@@ -98,11 +94,18 @@ type SubTab =
   | "sessions"
   | "arena"
   | "scenarios"
-  | "playbooks"
   | "knowledge_review"
   | "ai_quality"
   | "wiki"
   | "reviews";
+
+// Legacy ?sub=playbooks deep-links land on `arena` — both surfaces are
+// "team knowledge that the AI uses". The playbooks UI was retired
+// 2026-05-05 because team-private playbooks duplicated the value of
+// Сценарии (which already encode "how we run a call") + Wiki (which
+// captures live best-practice). Backend /methodology/chunks endpoint
+// is preserved for future use; only the UI tab is removed.
+const PLAYBOOKS_LEGACY_TARGET: SubTab = "arena";
 
 interface Props {
   isAdminCaller: boolean;
@@ -250,11 +253,6 @@ const SUB_TABS: { id: SubTab; label: string; icon: typeof BookOpen; adminOnly?: 
   // The chunks themselves are scoped to ФЗ-127, so the label says so.
   { id: "arena", label: "База ФЗ-127", icon: Database },
   { id: "scenarios", label: "Сценарии", icon: Stack },
-  // Per-team playbooks (opener / objection / closing / discovery /
-  // persona_tone / counter_fact / process). Authored by ROP+admin,
-  // surfaces in coach + judge RAG of the same team. Distinct from the
-  // global "База ФЗ-127" — playbooks are team-private.
-  { id: "playbooks", label: "Плейбуки", icon: Sparkle },
   // TTL review queue for legal_knowledge chunks. Visible to ROP+admin —
   // the POST /admin/knowledge/{id}/review endpoint gates on those roles
   // anyway, so the tab is hidden from managers preemptively to keep
@@ -278,8 +276,12 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
   // Reading the raw string (not searchParams ref) keeps re-sync below
   // immune to unrelated query-param churn (e.g. `?modal=...`) that would
   // otherwise yank the user back to whatever `?sub=` is in the URL.
-  // `scoring` was retired 2026-05-05 (placeholder removed); legacy
-  // bookmarks are caught here and redirected to `rops`.
+  //
+  // Retired ids:
+  //   - `scoring` (2026-05-05) — placeholder, never had real UI.
+  //   - `playbooks` (2026-05-05) — duplicated value of Сценарии + Wiki;
+  //     legacy bookmarks land on PLAYBOOKS_LEGACY_TARGET (= arena, the
+  //     closest "team knowledge surface" still in the UI).
   const subParam = searchParams.get("sub");
   const initialSub = useMemo<SubTab>(() => {
     const allowed: SubTab[] = [
@@ -287,12 +289,12 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
       "sessions",
       "arena",
       "scenarios",
-      "playbooks",
       "knowledge_review",
       "ai_quality",
       "wiki",
       "reviews",
     ];
+    if (subParam === "playbooks") return PLAYBOOKS_LEGACY_TARGET;
     if (!allowed.includes(subParam as SubTab)) return "rops";
     // Non-admin landing on adminOnly sub via deep-link → graceful fallback
     // instead of the empty AnimatePresence (which renders a blank panel).
@@ -302,10 +304,17 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
 
   const [active, setActive] = useState<SubTab>(initialSub);
 
-  // Re-sync when ?sub= changes (e.g. browser back/forward)
+  // Re-sync when ?sub= changes (e.g. browser back/forward) and rewrite
+  // the URL bar in place when we resolved a legacy id (`playbooks` →
+  // `arena`) — keeps bookmarks self-healing without a 3xx hop.
   useEffect(() => {
     setActive(initialSub);
-  }, [initialSub]);
+    if (subParam && subParam !== initialSub && typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("sub", initialSub);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, [initialSub, subParam]);
 
   const visibleTabs = SUB_TABS.filter((t) => !t.adminOnly || isAdminCaller);
 
@@ -322,7 +331,6 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
             { label: "Сценарии", text: "Шаблоны разговоров для тренировок. Правки попадают к менеджерам только после кнопки «Опубликовать»." },
             { label: "База ФЗ-127", text: "Вопросы и цитаты из 127-ФЗ — то, что менеджер видит в режиме «Арена знаний»." },
             { label: "Сессии", text: "Просмотр любой сессии любого менеджера команды. Можно ревьюить, оставлять комментарии, отмечать как кейс." },
-            { label: "Плейбуки", text: "Скрипты команды: открытие, отработка возражений, закрытие. Подмешиваются в подсказки AI-коуча и судьи." },
             { label: "Ревью знаний", text: "Очередь чанков на проверку. Помеченные «спорно» / «устарело» автоматически исключаются из ответов AI." },
             { label: "AI-собеседник", text: "Агрегаты ошибок AI-клиента по команде: персона-конфликты, нарушения политики разговора. Помогает ловить regression в работе AI после деплоя." },
             { label: "Wiki", text: "Корпоративная база: лучшие практики, регламенты. Автосинтез из успешных диалогов." },
@@ -381,7 +389,6 @@ export function MethodologyPanel({ isAdminCaller }: Props) {
           {active === "sessions" && <SessionsBrowser />}
           {active === "arena" && <ArenaContentEditor />}
           {active === "scenarios" && <ScenariosEditor />}
-          {active === "playbooks" && <PlaybooksEditor canAuthor={true} />}
           {active === "knowledge_review" && <KnowledgeReviewQueue />}
           {active === "ai_quality" && <AiQualityPanel />}
           {active === "wiki" && <WikiDashboard />}

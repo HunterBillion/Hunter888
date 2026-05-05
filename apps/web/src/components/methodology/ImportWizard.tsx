@@ -735,26 +735,28 @@ function ReviewStep({
         </div>
       )}
 
-      <div className="flex gap-2 justify-between flex-wrap">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => onReExtract()}
-            disabled={reExtracting}
-            className="px-3 py-2 rounded-lg text-sm opacity-70 hover:opacity-100 disabled:opacity-40"
-            title="Заново прогнать классификатор и экстрактор"
-          >
-            ↻ Re-extract
-          </button>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={saving || !editedPayload}
-            className="px-3 py-2 rounded-lg text-sm opacity-70 hover:opacity-100 disabled:opacity-40"
-          >
-            {saving ? "Сохраняем…" : "Сохранить правки"}
-          </button>
-        </div>
+      {/* Sticky action bar — pinned to the bottom of the scrollable dialog
+          so the primary action is always one click away even on a tall
+          review form. The "Сохранить правки" button was removed: Approve
+          already saves edits server-side before creating the entity, so
+          a separate save was just one more thing to find. */}
+      <div
+        className="sticky bottom-0 -mx-6 -mb-6 mt-4 px-6 py-3 flex gap-2 justify-between flex-wrap items-center"
+        style={{
+          background: "color-mix(in srgb, var(--bg-secondary) 85%, transparent)",
+          backdropFilter: "blur(8px)",
+          borderTop: "1px solid var(--border-color)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => onReExtract()}
+          disabled={reExtracting}
+          className="px-3 py-2 rounded-lg text-sm opacity-70 hover:opacity-100 disabled:opacity-40"
+          title="Заново прогнать классификатор и экстрактор"
+        >
+          {reExtracting ? "Прогоняем…" : "↻ Перезапустить разбор"}
+        </button>
         <div className="flex gap-2">
           <button
             type="button"
@@ -766,17 +768,30 @@ function ReviewStep({
           <button
             type="button"
             onClick={onApprove}
-            disabled={!!draft.error_message}
-            className="px-4 py-2 rounded-lg bg-[var(--accent)] disabled:opacity-40"
+            disabled={!!draft.error_message || saving}
+            className="px-4 py-2 rounded-lg bg-[var(--accent)] text-black font-semibold disabled:opacity-40"
           >
-            {isBulk && activeIdx + 1 < queue.length
-              ? "Сохранить и далее →"
-              : "Сохранить как черновик"}
+            {saving
+              ? "Сохраняем…"
+              : isBulk && activeIdx + 1 < queue.length
+                ? primaryActionLabel(chosenRoute) + " и далее →"
+                : primaryActionLabel(chosenRoute)}
           </button>
         </div>
       </div>
     </div>
   );
+}
+
+/** Primary action label shown on the Approve button — route-aware so
+ * the user knows what's about to happen ("Save as draft" was confusing
+ * because the next step IS the actual entity creation). */
+function primaryActionLabel(route: ImportRouteType): string {
+  if (route === "scenario") return "Создать сценарий";
+  if (route === "character") return "Создать персонажа";
+  if (route === "arena_knowledge") return "Добавить в базу ФЗ-127";
+  if (route === "methodology_chunk") return "Сохранить плейбук";
+  return "Сохранить";
 }
 
 // ── Route-aware payload editor ─────────────────────────────────────────
