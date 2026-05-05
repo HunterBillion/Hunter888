@@ -465,11 +465,19 @@ def _is_garbage_answer(answer: str) -> tuple[bool, str]:
     # No-digits + no-legal-markers + short → garbage. Was `< 6` only,
     # which let through 6-letter names like "Алибек". Now requires
     # 12+ chars OR a digit OR a legal marker.
+    # PR-A (2026-05-05): widened markers so substantive single-word
+    # answers ("реализация", "реструктуризация", "субсидиарка",
+    # "несостоятельность", "финуправ", "конкурсный", "мфц") stop being
+    # rejected as garbage. Audit found _TERM_SYNONYMS already maps these
+    # to canonical concepts later in the pipeline; the early-exit gate
+    # was undoing that work.
     legal_markers = (
         "ст.", "ст ", "статья", "пункт", "банкрот", "управляющ",
         "кредитор", "залог", "имуществ", "должник", "просрочк",
         "срок", "ипотек", "алимент", "процедур", "арбитраж", "фз",
         "127-фз", "229-фз", "гпк", "ск рф", "коап",
+        "реализац", "реструктур", "субсидиар", "несостоятельн",
+        "финуправ", "конкурс", "мфц", "внесудеб",
     )
     has_digits = any(c.isdigit() for c in stripped)
     has_legal = any(m in stripped for m in legal_markers)

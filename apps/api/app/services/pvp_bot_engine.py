@@ -32,7 +32,11 @@ from typing import Any
 from app.models.pvp import DuelDifficulty
 from app.services.arena_metrics import ARENA_AI_BOT_LATENCY
 from app.services.llm import generate_response
-from app.services.rag_legal import retrieve_legal_context, RAGContext
+from app.services.rag_legal import RAGContext
+from app.services.rag_legal_v2 import (
+    retrieve_legal_context_v2,
+    RetrieveV2Options,
+)
 from app.services.content_filter import filter_ai_output
 
 logger = logging.getLogger(__name__)
@@ -720,9 +724,22 @@ def _build_system_prompt(
     if scenario_title:
         parts.append(f"\nСценарий дуэли: {scenario_title}")
 
-    # 8. RAG legal context
+    # 8. RAG legal context.
+    # PR-A (2026-05-05): when RAG returns 0 chunks (noisy short reply, all
+    # similarities below threshold, embedding API down), we used to add
+    # nothing — and the bot would happily fabricate article numbers from
+    # the LLM's training data. The fallback instruction below tells the bot
+    # explicitly NOT to cite specific articles when no facts are grounded.
     if rag_context and rag_context.has_results:
         parts.append(f"\n## Юридический контекст (для реалистичности)\n{rag_context.to_prompt_context()}")
+    else:
+        parts.append(
+            "\n## Юридический контекст"
+            "\nБаза знаний не дала точного матча для текущей реплики."
+            "\nНЕ цитируй конкретные статьи 127-ФЗ из памяти — можешь ошибиться."
+            "\nОтвечай общими формулировками. Если нужна точная норма — скажи"
+            " «надо уточнить у юриста» / «не уверен в номере статьи»."
+        )
 
     # 9. Hard rules
     parts.append(
@@ -781,12 +798,42 @@ async def generate_bot_reply(
         emotion.trust_level, emotion.resistance, quality, current_turn,
     )
 
-    # 2. Fetch RAG context for legal realism
+    # 2. Fetch RAG context for legal realism.
+    # PR-A (2026-05-05): three concrete fixes to the retrieve pipeline that
+    # caused the "AI плохо отвечает / нельзя ссылки" complaints:
+    #
+    #   (a) Switch from rag_legal → rag_legal_v2. v2 has the same RAGContext
+    #       output shape but adds:
+    #         - URL overlay (legalacts.ru / consultant.ru / sudact.ru / rg.ru
+    #           / garant.ru) — when the user pastes a link, it gets fetched,
+    #           sanitised, chunked and prepended as a high-confidence hit.
+    #         - Article-ref short-circuit — explicit "ст. 213.4" lookups in
+    #           legal_document with a +0.25 boost.
+    #         - Adaptive confidence gate (article_specific=0.55,
+    #           conversational=0.45) so loose phrasing doesn't get refused.
+    #
+    #   (b) Build the retrieval query from the LAST 3 user messages instead
+    #       of just the most recent reply. A short reply like "ну ок" used
+    #       to produce a noisy embedding → 0 chunks → bot answered with no
+    #       legal context. Joining recent context anchors the search.
+    #
+    #   (c) Bump top_k from 3 → 5 (chunks are ~250 chars; +500 chars in the
+    #       prompt is cheap and catches more thematic variants).
     rag_context: RAGContext | None = None
     try:
         from app.database import async_session
+        # (b) Recent user-message context: last 3 user turns concatenated,
+        # truncated to 500 chars so embedding stays meaningful.
+        recent_user_text = " ".join(
+            m.get("content", "") for m in history[-6:]
+            if m.get("role") == "user"
+        )[:500].strip() or user_text
         async with async_session() as db:
-            rag_context = await retrieve_legal_context(user_text, db, top_k=3)
+            rag_context = await retrieve_legal_context_v2(
+                recent_user_text,
+                db,
+                options=RetrieveV2Options(top_k=5, candidate_pool=20),
+            )
     except Exception as exc:
         logger.warning("RAG retrieval failed for bot [%s]: %s", duel_id[:8], exc)
 
@@ -817,7 +864,11 @@ async def generate_bot_reply(
         response = await asyncio.wait_for(
             generate_response(
                 system_prompt=system_prompt,
-                messages=history[-8:],
+                # PR-A (2026-05-05): 8 → 20. Bot was forgetting context after
+                # 8 turns ("vy 5 minut nazad skazali..." — bot had no idea).
+                # Local LLM context window is 128K (config.py:94), 20 turns
+                # of duel chat fit comfortably.
+                messages=history[-20:],
                 emotion_state=emotion_map.get(emotion.mood, "cold"),
                 user_id=player_id,
                 task_type="roleplay",
