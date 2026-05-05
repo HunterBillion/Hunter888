@@ -1117,12 +1117,8 @@ def _build_stage_info(state: dict) -> dict | None:
                 completed_names.append(STAGE_ORDER[i])
         except (TypeError, ValueError):
             continue
-    # Drop the current stage from "completed" — stage_tracker adds it
-    # immediately on entry, but for the prompt block "уже пройдено"
-    # should mean "earlier than now", not "including now".
     completed_names = [n for n in completed_names if n != stage_name]
 
-    # Messages-on-stage: msg_count - stage_started_at_msg[current].
     msgs_on_stage: int | None = None
     started = state.get("stage_started_at_msg") or {}
     cur_started = started.get(str(stage_index)) or started.get(stage_index)
@@ -1130,7 +1126,6 @@ def _build_stage_info(state: dict) -> dict | None:
         total_msgs = state.get("message_count") or 0
         msgs_on_stage = max(0, int(total_msgs) - cur_started)
 
-    # One-shot skip surface — pop so it doesn't repeat on subsequent turns.
     skipped_raw = state.pop("_recent_skipped_stages", None) or []
     skipped_names: list[str] = []
     for s in skipped_raw:
@@ -1153,6 +1148,35 @@ def _build_stage_info(state: dict) -> dict | None:
         "messages_on_stage": msgs_on_stage,
         "skipped_stages": skipped_names,
     }
+
+
+def _build_call_cognitive_cues(state: dict, session_mode: str) -> dict | None:
+    """PR-C: assemble the call_cognitive dict consumed by ``build_call_cognitive_modifier``.
+
+    Only meaningful in voice modes; returns None for chat sessions so
+    the LLM signature stays clean and the modifier function can early-
+    out. Reads + clears one-shot state keys set by other handlers:
+      * ``_was_interrupted_last_turn`` (audio.interrupted) — POPS
+      * ``_interrupted_played_chars`` (audio.interrupted) — POPS
+      * ``_proactive_silence_seconds`` (silence_watchdog) — POPS
+      * ``_distraction_hint`` (random injector) — POPS
+    """
+    if session_mode not in ("call", "center"):
+        return None
+    cues: dict = {}
+    if state.pop("_was_interrupted_last_turn", False):
+        cues["interrupted_last_turn"] = True
+        cues["interrupted_played_chars"] = state.pop("_interrupted_played_chars", 0)
+    silent = state.pop("_proactive_silence_seconds", None)
+    if silent is not None:
+        try:
+            cues["user_silent_seconds"] = float(silent)
+        except (TypeError, ValueError):
+            pass
+    distraction = state.pop("_distraction_hint", None)
+    if distraction:
+        cues["distraction_hint"] = str(distraction)
+    return cues  # may be {} — modifier still produces working-memory line
 
 
 async def _generate_character_reply(
@@ -1808,12 +1832,11 @@ async def _generate_character_reply(
                 # there for the full lookup chain.
                 client_history=state.get("prior_session_summary"),
                 # PR-B: live stage state. Built from the StageTracker
-                # writes that happen on every user turn (see ~line 4836).
-                # ``_recent_skipped_stages`` is one-shot — popped from
-                # state below so the next reply doesn't re-trigger the
-                # «менеджер пропустил» line if the manager has already
-                # reacted.
+                # writes that happen on every user turn.
                 current_stage_info=_build_stage_info(state),
+                # PR-C: call cognitive cues (working-memory, barge-in,
+                # silence, distraction). None when chat mode.
+                call_cognitive=_build_call_cognitive_cues(state, _session_mode_s),
             ):
                 _streamed_text += token
                 _chunk_buffer += token
@@ -2040,6 +2063,8 @@ async def _generate_character_reply(
                     client_history=state.get("prior_session_summary"),
                     # PR-B: stage-aware AI (parity with stream path).
                     current_stage_info=_build_stage_info(state),
+                    # PR-C: call cognitive cues (parity with stream path).
+                    call_cognitive=_build_call_cognitive_cues(state, _session_mode),
                     tools=_end_call_tools_spec,
                 )
     except LLMError as e:
@@ -5341,6 +5366,81 @@ async def _check_traps_after_user_message(
     state.pop("_cached_client_story", None)
 
 
+async def _handle_audio_interrupted(
+    ws: WebSocket,
+    data: dict,
+    state: dict,
+) -> None:
+    """PR-C: barge-in feedback. Frontend pressed ``tts.stop()`` because
+    the user started speaking over the AI; payload says how many chars
+    were actually heard.
+
+    Two side-effects:
+
+      1. Truncate the last assistant message in DB to ``played_chars``
+         characters so the LLM sees what the manager actually heard,
+         not the full would-be reply. Without this the AI references
+         content the manager never received («как я сказал…»).
+      2. Stash a one-shot flag on ``state`` so the next reply rendered
+         by ``_generate_character_reply`` injects the [ПЕРЕБИЛИ] cue
+         via ``build_call_cognitive_modifier``.
+
+    Best-effort — any failure during truncation just logs and skips.
+    The session keeps running (the cue won't fire next turn but call
+    isn't broken).
+    """
+    session_id = state.get("session_id")
+    if not session_id:
+        return
+    try:
+        played_chars = int(data.get("played_chars") or 0)
+    except (TypeError, ValueError):
+        played_chars = 0
+    played_chars = max(0, min(played_chars, 10_000))  # sanity cap
+
+    state["_was_interrupted_last_turn"] = True
+    state["_interrupted_played_chars"] = played_chars
+
+    if played_chars == 0:
+        # Manager interrupted before any audio reached them — drop the
+        # last assistant message entirely from history so the next LLM
+        # call doesn't see content the manager didn't hear.
+        try:
+            from sqlalchemy import select as _select
+            async with async_session() as _db:
+                last_msg = (await _db.execute(
+                    _select(Message).where(
+                        Message.session_id == session_id,
+                        Message.role == MessageRole.assistant,
+                    ).order_by(Message.sequence_number.desc()).limit(1)
+                )).scalar_one_or_none()
+                if last_msg is not None:
+                    await _db.delete(last_msg)
+                    await _db.commit()
+        except Exception:
+            logger.debug("audio.interrupted: failed to delete trailing assistant message", exc_info=True)
+        return
+
+    try:
+        from sqlalchemy import select as _select
+        async with async_session() as _db:
+            last_msg = (await _db.execute(
+                _select(Message).where(
+                    Message.session_id == session_id,
+                    Message.role == MessageRole.assistant,
+                ).order_by(Message.sequence_number.desc()).limit(1)
+            )).scalar_one_or_none()
+            if last_msg is not None and last_msg.content:
+                # Truncate at character boundary; cap below the original
+                # length so we don't accidentally lengthen anything.
+                clip = last_msg.content[:played_chars].rstrip()
+                if clip and clip != last_msg.content:
+                    last_msg.content = clip + " […перебили]"
+                    await _db.commit()
+    except Exception:
+        logger.debug("audio.interrupted: failed to truncate trailing assistant", exc_info=True)
+
+
 async def _handle_text_message(
     ws: WebSocket,
     data: dict,
@@ -7387,6 +7487,19 @@ async def training_websocket(websocket: WebSocket) -> None:
                 if state.get("_should_stop"):
                     stop_event.set()
                     break
+
+            elif msg_type == "audio.interrupted":
+                # PR-C: barge-in feedback. Frontend calls tts.stop() when
+                # the user starts speaking over the AI; this event tells
+                # us how many characters were actually heard so we can
+                # rewrite the assistant message in history (the LLM
+                # shouldn't reference content the manager never received)
+                # AND mark the next reply as «just got interrupted» so
+                # the cognitive modifier injects the [ПЕРЕБИЛИ] cue.
+                try:
+                    await _handle_audio_interrupted(websocket, msg_data, state)
+                except Exception:
+                    logger.debug("audio.interrupted handler failed", exc_info=True)
 
             elif msg_type == "session.end":
                 await _handle_session_end(websocket, msg_data, state)
