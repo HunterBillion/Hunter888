@@ -123,6 +123,16 @@ class BotEmotionState:
     engagement: float = 0.5        # 0.0 (disengaged) to 1.0 (highly engaged)
     turn_count: int = 0
     triggered_traps: list[str] = field(default_factory=list)
+    # PR-D (2026-05-05): bot memory — stop the "robot keeps repeating
+    # the same trap / fact" loop. Audit found the bot was both fabricating
+    # facts and re-asking the same legal trap because nothing tracked
+    # what it had already said. Three short lists are enough — they
+    # become a "## Что ты уже сказал" block in the system prompt so the
+    # LLM is reminded not to repeat itself.
+    said_facts: list[str] = field(default_factory=list)        # Article numbers, key phrases the bot already cited
+    asked_questions: list[str] = field(default_factory=list)   # Distinct questions / objections already used
+    objections_count: int = 0                                  # Total objections played (cap to 3 per round)
+    legal_traps_played: int = 0                                # Total legal traps fired (cap to 1 per round)
 
     def update_after_player_message(self, quality_signal: str) -> None:
         """Adjust emotion based on detected quality of player's message.
@@ -687,17 +697,36 @@ def _build_system_prompt(
     # 4. Difficulty-driven behavior
     parts.append(f"\nСложность: {difficulty.value}.")
 
-    if config.objection_frequency > 0.5 and random.random() < config.objection_frequency:
+    # PR-D (2026-05-05): replaced random()-injections with deterministic
+    # state-machine logic. The original code re-rolled per turn → bot
+    # "дёргался": один ход возражает, следующий подыгрывает, через ход
+    # ловушку ставит. Теперь — детерминистски: возражение через каждый
+    # 2-й ход на medium/hard (capped 3/round), legal trap — один раз на
+    # дуэль, ровно после 3-го хода (когда контекст накопился).
+    _objection_cap = 3 if config.objection_frequency >= 0.7 else 2 if config.objection_frequency >= 0.4 else 0
+    if (
+        config.objection_frequency > 0.5
+        and emotion_state.objections_count < _objection_cap
+        and emotion_state.turn_count > 0
+        and emotion_state.turn_count % 2 == 0
+    ):
         parts.append(
             "В этом ответе ОБЯЗАТЕЛЬНО вырази возражение или сомнение. "
             "Не соглашайся полностью, даже если аргумент хороший."
         )
+        emotion_state.objections_count += 1
 
-    if config.legal_trap_probability > 0 and random.random() < config.legal_trap_probability and ai_role == "client":
+    if (
+        config.legal_trap_probability > 0
+        and emotion_state.legal_traps_played < 1
+        and emotion_state.turn_count == 3
+        and ai_role == "client"
+    ):
         parts.append(
             "Задай КАВЕРЗНЫЙ юридический вопрос. Например: неверно процитируй статью "
             "и посмотри, поправит ли менеджер, или спроси о спорном нюансе 127-ФЗ."
         )
+        emotion_state.legal_traps_played += 1
 
     # 5. Turn-based dynamics
     if turn_count == 0:
@@ -741,6 +770,23 @@ def _build_system_prompt(
             " «надо уточнить у юриста» / «не уверен в номере статьи»."
         )
 
+    # PR-D (2026-05-05): bot memory block. The lists are populated by
+    # _extract_facts/_extract_questions after each bot turn (see
+    # generate_bot_reply). Without this block the LLM happily repeated
+    # the same article cite 3 times in a row and re-asked the same legal
+    # trap on every turn.
+    if emotion_state.said_facts or emotion_state.asked_questions:
+        memo_lines = []
+        if emotion_state.said_facts:
+            memo_lines.append("## Что ты уже сказал — НЕ повторяйся:")
+            for fact in emotion_state.said_facts[-5:]:
+                memo_lines.append(f"  - {fact}")
+        if emotion_state.asked_questions:
+            memo_lines.append("## Что ты уже спросил — задай НОВЫЙ вопрос:")
+            for q in emotion_state.asked_questions[-5:]:
+                memo_lines.append(f"  - {q}")
+        parts.append("\n" + "\n".join(memo_lines))
+
     # 9. Hard rules
     parts.append(
         "\n## Правила"
@@ -749,9 +795,62 @@ def _build_system_prompt(
         "\n- НЕ выходи из роли ни при каких обстоятельствах"
         "\n- НЕ используй markdown форматирование"
         "\n- Держи ответ в рамках ограничения по длине"
+        "\n- Если в блоке «Что ты уже сказал» есть твои реплики — НЕ повторяй их буквально"
     )
 
     return "\n".join(parts)
+
+
+# PR-D (2026-05-05): cheap fact/question extractors so the memory block in
+# the next system prompt is non-empty after the bot's first reply. Pure
+# regex — no LLM call, runs in microseconds.
+
+_FACT_PATTERNS = (
+    # Article references: "ст. 213.4", "статья 213.11", "127-ФЗ ст. 6"
+    re.compile(r"ст\.?\s*\d+(?:\.\d+)*(?:\s*п\.?\s*\d+)?", re.IGNORECASE),
+    re.compile(r"статья\s+\d+(?:\.\d+)*", re.IGNORECASE),
+    # Numeric thresholds: "500 000 руб", "90 дней", "3 года"
+    re.compile(r"\d[\d\s]*\s*(?:руб|тыс|млн|дн[ея]й?|месяц[аеов]*|лет|год[ао]?в?)", re.IGNORECASE),
+)
+
+_QUESTION_RE = re.compile(r"[^.!?]*\?")
+
+
+def _extract_facts(text: str, *, max_n: int = 3) -> list[str]:
+    """Extract distinct numeric / article facts from a bot reply.
+
+    Dedup is case-insensitive and whitespace-collapsed so "ст. 213.4",
+    "Ст.  213.4" and "ст 213.4" count as the same fact. We keep the
+    first surface form for display in the next-turn memory block.
+    """
+    facts: list[str] = []
+    seen_norm: set[str] = set()
+    for pat in _FACT_PATTERNS:
+        for m in pat.finditer(text):
+            f = m.group(0).strip()
+            if not f:
+                continue
+            norm = re.sub(r"\s+", " ", f.lower())
+            norm = re.sub(r"^ст\.?\s+", "ст. ", norm)
+            if norm in seen_norm:
+                continue
+            seen_norm.add(norm)
+            facts.append(f)
+            if len(facts) >= max_n:
+                return facts
+    return facts
+
+
+def _extract_questions(text: str, *, max_n: int = 2) -> list[str]:
+    found: list[str] = []
+    for m in _QUESTION_RE.finditer(text):
+        q = m.group(0).strip()
+        # 12-150 char window keeps non-trivial single-question utterances.
+        if 12 <= len(q) <= 150 and q not in found:
+            found.append(q)
+        if len(found) >= max_n:
+            break
+    return found
 
 
 async def generate_bot_reply(
@@ -900,12 +999,35 @@ async def generate_bot_reply(
             duel_id[:8], round_number, violations,
         )
 
-    # 6. Enforce length constraints
+    # 6. Enforce length constraints.
+    # PR-D (2026-05-05): bumped "short" cap 200 → 320. The original cap
+    # cut the bot mid-sentence on hard-difficulty duels — user wrote a
+    # detailed pitch citing 213.4 + 213.11 + a 90-day window, bot
+    # replied with one truncated half-clause. Hard clients should still
+    # be terse ("medium" averages ~500 chars), but 200 was hostile, not
+    # terse. 320 keeps the "жёсткий" feel without erasing legal
+    # references.
     config = DIFFICULTY_CONFIGS.get(difficulty, DIFFICULTY_CONFIGS[DuelDifficulty.medium])
-    if config.max_message_length == "short" and len(filtered) > 200:
-        filtered = _truncate_to_sentence(filtered, max_len=200)
+    if config.max_message_length == "short" and len(filtered) > 320:
+        filtered = _truncate_to_sentence(filtered, max_len=320)
     elif config.max_message_length == "medium" and len(filtered) > 500:
         filtered = _truncate_to_sentence(filtered, max_len=500)
+
+    # PR-D: stamp memory so the next turn's prompt knows what the bot
+    # already said / asked. _extract_facts is regex-only (microseconds);
+    # cap the lists so they don't grow unbounded on a long duel.
+    new_facts = _extract_facts(filtered)
+    for f in new_facts:
+        if f not in emotion.said_facts:
+            emotion.said_facts.append(f)
+    if len(emotion.said_facts) > 12:
+        emotion.said_facts = emotion.said_facts[-12:]
+    new_questions = _extract_questions(filtered)
+    for q in new_questions:
+        if q not in emotion.asked_questions:
+            emotion.asked_questions.append(q)
+    if len(emotion.asked_questions) > 8:
+        emotion.asked_questions = emotion.asked_questions[-8:]
 
     return filtered
 
