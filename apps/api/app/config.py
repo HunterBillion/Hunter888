@@ -198,7 +198,16 @@ class Settings(BaseSettings):
     # Answer-validation second-opinion. When True, knowledge-quiz runs
     # ``knowledge_quiz_validator_v2.validate_semantic`` after the primary
     # judge and upgrades false→partial/equivalent where appropriate.
-    rollout_relaxed_validation: bool = False
+    #
+    # 2026-05-05 PR-2: flipped to True.
+    # The strict primary judge was the #1 source of the "AI rejects my
+    # short-but-correct answer" complaint (ст. 213.4, 90 дней → 0/10).
+    # The relaxed validator only ever upgrades, never downgrades, so the
+    # blast radius is bounded: at worst a false→partial promotion gives
+    # the player half-credit instead of zero. The upgrade pass also
+    # appends a transparency note so the player sees why their short
+    # answer was accepted. Env-var override remains available for ops.
+    rollout_relaxed_validation: bool = True
     # RAG: fetch user-supplied URLs (legalacts.ru/consultant.ru/sudact.ru)
     # into the retrieval pool at query time.
     rag_url_fetch_enabled: bool = True
@@ -581,7 +590,16 @@ class Settings(BaseSettings):
     # the historical "embedding stays NULL until next API restart").
     # Independent of auto_publish: enqueue happens on every approve
     # path so reviewer-approved chunks also get fast-track embeddings.
-    arena_embedding_live_backfill_enabled: bool = False
+    #
+    # 2026-05-05 PR-2: flipped to True.
+    # The "База ФЗ-127" tab on /pvp shows a RAG transparency view —
+    # users see what the AI knows. Without live backfill, freshly-
+    # approved chunks have NULL embeddings and never appear in the
+    # vector-search results until the next API restart, so the tab
+    # silently misrepresents what's actually retrievable. Worker is
+    # idempotent and BLPOP-driven so flipping defaults adds no
+    # baseline load; it only fires when a chunk is published.
+    arena_embedding_live_backfill_enabled: bool = True
 
     # ── TZ-8 PR-E: review-TTL auto-flip scheduler ─────────────────────
     # Enables the hourly worker that flips
