@@ -77,7 +77,9 @@ export function AIRemembersBanner({ clientId }: Props) {
         const resp = await api.get<AIMemoryResponse>(`/clients/${clientId}/ai-memory`);
         if (!cancelled) setData(resp);
       } catch (err) {
-        logger.debug("ai-memory fetch failed", err);
+        // Soft-fail: 403 (methodologist), 404 (unbound client), or
+        // network blip — banner self-hides. Non-essential data path.
+        logger.warn("ai-memory fetch failed", err);
         if (!cancelled) setData(null);
       } finally {
         if (!cancelled) setLoading(false);
