@@ -1086,6 +1086,75 @@ async def _handle_auth_refresh(ws: WebSocket, data: dict, state: dict) -> None:
         await _send(ws, "auth.refresh_error", {"reason": "invalid_token"})
 
 
+def _build_stage_info(state: dict) -> dict | None:
+    """PR-B: assemble the current_stage_info dict consumed by ``_build_system_prompt``.
+
+    Reads from the stage-tracker mirror keys the audio/text handlers
+    write on every user turn (``current_stage_name``, ``stages_completed``,
+    ``stage_started_at_msg``, ``stage_message_counts``,
+    ``_recent_skipped_stages``). Returns None if the tracker hasn't run
+    yet (very first user message before stage detection) — in that case
+    the LLM falls back to its baseline behaviour, which is safe.
+
+    Pops ``_recent_skipped_stages`` so the «менеджер пропустил» line
+    fires once per actual skip, not on every subsequent reply.
+    """
+    stage_name = state.get("current_stage_name")
+    if not stage_name:
+        return None
+    try:
+        from app.services.stage_tracker import STAGE_LABELS, STAGE_ORDER
+    except Exception:
+        return None
+    stage_index = state.get("current_stage")
+    stage_label = STAGE_LABELS.get(stage_name, stage_name)
+    completed_indices = state.get("stages_completed") or []
+    completed_names: list[str] = []
+    for idx in completed_indices:
+        try:
+            i = int(idx) - 1  # 1-based → 0-based
+            if 0 <= i < len(STAGE_ORDER):
+                completed_names.append(STAGE_ORDER[i])
+        except (TypeError, ValueError):
+            continue
+    # Drop the current stage from "completed" — stage_tracker adds it
+    # immediately on entry, but for the prompt block "уже пройдено"
+    # should mean "earlier than now", not "including now".
+    completed_names = [n for n in completed_names if n != stage_name]
+
+    # Messages-on-stage: msg_count - stage_started_at_msg[current].
+    msgs_on_stage: int | None = None
+    started = state.get("stage_started_at_msg") or {}
+    cur_started = started.get(str(stage_index)) or started.get(stage_index)
+    if isinstance(cur_started, int):
+        total_msgs = state.get("message_count") or 0
+        msgs_on_stage = max(0, int(total_msgs) - cur_started)
+
+    # One-shot skip surface — pop so it doesn't repeat on subsequent turns.
+    skipped_raw = state.pop("_recent_skipped_stages", None) or []
+    skipped_names: list[str] = []
+    for s in skipped_raw:
+        if isinstance(s, str):
+            skipped_names.append(s)
+        else:
+            try:
+                i = int(s) - 1
+                if 0 <= i < len(STAGE_ORDER):
+                    skipped_names.append(STAGE_ORDER[i])
+            except (TypeError, ValueError):
+                continue
+
+    return {
+        "stage_name": stage_name,
+        "stage_label": stage_label,
+        "stage_index": stage_index,
+        "total_stages": len(STAGE_ORDER),
+        "stages_completed": completed_names,
+        "messages_on_stage": msgs_on_stage,
+        "skipped_stages": skipped_names,
+    }
+
+
 async def _generate_character_reply(
     ws: WebSocket,
     session_id: uuid.UUID,
@@ -1738,6 +1807,13 @@ async def _generate_character_reply(
                 # _handle_session_start and stored in state — see comment
                 # there for the full lookup chain.
                 client_history=state.get("prior_session_summary"),
+                # PR-B: live stage state. Built from the StageTracker
+                # writes that happen on every user turn (see ~line 4836).
+                # ``_recent_skipped_stages`` is one-shot — popped from
+                # state below so the next reply doesn't re-trigger the
+                # «менеджер пропустил» line if the manager has already
+                # reacted.
+                current_stage_info=_build_stage_info(state),
             ):
                 _streamed_text += token
                 _chunk_buffer += token
@@ -1962,6 +2038,8 @@ async def _generate_character_reply(
                     persona_facts=_persona_facts,
                     # PR-A: prior-session summary (parity with stream path).
                     client_history=state.get("prior_session_summary"),
+                    # PR-B: stage-aware AI (parity with stream path).
+                    current_stage_info=_build_stage_info(state),
                     tools=_end_call_tools_spec,
                 )
     except LLMError as e:
@@ -4837,6 +4915,10 @@ async def _handle_audio_chunk(
         state["current_stage_name"] = stage_state.current_stage_name
         state["stage_started_at_msg"] = dict(stage_state.stage_started_at_msg)
         state["stage_message_counts"] = dict(stage_state.stage_message_counts)
+        # PR-B: keep the indexed completed-list around for the LLM prompt
+        # injection so the AI can react to "manager is on stage 5 but only
+        # finished 3" without us reproducing stage_tracker logic in llm.py.
+        state["stages_completed"] = list(stage_state.stages_completed)
         if stage_changed:
             await _send(ws, "stage.update", st.build_ws_payload(stage_state))
         if skipped:
@@ -4845,6 +4927,10 @@ async def _handle_audio_chunk(
             reactions = st.get_skip_reactions(stage_state, skipped)
             if reactions:
                 state["_pending_skip_reactions"] = reactions
+            # PR-B: stash the latest skip-set so _generate_character_reply
+            # can pass it into the system prompt as «менеджер пропустил X».
+            # One turn of memory — cleared after the next reply renders.
+            state["_recent_skipped_stages"] = list(skipped)
     except Exception:
         logger.debug("Stage tracking failed for session %s (audio)", session_id, exc_info=True)
 
@@ -5399,6 +5485,8 @@ async def _handle_text_message(
         state["current_stage_name"] = stage_state.current_stage_name
         state["stage_started_at_msg"] = dict(stage_state.stage_started_at_msg)
         state["stage_message_counts"] = dict(stage_state.stage_message_counts)
+        # PR-B parity with audio path.
+        state["stages_completed"] = list(stage_state.stages_completed)
         if stage_changed:
             await _send(ws, "stage.update", st.build_ws_payload(stage_state))
         if skipped:
@@ -5406,6 +5494,7 @@ async def _handle_text_message(
             reactions = st.get_skip_reactions(stage_state, skipped)
             if reactions:
                 state["_pending_skip_reactions"] = reactions
+            state["_recent_skipped_stages"] = list(skipped)
             # 2026-04-23 Sprint 2: emit stage.skipped so frontend ScriptPanel
             # can flash a yellow border + show a hint ("вернитесь и
             # установите раппорт"). Previously skip was silent — AI voiced

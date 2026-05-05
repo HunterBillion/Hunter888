@@ -752,6 +752,92 @@ async def close_llm_clients() -> None:
         _openai_client = None
 
 
+def _render_stage_awareness_block(info: dict) -> str:
+    """PR-B helper. Render the live stage state as a Russian block the
+    LLM can read.
+
+    Output format (truncated example):
+
+        ## Структура разговора (этап менеджера)
+        Сейчас менеджер на этапе: «Презентация» (4 из 7).
+        Уже пройдено: Приветствие, Контакт, Квалификация.
+        Менеджер задержался на этом этапе 6+ реплик подряд — клиент
+        должен начать терять терпение («давайте к делу», «время
+        поджимает»).
+
+    The block is intentionally brief — the LLM picks up cues, not
+    literal scripts. Empty or malformed inputs return an empty string
+    so a missing field never breaks render.
+    """
+    stage_name = info.get("stage_name") or info.get("current_stage_name")
+    stage_label = info.get("stage_label") or stage_name
+    stage_index = info.get("stage_index") or info.get("current_stage")
+    total = info.get("total_stages") or 7
+    completed = info.get("stages_completed") or []
+    msgs_on_stage = info.get("messages_on_stage")
+    skipped = info.get("skipped_stages") or []
+
+    if not stage_name and not stage_label:
+        return ""
+
+    parts: list[str] = ["## Структура разговора (этап менеджера)"]
+    if stage_index and stage_label:
+        parts.append(
+            f"Сейчас менеджер на этапе: «{stage_label}» ({stage_index} из {total})."
+        )
+    elif stage_label:
+        parts.append(f"Сейчас менеджер на этапе: «{stage_label}».")
+
+    # Pretty-print completed stages (best-effort — accept either keys
+    # from STAGE_ORDER or already-localised labels).
+    if completed:
+        try:
+            from app.services.stage_tracker import STAGE_LABELS as _SL
+            done_labels = [
+                _SL.get(s, s) if isinstance(s, str) else str(s)
+                for s in completed
+                if s
+            ]
+            if done_labels:
+                parts.append("Уже пройдено: " + ", ".join(done_labels) + ".")
+        except Exception:
+            pass
+
+    # Stage-skip detection — clients should react to skipped funnel
+    # steps. The system prompt tells the LLM HOW to react, but not in
+    # script form: «обрати внимание, что менеджер начал X, минуя Y».
+    if skipped:
+        try:
+            from app.services.stage_tracker import STAGE_LABELS as _SL2
+            skipped_labels = [
+                _SL2.get(s, s) if isinstance(s, str) else str(s)
+                for s in skipped
+                if s
+            ]
+            if skipped_labels:
+                parts.append(
+                    "ВАЖНО: менеджер пропустил этап(ы) "
+                    + ", ".join(skipped_labels)
+                    + ". Реальный клиент это заметит — может переспросить, удивиться "
+                    "или отказаться двигаться дальше: «подождите, я даже не понял, "
+                    "что вы предлагаете», «а вы хоть что-то про мою ситуацию знаете?»."
+                )
+        except Exception:
+            pass
+
+    # Stage-stall detection — manager spinning on the same stage too
+    # long. Threshold tuned for typical call length: 5+ same-stage
+    # turns is "stuck".
+    if isinstance(msgs_on_stage, int) and msgs_on_stage >= 5:
+        parts.append(
+            f"Менеджер задержался на этом этапе {msgs_on_stage}+ реплик подряд — "
+            "клиент должен начать терять терпение: «давайте к делу», «время "
+            "поджимает», «короче, что вы хотите?»."
+        )
+
+    return "\n".join(parts)
+
+
 def _build_system_prompt(
     character_prompt: str,
     guardrails: str,
@@ -759,6 +845,13 @@ def _build_system_prompt(
     scenario_prompt: str = "",
     persona_facts: dict | None = None,
     client_history: str | None = None,
+    # PR-B (Stage-aware AI): live stage state. Pre-fix the AI client had
+    # no idea which step of the sales funnel the manager was on — every
+    # reply was generated blind, so personas would dump objections during
+    # greeting or recap their company during the close. Now we inject a
+    # block describing the current stage + which earlier stages were
+    # completed, so the LLM produces stage-coherent reactions.
+    current_stage_info: dict | None = None,
 ) -> str:
     """Combine character prompt + guardrails + emotion context + scenario injection.
 
@@ -919,6 +1012,33 @@ def _build_system_prompt(
             "СПРОСИ, выполнил ли. Это твоё право как клиента."
         )
         parts.append(history_block)
+
+    # PR-B (Stage-aware AI): inject the live stage state. ``current_stage_info``
+    # is a small dict the WS handler builds from StageTracker. Keys:
+    #
+    #   * ``stage_name``  — current stage key from STAGE_ORDER
+    #     (greeting/contact/qualification/presentation/objections/appointment/closing)
+    #   * ``stage_label`` — human-readable Russian label
+    #   * ``stage_index`` — 1-based index in STAGE_ORDER
+    #   * ``total_stages`` — len(STAGE_ORDER) for reference
+    #   * ``stages_completed`` — list of completed stage names (for "skip" detection)
+    #   * ``messages_on_stage`` — int turns we've been on this stage (None if unknown)
+    #   * ``skipped_stages`` — list of names the manager jumped over before
+    #     landing on the current one (signals "клиент должен заметить")
+    #
+    # The injected block is descriptive, not prescriptive — we tell the LLM
+    # what state the funnel is in and what behaviour is appropriate, then
+    # let it generate. Hard rules (e.g. literal phrases) live in the
+    # scenario_prompt's stage-skip instructions, not here.
+    if current_stage_info:
+        try:
+            stage_block = _render_stage_awareness_block(current_stage_info)
+        except Exception:  # pragma: no cover — never let stage info crash render
+            logger.exception("stage_info render failed — proceeding without")
+            stage_block = ""
+        if stage_block:
+            parts.append(stage_block)
+
     if scenario_prompt:
         parts.append(scenario_prompt)
     return "\n\n---\n\n".join(parts)
@@ -2279,6 +2399,10 @@ async def generate_response(
     # session for the same (user, real_client) pair. None = first contact
     # or non-CRM session — falls back to cold-start behaviour.
     client_history: str | None = None,
+    # PR-B (stage-aware AI): live stage state from StageTracker so the AI
+    # client knows which step of the sales funnel the manager is on, what
+    # they've already covered, and whether they're stalling/skipping.
+    current_stage_info: dict | None = None,
     # P2 (2026-05-03): optional OpenAI-style tools spec, forwarded to the
     # underlying provider when it supports tool-calling (local/openai). The
     # WS pipeline passes ``[end_call_spec]`` here so the LLM can invoke a
@@ -2439,6 +2563,7 @@ async def generate_response(
             scenario_prompt=scenario_prompt,
             persona_facts=persona_facts,
             client_history=client_history,
+            current_stage_info=current_stage_info,
         )
         # Budget cap for extra_system (from training.py: scenario context, client_profile,
         # objections, stage, traps). Raised from 1600→5000 chars now that large-context
@@ -3002,6 +3127,8 @@ async def generate_response_stream(
     # returning-client memory only worked in non-streaming completions
     # (which is roughly never).
     client_history: str | None = None,
+    # PR-B (stage-aware AI): see generate_response. Stream path parity.
+    current_stage_info: dict | None = None,
     # 2026-05-01: explicit temperature override. None + adaptive flag +
     # call mode → adaptive_temperature_for_emotion(). None otherwise =
     # provider's historical default (0.85). Judges/coaches that need
@@ -3116,6 +3243,18 @@ async def generate_response_stream(
             "менеджер обещал что-то сделать и теперь звонит снова — "
             "СПРОСИ, выполнил ли. Это твоё право как клиента."
         )
+
+    # PR-B (stage-aware AI) — stream path parity with _build_system_prompt.
+    # Renders the same block via the shared helper so streaming/non-stream
+    # responses see identical funnel context.
+    if current_stage_info:
+        try:
+            _stage_block_s = _render_stage_awareness_block(current_stage_info)
+        except Exception:  # pragma: no cover
+            logger.exception("stage_info render failed in stream path")
+            _stage_block_s = ""
+        if _stage_block_s:
+            full_system = full_system + "\n\n" + _stage_block_s
 
     # ── Call-mode modifier (parity with generate_response) ──
     # Without this the stream path (90% of actual traffic) ignored the
@@ -3293,6 +3432,9 @@ async def generate_response_stream(
         # error). Now full memory parity with the stream path.
         persona_facts=persona_facts,
         client_history=client_history,
+        # PR-B: stage info also needs to flow through the fallback so a
+        # provider hiccup doesn't drop the AI back to stage-blind mode.
+        current_stage_info=current_stage_info,
     )
     if response and response.content:
         yield response.content
