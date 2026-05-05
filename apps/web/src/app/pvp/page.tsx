@@ -31,6 +31,9 @@ import { PixelIcon, type PixelIconName } from "@/components/pvp/PixelIcon";
 import { CharacterPicker } from "@/components/pvp/CharacterPicker";
 // 2026-05-04: full-RAG transparency view ("видеть всё что AI знает").
 import { KnowledgeBaseBrowser } from "@/components/pvp/KnowledgeBaseBrowser";
+// PR-3 Phase B (2026-05-05): Y-pattern primary hero — workflow-integrated
+// trigger ("когда у тебя встреча?") replaces the CTA-zoo above the fold.
+import { PreCallWarmUpHero, type MeetingProximity } from "@/components/pvp/PreCallWarmUpHero";
 
 const DUEL_STATUS_LABELS: Record<string, string> = {
   pending: "Ожидание",
@@ -444,21 +447,33 @@ function PvPLobbyContent() {
                 </span>
               </div>
 
-              {/* 2026-05-04: Daily drill — primary daily entry-point.
-                  Above the league widget because the league updates
-                  weekly, while the drill is the "что сделать сегодня"
-                  CTA. New users see ONE pulsing CTA rather than
-                  scanning 8+ options. */}
-              <div className="mt-4">
-                <DailyDrillCard
-                  drillStreak={store.rating ? Math.max(0, store.rating.current_streak ?? 0) : 0}
-                />
-              </div>
-
-              {/* Phase B — Weekly League hero widget (Duolingo cohort) */}
-              <div className="mt-4">
-                <LeagueHeroCard />
-              </div>
+              {/* PR-3 Phase B (2026-05-05): Y-pattern hero collapses
+                  Daily-Drill + League-widget under a disclosure so the
+                  primary fold is dominated by the workflow trigger
+                  ("когда встреча?"). Both legacy widgets remain
+                  available — they just stop competing for attention
+                  with the primary CTA. */}
+              <details className="mt-4 group">
+                <summary
+                  className="font-pixel uppercase cursor-pointer select-none flex items-center gap-2 px-3 py-2"
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: 11,
+                    letterSpacing: "0.16em",
+                    background: "rgba(0,0,0,0.2)",
+                    border: "1px dashed var(--border-color)",
+                    borderRadius: 0,
+                  }}
+                >
+                  Дополнительно: ежедневная разминка · лига
+                </summary>
+                <div className="mt-3 space-y-3">
+                  <DailyDrillCard
+                    drillStreak={store.rating ? Math.max(0, store.rating.current_streak ?? 0) : 0}
+                  />
+                  <LeagueHeroCard />
+                </div>
+              </details>
 
               {/* 2026-05-02: «Быстро →» строка УДАЛЕНА полностью (была введена
                   2026-04-20). Пользователь: «никто не понимает зачем это надо,
@@ -471,29 +486,47 @@ function PvPLobbyContent() {
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-6">
 
-              {/* Find Match button */}
-              {/* 2026-04-20: убрано y-смещение (12 → 0). Раньше кнопка
-                  "вылетала" из потока — на странице было 55+ motion.div
-                  с разными y (±8, ±12, ±20) и слагерами, пользователь:
-                  «всё вылетает сверху вниз». Теперь все блоки fade-in
-                  одной короткой длительностью без translate. */}
+              {/* PR-3 Phase B (2026-05-05): primary hero — workflow
+                  trigger. All four buttons funnel into the same
+                  ``handleFindMatch`` (PvE-fallback in <15s on empty
+                  queue) so backend remains untouched. Future PR can
+                  branch the four proximities into different scenario
+                  intensities once the backend supports it. */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.18, delay: 0.08 }}
               >
+                <PreCallWarmUpHero
+                  disabled={store.queueStatus !== "idle"}
+                  onPick={(p: MeetingProximity) => {
+                    logger.log("[pvp] precall warmup picked", { proximity: p });
+                    handleFindMatch();
+                  }}
+                />
+              </motion.div>
+
+              {/* Legacy "Найти соперника" — kept as escape-hatch for
+                  power users who want to skip the proximity question
+                  (e.g. they already picked a custom character). */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.18, delay: 0.12 }}
+              >
                 <motion.button
                   onClick={handleFindMatch}
                   disabled={store.queueStatus !== "idle"}
-                  className="btn-neon w-full flex items-center justify-center gap-3 text-lg py-5"
+                  className="btn-neon w-full flex items-center justify-center gap-3 text-sm py-3"
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.98 }}
+                  style={{ opacity: 0.85 }}
                 >
                   {store.queueStatus !== "idle" ? (
-                    <Loader2 size={20} className="animate-spin" />
+                    <Loader2 size={18} className="animate-spin" />
                   ) : (
                     <>
-                      <Sword weight="duotone" size={22} /> Найти соперника
+                      <Sword weight="duotone" size={18} /> Пропустить — найти соперника
                     </>
                   )}
                 </motion.button>
