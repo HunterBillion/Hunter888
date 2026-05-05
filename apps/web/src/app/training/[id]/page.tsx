@@ -1995,9 +1995,12 @@ export default function TrainingSessionPage() {
                   preview={s.pendingQuotedPreview}
                   onCancel={() => s.clearPendingQuote()}
                 />
-                <div className="flex items-end gap-2">
-                  {/* NEW-6/7: primary chip = LinkClient. Tertiary actions
-                      (paperclip) live in the kebab so the textarea is wide. */}
+                {/* 2026-05-04 (radical input redesign): textarea = main row,
+                    full width. CRM-link chip + paperclip moved to a small
+                    secondary toolbar ABOVE the textarea so they don't eat
+                    horizontal space. User feedback: «панель ввода главная,
+                    остальное как хочешь убирай». */}
+                <div className="mb-1.5 flex items-center gap-2 px-1">
                   <LinkClientButton
                     sessionId={routeId}
                     disabled={s.sessionState !== "ready"}
@@ -2006,6 +2009,8 @@ export default function TrainingSessionPage() {
                     sessionId={routeId}
                     disabled={s.sessionState !== "ready"}
                   />
+                </div>
+                <div className="flex items-end gap-2">
                   <textarea
                     ref={textareaRef}
                     value={s.input}
@@ -2016,7 +2021,7 @@ export default function TrainingSessionPage() {
                     rows={1}
                     aria-label="Введите сообщение"
                     /* 2026-04-18: max-h bumped 112 → 240 px so long STT/reply quotes fit */
-                    className="vh-input min-h-[40px] flex-1 resize-none text-sm"
+                    className="vh-input min-h-[44px] flex-1 resize-none text-sm"
                     style={{
                       maxHeight: 240,
                       ...(s.transcription.status === "preview"
@@ -2039,7 +2044,7 @@ export default function TrainingSessionPage() {
                     }}
                     disabled={!s.input.trim() || s.sessionState !== "ready" || connectionState !== "connected" || s.isTyping}
                     aria-label="Отправить"
-                    className="flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-xl text-white"
+                    className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-xl text-white"
                     style={{ background: "var(--accent)", opacity: !s.input.trim() || s.sessionState !== "ready" || s.isTyping ? 0.4 : 1 }}
                     whileTap={{ scale: 0.95 }}
                   >
@@ -2184,42 +2189,48 @@ export default function TrainingSessionPage() {
             {/* Mobile: mic or textarea (left panel is hidden) */}
             <div className="lg:hidden">
               {s.textMode ? (
-                <div className="flex items-end gap-2">
-                  {/* NEW-6/7: same kebab pattern as desktop bar above. */}
-                  <LinkClientButton
-                    sessionId={routeId}
-                    disabled={s.sessionState !== "ready"}
-                  />
-                  <SessionAttachmentButton
-                    sessionId={routeId}
-                    disabled={s.sessionState !== "ready"}
-                  />
-                  <textarea
-                    value={s.input}
-                    onChange={(e) => s.setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={s.sessionState === "ready" ? "Введите сообщение..." : "Ожидание подключения..."}
-                    disabled={s.sessionState !== "ready"}
-                    rows={1}
-                    aria-label="Введите сообщение"
-                    className="vh-input max-h-32 min-h-[42px] flex-1 resize-none"
-                    onInput={(e) => {
-                      const t = e.target as HTMLTextAreaElement;
-                      t.style.height = "auto";
-                      t.style.height = Math.min(t.scrollHeight, 128) + "px";
-                    }}
-                  />
-                  <motion.button
-                    onClick={handleSend}
-                    disabled={!s.input.trim() || s.sessionState !== "ready" || connectionState !== "connected"}
-                    aria-label="Отправить сообщение"
-                    className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl text-white"
-                    style={{ background: "var(--accent)", opacity: !s.input.trim() || s.sessionState !== "ready" ? 0.4 : 1 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Send size={18} />
-                  </motion.button>
-                </div>
+                <>
+                  {/* 2026-05-04: same redesign as desktop — chip+paperclip
+                      sit in a tiny toolbar ABOVE the textarea so the input
+                      itself can use the full row width. */}
+                  <div className="mb-1.5 flex items-center gap-2 px-1">
+                    <LinkClientButton
+                      sessionId={routeId}
+                      disabled={s.sessionState !== "ready"}
+                    />
+                    <SessionAttachmentButton
+                      sessionId={routeId}
+                      disabled={s.sessionState !== "ready"}
+                    />
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <textarea
+                      value={s.input}
+                      onChange={(e) => s.setInput(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder={s.sessionState === "ready" ? "Введите сообщение..." : "Ожидание подключения..."}
+                      disabled={s.sessionState !== "ready"}
+                      rows={1}
+                      aria-label="Введите сообщение"
+                      className="vh-input max-h-32 min-h-[44px] flex-1 resize-none"
+                      onInput={(e) => {
+                        const t = e.target as HTMLTextAreaElement;
+                        t.style.height = "auto";
+                        t.style.height = Math.min(t.scrollHeight, 128) + "px";
+                      }}
+                    />
+                    <motion.button
+                      onClick={handleSend}
+                      disabled={!s.input.trim() || s.sessionState !== "ready" || connectionState !== "connected"}
+                      aria-label="Отправить сообщение"
+                      className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-xl text-white"
+                      style={{ background: "var(--accent)", opacity: !s.input.trim() || s.sessionState !== "ready" ? 0.4 : 1 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <Send size={18} />
+                    </motion.button>
+                  </div>
+                </>
               ) : (
                 <CrystalMic
                   mode="hold"
