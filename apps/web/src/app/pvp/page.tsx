@@ -3,8 +3,8 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Loader2, Lock } from "lucide-react";
-import { Sword, Trophy, Lightning, Brain, Target, Sparkle } from "@phosphor-icons/react";
+import { ArrowRight, Loader2 } from "lucide-react";
+import { Sword, Trophy, Lightning, Target, Sparkle } from "@phosphor-icons/react";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { api } from "@/lib/api";
@@ -16,24 +16,18 @@ import { MatchmakingOverlay } from "@/components/pvp/MatchmakingOverlay";
 import { FriendsPanel } from "@/components/pvp/FriendsPanel";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { logger } from "@/lib/logger";
-// Phase B (2026-04-20): Duolingo-style weekly league hero widget
-import { LeagueHeroCard } from "@/components/pvp/LeagueHeroCard";
-// 2026-05-04: revive DailyDrillCard on /pvp hero. Was disabled on /home
-// behind a `false &&` gate but the backend (/gamification/daily-drill +
-// /complete) is fully implemented — chest reward, streak celebration,
-// freeze logic. Free entry-point for new users: "сегодня сделай эту
-// 3-минутную симуляцию".
-import DailyDrillCard from "@/components/gamification/DailyDrillCard";
-// 2026-04-29: pixel unification — единый формат карточек режимов + pixel-иконки.
-import { PixelModeCard } from "@/components/pvp/PixelModeCard";
+// PR-B (2026-05-05): LeagueHeroCard, DailyDrillCard, PixelModeCard,
+// Brain, Lock — больше не используются на /pvp (см. HonestNavigator + KILL).
 import { PixelIcon, type PixelIconName } from "@/components/pvp/PixelIcon";
 // Issue #169 — custom-character picker (PR #142 backend endpoint).
 import { CharacterPicker } from "@/components/pvp/CharacterPicker";
 // 2026-05-04: full-RAG transparency view ("видеть всё что AI знает").
 import { KnowledgeBaseBrowser } from "@/components/pvp/KnowledgeBaseBrowser";
-// PR-3 Phase B (2026-05-05): Y-pattern primary hero — workflow-integrated
-// trigger ("когда у тебя встреча?") replaces the CTA-zoo above the fold.
-import { PreCallWarmUpHero, type MeetingProximity } from "@/components/pvp/PreCallWarmUpHero";
+// PR-B (2026-05-05): single honest entry point — replaces PreCallWarmUpHero
+// (4 фейк-кнопки), tab-Дуэли (3 текстовые карточки how-it-works), tab-Знания
+// (3 mode + 10 cat + 2 personality = 60 комбинаций). См. комментарий в
+// HonestNavigator.tsx для полного обоснования.
+import { HonestNavigator } from "@/components/pvp/HonestNavigator";
 
 const DUEL_STATUS_LABELS: Record<string, string> = {
   pending: "Ожидание",
@@ -50,20 +44,15 @@ function PvPLobbyContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const store = usePvPStore();
-  // 3.1: Pre-select knowledge tab + category from URL params
+  // PR-B (2026-05-05): tabs collapsed from 4 → 2 (history + knowledge_base).
+  // Дуэли и Знания теперь живут в HonestNavigator выше табов (single primary
+  // entry-point), поэтому таб для них не нужен. Legacy ?tab=knowledge / ?tab=arena
+  // мапим на "history" (наиболее близкая landing-страница).
   const tabParam = searchParams.get("tab");
-  const categoryParam = searchParams.get("category");
-  const [tab, setTab] = useState<"arena" | "knowledge" | "history" | "rag">(
-    tabParam === "knowledge" ? "knowledge"
-      : tabParam === "history" ? "history"
-      : tabParam === "rag" ? "rag"
-      : "arena"
+  const [tab, setTab] = useState<"history" | "knowledge_base">(
+    tabParam === "knowledge_base" || tabParam === "rag" ? "knowledge_base" : "history"
   );
-  // showInfoModal state removed 2026-04-18 — now handled by PixelInfoButton component.
-  const [quizMode, setQuizMode] = useState<"free_dialog" | "blitz" | "themed" | null>(null);
-  const [quizCategory, setQuizCategory] = useState<string | null>(categoryParam || null);
   const [quizStarting, setQuizStarting] = useState(false);
-  const [aiPersonality, setAiPersonality] = useState<string | null>(null);
   const [pveAccepting, setPveAccepting] = useState(false);
   // Issue #169 — selected custom-character preset id (or null = random
   // legacy behaviour). Forwarded to ``queue.join`` so the matchmaker
@@ -163,6 +152,60 @@ function PvPLobbyContent() {
     if (pickedCharacterId) payload.character_id = pickedCharacterId;
     sendMessage(payload);
   }, [sendMessage, store, pickedCharacterId]);
+
+  // PR-B (2026-05-05): inline quiz-start moved to a callable so the
+  // HonestNavigator can fire it without re-implementing the watchdog +
+  // session POST + redirect dance. ai_personality wired to "professor" by
+  // default; "showman" for blitz keeps blitz UX unchanged. "detective"
+  // dropped from FE — same backend RAG, only hint-style differs, was
+  // never meaningfully chosen by pilot users.
+  const startQuiz = useCallback(async (
+    mode: "free_dialog" | "blitz" | "themed",
+    category?: string,
+  ) => {
+    setQuizStarting(true);
+    const watchdog = setTimeout(() => {
+      setQuizStarting(false);
+      useNotificationStore.getState().addToast({
+        title: "Таймаут",
+        body: "Сервер долго отвечает. Попробуйте ещё раз.",
+        type: "warning",
+      });
+    }, 10_000);
+    const personality = mode === "blitz" ? "showman" : "professor";
+    try {
+      const res = await api.post("/knowledge/sessions", {
+        mode,
+        category: category ?? null,
+        ai_personality: personality,
+      }) as { id?: string; session_id?: string };
+      clearTimeout(watchdog);
+      const sid = res?.id || res?.session_id;
+      if (sid) {
+        const params = new URLSearchParams({ mode });
+        if (category) params.set("category", category);
+        params.set("personality", personality);
+        router.push(`/pvp/quiz/${sid}?${params.toString()}`);
+      } else {
+        useNotificationStore.getState().addToast({
+          title: "Ошибка",
+          body: "Не удалось создать сессию. Попробуйте ещё раз.",
+          type: "error",
+        });
+      }
+    } catch (e) {
+      clearTimeout(watchdog);
+      logger.error("Failed to start quiz:", e);
+      useNotificationStore.getState().addToast({
+        title: "Ошибка",
+        body: "Не удалось начать тест. Проверьте подключение.",
+        type: "error",
+      });
+    } finally {
+      clearTimeout(watchdog);
+      setQuizStarting(false);
+    }
+  }, [router]);
 
   const handleCancelQueue = useCallback(() => {
     autoPvERef.current = false;
@@ -301,39 +344,17 @@ function PvPLobbyContent() {
                 <PixelInfoButton
                   title="Как устроена Арена"
                   sections={[
-                    { icon: Sword, label: "С чего начать", text: "Жми «Найти соперника» — подберём равного по уровню. Если очередь пустая — отправим к боту автоматически." },
-                    { icon: Target, label: "3 вкладки ниже", text: "«Дуэли» — играть в реальном времени. «Знания ФЗ-127» — тренируй право (квизы и голосом). «История» — все твои прошлые бои + разборы." },
-                    { icon: Lightning, label: "Режимы дуэли (PvP)", text: "Классическая — 2 раунда со сменой ролей. Скоростной — 5 мини-раундов по 2 мин. Испытание — 3-5 дуэлей подряд. 2v2 — в паре против пары (открывается с ур. 12)." },
-                    { icon: Sparkle, label: "Режимы без людей (PvE)", text: "Стандартный бот, лестница ботов (5 штук растёт сложность), штурм боссов, зеркальный матч против своего стиля." },
-                    { icon: Trophy, label: "Рейтинг и калибровка", text: "Первые 10 дуэлей — калибровка, рейтинг прыгает. Потом стабильная Glicko-2 система: 8 тиров Iron → Grandmaster. Peak tier не теряется." },
-                    { icon: Brain, label: "После боя", text: "AI-судья разбирает оба раунда: что сработало, где провалил. Плюс очки XP и Arena Points (AP) для покупок. Твоя история — во вкладке «История»." },
+                    { icon: Sword, label: "Дуэль с ботом", text: "Жми «Дуэль с ботом» — подберём AI-клиента (10 архетипов: скептик, тревожный, скандалист и др.). 2 раунда: ты продаёшь и оцениваешь, потом меняетесь. Если кто-то живой в очереди — попадёшь на него вместо бота." },
+                    { icon: Target, label: "Квиз ФЗ-127", text: "«Свободный» — 10 вопросов, без таймера. «Блиц» — 20×60 сек, на скорость. «По теме» — выбираешь 1 из 10 категорий, 15 вопросов. После каждого ответа — разбор от AI и ссылка на статью закона." },
+                    { icon: Lightning, label: "База ФЗ-127", text: "Вкладка «База ФЗ-127» — RAG-источники, которые AI использует для проверки твоих ответов. Ищи по статье или категории." },
+                    { icon: Trophy, label: "Рейтинг", text: "Первые 10 дуэлей — калибровка, рейтинг прыгает. Потом стабильная Glicko-2: 8 тиров Iron → Grandmaster. Peak tier не теряется." },
+                    { icon: Sparkle, label: "После боя", text: "AI-судья разбирает оба раунда: что сработало, где провалил. Плюс очки XP и Arena Points (AP). Не согласен с оценкой — нажми «Оспорить» (rejudge через cloud-LLM)." },
                   ]}
-                  footer="Короткий путь: «Найти соперника» → бой → разбор → рейтинг"
+                  footer="Короткий путь: один из 4 блоков выше → бой/квиз → разбор → рейтинг"
                 />
-                {/* Кнопка «Рейтинг» — pixel (2026-05-03). Header дублирует
-                    /pvp/leaderboard, но эта кнопка остаётся как accent CTA
-                    рядом с info-button — частый use-case на лобби. */}
-                <motion.button
-                  onClick={() => router.push("/pvp/leaderboard")}
-                  whileHover={{ x: -1, y: -1 }}
-                  whileTap={{ x: 2, y: 2 }}
-                  className="flex items-center gap-2 font-pixel"
-                  style={{
-                    padding: "8px 14px",
-                    background: "var(--bg-panel)",
-                    color: "var(--accent)",
-                    border: "2px solid var(--accent)",
-                    borderRadius: 0,
-                    fontSize: 12,
-                    letterSpacing: "0.16em",
-                    textTransform: "uppercase",
-                    boxShadow: "3px 3px 0 0 var(--accent)",
-                    cursor: "pointer",
-                  }}
-                >
-                  <PixelIcon name="shield" size={14} color="var(--accent)" />
-                  Рейтинг
-                </motion.button>
+                {/* PR-B (2026-05-05): убрал кнопку «Рейтинг» — дубль
+                    глобал-хедера, плюс RatingCard ниже уже линкует на
+                    /pvp/leaderboard через footer-link. */}
               </div>
             </div>
           </motion.div>
@@ -447,33 +468,11 @@ function PvPLobbyContent() {
                 </span>
               </div>
 
-              {/* PR-3 Phase B (2026-05-05): Y-pattern hero collapses
-                  Daily-Drill + League-widget under a disclosure so the
-                  primary fold is dominated by the workflow trigger
-                  ("когда встреча?"). Both legacy widgets remain
-                  available — they just stop competing for attention
-                  with the primary CTA. */}
-              <details className="mt-4 group">
-                <summary
-                  className="font-pixel uppercase cursor-pointer select-none flex items-center gap-2 px-3 py-2"
-                  style={{
-                    color: "var(--text-muted)",
-                    fontSize: 11,
-                    letterSpacing: "0.16em",
-                    background: "rgba(0,0,0,0.2)",
-                    border: "1px dashed var(--border-color)",
-                    borderRadius: 0,
-                  }}
-                >
-                  Дополнительно: ежедневная разминка · лига
-                </summary>
-                <div className="mt-3 space-y-3">
-                  <DailyDrillCard
-                    drillStreak={store.rating ? Math.max(0, store.rating.current_streak ?? 0) : 0}
-                  />
-                  <LeagueHeroCard />
-                </div>
-              </details>
+              {/* PR-B (2026-05-05): DailyDrillCard + LeagueHeroCard
+                  убраны с /pvp. DailyDrill уже отключён на /home (false &&
+                  guard в home/page.tsx); LeagueHero доступен через
+                  /leaderboard?tab=league напрямую. На /pvp оба только
+                  шумели поверх RatingCard. */}
 
               {/* 2026-05-02: «Быстро →» строка УДАЛЕНА полностью (была введена
                   2026-04-20). Пользователь: «никто не понимает зачем это надо,
@@ -486,80 +485,61 @@ function PvPLobbyContent() {
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-6">
 
-              {/* PR-3 Phase B (2026-05-05): primary hero — workflow
-                  trigger. All four buttons funnel into the same
-                  ``handleFindMatch`` (PvE-fallback in <15s on empty
-                  queue) so backend remains untouched. Future PR can
-                  branch the four proximities into different scenario
-                  intensities once the backend supports it. */}
+              {/* PR-B (2026-05-05): the single honest navigator —
+                  один блок с 4-мя реально различающимися режимами
+                  (Дуэль / Квиз / Блиц / Тема). Заменяет PreCallWarmUpHero,
+                  escape-button и контент бывших табов «Дуэли» и
+                  «Знания ФЗ-127». См. HonestNavigator.tsx. */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.18, delay: 0.08 }}
               >
-                <PreCallWarmUpHero
-                  disabled={store.queueStatus !== "idle"}
-                  onPick={(p: MeetingProximity) => {
-                    logger.log("[pvp] precall warmup picked", { proximity: p });
-                    handleFindMatch();
+                <HonestNavigator
+                  disabled={store.queueStatus !== "idle" || quizStarting}
+                  starting={quizStarting}
+                  onDuel={handleFindMatch}
+                  onQuiz={(mode, category) => startQuiz(mode, category)}
+                />
+              </motion.div>
+
+              {/* PR-B: CharacterPicker — power-user fea ture (Issue #169).
+                  Спрятан под disclosure: 0% pilot-юзеров реально создавали
+                  пресеты, но возможность остаётся. */}
+              <details className="group">
+                <summary
+                  className="font-pixel uppercase cursor-pointer select-none flex items-center gap-2 px-3 py-2"
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: 11,
+                    letterSpacing: "0.16em",
+                    background: "rgba(0,0,0,0.2)",
+                    border: "1px dashed var(--border-color)",
+                    borderRadius: 0,
                   }}
-                />
-              </motion.div>
-
-              {/* Legacy "Найти соперника" — kept as escape-hatch for
-                  power users who want to skip the proximity question
-                  (e.g. they already picked a custom character). */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.18, delay: 0.12 }}
-              >
-                <motion.button
-                  onClick={handleFindMatch}
-                  disabled={store.queueStatus !== "idle"}
-                  className="btn-neon w-full flex items-center justify-center gap-3 text-sm py-3"
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.98 }}
-                  style={{ opacity: 0.85 }}
                 >
-                  {store.queueStatus !== "idle" ? (
-                    <Loader2 size={18} className="animate-spin" />
-                  ) : (
-                    <>
-                      <Sword weight="duotone" size={18} /> Пропустить — найти соперника
-                    </>
-                  )}
-                </motion.button>
-              </motion.div>
+                  Расширенные настройки: персонаж
+                </summary>
+                <div className="mt-3">
+                  <CharacterPicker
+                    selectedId={pickedCharacterId}
+                    onPick={setPickedCharacterId}
+                    disabled={store.queueStatus !== "idle"}
+                  />
+                </div>
+              </details>
 
-              {/* Issue #169 — character picker. Custom presets created
-                  in CharacterBuilder + presets shared by colleagues
-                  (is_shared=true) appear here. ``null`` = random
-                  archetype (legacy default). */}
-              <div className="mt-3">
-                <CharacterPicker
-                  selectedId={pickedCharacterId}
-                  onPick={setPickedCharacterId}
-                  disabled={store.queueStatus !== "idle"}
-                />
-              </div>
-
-              {/* Tabs — pixel chips. 2026-05-04: added "База ФЗ-127" tab
-                  (RAG transparency view) per user request "видеть всё
-                  что AI знает". */}
+              {/* Tabs — 2 чипа (PR-B 2026-05-05). Было 4: «Дуэли»
+                  (контент = 3 текстовые карточки how-it-works → переехало
+                  в InfoButton сверху) и «Знания ФЗ-127» (mode-cards +
+                  category + personality → переехало в HonestNavigator).
+                  Остаются только: «История» (мои дуэли) и «База ФЗ-127»
+                  (RAG transparency view). */}
               <div className="flex flex-wrap gap-2">
-                {(["arena", "knowledge", "rag", "history"] as const).map((t) => {
+                {(["history", "knowledge_base"] as const).map((t) => {
                   const active = tab === t;
-                  const label =
-                    t === "arena" ? "Дуэли"
-                    : t === "knowledge" ? "Знания ФЗ-127"
-                    : t === "rag" ? "База ФЗ-127"
-                    : "История";
-                  const icon: PixelIconName =
-                    t === "arena" ? "sword"
-                    : t === "knowledge" ? "book"
-                    : t === "rag" ? "book"
-                    : "ladder";
+                  const label = t === "history" ? "История" : "База ФЗ-127";
+                  const icon: PixelIconName = t === "history" ? "ladder" : "book";
                   return (
                     <motion.button
                       key={t}
@@ -591,278 +571,17 @@ function PvPLobbyContent() {
                 })}
               </div>
 
-              {/* Arena (Duels) */}
-              <AnimatePresence mode="wait">
-                {tab === "arena" && (
-                  <motion.div key="arena" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
-                    <div className="space-y-4">
-                      {/* 2026-05-04 cleanup: removed 8 dead mode cards
-                          (4 PvP + 4 PvE). They had no `onClick` — clicking
-                          them did literally nothing. 6 of 8 were also
-                          shown locked at lvl 5/8/12, which scared new
-                          users into thinking the platform was broken.
-                          The single working entrypoint is the
-                          "Найти соперника" button above; matchmaking
-                          server picks PvP/PvE automatically.
+              {/* PR-B (2026-05-05): tab «Дуэли» содержал только 3 текстовые
+                  карточки how-it-works — переехало в InfoButton сверху.
+                  Сами дуэли стартуют через HonestNavigator выше табов. */}
 
-                          When per-mode duels are reintroduced (story
-                          modes, boss raids, etc), they should be
-                          live functional cards with onClick → queue.join
-                          payload extension, NOT cosmetic placeholders. */}
-
-                      {/* How it works — pixel cards (was glass-panel) */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {[
-                          { step: "01", title: "Подбор", desc: "Система находит соперника по рейтингу" },
-                          { step: "02", title: "2 раунда", desc: "Вы и соперник по очереди продаёте и оцениваете" },
-                          { step: "03", title: "Результат", desc: "ИИ-судья выносит вердикт, рейтинг обновляется" },
-                        ].map((item) => (
-                          <div
-                            key={item.step}
-                            className="flex flex-col p-4"
-                            style={{
-                              background: "var(--bg-panel)",
-                              outline: "2px solid var(--border-color)",
-                              outlineOffset: -2,
-                              boxShadow: "3px 3px 0 0 var(--border-color)",
-                              borderRadius: 0,
-                            }}
-                          >
-                            <span className="font-pixel text-xs tracking-widest" style={{ color: "var(--accent)", letterSpacing: "0.18em" }}>{item.step}</span>
-                            <p className="font-pixel text-sm uppercase mt-1.5" style={{ color: "var(--text-primary)", letterSpacing: "0.1em" }}>{item.title}</p>
-                            <p className="text-xs mt-1 flex-1" style={{ color: "var(--text-muted)" }}>{item.desc}</p>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* 2026-04-20: блок "Последние дуэли" удалён.
-                          Был дубль с вкладкой "История" — пользователь:
-                          «у нас есть отдельная панель история, не надо
-                          повторять где-то». Всё доступно в табе History. */}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Knowledge ФЗ-127 */}
-              <AnimatePresence mode="wait">
-                {tab === "knowledge" && (
-                  <motion.div key="knowledge" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
-                    <div className="space-y-4">
-                      {/* Quiz mode selection — pixel unified (2026-04-29) */}
-                      <div>
-                        <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>▸ ВЫБЕРИ КВИЗ</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          {([
-                            { mode: "free_dialog" as const, icon: "book" as PixelIconName, label: "Свободный диалог", desc: "Без ограничений", color: "var(--accent)" },
-                            { mode: "blitz" as const, icon: "bolt" as PixelIconName, label: "Блиц", desc: "20 × 60 сек", color: "var(--warning)" },
-                            { mode: "themed" as const, icon: "target" as PixelIconName, label: "По теме", desc: "10 категорий", color: "var(--success)" },
-                          ] as const).map(({ mode, icon, label, desc, color }) => (
-                            <PixelModeCard
-                              key={mode}
-                              iconName={icon}
-                              name={label}
-                              desc={desc}
-                              accent={color}
-                              active={quizMode === mode}
-                              onClick={() => { setQuizMode(mode); setQuizCategory(null); }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* ═══ Category selection — pixel chips (2026-05-02) ═══ */}
-                      {quizMode === "themed" && (
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}>
-                          <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--success)" }}>
-                            ▸ ВЫБЕРИ ТЕМУ {quizCategory && <span className="ml-2" style={{ color: "var(--accent)" }}>● {quizCategory}</span>}
-                          </p>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {([
-                              { id: "eligibility", label: "Условия подачи", icon: "book" as PixelIconName },
-                              { id: "procedure", label: "Порядок процедуры", icon: "ladder" as PixelIconName },
-                              { id: "property", label: "Имущество", icon: "castle" as PixelIconName },
-                              { id: "consequences", label: "Последствия", icon: "skull" as PixelIconName },
-                              { id: "costs", label: "Расходы", icon: "target" as PixelIconName },
-                              { id: "creditors", label: "Кредиторы", icon: "group" as PixelIconName },
-                              { id: "documents", label: "Документы", icon: "book" as PixelIconName },
-                              { id: "timeline", label: "Сроки", icon: "bolt" as PixelIconName },
-                              { id: "court", label: "Суд", icon: "castle" as PixelIconName },
-                              { id: "rights", label: "Права должника", icon: "shield" as PixelIconName },
-                            ] as const).map((cat) => {
-                              const active = quizCategory === cat.id;
-                              return (
-                                <motion.button
-                                  key={cat.id}
-                                  type="button"
-                                  whileHover={active ? {} : { x: -1, y: -1 }}
-                                  whileTap={{ x: 2, y: 2, transition: { duration: 0.05 } }}
-                                  transition={{ type: "spring", stiffness: 600, damping: 30 }}
-                                  onClick={() => setQuizCategory(cat.id)}
-                                  className="flex items-center gap-2 px-3 py-2 text-left relative"
-                                  style={{
-                                    background: active
-                                      ? "color-mix(in srgb, var(--success) 14%, var(--bg-panel))"
-                                      : "var(--bg-panel)",
-                                    border: `2px solid ${active ? "var(--success)" : "var(--border-color)"}`,
-                                    borderRadius: 0,
-                                    boxShadow: active
-                                      ? "3px 3px 0 0 var(--success), 0 0 12px color-mix(in srgb, var(--success) 35%, transparent)"
-                                      : "2px 2px 0 0 var(--border-color)",
-                                    cursor: "pointer",
-                                    transition: "background 120ms",
-                                  }}
-                                >
-                                  <PixelIcon name={cat.icon} size={20} color={active ? "var(--success)" : "var(--text-muted)"} />
-                                  <span
-                                    className="font-pixel uppercase"
-                                    style={{
-                                      color: active ? "var(--success)" : "var(--text-primary)",
-                                      fontSize: 11,
-                                      letterSpacing: "0.1em",
-                                      lineHeight: 1.15,
-                                    }}
-                                  >
-                                    {cat.label}
-                                  </span>
-                                  {active && (
-                                    <span
-                                      aria-hidden
-                                      className="absolute top-1 right-1 font-pixel text-[9px]"
-                                      style={{ color: "var(--success)" }}
-                                    >▶ OK</span>
-                                  )}
-                                </motion.button>
-                              );
-                            })}
-                          </div>
-                        </motion.div>
-                      )}
-
-                      {/* ═══ AI Examiner selector — pixel mode cards (2026-05-02) ═══ */}
-                      {quizMode && quizMode !== "blitz" && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                        >
-                          <p className="font-pixel text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
-                            ▸ ВЫБЕРИ ЭКЗАМЕНАТОРА
-                          </p>
-                          <div className="grid grid-cols-2 gap-2">
-                            {([
-                              { id: "professor", icon: "book" as PixelIconName, name: "Профессор Кодексов", desc: "Академичный, с юмором" },
-                              { id: "detective", icon: "target" as PixelIconName, name: "Арбитражный Следопыт", desc: "Кейсы и расследования" },
-                            ] as const).map(({ id, icon, name, desc }) => (
-                              <PixelModeCard
-                                key={id}
-                                iconName={icon}
-                                name={name}
-                                desc={desc}
-                                accent="var(--accent)"
-                                active={aiPersonality === id}
-                                onClick={() => setAiPersonality(aiPersonality === id ? null : id)}
-                              />
-                            ))}
-                          </div>
-                        </motion.div>
-                      )}
-
-                      {/* Blitz mode: pixel auto-assigned badge */}
-                      {quizMode === "blitz" && (
-                        <div
-                          className="inline-flex items-center gap-2 px-3 py-2 font-pixel text-xs uppercase tracking-wide"
-                          style={{
-                            background: "color-mix(in srgb, var(--warning) 12%, var(--bg-panel))",
-                            color: "var(--warning)",
-                            border: "2px solid var(--warning)",
-                            borderRadius: 0,
-                            boxShadow: "3px 3px 0 0 var(--warning)",
-                            letterSpacing: "0.14em",
-                          }}
-                        >
-                          <PixelIcon name="bolt" size={14} color="var(--warning)" />
-                          ЭКЗАМЕНАТОР: БЛИЦ-МАСТЕР (авто)
-                        </div>
-                      )}
-
-                      {/* ═══ Start quiz button ═══ */}
-                      {quizMode && (quizMode !== "themed" || quizCategory) && (
-                        <motion.button
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          transition={{ duration: 0.18 }}
-                          whileTap={{ scale: 0.98 }}
-                          disabled={quizStarting}
-                          className="w-full flex items-center justify-center gap-2 py-3 font-pixel text-sm uppercase tracking-wider"
-                          style={{
-                            background: "var(--accent)",
-                            color: "#fff",
-                            border: "2px solid var(--accent)",
-                            borderRadius: 0,
-                            boxShadow: "4px 4px 0 0 #000, 0 0 16px var(--accent-glow)",
-                            transition: "box-shadow 120ms, transform 120ms",
-                            opacity: quizStarting ? 0.6 : 1,
-                          }}
-                          onClick={async () => {
-                            setQuizStarting(true);
-                            // 2026-04-20: soft watchdog — через 10 сек
-                            // форсируем сброс, чтобы кнопка не залипла
-                            // даже если api.post висит в бэкграунде
-                            // (fetch сам отменится на 30 сек — слишком
-                            // долго для пользователя).
-                            const watchdog = setTimeout(() => {
-                              setQuizStarting(false);
-                              useNotificationStore.getState().addToast({
-                                title: "Таймаут",
-                                body: "Сервер долго отвечает. Попробуйте ещё раз.",
-                                type: "warning",
-                              });
-                            }, 10_000);
-                            try {
-                              const res = await api.post("/knowledge/sessions", {
-                                mode: quizMode,
-                                category: quizCategory,
-                                ai_personality: quizMode === "blitz" ? "showman" : aiPersonality,
-                              }) as { id?: string; session_id?: string };
-                              clearTimeout(watchdog);
-                              const sid = res?.id || res?.session_id;
-                              if (sid) {
-                                router.push(`/pvp/quiz/${sid}?mode=${quizMode}${quizCategory ? `&category=${quizCategory}` : ""}${aiPersonality ? `&personality=${aiPersonality}` : ""}`);
-                              } else {
-                                useNotificationStore.getState().addToast({ title: "Ошибка", body: "Не удалось создать сессию. Попробуйте ещё раз.", type: "error" });
-                              }
-                            } catch (e) {
-                              clearTimeout(watchdog);
-                              logger.error("Failed to start quiz:", e);
-                              useNotificationStore.getState().addToast({ title: "Ошибка", body: "Не удалось начать тест. Проверьте подключение.", type: "error" });
-                            } finally {
-                              clearTimeout(watchdog);
-                              setQuizStarting(false);
-                            }
-                          }}
-                        >
-                          {quizStarting ? <Loader2 size={16} className="animate-spin" /> : <Brain weight="duotone" size={16} />}
-                          ▶ НАЧАТЬ ТЕСТ
-                        </motion.button>
-                      )}
-
-                      {/* 2026-05-03 deep-cleanup:
-                          1) «Турнир недели» виджет — УДАЛЁН.
-                             Был дубль /pvp/tournament из Header. Привязка к
-                             ФЗ-127 искусственная.
-                          2) «PvP арена знаний» (Дуэль 1 на 1 / Командный бой)
-                             — УДАЛЕНО. Это был второй набор PvP-режимов в табе
-                             про право, путал пользователей. Основные PvP/PvE
-                             режимы — в табе «Дуэли». Сценарий /pvp/arena/lobby
-                             доступен через прямой URL если кому-то нужен. */}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {/* PR-B: tab «Знания ФЗ-127» — содержимое (3 mode-card,
+                  10 категорий, 2 personality, START button) переехало
+                  в HonestNavigator. */}
 
               {/* База ФЗ-127 — RAG transparency view (2026-05-04) */}
               <AnimatePresence mode="wait">
-                {tab === "rag" && (
+                {tab === "knowledge_base" && (
                   <motion.div
                     key="rag"
                     initial={{ opacity: 0 }}
