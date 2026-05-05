@@ -131,8 +131,12 @@ function PvPLobbyContent() {
           }, 2000);
           break;
         case "pve.offer":
+          // PR-cleanup (2026-05-05): pve.offer modal was removed earlier
+          // (see comment block ниже — было setPvEOffer(null) для legacy
+          // совместимости). Бэкенд эмитит этот case при матче в PvE,
+          // FE просто отмечает статус "matched" — overlay показывает
+          // спиннер, потом duel.brief/match.found приходят и редиректят.
           store.setQueueStatus("matched");
-          store.setPvEOffer(null);
           break;
         case "queue.left":
           autoPvERef.current = false;

@@ -96,10 +96,17 @@ async def get_trends(
             {
                 "period_start": t.period_start.isoformat() if t.period_start else None,
                 "period_end": t.period_end.isoformat() if t.period_end else None,
-                "direction": t.direction.value,
+                # PR-cleanup (2026-05-05): ProgressTrend.direction and
+                # alert_severity are stored as plain str columns (see
+                # models/behavior.py:194,209 — Mapped[str]), not enums.
+                # The previous ``.value`` call assumed enum and raised
+                # ``AttributeError: 'str' object has no attribute 'value'``
+                # on every /api/behavior/trends request — confirmed in
+                # prod logs after PR-1.
+                "direction": t.direction,
                 "score_delta": t.score_delta,
                 "skill_trends": t.skill_trends,
-                "alert_severity": t.alert_severity.value if t.alert_severity else None,
+                "alert_severity": t.alert_severity if t.alert_severity else None,
                 "alert_message": t.alert_message,
                 "sessions_count": t.sessions_count,
                 "predicted_score_7d": t.predicted_score_in_7d,
