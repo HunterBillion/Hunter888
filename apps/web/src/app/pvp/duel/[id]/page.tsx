@@ -38,6 +38,12 @@ import { useLifelines } from "@/components/arena/hooks/useLifelines";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { themeFor } from "@/components/arena/themes";
 import { Mic, MicOff, Lightbulb, SkipForward } from "lucide-react";
+// PR-3 Phase A (2026-05-05): wire arena visuals so the page stops
+// looking like a generic /training chat. User reported "ПвП выглядит
+// как тренировка" on duel 02bd9a42 — VsBanner + ArenaBackground +
+// explicit role badges close that gap without rewriting the page.
+import { VsBanner } from "@/components/pvp/VsBanner";
+import { ArenaBackground } from "@/components/pvp/ArenaBackground";
 
 export default function DuelPageWrapper() {
   return (
@@ -88,6 +94,11 @@ function DuelPage() {
     { round_number: number; reason: string } | null
   >(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  // PR-3 Phase A: VS-banner overlay shown for ~2.2s when duel.brief lands
+  // for the first time. Gives the player a clear "арена начинается" beat
+  // instead of dropping them into a chat that looks like /training.
+  const [vsOpen, setVsOpen] = useState(false);
+  const vsTriggeredRef = useRef(false);
   const speech = useSpeechRecognition({
     lang: "ru-RU",
     onResult: (text) => setInput((prev) => (prev ? `${prev} ${text}`.trim() : text)),
@@ -137,6 +148,15 @@ function DuelPage() {
     const t = setTimeout(() => setLoadTimeout(true), 18000);
     return () => clearTimeout(t);
   }, [store.duelBrief, store.duelResult, earlyExit]);
+
+  // PR-3 Phase A: trigger VS-banner the first time duel.brief lands.
+  // ``vsTriggeredRef`` guards against re-trigger on reconnect (duel.state
+  // also surfaces brief data) so the banner doesn't pop up mid-round.
+  useEffect(() => {
+    if (!store.duelBrief || vsTriggeredRef.current || store.duelResult) return;
+    vsTriggeredRef.current = true;
+    setVsOpen(true);
+  }, [store.duelBrief, store.duelResult]);
 
   // 2026-04-20: mountedRef — защита от зависших таймеров после unmount.
   // restartTimer может быть вызван асинхронно WS-сообщением (round.start),
@@ -668,8 +688,28 @@ function DuelPage() {
     );
   }
 
+  // PR-3 Phase A: derive labels for VsBanner + role badges.
+  const myName = store.duelBrief?.you?.name || "ВЫ";
+  const oppName = store.duelBrief?.opponent?.name || (store.duelBrief?.is_pve ? "БОТ" : "СОПЕРНИК");
+  const myTier = store.duelBrief?.you?.tier;
+  const oppTier = store.duelBrief?.opponent?.tier;
+  const myRoleLabel = store.myRole === "seller" ? "ПРОДАВЕЦ" : store.myRole === "client" ? "КЛИЕНТ" : "—";
+  const oppRoleLabel = store.myRole === "seller" ? "КЛИЕНТ" : store.myRole === "client" ? "ПРОДАВЕЦ" : "—";
+
   return (
-    <div className="flex h-screen flex-col" style={{ background: "var(--bg-primary)" }}>
+    <ArenaBackground tier={myTier} className="flex h-screen flex-col">
+
+      {/* PR-3 Phase A: VS-banner overlay on first duel.brief.
+          Auto-closes after 2.2s; user can still see the chat under it
+          (z-index 9000 covers everything but exit-confirm dialog). */}
+      <VsBanner
+        open={vsOpen}
+        leftName={myName.toUpperCase()}
+        rightName={oppName.toUpperCase()}
+        leftTier={myTier}
+        rightTier={oppTier}
+        onDone={() => setVsOpen(false)}
+      />
 
       {/* Exit confirmation overlay */}
       {showExitConfirm && (
@@ -701,59 +741,97 @@ function DuelPage() {
         </div>
       )}
 
-      {/* Header — 2026-05-03: opponent name + tier + mode now visible.
-          Backend already sends store.duelBrief.opponent + is_pve via
-          ws/pvp.py:duel.brief; frontend just consumes. */}
+      {/* PR-3 Phase A header rebrand (2026-05-05): replace the tiny
+          "PVE · БОТ vs <name>" line with two pixel-styled role badges so
+          the player immediately reads "Я — продавец, оппонент — клиент"
+          instead of mistaking the screen for /training. The mode pill
+          (PVP/PVE) moves into the centre as a small subtitle so the
+          screen real estate is dominated by the role contrast. */}
       <header
-        className="h-14 shrink-0 flex items-center justify-between px-6 z-20"
+        className="h-16 shrink-0 flex items-center justify-between px-4 sm:px-6 z-20"
         style={{ background: "var(--glass-bg)", borderBottom: "1px solid var(--border-color)", backdropFilter: "blur(20px)" }}
       >
-        <div className="flex items-center gap-3">
+        {/* Left — exit + you (role + name) */}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <button
             type="button"
             onClick={() => setShowExitConfirm(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0"
             style={{ background: "var(--danger-muted)", color: "var(--danger)", border: "1px solid var(--danger-muted)" }}
             title="Выйти из дуэли"
           >
             <LogOut size={14} />
             Выйти
           </button>
+          <div className="flex flex-col leading-tight min-w-0">
+            <span
+              className="font-pixel text-[10px] sm:text-[11px] uppercase tracking-wider"
+              style={{
+                color: store.myRole === "seller" ? "var(--accent)" : "var(--magenta, #d946ef)",
+                textShadow: "1px 1px 0 #000",
+              }}
+            >
+              ВЫ · {myRoleLabel}
+            </span>
+            <span className="font-mono text-[11px] truncate" style={{ color: "var(--text-primary)" }}>
+              {myName}
+            </span>
+          </div>
+        </div>
+
+        {/* Center — VS + mode pill */}
+        <div className="flex flex-col items-center shrink-0 px-2">
           <Swords size={18} style={{ color: "var(--accent)" }} />
-          <span className="font-display font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
+          <span
+            className="font-pixel text-[9px] uppercase tracking-widest mt-0.5"
+            style={{ color: "var(--text-muted)" }}
+          >
             {store.duelBrief?.is_pve ? "PVE · БОТ" : "PVP · КЛАССИКА"}
           </span>
         </div>
-        <div className="flex flex-col items-end leading-tight">
-          <div className="font-mono text-xs flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-            {store.duelBrief?.opponent ? (
-              <>
-                <span style={{ color: "var(--text-muted)" }}>vs</span>
-                <span className="font-bold uppercase tracking-wider">
-                  {store.duelBrief.opponent.name}
+
+        {/* Right — opponent (role + name + tier) */}
+        <div className="flex items-center gap-3 min-w-0 flex-1 justify-end">
+          <div className="flex flex-col leading-tight min-w-0 items-end">
+            <span
+              className="font-pixel text-[10px] sm:text-[11px] uppercase tracking-wider"
+              style={{
+                color: store.myRole === "seller" ? "var(--magenta, #d946ef)" : "var(--accent)",
+                textShadow: "1px 1px 0 #000",
+              }}
+            >
+              {oppRoleLabel} · {store.duelBrief?.is_pve ? "AI" : "ИГРОК"}
+            </span>
+            <span className="font-mono text-[11px] truncate flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
+              {store.duelBrief?.opponent?.name || "Подбор…"}
+              {oppTier && (
+                <span
+                  className="px-1.5 py-0.5 text-[9px] uppercase tracking-widest rounded"
+                  style={{
+                    background: "var(--accent-muted)",
+                    color: "var(--accent)",
+                    border: "1px solid var(--accent)",
+                  }}
+                >
+                  {oppTier}
                 </span>
-                {store.duelBrief.opponent.tier && (
-                  <span
-                    className="px-1.5 py-0.5 text-[10px] uppercase tracking-widest rounded"
-                    style={{
-                      background: "var(--accent-muted)",
-                      color: "var(--accent)",
-                      border: "1px solid var(--accent)",
-                    }}
-                  >
-                    {store.duelBrief.opponent.tier}
-                  </span>
-                )}
-              </>
-            ) : (
-              <span style={{ color: "var(--text-muted)" }}>Подбор соперника…</span>
-            )}
-          </div>
-          <div className="font-mono text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-            {store.duelBrief?.scenario_title || ""}
+              )}
+            </span>
           </div>
         </div>
       </header>
+      {store.duelBrief?.archetype && (
+        <div
+          className="px-4 sm:px-6 py-1 text-[10px] sm:text-[11px] font-pixel uppercase tracking-widest text-center z-20"
+          style={{
+            color: "var(--text-secondary)",
+            background: "rgba(0,0,0,0.25)",
+            borderBottom: "1px solid var(--border-color)",
+          }}
+        >
+          {store.duelBrief.scenario_title || "Сценарий"} · Архетип: {store.duelBrief.archetype}
+        </div>
+      )}
 
       {/* Connection status */}
       {connectionState !== "connected" && (
@@ -957,6 +1035,6 @@ function DuelPage() {
         payload={coachingPayload}
         onDismiss={() => setCoachingOpen(false)}
       />
-    </div>
+    </ArenaBackground>
   );
 }
