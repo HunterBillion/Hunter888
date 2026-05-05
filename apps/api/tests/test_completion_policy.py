@@ -112,6 +112,9 @@ def test_terminal_reason_catalog_matches_roadmap():
         "user_ended", "user_farewell_detected", "client_farewell_detected",
         "silence_timeout", "ws_disconnect", "route_navigation",
         "matchmaking_timeout", "judge_failed", "judge_completed", "admin_aborted",
+        # PR-1: explicit reasons added so the disconnect-cancel and reaper
+        # paths can stamp terminal_reason instead of leaving it NULL.
+        "opponent_disconnected", "reaper_stuck_state",
     }
     assert {r.value for r in TerminalReason} == expected
 

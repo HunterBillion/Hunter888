@@ -171,6 +171,12 @@ class TerminalReason(str, enum.Enum):
     judge_failed = "judge_failed"
     judge_completed = "judge_completed"
     admin_aborted = "admin_aborted"
+    # PR-1 (2026-05-05): explicit reasons for previously-NULL PvP cancels.
+    # Production audit found 7/11 duels cancelled with terminal_reason=NULL
+    # because _cancel_duel_after_disconnect bypassed finalize_pvp_duel and
+    # the judge_error path forgot to stamp. These two cover the gap.
+    opponent_disconnected = "opponent_disconnected"
+    reaper_stuck_state = "reaper_stuck_state"
 
 
 class CompletedVia(str, enum.Enum):

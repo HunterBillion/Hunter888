@@ -119,12 +119,22 @@ function DuelPage() {
     return () => { aborted = true; };
   }, [duelId, authReady]);
 
-  // Safety timeout: if WS hasn't delivered duel.brief/duel.state within 6s,
+  // Safety timeout: if WS hasn't delivered duel.brief/duel.state within 18s,
   // show "Cannot connect" escape hatch instead of an infinite spinner.
-  // 2026-05-03: 10s → 6s (пользователь жаловался на «вечную загрузку»).
+  //
+  // History:
+  //   - 10s → 6s on 2026-05-03 (user complained about "infinite loading")
+  //   - 6s → 18s on 2026-05-05 (PR-1) — prod audit found 7/11 duels
+  //     cancelled because the bot opener LLM call inside _start_round can
+  //     legitimately take up to _BOT_LLM_TIMEOUT=15s on a cold local stack.
+  //     Showing "Cannot connect" at 6s was racing the bot's first reply
+  //     and pushing users to close the tab → 60s reconnect-grace fired →
+  //     duel cancelled with terminal_outcome=NULL. 18s gives the bot
+  //     LLM (15s) plus 3s for round/judge dispatch to land before we
+  //     blame the network.
   useEffect(() => {
     if (store.duelBrief || store.duelResult || earlyExit) return;
-    const t = setTimeout(() => setLoadTimeout(true), 6000);
+    const t = setTimeout(() => setLoadTimeout(true), 18000);
     return () => clearTimeout(t);
   }, [store.duelBrief, store.duelResult, earlyExit]);
 
