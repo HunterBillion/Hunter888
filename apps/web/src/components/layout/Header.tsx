@@ -18,13 +18,6 @@ import {
   Crown,
   ChevronDown,
   Swords,
-  FileBarChart,
-  BookOpen,
-  Brain,
-  Gavel,
-  Sliders,
-  FlaskConical,
-  FileText,
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { sanitizeText } from "@/lib/sanitize";
@@ -75,11 +68,12 @@ function buildNavForRole(role: UserRole | undefined): NavItem[] {
   if (role === "admin") {
     return [
       HOME,
-      // 2026-04-26 — /admin route deleted. Все админские поверхности
-      // переехали внутрь /dashboard как табы «Активность» / «Методология»
-      // (с подвкладкой Reviews) / «Система» (Пользователи + Client
-      // Domain). Один вход в управление для и admin, и rop — отличается
-      // только scope и наличие admin-only табов.
+      // 2026-04-26 — /admin route deleted; админские поверхности живут
+      // как табы дашборда: «Активность» / «Контент» (бывш. «Методология»,
+      // переименовано 2026-05-05) с подвкладкой «Отзывы» / «Система»
+      // (Пользователи + События клиентов + Здоровье сервиса). Один вход
+      // в управление для admin и rop — отличие только в scope и в
+      // admin-only табах.
       { href: "/dashboard", label: "Команда", icon: LayoutDashboard, group: "main" },
       { href: "/training", label: "Тренировка", icon: Crosshair, group: "main" },
       { href: "/pvp", label: "Арена", icon: Swords, group: "main" },

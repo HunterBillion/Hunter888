@@ -14,6 +14,7 @@ import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { formatDateFull } from "@/lib/utils";
 
 interface SessionItem {
   id: string;
@@ -73,6 +74,16 @@ export function SessionsBrowser() {
             </div>
           ))}
         </div>
+      ) : sessions.length === 0 ? (
+        <div className="glass-panel rounded-xl p-8 text-center" style={{ color: "var(--text-muted)" }}>
+          <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+            За выбранный период тренировок не было
+          </p>
+          <p className="text-xs mt-2 max-w-md mx-auto">
+            Уберите фильтры или назначьте сценарий команде во вкладке
+            «Команда» → «Массовое назначение».
+          </p>
+        </div>
       ) : (
         <>
           <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid var(--border-color)" }}>
@@ -117,7 +128,7 @@ export function SessionsBrowser() {
                       {s.duration_seconds ? `${Math.round(s.duration_seconds / 60)}m` : "—"}
                     </td>
                     <td className="p-2 text-right font-mono" style={{ color: "var(--text-muted)" }}>
-                      {s.started_at ? new Date(s.started_at).toLocaleDateString("ru-RU") : "—"}
+                      {s.started_at ? formatDateFull(s.started_at) : "—"}
                     </td>
                   </motion.tr>
                 ))}

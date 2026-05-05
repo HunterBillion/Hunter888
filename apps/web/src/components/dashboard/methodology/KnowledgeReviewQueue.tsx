@@ -31,6 +31,7 @@ import {
 import { ApiError, api } from "@/lib/api";
 import { sanitizeText } from "@/lib/sanitize";
 import { logger } from "@/lib/logger";
+import { formatDateFull } from "@/lib/utils";
 import type {
   KnowledgeReviewActionResponse,
   KnowledgeReviewQueueItem,
@@ -64,11 +65,7 @@ const TARGET_TONES: Record<TargetStatus, string> = {
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   try {
-    return new Date(iso).toLocaleDateString("ru-RU", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+    return formatDateFull(iso);
   } catch {
     return iso;
   }

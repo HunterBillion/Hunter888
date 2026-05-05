@@ -38,6 +38,7 @@ import {
 import { ApiError, api } from "@/lib/api";
 import { sanitizeText } from "@/lib/sanitize";
 import { logger } from "@/lib/logger";
+import { formatDateTime } from "@/lib/utils";
 import type {
   AiQualityRecentEvent,
   AiQualitySummary,
@@ -75,12 +76,7 @@ const SEVERITY_TONE: Record<string, { background: string; color: string }> = {
 
 function formatTimestamp(iso: string): string {
   try {
-    return new Date(iso).toLocaleString("ru-RU", {
-      day: "2-digit",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return formatDateTime(iso);
   } catch {
     return iso;
   }

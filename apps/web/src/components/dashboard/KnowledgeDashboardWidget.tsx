@@ -196,7 +196,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
             className="text-xs font-semibold uppercase tracking-wide"
             style={{ color: "var(--accent)" }}
           >
-            ЗНАНИЯ ФЗ-127
+            АРЕНА ФЗ-127
           </h3>
         </div>
         {data.total_quizzes > 0 && (
@@ -209,10 +209,15 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
         )}
       </div>
 
-      {/* Overall accuracy */}
+      {/* Top-level (always shown): overall accuracy + PvP rating in one row.
+          The widget used to render a 600px+ block with categories, SRS,
+          weak-areas list and recommendations all stacked. Most of that is
+          drill-down material — when the widget is rendered without a
+          userId (team overview) we keep the surface compact; only the
+          per-user drill-down expands the dense breakdown. */}
       {data.total_quizzes > 0 ? (
         <>
-          <div className="mb-4">
+          <div className="mb-3">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
                 Общая точность
@@ -234,33 +239,6 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
             <ProgressBar value={data.overall_accuracy} />
           </div>
 
-          {/* Category progress (compact grid) */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-4">
-            {data.category_progress
-              .filter((cp) => cp.total_answered > 0)
-              .slice(0, 6)
-              .map((cp) => (
-                <div key={cp.category}>
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span
-                      className="text-xs truncate"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      {cp.display_name}
-                    </span>
-                    <span
-                      className="text-xs font-mono"
-                      style={{ color: "var(--text-secondary)" }}
-                    >
-                      {cp.accuracy}%
-                    </span>
-                  </div>
-                  <ProgressBar value={cp.accuracy} />
-                </div>
-              ))}
-          </div>
-
-          {/* PvP Stats */}
           {pvp && (
             <div
               className="flex items-center gap-3 mb-4 p-2 rounded"
@@ -273,7 +251,7 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                 {RANK_NAMES[normalizedTier] || pvp.rank_tier}
               </span>
-              <span className="text-xs font-mono" style={{ color: "var(--text-secondary)" }}>
+              <span className="text-xs font-mono ml-auto" style={{ color: "var(--text-secondary)" }}>
                 {pvp.wins}W {pvp.losses}L
               </span>
               {pvp.current_streak > 0 && (
@@ -284,92 +262,122 @@ export function KnowledgeDashboardWidget({ userId }: KnowledgeDashboardWidgetPro
             </div>
           )}
 
-          {/* SRS Spaced Repetition stats */}
-          {srs && srs.total_cards > 0 && (
-            <div
-              className="flex items-center gap-3 mb-4 p-2.5 rounded-lg"
-              style={{ background: "var(--bg-secondary)", border: "1px solid var(--glass-border)" }}
-            >
-              <Brain size={14} weight="duotone" style={{ color: "var(--accent)" }} />
-              <div className="flex-1 grid grid-cols-3 gap-2">
-                <div className="text-center">
-                  <div className="text-xs font-mono font-bold" style={{ color: srs.overdue > 0 ? "var(--danger)" : "var(--success)" }}>
-                    {srs.overdue}
-                  </div>
-                  <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>ПОВТОР</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xs font-mono font-bold" style={{ color: "var(--accent)" }}>
-                    {srs.learning}
-                  </div>
-                  <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>УЧЁБА</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xs font-mono font-bold" style={{ color: "var(--success)" }}>
-                    {srs.mastered}
-                  </div>
-                  <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>УСВОЕНО</div>
-                </div>
+          {/* Drill-down only (per-user view): per-category grid, SRS,
+              recommendations. The team-overview view keeps the widget
+              short — for cross-team patterns there are dedicated
+              «Команда» heatmap and weakness panels. */}
+          {userId && (
+            <>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-4">
+                {data.category_progress
+                  .filter((cp) => cp.total_answered > 0)
+                  .slice(0, 6)
+                  .map((cp) => (
+                    <div key={cp.category}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span
+                          className="text-xs truncate"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          {cp.display_name}
+                        </span>
+                        <span
+                          className="text-xs font-mono"
+                          style={{ color: "var(--text-secondary)" }}
+                        >
+                          {cp.accuracy}%
+                        </span>
+                      </div>
+                      <ProgressBar value={cp.accuracy} />
+                    </div>
+                  ))}
               </div>
-              {srs.overdue > 0 && (
-                <Link href="/pvp?tab=knowledge">
-                  <span className="status-badge status-badge--danger" style={{ fontSize: "14px", cursor: "pointer" }}>
-                    <Clock size={8} weight="duotone" /> {srs.overdue} просрочено
-                  </span>
-                </Link>
+
+              {srs && srs.total_cards > 0 && (
+                <div
+                  className="flex items-center gap-3 mb-4 p-2.5 rounded-lg"
+                  style={{ background: "var(--bg-secondary)", border: "1px solid var(--glass-border)" }}
+                >
+                  <Brain size={14} weight="duotone" style={{ color: "var(--accent)" }} />
+                  <div className="flex-1 grid grid-cols-3 gap-2">
+                    <div className="text-center">
+                      <div className="text-xs font-mono font-bold" style={{ color: srs.overdue > 0 ? "var(--danger)" : "var(--success)" }}>
+                        {srs.overdue}
+                      </div>
+                      <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>ПОВТОР</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs font-mono font-bold" style={{ color: "var(--accent)" }}>
+                        {srs.learning}
+                      </div>
+                      <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>УЧЁБА</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs font-mono font-bold" style={{ color: "var(--success)" }}>
+                        {srs.mastered}
+                      </div>
+                      <div className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>УСВОЕНО</div>
+                    </div>
+                  </div>
+                  {srs.overdue > 0 && (
+                    <Link href="/pvp?tab=knowledge">
+                      <span className="status-badge status-badge--danger" style={{ fontSize: "14px", cursor: "pointer" }}>
+                        <Clock size={8} weight="duotone" /> {srs.overdue} просрочено
+                      </span>
+                    </Link>
+                  )}
+                </div>
               )}
-            </div>
-          )}
 
-          {/* Weak areas warning */}
-          {data.weak_areas.length > 0 && (
-            <div className="flex items-start gap-2 mb-3">
-              <Warning
-                size={12}
-                weight="duotone"
-                className="mt-0.5 flex-shrink-0"
-                style={{ color: "var(--warning)" }}
-              />
-              <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                Слабые темы:{" "}
-                {data.weak_areas
-                  .map((w) => {
-                    const displayNames: Record<string, string> = {
-                      eligibility: "Условия подачи",
-                      procedure: "Процедура",
-                      property: "Имущество",
-                      consequences: "Последствия",
-                      costs: "Стоимость",
-                      creditors: "Кредиторы",
-                      documents: "Документы",
-                      timeline: "Сроки",
-                      court: "Суд",
-                      rights: "Права",
-                    };
-                    return displayNames[w] || w;
-                  })
-                  .join(", ")}
-              </span>
-            </div>
-          )}
-
-          {/* Recommendations */}
-          {data.recommendations.length > 0 && (
-            <div className="space-y-1.5 mb-4">
-              {data.recommendations.slice(0, 2).map((rec, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <Lightbulb
-                    size={11}
+              {data.weak_areas.length > 0 && (
+                <div className="flex items-start gap-2 mb-3">
+                  <Warning
+                    size={12}
                     weight="duotone"
                     className="mt-0.5 flex-shrink-0"
-                    style={{ color: PRIORITY_COLORS[rec.priority] || "var(--accent)" }}
+                    style={{ color: "var(--warning)" }}
                   />
                   <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                    {rec.recommendation}
+                    Слабые темы:{" "}
+                    {data.weak_areas
+                      .map((w) => {
+                        const displayNames: Record<string, string> = {
+                          eligibility: "Условия подачи",
+                          procedure: "Процедура",
+                          property: "Имущество",
+                          consequences: "Последствия",
+                          costs: "Стоимость",
+                          creditors: "Кредиторы",
+                          documents: "Документы",
+                          timeline: "Сроки",
+                          court: "Суд",
+                          rights: "Права",
+                        };
+                        return displayNames[w] || w;
+                      })
+                      .join(", ")}
                   </span>
                 </div>
-              ))}
-            </div>
+              )}
+
+              {data.recommendations.length > 0 && (
+                <div className="space-y-1.5 mb-4">
+                  {data.recommendations.slice(0, 2).map((rec, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <Lightbulb
+                        size={11}
+                        weight="duotone"
+                        className="mt-0.5 flex-shrink-0"
+                        style={{ color: PRIORITY_COLORS[rec.priority] || "var(--accent)" }}
+                      />
+                      <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                        {rec.recommendation}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </>
       ) : (

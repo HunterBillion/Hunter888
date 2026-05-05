@@ -25,7 +25,7 @@ import {
   UsersThree,
 } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
-import { scoreColor } from "@/lib/utils";
+import { scoreColor, formatDateShort as formatWeek } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 
 /* ─── Types ─── */
@@ -88,10 +88,10 @@ const OUTCOME_LABELS: Record<string, string> = {
 
 /* ─── Helpers ─── */
 
-function formatWeek(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
+// `week_start`/`week_end` come as date-only "YYYY-MM-DD". The shared
+// formatDateShort helper (imported above as `formatWeek`) handles the
+// local-vs-UTC trap so the label matches the calendar date the backend
+// meant in every browser TZ.
 
 function trendIcon(trend: string | null) {
   if (trend === "growing") return <TrendUp size={14} weight="duotone" style={{ color: "var(--success)" }} />;

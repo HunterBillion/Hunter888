@@ -1,25 +1,22 @@
 "use client";
 
 /**
- * PlaybooksEditor — TZ-8 PR-C UI for the per-team methodology layer.
+ * PlaybooksEditor — UI for the per-team plays / playbook layer.
  *
- * Lands on the /dashboard?tab=methodology&sub=playbooks panel and gives
- * ROPs a CRUD surface over ``methodology_chunks``: list with filters,
- * inline create/edit form, status chip with one-click governance
- * transitions (actual / disputed / outdated), and an "indexing…" pill
- * for chunks whose embedding hasn't been computed yet.
+ * Lands on /dashboard?tab=content&sub=playbooks. Gives ROPs a CRUD
+ * surface over the team's plays (opener / objection / closing / etc):
+ * list with filters, inline create/edit, status chip with one-click
+ * governance transitions (actual / disputed / outdated), and an
+ * "indexing…" pill for items whose embedding hasn't been computed yet.
  *
- * Why a single component vs. the pattern used by WikiDashboard's
- * three sub-views (list / detail / log)? Methodology has a much
- * smaller per-row surface than wiki — title + body + tags + status
- * fit comfortably in one screen. Splitting into routes would just
- * add navigation friction for a 3-click create-edit-publish flow.
+ * One-screen layout (vs. WikiDashboard's list/detail/log split): a play
+ * has a much smaller surface — title + body + tags + status — so
+ * splitting into routes would just add navigation friction for the
+ * common 3-click create-edit-publish flow.
  *
- * Server contract: ``app/api/methodology.py``. Authz matrix matches
- * ``check_methodology_team_access`` — ROP authors for own team,
- * manager is read-only, admin sees every team. The UI gates the
- * action buttons accordingly so the user never sees a useless
- * "Save" that 403s.
+ * Authz: ROP authors for own team, manager is read-only, admin sees
+ * every team. The UI gates action buttons accordingly so the user never
+ * sees a useless "Save" that 403s.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -27,6 +24,17 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Pencil, Trash, Sparkle } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/AlertDialog";
 import {
   type MethodologyChunk,
   type MethodologyKind,
@@ -74,7 +82,7 @@ function EmptyState({ onAdd, canAdd }: { onAdd: () => void; canAdd: boolean }) {
     <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
       <Sparkle size={32} className="text-gray-400 mb-3" />
       <h3 className="text-lg font-semibold text-gray-700">
-        Методология пока пуста
+        Плейбуков пока нет
       </h3>
       <p className="mt-2 max-w-md text-sm text-gray-500">
         Запиши лучшие практики команды: скрипт открытия, обработку
@@ -86,7 +94,7 @@ function EmptyState({ onAdd, canAdd }: { onAdd: () => void; canAdd: boolean }) {
           onClick={onAdd}
           className="mt-6 inline-flex items-center gap-2 rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-violet-700"
         >
-          <Plus size={16} /> Создать первый playbook
+          <Plus size={16} /> Создать первый плейбук
         </button>
       )}
     </div>
@@ -395,6 +403,18 @@ export function PlaybooksEditor({ canAuthor }: PlaybooksEditorProps) {
     useState<KnowledgeStatus | "all">("all");
   const [search, setSearch] = useState("");
 
+  // Replaces window.confirm/window.prompt with themed modals so the
+  // workflow looks the same on every browser, doesn't block the JS
+  // thread, and keeps focus management consistent.
+  const [pendingDelete, setPendingDelete] = useState<MethodologyChunk | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<{
+    chunk: MethodologyChunk;
+    next: KnowledgeStatus;
+  } | null>(null);
+  const [statusNote, setStatusNote] = useState("");
+  const [savingStatus, setSavingStatus] = useState(false);
+
   const refresh = async () => {
     setLoading(true);
     setError(null);
@@ -445,25 +465,23 @@ export function PlaybooksEditor({ canAuthor }: PlaybooksEditorProps) {
     await refresh();
   };
 
-  const handleDelete = async (chunk: MethodologyChunk) => {
-    if (
-      !window.confirm(
-        `Удалить «${chunk.title}»? Лучше пометить «Устарело» — это сохранит историю.`,
-      )
-    ) {
-      return;
-    }
+  const requestDelete = (chunk: MethodologyChunk) => setPendingDelete(chunk);
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
     try {
-      await deleteMethodology(chunk.id);
-      setItems((prev) => prev.filter((c) => c.id !== chunk.id));
+      await deleteMethodology(pendingDelete.id);
+      setItems((prev) => prev.filter((c) => c.id !== pendingDelete.id));
       toast.success("Удалено");
-    } catch (e: any) {
-      // Earlier: native alert with raw `response.data.detail` — both
-      // blocks the thread and leaks backend internals into a system
-      // dialog. Now: toast with sanitized message + full error to logs.
+      setPendingDelete(null);
+    } catch (e: unknown) {
       logger.error("[PlaybooksEditor] delete failed:", e);
-      const detail = e?.response?.data?.detail ?? e?.message ?? "Не удалось удалить";
+      const err = e as { response?: { data?: { detail?: string } }; message?: string };
+      const detail = err?.response?.data?.detail ?? err?.message ?? "Не удалось удалить";
       toast.error("Ошибка удаления", { description: String(detail) });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -471,26 +489,52 @@ export function PlaybooksEditor({ canAuthor }: PlaybooksEditorProps) {
     chunk: MethodologyChunk,
     next: KnowledgeStatus,
   ) => {
-    let note: string | null = null;
+    // disputed / outdated require a note (it goes into the audit trail
+    // and shows up to future reviewers). Open a themed modal that
+    // captures the note rather than falling back to window.prompt.
     if (next === "disputed" || next === "outdated") {
-      note = window.prompt(
-        `Объясни, почему «${STATUS_LABEL_RU[next]}». Это увидят будущие ревьюеры.`,
-      );
-      if (!note || !note.trim()) return; // user cancelled
+      setStatusNote("");
+      setPendingStatus({ chunk, next });
+      return;
     }
+    // No-note transitions go straight through.
+    await applyStatusTransition(chunk, next, null);
+  };
+
+  const applyStatusTransition = async (
+    chunk: MethodologyChunk,
+    next: KnowledgeStatus,
+    note: string | null,
+  ) => {
     try {
       const updated = await patchMethodologyStatus(chunk.id, {
         status: next,
         note,
       });
-      setItems((prev) =>
-        prev.map((c) => (c.id === updated.id ? updated : c)),
-      );
+      setItems((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
       toast.success("Статус обновлён");
-    } catch (e: any) {
+    } catch (e: unknown) {
       logger.error("[PlaybooksEditor] status transition failed:", e);
-      const detail = e?.response?.data?.detail ?? e?.message ?? "Не удалось сменить статус";
+      const err = e as { response?: { data?: { detail?: string } }; message?: string };
+      const detail = err?.response?.data?.detail ?? err?.message ?? "Не удалось сменить статус";
       toast.error("Ошибка смены статуса", { description: String(detail) });
+      throw e;
+    }
+  };
+
+  const confirmStatusTransition = async () => {
+    if (!pendingStatus) return;
+    const note = statusNote.trim();
+    if (!note) return; // button is disabled in this state, defensive
+    setSavingStatus(true);
+    try {
+      await applyStatusTransition(pendingStatus.chunk, pendingStatus.next, note);
+      setPendingStatus(null);
+      setStatusNote("");
+    } catch {
+      // toast already surfaced; keep modal open for retry.
+    } finally {
+      setSavingStatus(false);
     }
   };
 
@@ -610,7 +654,7 @@ export function PlaybooksEditor({ canAuthor }: PlaybooksEditorProps) {
                     <Pencil size={16} />
                   </button>
                   <button
-                    onClick={() => handleDelete(chunk)}
+                    onClick={() => requestDelete(chunk)}
                     className="rounded p-1 text-gray-500 hover:bg-red-50 hover:text-red-600"
                     title="Удалить (лучше пометить устаревшим)"
                   >
@@ -668,6 +712,88 @@ export function PlaybooksEditor({ canAuthor }: PlaybooksEditorProps) {
           />
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => { if (!open && !deleting) setPendingDelete(null); }}
+        title="Удалить плейбук?"
+        description={
+          <div className="space-y-2">
+            <p>
+              Плейбук <strong>«{pendingDelete?.title ?? ""}»</strong> будет
+              удалён насовсем — он перестанет подмешиваться в подсказки
+              AI-коуча и судьи команды.
+            </p>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+              Если плейбук может ещё пригодиться — переведите его в
+              «Устарело»: история сохранится, а подмеса в RAG не будет.
+            </p>
+          </div>
+        }
+        confirmLabel="Удалить"
+        destructive
+        busy={deleting}
+        onConfirm={confirmDelete}
+      />
+
+      {/* Status-transition modal: required note for disputed/outdated. */}
+      <AlertDialog
+        open={pendingStatus !== null}
+        onOpenChange={(open) => {
+          if (!open && !savingStatus) {
+            setPendingStatus(null);
+            setStatusNote("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Перевести в статус «{pendingStatus ? STATUS_LABEL_RU[pendingStatus.next] : ""}»
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Плейбук <strong>«{pendingStatus?.chunk.title ?? ""}»</strong> сменит статус.
+                  Эта запись попадёт в журнал и будет видна следующему ревьюеру.
+                </p>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+                  Опишите коротко причину — что именно не так и/или с чем сравниваете.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <textarea
+            autoFocus
+            value={statusNote}
+            onChange={(e) => setStatusNote(e.target.value)}
+            placeholder="Например: цитата устарела после изменений в 127-ФЗ от 2026-04, см. ст. 5 п. 3."
+            rows={4}
+            disabled={savingStatus}
+            className="w-full rounded-md p-3 text-sm"
+            style={{
+              background: "var(--bg-tertiary)",
+              border: "1px solid var(--border-color)",
+              color: "var(--text-primary)",
+              resize: "vertical",
+              minHeight: 80,
+            }}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={savingStatus}>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={savingStatus || !statusNote.trim()}
+              onClick={(e) => {
+                e.preventDefault();
+                confirmStatusTransition();
+              }}
+              style={{ background: "var(--accent)", color: "#000" }}
+            >
+              {savingStatus ? "…" : "Сохранить статус"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

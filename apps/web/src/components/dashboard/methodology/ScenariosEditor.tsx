@@ -51,6 +51,7 @@ import {
   Loader2,
   RefreshCw,
   Send,
+  Upload,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -61,6 +62,8 @@ import { DashboardSkeleton } from "@/components/ui/Skeleton";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import { ImportWizard } from "@/components/methodology/ImportWizard";
 import { ImportHistory } from "@/components/methodology/ImportHistory";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { formatDateTimeFull } from "@/lib/utils";
 
 // ── Types matching the rop.py response shape ───────────────────────────────
 
@@ -121,6 +124,7 @@ export function ScenariosEditor() {
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [pendingPublish, setPendingPublish] = useState<ScenarioListItem | null>(null);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -145,16 +149,15 @@ export function ScenariosEditor() {
 
   const handlePublish = useCallback(
     async (item: ScenarioListItem) => {
-      const expected = item.draft_revision ?? 0;
-      const ok = window.confirm(
-        `Опубликовать «${item.title}»?\n\n` +
-          `Текущая ревизия черновика: ${expected}.\n` +
-          `Будет создана новая опубликованная версия. Историческая ` +
-          `неприкосновенность гарантирована: предыдущая версия будет ` +
-          `помечена как superseded, но данные сохранятся.`,
-      );
-      if (!ok) return;
+      // Show the confirmation modal — actual publish runs in confirmPublish.
+      setPendingPublish(item);
+    },
+    [],
+  );
 
+  const confirmPublish = useCallback(
+    async (item: ScenarioListItem) => {
+      const expected = item.draft_revision ?? 0;
       setPublishingId(item.id);
       try {
         const res = await api.post<{
@@ -181,6 +184,10 @@ export function ScenariosEditor() {
               { duration: 8000 },
             );
             await fetchList();
+            // Stale draft revision — close so the next click goes through
+            // the (now-refreshed) confirmation flow instead of replaying
+            // the failed expected_draft_revision.
+            setPendingPublish(null);
             return;
           }
           if (err.status === 422) {
@@ -192,24 +199,38 @@ export function ScenariosEditor() {
                 `Первая: ${issues[0]?.message ?? "—"}`,
               { duration: 12000 },
             );
+            // Validation failure — the user has to fix the scenario
+            // before re-publishing; keeping the modal open would just
+            // replay the same 422.
+            setPendingPublish(null);
             return;
           }
         }
+        // Transient errors (5xx, network) — keep the modal open so the
+        // user can hit «Опубликовать» again without re-finding the row.
         const msg = err instanceof Error ? err.message : "Ошибка публикации";
         toast.error(msg);
+        return;
       } finally {
         setPublishingId(null);
       }
+      // Success path — only here do we close the modal.
+      setPendingPublish(null);
     },
     [fetchList],
   );
 
   const counts = useMemo(() => {
-    const c = { total: items.length, published: 0, draft: 0, archived: 0, no_version: 0 };
+    // `status` is optional in older list payloads (will be filled in by
+    // backend post-deploy). Until then, items without a status are
+    // counted as `unknown` — folding them into `published` would lie
+    // about the published count.
+    const c = { total: items.length, published: 0, draft: 0, archived: 0, unknown: 0, no_version: 0 };
     for (const i of items) {
       if (i.status === "draft") c.draft++;
       else if (i.status === "archived") c.archived++;
-      else c.published++;
+      else if (i.status === "published") c.published++;
+      else c.unknown++;
       if (!i.current_published_version_id) c.no_version++;
     }
     return c;
@@ -228,24 +249,32 @@ export function ScenariosEditor() {
             </h3>
             <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
               Всего {counts.total} · опубликовано {counts.published} · черновиков {counts.draft}
-            {counts.no_version > 0 && (
-              <>
-                {" · "}
-                <span style={{ color: "var(--warning)" }}>
-                  {counts.no_version} без published версии
-                </span>
-              </>
-            )}
-          </p>
+              {counts.unknown > 0 && (
+                <>
+                  {" · "}
+                  <span title="Список ещё не отдаёт поле status — подсчёт неполный">
+                    {counts.unknown} без статуса
+                  </span>
+                </>
+              )}
+              {counts.no_version > 0 && (
+                <>
+                  {" · "}
+                  <span style={{ color: "var(--warning)" }}>
+                    {counts.no_version} не опубликовано
+                  </span>
+                </>
+              )}
+            </p>
           </div>
           <PixelInfoButton
-            title="Сценарии (TZ-3)"
+            title="Сценарии"
             sections={[
               { icon: CircleDot, label: "Шаблон сценария", text: "Базовая «карточка»: название, описание, этапы. Менеджеры видят только опубликованные шаблоны." },
               { icon: Send, label: "Версии (immutable)", text: "Каждое нажатие «Опубликовать» создаёт НОВУЮ версию. Старые версии остаются — открытые сейчас сессии работают на той версии, на которой стартовали." },
               { icon: ChevronDown, label: "Зачем версии", text: "Раньше правка шаблона прямо влияла на идущие звонки → менеджер посередине разговора видел изменённый шаг 4. Теперь правки сидят в draft до явной публикации." },
-              { icon: AlertTriangle, label: "Без published версии", text: "Шаблон есть, но menager'у его не дать (ничего не опубликовано). Жёлтое предупреждение в счётчике сверху." },
-              { icon: CheckCircle2, label: "Что в этом MVP", text: "Список + Publish + просмотр истории версий. In-place редактор полей и create-new wizard — следующая итерация (C4.1+C4.2)." },
+              { icon: AlertTriangle, label: "Без published версии", text: "Шаблон есть, но менеджеру его не дать (ничего не опубликовано). Жёлтое предупреждение в счётчике сверху." },
+              { icon: CheckCircle2, label: "Что доступно", text: "Список + Публикация + просмотр истории версий. Inline-редактор полей появится позже." },
             ]}
             footer="Совет: после Publish обновите страницу у менеджеров — runtime-резолвер выберет новую версию для НОВЫХ сессий, текущие закончатся на старой."
           />
@@ -304,19 +333,48 @@ export function ScenariosEditor() {
         ))}
         {!items.length && !loading && (
           <div
-            className="glass-panel rounded-xl p-8 text-center text-sm italic"
+            className="glass-panel rounded-xl p-8 text-center text-sm"
             style={{ color: "var(--text-muted)" }}
           >
-            Сценариев пока нет. Создайте через API или дождитесь конструктора (C4.1).
+            <p className="mb-3">Сценариев пока нет.</p>
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium"
+              style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+            >
+              <Upload size={14} /> Импортировать первый сценарий
+            </button>
           </div>
         )}
       </div>
 
-      <p className="text-xs italic" style={{ color: "var(--text-muted)" }}>
-        Эта вкладка — MVP конструктора (TZ-3 §14.4). Сейчас доступны: список,
-        Publish, история версий. Inline-редактор полей (название/описание/этапы)
-        придёт в C4.1 после того, как explicit Publish flow проявит себя на пилоте.
+      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+        Редактирование полей внутри списка скоро появится. Пока используйте
+        импорт для добавления новых сценариев.
       </p>
+
+      <ConfirmDialog
+        open={pendingPublish !== null}
+        onOpenChange={(open) => { if (!open && publishingId === null) setPendingPublish(null); }}
+        title="Опубликовать сценарий?"
+        description={
+          <div className="space-y-2">
+            <p>
+              Шаблон <strong>«{pendingPublish?.title ?? ""}»</strong> станет
+              активным для всех будущих тренировок команды. Текущие сессии
+              продолжат идти на старой версии и завершатся как обычно.
+            </p>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+              Предыдущая опубликованная версия будет помечена «superseded» —
+              данные сохранятся, история не теряется.
+            </p>
+          </div>
+        }
+        confirmLabel="Опубликовать"
+        busy={publishingId !== null}
+        onConfirm={() => { if (pendingPublish) confirmPublish(pendingPublish); }}
+      />
     </div>
   );
 }
@@ -367,10 +425,10 @@ function ScenarioRow({
               <span
                 className="rounded px-1.5 py-0.5 text-xs font-medium inline-flex items-center gap-1"
                 style={{ background: "var(--warning-muted, rgba(234,179,8,0.15))", color: "var(--warning)" }}
-                title="У шаблона ещё нет опубликованной версии — runtime использует legacy fallback"
+                title="Шаблон ещё ни разу не опубликован — менеджеры его не увидят"
               >
                 <AlertTriangle size={10} />
-                no v1
+                не опубликован
               </span>
             )}
           </div>
@@ -381,8 +439,8 @@ function ScenarioRow({
           )}
         </div>
         <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
-          <span title="Optimistic-concurrency cursor">
-            rev {item.draft_revision ?? "—"}
+          <span title="Номер черновой ревизии. Растёт при каждой правке.">
+            черновик № {item.draft_revision ?? "—"}
           </span>
         </div>
         <button
@@ -442,7 +500,7 @@ function ScenarioVersions({ templateId }: { templateId: string }) {
           // Endpoint not built yet — degrade gracefully
           setVersions([]);
           setError(
-            "Список версий по этому шаблону доступен в админ-панели Client Domain.",
+            "История версий пока недоступна — появится в одной из ближайших итераций.",
           );
         } else {
           const msg = err instanceof Error ? err.message : "Ошибка загрузки версий";
@@ -486,7 +544,7 @@ function ScenarioVersions({ templateId }: { templateId: string }) {
             {v.content_hash.slice(0, 8)}
           </code>
           <span style={{ color: "var(--text-muted)" }}>
-            {v.published_at ? new Date(v.published_at).toLocaleString("ru-RU") : "—"}
+            {v.published_at ? formatDateTimeFull(v.published_at) : "—"}
           </span>
         </div>
       ))}
