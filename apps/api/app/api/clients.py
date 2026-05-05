@@ -925,13 +925,22 @@ async def api_client_ai_memory(
     # только свою собственную память (поведение consistent с ws/training).
     manager_id = client.manager_id if user.role in {UserRole.rop, UserRole.admin} else user.id
     if manager_id is None:
-        return {"summary": None, "facts": {}}
+        return {"summary": None, "facts": {}, "total_completed": 0}
     from app.services.cross_session_memory import fetch_last_session_summary
     summary = await fetch_last_session_summary(
         db,
         user_id=manager_id,
         real_client_id=client_id,
     )
+    # PR-A.1 (audit-fix): expose the count separately so the FE renders
+    # «N-й звонок» chip without re-parsing the summary text.
+    cnt = (await db.execute(
+        select(func.count(TrainingSession.id)).where(
+            TrainingSession.user_id == manager_id,
+            TrainingSession.real_client_id == client_id,
+            TrainingSession.status == SessionStatus.completed,
+        )
+    )).scalar() or 0
     # Persona facts (TZ-4.5): что ИИ узнал о менеджере по слотам. Эти
     # тоже идут в system_prompt — показываем рядом, чтобы продажник
     # понимал, на чём ИИ строит реакции.
@@ -953,6 +962,7 @@ async def api_client_ai_memory(
     return {
         "summary": summary,
         "facts": facts,
+        "total_completed": int(cnt),
     }
 
 

@@ -27,6 +27,10 @@ interface Props {
 interface AIMemoryResponse {
   summary: string | null;
   facts: Record<string, unknown>;
+  // PR-A.1: count of prior COMPLETED sessions for this (manager, client)
+  // pair. Rendered as a leading chip («Было 3 звонка») so the returning-
+  // relationship signal is visible at a glance without parsing summary.
+  total_completed?: number;
 }
 
 const SLOT_LABELS: Record<string, string> = {
@@ -108,10 +112,21 @@ export function AIRemembersBanner({ clientId }: Props) {
           <Brain size={20} className="text-violet-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="text-xs font-semibold text-violet-300 uppercase tracking-wider">
               ИИ помнит этого клиента
             </span>
+            {/* PR-A.1: leading «N-й звонок» chip — most legible signal of
+                a returning relationship. Hidden when total_completed < 1
+                so a fresh client (banner showing only persona facts)
+                doesn't get a misleading «1 звонок» label. */}
+            {data.total_completed !== undefined && data.total_completed >= 1 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/30 text-violet-100 font-semibold">
+                {data.total_completed === 1
+                  ? "Был 1 звонок"
+                  : `Было ${data.total_completed} звонков`}
+              </span>
+            )}
             {hasFacts && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-200">
                 {Object.keys(data.facts).length} фактов
