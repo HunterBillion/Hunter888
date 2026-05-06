@@ -12,22 +12,15 @@ import {
   CheckCircle2,
   XCircle,
   Lightbulb,
-  SkipForward,
   Trophy,
   Target,
-  BarChart3,
-  Brain,
   ArrowRight,
   Loader2,
-  AlertTriangle,
-  Sparkles,
   Flame,
   Star,
   Zap,
-  Mic,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { useSound } from "@/hooks/useSound";
 import { QuizThinkingIndicator } from "@/components/pvp/QuizThinkingIndicator";
@@ -72,6 +65,7 @@ function KnowledgeSessionPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const userExitedRef = useRef(false);
 
   const [showResults, setShowResults] = useState(false);
   const [hintLoading, setHintLoading] = useState(false);
@@ -99,58 +93,6 @@ function KnowledgeSessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlMode]);
 
-  // 2026-04-20: голосовой ответ в knowledge quiz. Владельцу было важно
-  // чтобы "во всей панели" работал голос — TTS для intro здесь уже есть
-  // (QuizCaseIntro), а вот STT для ответа юзера — нет. Добавляем через
-  // тот же useSpeechRecognition, что и в /training/[id]. Результат
-  // хука дописывается в store.input, а не заменяет его — чтобы юзер мог
-  // начать печатать, добавить голосом, поправить руками и отправить.
-  const speech = useSpeechRecognition({
-    lang: "ru-RU",
-    onResult: (text: string) => {
-      if (!text) return;
-      const current = store.input.trim();
-      // пробел-разделитель: если уже есть текст — добавляем с пробелом
-      const next = current ? `${current} ${text}` : text;
-      store.setInput(next);
-    },
-  });
-  // 2026-05-04 mic redesign — hybrid hold-to-talk + tap-to-toggle.
-  //
-  //   • PointerDown: arms a press timer + remembers whether we
-  //     started a listening session at this moment.
-  //   • PointerUp: if held ≥ 250ms → stop (release-to-stop hold).
-  //     Otherwise it was a short tap — leave the session running
-  //     (toggle mode); the NEXT tap will stop it.
-  //   • Click also triggers as fallback for keyboard activation.
-  const micPressStartRef = useRef<number | null>(null);
-  const micStartedThisPressRef = useRef<boolean>(false);
-
-  const handleMicPointerDown = useCallback(() => {
-    if (!speech.isSupported || store.status !== "active") return;
-    micPressStartRef.current = Date.now();
-    if (speech.status !== "listening") {
-      speech.startListening();
-      micStartedThisPressRef.current = true;
-    } else {
-      micStartedThisPressRef.current = false;
-    }
-  }, [speech, store.status]);
-
-  const finishMicPress = useCallback(() => {
-    const start = micPressStartRef.current;
-    micPressStartRef.current = null;
-    if (!start || !speech.isSupported) return;
-    const heldMs = Date.now() - start;
-    if (heldMs >= 250) {
-      // Hold-to-talk path: release stops the session unconditionally.
-      if (speech.status === "listening") speech.stopListening();
-    } else if (!micStartedThisPressRef.current) {
-      // Short tap on an already-listening button → stop (toggle off).
-      if (speech.status === "listening") speech.stopListening();
-    }
-    micStartedThisPressRef.current = false;
-  }, [speech]);
   // quiz_v2: narrative case briefing (2026-04-18)
   const [caseIntro, setCaseIntro] = useState<{
     caseId: string;
@@ -511,6 +453,7 @@ function KnowledgeSessionPage() {
 
         case "session_completed":
         case "quiz.completed": {
+          if (userExitedRef.current) break;
           store.setResults(data.results as Record<string, unknown>);
           store.setStatus("completed");
           setShowResults(true);
@@ -691,12 +634,6 @@ function KnowledgeSessionPage() {
     sendMessage({ type: "answer", choice_index: idx });
     store.setIsTyping(true);
   }, [store, sendMessage]);
-
-  // Skip question
-  const handleSkip = useCallback(() => {
-    sendMessage({ type: "skip" });
-    store.addMessage({ type: "system", content: "Вопрос пропущен" });
-  }, [sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps -- store.addMessage is a stable Zustand action
 
   // Request hint
   const handleHint = useCallback(() => {
@@ -1140,17 +1077,13 @@ function KnowledgeSessionPage() {
           <div className="flex items-center gap-3">
             <motion.button
               onClick={() => {
-                // 2026-05-04 FRONT-2: send `quiz.end` so the server
-                // marks the session completed and we get a results
-                // payload, instead of leaving it dangling as
-                // "abandoned" on disconnect. Best-effort — if WS is
-                // already closed we just navigate.
+                userExitedRef.current = true;
                 try {
                   if (store.status === "active") {
                     sendMessage({ type: "quiz.end" });
                   }
                 } catch {
-                  /* WS may be down — proceed to navigate anyway */
+                  /* WS may be down */
                 }
                 store.reset();
                 router.push("/pvp");
@@ -1265,478 +1198,362 @@ function KnowledgeSessionPage() {
         </div>
       </div>
 
-      {/* Chat Messages — pixel-grid arcade background (2026-04-18 UX fix) */}
-      <div
-        className="flex-1 overflow-y-auto relative"
-        style={{
-          backgroundImage: `
-            radial-gradient(ellipse at 50% 20%, rgba(107,77,199,0.12) 0%, transparent 55%),
-            repeating-linear-gradient(0deg, transparent 0, transparent 31px, rgba(107,77,199,0.06) 31px, rgba(107,77,199,0.06) 32px),
-            repeating-linear-gradient(90deg, transparent 0, transparent 31px, rgba(107,77,199,0.06) 31px, rgba(107,77,199,0.06) 32px)
-          `,
-        }}
-      >
-        <div className="mx-auto max-w-3xl px-4 py-6 space-y-4 relative">
-          {/* Connection status */}
-          {connectionState !== "connected" && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex items-center justify-center gap-2 py-8"
-            >
-              <Loader2
-                size={20}
-                className="animate-spin"
-                style={{ color: "var(--accent)" }}
-              />
-              <span
-                className="font-mono text-sm"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {connectionState === "connecting"
-                  ? "Подключение..."
-                  : "Переподключение..."}
-              </span>
-            </motion.div>
-          )}
-
-          {/* Messages */}
-          {store.messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
-          ))}
-
-          {/* Typing indicator — rotating arcade messages (2026-04-18) */}
-          <AnimatePresence>
-            {store.isTyping && <QuizThinkingIndicator />}
-          </AnimatePresence>
-
-          <div ref={messagesEndRef} />
-        </div>
-      </div>
-
-      {/* V2: Follow-up action bar */}
-      {store.pendingFollowUp && (
-        <div
-          className="shrink-0 border-t px-4 py-3"
-          style={{
-            borderColor: "var(--accent-muted)",
-            background: "var(--accent-muted)",
-          }}
-        >
-          <div className="mx-auto flex max-w-3xl items-center justify-between">
-            <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-              Уточняющий вопрос — вы можете ответить или пропустить
-            </span>
-            <div className="flex gap-2">
-              <button
-                className="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-                style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
-                onClick={() => {
-                  store.setPendingFollowUp(null);
-                  // Let user type answer normally - next text.message will be treated as follow-up answer
+      {/* ═══ Main Content: 2-column MC layout OR single-column free-text ═══ */}
+      {store.currentChoices && store.currentChoices.length >= 2 ? (
+        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+          {/* ── LEFT: MC Choices Panel (1/3) ── */}
+          <aside
+            className="order-2 lg:order-1 shrink-0 lg:w-[33.333%] overflow-y-auto"
+            style={{
+              background: "var(--bg-primary)",
+              borderRight: "2px solid var(--accent)",
+              boxShadow: "2px 0 0 0 rgba(0,0,0,0.15)",
+            }}
+          >
+            <div className="flex flex-col h-full p-4 lg:p-5">
+              <div
+                className="font-pixel uppercase tracking-widest mb-4 px-2 py-1.5 text-center"
+                style={{
+                  color: "var(--accent)",
+                  fontSize: 13,
+                  textShadow: "0 0 8px var(--accent-glow)",
+                  background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+                  border: "2px solid var(--accent)",
+                  borderRadius: 0,
+                  boxShadow: "3px 3px 0 0 var(--accent-muted)",
                 }}
               >
-                Ответить
-              </button>
-              <button
-                className="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-                style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-muted)" }}
-                onClick={() => {
-                  store.setPendingFollowUp(null);
-                  sendMessage({ type: "quiz.follow_up_response", data: { action: "skip" } });
-                }}
-              >
-                Пропустить
-              </button>
+                ▸ ВЫБЕРИТЕ ОТВЕТ
+              </div>
+
+              <div className="flex flex-col gap-3 flex-1">
+                {store.currentChoices.map((choiceText, idx) => {
+                  const isPicked = store.pickedChoiceIndex === idx;
+                  const locked = store.pickedChoiceIndex !== null;
+                  const badgePalette = [
+                    "var(--accent)",
+                    "var(--success, #22c55e)",
+                    "var(--gf-xp, #facc15)",
+                    "var(--magenta, #d946ef)",
+                    "var(--warning, #f97316)",
+                  ];
+                  const badgeColor = isPicked
+                    ? "var(--accent)"
+                    : badgePalette[idx % badgePalette.length];
+                  return (
+                    <motion.button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleChoicePick(idx)}
+                      disabled={locked || store.status !== "active"}
+                      whileHover={!locked ? { x: -2, y: -2 } : undefined}
+                      whileTap={!locked ? { x: 2, y: 2 } : undefined}
+                      className="flex items-stretch gap-0 text-left font-mono w-full"
+                      style={{
+                        background: isPicked
+                          ? "color-mix(in srgb, var(--accent) 18%, var(--bg-panel))"
+                          : "var(--bg-panel)",
+                        color: "var(--text-primary)",
+                        border: `3px solid ${isPicked ? "var(--accent)" : badgeColor}`,
+                        borderRadius: 0,
+                        boxShadow: isPicked
+                          ? "5px 5px 0 0 var(--accent), 0 0 18px var(--accent-glow)"
+                          : `4px 4px 0 0 ${badgeColor}`,
+                        cursor: locked ? "not-allowed" : "pointer",
+                        opacity: locked && !isPicked ? 0.4 : 1,
+                        transition: "background 140ms, box-shadow 140ms, opacity 140ms",
+                        minHeight: 56,
+                      }}
+                    >
+                      <span
+                        className="font-pixel uppercase shrink-0 flex items-center justify-center"
+                        style={{
+                          color: "#fff",
+                          background: badgeColor,
+                          fontSize: 20,
+                          letterSpacing: "0.06em",
+                          width: 48,
+                          textShadow: "2px 2px 0 #000",
+                        }}
+                      >
+                        {String.fromCharCode(65 + idx)}
+                      </span>
+                      <span
+                        className="flex-1 px-3 py-2 leading-snug self-center"
+                        style={{ fontSize: 14, lineHeight: 1.4 }}
+                      >
+                        {choiceText}
+                      </span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+
+              {/* Hint button at bottom of choices panel */}
+              {hintAvailable && (
+                <motion.button
+                  onClick={handleHint}
+                  disabled={
+                    hintLoading ||
+                    store.status !== "active" ||
+                    (hintTiersRemaining !== null && hintTiersRemaining <= 0)
+                  }
+                  whileHover={{ y: -1 }}
+                  whileTap={{ y: 2 }}
+                  className="mt-4 flex w-full items-center justify-center gap-2 py-3 px-3 disabled:opacity-40"
+                  style={{
+                    background: "rgba(245,158,11,0.12)",
+                    border: "2px solid var(--warning)",
+                    borderRadius: 0,
+                    color: "var(--warning)",
+                    boxShadow: "3px 3px 0 0 var(--warning)",
+                    transition: "box-shadow 120ms, transform 120ms",
+                  }}
+                  title={
+                    hintTier !== null
+                      ? `Подсказка ${hintTier}/3 · ещё ${hintTiersRemaining ?? 0}`
+                      : "Подсказка (3 уровня, штраф растёт)"
+                  }
+                  aria-label="Подсказка"
+                >
+                  {hintLoading ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <>
+                      <Lightbulb size={16} />
+                      <span className="font-pixel text-[12px] uppercase tracking-widest">
+                        {hintTier !== null ? `ПОДСКАЗКА ${hintTier}/3` : "ПОДСКАЗКА"}
+                      </span>
+                    </>
+                  )}
+                </motion.button>
+              )}
+            </div>
+          </aside>
+
+          {/* ── RIGHT: Chat Area (2/3) ── */}
+          <div
+            className="order-1 lg:order-2 flex-1 overflow-y-auto relative"
+            style={{
+              backgroundImage: `
+                radial-gradient(ellipse at 50% 20%, rgba(107,77,199,0.12) 0%, transparent 55%),
+                repeating-linear-gradient(0deg, transparent 0, transparent 31px, rgba(107,77,199,0.06) 31px, rgba(107,77,199,0.06) 32px),
+                repeating-linear-gradient(90deg, transparent 0, transparent 31px, rgba(107,77,199,0.06) 31px, rgba(107,77,199,0.06) 32px)
+              `,
+            }}
+          >
+            <div className="px-4 py-6 space-y-4 relative">
+              {connectionState !== "connected" && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex items-center justify-center gap-2 py-8"
+                >
+                  <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
+                  <span className="font-mono text-sm" style={{ color: "var(--text-muted)" }}>
+                    {connectionState === "connecting" ? "Подключение..." : "Переподключение..."}
+                  </span>
+                </motion.div>
+              )}
+
+              {store.messages.map((msg) => (
+                <MessageBubble key={msg.id} message={msg} />
+              ))}
+
+              <AnimatePresence>
+                {store.isTyping && <QuizThinkingIndicator />}
+              </AnimatePresence>
+
+              <div ref={messagesEndRef} />
             </div>
           </div>
         </div>
-      )}
-
-      {/* ═══ Pixel Input Bar — 2026-04-18 redesigned:
-             - opaque solid background (no stray artifacts behind input)
-             - explicit per-element padding so hard-shadows don't collide
-             - "SEND" label hides on <sm; keeps bar compact on mobile
-         ═══ */}
-      <div
-        className="shrink-0 relative"
-        style={{
-          borderTop: "2px solid var(--accent)",
-          background: "var(--bg-primary)",
-          boxShadow: "0 -2px 0 0 rgba(0,0,0,0.15)",
-          zIndex: 10,
-          paddingTop: 14,
-          paddingBottom: 14,
-          paddingLeft: 12,
-          paddingRight: 12,
-        }}
-      >
-        {/* PR-MC (2026-05-05): when MC choices are present, render a row
-            of 3 (or 2-4) buttons instead of the textarea. Other quiz
-            controls (hint / skip) stay available; mic + textarea + send
-            are hidden because choice_index already conveys the answer. */}
-        {store.currentChoices && store.currentChoices.length >= 2 ? (
-          // PR (2026-05-06): pixel-retro 5-option layout — left-aligned,
-          // larger font, hard shadows, color-coded letter badges. Each
-          // button takes the full available width on mobile, max ~520px
-          // on desktop, anchored to the left margin so the user reads
-          // top-to-bottom like a multiple-choice card. The legacy
-          // input-bar (mic + textarea + send) is hidden while MC is
-          // active — it would only confuse the choice flow.
-          <div className="mx-auto sm:mx-0 flex w-full max-w-[520px] flex-col gap-2.5 sm:ml-2">
-            {store.currentChoices.map((choiceText, idx) => {
-              const isPicked = store.pickedChoiceIndex === idx;
-              const locked = store.pickedChoiceIndex !== null;
-              // Color rotation for the letter-badge so 5 options stay
-              // visually distinct without changing the button body —
-              // pure decorative palette (matches the arena tier ramp).
-              const badgePalette = [
-                "var(--accent)",
-                "var(--success, #22c55e)",
-                "var(--gf-xp, #facc15)",
-                "var(--magenta, #d946ef)",
-                "var(--warning, #f97316)",
-              ];
-              const badgeColor = isPicked
-                ? "var(--accent)"
-                : badgePalette[idx % badgePalette.length];
-              return (
-                <motion.button
-                  key={idx}
-                  type="button"
-                  onClick={() => handleChoicePick(idx)}
-                  disabled={locked || store.status !== "active"}
-                  whileHover={!locked ? { x: -2, y: -2 } : undefined}
-                  whileTap={!locked ? { x: 2, y: 2 } : undefined}
-                  className="flex items-stretch gap-0 text-left font-mono"
-                  style={{
-                    background: isPicked
-                      ? "color-mix(in srgb, var(--accent) 18%, var(--bg-panel))"
-                      : "var(--bg-panel)",
-                    color: "var(--text-primary)",
-                    border: `3px solid ${isPicked ? "var(--accent)" : badgeColor}`,
-                    borderRadius: 0,
-                    boxShadow: isPicked
-                      ? `5px 5px 0 0 var(--accent), 0 0 18px var(--accent-glow)`
-                      : `4px 4px 0 0 ${badgeColor}`,
-                    cursor: locked ? "not-allowed" : "pointer",
-                    opacity: locked && !isPicked ? 0.45 : 1,
-                    transition: "background 140ms, box-shadow 140ms",
-                    fontSize: 16,
-                    minHeight: 64,
-                  }}
+      ) : (
+        /* ═══ Single-column free-text layout ═══ */
+        <>
+          <div
+            className="flex-1 overflow-y-auto relative"
+            style={{
+              backgroundImage: `
+                radial-gradient(ellipse at 50% 20%, rgba(107,77,199,0.12) 0%, transparent 55%),
+                repeating-linear-gradient(0deg, transparent 0, transparent 31px, rgba(107,77,199,0.06) 31px, rgba(107,77,199,0.06) 32px),
+                repeating-linear-gradient(90deg, transparent 0, transparent 31px, rgba(107,77,199,0.06) 31px, rgba(107,77,199,0.06) 32px)
+              `,
+            }}
+          >
+            <div className="mx-auto max-w-3xl px-4 py-6 space-y-4 relative">
+              {connectionState !== "connected" && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex items-center justify-center gap-2 py-8"
                 >
-                  <span
-                    className="font-pixel uppercase shrink-0 flex items-center justify-center"
-                    style={{
-                      color: "#fff",
-                      background: badgeColor,
-                      fontSize: 22,
-                      letterSpacing: "0.06em",
-                      width: 56,
-                      textShadow: "2px 2px 0 #000",
+                  <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
+                  <span className="font-mono text-sm" style={{ color: "var(--text-muted)" }}>
+                    {connectionState === "connecting" ? "Подключение..." : "Переподключение..."}
+                  </span>
+                </motion.div>
+              )}
+
+              {store.messages.map((msg) => (
+                <MessageBubble key={msg.id} message={msg} />
+              ))}
+
+              <AnimatePresence>
+                {store.isTyping && <QuizThinkingIndicator />}
+              </AnimatePresence>
+
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* Follow-up bar */}
+          {store.pendingFollowUp && (
+            <div
+              className="shrink-0 border-t px-4 py-3"
+              style={{ borderColor: "var(--accent-muted)", background: "var(--accent-muted)" }}
+            >
+              <div className="mx-auto flex max-w-3xl items-center justify-between">
+                <span className="text-sm" style={{ color: "var(--text-muted)" }}>
+                  Уточняющий вопрос — ответьте или пропустите
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    className="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+                    style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+                    onClick={() => store.setPendingFollowUp(null)}
+                  >
+                    Ответить
+                  </button>
+                  <button
+                    className="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+                    style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-muted)" }}
+                    onClick={() => {
+                      store.setPendingFollowUp(null);
+                      sendMessage({ type: "quiz.follow_up_response", data: { action: "skip" } });
                     }}
                   >
-                    {String.fromCharCode(65 + idx)}
-                  </span>
-                  <span
-                    className="flex-1 px-3 py-2.5 leading-snug self-center"
-                    style={{ fontSize: 15, lineHeight: 1.35 }}
-                  >
-                    {choiceText}
-                  </span>
-                </motion.button>
-              );
-            })}
-          </div>
-        ) : (
-        <div className="mx-auto flex max-w-3xl items-end gap-3">
-          {/* Hint button — pixel amber. 2026-05-04: source of truth is the
-              backend `hint_available` flag from the quiz.question payload
-              (covers blitz + rapid_blitz + future no-hint modes). The
-              previous `mode !== "blitz"` check missed rapid_blitz and
-              had a race with the WS init message. */}
-          {hintAvailable && (
-          <motion.button
-            onClick={handleHint}
-            disabled={
-              hintLoading ||
-              store.status !== "active" ||
-              (hintTiersRemaining !== null && hintTiersRemaining <= 0)
-            }
-            whileHover={{ y: -1 }}
-            whileTap={{ y: 2 }}
-            className="relative flex h-11 min-w-11 shrink-0 items-center justify-center gap-1 px-2 disabled:opacity-40"
-            style={{
-              background: "rgba(245,158,11,0.12)",
-              border: "2px solid var(--warning)",
-              borderRadius: 0,
-              color: "var(--warning)",
-              boxShadow: "2px 2px 0 0 var(--warning)",
-              transition: "box-shadow 120ms, transform 120ms",
-            }}
-            title={
-              hintTier !== null
-                ? `Подсказка ${hintTier}/3 · ещё ${hintTiersRemaining ?? 0}`
-                : "Подсказка (3 уровня, штраф растёт)"
-            }
-            aria-label="Подсказка"
-          >
-            {hintLoading ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <>
-                <Lightbulb size={16} />
-                {hintTier !== null && (
-                  <span className="font-pixel text-[10px] leading-none">
-                    {hintTier}/3
-                  </span>
-                )}
-              </>
-            )}
-          </motion.button>
+                    Пропустить
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
-          {/* Skip button — pixel neutral */}
-          <motion.button
-            onClick={handleSkip}
-            disabled={store.status !== "active"}
-            whileHover={{ y: -1 }}
-            whileTap={{ y: 2 }}
-            className="flex h-11 w-11 shrink-0 items-center justify-center disabled:opacity-40"
-            style={{
-              background: "var(--input-bg)",
-              border: "2px solid var(--border-color)",
-              borderRadius: 0,
-              color: "var(--text-muted)",
-              boxShadow: "2px 2px 0 0 var(--border-color)",
-              transition: "box-shadow 120ms, transform 120ms",
-            }}
-            title="Пропустить"
-            aria-label="Пропустить"
-          >
-            <SkipForward size={16} />
-          </motion.button>
-
-          {/* Pixel text input */}
+          {/* Free-text input bar: hint + textarea + send */}
           <div
-            className="flex flex-1 items-end relative min-w-0"
+            className="shrink-0 relative"
             style={{
-              background: "var(--input-bg)",
-              border: "2px solid var(--accent)",
-              borderRadius: 0,
-              boxShadow: "2px 2px 0 0 var(--accent-muted)",
-              minHeight: 44,
+              borderTop: "2px solid var(--accent)",
+              background: "var(--bg-primary)",
+              boxShadow: "0 -2px 0 0 rgba(0,0,0,0.15)",
+              zIndex: 10,
+              padding: "14px 12px",
             }}
           >
-            <textarea
-              ref={inputRef}
-              value={store.input}
-              onChange={(e) => {
-                store.setInput(e.target.value);
-                // Clear validation hint as soon as the user starts editing.
-                if (validationError) setValidationError(null);
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                speech.status === "listening"
-                  ? (speech.interimText ? "" : "◉ Говорите…")
-                  : "▸ ВВЕДИТЕ ОТВЕТ ИЛИ НАЖМИТЕ 🎤"
-              }
-              rows={1}
-              className="flex-1 resize-none bg-transparent px-3 py-2.5 text-sm outline-none placeholder:opacity-50"
-              style={{
-                color: "var(--text-primary)",
-                maxHeight: "240px",
-                overflowY: "auto",
-                fontFamily: "var(--font-mono, monospace)",
-              }}
-              disabled={store.status !== "active"}
-            />
-            {/* 2026-05-04 voice overlay: interim transcript shown
-                INSIDE the input area as a right-aligned ghost line —
-                no more separate "▸ ..." line below the input.
-                Padding-aligned with the textarea so the typing zone
-                feels unified (Discord-style ghost preview).
-                When the user types or finalises speech, this disappears
-                and the value lives in the textarea normally. */}
-            {speech.status === "listening" && speech.interimText && (
+            <div className="mx-auto flex max-w-3xl items-end gap-3">
+              {hintAvailable && (
+                <motion.button
+                  onClick={handleHint}
+                  disabled={
+                    hintLoading ||
+                    store.status !== "active" ||
+                    (hintTiersRemaining !== null && hintTiersRemaining <= 0)
+                  }
+                  whileHover={{ y: -1 }}
+                  whileTap={{ y: 2 }}
+                  className="relative flex h-11 min-w-11 shrink-0 items-center justify-center gap-1 px-2 disabled:opacity-40"
+                  style={{
+                    background: "rgba(245,158,11,0.12)",
+                    border: "2px solid var(--warning)",
+                    borderRadius: 0,
+                    color: "var(--warning)",
+                    boxShadow: "2px 2px 0 0 var(--warning)",
+                    transition: "box-shadow 120ms, transform 120ms",
+                  }}
+                  title={
+                    hintTier !== null
+                      ? `Подсказка ${hintTier}/3 · ещё ${hintTiersRemaining ?? 0}`
+                      : "Подсказка (3 уровня, штраф растёт)"
+                  }
+                  aria-label="Подсказка"
+                >
+                  {hintLoading ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <>
+                      <Lightbulb size={16} />
+                      {hintTier !== null && (
+                        <span className="font-pixel text-[10px] leading-none">{hintTier}/3</span>
+                      )}
+                    </>
+                  )}
+                </motion.button>
+              )}
+
               <div
-                aria-hidden
-                className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-mono truncate max-w-[55%]"
+                className="flex flex-1 items-end relative min-w-0"
                 style={{
-                  color: "var(--text-muted)",
-                  opacity: 0.7,
-                  fontFamily: "var(--font-mono, monospace)",
+                  background: "var(--input-bg)",
+                  border: "2px solid var(--accent)",
+                  borderRadius: 0,
+                  boxShadow: "2px 2px 0 0 var(--accent-muted)",
+                  minHeight: 44,
                 }}
-                title="распознаётся… отпустите микрофон чтобы вставить"
               >
-                {store.input ? "… " : ""}
-                {speech.interimText}
+                <textarea
+                  ref={inputRef}
+                  value={store.input}
+                  onChange={(e) => {
+                    store.setInput(e.target.value);
+                    if (validationError) setValidationError(null);
+                  }}
+                  onKeyDown={handleKeyDown}
+                  placeholder="▸ ВВЕДИТЕ ОТВЕТ"
+                  rows={1}
+                  className="flex-1 resize-none bg-transparent px-3 py-2.5 text-sm outline-none placeholder:opacity-50"
+                  style={{
+                    color: "var(--text-primary)",
+                    maxHeight: "240px",
+                    overflowY: "auto",
+                    fontFamily: "var(--font-mono, monospace)",
+                  }}
+                  disabled={store.status !== "active"}
+                />
+              </div>
+
+              <motion.button
+                onClick={handleSend}
+                disabled={!store.input.trim() || store.status !== "active"}
+                whileHover={{ y: -1 }}
+                whileTap={{ y: 2 }}
+                className="flex h-11 shrink-0 items-center justify-center gap-1.5 px-3 sm:px-4 disabled:opacity-40 font-pixel text-sm uppercase tracking-widest"
+                style={{
+                  background: "var(--accent)",
+                  border: "2px solid var(--accent)",
+                  borderRadius: 0,
+                  color: "#fff",
+                  boxShadow: "2px 2px 0 0 #000",
+                  transition: "box-shadow 120ms, transform 120ms",
+                }}
+                aria-label="Отправить"
+              >
+                <Send size={14} />
+                <span className="hidden sm:inline">SEND</span>
+              </motion.button>
+            </div>
+            {validationError && (
+              <div
+                className="mx-auto mt-2 max-w-3xl px-1 text-xs"
+                style={{ color: "var(--danger, #ef4444)" }}
+              >
+                ▸ {validationError}
               </div>
             )}
           </div>
-
-          {/* 2026-05-04 mic redesign:
-                - hold-to-talk + tap-to-toggle hybrid (see handlers above)
-                - pulsing red ring + animated 4-bar waveform when listening
-                - tooltip clarifies hold vs tap to remove "что эта кнопка делает"
-              The waveform is pseudo (no real audio level from Web Speech
-              API); a future PR can swap to MediaRecorder analyser. */}
-          <MicButton
-            isListening={speech.status === "listening"}
-            isSupported={speech.isSupported}
-            disabled={store.status !== "active" || !speech.isSupported}
-            onPointerDown={handleMicPointerDown}
-            onPointerUp={finishMicPress}
-            onPointerLeave={finishMicPress}
-            onPointerCancel={finishMicPress}
-          />
-
-          {/* Send — pixel arcade accent */}
-          <motion.button
-            onClick={handleSend}
-            disabled={!store.input.trim() || store.status !== "active"}
-            whileHover={{ y: -1 }}
-            whileTap={{ y: 2 }}
-            className="flex h-11 shrink-0 items-center justify-center gap-1.5 px-3 sm:px-4 disabled:opacity-40 font-pixel text-sm uppercase tracking-widest"
-            style={{
-              background: "var(--accent)",
-              border: "2px solid var(--accent)",
-              borderRadius: 0,
-              color: "#fff",
-              boxShadow: "2px 2px 0 0 #000",
-              transition: "box-shadow 120ms, transform 120ms",
-            }}
-            aria-label="Отправить"
-          >
-            <Send size={14} />
-            <span className="hidden sm:inline">SEND</span>
-          </motion.button>
-        </div>
-        )}
-        {/* 2026-05-04: client-side validation hint. Replaces the old
-            backend-rejection UX where mash-typed answers ("ра", "ов")
-            cost an LLM eval and produced a feedback bubble. Now we
-            never send them — we tell the user inline what's wrong. */}
-        {validationError && (
-          <div
-            className="mx-auto mt-2 max-w-3xl px-1 text-xs"
-            style={{ color: "var(--danger, #ef4444)" }}
-          >
-            ▸ {validationError}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ─── Mic Button Component ──────────────────────────────────────────────── */
-
-/**
- * Hybrid hold-to-talk + tap-to-toggle mic button with pulsing-ring
- * recording indicator and pseudo-waveform animation. The waveform is
- * decorative (Web Speech API doesn't expose audio level); a follow-up
- * can swap to a real analyser via MediaRecorder if needed.
- */
-function MicButton({
-  isListening,
-  isSupported,
-  disabled,
-  onPointerDown,
-  onPointerUp,
-  onPointerLeave,
-  onPointerCancel,
-}: {
-  isListening: boolean;
-  isSupported: boolean;
-  disabled: boolean;
-  onPointerDown: () => void;
-  onPointerUp: () => void;
-  onPointerLeave: () => void;
-  onPointerCancel: () => void;
-}) {
-  const tooltip = !isSupported
-    ? "Голосовой ввод не поддерживается в этом браузере"
-    : isListening
-      ? "Идёт запись… отпусти или нажми ещё раз для остановки"
-      : "Голосовой ответ — удерживай или коротко тапни";
-
-  return (
-    <motion.button
-      type="button"
-      disabled={disabled}
-      onPointerDown={onPointerDown}
-      onPointerUp={onPointerUp}
-      onPointerLeave={onPointerLeave}
-      onPointerCancel={onPointerCancel}
-      whileTap={{ y: 2 }}
-      className="relative flex h-11 w-11 shrink-0 items-center justify-center disabled:opacity-40 select-none"
-      style={{
-        background: isListening ? "var(--danger)" : "var(--input-bg)",
-        border: isListening ? "2px solid var(--danger)" : "2px solid var(--accent)",
-        borderRadius: 0,
-        color: isListening ? "#fff" : "var(--accent)",
-        boxShadow: isListening ? "2px 2px 0 0 #000" : "2px 2px 0 0 var(--accent-muted)",
-        transition: "box-shadow 120ms, transform 120ms, background 120ms",
-        touchAction: "none",
-      }}
-      title={tooltip}
-      aria-label={isListening ? "Идёт запись голоса" : "Запись голосового ответа"}
-      aria-pressed={isListening}
-    >
-      {isListening ? (
-        <>
-          <MicWaveform />
-          {/* Pulsing recording ring */}
-          <motion.span
-            aria-hidden
-            initial={{ opacity: 0.6, scale: 1 }}
-            animate={{ opacity: [0.6, 0, 0.6], scale: [1, 1.5, 1] }}
-            transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut" }}
-            className="pointer-events-none absolute inset-0"
-            style={{
-              border: "2px solid var(--danger)",
-              borderRadius: 0,
-            }}
-          />
         </>
-      ) : (
-        <Mic size={16} />
       )}
-    </motion.button>
-  );
-}
-
-function MicWaveform() {
-  // 4-bar pseudo waveform. Each bar oscillates with a unique delay
-  // so the group looks organic. Random heights chosen at compile-time
-  // for stability — no per-frame state churn.
-  const bars = [
-    { d: 0.0, h: [40, 90, 50] },
-    { d: 0.1, h: [70, 30, 80] },
-    { d: 0.2, h: [55, 95, 45] },
-    { d: 0.3, h: [35, 70, 55] },
-  ];
-  return (
-    <span className="inline-flex h-4 items-end gap-[2px]" aria-hidden>
-      {bars.map((b, i) => (
-        <motion.span
-          key={i}
-          className="block w-[2px] bg-current"
-          initial={{ height: `${b.h[0]}%` }}
-          animate={{ height: b.h.map((p) => `${p}%`) }}
-          transition={{
-            duration: 0.6,
-            repeat: Infinity,
-            delay: b.d,
-            ease: "easeInOut",
-          }}
-          style={{ minHeight: 3 }}
-        />
-      ))}
-    </span>
+    </div>
   );
 }
 
