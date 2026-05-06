@@ -195,6 +195,12 @@ function PvPLobbyContent() {
         const params = new URLSearchParams({ mode });
         if (category) params.set("category", category);
         params.set("personality", personality);
+        // PR-MC hotfix (2026-05-06): include choices_format in the URL so
+        // the quiz session page reads it on first paint and forwards it
+        // into the WS quiz.start data. Without this the WS handler
+        // creates a free-text _SoloQuizState even though the REST POST
+        // accepted `choices_format: true`.
+        params.set("choices_format", "1");
         router.push(`/pvp/quiz/${sid}?${params.toString()}`);
       } else {
         useNotificationStore.getState().addToast({

@@ -566,9 +566,23 @@ function KnowledgeSessionPage() {
       const mode = params.get("mode") || store.mode || "free_dialog";
       const category = params.get("category") || store.category || undefined;
       const personality = params.get("personality") || undefined;
+      // PR-MC hotfix (2026-05-06): forward `choices_format` into the WS
+      // start payload. The previous PR plumbed it only through the REST
+      // POST /knowledge/sessions, but the WS handler reads its config
+      // from quiz.start.data (REST creates a DB row, the WS handler
+      // creates the in-memory _SoloQuizState). Without this line every
+      // session fell back to free-text — chunks_with_choices stayed
+      // 0/383 in prod and zero MC events fired.
+      const choicesFormat = params.get("choices_format") === "1"
+        || params.get("format") === "mc_3";
       sendMessage({
         type: "quiz.start",
-        data: { mode, category, ai_personality: personality },
+        data: {
+          mode,
+          category,
+          ai_personality: personality,
+          choices_format: choicesFormat,
+        },
       });
     }
   }, [isConnected, store.status, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
