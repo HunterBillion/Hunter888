@@ -548,6 +548,16 @@ class Settings(BaseSettings):
     # can verify writes (XLEN) before flipping the consumer.
     arena_bus_audit_consumer_enabled: bool = False
 
+    # PvP judge ensemble (2026-05-06)
+    # 3 parallel judges reduce single-call noise and improve coaching quality:
+    # final verdict is aggregated by median, quorum requires >=2 successful
+    # structured responses. Disable only for incident rollback.
+    pvp_judge_ensemble_enabled: bool = True
+    pvp_judge_ensemble_size: int = 3
+    pvp_judge_ensemble_quorum: int = 2
+    pvp_judge_temperature: float = 0.2
+    pvp_judge_max_tokens: int = 600
+
     # Content→Arena PR-3: auto-publish threshold for arena_knowledge
     # drafts. When ROP/admin approves an ``arena_knowledge`` import and
     # the LLM's *original* confidence (immutable column from migration

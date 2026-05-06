@@ -12,14 +12,17 @@ AI Judge config:
 - Calibration: 10 reference dialogs, drift alert > 5%
 """
 
+import asyncio
 import json
 import logging
+import statistics
 import time
 import uuid
 from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core import errors as err
 from app.models.pvp import DuelDifficulty, DIFFICULTY_MULTIPLIERS
 from app.services.arena_metrics import (
@@ -28,10 +31,9 @@ from app.services.arena_metrics import (
 )
 from app.services.llm import generate_response
 from app.services.rag_legal import (
-    retrieve_legal_context,
-    RAGContext,
     log_chunk_usage,
     record_chunk_outcome,
+    retrieve_legal_context,
 )
 
 logger = logging.getLogger(__name__)
@@ -188,6 +190,176 @@ JUDGE_USER_PROMPT = """## Контекст дуэли
 # Judge logic
 # ---------------------------------------------------------------------------
 
+_ENSEMBLE_JUDGE_STYLES = (
+    (
+        "strict_legal",
+        "Ты самый строгий судья панели: приоритет юридическая точность, "
+        "ссылки на статью и корректность формулировок.",
+    ),
+    (
+        "balanced_sales",
+        "Ты сбалансированный судья панели: равный вес продажной структуре, "
+        "работе с возражениями и юридической точности.",
+    ),
+    (
+        "coach_quality",
+        "Ты судья-коуч панели: оцени строго по шкалам, но формулируй максимально "
+        "полезный coaching_tip и ideal_reply для обучения менеджера.",
+    ),
+)
+
+
+def _build_neutral_judge_result(reason: str) -> dict:
+    return {
+        "selling_score": 25,
+        "acting_score": 15,
+        "legal_accuracy": 10,
+        "selling_breakdown": {},
+        "acting_breakdown": {},
+        "legal_details": [],
+        "flags": [f"AI Judge error: {reason[:100]}"],
+        "summary": "Оценка не удалась, применены нейтральные баллы.",
+        "coaching_tip": "",
+        "ideal_reply": "",
+        "key_articles": [],
+    }
+
+
+def _is_parse_degraded(result: dict) -> bool:
+    flags = result.get("flags") or []
+    return isinstance(flags, list) and "JSON parse error" in flags
+
+
+def _collect_numeric(result: dict, key: str, default: float = 0.0) -> float:
+    try:
+        return float(result.get(key, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _median(values: list[float], default: float = 0.0) -> float:
+    if not values:
+        return default
+    return float(statistics.median(values))
+
+
+def _aggregate_breakdown(results: list[dict], key: str) -> dict:
+    """Aggregate per-criterion subscores by median (robust to outliers)."""
+    buckets: dict[str, list[float]] = {}
+    for result in results:
+        bd = result.get(key) or {}
+        if not isinstance(bd, dict):
+            continue
+        for k, v in bd.items():
+            try:
+                buckets.setdefault(str(k), []).append(float(v))
+            except (TypeError, ValueError):
+                continue
+    return {k: round(_median(vals), 2) for k, vals in buckets.items()}
+
+
+def _pick_primary_result(results: list[dict]) -> dict:
+    """Pick the result nearest to the panel median total."""
+    if not results:
+        return {}
+    totals = [
+        _collect_numeric(r, "selling_score") + _collect_numeric(r, "legal_accuracy")
+        for r in results
+    ]
+    target = _median(totals)
+    return min(
+        results,
+        key=lambda r: abs(
+            (_collect_numeric(r, "selling_score") + _collect_numeric(r, "legal_accuracy")) - target
+        ),
+    )
+
+
+def _aggregate_panel_results(results: list[dict]) -> dict:
+    """Aggregate successful judge calls into one stable panel verdict."""
+    if not results:
+        return _build_neutral_judge_result("no_successful_judges")
+
+    primary = _pick_primary_result(results)
+    selling_score = _median([_collect_numeric(r, "selling_score") for r in results], default=25.0)
+    acting_score = _median([_collect_numeric(r, "acting_score") for r in results], default=15.0)
+    legal_accuracy = _median([_collect_numeric(r, "legal_accuracy") for r in results], default=10.0)
+
+    # Keep coaching text from one coherent judge, but enrich article list
+    # from the full panel.
+    articles: list[str] = []
+    for r in results:
+        raw = r.get("key_articles") or []
+        if isinstance(raw, list):
+            for a in raw:
+                txt = str(a).strip()
+                if txt and txt not in articles:
+                    articles.append(txt)
+                if len(articles) >= 3:
+                    break
+        if len(articles) >= 3:
+            break
+
+    flags: list[str] = []
+    for r in results:
+        raw_flags = r.get("flags") or []
+        if not isinstance(raw_flags, list):
+            continue
+        for f in raw_flags:
+            fs = str(f).strip()
+            if not fs or fs == "JSON parse error":
+                continue
+            if fs not in flags:
+                flags.append(fs)
+
+    return {
+        "selling_score": selling_score,
+        "acting_score": acting_score,
+        "legal_accuracy": legal_accuracy,
+        "selling_breakdown": _aggregate_breakdown(results, "selling_breakdown"),
+        "acting_breakdown": _aggregate_breakdown(results, "acting_breakdown"),
+        "legal_details": primary.get("legal_details", []) if isinstance(primary, dict) else [],
+        "flags": flags,
+        "summary": (
+            str(primary.get("summary", "")).strip()
+            if isinstance(primary, dict)
+            else ""
+        ) or "Оценка рассчитана по консенсусу панели из 3 AI-судей.",
+        "coaching_tip": str(primary.get("coaching_tip", "")).strip() if isinstance(primary, dict) else "",
+        "ideal_reply": str(primary.get("ideal_reply", "")).strip() if isinstance(primary, dict) else "",
+        "key_articles": articles,
+    }
+
+
+async def _run_single_judge_call(
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    style_name: str,
+    style_instruction: str,
+) -> tuple[dict, bool, str]:
+    """Run one judge call; returns (result, degraded, reason)."""
+    messages = [{
+        "role": "user",
+        "content": f"[PANEL_STYLE={style_name}] {style_instruction}\n\n{user_prompt}",
+    }]
+    try:
+        llm_response = await generate_response(
+            system_prompt=system_prompt,
+            messages=messages,
+            task_type="judge",
+            prefer_provider="cloud",
+            temperature=float(getattr(settings, "pvp_judge_temperature", 0.2)),
+            max_tokens=int(getattr(settings, "pvp_judge_max_tokens", 600)),
+        )
+        result = _parse_judge_response(llm_response.content)
+        if _is_parse_degraded(result):
+            return result, True, "json_parse"
+        return result, False, ""
+    except Exception as exc:
+        logger.warning("Judge panel member failed (%s): %s", style_name, exc)
+        return _build_neutral_judge_result(str(exc)), True, "llm_error"
+
 async def judge_round(
     dialog: list[dict],
     seller_id: uuid.UUID,
@@ -291,60 +463,57 @@ async def judge_round(
         dialog=dialog_text,
     )
 
-    # LLM call (temperature controlled by system prompt directive for determinism)
+    # LLM panel call (3 judges in parallel with quorum).
     _judge_started = time.time()
     # PR F: track fallback so the WS layer can emit ``judge.degraded`` and
     # the FE can show "оценка не выполнена, применены резервные баллы"
     # instead of accepting the neutral 25/15/10 as a real score.
     _degraded = False
     _degraded_reason = ""
+
+    ensemble_enabled = bool(getattr(settings, "pvp_judge_ensemble_enabled", True))
+    panel_size = int(getattr(settings, "pvp_judge_ensemble_size", 3))
+    panel_quorum = int(getattr(settings, "pvp_judge_ensemble_quorum", 2))
+    if panel_size < 1:
+        panel_size = 1
+    if panel_quorum < 1:
+        panel_quorum = 1
+    if panel_quorum > panel_size:
+        panel_quorum = panel_size
+
     try:
-        messages = [{"role": "user", "content": user}]
-        llm_response = await generate_response(
-            system_prompt=system,
-            messages=messages,
-            task_type="judge",
-            prefer_provider="cloud",
-            # PR E: judge needs determinism. Module docstring (line 10)
-            # promises "Temperature = 0 (deterministic)" but the original
-            # call used the provider default (~0.85) → scores oscillated
-            # ±5–10 between identical inputs. 0.2 keeps a tiny bit of
-            # variance so drift-detection in run_calibration still surfaces
-            # semantic regressions. max_tokens=600 caps the response: the
-            # judge schema fits in <600 tokens and longer outputs were
-            # filtered post-hoc, wasting cloud budget.
-            temperature=0.2,
-            max_tokens=600,
-        )
+        panel_defs = list(_ENSEMBLE_JUDGE_STYLES[:panel_size]) if ensemble_enabled else [
+            _ENSEMBLE_JUDGE_STYLES[0]
+        ]
+        panel_tasks = [
+            _run_single_judge_call(
+                system_prompt=system,
+                user_prompt=user,
+                style_name=style_name,
+                style_instruction=style_instruction,
+            )
+            for style_name, style_instruction in panel_defs
+        ]
+        panel_outcomes = await asyncio.gather(*panel_tasks)
+        successful_results = [res for res, degraded, _reason in panel_outcomes if not degraded]
 
-        # Parse JSON from response
-        result = _parse_judge_response(llm_response.content)
-        ARENA_AI_JUDGE_LATENCY.labels(judge_type="round", status="ok").observe(time.time() - _judge_started)
-        # _parse_judge_response uses the same neutral 25/15/10 sentinel on
-        # JSON parse failure (after logging a warning). Detect it via the
-        # canonical "JSON parse error" flag the parser writes.
-        _flags_check = result.get("flags") or []
-        if isinstance(_flags_check, list) and "JSON parse error" in _flags_check:
+        if len(successful_results) >= panel_quorum:
+            result = _aggregate_panel_results(successful_results)
+            ARENA_AI_JUDGE_LATENCY.labels(judge_type="round", status="ok").observe(time.time() - _judge_started)
+        else:
             _degraded = True
-            _degraded_reason = "json_parse"
-
+            reasons = [reason for _res, degraded, reason in panel_outcomes if degraded and reason]
+            _degraded_reason = "panel_quorum_failed" if reasons else "panel_unknown_failure"
+            ARENA_JUDGE_DEGRADED.labels(reason=_degraded_reason).inc()
+            ARENA_AI_JUDGE_LATENCY.labels(judge_type="round", status="error").observe(time.time() - _judge_started)
+            result = _build_neutral_judge_result(_degraded_reason)
     except Exception as e:
-        logger.error("AI Judge failed: %s", e)
+        logger.error("AI Judge panel failed: %s", e)
         ARENA_AI_JUDGE_LATENCY.labels(judge_type="round", status="error").observe(time.time() - _judge_started)
         ARENA_JUDGE_DEGRADED.labels(reason="llm_error").inc()
         _degraded = True
         _degraded_reason = "llm_error"
-        # Fallback: neutral scores
-        result = {
-            "selling_score": 25,
-            "acting_score": 15,
-            "legal_accuracy": 10,
-            "selling_breakdown": {},
-            "acting_breakdown": {},
-            "legal_details": [],
-            "flags": [f"AI Judge error: {str(e)[:100]}"],
-            "summary": "Оценка не удалась, применены нейтральные баллы.",
-        }
+        result = _build_neutral_judge_result(str(e))
 
     # Apply difficulty multiplier to acting score
     raw_acting = result.get("acting_score", 0)
