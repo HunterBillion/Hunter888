@@ -430,18 +430,19 @@ async def generate_question_with_arena_difficulty(
 # ---------------------------------------------------------------------------
 
 
-_MC_DISTRACTOR_PROMPT = """Ты составляешь тест по 127-ФЗ (банкротство физлиц) с тремя вариантами ответа.
-Один правильный вариант уже дан. Сгенерируй РОВНО 2 НЕПРАВИЛЬНЫХ, но правдоподобных варианта.
+_MC_DISTRACTOR_PROMPT = """Ты составляешь тест по 127-ФЗ (банкротство физлиц) с пятью вариантами ответа.
+Один правильный вариант уже дан. Сгенерируй РОВНО 4 НЕПРАВИЛЬНЫХ, но правдоподобных варианта.
 
 Требования к неправильным вариантам:
 - Звучат экспертно, как будто это могло бы быть верно (типичные заблуждения)
 - НЕ должны быть очевидно глупыми ("я не знаю", "100 рублей")
+- Все 4 варианта должны различаться между собой (разные числа / статьи / процедуры)
 - Длина каждого ≈ длине правильного ответа (±50%)
 - Не цитируй ту же статью / срок / сумму, что и правильный
 - Без префиксов, без нумерации — просто текст ответа
 
 Верни СТРОГО JSON:
-{"distractors": ["неверный 1", "неверный 2"]}
+{"distractors": ["неверный 1", "неверный 2", "неверный 3", "неверный 4"]}
 """
 
 
@@ -484,15 +485,26 @@ async def _generate_mc_distractors(
             str(d).strip() for d in distractors
             if str(d).strip() and str(d).strip().lower() != correct_answer.strip().lower()
         ]
-        if len(cleaned) >= 2:
-            return cleaned[:2]
+        if len(cleaned) >= 4:
+            return cleaned[:4]
+        # Pad with safe fallbacks if LLM returned fewer than 4 distinct
+        # options. Better to render 5 buttons (some generic) than to
+        # silently fall back to free-text mode.
+        while len(cleaned) < 4:
+            cleaned.append(_GENERIC_DISTRACTORS[len(cleaned) - 1] if len(cleaned) - 1 < len(_GENERIC_DISTRACTORS) else "Не указано")
+        return cleaned[:4]
     except (asyncio.TimeoutError, ValueError, Exception) as e:
         logger.warning("MC distractor generation failed: %s", e)
     # Fallback: generic plausible distractors so the FE button row still renders.
-    return [
-        "Срок не установлен законом",
-        "Любое значение по усмотрению суда",
-    ]
+    return list(_GENERIC_DISTRACTORS[:4])
+
+
+_GENERIC_DISTRACTORS = (
+    "Срок не установлен законом",
+    "Любое значение по усмотрению суда",
+    "Зависит от размера задолженности",
+    "Только по решению Арбитражного суда",
+)
 
 
 async def enrich_question_with_choices(
@@ -526,13 +538,25 @@ async def enrich_question_with_choices(
                 select(LegalKnowledgeChunk).where(LegalKnowledgeChunk.id == question.chunk_id)
             )
         ).scalar_one_or_none()
+        # PR (2026-05-06): MC bumped from 3 → 5 options. Old cached
+        # entries with len=3 are still usable — just expand to 5 by
+        # appending generic distractors so the new UI doesn't render
+        # a half-empty row. Future cache writes will be exactly 5.
         if (
             chunk is not None
             and isinstance(chunk.choices, list)
             and len(chunk.choices) >= 3
             and chunk.correct_choice_index is not None
         ):
-            question.choices = list(chunk.choices)[:3]
+            cached = list(chunk.choices)
+            if len(cached) >= 5:
+                question.choices = cached[:5]
+            else:
+                # Expand with generic fallbacks; keep the correct index.
+                pad_pool = [d for d in _GENERIC_DISTRACTORS if d not in cached]
+                while len(cached) < 5 and pad_pool:
+                    cached.append(pad_pool.pop(0))
+                question.choices = cached[:5]
             question.correct_choice_index = int(chunk.correct_choice_index)
             return question
 
@@ -559,8 +583,8 @@ async def enrich_question_with_choices(
         user_id=user_id,
     )
 
-    # 4. Shuffle
-    options = [correct_text] + distractors[:2]
+    # 4. Shuffle. 5 options: 1 correct + 4 distractors (PR 2026-05-06).
+    options = [correct_text] + distractors[:4]
     indices = list(range(len(options)))
     random.shuffle(indices)
     shuffled = [options[i] for i in indices]

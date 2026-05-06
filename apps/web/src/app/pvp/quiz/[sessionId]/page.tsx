@@ -1376,45 +1376,75 @@ function KnowledgeSessionPage() {
             controls (hint / skip) stay available; mic + textarea + send
             are hidden because choice_index already conveys the answer. */}
         {store.currentChoices && store.currentChoices.length >= 2 ? (
-          <div className="mx-auto flex max-w-3xl flex-col gap-2">
+          // PR (2026-05-06): pixel-retro 5-option layout — left-aligned,
+          // larger font, hard shadows, color-coded letter badges. Each
+          // button takes the full available width on mobile, max ~520px
+          // on desktop, anchored to the left margin so the user reads
+          // top-to-bottom like a multiple-choice card. The legacy
+          // input-bar (mic + textarea + send) is hidden while MC is
+          // active — it would only confuse the choice flow.
+          <div className="mx-auto sm:mx-0 flex w-full max-w-[520px] flex-col gap-2.5 sm:ml-2">
             {store.currentChoices.map((choiceText, idx) => {
               const isPicked = store.pickedChoiceIndex === idx;
               const locked = store.pickedChoiceIndex !== null;
+              // Color rotation for the letter-badge so 5 options stay
+              // visually distinct without changing the button body —
+              // pure decorative palette (matches the arena tier ramp).
+              const badgePalette = [
+                "var(--accent)",
+                "var(--success, #22c55e)",
+                "var(--gf-xp, #facc15)",
+                "var(--magenta, #d946ef)",
+                "var(--warning, #f97316)",
+              ];
+              const badgeColor = isPicked
+                ? "var(--accent)"
+                : badgePalette[idx % badgePalette.length];
               return (
                 <motion.button
                   key={idx}
                   type="button"
                   onClick={() => handleChoicePick(idx)}
                   disabled={locked || store.status !== "active"}
-                  whileHover={!locked ? { x: -1, y: -1 } : undefined}
+                  whileHover={!locked ? { x: -2, y: -2 } : undefined}
                   whileTap={!locked ? { x: 2, y: 2 } : undefined}
-                  className="flex items-start gap-3 px-3 py-3 text-left font-mono text-sm"
+                  className="flex items-stretch gap-0 text-left font-mono"
                   style={{
                     background: isPicked
-                      ? "color-mix(in srgb, var(--accent) 14%, var(--bg-panel))"
+                      ? "color-mix(in srgb, var(--accent) 18%, var(--bg-panel))"
                       : "var(--bg-panel)",
                     color: "var(--text-primary)",
-                    border: `2px solid ${isPicked ? "var(--accent)" : "var(--border-color)"}`,
+                    border: `3px solid ${isPicked ? "var(--accent)" : badgeColor}`,
                     borderRadius: 0,
                     boxShadow: isPicked
-                      ? "3px 3px 0 0 var(--accent), 0 0 12px var(--accent-glow)"
-                      : "2px 2px 0 0 var(--border-color)",
+                      ? `5px 5px 0 0 var(--accent), 0 0 18px var(--accent-glow)`
+                      : `4px 4px 0 0 ${badgeColor}`,
                     cursor: locked ? "not-allowed" : "pointer",
-                    opacity: locked && !isPicked ? 0.55 : 1,
-                    transition: "background 120ms, box-shadow 120ms",
+                    opacity: locked && !isPicked ? 0.45 : 1,
+                    transition: "background 140ms, box-shadow 140ms",
+                    fontSize: 16,
+                    minHeight: 64,
                   }}
                 >
                   <span
-                    className="font-pixel uppercase shrink-0 mt-0.5"
+                    className="font-pixel uppercase shrink-0 flex items-center justify-center"
                     style={{
-                      color: isPicked ? "var(--accent)" : "var(--text-muted)",
-                      fontSize: 11,
-                      letterSpacing: "0.18em",
+                      color: "#fff",
+                      background: badgeColor,
+                      fontSize: 22,
+                      letterSpacing: "0.06em",
+                      width: 56,
+                      textShadow: "2px 2px 0 #000",
                     }}
                   >
                     {String.fromCharCode(65 + idx)}
                   </span>
-                  <span className="flex-1 leading-snug">{choiceText}</span>
+                  <span
+                    className="flex-1 px-3 py-2.5 leading-snug self-center"
+                    style={{ fontSize: 15, lineHeight: 1.35 }}
+                  >
+                    {choiceText}
+                  </span>
                 </motion.button>
               );
             })}
