@@ -51,7 +51,13 @@ async def test_enrich_uses_cached_choices_from_chunk(db_session):
     ):
         result = await enrich_question_with_choices(db_session, q)
 
-    assert result.choices == ["500 000 руб", "100 000 руб", "1 000 000 руб"]
+    # Legacy 3-choice cached row gets padded to 5 with generic fallbacks
+    # so the new UI doesn't render a half-empty row. correct_choice_index
+    # stays at 0 (the original correct option is preserved at the head).
+    assert len(result.choices) == 5
+    assert result.choices[0] == "500 000 руб"
+    assert "100 000 руб" in result.choices
+    assert "1 000 000 руб" in result.choices
     assert result.correct_choice_index == 0
 
 
@@ -79,7 +85,7 @@ async def test_enrich_calls_llm_when_chunk_has_no_choices(db_session):
         blitz_answer="6 месяцев",
     )
 
-    fake_distractors = ["12 месяцев", "30 дней"]
+    fake_distractors = ["12 месяцев", "30 дней", "3 месяца", "1 год"]
     with patch(
         "app.services.knowledge_quiz._generate_mc_distractors",
         new=AsyncMock(return_value=fake_distractors),
@@ -87,17 +93,17 @@ async def test_enrich_calls_llm_when_chunk_has_no_choices(db_session):
         result = await enrich_question_with_choices(db_session, q)
 
     assert result.choices is not None
-    assert len(result.choices) == 3
+    assert len(result.choices) == 5
     assert result.correct_choice_index is not None
     # The correct text must be at the recorded index
     assert result.choices[result.correct_choice_index] == "6 месяцев"
-    # Both distractors are present
-    assert "12 месяцев" in result.choices
-    assert "30 дней" in result.choices
+    # All four distractors are present
+    for d in fake_distractors:
+        assert d in result.choices
 
     # Cache: re-fetching the chunk shows the choices stored
     await db_session.refresh(chunk)
-    assert chunk.choices is not None and len(chunk.choices) == 3
+    assert chunk.choices is not None and len(chunk.choices) == 5
     assert chunk.correct_choice_index is not None
 
 
@@ -152,7 +158,7 @@ async def test_distractor_fn_imports_asyncio_at_module_level():
             correct_answer="X",
         )
     assert isinstance(result, list)
-    assert len(result) == 2  # generic fallback
+    assert len(result) == 4  # 4 generic fallback distractors
 
 
 @pytest.mark.asyncio
