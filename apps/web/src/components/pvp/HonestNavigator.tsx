@@ -38,7 +38,6 @@ type Card = {
   mode: NavigatorMode;
   icon: PixelIconName;
   title: string;
-  hint: string;
   accent: string;
 };
 
@@ -46,33 +45,25 @@ const CARDS: Card[] = [
   {
     mode: "duel",
     icon: "sword",
-    // PR-MC (2026-05-05): "Дуэль с ботом" → "Дуэль". Очередь автоматически
-    // ищет реального соперника первые 15s; если никого нет — PvE-фолбэк.
-    // Старая подпись врала: иногда юзер реально попадал на человека, но
-    // карточка обещала только бота. Теперь честно.
     title: "Дуэль",
-    hint: "10 мин · человек или бот · AI-разбор",
     accent: "var(--accent)",
   },
   {
     mode: "free_dialog",
     icon: "book",
     title: "Квиз ФЗ-127",
-    hint: "10 вопросов · 3 варианта ответа",
     accent: "var(--success, #22c55e)",
   },
   {
     mode: "blitz",
     icon: "bolt",
     title: "Блиц 20×60",
-    hint: "20 × 60 сек · 3 варианта",
     accent: "var(--gf-xp, #facc15)",
   },
   {
     mode: "themed",
     icon: "target",
     title: "По теме",
-    hint: "Категория · 15 вопросов · 3 варианта",
     accent: "var(--magenta, #d946ef)",
   },
 ];
@@ -150,7 +141,7 @@ export function HonestNavigator({ disabled, starting, onDuel, onQuiz }: Props) {
               disabled={isBusy}
               whileHover={!isBusy ? { x: -1, y: -1 } : undefined}
               whileTap={!isBusy ? { x: 2, y: 2 } : undefined}
-              className="flex flex-col items-start gap-1.5 p-3 text-left transition-opacity"
+              className="flex flex-col items-center justify-center gap-2 p-4 text-center transition-opacity"
               style={{
                 background: active
                   ? `color-mix(in srgb, ${c.accent} 14%, var(--bg-secondary, rgba(0,0,0,0.4)))`
@@ -158,34 +149,24 @@ export function HonestNavigator({ disabled, starting, onDuel, onQuiz }: Props) {
                 outline: `2px solid ${c.accent}`,
                 outlineOffset: -2,
                 borderRadius: 0,
-                boxShadow: `2px 2px 0 0 ${c.accent}`,
+                boxShadow: `3px 3px 0 0 ${c.accent}`,
                 opacity: isBusy ? 0.5 : 1,
                 cursor: isBusy ? "not-allowed" : "pointer",
-                minHeight: 92,
+                minHeight: 100,
               }}
             >
-              <PixelIcon name={c.icon} size={18} color={c.accent} />
+              <PixelIcon name={c.icon} size={24} color={c.accent} />
               <span
                 className="font-pixel uppercase"
                 style={{
                   color: c.accent,
-                  fontSize: 12,
-                  letterSpacing: "0.1em",
-                  lineHeight: 1.15,
+                  fontSize: "clamp(14px, 2vw, 18px)",
+                  letterSpacing: "0.12em",
+                  lineHeight: 1.2,
+                  textShadow: `0 0 8px ${c.accent}`,
                 }}
               >
                 {c.title}
-              </span>
-              <span
-                className="font-pixel"
-                style={{
-                  color: "var(--text-muted)",
-                  fontSize: 9,
-                  letterSpacing: "0.06em",
-                  lineHeight: 1.2,
-                }}
-              >
-                {c.hint}
               </span>
             </motion.button>
           );

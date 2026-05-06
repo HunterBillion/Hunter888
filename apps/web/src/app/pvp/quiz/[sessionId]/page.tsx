@@ -28,6 +28,7 @@ import { QuizCaseIntro } from "@/components/pvp/QuizCaseIntro";
 import { useKnowledgeStore, type QuizMessage } from "@/stores/useKnowledgeStore";
 import { ErrorBoundary } from "@/components/errors/ErrorBoundary";
 import { PageAuthGate } from "@/components/layout/PageAuthGate";
+import { TamagotchiWidget, MODE_TO_PET } from "@/components/pvp/TamagotchiWidget";
 import { logger } from "@/lib/logger";
 import type { WSMessage } from "@/types";
 
@@ -1328,6 +1329,19 @@ function KnowledgeSessionPage() {
                   )}
                 </motion.button>
               )}
+
+              {/* Tamagotchi pet — per-mode mascot */}
+              <div className="mt-4 flex justify-center">
+                <div className="w-full max-w-[180px]">
+                  <TamagotchiWidget
+                    pet={MODE_TO_PET[store.mode] ?? "lion"}
+                    hunger={Math.min(100, 60 + store.correct * 8)}
+                    happiness={Math.min(100, 50 + store.streak * 12)}
+                    energy={Math.max(10, 90 - store.incorrect * 15)}
+                    compact
+                  />
+                </div>
+              </div>
             </div>
           </aside>
 
