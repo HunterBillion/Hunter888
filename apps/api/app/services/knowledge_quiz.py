@@ -7,6 +7,7 @@ Two modes:
 Uses Gemini 2.5 Flash (same LLM chain as training) with specialized prompts.
 """
 
+import asyncio
 import json
 import logging
 import random
