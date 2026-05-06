@@ -163,6 +163,7 @@ AI_EXAMINER_PROMPT = """Ты — харизматичный, но СТРОГИЙ
 {
   "type": "question" | "feedback" | "summary",
   "question_text": "текст вопроса (если type=question)",
+  "correct_answer": "краткий правильный ответ на вопрос (обязательно если type=question)",
   "category": "категория из: eligibility, procedure, property, consequences, costs, creditors, documents, timeline, court, rights",
   "difficulty": 1-5,
   "feedback_text": "текст обратной связи (если type=feedback)",
@@ -343,6 +344,7 @@ async def generate_question(
                 total_questions=total_questions,
                 chunk_id=chunk_id,
                 generation_strategy="llm",
+                blitz_answer=parsed.get("correct_answer"),
             )
     except LLMError as e:
         logger.error("LLM failed to generate question: %s", e)
