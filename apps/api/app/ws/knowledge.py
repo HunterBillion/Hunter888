@@ -407,14 +407,23 @@ async def _start_solo_quiz(
             db_session.ai_personality = personality.name
             await db.commit()
 
-    # PR-MC (2026-05-05): MC-format opt-in via session creation params.
-    # FE sends `choices_format: true` (or legacy `format: "mc_3"`) when it
-    # wants the test-style 3-button render. Backend behaviour is identical
-    # for free-text sessions — choices are simply not generated.
-    choices_format = bool(
-        data.get("choices_format")
-        or data.get("format") == "mc_3"
-    )
+    # PR-MC (2026-05-05) + 2026-05-06 hotfix: MC-format is now the
+    # *default* for free_dialog / blitz / themed quiz modes. Two earlier
+    # FE-side hotfixes failed to deliver the flag reliably (cache, race),
+    # and the user explicitly asked for "формат теста" on all 3 quiz
+    # cards. Making it default on the BE removes one moving part and
+    # closes the cache-bust gap.
+    #
+    # Explicit `choices_format: false` from FE still wins (escape hatch).
+    _quiz_default_modes = (QuizMode.free_dialog, QuizMode.blitz, QuizMode.themed)
+    if "choices_format" in data:
+        choices_format = bool(data["choices_format"])
+    elif data.get("format") == "mc_3":
+        choices_format = True
+    elif mode in _quiz_default_modes:
+        choices_format = True
+    else:
+        choices_format = False
     state = _SoloQuizState(
         session_id=session_id,
         user_id=user_id,
