@@ -3337,7 +3337,16 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
                 # text. We rewrite it into the synthetic text payload that
                 # _handle_answer already understands ("Вариант N: <text>"),
                 # so all downstream scoring + telemetry stays consistent.
+                # PR-MC hotfix #3 (2026-05-06): FE sends
+                # `{type:"answer", choice_index: N}` in the OUTER payload
+                # (no `data` wrapper). The previous code only checked
+                # `data.get("choice_index")` (inner) → always None →
+                # MC branch skipped → fell through to text path →
+                # raw_text empty → "Empty answer" error to the user.
+                # Read from both spots so old/new clients work.
                 _choice_idx = data.get("choice_index")
+                if _choice_idx is None:
+                    _choice_idx = msg.get("choice_index")
                 if (
                     quiz_state
                     and quiz_state.choices_format
@@ -3355,7 +3364,16 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
                 # typically short, but unbounded input could stuff the LLM
                 # eval prompt and cause OOM / timeout.
                 _WS_MAX_TEXT_CHARS = 10_000
-                raw_text = (data.get("text") or msg.get("content") or "").strip()
+                # PR-MC hotfix #3 (2026-05-06): also read msg.text in
+                # case the client used the alternate naming. Robust to
+                # all four payload shapes the FE has emitted historically.
+                raw_text = (
+                    data.get("text")
+                    or data.get("content")
+                    or msg.get("content")
+                    or msg.get("text")
+                    or ""
+                ).strip()
                 if len(raw_text) > _WS_MAX_TEXT_CHARS:
                     logger.warning(
                         "WS knowledge answer truncated from %d to %d chars",
