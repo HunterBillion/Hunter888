@@ -35,10 +35,24 @@ from typing import Awaitable, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
-# Arcade voice: shimmer is brighter/snappier than the detective/professor
-# voices used in quiz_v2. Speed tick above 1.0 keeps the pace up.
-_ARENA_VOICE = "shimmer"
+# Arcade voice tuned for snappy delivery.
+#
+# 2026-05-06 fix: was hardcoded "shimmer" but Navy TTS provider does not
+# expose that voice — every PvE round emitted a 500 from
+# /v1/audio/speech. The async fire-and-forget wrapper swallowed the
+# error so the duel still proceeded, but logs were noisy and TTS
+# narration silently never played. Sourced from settings.navy_tts_voice
+# so ops can flip without redeploy; "alloy" is the documented default.
 _ARENA_SPEED = 1.05
+
+
+def _arena_voice() -> str:
+    try:
+        from app.config import settings
+        v = (getattr(settings, "navy_tts_voice", None) or "alloy").strip()
+        return v or "alloy"
+    except Exception:  # noqa: BLE001
+        return "alloy"
 
 # Cache TTL: long enough to survive an entire tournament. We key by text
 # content so identical questions in different rounds share the same cache
@@ -113,7 +127,7 @@ async def synth_question_audio(text: str) -> Optional[str]:
         from app.services.tts import _synthesize_navy
 
         audio_bytes = await _synthesize_navy(
-            clean, voice=_ARENA_VOICE, speed=_ARENA_SPEED,
+            clean, voice=_arena_voice(), speed=_ARENA_SPEED,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("arena.audio synth failed: %s", exc)
