@@ -183,7 +183,12 @@ async def generate_daily_advice(
     arena_weak = await _get_arena_weak_categories(user_id, db)
 
     # ── Priority 1: Decline alert ─────────────────────────────────────────
-    if recent_trend and recent_trend.direction.value == "declining" and recent_trend.score_delta < -5:
+    # PR (2026-05-06): ProgressTrend.direction is Mapped[str] (see
+    # models/behavior.py:194), not an enum — `.value` raised
+    # AttributeError. Same class of bug as the behavior.py:99 fix
+    # (PR-cleanup #281). Was logged hourly for every active user by
+    # the scheduler.
+    if recent_trend and recent_trend.direction == "declining" and recent_trend.score_delta < -5:
         advice = _build_from_template("decline_alert", {
             "period": 7,
             "delta": f"{abs(recent_trend.score_delta):.0f}",

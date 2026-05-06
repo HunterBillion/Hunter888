@@ -205,8 +205,10 @@ async def get_team_alerts_endpoint(
         "alerts": [
             {
                 "user_id": str(a.user_id),
-                "direction": a.direction.value,
-                "severity": a.alert_severity.value if a.alert_severity else None,
+                # PR (2026-05-06): same Mapped[str] not-enum bug as
+                # /api/behavior/trends fix (PR-cleanup #281). Drop .value.
+                "direction": a.direction,
+                "severity": a.alert_severity if a.alert_severity else None,
                 "message": a.alert_message,
                 "score_delta": a.score_delta,
                 "sessions_count": a.sessions_count,
