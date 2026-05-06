@@ -302,6 +302,15 @@ function KnowledgeSessionPage() {
           if (typeof data.time_limit === "number" && data.time_limit > 0) {
             store.setTimeLeft(data.time_limit as number);
           }
+          // PR-MC (2026-05-05): MC-format payload carries `choices: string[]`
+          // and `format: "mc_3"`. Stash on store so the input row renders
+          // 3 buttons instead of textarea. Reset on every new question so a
+          // mixed-format session works (rare, but cheap to support).
+          if (Array.isArray(data.choices) && data.choices.length >= 2) {
+            store.setCurrentChoices(data.choices.map((c: unknown) => String(c)));
+          } else {
+            store.setCurrentChoices(null);
+          }
           break;
         }
 
@@ -653,6 +662,21 @@ function KnowledgeSessionPage() {
     // Focus back on input
     setTimeout(() => inputRef.current?.focus(), 50);
   }, [store.input, store.status, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps -- store setters are stable Zustand actions
+
+  // PR-MC (2026-05-05): one-shot click handler for the 3-button MC layout.
+  // Sends `{type:"answer", choice_index}` instead of free text and stashes
+  // the picked index so the UI can highlight ✓/✗ on the chosen button
+  // when the verdict comes back.
+  const handleChoicePick = useCallback((idx: number) => {
+    if (store.status !== "active") return;
+    if (store.pickedChoiceIndex !== null) return; // already locked-in
+    const choices = store.currentChoices;
+    if (!choices || idx < 0 || idx >= choices.length) return;
+    store.setPickedChoiceIndex(idx);
+    store.addMessage({ type: "answer", content: choices[idx] });
+    sendMessage({ type: "answer", choice_index: idx });
+    store.setIsTyping(true);
+  }, [store, sendMessage]);
 
   // Skip question
   const handleSkip = useCallback(() => {
@@ -1333,6 +1357,55 @@ function KnowledgeSessionPage() {
           paddingRight: 12,
         }}
       >
+        {/* PR-MC (2026-05-05): when MC choices are present, render a row
+            of 3 (or 2-4) buttons instead of the textarea. Other quiz
+            controls (hint / skip) stay available; mic + textarea + send
+            are hidden because choice_index already conveys the answer. */}
+        {store.currentChoices && store.currentChoices.length >= 2 ? (
+          <div className="mx-auto flex max-w-3xl flex-col gap-2">
+            {store.currentChoices.map((choiceText, idx) => {
+              const isPicked = store.pickedChoiceIndex === idx;
+              const locked = store.pickedChoiceIndex !== null;
+              return (
+                <motion.button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleChoicePick(idx)}
+                  disabled={locked || store.status !== "active"}
+                  whileHover={!locked ? { x: -1, y: -1 } : undefined}
+                  whileTap={!locked ? { x: 2, y: 2 } : undefined}
+                  className="flex items-start gap-3 px-3 py-3 text-left font-mono text-sm"
+                  style={{
+                    background: isPicked
+                      ? "color-mix(in srgb, var(--accent) 14%, var(--bg-panel))"
+                      : "var(--bg-panel)",
+                    color: "var(--text-primary)",
+                    border: `2px solid ${isPicked ? "var(--accent)" : "var(--border-color)"}`,
+                    borderRadius: 0,
+                    boxShadow: isPicked
+                      ? "3px 3px 0 0 var(--accent), 0 0 12px var(--accent-glow)"
+                      : "2px 2px 0 0 var(--border-color)",
+                    cursor: locked ? "not-allowed" : "pointer",
+                    opacity: locked && !isPicked ? 0.55 : 1,
+                    transition: "background 120ms, box-shadow 120ms",
+                  }}
+                >
+                  <span
+                    className="font-pixel uppercase shrink-0 mt-0.5"
+                    style={{
+                      color: isPicked ? "var(--accent)" : "var(--text-muted)",
+                      fontSize: 11,
+                      letterSpacing: "0.18em",
+                    }}
+                  >
+                    {String.fromCharCode(65 + idx)}
+                  </span>
+                  <span className="flex-1 leading-snug">{choiceText}</span>
+                </motion.button>
+              );
+            })}
+          </div>
+        ) : (
         <div className="mx-auto flex max-w-3xl items-end gap-3">
           {/* Hint button — pixel amber. 2026-05-04: source of truth is the
               backend `hint_available` flag from the quiz.question payload
@@ -1497,6 +1570,7 @@ function KnowledgeSessionPage() {
             <span className="hidden sm:inline">SEND</span>
           </motion.button>
         </div>
+        )}
         {/* 2026-05-04: client-side validation hint. Replaces the old
             backend-rejection UX where mash-typed answers ("ра", "ов")
             cost an LLM eval and produced a feedback bubble. Now we

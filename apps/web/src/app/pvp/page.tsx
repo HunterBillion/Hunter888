@@ -182,6 +182,12 @@ function PvPLobbyContent() {
         mode,
         category: category ?? null,
         ai_personality: personality,
+        // PR-MC (2026-05-05): all 3 quiz cards now run in MC format —
+        // 1 RAG-grounded correct option + 2 LLM-generated distractors,
+        // rendered as 3 buttons in the quiz page. Free-text fallback
+        // applies per-question if the enricher can't derive a correct
+        // answer (very rare; chunk lacks correct_response_hint).
+        choices_format: true,
       }) as { id?: string; session_id?: string };
       clearTimeout(watchdog);
       const sid = res?.id || res?.session_id;

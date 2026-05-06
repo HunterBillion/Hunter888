@@ -233,6 +233,7 @@ class _SoloQuizState:
         time_limit: int | None,
         category: str | None,
         difficulty: int,
+        choices_format: bool = False,
     ):
         self.session_id = session_id
         self.user_id = user_id
@@ -241,6 +242,10 @@ class _SoloQuizState:
         self.time_limit = time_limit  # seconds per question (None = unlimited)
         self.category = category
         self.difficulty = difficulty
+        # PR-MC (2026-05-05): when True, every emitted quiz.question
+        # carries a `choices` array (3 options) and the answer flow
+        # accepts `choice_index: int` instead of free text.
+        self.choices_format: bool = choices_format
 
         self.current_question: int = 0
         self.correct: int = 0
@@ -402,6 +407,14 @@ async def _start_solo_quiz(
             db_session.ai_personality = personality.name
             await db.commit()
 
+    # PR-MC (2026-05-05): MC-format opt-in via session creation params.
+    # FE sends `choices_format: true` (or legacy `format: "mc_3"`) when it
+    # wants the test-style 3-button render. Backend behaviour is identical
+    # for free-text sessions — choices are simply not generated.
+    choices_format = bool(
+        data.get("choices_format")
+        or data.get("format") == "mc_3"
+    )
     state = _SoloQuizState(
         session_id=session_id,
         user_id=user_id,
@@ -410,6 +423,7 @@ async def _start_solo_quiz(
         time_limit=time_limit,
         category=category,
         difficulty=difficulty,
+        choices_format=choices_format,
     )
     state.personality = personality
 
@@ -739,6 +753,21 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
     except Exception:
         logger.error("dup check threw unexpectedly", exc_info=True)
 
+    # PR-MC (2026-05-05): if the session asked for MC format, enrich the
+    # question with 3 choices BEFORE we cache it on state and serialize
+    # to the client. enrich_question_with_choices is idempotent and
+    # returns the question unchanged if no correct answer can be derived
+    # (caller falls back to free-text mode for that one question).
+    if state.choices_format and question and question.choices is None:
+        try:
+            from app.services.knowledge_quiz import enrich_question_with_choices
+            async with async_session() as enrich_db:
+                question = await enrich_question_with_choices(
+                    enrich_db, question, user_id=str(state.user_id)
+                )
+        except Exception:
+            logger.warning("MC enrich failed for q%d — falling back to free text", state.current_question, exc_info=True)
+
     state.current_q = question
     # Track question text for dedup
     if question:
@@ -774,6 +803,14 @@ async def _next_question(ws: WebSocket, state: _SoloQuizState) -> None:
         # report: "таймер показывает ноль").
         "time_limit": state.time_limit,
     }
+
+    # PR-MC (2026-05-05): if MC enrichment succeeded, surface the
+    # `choices` array so the FE renders 3 buttons. We DO NOT serialize
+    # `correct_choice_index` — that stays on state.current_q server-side
+    # and is checked when the answer comes back.
+    if state.choices_format and question.choices:
+        question_msg["choices"] = list(question.choices)
+        question_msg["format"] = "mc_3"
 
     # ── quiz_v2: wrap question with narrative frame (2026-04-18) ─────────
     # Non-fatal: on any error we ship the bare text as before.
@@ -831,6 +868,98 @@ async def _blitz_timer(ws: WebSocket, state: _SoloQuizState, question_number: in
             await _next_question(ws, state)
     except asyncio.CancelledError:
         pass
+
+
+async def _handle_mc_answer(ws: WebSocket, state: _SoloQuizState, choice_index: int) -> None:
+    """PR-MC (2026-05-05): scoring path for the multiple-choice format.
+
+    Bypasses the LLM judge — server already knows the correct index.
+    Scoring rules mirror _handle_answer (correct=+10, wrong=-2, no
+    speed bonus because MC is not the blitz-flavoured fast path).
+    Emits the same WS events the FE already handles
+    (quiz.feedback.verdict + quiz.feedback) so we don't need a new
+    client-side message type.
+    """
+    if state.finished or state.current_q is None:
+        await _send_error(ws, "No active question", "no_question")
+        return
+
+    # Cancel blitz timer if running
+    if state.timer_task and not state.timer_task.done():
+        state.timer_task.cancel()
+
+    response_time_ms = int((time.time() - state.question_start_time) * 1000)
+    correct_idx = state.current_q.correct_choice_index
+    options = state.current_q.choices or []
+    is_correct = (correct_idx is not None and choice_index == correct_idx)
+
+    # Score
+    if is_correct:
+        score_delta = 10.0 if not state.hint_used_for_current else 8.0
+        state.correct += 1
+    else:
+        score_delta = -2.0
+        state.incorrect += 1
+    state.score += score_delta
+
+    # Pull the canonical correct option text + chunk's correct_response_hint
+    # for the explanation footer.
+    correct_text = options[correct_idx] if (correct_idx is not None and 0 <= correct_idx < len(options)) else None
+    chunk_hint: str | None = None
+    if state.current_q.rag_context and state.current_q.rag_context.has_results:
+        chunk_hint = state.current_q.rag_context.results[0].correct_response_hint
+    explanation = (
+        f"✓ Верно! {correct_text or ''}".strip()
+        if is_correct
+        else f"✗ Не совсем. Правильный ответ: {correct_text or '—'}."
+    )
+    if not is_correct and chunk_hint and chunk_hint != correct_text:
+        explanation += f" {chunk_hint}"
+
+    # Persist (matches _handle_answer's call shape so analytics stay consistent)
+    await _save_answer(
+        state,
+        f"[MC#{choice_index}] {options[choice_index] if 0 <= choice_index < len(options) else ''}",
+        is_correct=is_correct,
+        explanation=explanation,
+        score_delta=score_delta,
+        article_reference=state.current_q.expected_article,
+        rag_chunks=None,
+        hint_used=state.hint_used_for_current,
+        response_time_ms=response_time_ms,
+    )
+
+    # Stream the same events the existing FE quiz page already routes:
+    # quiz.feedback.verdict (renders ✓/✗) + final quiz.feedback (renders body).
+    await _send(ws, "quiz.feedback.verdict", {
+        "question_number": state.current_question,
+        "is_correct": is_correct,
+        "correct_answer": correct_text,
+        "article_reference": state.current_q.expected_article,
+        "fast_path": "mc_3",
+    })
+    await _send(ws, "quiz.feedback", {
+        "question_number": state.current_question,
+        "is_correct": is_correct,
+        "verdict_level": "correct" if is_correct else "wrong",
+        "explanation": explanation,
+        "article_reference": state.current_q.expected_article,
+        "score_delta": score_delta,
+        "correct_answer_summary": correct_text,
+        "format": "mc_3",
+        "your_choice_index": choice_index,
+        "correct_choice_index": correct_idx,
+    })
+    await _send(ws, "quiz.progress", {
+        "current_question": state.current_question,
+        "total_questions": state.total_questions,
+        "correct": state.correct,
+        "incorrect": state.incorrect,
+        "score": state.score,
+    })
+
+    # Next question (or finish)
+    await _next_question(ws, state)
 
 
 async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> None:
@@ -3194,6 +3323,25 @@ async def knowledge_websocket(websocket: WebSocket) -> None:
 
             # ── Answer (solo mode) — supports both "text.message" and "answer" from frontend ──
             elif msg_type in ("text.message", "answer"):
+                # PR-MC (2026-05-05): MC-format answer arrives as
+                # `{type: "answer", choice_index: 0|1|2}` instead of free
+                # text. We rewrite it into the synthetic text payload that
+                # _handle_answer already understands ("Вариант N: <text>"),
+                # so all downstream scoring + telemetry stays consistent.
+                _choice_idx = data.get("choice_index")
+                if (
+                    quiz_state
+                    and quiz_state.choices_format
+                    and isinstance(_choice_idx, int)
+                    and quiz_state.current_q
+                    and quiz_state.current_q.choices
+                ):
+                    _opts = quiz_state.current_q.choices
+                    if 0 <= _choice_idx < len(_opts):
+                        # Bypass the LLM judge entirely: server already knows
+                        # the correct index. Score it and emit feedback.
+                        await _handle_mc_answer(websocket, quiz_state, _choice_idx)
+                        continue
                 # T2 fix: bound WS text input at 10KB. Quiz answers are
                 # typically short, but unbounded input could stuff the LLM
                 # eval prompt and cause OOM / timeout.

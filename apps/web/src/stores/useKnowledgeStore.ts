@@ -137,6 +137,15 @@ interface KnowledgeState {
   // V2: Follow-up
   pendingFollowUp: string | null;
 
+  // PR-MC (2026-05-05): when present, the quiz page renders 3 buttons
+  // instead of a textarea, and clicks send `{type:"answer", choice_index}`
+  // instead of free text. Cleared on every new question / feedback so a
+  // session that mixes formats works correctly.
+  currentChoices: string[] | null;
+  pickedChoiceIndex: number | null;
+  setCurrentChoices(choices: string[] | null): void;
+  setPickedChoiceIndex(idx: number | null): void;
+
   // Block 5: Cross-module stats
   arenaStats: ArenaStats | null;
   arenaStatsLoading: boolean;
@@ -265,6 +274,8 @@ const INITIAL_STATE = {
   bestStreak: 0,
   currentDifficulty: 3,
   pendingFollowUp: null as string | null,
+  currentChoices: null as string[] | null,
+  pickedChoiceIndex: null as number | null,
 
   arenaStats: null as ArenaStats | null,
   arenaStatsLoading: false,
@@ -393,6 +404,8 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   setStreak: (streak, bestStreak) => set({ streak, bestStreak }),
   setCurrentDifficulty: (currentDifficulty) => set({ currentDifficulty }),
   setPendingFollowUp: (pendingFollowUp) => set({ pendingFollowUp }),
+  setCurrentChoices: (currentChoices) => set({ currentChoices, pickedChoiceIndex: null }),
+  setPickedChoiceIndex: (pickedChoiceIndex) => set({ pickedChoiceIndex }),
 
   fetchArenaStats: async () => {
     set({ arenaStatsLoading: true });
