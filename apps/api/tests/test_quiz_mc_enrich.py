@@ -101,6 +101,28 @@ async def test_enrich_calls_llm_when_chunk_has_no_choices(db_session):
     assert chunk.correct_choice_index is not None
 
 
+def test_quizfeedback_verdict_level_defaults_match_is_correct():
+    """Pre-2026-05-06 the dataclass had `verdict_level: str = "correct"`
+    as default. Every QuizFeedback built with is_correct=False but no
+    explicit verdict_level shipped to FE with verdict_level="correct" —
+    FE rendered "▸ ВЕРНО! +XP" on top of "Слишком короткий ответ"
+    explanations. This test pins the fix: when verdict_level is omitted,
+    derive it from is_correct."""
+    from app.services.knowledge_quiz import QuizFeedback
+
+    wrong_fb = QuizFeedback(is_correct=False, explanation="garbage")
+    assert wrong_fb.verdict_level == "wrong"
+
+    right_fb = QuizFeedback(is_correct=True, explanation="ok")
+    assert right_fb.verdict_level == "correct"
+
+    # Explicit override wins
+    partial_fb = QuizFeedback(
+        is_correct=False, explanation="почти", verdict_level="partial",
+    )
+    assert partial_fb.verdict_level == "partial"
+
+
 @pytest.mark.asyncio
 async def test_distractor_fn_imports_asyncio_at_module_level():
     """Regression for the prod NameError (2026-05-06): the

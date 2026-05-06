@@ -85,8 +85,19 @@ class QuizFeedback:
     article_reference: str | None = None
     score_delta: float = 0.0
     correct_answer_summary: str | None = None
-    verdict_level: str = "correct"  # "correct" | "partial" | "off_topic" | "wrong"
+    # PR (2026-05-06): default was "correct" — that meant every QuizFeedback
+    # built with is_correct=False but no explicit verdict_level (e.g. the
+    # garbage fast-path) shipped to the FE with verdict_level="correct".
+    # FE rendered "▸ ВЕРНО! +XP" on top of a "Слишком короткий ответ"
+    # explanation. Field is now Optional and __post_init__ derives a sane
+    # default from is_correct when callers don't specify one. Callers that
+    # DO pass partial/off_topic/correct/wrong explicitly are unaffected.
+    verdict_level: str | None = None  # "correct" | "partial" | "off_topic" | "wrong"
     llm_score: float | None = None  # 0-10 raw score from LLM (None if not available)
+
+    def __post_init__(self) -> None:
+        if self.verdict_level is None:
+            self.verdict_level = "correct" if self.is_correct else "wrong"
 
 
 @dataclass
