@@ -102,6 +102,38 @@ async def test_enrich_calls_llm_when_chunk_has_no_choices(db_session):
 
 
 @pytest.mark.asyncio
+async def test_distractor_fn_imports_asyncio_at_module_level():
+    """Regression for the prod NameError (2026-05-06): the
+    _generate_mc_distractors function references ``asyncio.wait_for``
+    and ``asyncio.TimeoutError``. Without ``import asyncio`` at module
+    level, the very first call raised NameError BEFORE reaching the
+    try/except wrapper, so the enricher silently fell through to the
+    fallback path and every prod session ended up free-text.
+
+    Confirms the import + that the function returns either real LLM
+    distractors or the safe fallback list — never raises NameError.
+    """
+    from app.services import knowledge_quiz as kq
+
+    # Import surface check: asyncio must be in the module's namespace.
+    assert hasattr(kq, "asyncio"), "knowledge_quiz must import asyncio"
+
+    # Simulate LLM unavailable — the function should hit the except
+    # branch (which uses asyncio.TimeoutError) and return fallback,
+    # NOT raise NameError.
+    with patch(
+        "app.services.knowledge_quiz.generate_response",
+        new=AsyncMock(side_effect=RuntimeError("LLM down")),
+    ):
+        result = await kq._generate_mc_distractors(
+            question_text="?",
+            correct_answer="X",
+        )
+    assert isinstance(result, list)
+    assert len(result) == 2  # generic fallback
+
+
+@pytest.mark.asyncio
 async def test_enrich_returns_unchanged_when_no_correct_answer():
     """If neither blitz_answer nor RAG result is available, return the
     question untouched so the caller falls back to free text."""
