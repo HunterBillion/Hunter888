@@ -789,8 +789,8 @@ class ReminderScheduler:
                 seven_days_ago = now - timedelta(days=7)
                 decay_result = await db.execute(
                     select(PvPProfile.user_id, PvPProfile.rating).where(
-                        PvPProfile.last_match_at < seven_days_ago,
-                        PvPProfile.last_match_at.isnot(None),
+                        PvPProfile.last_played < seven_days_ago,
+                        PvPProfile.last_played.isnot(None),
                         PvPProfile.rating > 1550,
                     ).limit(100)
                 )
