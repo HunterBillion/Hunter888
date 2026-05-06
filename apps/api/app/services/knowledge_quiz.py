@@ -362,6 +362,7 @@ async def generate_question(
             total_questions=total_questions,
             chunk_id=top.chunk_id,
             generation_strategy="fallback",
+            blitz_answer=top.correct_response_hint or top.fact_text[:200],
         )
 
     # ── Strategy 5: Hardcoded last resort ─────────────────────────────────────
@@ -373,6 +374,7 @@ async def generate_question(
         question_number=question_number,
         total_questions=total_questions,
         generation_strategy="hardcoded",
+        blitz_answer="500 000 рублей при просрочке от 3 месяцев",
     )
 
 
@@ -566,12 +568,20 @@ async def enrich_question_with_choices(
     correct_text: str | None = None
     if question.blitz_answer:
         correct_text = question.blitz_answer.strip()
+        logger.debug("MC enrich: correct_text from blitz_answer (%d chars)", len(correct_text))
     elif chunk is not None and chunk.correct_response_hint:
         correct_text = chunk.correct_response_hint.strip()
+        logger.debug("MC enrich: correct_text from chunk.correct_response_hint (%d chars)", len(correct_text))
     elif question.rag_context and question.rag_context.has_results:
         first = question.rag_context.results[0]
         correct_text = (first.correct_response_hint or first.fact_text or "").strip()
+        logger.debug("MC enrich: correct_text from rag_context (%d chars)", len(correct_text) if correct_text else 0)
     if not correct_text:
+        logger.warning(
+            "MC enrich: no correct_text for q=%r strategy=%s chunk_id=%s has_rag=%s — free-text fallback",
+            question.question_text[:60], question.generation_strategy,
+            question.chunk_id, bool(question.rag_context and question.rag_context.has_results),
+        )
         return question  # free-text fallback
     # Cap correct_text to ≈220 chars so all 3 buttons fit on screen.
     if len(correct_text) > 220:
