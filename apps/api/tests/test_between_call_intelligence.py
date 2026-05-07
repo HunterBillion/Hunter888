@@ -782,10 +782,11 @@ class TestBetweenCallIntelligenceIntegration:
 class TestBetweenCallAppendixConsumption:
     """Pure-function tests for the appendix accumulator helper.
 
-    These guard against accidental removal of the consume site in
-    _handle_session_start (the original regression). If the helper is
-    deleted or stops appending, the user-visible "AI doesn't remember
-    what manager promised in call #1" bug returns immediately.
+    These guard against (a) accidental removal of any consume site in
+    _handle_session_start / _handle_session_resume — the original PR-B
+    regression — and (b) re-introducing the self-clearing behaviour
+    that PR-F removed (the appendix must persist so a mid-call WS
+    reconnect can re-apply it to the rebuilt prompt).
     """
 
     def test_no_key_no_change(self):
@@ -803,8 +804,9 @@ class TestBetweenCallAppendixConsumption:
         result = _consume_between_call_appendix(state, "BASE")
         assert result == "BASE"
 
-    def test_tier3_context_appended_and_cleared(self):
-        """Story call #2 with tier3 context: appendix lands on prompt."""
+    def test_tier3_context_appended_persists_in_state(self):
+        """Story call #2 with tier3 context: appendix lands on prompt
+        AND remains in state so a mid-call reconnect can re-apply it."""
         from app.ws.training import _consume_between_call_appendix
         tier3 = (
             "\n\n[BETWEEN-CALL CONTEXT (Tier 3 — situational awareness):\n"
@@ -814,11 +816,13 @@ class TestBetweenCallAppendixConsumption:
         state = {"between_call_appendix": tier3}
         result = _consume_between_call_appendix(state, "PROFILE PROMPT")
         assert result == "PROFILE PROMPT" + tier3
-        # Cleared so a subsequent reconnect/hijack can't double-apply.
-        assert state["between_call_appendix"] == ""
+        # PR-F: do NOT clear — survives so a reconnect rebuilds
+        # client_profile_prompt with the same tier3 context.
+        assert state["between_call_appendix"] == tier3
 
-    def test_hangup_context_appended_and_cleared(self):
-        """Story call after a hangup carries hostile bias forward."""
+    def test_hangup_context_appended_persists_in_state(self):
+        """Story call after a hangup carries hostile bias forward
+        and the bias persists across reconnects within the same call."""
         from app.ws.training import _consume_between_call_appendix
         hangup = (
             "\n\n[CONTEXT: Клиент помнит неудачный предыдущий разговор. "
@@ -827,11 +831,11 @@ class TestBetweenCallAppendixConsumption:
         state = {"between_call_appendix": hangup}
         result = _consume_between_call_appendix(state, "BASE")
         assert "враждебной" in result
-        assert state["between_call_appendix"] == ""
+        assert state["between_call_appendix"] == hangup  # PR-F: not cleared
 
     def test_combined_hangup_and_tier3(self):
         """If both writers fire on the same call (hangup → tier3),
-        the accumulator concatenates and consume gets both."""
+        the accumulator concatenates and consume returns both."""
         from app.ws.training import _consume_between_call_appendix
         hangup = "\n\n[CONTEXT: hostile.]"
         tier3 = "\n\n[Tier 3 context]"
@@ -840,19 +844,20 @@ class TestBetweenCallAppendixConsumption:
         state["between_call_appendix"] = state.get("between_call_appendix", "") + tier3
         result = _consume_between_call_appendix(state, "BASE")
         assert result == "BASE" + hangup + tier3
-        assert state["between_call_appendix"] == ""
+        assert state["between_call_appendix"] == hangup + tier3  # PR-F: not cleared
 
-    def test_consume_is_idempotent_after_clear(self):
-        """A second consume call must NOT re-apply the same appendix."""
+    def test_consume_is_idempotent_when_called_twice_with_same_base(self):
+        """Repeated consume on the same fresh base returns the same
+        result — caller-side idempotency, no double-application."""
         from app.ws.training import _consume_between_call_appendix
         state = {"between_call_appendix": "\n\nAPPENDIX"}
         first = _consume_between_call_appendix(state, "BASE")
         second = _consume_between_call_appendix(state, "BASE")
         assert first == "BASE\n\nAPPENDIX"
-        assert second == "BASE"  # appendix already consumed
+        assert second == "BASE\n\nAPPENDIX"  # PR-F: same result, not cleared
 
     def test_pre_pr_b_regression_demonstration(self):
-        """Documents the bug PR-B fixed.
+        """Documents the original PR-B bug.
 
         Pre-PR-B code did:
             prev_prompt = state.get("client_profile_prompt", "")
@@ -861,9 +866,9 @@ class TestBetweenCallAppendixConsumption:
             # later in _handle_session_start:
             state["client_profile_prompt"] = client_profile_prompt   # NUKES tier3
 
-        Post-PR-B code routes the addition through the appendix accumulator
-        which session.start consumes BEFORE assigning the prompt. This test
-        replays both flows so the difference is loud in CI output.
+        Post-PR-B/F code routes the addition through the appendix
+        accumulator which session.start consumes BEFORE assigning the
+        prompt.
         """
         from app.ws.training import _consume_between_call_appendix
 
@@ -876,7 +881,7 @@ class TestBetweenCallAppendixConsumption:
         state_pre["client_profile_prompt"] = rebuilt_profile_prompt  # session.start nukes
         assert tier3 not in state_pre["client_profile_prompt"]  # bug
 
-        # --- Post-PR-B (fixed) flow ---
+        # --- Post-PR-B/F (fixed) flow ---
         state_post: dict = {}
         state_post["between_call_appendix"] = (
             state_post.get("between_call_appendix", "") + tier3
@@ -885,3 +890,49 @@ class TestBetweenCallAppendixConsumption:
             state_post, rebuilt_profile_prompt
         )
         assert tier3 in state_post["client_profile_prompt"]  # fixed
+
+    def test_pr_f_reconnect_mid_call_preserves_tier3(self):
+        """PR-F regression: mid-call WS reconnect rebuilds the prompt;
+        the appendix must still apply on that rebuild.
+
+        Pre-PR-F: consume cleared the appendix on first session.start,
+        so a reconnect that re-ran _build_client_profile_prompt landed
+        on state without tier3 — AI forgot the between-call context for
+        the rest of the call.
+        """
+        from app.ws.training import _consume_between_call_appendix
+
+        tier3 = "\n\n[Tier3 — relationship LOW]"
+        state: dict = {"between_call_appendix": tier3}
+
+        # First session.start (fresh path) — call #2 begins.
+        prompt_call_start = _consume_between_call_appendix(state, "FRESH PROFILE")
+        assert tier3 in prompt_call_start
+
+        # ... mid-call, WS drops, FE auto-reconnects, sends session.start
+        # again with session_id set → resume branch runs and rebuilds the
+        # profile prompt fresh from DB. The appendix must be re-applied.
+        prompt_after_reconnect = _consume_between_call_appendix(state, "FRESH PROFILE")
+        assert tier3 in prompt_after_reconnect
+        assert prompt_after_reconnect == prompt_call_start  # same context
+
+    def test_pr_f_next_call_resets_appendix(self):
+        """PR-F regression: next-call setup must blank the appendix
+        before accumulating call N+1's tier3, otherwise call N's
+        between-call context bleeds into call N+1.
+
+        Replays the explicit reset that _handle_story_next_call does at
+        its start.
+        """
+        from app.ws.training import _consume_between_call_appendix
+
+        state: dict = {"between_call_appendix": "\n\n[CALL_N tier3]"}
+        # Simulate the start of _handle_story_next_call for call N+1:
+        state["between_call_appendix"] = ""
+        # Then accumulate fresh tier3 for call N+1:
+        state["between_call_appendix"] = (
+            state.get("between_call_appendix", "") + "\n\n[CALL_N+1 tier3]"
+        )
+        prompt = _consume_between_call_appendix(state, "BASE")
+        assert "CALL_N tier3" not in prompt
+        assert "CALL_N+1 tier3" in prompt

@@ -879,7 +879,14 @@ async def _handle_session_resume(
         except Exception:
             logger.warning("Failed to restore client profile for resumed session %s", session_id, exc_info=True)
 
-        state["client_profile_prompt"] = client_profile_prompt
+        # 2026-05-07 (PR-F): also re-apply the between-call appendix on
+        # mid-call WS reconnect. Without this, a Brave/Safari user whose
+        # WS dropped during call #2 of a story would have the resumed
+        # session.start rebuild client_profile_prompt without the tier3
+        # context — AI would forget why call #2 was hostile.
+        state["client_profile_prompt"] = _consume_between_call_appendix(
+            state, client_profile_prompt
+        )
         state["active_traps"] = active_traps
         state["client_name"] = client_name
         state["client_gender"] = client_gender
@@ -3450,29 +3457,35 @@ async def _soft_skills_tracker(
 
 
 def _consume_between_call_appendix(state: dict, base_prompt: str) -> str:
-    """Append any pending between-call appendix to the system prompt and clear it.
+    """Append the active between-call appendix onto the system prompt.
 
     Story Mode accumulates between-call additions to the LLM system prompt
     during ``_handle_story_next_call`` — Tier 3 situational context (active
     storylets, relationship score warnings, between-call events) and the
     hangup recovery bias for after a previous call ended badly. These are
     written into ``state["between_call_appendix"]`` rather than directly
-    into ``state["client_profile_prompt"]`` because the per-call session.start
-    handler rebuilds ``client_profile_prompt`` from the cloned profile and
-    used to silently overwrite the appendix (regression discovered in the
-    2026-05-07 audit — the AI never saw consequences from call #1 inside
-    call #2).
+    into ``state["client_profile_prompt"]`` because every per-call
+    session.start / session.resume handler rebuilds ``client_profile_prompt``
+    from the (cloned) profile and used to silently overwrite the addition
+    (the 2026-05-07 audit found the AI never saw consequences from call
+    #1 inside call #2 because of this overwrite race).
 
-    This helper is called exactly once per session.start, AFTER the new
-    ``client_profile_prompt`` is built, BEFORE it lands on ``state``. For
-    non-story sessions the key is never set and the helper is a no-op.
+    The helper is called at every code path that assigns
+    ``state["client_profile_prompt"]``: fresh story-call session.start,
+    resume of an existing session.id, mid-call WS reconnect via
+    _handle_session_resume. Each path passes the freshly built base prompt
+    in and the helper returns base+appendix.
+
+    The appendix is NOT cleared on consume — that lets a mid-call WS
+    reconnect re-apply the same appendix to the rebuilt prompt and keep
+    the AI in the same context. The appendix is reset at the START of
+    each ``_handle_story_next_call`` so that call N+1 begins from a
+    blank slate and accumulates a fresh tier-3 + hangup context for that
+    call.
+
+    For non-story sessions the key is never set; the helper is a no-op.
     """
-    appendix = state.get("between_call_appendix", "")
-    if appendix:
-        # Clear immediately so a subsequent session.start (e.g. a hijack
-        # reconnect mid-call) does not double-apply the same appendix.
-        state["between_call_appendix"] = ""
-    return base_prompt + appendix
+    return base_prompt + state.get("between_call_appendix", "")
 
 
 def _build_client_profile_prompt(profile, ambient_ctx: dict | None = None) -> str:
@@ -3936,8 +3949,14 @@ async def _handle_session_start(
                     # client_fatigue, debt_stage labels) is preserved
                     # across WS reconnects. Previously a dropped/restored
                     # connection stripped those cues from the LLM prompt.
-                    state["client_profile_prompt"] = _build_client_profile_prompt(
-                        existing_profile, ambient_ctx=custom_params,
+                    # 2026-05-07 (PR-F): also re-apply the between-call
+                    # appendix so mid-call reconnects don't drop the
+                    # tier3 context.
+                    state["client_profile_prompt"] = _consume_between_call_appendix(
+                        state,
+                        _build_client_profile_prompt(
+                            existing_profile, ambient_ctx=custom_params,
+                        ),
                     )
                     from app.services.client_generator import get_crm_card
                     client_card = get_crm_card(existing_profile)
@@ -4030,7 +4049,14 @@ async def _handle_session_start(
                         )
                     client_card = get_crm_card(profile)
                     client_gender = getattr(profile, "gender", "") or ""
-                    state["client_profile_prompt"] = _build_client_profile_prompt(profile, ambient_ctx=custom_params)
+                    # 2026-05-07 (PR-F): apply between-call appendix to
+                    # the freshly built profile prompt — same reasoning
+                    # as the resume branch above, just for the parallel
+                    # "fresh build for existing session.id" path.
+                    state["client_profile_prompt"] = _consume_between_call_appendix(
+                        state,
+                        _build_client_profile_prompt(profile, ambient_ctx=custom_params),
+                    )
                     await db.commit()
             except Exception:
                 logger.warning("Failed to load/generate client profile for session %s", session.id, exc_info=True)
@@ -6615,6 +6641,15 @@ async def _handle_story_next_call(
         )
         return
     state["_next_call_in_progress"] = True
+
+    # 2026-05-07 (PR-F): blank the between-call appendix at the START of
+    # every next-call setup. The accumulator pattern requires a fresh
+    # slate per call — otherwise tier3/hangup context from call N-1 would
+    # bleed into call N's prompt on top of the call N additions. The
+    # consume helper no longer self-clears (so a mid-call WS reconnect
+    # can re-apply the same appendix to the rebuilt prompt without losing
+    # the AI's context), so the explicit reset belongs here.
+    state["between_call_appendix"] = ""
 
     total_calls = state.get("total_calls", 3)
     current_call = state.get("call_number", 0) + 1
