@@ -3449,6 +3449,32 @@ async def _soft_skills_tracker(
             logger.debug("Failed to send soft_skills.update for session %s", session_id)
 
 
+def _consume_between_call_appendix(state: dict, base_prompt: str) -> str:
+    """Append any pending between-call appendix to the system prompt and clear it.
+
+    Story Mode accumulates between-call additions to the LLM system prompt
+    during ``_handle_story_next_call`` — Tier 3 situational context (active
+    storylets, relationship score warnings, between-call events) and the
+    hangup recovery bias for after a previous call ended badly. These are
+    written into ``state["between_call_appendix"]`` rather than directly
+    into ``state["client_profile_prompt"]`` because the per-call session.start
+    handler rebuilds ``client_profile_prompt`` from the cloned profile and
+    used to silently overwrite the appendix (regression discovered in the
+    2026-05-07 audit — the AI never saw consequences from call #1 inside
+    call #2).
+
+    This helper is called exactly once per session.start, AFTER the new
+    ``client_profile_prompt`` is built, BEFORE it lands on ``state``. For
+    non-story sessions the key is never set and the helper is a no-op.
+    """
+    appendix = state.get("between_call_appendix", "")
+    if appendix:
+        # Clear immediately so a subsequent session.start (e.g. a hijack
+        # reconnect mid-call) does not double-apply the same appendix.
+        state["between_call_appendix"] = ""
+    return base_prompt + appendix
+
+
 def _build_client_profile_prompt(profile, ambient_ctx: dict | None = None) -> str:
     """Build extra system prompt context from generated client profile.
 
@@ -4347,7 +4373,18 @@ async def _handle_session_start(
 
     state["character_prompt_path"] = character.prompt_path if character else None
     state["archetype_code"] = custom_archetype or (character.slug if character else None)
-    state["client_profile_prompt"] = client_profile_prompt
+    # 2026-05-07 (PR-B): consume any between-call appendix that
+    # _handle_story_next_call accumulated for this call (Tier 3 situational
+    # context, hangup recovery hostile bias). Previously these were appended
+    # directly into state["client_profile_prompt"] at the next-call site
+    # and got nuked by this assignment, so the AI never saw
+    # consequences/storylets/relationship state on call #2..N. Now the
+    # next-call site writes to state["between_call_appendix"] and we
+    # consume+clear here. Empty string for non-story sessions (the key is
+    # never set), no behaviour change for chat/call/center modes.
+    state["client_profile_prompt"] = _consume_between_call_appendix(
+        state, client_profile_prompt
+    )
     state["client_name"] = client_card.get("full_name", "") if client_card else ""
     state["client_gender"] = client_gender
     state["active_traps"] = active_traps  # Always defined above (line 1807 or [] in except block)
@@ -6632,15 +6669,24 @@ async def _handle_story_next_call(
         state.pop("call_outcome", None)
         state.pop("hangup_reason", None)
 
-        # Inject hostile context into LLM system prompt for this call
+        # Inject hostile context into LLM system prompt for this call.
+        #
+        # 2026-05-07 (PR-B): write to state["between_call_appendix"] instead
+        # of mutating state["client_profile_prompt"] directly. The next
+        # session.start handler rebuilds client_profile_prompt from the
+        # profile and used to OVERWRITE this append (see _handle_session_start
+        # near "state['client_profile_prompt'] = client_profile_prompt") —
+        # so the hangup context never reached the LLM, only the FE brief.
+        # Now _handle_session_start consumes the appendix and clears it.
         hangup_context = (
             "\n\n[CONTEXT: Клиент помнит неудачный предыдущий разговор. "
             "Начинай с враждебной позиции. Доверие снижено. "
             "Менеджер должен ВОССТАНОВИТЬ доверие прежде чем продолжать продажу. "
             "Если менеджер извинится и покажет уважение — можно постепенно смягчиться.]"
         )
-        prev_prompt = state.get("client_profile_prompt", "")
-        state["client_profile_prompt"] = prev_prompt + hangup_context
+        state["between_call_appendix"] = (
+            state.get("between_call_appendix", "") + hangup_context
+        )
 
     # Generate between-call events (skip for call 1)
     between_events = []
@@ -6889,8 +6935,17 @@ async def _handle_story_next_call(
                 + "\n".join(f"- {p}" for p in tier3_parts)
                 + "\nИспользуй этот контекст в реакциях, но не упоминай что тебе дали контекст.]"
             )
-            prev_prompt = state.get("client_profile_prompt", "")
-            state["client_profile_prompt"] = prev_prompt + tier3_context
+            # 2026-05-07 (PR-B): write to between_call_appendix accumulator
+            # — see comment in _handle_story_next_call hangup block above.
+            # Direct mutation of client_profile_prompt was overwritten by
+            # _handle_session_start, so the AI never actually saw the
+            # consequences/storylets/relationship state. The pre-call brief
+            # FE render path keeps working because it reads state directly
+            # from the WS frame (`pre_call_brief` payload) before the
+            # session.start round-trip clears anything.
+            state["between_call_appendix"] = (
+                state.get("between_call_appendix", "") + tier3_context
+            )
 
     # Send structured pre-call brief matching frontend PreCallBrief interface
     scenario = state.get("scenario")

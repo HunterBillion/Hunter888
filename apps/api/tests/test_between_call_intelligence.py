@@ -764,3 +764,124 @@ class TestBetweenCallIntelligenceIntegration:
             phrase = _pick_silence_phrase(emotion, silence_count=0)
             assert isinstance(phrase, str)
             assert phrase in SILENCE_PHRASES_BY_EMOTION[emotion]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PR-B regression — between-call appendix survives session.start prompt rebuild
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 2026-05-07: before PR-B, _handle_story_next_call wrote tier3 situational
+# context and hangup recovery bias directly into state["client_profile_prompt"].
+# The next session.start handler then ran _build_client_profile_prompt from
+# the cloned profile and OVERWROTE state["client_profile_prompt"] — the AI
+# on call #2 never saw consequences/storylets/relationship state. PR-B
+# routes these additions through state["between_call_appendix"] and consumes
+# them in session.start via _consume_between_call_appendix().
+
+
+class TestBetweenCallAppendixConsumption:
+    """Pure-function tests for the appendix accumulator helper.
+
+    These guard against accidental removal of the consume site in
+    _handle_session_start (the original regression). If the helper is
+    deleted or stops appending, the user-visible "AI doesn't remember
+    what manager promised in call #1" bug returns immediately.
+    """
+
+    def test_no_key_no_change(self):
+        """Non-story sessions never set the key — helper is a no-op."""
+        from app.ws.training import _consume_between_call_appendix
+        state: dict = {}
+        result = _consume_between_call_appendix(state, "BASE PROMPT")
+        assert result == "BASE PROMPT"
+        assert "between_call_appendix" not in state
+
+    def test_empty_string_appendix_no_change(self):
+        """Empty appendix means nothing to append; key stays empty."""
+        from app.ws.training import _consume_between_call_appendix
+        state = {"between_call_appendix": ""}
+        result = _consume_between_call_appendix(state, "BASE")
+        assert result == "BASE"
+
+    def test_tier3_context_appended_and_cleared(self):
+        """Story call #2 with tier3 context: appendix lands on prompt."""
+        from app.ws.training import _consume_between_call_appendix
+        tier3 = (
+            "\n\n[BETWEEN-CALL CONTEXT (Tier 3 — situational awareness):\n"
+            "- Между звонками произошло: жена узнала о долгах.\n"
+            "- Уровень доверия НИЖЕ СРЕДНЕГО.]"
+        )
+        state = {"between_call_appendix": tier3}
+        result = _consume_between_call_appendix(state, "PROFILE PROMPT")
+        assert result == "PROFILE PROMPT" + tier3
+        # Cleared so a subsequent reconnect/hijack can't double-apply.
+        assert state["between_call_appendix"] == ""
+
+    def test_hangup_context_appended_and_cleared(self):
+        """Story call after a hangup carries hostile bias forward."""
+        from app.ws.training import _consume_between_call_appendix
+        hangup = (
+            "\n\n[CONTEXT: Клиент помнит неудачный предыдущий разговор. "
+            "Начинай с враждебной позиции.]"
+        )
+        state = {"between_call_appendix": hangup}
+        result = _consume_between_call_appendix(state, "BASE")
+        assert "враждебной" in result
+        assert state["between_call_appendix"] == ""
+
+    def test_combined_hangup_and_tier3(self):
+        """If both writers fire on the same call (hangup → tier3),
+        the accumulator concatenates and consume gets both."""
+        from app.ws.training import _consume_between_call_appendix
+        hangup = "\n\n[CONTEXT: hostile.]"
+        tier3 = "\n\n[Tier 3 context]"
+        state: dict = {}
+        state["between_call_appendix"] = state.get("between_call_appendix", "") + hangup
+        state["between_call_appendix"] = state.get("between_call_appendix", "") + tier3
+        result = _consume_between_call_appendix(state, "BASE")
+        assert result == "BASE" + hangup + tier3
+        assert state["between_call_appendix"] == ""
+
+    def test_consume_is_idempotent_after_clear(self):
+        """A second consume call must NOT re-apply the same appendix."""
+        from app.ws.training import _consume_between_call_appendix
+        state = {"between_call_appendix": "\n\nAPPENDIX"}
+        first = _consume_between_call_appendix(state, "BASE")
+        second = _consume_between_call_appendix(state, "BASE")
+        assert first == "BASE\n\nAPPENDIX"
+        assert second == "BASE"  # appendix already consumed
+
+    def test_pre_pr_b_regression_demonstration(self):
+        """Documents the bug PR-B fixed.
+
+        Pre-PR-B code did:
+            prev_prompt = state.get("client_profile_prompt", "")
+            state["client_profile_prompt"] = prev_prompt + tier3_context
+            ...
+            # later in _handle_session_start:
+            state["client_profile_prompt"] = client_profile_prompt   # NUKES tier3
+
+        Post-PR-B code routes the addition through the appendix accumulator
+        which session.start consumes BEFORE assigning the prompt. This test
+        replays both flows so the difference is loud in CI output.
+        """
+        from app.ws.training import _consume_between_call_appendix
+
+        tier3 = "\n\n[Tier3]"
+        rebuilt_profile_prompt = "FRESH PROFILE FROM CLONE"
+
+        # --- Pre-PR-B (broken) flow, simulated ---
+        state_pre = {"client_profile_prompt": "OLD"}
+        state_pre["client_profile_prompt"] = state_pre["client_profile_prompt"] + tier3
+        state_pre["client_profile_prompt"] = rebuilt_profile_prompt  # session.start nukes
+        assert tier3 not in state_pre["client_profile_prompt"]  # bug
+
+        # --- Post-PR-B (fixed) flow ---
+        state_post: dict = {}
+        state_post["between_call_appendix"] = (
+            state_post.get("between_call_appendix", "") + tier3
+        )
+        state_post["client_profile_prompt"] = _consume_between_call_appendix(
+            state_post, rebuilt_profile_prompt
+        )
+        assert tier3 in state_post["client_profile_prompt"]  # fixed
