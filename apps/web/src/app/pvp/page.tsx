@@ -13,7 +13,6 @@ import { usePvPStore } from "@/stores/usePvPStore";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import { RatingCard } from "@/components/pvp/RatingCard";
 import { MatchmakingOverlay } from "@/components/pvp/MatchmakingOverlay";
-import { FriendsPanel } from "@/components/pvp/FriendsPanel";
 import { logger } from "@/lib/logger";
 import { PixelIcon, type PixelIconName } from "@/components/pvp/PixelIcon";
 import { CharacterPicker } from "@/components/pvp/CharacterPicker";
@@ -442,12 +441,9 @@ function PvPLobbyContent() {
             </div>
           )}
 
-          <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <div className="space-y-6">
+          <div className="mt-6 mx-auto max-w-3xl space-y-6">
 
-              {/* HonestNavigator — single primary entry-point: 4 modes
-                  (Дуэль / Квиз / Блиц / Тема). Replaces PreCallWarmUpHero
-                  and the legacy "Дуэли" / "Знания ФЗ-127" tabs. */}
+              {/* HonestNavigator — 3 modes: Дуэль / Блиц / По теме. */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -461,21 +457,26 @@ function PvPLobbyContent() {
                 />
               </motion.div>
 
-              {/* Power-user character preset (Issue #169) — collapsed by
-                  default; ~0% pilot users actually use it. */}
+              {/* Power-user character preset (Issue #169) — gear-icon
+                  toggle, off by default. Activated state shows the
+                  picker inline (collapsed otherwise to save space). */}
               <details className="group">
                 <summary
-                  className="font-pixel uppercase cursor-pointer select-none flex items-center gap-2 px-3 py-2"
+                  className="cursor-pointer select-none inline-flex items-center gap-2 px-3 py-1.5 font-pixel uppercase"
                   style={{
                     color: "var(--text-muted)",
-                    fontSize: 11,
-                    letterSpacing: "0.16em",
-                    background: "rgba(0,0,0,0.2)",
+                    fontSize: 10,
+                    letterSpacing: "0.14em",
+                    background: "transparent",
                     border: "1px dashed var(--border-color)",
                     borderRadius: 0,
                   }}
                 >
-                  Расширенные настройки: персонаж
+                  <PixelIcon name="robot" size={12} color="var(--text-muted)" />
+                  Персонаж
+                  {pickedCharacterId && (
+                    <span style={{ color: "var(--accent)", fontSize: 9 }}>● выбран</span>
+                  )}
                 </summary>
                 <div className="mt-3">
                   <CharacterPicker
@@ -562,7 +563,22 @@ function PvPLobbyContent() {
                           const myDelta = isP1 ? duel.player1_rating_delta : duel.player2_rating_delta;
                           const isWinner = duel.winner_id === store.rating?.user_id;
                           const ratingApplied = duel.rating_change_applied && !duel.is_pve;
-                          const accent = duel.is_draw ? "var(--warning)" : isWinner ? "var(--success)" : "var(--danger)";
+                          const isCancelled = duel.status === "cancelled";
+                          // Cancelled duels aren't a "loss" — render in muted state.
+                          const accent = isCancelled
+                            ? "var(--text-muted)"
+                            : duel.is_draw
+                              ? "var(--warning)"
+                              : isWinner
+                                ? "var(--success)"
+                                : "var(--danger)";
+                          const verdict = isCancelled
+                            ? "Отменена"
+                            : duel.is_draw
+                              ? "Ничья"
+                              : isWinner
+                                ? "Победа"
+                                : "Поражение";
 
                           return (
                             <motion.div
@@ -591,21 +607,23 @@ function PvPLobbyContent() {
                                       letterSpacing: "0.14em",
                                     }}
                                   >
-                                    {duel.is_draw ? "Ничья" : isWinner ? "Победа" : "Поражение"}
+                                    {verdict}
                                   </span>
-                                  <span
-                                    className="font-pixel uppercase"
-                                    style={{
-                                      padding: "1px 6px",
-                                      background: "var(--bg-secondary)",
-                                      border: "1px solid var(--border-color)",
-                                      color: "var(--text-muted)",
-                                      fontSize: 10,
-                                      letterSpacing: "0.12em",
-                                    }}
-                                  >
-                                    {DUEL_STATUS_LABELS[duel.status] || duel.status}
-                                  </span>
+                                  {!isCancelled && (
+                                    <span
+                                      className="font-pixel uppercase"
+                                      style={{
+                                        padding: "1px 6px",
+                                        background: "var(--bg-secondary)",
+                                        border: "1px solid var(--border-color)",
+                                        color: "var(--text-muted)",
+                                        fontSize: 10,
+                                        letterSpacing: "0.12em",
+                                      }}
+                                    >
+                                      {DUEL_STATUS_LABELS[duel.status] || duel.status}
+                                    </span>
+                                  )}
                                   {duel.is_pve && (
                                     <span
                                       className="font-pixel uppercase"
@@ -651,11 +669,6 @@ function PvPLobbyContent() {
                 )}
               </AnimatePresence>
 
-            </div>
-
-            <FriendsPanel onChallengeSent={() => {
-              store.setQueueStatus("searching");
-            }} />
           </div>
         </div>
       </motion.div>

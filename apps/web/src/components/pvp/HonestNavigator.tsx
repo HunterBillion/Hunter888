@@ -3,21 +3,15 @@
 /**
  * HonestNavigator — единая точка входа на /pvp.
  *
- * Заменяет PreCallWarmUpHero (4 фейк-кнопки → одна дуэль) + tab-Дуэли +
- * tab-Знания ФЗ-127 + 3 mode-card + 2 personality-card + 10 категорий —
- * всё это сливается в ОДИН блок с 4-мя реально разными режимами:
- *
+ * 3 режима:
  *   1. Дуэль с ботом    → handleFindMatch() (PvE-fallback в <15s)
- *   2. Квиз ФЗ-127      → POST /knowledge/sessions {mode:"free_dialog"}
- *   3. Блиц 20×60       → POST /knowledge/sessions {mode:"blitz"}
- *   4. По теме          → POST /knowledge/sessions {mode:"themed",category}
+ *   2. Блиц 20×60       → POST /knowledge/sessions {mode:"blitz"}
+ *   3. По теме          → POST /knowledge/sessions
+ *      • первый chip "Все темы" = mode:"free_dialog" (full pool)
+ *      • любой из 10 chip-категорий = mode:"themed", category=X
  *
- * AI-personality зашита `professor` — `detective` отличался только
- * стилем формулировок hints; разница не считывается, оставляем один
- * стиль для пилота.
- *
- * При выборе "По теме" раскрывается chip-row из 10 категорий ФЗ-127;
- * START активна только когда категория выбрана.
+ * AI-personality зашита: `professor` для не-блиц, `showman` для блиц.
+ * START активна когда выбран любой chip.
  */
 
 import * as React from "react";
@@ -49,12 +43,6 @@ const CARDS: Card[] = [
     accent: "var(--accent)",
   },
   {
-    mode: "free_dialog",
-    icon: "book",
-    title: "Квиз ФЗ-127",
-    accent: "var(--success, #22c55e)",
-  },
-  {
     mode: "blitz",
     icon: "bolt",
     title: "Блиц 20×60",
@@ -68,7 +56,11 @@ const CARDS: Card[] = [
   },
 ];
 
+// `__all__` — sentinel id для "Все темы" (запускает mode=free_dialog).
+const ALL_TOPICS_ID = "__all__";
+
 const CATEGORIES: Array<{ id: string; label: string; icon: PixelIconName }> = [
+  { id: ALL_TOPICS_ID, label: "Все темы (ФЗ-127)", icon: "book" },
   { id: "eligibility", label: "Условия подачи", icon: "book" },
   { id: "procedure", label: "Порядок процедуры", icon: "ladder" },
   { id: "property", label: "Имущество", icon: "castle" },
@@ -93,17 +85,19 @@ export function HonestNavigator({ disabled, starting, onDuel, onQuiz }: Props) {
       onDuel();
       return;
     }
-    if (m === "free_dialog" || m === "blitz") {
+    if (m === "blitz") {
       onQuiz(m);
       return;
     }
-    // themed → reveal category row
+    // themed → reveal category row (also covers free_dialog via "Все темы")
     setPicked(m);
   };
 
   const handleStart = () => {
-    if (isBusy) return;
-    if (picked === "themed" && category) {
+    if (isBusy || picked !== "themed" || !category) return;
+    if (category === ALL_TOPICS_ID) {
+      onQuiz("free_dialog");
+    } else {
       onQuiz("themed", category);
     }
   };
@@ -130,7 +124,7 @@ export function HonestNavigator({ disabled, starting, onDuel, onQuiz }: Props) {
         ▸ Что делаем сейчас?
       </h2>
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
         {CARDS.map((c) => {
           const active = picked === c.mode;
           return (
