@@ -242,6 +242,12 @@ async def get_leaderboard(
 async def get_my_duels(
     limit: int = Query(default=20, le=50),
     offset: int = Query(default=0, ge=0),
+    exclude_cancelled: bool = Query(
+        default=False,
+        description="Hide cancelled / abandoned duels (PR-9 2026-05-07). "
+        "FE lobby uses true so rage-quit / disconnect / reaper-killed "
+        "duels don't pollute the history list as red 'Поражение' rows.",
+    ),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -251,6 +257,11 @@ async def get_my_duels(
         .where(
             (PvPDuel.player1_id == user.id) | (PvPDuel.player2_id == user.id)
         )
+    )
+    if exclude_cancelled:
+        stmt = stmt.where(PvPDuel.status != DuelStatus.cancelled)
+    stmt = (
+        stmt
         .order_by(desc(PvPDuel.created_at))
         .offset(offset)
         .limit(limit)
