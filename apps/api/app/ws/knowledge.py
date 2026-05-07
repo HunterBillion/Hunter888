@@ -926,7 +926,7 @@ async def _handle_mc_answer(ws: WebSocket, state: _SoloQuizState, choice_index: 
         explanation += f" {chunk_hint}"
 
     # Persist (matches _handle_answer's call shape so analytics stay consistent)
-    await _save_answer(
+    saved_answer_id = await _save_answer(
         state,
         f"[MC#{choice_index}] {options[choice_index] if 0 <= choice_index < len(options) else ''}",
         is_correct=is_correct,
@@ -938,6 +938,20 @@ async def _handle_mc_answer(ws: WebSocket, state: _SoloQuizState, choice_index: 
         response_time_ms=response_time_ms,
     )
 
+    # PR-12 (2026-05-07): personality reaction for MC mode. Without this
+    # the user sees a generic «Не совсем» / «Верно» — no Showman energy,
+    # no Professor erudition. Now Blitz/MC reads the same flavour as the
+    # free-text path.
+    personality_comment = ""
+    if state.personality:
+        personality_comment = get_personality_reaction(
+            state.personality,
+            is_correct,
+            state.consecutive_correct,
+            correct_answer=correct_text,
+            verdict_level="correct" if is_correct else "wrong",
+        )
+
     # Stream the same events the existing FE quiz page already routes:
     # quiz.feedback.verdict (renders ✓/✗) + final quiz.feedback (renders body).
     await _send(ws, "quiz.feedback.verdict", {
@@ -946,6 +960,9 @@ async def _handle_mc_answer(ws: WebSocket, state: _SoloQuizState, choice_index: 
         "correct_answer": correct_text,
         "article_reference": state.current_q.expected_article,
         "fast_path": "mc_3",
+        # PR-12: expose answer_id even on the FAST verdict event so the
+        # FE can wire the «Пожаловаться» button before chunks arrive.
+        "answer_id": str(saved_answer_id) if saved_answer_id else None,
     })
     await _send(ws, "quiz.feedback", {
         "question_number": state.current_question,
@@ -958,6 +975,13 @@ async def _handle_mc_answer(ws: WebSocket, state: _SoloQuizState, choice_index: 
         "format": "mc_3",
         "your_choice_index": choice_index,
         "correct_choice_index": correct_idx,
+        # PR-12: missing fields that the regular text-answer flow already
+        # sends. Without these the FE bubble shows neither personality
+        # reaction nor the «Пожаловаться» Flag button.
+        "answer_id": str(saved_answer_id) if saved_answer_id else None,
+        "personality_comment": personality_comment,
+        "streak": state.consecutive_correct,
+        "best_streak": state.best_streak,
     })
     await _send(ws, "quiz.progress", {
         "current_question": state.current_question,

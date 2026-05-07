@@ -28,6 +28,9 @@ import { QuizThinkingIndicator } from "@/components/pvp/QuizThinkingIndicator";
 import { QuizCaseIntro } from "@/components/pvp/QuizCaseIntro";
 import { useKnowledgeStore, type QuizMessage } from "@/stores/useKnowledgeStore";
 import { ReportAnswerButton } from "@/components/pvp/ReportAnswerButton";
+import { QuestionReportButton } from "@/components/pvp/QuestionReportButton";
+import { PixelMascot } from "@/components/pvp/PixelMascot";
+import type { MascotState } from "@/components/pvp/PixelMascotSprites";
 import { ErrorBoundary } from "@/components/errors/ErrorBoundary";
 import { PageAuthGate } from "@/components/layout/PageAuthGate";
 import { logger } from "@/lib/logger";
@@ -62,12 +65,44 @@ function KnowledgeSessionPage() {
     return (m && typeof m === "string") ? m : null;
   }, [searchParams]);
 
+  // PR-12 (2026-05-07): синхронно из URL понимаем что сессия запущена
+  // в MC-формате (choices_format=1 в URL или blitz/rapid_blitz по mode).
+  // Без этого на первом paint'е до первого WS-сообщения юзер видел
+  // textarea для free-text — баг «просто поле вместо вариантов».
+  const isMcByUrl = useMemo(() => {
+    if (!searchParams) return false;
+    if (searchParams.get("choices_format") === "1") return true;
+    const m = searchParams.get("mode");
+    return m === "blitz" || m === "rapid_blitz";
+  }, [searchParams]);
+
   const store = useKnowledgeStore();
   const { playSound } = useSound();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const userExitedRef = useRef(false);
+
+  // PR-12 (2026-05-07): pull the most-recent answerId from the store so
+  // the panel-level «Сообщить о проблеме» button knows which row to flag.
+  // Falls through every render — cheap, store.messages is a small array.
+  const lastAnswerId = useMemo<string | undefined>(() => {
+    const msgs = store.messages;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i]?.answerId) return msgs[i].answerId;
+    }
+    return undefined;
+  }, [store.messages]);
+
+  // PR-12: derive mascot mood from recent quiz state. Cheers on a streak,
+  // gets sad after consecutive wrongs, sleeps when idle for too long.
+  const quizMascotState = useMemo<MascotState>(() => {
+    const last = store.messages.filter(m => m.type === "feedback").slice(-1)[0];
+    if (!last) return "idle";
+    if (last.verdictLevel === "correct") return "cheer";
+    if (last.verdictLevel === "wrong" || last.verdictLevel === "off_topic") return "sad";
+    return "idle";
+  }, [store.messages]);
 
   const [showResults, setShowResults] = useState(false);
   const [hintLoading, setHintLoading] = useState(false);
@@ -269,6 +304,10 @@ function KnowledgeSessionPage() {
               ? (data.verdict_level as "correct" | "partial" | "off_topic" | "wrong")
               : isCorrect ? "correct" : "wrong";
           const llmScore = typeof data.llm_score === "number" ? data.llm_score : undefined;
+          // PR-12 (2026-05-07): MC mode emits answer_id on the verdict
+          // event itself, before chunks arrive. Pick it up here so the
+          // «Пожаловаться» button is wired immediately.
+          const answerId = typeof data.answer_id === "string" ? data.answer_id : undefined;
           store.setIsTyping(false);
           store.addMessage({
             type: "feedback",
@@ -279,6 +318,7 @@ function KnowledgeSessionPage() {
             correctAnswer: correctAns,
             articleRef,
             explanation: "",
+            answerId,
           });
           if (isCorrect) {
             playSound("correct", 0.4);
@@ -300,9 +340,12 @@ function KnowledgeSessionPage() {
           // V2: Enhanced feedback with personality, streak, speed bonus
           const personalityComment = data.personality_comment as string | undefined;
           const speedBonus = data.speed_bonus as number | undefined;
-          const feedbackContent = personalityComment
-            ? `${personalityComment}\n\n${data.explanation as string || ""}`
-            : (data.explanation as string || "");
+          // PR-12 (2026-05-07): personalityComment больше НЕ склеивается
+          // с explanation — рендерится отдельным italic-баблом в bubble
+          // (см. render-блок ниже). Без этого на blitz/MC реакции
+          // showman / professor сливались с объяснением и пользователь
+          // не чувствовал персонажа.
+          const feedbackContent = (data.explanation as string) || "";
           const currentPersonality2 = useKnowledgeStore.getState().aiPersonality;
 
           // SFX: correct/incorrect + streak milestone
@@ -1202,8 +1245,12 @@ function KnowledgeSessionPage() {
         </div>
       </div>
 
-      {/* ═══ Main Content: 2-column MC layout OR single-column free-text ═══ */}
-      {store.currentChoices && store.currentChoices.length >= 2 ? (
+      {/* ═══ Main Content: 2-column MC layout OR single-column free-text ═══
+           PR-12 (2026-05-07): когда URL пометил MC-режим (?choices_format=1
+           или mode=blitz), сразу рендерим 2-колоночный layout — даже до
+           прихода первого quiz.question, со скелетоном вариантов. Иначе
+           юзер видел вспышку textarea на первом paint'е. */}
+      {(store.currentChoices && store.currentChoices.length >= 2) || isMcByUrl ? (
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
           {/* ── LEFT: MC Choices Panel (1/3) ── */}
           <aside
@@ -1231,7 +1278,32 @@ function KnowledgeSessionPage() {
               </div>
 
               <div className="flex flex-col gap-3 flex-1">
-                {store.currentChoices.map((choiceText, idx) => {
+                {/* PR-12 (2026-05-07): pre-question skeleton — иначе layout
+                    схлопывается на первый paint и hint-кнопка мигает наверх. */}
+                {(!store.currentChoices || store.currentChoices.length < 2) && (
+                  <>
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <div
+                        key={`skeleton-${i}`}
+                        className="animate-pulse"
+                        style={{
+                          height: 60,
+                          background: "color-mix(in srgb, var(--accent) 6%, var(--bg-panel))",
+                          border: "2px dashed var(--border-color)",
+                          borderRadius: 0,
+                          opacity: 0.4,
+                        }}
+                      />
+                    ))}
+                    <div
+                      className="font-pixel uppercase text-center text-[11px] tracking-widest mt-2"
+                      style={{ color: "var(--text-muted)", letterSpacing: "0.16em" }}
+                    >
+                      ▸ Загружаем варианты...
+                    </div>
+                  </>
+                )}
+                {(store.currentChoices ?? []).map((choiceText, idx) => {
                   const isPicked = store.pickedChoiceIndex === idx;
                   const locked = store.pickedChoiceIndex !== null;
                   const badgePalette = [
@@ -1332,6 +1404,30 @@ function KnowledgeSessionPage() {
                   )}
                 </motion.button>
               )}
+
+              {/* PR-12 (2026-05-07): «Сообщить о проблеме» — продублированный
+                  вход для жалобы на ответ AI прямо в панели вариантов.
+                  Раньше кнопка жила только в verdict-bubble в чате (PR-6),
+                  но если AI принял ответ неправильно (или сам вопрос
+                  кривой), пользователю удобнее жаловаться прямо отсюда.
+                  Привязывается к last answer'у с answerId. Если ответа
+                  ещё не было — disabled с tooltip'ом. */}
+              <QuestionReportButton lastAnswerId={lastAnswerId} />
+
+              {/* PR-12: пиксельный лев на странице квиза, под панелью.
+                  Реагирует state-ом на консистентность стрика. */}
+              <div className="mt-4 flex justify-center">
+                <PixelMascot
+                  state={
+                    quizMascotState
+                  }
+                  size={64}
+                  bordered
+                  frameColor="var(--accent)"
+                  background="var(--bg-panel)"
+                  ariaLabel="Квиз-маскот"
+                />
+              </div>
 
             </div>
           </aside>
@@ -1740,6 +1836,26 @@ function MessageBubble({ message }: { message: QuizMessage }) {
               </span>
             )}
           </div>
+          {/* PR-12 (2026-05-07): дать «персонажу» голос. Показываем
+              personality_comment отдельным italic-блоком ВПЕРЕДИ всех
+              остальных деталей — иначе он терялся внутри `content` строки
+              и пользователь чувствовал «безликий» AI. Showman/Professor/
+              Detective стили теперь явно видны. */}
+          {message.personalityComment && (
+            <div
+              className="mb-2 px-3 py-2 italic"
+              style={{
+                background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+                borderLeft: "3px solid var(--accent)",
+                color: "var(--text-primary)",
+                fontSize: 13,
+                lineHeight: 1.5,
+              }}
+            >
+              {message.avatarEmoji && <span style={{ marginRight: 6 }}>{message.avatarEmoji}</span>}
+              {message.personalityComment}
+            </div>
+          )}
           {/* If NOT fully correct: show canonical right-answer block.
               Now appears for partial / off_topic / wrong — user always
               sees what the right answer was, even when "почти". */}
