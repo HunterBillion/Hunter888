@@ -1,19 +1,17 @@
 "use client";
 
 /**
- * QuestionReportButton — «Сообщить о проблеме» в панели вариантов
- * квиза (PR-12, 2026-05-07).
+ * QuestionReportButton — глобальная «Сообщить о проблеме» в панели
+ * вариантов квиза (и над free-text input bar).
  *
- * Дублирует ReportAnswerButton из verdict-bubble, но живёт прямо в
- * левой панели рядом с ПОДСКАЗКА. Привязка к ПОСЛЕДНЕМУ answer'у
- * с answerId — таким образом юзер может пожаловаться, не возвращаясь
- * глазами в чат-историю.
+ * PR-12 (создан) → PR-14 (redesigned). Раньше: тонкая dashed-полоса
+ * с маленьким текстом, disabled-tooltip только нативный (HTML title).
+ * Теперь: яркая жёлтая кнопка во всю ширину с понятным текстом,
+ * чёткая disabled-плашка с объяснением прямо в кнопке.
  *
- * Поведение:
- *   - lastAnswerId === undefined  → кнопка disabled с тултипом «Сначала
- *     ответь на вопрос — потом можно пожаловаться на оценку».
- *   - lastAnswerId есть          → клик открывает ту же модалку, что
- *     ReportAnswerButton.
+ * Привязка к последнему answer'у с answerId — пользователь жалуется
+ * на последний verdict AI. Если ответа ещё не было — disabled с
+ * понятным текстом «Ответьте сначала».
  */
 
 import { ReportAnswerButton } from "./ReportAnswerButton";
@@ -25,11 +23,11 @@ interface Props {
 
 export function QuestionReportButton({ lastAnswerId }: Props) {
   if (lastAnswerId) {
-    // Reuse the per-answer button with full-width styling for the panel
-    // location. Wrapping div forces the inline-flex pixel chip to
-    // stretch and match the ПОДСКАЗКА button width.
+    // PR-14: ReportAnswerButton сам по себе уже заметный (warning-yellow
+    // bordered chip). Здесь просто растягиваем на всю ширину родителя
+    // через CSS-селектор.
     return (
-      <div className="mt-2 [&>button]:w-full [&>button]:justify-center [&>button]:py-3">
+      <div className="mt-2 w-full [&>button]:w-full [&>button]:justify-center [&>button]:py-3 [&>button]:text-[12px]">
         <ReportAnswerButton answerId={lastAnswerId} />
       </div>
     );
@@ -39,21 +37,20 @@ export function QuestionReportButton({ lastAnswerId }: Props) {
     <button
       type="button"
       disabled
-      title="Сначала ответь на вопрос — потом можно сообщить о проблеме с оценкой."
-      className="mt-2 flex w-full items-center justify-center gap-2 py-3 px-3"
+      title="Жалоба будет доступна после первого ответа на вопрос"
+      className="mt-2 flex w-full items-center justify-center gap-2 px-3 py-3 font-pixel uppercase text-[11px]"
       style={{
         background: "transparent",
         color: "var(--text-muted)",
         border: "1px dashed var(--border-color)",
         borderRadius: 0,
-        opacity: 0.5,
+        opacity: 0.55,
         cursor: "not-allowed",
+        letterSpacing: "0.14em",
       }}
     >
-      <Flag size={14} />
-      <span className="font-pixel text-[12px] uppercase tracking-widest">
-        Сообщить о проблеме
-      </span>
+      <Flag size={13} />
+      <span>Ответьте сначала, потом жалуйтесь</span>
     </button>
   );
 }
