@@ -59,8 +59,12 @@ api_router.include_router(pvp_router, prefix="/pvp", tags=["pvp"])
 
 # Agent 9 — Knowledge Quiz (127-FZ testing)
 from app.api.knowledge import router as knowledge_router
+from app.api.knowledge_reports import router as knowledge_reports_router
 
 api_router.include_router(knowledge_router, prefix="/knowledge", tags=["knowledge"])
+# PR-6 user reports about AI verdicts (split out of knowledge.py 2026-05-07).
+# Same /knowledge prefix so the URL /api/knowledge/answers/{id}/report is unchanged.
+api_router.include_router(knowledge_reports_router, prefix="/knowledge", tags=["knowledge"])
 
 # Module 5 — ROP Tools (formerly Methodologist).
 # Mounted at TWO prefixes during the migration window:
