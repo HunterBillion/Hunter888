@@ -422,10 +422,14 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
   });
 
   // ── Radio button row helper ──
+  // PR-C: removed the bottom margin — the parent now spaces fields via a
+  // grid gap, and the leftover mb-4 was wasting vertical space inside the
+  // new mini-cards. Chip styling kept identical so the change is purely
+  // structural.
   const RadioRow = ({ label, options, value, onChange }: {
     label: string; options: { code: string; label: string }[]; value: string; onChange: (v: string) => void;
   }) => (
-    <div className="mb-4">
+    <div>
       <div className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>{label}</div>
       <div className="flex flex-wrap gap-1.5">
         {options.map((o) => (
@@ -523,12 +527,25 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
                 );
               })}
             </div>
+            {/* PR-C: T1-T4 are tier filters, but the bare "T1/T2/T3/T4"
+                labels gave the user no idea what they meant. Same chip
+                shape, readable copy. Tooltip explains the unlock-level
+                gate so power users still know they map to archetype
+                tiers under the hood. */}
             <div className="flex flex-wrap gap-1.5 mb-4">
               {([1, 2, 3, 4] as ArchetypeTier[]).map((t) => {
-                const tc = getTierColor(t); const labels = ["T1", "T2", "T3", "T4"];
+                const tc = getTierColor(t);
+                const labels = ["Лёгкие", "Средние", "Сложные", "Эксперт"];
+                const titles = [
+                  "Тир 1 — базовая сложность, доступны с 1 уровня",
+                  "Тир 2 — средняя сложность",
+                  "Тир 3 — высокая сложность",
+                  "Тир 4 — эксперт, разблокируется на высоких уровнях",
+                ];
                 return (
                   <button key={t} onClick={() => setTierFilter(tierFilter === t ? null : t)}
-                    className="rounded-full px-2 py-1 text-xs font-semibold uppercase"
+                    title={titles[t - 1]}
+                    className="rounded-full px-3 py-1 text-xs font-semibold"
                     style={{ background: tierFilter === t ? tc + "20" : "var(--input-bg)", color: tierFilter === t ? tc : "var(--text-muted)", border: tierFilter === t ? `1px solid ${tc}40` : "1px solid transparent" }}>
                     {labels[t - 1]}
                   </button>
@@ -605,15 +622,26 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
             </div>
           </>)}
 
-          {/* ═══ Step 3: Client Context (NEW) ═══ */}
+          {/* ═══ Step 3: Client Context (NEW) ═══
+               PR-C: split single big glass-panel into one mini-card per
+               field so the visual rhythm matches the card-grid steps
+               (1/2/4) instead of looking like a flat form. */}
           {step === 3 && (<>
             <h3 className="font-display text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>Контекст клиента</h3>
             <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>Жизненная ситуация влияет на страхи, мотивы и бэкстори</p>
-            <div className="glass-panel p-5 rounded-2xl space-y-1">
-              <RadioRow label="Семейное положение" options={FAMILY_PRESETS} value={familyPreset} onChange={(v) => setFamilyPreset(v as FamilyPreset)} />
-              <RadioRow label="Количество кредиторов" options={CREDITORS_PRESETS} value={creditorsPreset} onChange={(v) => setCreditorsPreset(v as CreditorsPreset)} />
-              <RadioRow label="Стадия долга" options={DEBT_STAGES} value={debtStage} onChange={(v) => setDebtStage(v as DebtStage)} />
-              <RadioRow label="Общий долг" options={DEBT_RANGES} value={debtRange} onChange={(v) => setDebtRange(v as DebtRange)} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="glass-panel p-4 rounded-xl">
+                <RadioRow label="Семейное положение" options={FAMILY_PRESETS} value={familyPreset} onChange={(v) => setFamilyPreset(v as FamilyPreset)} />
+              </div>
+              <div className="glass-panel p-4 rounded-xl">
+                <RadioRow label="Количество кредиторов" options={CREDITORS_PRESETS} value={creditorsPreset} onChange={(v) => setCreditorsPreset(v as CreditorsPreset)} />
+              </div>
+              <div className="glass-panel p-4 rounded-xl">
+                <RadioRow label="Стадия долга" options={DEBT_STAGES} value={debtStage} onChange={(v) => setDebtStage(v as DebtStage)} />
+              </div>
+              <div className="glass-panel p-4 rounded-xl">
+                <RadioRow label="Общий долг" options={DEBT_RANGES} value={debtRange} onChange={(v) => setDebtRange(v as DebtRange)} />
+              </div>
             </div>
           </>)}
 
@@ -704,14 +732,22 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
             </div>
           </>)}
 
-          {/* ═══ Step 6: Environment (NEW) ═══ */}
+          {/* ═══ Step 6: Environment (NEW) ═══
+               PR-C: same mini-card-per-field treatment as Step 3 so the
+               wizard reads as one continuous design language. */}
           {step === 6 && (<>
             <h3 className="font-display text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>Модификаторы среды</h3>
             <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>Условия, в которых находится клиент во время звонка</p>
-            <div className="glass-panel p-5 rounded-2xl space-y-1">
-              <RadioRow label="Фоновый шум" options={NOISES} value={bgNoise} onChange={(v) => setBgNoise(v as BackgroundNoise)} />
-              <RadioRow label="Время суток" options={TIMES} value={timeOfDay} onChange={(v) => setTimeOfDay(v as TimeOfDay)} />
-              <RadioRow label="Усталость клиента" options={FATIGUES} value={clientFatigue} onChange={(v) => setClientFatigue(v as ClientFatigue)} />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="glass-panel p-4 rounded-xl">
+                <RadioRow label="Фоновый шум" options={NOISES} value={bgNoise} onChange={(v) => setBgNoise(v as BackgroundNoise)} />
+              </div>
+              <div className="glass-panel p-4 rounded-xl">
+                <RadioRow label="Время суток" options={TIMES} value={timeOfDay} onChange={(v) => setTimeOfDay(v as TimeOfDay)} />
+              </div>
+              <div className="glass-panel p-4 rounded-xl">
+                <RadioRow label="Усталость клиента" options={FATIGUES} value={clientFatigue} onChange={(v) => setClientFatigue(v as ClientFatigue)} />
+              </div>
             </div>
           </>)}
 
