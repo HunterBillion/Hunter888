@@ -911,6 +911,15 @@ async def _handle_mc_answer(ws: WebSocket, state: _SoloQuizState, choice_index: 
         state.incorrect += 1
     state.score += score_delta
 
+    # PR-13 (2026-05-07): MC handler НЕ ОБНОВЛЯЛ adaptive difficulty / streak.
+    # Из-за этого state.consecutive_correct всегда был 0 в blitz — поэтому
+    # `get_personality_reaction(..., state.consecutive_correct, ...)` ниже
+    # никогда не доходил до streak-веток (3/5/7/10), и пользователь не
+    # чувствовал «3 в ряд» / «5 в ряд» реакций персонажа. Это и есть
+    # «персонаж не чувствуется» которое жаловались. Сравни с
+    # `_handle_answer:1162` и `_handle_case_study:2893` — там вызов есть.
+    new_difficulty = state.update_adaptive_difficulty(is_correct)
+
     # Pull the canonical correct option text + chunk's correct_response_hint
     # for the explanation footer.
     correct_text = options[correct_idx] if (correct_idx is not None and 0 <= correct_idx < len(options)) else None
@@ -954,20 +963,25 @@ async def _handle_mc_answer(ws: WebSocket, state: _SoloQuizState, choice_index: 
 
     # Stream the same events the existing FE quiz page already routes:
     # quiz.feedback.verdict (renders ✓/✗) + final quiz.feedback (renders body).
+    # PR-13: дублируем personality_comment / verdict_level в verdict-event
+    # тоже, чтобы при race / WS-disconnect между verdict и feedback юзер
+    # не остался без italic-блока с реакцией персонажа.
+    verdict_level_str = "correct" if is_correct else "wrong"
     await _send(ws, "quiz.feedback.verdict", {
         "question_number": state.current_question,
         "is_correct": is_correct,
+        "verdict_level": verdict_level_str,
         "correct_answer": correct_text,
         "article_reference": state.current_q.expected_article,
         "fast_path": "mc_3",
-        # PR-12: expose answer_id even on the FAST verdict event so the
-        # FE can wire the «Пожаловаться» button before chunks arrive.
         "answer_id": str(saved_answer_id) if saved_answer_id else None,
+        "personality_comment": personality_comment,
+        "streak": state.consecutive_correct,
     })
     await _send(ws, "quiz.feedback", {
         "question_number": state.current_question,
         "is_correct": is_correct,
-        "verdict_level": "correct" if is_correct else "wrong",
+        "verdict_level": verdict_level_str,
         "explanation": explanation,
         "article_reference": state.current_q.expected_article,
         "score_delta": score_delta,
@@ -975,13 +989,11 @@ async def _handle_mc_answer(ws: WebSocket, state: _SoloQuizState, choice_index: 
         "format": "mc_3",
         "your_choice_index": choice_index,
         "correct_choice_index": correct_idx,
-        # PR-12: missing fields that the regular text-answer flow already
-        # sends. Without these the FE bubble shows neither personality
-        # reaction nor the «Пожаловаться» Flag button.
         "answer_id": str(saved_answer_id) if saved_answer_id else None,
         "personality_comment": personality_comment,
         "streak": state.consecutive_correct,
         "best_streak": state.best_streak,
+        "current_difficulty": new_difficulty,
     })
     await _send(ws, "quiz.progress", {
         "current_question": state.current_question,
