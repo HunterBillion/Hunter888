@@ -1121,12 +1121,28 @@ export default function TrainingCallPage() {
   // Plain derived values (not hooks) — safe after the early-return.
   const sttSupported = stt.isSupported;
   const wsDead = connectionState === "disconnected" || connectionState === "error";
-  const bannerKind = pickBannerKind({
+  const rawBannerKind = pickBannerKind({
     wsDead,
     sttSupported,
     sttErrorCode: stt.errorCode,
     micErrorReason: null,
   });
+  // 2026-05-07 (B6): when STT is blocked/unsupported but the Whisper
+  // push-to-talk fallback is ready, suppress the loud orange "Голосовое
+  // распознавание заблокировано" banner — the Whisper PTT pill below
+  // the call view IS the auto-fallback. The banner used to scare users
+  // (especially on Brave) into thinking voice was broken when in fact
+  // it was already working through the server-side Whisper pipeline.
+  // ws_dead always wins — the user must know connectivity is gone.
+  const whisperReady = sttBlocked && microphoneFallback.isSupported;
+  const bannerKind =
+    rawBannerKind === "ws_dead"
+      ? rawBannerKind
+      : whisperReady &&
+          (rawBannerKind === "stt_network" ||
+            rawBannerKind === "stt_unsupported")
+        ? null
+        : rawBannerKind;
 
   // 2026-04-22: hang-up transition overlay. Shown for the 3.5s between
   // client.hangup/session.ended and the redirect to /results. Covers the
@@ -1367,9 +1383,9 @@ export default function TrainingCallPage() {
               color: "#c4b5fd",
               border: "1px solid rgba(124,58,237,0.4)",
             }}
-            title="Голосовой ввод через сервер вместо браузерного Web Speech API"
+            title="Голос работает через сервер (Whisper). В Brave/Safari/Firefox это рабочий вариант — настраивать ничего не нужно."
           >
-            🔁 Резервный режим (Whisper)
+            🎤 Голос работает · Whisper
           </div>
         </div>
       )}

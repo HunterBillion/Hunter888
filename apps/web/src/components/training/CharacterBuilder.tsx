@@ -567,7 +567,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
                           {sel && <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "var(--accent)" }}><Check size={8} className="text-white" /></div>}
                           <div className="text-xl mb-1"><AppIcon emoji={p.icon} size={22} /></div>
                           <div className="text-xs font-bold" style={{ color: sel ? "var(--accent)" : "var(--text-primary)" }}>{p.name}</div>
-                          <div className="text-sm font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>{p.debtRange} \u20BD</div>
+                          <div className="text-sm font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>{p.debtRange} ₽</div>
                         </motion.button>
                       );
                     })}
@@ -757,16 +757,22 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
                   <div className="text-lg font-black font-mono" style={{ color: difficulty <= 3 ? "var(--success)" : difficulty <= 6 ? "var(--warning)" : "var(--danger)" }}>{difficulty}/10</div>
                 </div>
               </div>
-              {/* Extra params summary */}
+              {/* Extra params summary — every chip always rendered so the
+                  user sees exactly what was picked across all 9 wizard
+                  fields, including defaults. Previously each chip was
+                  gated by `value !== "default"`, so a user who kept the
+                  defaults saw an empty preview and lost confidence that
+                  step 3/4/6 picks landed. `tone` had no chip at all.   */}
               <div className="flex flex-wrap gap-1.5 mb-4">
-                {familyPreset !== "random" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Семья: {FAMILY_PRESETS.find(f => f.code === familyPreset)?.label}</span>}
-                {creditorsPreset !== "random" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Кредиторы: {creditorsPreset}</span>}
-                {debtStage !== "random" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Стадия: {DEBT_STAGES.find(d => d.code === debtStage)?.label}</span>}
-                {debtRange !== "random" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Долг: {DEBT_RANGES.find(d => d.code === debtRange)?.label}</span>}
-                {emotionPreset !== "neutral" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Настроение: {EMOTION_PRESETS.find(e => e.code === emotionPreset)?.name}</span>}
-                {bgNoise !== "none" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Шум: {NOISES.find(n => n.code === bgNoise)?.label}</span>}
-                {timeOfDay !== "afternoon" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Время: {TIMES.find(t => t.code === timeOfDay)?.label}</span>}
-                {clientFatigue !== "normal" && <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Усталость: {FATIGUES.find(f => f.code === clientFatigue)?.label}</span>}
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Семья: {FAMILY_PRESETS.find(f => f.code === familyPreset)?.label ?? "Случайно"}</span>
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Кредиторы: {CREDITORS_PRESETS.find(c => c.code === creditorsPreset)?.label ?? "Случайно"}</span>
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Стадия: {DEBT_STAGES.find(d => d.code === debtStage)?.label ?? "Случайно"}</span>
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Долг: {DEBT_RANGES.find(d => d.code === debtRange)?.label ?? "Случайно"}</span>
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Настроение: {EMOTION_PRESETS.find(e => e.code === emotionPreset)?.name ?? "Нейтральный"}</span>
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Тон: {TONES.find(t => t.code === tone)?.name ?? "Нейтральный"}</span>
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Шум: {NOISES.find(n => n.code === bgNoise)?.label ?? "Тишина"}</span>
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Время: {TIMES.find(t => t.code === timeOfDay)?.label ?? "День"}</span>
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}>Усталость: {FATIGUES.find(f => f.code === clientFatigue)?.label ?? "Нормальный"}</span>
               </div>
               <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
                 AI создаст реалистичный портрет клиента на основе всех выбранных параметров.
@@ -811,7 +817,7 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
                   <span>💾 Сохранить в «Мои клиенты» при запуске</span>
                 </label>
                 <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                  Можно будет запустить того же клиента ещё раз и смотреть прогресс: play_count, лучший балл, средний балл.
+                  Можно будет запустить того же клиента ещё раз и смотреть прогресс: количество запусков, лучший балл, средний балл.
                 </p>
               </div>
             </div>
