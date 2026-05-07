@@ -79,6 +79,16 @@ interface SessionMeta {
   custom_params?: { bg_noise?: string | null; session_mode?: string } | null;
 }
 
+// PR-H (B5 defensive): module-level fallback for "this session was
+// already accepted in this tab". sessionStorage normally carries this
+// across remounts, but on Brave/Safari private mode setItem can throw
+// or silently fail (no quota / disabled), and useState reads then
+// return false on the second render → IncomingCallScreen renders again.
+// The Set lives for the page life of the tab; it is the in-memory
+// fallback that survives the brief remount without depending on the
+// browser storage facility being writable.
+const _ACCEPTED_SESSIONS_RUNTIME = new Set<string>();
+
 export default function TrainingCallPage() {
   const router = useRouter();
   const params = useParams();
@@ -129,6 +139,13 @@ export default function TrainingCallPage() {
   // via sessionStorage. Scoped to session id so switching sessions resets.
   const [callAccepted, setCallAccepted] = useState<boolean>(() => {
     if (typeof window === "undefined" || !id) return false;
+    // PR-H (B5 defensive): check the module-level runtime Set first —
+    // if Accept was clicked earlier in this tab, the user shouldn't see
+    // IncomingCallScreen again on a remount even when sessionStorage
+    // is disabled (Brave Shields / Safari private). Falls back to the
+    // sessionStorage probe so a real F5 reload still rehydrates from
+    // disk on a normal browser.
+    if (_ACCEPTED_SESSIONS_RUNTIME.has(id)) return true;
     try {
       return window.sessionStorage.getItem(`call-accepted-${id}`) === "1";
     } catch {
@@ -209,6 +226,23 @@ export default function TrainingCallPage() {
   // failures, media-element errors, and tts.fallback transitions were
   // silent and the user just heard nothing / a different voice with no
   // explanation. Audit Pattern 3 #9 + #15.
+  // PR-H (B7 defensive): track first TTS audio after session.started.
+  // Pilot users report: «у некоторых пользователей не слышать ии клиента».
+  // The 3-vector unlock sequence runs on Accept, but on a subset of
+  // browsers (Brave with autoplay tightened, mobile Safari with strict
+  // gesture coupling, audio device race) the AudioContext stays
+  // suspended and the first tts.audio decode fires into the void —
+  // there's no error, just silence. The recovery flag below flips ON
+  // when the WS receives session.started and OFF the moment any
+  // tts.audio / tts.audio_chunk arrives. A useEffect below watches the
+  // delta and, if no audio after 6 seconds, surfaces a "tap to enable
+  // sound" toast that re-runs tts.unlock(). Without this the user sits
+  // there waiting for a phantom AI that the backend already streamed
+  // but the browser never played.
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
+  const firstTtsAudioReceivedRef = useRef(false);
+  const ttsRecoveryFiredRef = useRef(false);
+
   const lastTtsErrorMsgRef = useRef<string | null>(null);
   useEffect(() => {
     if (!tts.playbackError) {
@@ -223,6 +257,41 @@ export default function TrainingCallPage() {
       toast.error("Озвучка прервана", { description: tts.playbackError.message });
     }
   }, [tts.playbackError]);
+
+  // PR-H (B7) — no-audio watchdog. If session.started fires but no
+  // tts.audio / tts.audio_chunk arrives in 6 seconds, surface a
+  // recovery toast that re-runs tts.unlock(). The 3-vector unlock on
+  // Accept covers most cases, but on Brave (autoplay tightened),
+  // mobile Safari (strict gesture coupling), or after an audio device
+  // race the AudioContext can stay suspended and decode results land
+  // in the void with no error event. Without this the user just sits
+  // in silence wondering if the AI is even there. Watchdog runs once
+  // per session — ttsRecoveryFiredRef makes sure a flaky network
+  // delaying the first audio doesn't spawn 5 toasts in a row.
+  useEffect(() => {
+    if (!sessionStartedAt) return;
+    const tid = window.setTimeout(() => {
+      if (firstTtsAudioReceivedRef.current) return;
+      if (ttsRecoveryFiredRef.current) return;
+      ttsRecoveryFiredRef.current = true;
+      logger.warn("[CALL] B7 watchdog: no tts.audio in 6s after session.started");
+      try {
+        tts.unlock();
+      } catch {
+        /* tts.unlock is best-effort */
+      }
+      try {
+        toast.warning("Не слышно клиента?", {
+          description:
+            "Звук может быть заблокирован браузером. Если тишина продолжается — нажмите на громкоговоритель в правом нижнем углу.",
+          duration: 8000,
+        });
+      } catch {
+        /* sonner not available — non-fatal */
+      }
+    }, 6000);
+    return () => window.clearTimeout(tid);
+  }, [sessionStartedAt, tts]);
 
   // --- STT (continuous, forwards recognized text to WS) -------------------
   const sttSendRef = useRef<((text: string) => void) | null>(null);
@@ -488,6 +557,12 @@ export default function TrainingCallPage() {
           if (data.data.session_id) {
             currentSessionIdRef.current = data.data.session_id as string;
           }
+          // PR-H (B7): start the no-audio watchdog. firstTtsAudioReceived
+          // resets to false on every fresh session.started, so a Story
+          // Mode call #2 still gets its 6-second grace.
+          setSessionStartedAt(Date.now());
+          firstTtsAudioReceivedRef.current = false;
+          ttsRecoveryFiredRef.current = false;
           if (data.data.character_name)
             s.setCharacterName(data.data.character_name as string);
           if (data.data.initial_emotion)
@@ -510,6 +585,9 @@ export default function TrainingCallPage() {
           // → InvalidCharacterError → silent TTS. Chat page had the
           // correct mapping; call page was missed during refactor.
           tts.cancelFallback();
+          // PR-H (B7): mark first TTS audio received so the no-audio
+          // watchdog stops counting against this session.
+          firstTtsAudioReceivedRef.current = true;
           const audioB64 = data.data.audio_b64 as string | undefined;
           if (audioB64 && typeof audioB64 === "string" && audioB64.length > 0) {
             // Sprint 0 §7 (Bug A): defer the first audio behind the
@@ -551,6 +629,8 @@ export default function TrainingCallPage() {
           // incident: character.response came through, tts.audio never
           // did, user saw dead silence (journal #22 recurrence).
           tts.cancelFallback();
+          // PR-H (B7): chunked audio counts as "first audio received".
+          firstTtsAudioReceivedRef.current = true;
           const chunkAudio = data.data.audio_b64 as string | undefined;
           if (chunkAudio) {
             // Sprint 0 §7 (Bug A): same gate. queueAudioChunk only adds
@@ -1066,10 +1146,13 @@ export default function TrainingCallPage() {
             logger.warn("[CALL] unlock sequence error:", e);
           }
           // Persist across refresh so F5 doesn't bounce back to incoming.
+          // PR-H (B5 defensive): also write to the module-level Set so
+          // a remount survives even when sessionStorage is disabled.
+          if (id) _ACCEPTED_SESSIONS_RUNTIME.add(id);
           try {
             window.sessionStorage.setItem(`call-accepted-${id}`, "1");
           } catch {
-            /* storage quota / private mode — non-fatal */
+            /* storage quota / private mode — non-fatal, runtime Set covers it */
           }
           // Sprint 0 §7 (Bug A): hold first TTS audio for 350ms so the
           // pickup click (~60ms tone scheduled at +20ms) and the audio

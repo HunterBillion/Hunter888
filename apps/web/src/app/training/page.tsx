@@ -126,6 +126,25 @@ function TrainingPageContent() {
   // только на шаге router.push — chat → /training/[id], call →
   // /training/[id]/call.
   const performStart = async (scenarioId: string, mode: "chat" | "call") => {
+    // PR-H (B5 defensive): a real-world cause of "двойной экран
+    // входящий" is a double-click on the call button. Without this
+    // guard the second invocation also sent POST /training/sessions
+    // before setStarting had committed, creating two TrainingSessions
+    // back-to-back. The router.push then races: first push to /A/call
+    // begins mounting, second push replaces with /B/call, and the
+    // call page sees a fresh session.id with an empty sessionStorage
+    // entry → IncomingCallScreen renders again on the second mount.
+    // The starting state-machine already locks the button on screen,
+    // but a fast double-click in <1 frame can still trigger this
+    // handler twice — guard explicitly here too.
+    if (starting !== null) {
+      logger.warn("[training] performStart ignored — another start in flight", {
+        scenarioId,
+        mode,
+        currentStarting: starting,
+      });
+      return;
+    }
     setStarting({ scenarioId });
     setStartError(null);
     try {
