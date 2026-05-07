@@ -18,6 +18,11 @@ import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { PixelIcon, type PixelIconName } from "./PixelIcon";
+import {
+  useMascotAnchor,
+  useMascotAnchorStore,
+  type MascotAnchorId,
+} from "@/stores/useMascotAnchorStore";
 
 export type NavigatorMode = "duel" | "free_dialog" | "blitz" | "themed";
 
@@ -125,46 +130,7 @@ export function HonestNavigator({ disabled, starting, onDuel, onQuiz }: Props) {
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-        {CARDS.map((c) => {
-          const active = picked === c.mode;
-          return (
-            <motion.button
-              key={c.mode}
-              type="button"
-              onClick={() => handleCard(c.mode)}
-              disabled={isBusy}
-              whileHover={!isBusy ? { x: -1, y: -1 } : undefined}
-              whileTap={!isBusy ? { x: 2, y: 2 } : undefined}
-              className="flex flex-col items-center justify-center gap-2 p-4 text-center transition-opacity"
-              style={{
-                background: active
-                  ? `color-mix(in srgb, ${c.accent} 14%, var(--bg-secondary, rgba(0,0,0,0.4)))`
-                  : "var(--bg-secondary, rgba(0,0,0,0.4))",
-                outline: `2px solid ${c.accent}`,
-                outlineOffset: -2,
-                borderRadius: 0,
-                boxShadow: `3px 3px 0 0 ${c.accent}`,
-                opacity: isBusy ? 0.5 : 1,
-                cursor: isBusy ? "not-allowed" : "pointer",
-                minHeight: 100,
-              }}
-            >
-              <PixelIcon name={c.icon} size={24} color={c.accent} />
-              <span
-                className="font-pixel uppercase"
-                style={{
-                  color: c.accent,
-                  fontSize: "clamp(14px, 2vw, 18px)",
-                  letterSpacing: "0.12em",
-                  lineHeight: 1.2,
-                  textShadow: `0 0 8px ${c.accent}`,
-                }}
-              >
-                {c.title}
-              </span>
-            </motion.button>
-          );
-        })}
+        {CARDS.map((c) => <ModeTile key={c.mode} card={c} active={picked === c.mode} isBusy={isBusy} onClick={handleCard} />)}
       </div>
 
       <AnimatePresence mode="wait">
@@ -251,5 +217,72 @@ export function HonestNavigator({ disabled, starting, onDuel, onQuiz }: Props) {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+
+// ── ModeTile (PR-10): registers DOM-anchor for the LobbyMascot and
+// drives ``setTarget(tile-X)`` on hover so the lion jumps to the tile
+// the user is pointing at. Pulled out of the main JSX so the per-tile
+// hook calls (useMascotAnchor) can run cleanly inside the .map().
+
+function ModeTile({
+  card,
+  active,
+  isBusy,
+  onClick,
+}: {
+  card: Card;
+  active: boolean;
+  isBusy: boolean;
+  onClick: (m: NavigatorMode) => void;
+}) {
+  const anchorId: MascotAnchorId =
+    card.mode === "duel"   ? "tile-duel"
+  : card.mode === "blitz"  ? "tile-blitz"
+  :                          "tile-themed";
+  const ref = useMascotAnchor(anchorId);
+  const setTarget = useMascotAnchorStore((s) => s.setTarget);
+
+  return (
+    <motion.button
+      ref={ref}
+      type="button"
+      onClick={() => onClick(card.mode)}
+      onMouseEnter={() => !isBusy && setTarget(anchorId)}
+      onMouseLeave={() => setTarget(null)}
+      onFocus={() => !isBusy && setTarget(anchorId)}
+      onBlur={() => setTarget(null)}
+      disabled={isBusy}
+      whileHover={!isBusy ? { x: -1, y: -1 } : undefined}
+      whileTap={!isBusy ? { x: 2, y: 2 } : undefined}
+      className="flex flex-col items-center justify-center gap-2 p-4 text-center transition-opacity"
+      style={{
+        background: active
+          ? `color-mix(in srgb, ${card.accent} 14%, var(--bg-secondary, rgba(0,0,0,0.4)))`
+          : "var(--bg-secondary, rgba(0,0,0,0.4))",
+        outline: `2px solid ${card.accent}`,
+        outlineOffset: -2,
+        borderRadius: 0,
+        boxShadow: `3px 3px 0 0 ${card.accent}`,
+        opacity: isBusy ? 0.5 : 1,
+        cursor: isBusy ? "not-allowed" : "pointer",
+        minHeight: 100,
+      }}
+    >
+      <PixelIcon name={card.icon} size={24} color={card.accent} />
+      <span
+        className="font-pixel uppercase"
+        style={{
+          color: card.accent,
+          fontSize: "clamp(14px, 2vw, 18px)",
+          letterSpacing: "0.12em",
+          lineHeight: 1.2,
+          textShadow: `0 0 8px ${card.accent}`,
+        }}
+      >
+        {card.title}
+      </span>
+    </motion.button>
   );
 }

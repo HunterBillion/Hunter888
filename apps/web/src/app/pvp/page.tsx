@@ -18,8 +18,7 @@ import { PixelIcon, type PixelIconName } from "@/components/pvp/PixelIcon";
 import { CharacterPicker } from "@/components/pvp/CharacterPicker";
 import { KnowledgeBaseBrowser } from "@/components/pvp/KnowledgeBaseBrowser";
 import { HonestNavigator } from "@/components/pvp/HonestNavigator";
-import { PixelMascot } from "@/components/pvp/PixelMascot";
-import type { MascotState } from "@/components/pvp/PixelMascotSprites";
+import { LobbyMascot } from "@/components/pvp/LobbyMascot";
 
 const DUEL_STATUS_LABELS: Record<string, string> = {
   pending: "Ожидание",
@@ -247,15 +246,6 @@ function PvPLobbyContent() {
 
     return () => controller.abort();
   }, [store.queueStatus, store.estimatedWait, router, store]);
-
-  // Mascot state derived from queue lifecycle: idle while waiting,
-  // walk during matchmaking search, cheer on match found.
-  const mascotState: MascotState =
-    store.queueStatus === "matched"
-      ? "cheer"
-      : store.queueStatus === "searching"
-        ? "walk"
-        : "idle";
 
   const formatTime = (iso: string) => {
     const d = new Date(iso);
@@ -708,16 +698,19 @@ function PvPLobbyContent() {
         )}
       </AnimatePresence>
 
-      {/* Pixel mascot — fixed bottom-right corner. State derived from
-          queue lifecycle (idle→walk on search→cheer on match). */}
-      <motion.div
-        className="pointer-events-none fixed bottom-6 right-6 z-40 hidden md:block"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5, duration: 0.4 }}
-      >
-        <PixelMascot state={mascotState} size={80} />
-      </motion.div>
+      {/* PR-10 (2026-05-07): LobbyMascot animates between DOM-anchors
+          (mode-tile hover, fixed-corner home) via Framer Motion. The
+          state is forced when the queue is active so cheer/walk wins
+          over the auto-hover idle/walk derivation. */}
+      <LobbyMascot
+        forcedState={
+          store.queueStatus === "matched"
+            ? "cheer"
+            : store.queueStatus === "searching"
+              ? "walk"
+              : undefined  // let LobbyMascot auto-derive from anchor target
+        }
+      />
 
     </AuthLayout>
   );
