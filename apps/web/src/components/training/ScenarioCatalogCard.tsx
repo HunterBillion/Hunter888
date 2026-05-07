@@ -226,16 +226,21 @@ export function ScenarioCatalogCard({
   const groupLabel = ARCHETYPE_GROUPS[arch.group]?.label;
 
   return (
+    // PR-D: pilot users said the cards looked «хлипкие» — 1px borders +
+    // text-sm copy made each card feel paper-thin in a 3-column grid on
+    // a dark background. Bumped border to 2px, raised body copy a step,
+    // gave the card a bit more breathing room (p-4 → p-5) so the visual
+    // weight matches the Конструктор cards.
     <motion.div
       className="relative flex flex-col overflow-hidden rounded-2xl"
       style={{
         background: `linear-gradient(180deg, ${ts.glow} 0%, var(--bg-panel) 60%)`,
-        border: `1px solid color-mix(in srgb, ${ts.accent} 28%, var(--border-color))`,
-        minHeight: "300px",
+        border: `2px solid color-mix(in srgb, ${ts.accent} 35%, var(--border-color))`,
+        minHeight: "320px",
       }}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -3, boxShadow: `0 6px 24px -8px ${ts.accent}55` }}
+      whileHover={{ y: -3, boxShadow: `0 8px 28px -8px ${ts.accent}66` }}
       transition={{ type: "tween", duration: 0.18 }}
     >
       {/* Top accent ribbon — instant type-identifier, no reading needed */}
@@ -260,17 +265,17 @@ export function ScenarioCatalogCard({
         )}
       </div>
 
-      <div className="flex flex-col gap-3 p-4 flex-1">
+      <div className="flex flex-col gap-3.5 p-5 flex-1">
         {/* Hero row — bigger avatar, name, tagline */}
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-3.5">
           <div className="relative shrink-0">
             <AvatarPreview
               seed={arch.code}
-              size={64}
+              size={72}
               className="rounded-xl render-pixel"
               style={{
                 border: `2px solid ${ts.accent}`,
-                boxShadow: `0 0 0 3px color-mix(in srgb, ${ts.accent} 14%, transparent)`,
+                boxShadow: `0 0 0 3px color-mix(in srgb, ${ts.accent} 18%, transparent)`,
               }}
             />
             {/* Tier crown stamp for boss-tier archetypes */}
@@ -285,14 +290,14 @@ export function ScenarioCatalogCard({
           </div>
           <div className="min-w-0 flex-1">
             <div
-              className="text-base font-bold leading-tight truncate"
+              className="text-lg font-bold leading-tight truncate"
               style={{ color: "var(--text-primary)" }}
             >
               {displayName}
             </div>
             {tagline && (
               <div
-                className="mt-0.5 text-xs italic truncate"
+                className="mt-1 text-sm italic truncate"
                 style={{ color: "var(--text-muted)" }}
               >
                 «{tagline}»
@@ -307,7 +312,7 @@ export function ScenarioCatalogCard({
         {/* Scenario title — the actual training topic, not the archetype */}
         {scenario.title && scenario.title !== displayName && (
           <div
-            className="text-sm font-medium leading-snug line-clamp-2"
+            className="text-base font-semibold leading-snug line-clamp-2"
             style={{ color: "var(--text-primary)" }}
           >
             {scenario.title}
@@ -384,14 +389,19 @@ export function ScenarioCatalogCard({
 
         <div className="flex-1" />
 
-        {/* Actions — clear hierarchy. PRIMARY: чат (full-width, accent
-            gradient). SECONDARY: звонок + сюжет as icon-only buttons. */}
+        {/* Actions — clear hierarchy.
+            PR-D: bumped button height (py-2.5 → py-3) and the icon-only
+            secondary buttons now carry text labels («Звонок» / «×N»)
+            so they stop reading as decoration. The primary «Чат» button
+            still dominates via gradient + arrow + flex-1 — hierarchy
+            preserved, secondaries just no longer mute themselves into
+            invisibility. */}
         <div className="flex items-stretch gap-2 pt-2">
           <motion.button
             onClick={() => onStart(scenario.id)}
             disabled={isStarting}
             whileTap={{ scale: 0.97 }}
-            className="flex-1 min-w-0 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-white"
+            className="flex-1 min-w-0 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white"
             style={{
               background: `linear-gradient(135deg, ${ts.accent} 0%, color-mix(in srgb, ${ts.accent} 70%, #000) 100%)`,
               boxShadow: `0 4px 14px -4px ${ts.accent}80`,
@@ -402,7 +412,7 @@ export function ScenarioCatalogCard({
               <Loader2 size={16} className="animate-spin" />
             ) : (
               <>
-                <MessageCircle size={15} />
+                <MessageCircle size={16} />
                 <span>Чат</span>
                 <ArrowRight size={14} className="opacity-80" />
               </>
@@ -418,15 +428,16 @@ export function ScenarioCatalogCard({
               whileTap={{ scale: 0.97 }}
               title="Голосовой звонок"
               aria-label="Голосовой звонок"
-              className="flex items-center justify-center rounded-xl px-3 py-2.5"
+              className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-3 text-xs font-semibold"
               style={{
                 background: "transparent",
-                border: `1.5px solid ${ts.accent}`,
+                border: `2px solid ${ts.accent}`,
                 color: ts.accent,
                 opacity: isStarting ? 0.4 : 1,
               }}
             >
-              <Phone size={16} />
+              <Phone size={15} />
+              <span className="hidden sm:inline">Звонок</span>
             </motion.button>
           )}
           <motion.button
@@ -438,16 +449,16 @@ export function ScenarioCatalogCard({
             whileTap={{ scale: 0.97 }}
             title={`Сюжет из ${storyCalls} звонков подряд`}
             aria-label={`Сюжет из ${storyCalls} звонков`}
-            className="flex items-center justify-center gap-1 rounded-xl px-3 py-2.5 text-xs font-semibold"
+            className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-3 text-xs font-semibold"
             style={{
               background: "transparent",
-              border: `1.5px solid ${ts.accent}`,
+              border: `2px solid ${ts.accent}`,
               color: ts.accent,
               opacity: isStarting ? 0.4 : 1,
             }}
           >
-            <BookOpen size={14} />
-            <span>{storyCalls}</span>
+            <BookOpen size={15} />
+            <span className="font-bold">×{storyCalls}</span>
           </motion.button>
         </div>
       </div>
