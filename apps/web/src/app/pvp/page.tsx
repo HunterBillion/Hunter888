@@ -14,19 +14,10 @@ import { useNotificationStore } from "@/stores/useNotificationStore";
 import { RatingCard } from "@/components/pvp/RatingCard";
 import { MatchmakingOverlay } from "@/components/pvp/MatchmakingOverlay";
 import { FriendsPanel } from "@/components/pvp/FriendsPanel";
-import { AppIcon } from "@/components/ui/AppIcon";
 import { logger } from "@/lib/logger";
-// PR-B (2026-05-05): LeagueHeroCard, DailyDrillCard, PixelModeCard,
-// Brain, Lock — больше не используются на /pvp (см. HonestNavigator + KILL).
 import { PixelIcon, type PixelIconName } from "@/components/pvp/PixelIcon";
-// Issue #169 — custom-character picker (PR #142 backend endpoint).
 import { CharacterPicker } from "@/components/pvp/CharacterPicker";
-// 2026-05-04: full-RAG transparency view ("видеть всё что AI знает").
 import { KnowledgeBaseBrowser } from "@/components/pvp/KnowledgeBaseBrowser";
-// PR-B (2026-05-05): single honest entry point — replaces PreCallWarmUpHero
-// (4 фейк-кнопки), tab-Дуэли (3 текстовые карточки how-it-works), tab-Знания
-// (3 mode + 10 cat + 2 personality = 60 комбинаций). См. комментарий в
-// HonestNavigator.tsx для полного обоснования.
 import { HonestNavigator } from "@/components/pvp/HonestNavigator";
 
 const DUEL_STATUS_LABELS: Record<string, string> = {
@@ -44,51 +35,41 @@ function PvPLobbyContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const store = usePvPStore();
-  // PR-B (2026-05-05): tabs collapsed from 4 → 2 (history + knowledge_base).
-  // Дуэли и Знания теперь живут в HonestNavigator выше табов (single primary
-  // entry-point), поэтому таб для них не нужен. Legacy ?tab=knowledge / ?tab=arena
-  // мапим на "history" (наиболее близкая landing-страница).
   const tabParam = searchParams.get("tab");
   const [tab, setTab] = useState<"history" | "knowledge_base">(
     tabParam === "knowledge_base" || tabParam === "rag" ? "knowledge_base" : "history"
   );
   const [quizStarting, setQuizStarting] = useState(false);
-  const [pveAccepting, setPveAccepting] = useState(false);
-  // Issue #169 — selected custom-character preset id (or null = random
-  // legacy behaviour). Forwarded to ``queue.join`` so the matchmaker
-  // can route the duel to the chosen archetype.
   const [pickedCharacterId, setPickedCharacterId] = useState<string | null>(null);
   const [arenaPoints, setArenaPoints] = useState<number>(0);
   const inviteSentRef = useRef(false);
   const autoPvERef = useRef(false);
   const searchStartedAtRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    store.fetchRating();
-    store.fetchMyDuels();
-    store.fetchActiveSeason();
+  const fetchArenaPoints = useCallback(() => {
     api.get("/progression/arena-points")
       .then((data: Record<string, unknown>) => {
         if (typeof data?.arena_points === "number") setArenaPoints(data.arena_points);
       })
       .catch((err) => logger.error("[pvp] arena-points fetch failed:", err));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only init; store actions are stable Zustand refs
+  }, []);
 
-  // 2026-04-20: auto-refetch рейтинга при возврате на /pvp
-  // (из /pvp/duel/[id], /pvp/quiz/*). Раньше юзер проходил
-  // калибровку, возвращался — а шкала «Калибровка 0/10» оставалась прежней
-  // до ручного reload. Теперь каждый раз когда вкладка снова видима,
-  // перетягиваем rating + myDuels + arena-points.
+  useEffect(() => {
+    store.fetchRating();
+    store.fetchMyDuels();
+    store.fetchActiveSeason();
+    fetchArenaPoints();
+  }, [fetchArenaPoints]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-refetch rating + duels + AP when the tab becomes visible again
+  // (e.g. user returned from /pvp/duel/[id] or /pvp/quiz/*). Без этого
+  // «Калибровка 0/10» зависала до ручного reload.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       store.fetchRating();
       store.fetchMyDuels();
-      api.get("/progression/arena-points")
-        .then((data: Record<string, unknown>) => {
-          if (typeof data?.arena_points === "number") setArenaPoints(data.arena_points);
-        })
-        .catch((err) => logger.error("[pvp] arena-points fetch failed:", err));
+      fetchArenaPoints();
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
@@ -96,7 +77,7 @@ function PvPLobbyContent() {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchArenaPoints]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // PvP WebSocket
   const { sendMessage, connectionState } = useWebSocket({
@@ -131,11 +112,8 @@ function PvPLobbyContent() {
           }, 2000);
           break;
         case "pve.offer":
-          // PR-cleanup (2026-05-05): pve.offer modal was removed earlier
-          // (see comment block ниже — было setPvEOffer(null) для legacy
-          // совместимости). Бэкенд эмитит этот case при матче в PvE,
-          // FE просто отмечает статус "matched" — overlay показывает
-          // спиннер, потом duel.brief/match.found приходят и редиректят.
+          // Backend emits pve.offer on PvE match — FE just marks "matched";
+          // duel.brief / match.found arrive next and redirect to the duel.
           store.setQueueStatus("matched");
           break;
         case "queue.left":
@@ -151,18 +129,11 @@ function PvPLobbyContent() {
     autoPvERef.current = false;
     searchStartedAtRef.current = Date.now();
     store.setQueueStatus("searching");
-    // Issue #169 — forward picked custom character id (or omit for random).
     const payload: Record<string, unknown> = { type: "queue.join" };
     if (pickedCharacterId) payload.character_id = pickedCharacterId;
     sendMessage(payload);
   }, [sendMessage, store, pickedCharacterId]);
 
-  // PR-B (2026-05-05): inline quiz-start moved to a callable so the
-  // HonestNavigator can fire it without re-implementing the watchdog +
-  // session POST + redirect dance. ai_personality wired to "professor" by
-  // default; "showman" for blitz keeps blitz UX unchanged. "detective"
-  // dropped from FE — same backend RAG, only hint-style differs, was
-  // never meaningfully chosen by pilot users.
   const startQuiz = useCallback(async (
     mode: "free_dialog" | "blitz" | "themed",
     category?: string,
@@ -182,11 +153,6 @@ function PvPLobbyContent() {
         mode,
         category: category ?? null,
         ai_personality: personality,
-        // PR-MC (2026-05-05): all 3 quiz cards now run in MC format —
-        // 1 RAG-grounded correct option + 2 LLM-generated distractors,
-        // rendered as 3 buttons in the quiz page. Free-text fallback
-        // applies per-question if the enricher can't derive a correct
-        // answer (very rare; chunk lacks correct_response_hint).
         choices_format: true,
       }) as { id?: string; session_id?: string };
       clearTimeout(watchdog);
@@ -195,11 +161,6 @@ function PvPLobbyContent() {
         const params = new URLSearchParams({ mode });
         if (category) params.set("category", category);
         params.set("personality", personality);
-        // PR-MC hotfix (2026-05-06): include choices_format in the URL so
-        // the quiz session page reads it on first paint and forwards it
-        // into the WS quiz.start data. Without this the WS handler
-        // creates a free-text _SoloQuizState even though the REST POST
-        // accepted `choices_format: true`.
         params.set("choices_format", "1");
         router.push(`/pvp/quiz/${sid}?${params.toString()}`);
       } else {
@@ -250,7 +211,6 @@ function PvPLobbyContent() {
     if (autoPvERef.current) return;
 
     autoPvERef.current = true;
-    setPveAccepting(true);
 
     const controller = new AbortController();
     api.post("/pvp/accept-pve", {}, { signal: controller.signal })
@@ -258,11 +218,9 @@ function PvPLobbyContent() {
         if (controller.signal.aborted) return;
         const duelId = (data as { duel_id?: string })?.duel_id;
         if (!duelId) {
-          // 2026-04-20: раньше молча возвращали — юзер зависал с overlay
-          // «Ищем соперника…» навсегда. Теперь: сбрасываем очередь +
-          // показываем тост, чтобы был visible feedback.
+          // No PvE opponent found — reset queue + toast (без этого
+          // пользователь зависал с overlay «Ищем соперника…» навсегда).
           autoPvERef.current = false;
-          setPveAccepting(false);
           store.resetQueue();
           useNotificationStore.getState().addToast({
             title: "Соперник не найден",
@@ -284,9 +242,6 @@ function PvPLobbyContent() {
           body: "Не удалось найти PvE-соперника. Попробуйте позже.",
           type: "error",
         });
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setPveAccepting(false);
       });
 
     return () => controller.abort();
@@ -305,9 +260,6 @@ function PvPLobbyContent() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
       >
-        {/* 2026-05-04: extra bottom padding on /pvp — without it the
-            last panel (history list / friends panel) sat flush against
-            the viewport bottom edge. ~3cm of breathing room. */}
         <div className="app-page pb-24 md:pb-32">
           {/* Connection status banner — smooth slide-in */}
           <AnimatePresence>
@@ -345,7 +297,6 @@ function PvPLobbyContent() {
           <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                {/* 2026-05-03: ⚔️ эмодзи → PixelIcon (единственное эмодзи на странице, выпадало из стиля) */}
                 <PixelIcon name="sword" size={32} color="var(--accent)" />
                 <div>
                   <h1 className="font-pixel text-xl sm:text-2xl uppercase tracking-widest pixel-glow" style={{ color: "var(--text-primary)" }}>
@@ -368,16 +319,11 @@ function PvPLobbyContent() {
                   ]}
                   footer="Короткий путь: один из 4 блоков выше → бой/квиз → разбор → рейтинг"
                 />
-                {/* PR-B (2026-05-05): убрал кнопку «Рейтинг» — дубль
-                    глобал-хедера, плюс RatingCard ниже уже линкует на
-                    /pvp/leaderboard через footer-link. */}
               </div>
             </div>
           </motion.div>
 
-          {/* Info modal replaced 2026-04-18 by unified <PixelInfoButton /> above */}
-
-          {/* Season banner — pixel (2026-05-03) */}
+          {/* Season banner */}
           {store.activeSeason && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -413,7 +359,7 @@ function PvPLobbyContent() {
             </div>
           )}
 
-          {/* Rating failed — pixel retry (2026-05-03) */}
+          {/* Rating failed */}
           {!store.rating && !store.ratingLoading && (
             <div className="mt-6 flex flex-col items-center py-8 text-center">
               <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>
@@ -442,14 +388,12 @@ function PvPLobbyContent() {
             </div>
           )}
 
-          {/* Rating card. Tutorial removed 2026-05-03: first-time users
-              see the rating card directly and click "Найти соперника"; if
-              the queue is empty they auto-fall to PvE per matchmaker logic. */}
+          {/* Rating card */}
           {store.rating && !store.ratingLoading && (
             <div className="mt-6">
               <RatingCard rating={store.rating} />
 
-              {/* Arena Points — pixel chip (2026-05-03) */}
+              {/* Arena Points chip */}
               <div
                 className="mt-3 inline-flex items-center gap-2 px-4 py-2"
                 style={{
@@ -483,29 +427,15 @@ function PvPLobbyContent() {
                   Arena Points
                 </span>
               </div>
-
-              {/* PR-B (2026-05-05): DailyDrillCard + LeagueHeroCard
-                  убраны с /pvp. DailyDrill уже отключён на /home (false &&
-                  guard в home/page.tsx); LeagueHero доступен через
-                  /leaderboard?tab=league напрямую. На /pvp оба только
-                  шумели поверх RatingCard. */}
-
-              {/* 2026-05-02: «Быстро →» строка УДАЛЕНА полностью (была введена
-                  2026-04-20). Пользователь: «никто не понимает зачем это надо,
-                  они потворяют основные панели навигации». Тренировка/Лига/
-                  Команды/Турнир/Ошибки уже доступны из Header — дубликаты
-                  на странице лобби только мешают. */}
             </div>
           )}
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-6">
 
-              {/* PR-B (2026-05-05): the single honest navigator —
-                  один блок с 4-мя реально различающимися режимами
-                  (Дуэль / Квиз / Блиц / Тема). Заменяет PreCallWarmUpHero,
-                  escape-button и контент бывших табов «Дуэли» и
-                  «Знания ФЗ-127». См. HonestNavigator.tsx. */}
+              {/* HonestNavigator — single primary entry-point: 4 modes
+                  (Дуэль / Квиз / Блиц / Тема). Replaces PreCallWarmUpHero
+                  and the legacy "Дуэли" / "Знания ФЗ-127" tabs. */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -519,9 +449,8 @@ function PvPLobbyContent() {
                 />
               </motion.div>
 
-              {/* PR-B: CharacterPicker — power-user fea ture (Issue #169).
-                  Спрятан под disclosure: 0% pilot-юзеров реально создавали
-                  пресеты, но возможность остаётся. */}
+              {/* Power-user character preset (Issue #169) — collapsed by
+                  default; ~0% pilot users actually use it. */}
               <details className="group">
                 <summary
                   className="font-pixel uppercase cursor-pointer select-none flex items-center gap-2 px-3 py-2"
@@ -545,12 +474,7 @@ function PvPLobbyContent() {
                 </div>
               </details>
 
-              {/* Tabs — 2 чипа (PR-B 2026-05-05). Было 4: «Дуэли»
-                  (контент = 3 текстовые карточки how-it-works → переехало
-                  в InfoButton сверху) и «Знания ФЗ-127» (mode-cards +
-                  category + personality → переехало в HonestNavigator).
-                  Остаются только: «История» (мои дуэли) и «База ФЗ-127»
-                  (RAG transparency view). */}
+              {/* Tabs: «История» (my duels) и «База ФЗ-127» (RAG view). */}
               <div className="flex flex-wrap gap-2">
                 {(["history", "knowledge_base"] as const).map((t) => {
                   const active = tab === t;
@@ -587,15 +511,7 @@ function PvPLobbyContent() {
                 })}
               </div>
 
-              {/* PR-B (2026-05-05): tab «Дуэли» содержал только 3 текстовые
-                  карточки how-it-works — переехало в InfoButton сверху.
-                  Сами дуэли стартуют через HonestNavigator выше табов. */}
-
-              {/* PR-B: tab «Знания ФЗ-127» — содержимое (3 mode-card,
-                  10 категорий, 2 personality, START button) переехало
-                  в HonestNavigator. */}
-
-              {/* База ФЗ-127 — RAG transparency view (2026-05-04) */}
+              {/* База ФЗ-127 — RAG transparency view */}
               <AnimatePresence mode="wait">
                 {tab === "knowledge_base" && (
                   <motion.div
@@ -626,7 +542,6 @@ function PvPLobbyContent() {
                         </p>
                       </div>
                     ) : (
-                      /* History items — pixel cards (2026-05-03) */
                       <div className="mt-6 space-y-3">
                         {store.myDuels.map((duel, i) => {
                           const isP1 = store.rating?.user_id === duel.player1_id;
@@ -746,12 +661,6 @@ function PvPLobbyContent() {
         )}
       </AnimatePresence>
 
-      {/* 2026-05-03 deep-cleanup: PvE-offer модалка УДАЛЕНА.
-          Это был legacy fallback по WS-сообщению `pve.offer`, но handler
-          выше (case "pve.offer") сразу вызывает store.setPvEOffer(null) —
-          модалка фактически unreachable, dead code. Если в будущем
-          понадобится PvE-offer flow, возрождать через MatchmakingOverlay
-          с pixel-стилем, не возвращать старую glass-panel модалку. */}
     </AuthLayout>
   );
 }
