@@ -3,27 +3,26 @@
 /**
  * HonestNavigator — единая точка входа на /pvp.
  *
- * Заменяет PreCallWarmUpHero (4 фейк-кнопки → одна дуэль) + tab-Дуэли +
- * tab-Знания ФЗ-127 + 3 mode-card + 2 personality-card + 10 категорий —
- * всё это сливается в ОДИН блок с 4-мя реально разными режимами:
- *
+ * 3 режима:
  *   1. Дуэль с ботом    → handleFindMatch() (PvE-fallback в <15s)
- *   2. Квиз ФЗ-127      → POST /knowledge/sessions {mode:"free_dialog"}
- *   3. Блиц 20×60       → POST /knowledge/sessions {mode:"blitz"}
- *   4. По теме          → POST /knowledge/sessions {mode:"themed",category}
+ *   2. Блиц 20×60       → POST /knowledge/sessions {mode:"blitz"}
+ *   3. По теме          → POST /knowledge/sessions
+ *      • первый chip "Все темы" = mode:"free_dialog" (full pool)
+ *      • любой из 10 chip-категорий = mode:"themed", category=X
  *
- * AI-personality зашита `professor` — `detective` отличался только
- * стилем формулировок hints; разница не считывается, оставляем один
- * стиль для пилота.
- *
- * При выборе "По теме" раскрывается chip-row из 10 категорий ФЗ-127;
- * START активна только когда категория выбрана.
+ * AI-personality зашита: `professor` для не-блиц, `showman` для блиц.
+ * START активна когда выбран любой chip.
  */
 
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { PixelIcon, type PixelIconName } from "./PixelIcon";
+import {
+  useMascotAnchor,
+  useMascotAnchorStore,
+  type MascotAnchorId,
+} from "@/stores/useMascotAnchorStore";
 
 export type NavigatorMode = "duel" | "free_dialog" | "blitz" | "themed";
 
@@ -49,12 +48,6 @@ const CARDS: Card[] = [
     accent: "var(--accent)",
   },
   {
-    mode: "free_dialog",
-    icon: "book",
-    title: "Квиз ФЗ-127",
-    accent: "var(--success, #22c55e)",
-  },
-  {
     mode: "blitz",
     icon: "bolt",
     title: "Блиц 20×60",
@@ -68,7 +61,11 @@ const CARDS: Card[] = [
   },
 ];
 
+// `__all__` — sentinel id для "Все темы" (запускает mode=free_dialog).
+const ALL_TOPICS_ID = "__all__";
+
 const CATEGORIES: Array<{ id: string; label: string; icon: PixelIconName }> = [
+  { id: ALL_TOPICS_ID, label: "Все темы (ФЗ-127)", icon: "book" },
   { id: "eligibility", label: "Условия подачи", icon: "book" },
   { id: "procedure", label: "Порядок процедуры", icon: "ladder" },
   { id: "property", label: "Имущество", icon: "castle" },
@@ -93,17 +90,19 @@ export function HonestNavigator({ disabled, starting, onDuel, onQuiz }: Props) {
       onDuel();
       return;
     }
-    if (m === "free_dialog" || m === "blitz") {
+    if (m === "blitz") {
       onQuiz(m);
       return;
     }
-    // themed → reveal category row
+    // themed → reveal category row (also covers free_dialog via "Все темы")
     setPicked(m);
   };
 
   const handleStart = () => {
-    if (isBusy) return;
-    if (picked === "themed" && category) {
+    if (isBusy || picked !== "themed" || !category) return;
+    if (category === ALL_TOPICS_ID) {
+      onQuiz("free_dialog");
+    } else {
       onQuiz("themed", category);
     }
   };
@@ -130,47 +129,8 @@ export function HonestNavigator({ disabled, starting, onDuel, onQuiz }: Props) {
         ▸ Что делаем сейчас?
       </h2>
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3">
-        {CARDS.map((c) => {
-          const active = picked === c.mode;
-          return (
-            <motion.button
-              key={c.mode}
-              type="button"
-              onClick={() => handleCard(c.mode)}
-              disabled={isBusy}
-              whileHover={!isBusy ? { x: -1, y: -1 } : undefined}
-              whileTap={!isBusy ? { x: 2, y: 2 } : undefined}
-              className="flex flex-col items-center justify-center gap-2 p-4 text-center transition-opacity"
-              style={{
-                background: active
-                  ? `color-mix(in srgb, ${c.accent} 14%, var(--bg-secondary, rgba(0,0,0,0.4)))`
-                  : "var(--bg-secondary, rgba(0,0,0,0.4))",
-                outline: `2px solid ${c.accent}`,
-                outlineOffset: -2,
-                borderRadius: 0,
-                boxShadow: `3px 3px 0 0 ${c.accent}`,
-                opacity: isBusy ? 0.5 : 1,
-                cursor: isBusy ? "not-allowed" : "pointer",
-                minHeight: 100,
-              }}
-            >
-              <PixelIcon name={c.icon} size={24} color={c.accent} />
-              <span
-                className="font-pixel uppercase"
-                style={{
-                  color: c.accent,
-                  fontSize: "clamp(14px, 2vw, 18px)",
-                  letterSpacing: "0.12em",
-                  lineHeight: 1.2,
-                  textShadow: `0 0 8px ${c.accent}`,
-                }}
-              >
-                {c.title}
-              </span>
-            </motion.button>
-          );
-        })}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+        {CARDS.map((c) => <ModeTile key={c.mode} card={c} active={picked === c.mode} isBusy={isBusy} onClick={handleCard} />)}
       </div>
 
       <AnimatePresence mode="wait">
@@ -257,5 +217,72 @@ export function HonestNavigator({ disabled, starting, onDuel, onQuiz }: Props) {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+
+// ── ModeTile (PR-10): registers DOM-anchor for the LobbyMascot and
+// drives ``setTarget(tile-X)`` on hover so the lion jumps to the tile
+// the user is pointing at. Pulled out of the main JSX so the per-tile
+// hook calls (useMascotAnchor) can run cleanly inside the .map().
+
+function ModeTile({
+  card,
+  active,
+  isBusy,
+  onClick,
+}: {
+  card: Card;
+  active: boolean;
+  isBusy: boolean;
+  onClick: (m: NavigatorMode) => void;
+}) {
+  const anchorId: MascotAnchorId =
+    card.mode === "duel"   ? "tile-duel"
+  : card.mode === "blitz"  ? "tile-blitz"
+  :                          "tile-themed";
+  const ref = useMascotAnchor(anchorId);
+  const setTarget = useMascotAnchorStore((s) => s.setTarget);
+
+  return (
+    <motion.button
+      ref={ref}
+      type="button"
+      onClick={() => onClick(card.mode)}
+      onMouseEnter={() => !isBusy && setTarget(anchorId)}
+      onMouseLeave={() => setTarget(null)}
+      onFocus={() => !isBusy && setTarget(anchorId)}
+      onBlur={() => setTarget(null)}
+      disabled={isBusy}
+      whileHover={!isBusy ? { x: -1, y: -1 } : undefined}
+      whileTap={!isBusy ? { x: 2, y: 2 } : undefined}
+      className="flex flex-col items-center justify-center gap-2 p-4 text-center transition-opacity"
+      style={{
+        background: active
+          ? `color-mix(in srgb, ${card.accent} 14%, var(--bg-secondary, rgba(0,0,0,0.4)))`
+          : "var(--bg-secondary, rgba(0,0,0,0.4))",
+        outline: `2px solid ${card.accent}`,
+        outlineOffset: -2,
+        borderRadius: 0,
+        boxShadow: `3px 3px 0 0 ${card.accent}`,
+        opacity: isBusy ? 0.5 : 1,
+        cursor: isBusy ? "not-allowed" : "pointer",
+        minHeight: 100,
+      }}
+    >
+      <PixelIcon name={card.icon} size={24} color={card.accent} />
+      <span
+        className="font-pixel uppercase"
+        style={{
+          color: card.accent,
+          fontSize: "clamp(14px, 2vw, 18px)",
+          letterSpacing: "0.12em",
+          lineHeight: 1.2,
+          textShadow: `0 0 8px ${card.accent}`,
+        }}
+      >
+        {card.title}
+      </span>
+    </motion.button>
   );
 }

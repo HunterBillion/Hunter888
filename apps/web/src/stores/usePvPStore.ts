@@ -163,7 +163,10 @@ export const usePvPStore = create<PvPState>((set, get) => ({
   fetchMyDuels: async () => {
     set({ duelsLoading: true });
     try {
-      const data = await api.get("/pvp/duels/me?limit=20");
+      // PR-9 (2026-05-07): exclude cancelled / reaper-killed duels.
+      // They aren't a loss in Glicko (bookkeeper guards that) — only a
+      // visual artifact. PR-3 muted the colour; PR-9 hides them entirely.
+      const data = await api.get("/pvp/duels/me?limit=20&exclude_cancelled=true");
       set({ myDuels: Array.isArray(data) ? data : [], duelsLoading: false });
     } catch {
       set({ duelsLoading: false });

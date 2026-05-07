@@ -216,6 +216,9 @@ class NotificationType:
     KNOWLEDGE_SRS_OVERDUE = "knowledge.srs_overdue"
     KNOWLEDGE_WEAK_AREA = "knowledge.weak_area"
     KNOWLEDGE_MASTERY = "knowledge.mastery"
+    # PR-8 (2026-05-07): broadcast on admin chunk CRUD so active sessions
+    # know to drop stale RAG citations.
+    KNOWLEDGE_CHUNK_UPDATED = "knowledge.chunk.updated"
 
     # PvP module
     PVP_FRIEND_ONLINE = "pvp.friend_online"

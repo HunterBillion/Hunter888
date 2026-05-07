@@ -463,6 +463,13 @@ class PvPSeason(Base):
     rewards: Mapped[dict | None] = mapped_column(JSONB)
     # {diamond: {xp: 500, badge: "..."}, platinum: {xp: 300, ...}, ...}
 
+    # Top-N leaderboard rewards (added 2026-05-07).
+    # List of {rank: int, ap: int, badge?: str}. Coexists with `rewards`:
+    # tier rewards = "what every Diamond gets", top_rewards = "what the
+    # leaderboard top-N earn extra". Used by the /pvp slim hero banner
+    # ("Сезон до 31 мая · топ-1 = 100 AP") and /pvp/leaderboard.
+    top_rewards: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

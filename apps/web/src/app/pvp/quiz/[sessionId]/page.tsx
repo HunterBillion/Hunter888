@@ -19,6 +19,7 @@ import {
   Flame,
   Star,
   Zap,
+  Flag,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { AppIcon } from "@/components/ui/AppIcon";
@@ -26,6 +27,7 @@ import { useSound } from "@/hooks/useSound";
 import { QuizThinkingIndicator } from "@/components/pvp/QuizThinkingIndicator";
 import { QuizCaseIntro } from "@/components/pvp/QuizCaseIntro";
 import { useKnowledgeStore, type QuizMessage } from "@/stores/useKnowledgeStore";
+import { ReportAnswerButton } from "@/components/pvp/ReportAnswerButton";
 import { ErrorBoundary } from "@/components/errors/ErrorBoundary";
 import { PageAuthGate } from "@/components/layout/PageAuthGate";
 import { logger } from "@/lib/logger";
@@ -336,6 +338,8 @@ function KnowledgeSessionPage() {
             personalityComment,
             speedBonus,
             avatarEmoji: currentPersonality2?.avatarEmoji,
+            // PR-6: backend includes `answer_id` so the bubble can offer "Flag".
+            answerId: typeof data.answer_id === "string" ? data.answer_id : undefined,
           };
           const finalized = store.finalizeLastFeedback(patch);
           if (!finalized) {
@@ -1788,6 +1792,9 @@ function MessageBubble({ message }: { message: QuizMessage }) {
               {message.articleRef}
             </div>
           )}
+          {/* PR-6: «Пожаловаться на ответ» — flag button + modal. Disabled
+              when answerId missing (legacy events without backend wiring). */}
+          {message.answerId && <ReportAnswerButton answerId={message.answerId} />}
           {message.speedBonus && message.speedBonus > 0 && (
             <div
               className="mt-2 inline-flex items-center gap-1 px-2 py-1 font-pixel text-[13px] uppercase tracking-wider"

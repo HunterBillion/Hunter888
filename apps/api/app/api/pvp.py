@@ -59,6 +59,7 @@ from app.schemas.pvp import (
 )
 from app.services.glicko2 import get_or_create_rating, apply_season_reset
 from app.services.pvp_matchmaker import (
+    QUEUE_META_KEY,
     check_gauntlet_cooldown,
     create_pve_duel,
     get_queue_size,
@@ -66,6 +67,7 @@ from app.services.pvp_matchmaker import (
     leave_queue,
     set_gauntlet_cooldown,
 )
+from app.core.redis_pool import get_redis as _redis
 from app.ws.notifications import notification_manager
 
 router = APIRouter()
@@ -240,6 +242,12 @@ async def get_leaderboard(
 async def get_my_duels(
     limit: int = Query(default=20, le=50),
     offset: int = Query(default=0, ge=0),
+    exclude_cancelled: bool = Query(
+        default=False,
+        description="Hide cancelled / abandoned duels (PR-9 2026-05-07). "
+        "FE lobby uses true so rage-quit / disconnect / reaper-killed "
+        "duels don't pollute the history list as red 'Поражение' rows.",
+    ),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -249,6 +257,11 @@ async def get_my_duels(
         .where(
             (PvPDuel.player1_id == user.id) | (PvPDuel.player2_id == user.id)
         )
+    )
+    if exclude_cancelled:
+        stmt = stmt.where(PvPDuel.status != DuelStatus.cancelled)
+    stmt = (
+        stmt
         .order_by(desc(PvPDuel.created_at))
         .offset(offset)
         .limit(limit)
@@ -344,8 +357,17 @@ async def accept_pve(
     db: AsyncSession = Depends(get_db),
 ):
     """Accept PvE duel (AI bot). Use when pve.offer was shown and user clicks «Играть с AI»."""
+    # Capture CharacterPicker selection from queue meta BEFORE
+    # leave_queue wipes it, so PvE-fallback respects user's choice.
+    cid: uuid.UUID | None = None
+    try:
+        raw_cid = await _redis().hget(QUEUE_META_KEY.format(user_id=user.id), "character_id")
+        if raw_cid:
+            cid = uuid.UUID(raw_cid if isinstance(raw_cid, str) else raw_cid.decode())
+    except (TypeError, ValueError, AttributeError):
+        cid = None
     await leave_queue(user.id)  # Ensure we're out of PvP queue
-    duel = await create_pve_duel(user.id, db)
+    duel = await create_pve_duel(user.id, db, character_id=cid)
     await db.commit()
     return {"duel_id": str(duel.id), "is_pve": True, "difficulty": duel.difficulty.value}
 
@@ -588,10 +610,16 @@ async def create_season(
     start_date: datetime,
     end_date: datetime,
     rewards: dict | None = None,
+    top_rewards: list[dict] | None = None,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_role("admin")),
 ):
-    """Create a new PvP season (admin only)."""
+    """Create a new PvP season (admin only).
+
+    ``top_rewards`` (added 2026-05-07): list of ``{rank, ap, badge?}``
+    rewarding the leaderboard top-N at season end. Used by the /pvp slim
+    hero banner («Сезон до 31 мая · топ-1 = 100 AP»).
+    """
     # Deactivate previous season
     result = await db.execute(
         select(PvPSeason).where(PvPSeason.is_active.is_(True))
@@ -605,6 +633,7 @@ async def create_season(
         start_date=start_date,
         end_date=end_date,
         rewards=rewards,
+        top_rewards=top_rewards,
         is_active=True,
     )
     db.add(season)
@@ -620,6 +649,7 @@ async def create_season(
         end_date=season.end_date,
         is_active=season.is_active,
         rewards=season.rewards,
+        top_rewards=season.top_rewards,
     )
 
 
@@ -644,6 +674,7 @@ async def get_active_season(
         end_date=season.end_date,
         is_active=season.is_active,
         rewards=season.rewards,
+        top_rewards=season.top_rewards,
     )
 
 

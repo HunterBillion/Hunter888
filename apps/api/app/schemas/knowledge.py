@@ -289,3 +289,21 @@ class DebateSessionResponse(BaseModel):
     total_score: float = 0.0
 
     model_config = {"from_attributes": True}
+
+
+# ── PR-6: User reports about AI verdicts (knowledge_answer_reports) ──
+
+class AnswerReportRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class AnswerReportResponse(BaseModel):
+    id: str
+    answer_id: str
+    reporter_id: str
+    reason: str
+    status: str
+    created_at: str
+    linked_chunk_ids: list[str] | None = None
+
+    model_config = {"from_attributes": True}

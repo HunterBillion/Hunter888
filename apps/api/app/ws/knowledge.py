@@ -1167,7 +1167,7 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
         )
 
     # Save to DB
-    await _save_answer(
+    saved_answer_id = await _save_answer(
         state,
         text,
         is_correct=result.is_correct,
@@ -1236,6 +1236,9 @@ async def _handle_answer(ws: WebSocket, state: _SoloQuizState, text: str) -> Non
         "current_difficulty": new_difficulty,
         "streak": state.consecutive_correct,
         "best_streak": state.best_streak,
+        # PR-6 (2026-05-07): expose KnowledgeAnswer.id so the FE verdict
+        # bubble can offer "Пожаловаться" → POST /knowledge/answers/{id}/report.
+        "answer_id": str(saved_answer_id) if saved_answer_id else None,
     }
     if speed_bonus > 0:
         feedback_data["speed_bonus"] = speed_bonus
@@ -1402,10 +1405,11 @@ async def _save_answer(
     rag_chunks: list | None = None,
     hint_used: bool = False,
     response_time_ms: int | None = None,
-) -> None:
-    """Persist an answer to the database."""
+) -> uuid.UUID | None:
+    """Persist an answer to the database. Returns the inserted answer's id
+    (PR-6: needed so the FE feedback bubble can link a «Пожаловаться» action)."""
     if state.current_q is None:
-        return
+        return None
     async with async_session() as db:
         answer = KnowledgeAnswer(
             session_id=state.session_id,
@@ -1424,6 +1428,7 @@ async def _save_answer(
         )
         db.add(answer)
         await db.commit()
+        await db.refresh(answer)
 
         # ── RAG Feedback: record quiz answer outcome ──
         try:
@@ -1447,6 +1452,8 @@ async def _save_answer(
                     )
         except Exception as _rag_err:
             logger.warning("RAG feedback recording failed for session=%s: %s", state.session_id, _rag_err)
+
+        return answer.id
 
 
 async def _finish_solo_quiz(ws: WebSocket, state: _SoloQuizState) -> None:

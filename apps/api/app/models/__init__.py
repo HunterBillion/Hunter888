@@ -128,6 +128,10 @@ from app.models.knowledge import (
     DailyChallenge,
     DailyChallengeEntry,
 )
+from app.models.knowledge_answer_report import (
+    KnowledgeAnswerReport,
+    ReportStatus,
+)
 from app.models.rag import (
     ChunkUsageLog,
     LegalKnowledgeChunk,

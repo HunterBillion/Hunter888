@@ -1,12 +1,26 @@
 """AI Examiner personalities for Knowledge Arena (127-ФЗ).
 
-Three distinct AI characters for different quiz modes:
-- Professor Kodeksov (🎓) — academic with humor, for free_dialog/themed
-- Arbitration Detective (🔍) — case-based investigator, for themed/free_dialog
-- Blitz Master (⚡) — game show host, for blitz only
+Three distinct AI characters for different quiz modes, each with
+distinctive voice AND distinctive strictness — Issue: «AI тупит /
+уходит от закона» (PR-7, 2026-05-07):
+
+  Professor Kodeksov (🎓)  — normal strictness, pedagogical, explains why
+  Arbitration Detective (🔍) — strict, demands article+case citations,
+                              catches missing nuance
+  Blitz Master (⚡)        — lenient, prioritises speed, accepts close-
+                            enough on technicalities
+
+Strictness governs how the LLM judges partial / off-topic answers and
+how willing it is to admit «не знаю». All three share an
+anti-hallucination block (CITATION_INVARIANTS below) appended to their
+prompts so they:
+  - never invent article numbers / court cases
+  - admit uncertainty rather than guess
+  - stay scoped to ФЗ-127 (refuse off-topic instead of confabulating)
 
 Each personality has:
-- System prompt for LLM
+- System prompt for LLM (composed: archetype voice + CITATION_INVARIANTS
+  + strictness modifier)
 - Greeting message
 - Reactions to correct/incorrect answers
 - Streak reactions (milestones)
@@ -14,6 +28,86 @@ Each personality has:
 
 import random
 from dataclasses import dataclass, field
+from typing import Literal
+
+
+Strictness = Literal["lenient", "normal", "strict"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SHARED PROMPT BLOCKS — PR-7
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# These suffixes are appended to every personality system_prompt at module
+# load time (see _compose_prompt below). Centralising the anti-
+# hallucination + citation rules guarantees that future personality
+# additions can't quietly drop them.
+
+CITATION_INVARIANTS = """
+═══ ИНВАРИАНТЫ (ОБЯЗАТЕЛЬНО для каждого ответа) ═══
+
+1. БЕЗ ВЫДУМЫВАНИЯ ИСТОЧНИКОВ.
+   - Цитируй ТОЛЬКО номера статей и дел, которые явно есть в контексте
+     базы знаний. Если контекст пуст — пиши «источник не загружен».
+   - НЕ изобретай номер статьи (213.X, 61.X) и не придумывай судебные дела
+     (Определение ВС РФ № …) — лучше скажи «не нашёл точной ссылки».
+
+2. ПРИЗНАВАЙ НЕУВЕРЕННОСТЬ.
+   - Если в контексте нет однозначного ответа — НАПИШИ ОБ ЭТОМ:
+     «В текущей редакции закона нет прямого ответа. Проверь актуальную
+     редакцию или практику.»
+   - НЕ маскируй пробелы общими фразами «закон регулирует это».
+
+3. ОСТАВАЙСЯ ВНУТРИ ФЗ-127.
+   - Если вопрос про другой закон (ГК, НК, УПК) — ответь:
+     «Это вне компетенции ФЗ-127. Уточни у профильного эксперта.»
+   - Не примешивай нормы других кодексов без явной отсылки.
+
+4. ВСЕГДА ССЫЛАЙСЯ НА КОНКРЕТНЫЙ ПУНКТ.
+   - Не «ст. 213.3», а «ст. 213.3 п. 1». Если пункта нет в контексте —
+     укажи только статью и пометь «(пункт не указан в контексте)».
+
+5. ПОЛЬЗОВАТЕЛЬ МОЖЕТ ПОЖАЛОВАТЬСЯ.
+   - У пользователя есть кнопка «Пожаловаться на ответ AI». Жалоба
+     уйдёт методологу. Поэтому ОТВЕЧАЙ ТАК, КАК ЕСЛИ БЫ КАЖДЫЙ ТВОЙ
+     ОТВЕТ ПРОВЕРЯЛ ЖИВОЙ ЮРИСТ — без воды, с источниками, без
+     самоуверенных утверждений «закон точно говорит так».
+"""
+
+
+_STRICTNESS_MODIFIERS: dict[Strictness, str] = {
+    "lenient": """
+═══ РЕЖИМ СТРОГОСТИ: МЯГКИЙ (для блица / скоростного режима) ═══
+- Принимай ответ, если ключевая идея верна, даже без точных формулировок.
+- На частично-правильных ответах ставь is_correct=true со score 6-8 (не ниже).
+- Не штрафуй за пропущенные подробности — главное скорость и общее понимание.
+- НО если ответ грубо неверен или противоречит закону — всё равно отметь wrong.
+""",
+    "normal": """
+═══ РЕЖИМ СТРОГОСТИ: НОРМАЛЬНЫЙ ═══
+- Полностью правильный ответ — is_correct=true, score 9-10.
+- Частично-правильный (ключевая идея есть, но упущен важный нюанс) —
+  is_correct=false, verdict_level="partial", score 5-7, объясни что упустили.
+- Не наказывай за форму, но требуй сути. Если упомянули «сделать заявление» —
+  достаточно, не требуй цитировать «п. 2 ст. 213.3 ФЗ-127».
+""",
+    "strict": """
+═══ РЕЖИМ СТРОГОСТИ: ЖЁСТКИЙ ═══
+- Ставь is_correct=true ТОЛЬКО если ответ упоминает И верный механизм,
+  И корректную статью (или явно соответствующий ей термин).
+- На отсутствие ссылки на статью при наличии её в контексте — снижай
+  score на 2 балла даже при верной сути.
+- На путаницу понятий («реструктуризация» vs «реализация имущества»,
+  «АУ» vs «Финуправ.») — is_correct=false, объясни различие.
+- Лови формулировки «обычно так» / «вроде» — уточняй: «закон не оперирует
+  термином "обычно", укажи точное основание».
+""",
+}
+
+
+def _compose_prompt(base: str, strictness: Strictness) -> str:
+    """Append shared invariants + strictness modifier to a base archetype prompt."""
+    return base + CITATION_INVARIANTS + _STRICTNESS_MODIFIERS[strictness]
 
 
 @dataclass
@@ -28,6 +122,10 @@ class PersonalityConfig:
     correct_reactions: list[str]       # Reactions to correct answers
     incorrect_reactions: list[str]     # Reactions to incorrect answers
     streak_reactions: dict[int, str] = field(default_factory=dict)
+    # PR-7: per-archetype default strictness (informational; baked into
+    # the system_prompt at module load via _compose_prompt). FE may
+    # surface this so the user sees what they're picking.
+    strictness: Strictness = "normal"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -42,6 +140,7 @@ AI_PERSONALITIES: dict[str, PersonalityConfig] = {
         display_name="Профессор Кодексов",
         avatar_emoji="🎓",
         modes=["free_dialog", "themed"],
+        strictness="normal",
         greeting=(
             "Добро пожаловать в мой кабинет юридических наук! "
             "Я — Профессор Кодексов, и сегодня мы с вами совершим "
@@ -118,6 +217,7 @@ AI_PERSONALITIES: dict[str, PersonalityConfig] = {
         display_name="Арбитражный Следопыт",
         avatar_emoji="🔍",
         modes=["themed", "free_dialog"],
+        strictness="strict",
         greeting=(
             "Приветствую, коллега! Я — Арбитражный Следопыт. "
             "Каждое дело о банкротстве — это детектив, и сегодня мы "
@@ -191,6 +291,7 @@ AI_PERSONALITIES: dict[str, PersonalityConfig] = {
         display_name="Блиц-Мастер",
         avatar_emoji="⚡",
         modes=["blitz"],
+        strictness="lenient",
         greeting=(
             "ДОБРО ПОЖАЛОВАТЬ НА БЛИЦ-ШОУ! Я — Блиц-Мастер, "
             "и у вас есть 60 секунд на каждый вопрос! "
@@ -301,6 +402,22 @@ AI_PERSONALITIES: dict[str, PersonalityConfig] = {
         streak_reactions={3: "Ого, ты реально шаришь!", 5: "Мне бы таких менеджеров в команду!"},
     ),
 }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Compose final system_prompt = base archetype prompt + CITATION_INVARIANTS
+# + per-archetype strictness modifier. PR-7 (2026-05-07): centralised so
+# the anti-hallucination rules can never be silently dropped if a future
+# personality is added without copying them in.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Only the 3 quiz-examiner personalities get the citation invariants.
+# Roleplay personas (client, colleague) must NOT cite articles — they're
+# in-character actors, not legal experts. judge gets it (it grades debates).
+_EXAMINER_PERSONALITIES = {"professor", "detective", "showman", "judge"}
+for _name, _cfg in AI_PERSONALITIES.items():
+    if _name in _EXAMINER_PERSONALITIES:
+        _cfg.system_prompt = _compose_prompt(_cfg.system_prompt, _cfg.strictness)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

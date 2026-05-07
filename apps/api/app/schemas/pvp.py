@@ -154,6 +154,15 @@ class AntiCheatFlagResponse(BaseModel):
 # Season
 # ---------------------------------------------------------------------------
 
+class SeasonTopReward(BaseModel):
+    """One row in PvPSeason.top_rewards — what the rank=N finisher gets."""
+    rank: int
+    ap: int
+    badge: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class SeasonResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -161,6 +170,7 @@ class SeasonResponse(BaseModel):
     end_date: datetime
     is_active: bool
     rewards: dict | None = None
+    top_rewards: list[SeasonTopReward] | None = None
 
     model_config = {"from_attributes": True}
 

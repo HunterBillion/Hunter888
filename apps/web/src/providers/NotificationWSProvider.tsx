@@ -196,6 +196,23 @@ export function NotificationWSProvider({ children }: { children: React.ReactNode
               break;
             }
 
+            // PR-8 (2026-05-07): админ-CRUD на chunk → flush in-process
+            // RAG cache (FE) + лёгкий toast чтобы юзер знал, что AI
+            // теперь учитывает обновлённый контекст. Не блокируем UX —
+            // только инфо-уведомление.
+            case "knowledge.chunk.updated": {
+              try {
+                useNotificationStore.getState().addToast({
+                  title: "База знаний обновлена",
+                  body: "Методолог изменил статью — последующие ответы AI будут учитывать новый контекст.",
+                  type: "info",
+                });
+              } catch {
+                // notification store missing — non-critical
+              }
+              break;
+            }
+
             case "pong":
               break;
           }

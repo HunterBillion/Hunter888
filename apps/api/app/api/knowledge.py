@@ -1249,3 +1249,7 @@ async def browse_knowledge_base(
         "offset": offset,
         "by_category": by_category,
     }
+
+
+# PR-6 user-report endpoint moved to apps/api/app/api/knowledge_reports.py
+# (mounted in main.py with the /knowledge prefix so the URL is unchanged).
