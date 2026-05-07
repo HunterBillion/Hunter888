@@ -26,7 +26,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useNotificationStore } from "@/stores/useNotificationStore";
-import { PixelFaceIcon } from "@/components/pixel/PixelFaceIcon";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -46,11 +45,23 @@ type Tab = "scenarios" | "assigned" | "builder" | "saved";
 
 type PixelFace = "mask" | "check" | "gear" | "briefcase";
 
-const TABS: { id: Tab; label: string; icon: React.ComponentType<{ size: number; style?: React.CSSProperties }>; pixelFace: PixelFace }[] = [
-  { id: "scenarios", label: "Сценарии", icon: BookOpen, pixelFace: "mask" },
-  { id: "assigned", label: "Назначенные", icon: ClipboardList, pixelFace: "check" },
-  { id: "builder", label: "Конструктор", icon: Puzzle, pixelFace: "gear" },
-  { id: "saved", label: "Мои клиенты", icon: Users, pixelFace: "briefcase" },
+// PR-15 (2026-05-07): tab icons reworked from hand-drawn PixelFaceIcon
+// (пилот сказал «фигня») к высококонтрастным цветным эмодзи с
+// hover/active-эффектом через Framer Motion. PixelFace оставлен для
+// совместимости (не используется), но активный icon — emoji + Lucide
+// fallback в badge-stamp.
+const TABS: {
+  id: Tab;
+  label: string;
+  icon: React.ComponentType<{ size: number; style?: React.CSSProperties }>;
+  pixelFace: PixelFace;
+  emoji: string;
+  hue: string;
+}[] = [
+  { id: "scenarios", label: "Сценарии",   icon: BookOpen,       pixelFace: "mask",      emoji: "🎭", hue: "var(--accent)" },
+  { id: "assigned",  label: "Назначенные", icon: ClipboardList,  pixelFace: "check",     emoji: "📋", hue: "var(--warning)" },
+  { id: "builder",   label: "Конструктор", icon: Puzzle,         pixelFace: "gear",      emoji: "🧩", hue: "var(--success)" },
+  { id: "saved",     label: "Мои клиенты", icon: Users,          pixelFace: "briefcase", emoji: "👥", hue: "var(--info)" },
 ];
 
 const TYPE_FILTERS = [
@@ -276,15 +287,20 @@ function TrainingPageContent() {
               so they win — this top bar just repeated the active
               value. The banner stays the only place to change it. */}
 
-          {/* Tabs */}
+          {/* Tabs — PR-15 (2026-05-07): redesigned. Hand-drawn PixelFaceIcon
+              читался как «фигня» (фидбек пилота). Теперь — крупная
+              цветная эмодзи + tab-cпецифичный hue для active-glow.
+              При hover эмодзи слегка покачивается, при tap уменьшается;
+              active-tab имеет glow-pulse + accent-bottom-line. */}
           <div className="mt-6 flex gap-1 rounded-xl p-1 overflow-x-auto" style={{ background: "var(--input-bg)" }}>
             {TABS.map((t) => {
-              const Icon = t.icon;
               const active = tab === t.id;
               return (
-                <button
+                <motion.button
                   key={t.id}
                   onClick={() => setTab(t.id)}
+                  whileHover={!active ? { y: -1 } : undefined}
+                  whileTap={{ scale: 0.97 }}
                   className="relative flex-1 flex items-center justify-center gap-2 sm:gap-2.5 rounded-lg px-2 sm:px-4 py-2.5 text-sm font-medium tracking-wide transition-colors whitespace-nowrap min-w-0"
                   style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
                 >
@@ -292,24 +308,52 @@ function TrainingPageContent() {
                     <motion.div
                       layoutId="activeTab"
                       className="absolute inset-0 rounded-lg"
-                      style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)" }}
+                      style={{
+                        background: `color-mix(in srgb, ${t.hue} 14%, var(--glass-bg))`,
+                        border: `1.5px solid ${t.hue}`,
+                        boxShadow: `0 0 14px color-mix(in srgb, ${t.hue} 35%, transparent)`,
+                      }}
                       transition={{ type: "spring", stiffness: 380, damping: 32, layout: { duration: 0.25 } }}
                     />
                   )}
-                  <span className="relative z-10 flex items-center gap-2">
-                    <PixelFaceIcon face={t.pixelFace} size={28} style={{ opacity: active ? 1 : 0.6 }} />
-                    <span className="font-pixel text-[15px] uppercase leading-none tracking-wide">{t.label}</span>
+                  <span className="relative z-10 flex items-center gap-2.5">
+                    <motion.span
+                      style={{
+                        fontSize: 26,
+                        lineHeight: 1,
+                        display: "inline-block",
+                        filter: active ? "none" : "grayscale(0.45) opacity(0.85)",
+                        transition: "filter 200ms",
+                      }}
+                      animate={active ? {
+                        scale: [1, 1.08, 1],
+                        rotate: [0, -3, 3, 0],
+                      } : { scale: 1, rotate: 0 }}
+                      transition={active ? {
+                        duration: 1.6,
+                        repeat: Infinity,
+                        repeatDelay: 2.4,
+                        ease: "easeInOut",
+                      } : { duration: 0.2 }}
+                      whileHover={!active ? { rotate: [-4, 4, -4, 0], transition: { duration: 0.4 } } : undefined}
+                      aria-hidden
+                    >
+                      {t.emoji}
+                    </motion.span>
+                    <span className="font-pixel text-[14px] uppercase leading-none tracking-wide">
+                      {t.label}
+                    </span>
                     {/* Badge for assigned tab */}
                     {t.id === "assigned" && assignedCount > 0 && (
                       <span
                         className="min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-xs font-bold text-white px-1"
-                        style={{ background: overdueCount > 0 ? "var(--danger)" : "var(--accent)" }}
+                        style={{ background: overdueCount > 0 ? "var(--danger)" : t.hue }}
                       >
                         {assignedCount}
                       </span>
                     )}
                   </span>
-                </button>
+                </motion.button>
               );
             })}
           </div>
