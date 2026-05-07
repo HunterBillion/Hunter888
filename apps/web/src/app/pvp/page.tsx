@@ -248,9 +248,8 @@ function PvPLobbyContent() {
     return () => controller.abort();
   }, [store.queueStatus, store.estimatedWait, router, store]);
 
-  // Mascot state derived from queue lifecycle. Real DOM-anchor migration
-  // (jumping between RatingCard / mode tiles / history) lands in the lobby
-  // redesign PR; here the mascot just lives in a fixed corner.
+  // Mascot state derived from queue lifecycle: idle while waiting,
+  // walk during matchmaking search, cheer on match found.
   const mascotState: MascotState =
     store.queueStatus === "matched"
       ? "cheer"
@@ -322,13 +321,13 @@ function PvPLobbyContent() {
                 <PixelInfoButton
                   title="Как устроена Арена"
                   sections={[
-                    { icon: Sword, label: "Дуэль с ботом", text: "Жми «Дуэль с ботом» — подберём AI-клиента (10 архетипов: скептик, тревожный, скандалист и др.). 2 раунда: ты продаёшь и оцениваешь, потом меняетесь. Если кто-то живой в очереди — попадёшь на него вместо бота." },
-                    { icon: Target, label: "Квиз ФЗ-127", text: "«Свободный» — 10 вопросов, без таймера. «Блиц» — 20×60 сек, на скорость. «По теме» — выбираешь 1 из 10 категорий, 15 вопросов. После каждого ответа — разбор от AI и ссылка на статью закона." },
-                    { icon: Lightning, label: "База ФЗ-127", text: "Вкладка «База ФЗ-127» — RAG-источники, которые AI использует для проверки твоих ответов. Ищи по статье или категории." },
-                    { icon: Trophy, label: "Рейтинг", text: "Первые 10 дуэлей — калибровка, рейтинг прыгает. Потом стабильная Glicko-2: 8 тиров Iron → Grandmaster. Peak tier не теряется." },
+                    { icon: Sword, label: "Дуэль с ботом", text: "Жми «Дуэль» — подберём AI-клиента (10 архетипов: скептик, тревожный, скандалист и др.). 2 раунда: ты продаёшь и оцениваешь, потом меняетесь. Если кто-то живой в очереди — попадёшь на него вместо бота." },
+                    { icon: Lightning, label: "Блиц 20×60", text: "20 вопросов по ФЗ-127, по 60 секунд на каждый. Personality «Шоумен» — даёт ответы пожёстче, но прощает скоростные неточности. Нужны быстрые рефлексы." },
+                    { icon: Target, label: "По теме", text: "Выбираешь категорию закона (10 тем) или «Все темы (ФЗ-127)» — и идёт квиз с разбором. После каждого ответа AI-судья объясняет ошибку и ссылается на статью; не согласен — жми «Пожаловаться», методолог увидит." },
+                    { icon: Trophy, label: "Рейтинг", text: "Первые 10 дуэлей — калибровка, рейтинг прыгает. Потом стабильная Glicko-2: 8 тиров Iron → Grandmaster. Peak tier не теряется. Отменённые / прерванные дуэли в рейтинг не идут." },
                     { icon: Sparkle, label: "После боя", text: "AI-судья разбирает оба раунда: что сработало, где провалил. Плюс очки XP и Arena Points (AP). Не согласен с оценкой — нажми «Оспорить» (rejudge через cloud-LLM)." },
                   ]}
-                  footer="Короткий путь: один из 4 блоков выше → бой/квиз → разбор → рейтинг"
+                  footer="Короткий путь: один из 3 блоков выше → бой/квиз → разбор → рейтинг"
                 />
               </div>
             </div>
@@ -709,7 +708,8 @@ function PvPLobbyContent() {
         )}
       </AnimatePresence>
 
-      {/* Pixel mascot — placeholder fixed corner. Anchor-migration TBD in lobby PR. */}
+      {/* Pixel mascot — fixed bottom-right corner. State derived from
+          queue lifecycle (idle→walk on search→cheer on match). */}
       <motion.div
         className="pointer-events-none fixed bottom-6 right-6 z-40 hidden md:block"
         initial={{ opacity: 0, y: 12 }}
