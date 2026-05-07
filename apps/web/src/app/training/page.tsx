@@ -26,7 +26,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useNotificationStore } from "@/stores/useNotificationStore";
-import { PixelFaceIcon } from "@/components/pixel/PixelFaceIcon";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -44,13 +43,14 @@ import { Skeleton } from "@/components/ui/Skeleton";
 // ведёт в /training?tab=scenarios (та же логика подбора работает там же).
 type Tab = "scenarios" | "assigned" | "builder" | "saved";
 
-type PixelFace = "mask" | "check" | "gear" | "briefcase";
-
-const TABS: { id: Tab; label: string; icon: React.ComponentType<{ size: number; style?: React.CSSProperties }>; pixelFace: PixelFace }[] = [
-  { id: "scenarios", label: "Сценарии", icon: BookOpen, pixelFace: "mask" },
-  { id: "assigned", label: "Назначенные", icon: ClipboardList, pixelFace: "check" },
-  { id: "builder", label: "Конструктор", icon: Puzzle, pixelFace: "gear" },
-  { id: "saved", label: "Мои клиенты", icon: Users, pixelFace: "briefcase" },
+// PR-I: dropped the pixelFace field — the lobby tabs now render via the
+// existing per-tab Lucide `icon` so the strip aligns with the wizard
+// breadcrumb's icon family.
+const TABS: { id: Tab; label: string; icon: React.ComponentType<{ size: number; style?: React.CSSProperties }> }[] = [
+  { id: "scenarios", label: "Сценарии", icon: BookOpen },
+  { id: "assigned", label: "Назначенные", icon: ClipboardList },
+  { id: "builder", label: "Конструктор", icon: Puzzle },
+  { id: "saved", label: "Мои клиенты", icon: Users },
 ];
 
 const TYPE_FILTERS = [
@@ -296,9 +296,17 @@ function TrainingPageContent() {
                       transition={{ type: "spring", stiffness: 380, damping: 32, layout: { duration: 0.25 } }}
                     />
                   )}
+                  {/* PR-I: replaced the pixel-face icon + uppercase
+                      pixel font with the existing per-tab Lucide icon
+                      and a regular sans-serif label so the tab strip
+                      matches the wizard breadcrumb (Brain / Briefcase
+                      / Cloud — same icon family). The pixel-art look
+                      was a stylistic relic that stood apart from the
+                      rest of the redesign and the user explicitly
+                      asked to retire it on the lobby tabs. */}
                   <span className="relative z-10 flex items-center gap-2">
-                    <PixelFaceIcon face={t.pixelFace} size={28} style={{ opacity: active ? 1 : 0.6 }} />
-                    <span className="font-pixel text-[15px] uppercase leading-none tracking-wide">{t.label}</span>
+                    <Icon size={18} style={{ opacity: active ? 1 : 0.65 }} />
+                    <span className="text-[15px] font-semibold leading-none tracking-wide">{t.label}</span>
                     {/* Badge for assigned tab */}
                     {t.id === "assigned" && assignedCount > 0 && (
                       <span

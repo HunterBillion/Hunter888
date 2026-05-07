@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { logger } from "@/lib/logger";
 import { AvatarPreview } from "./AvatarPreview";
 import { ImportWizard } from "@/components/methodology/ImportWizard";
-import { ImportHistory } from "@/components/methodology/ImportHistory";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import { useGamificationStore } from "@/stores/useGamificationStore";
 // 2026-04-21: dropped Save/CheckCircle2/SkipForward — autosave replaced the
@@ -14,7 +13,7 @@ import { useGamificationStore } from "@/stores/useGamificationStore";
 // steps. The icons disappearing keeps the bundle honest.
 import {
   ArrowRight, ChevronLeft, Loader2, Sparkles, RotateCcw, Check,
-  Lock, MessageCircle, Phone,
+  Lock, MessageCircle, Phone, Upload,
 } from "lucide-react";
 import {
   Brain, Briefcase, Broadcast, UsersThree, Heart, Gauge, Cloud, FileMagnifyingGlass,
@@ -206,7 +205,6 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
   }, [fetchGamification]);
   const [step, setStep] = useState<Step>(0);
   const [importOpen, setImportOpen] = useState(false);
-  const [importRefreshKey, setImportRefreshKey] = useState(0);
   // Step 0
   const [archetype, setArchetype] = useState<ArchetypeCode | null>(null);
   const [groupFilter, setGroupFilter] = useState<ArchetypeGroup | null>(null);
@@ -497,24 +495,30 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
 
   return (
     <div className="mt-8">
-      {/* TZ-5 PR-2 — import button + history */}
+      {/* PR-I: replaced the 📤 emoji on the import button with a Lucide
+          Upload icon so it matches the rest of the constructor's icon
+          family. Also removed the ImportHistory expander below — the
+          import button right above is the only UI surface needed; the
+          history panel duplicated affordance and made the constructor
+          start with a 2-line scrollable section before any actual
+          wizard step. */}
       <div className="flex justify-end mb-4">
         <button
           onClick={() => setImportOpen(true)}
-          className="px-3 py-1.5 rounded-md text-xs font-medium"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium"
           style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
           title="Загрузить описание клиентского типажа — платформа создаст черновик персонажа."
         >
-          📤 Импорт типажа
+          <Upload size={14} />
+          <span>Импорт типажа</span>
         </button>
       </div>
       <ImportWizard
         open={importOpen}
         onClose={() => setImportOpen(false)}
         presetRouteType="character"
-        onApproved={() => setImportRefreshKey((k) => k + 1)}
+        onApproved={() => { /* PR-I: ImportHistory removed; nothing to refresh. */ }}
       />
-      <ImportHistory routeType="character" refreshKey={importRefreshKey} />
       {/* Stepper — 8 steps. PR-G: Lego-style "what you picked" feedback.
           Each completed step shows a tiny one-word summary of the actual
           selection ("Скептик" under "Архетип", "Юрист" under
