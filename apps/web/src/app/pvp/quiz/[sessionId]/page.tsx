@@ -31,6 +31,7 @@ import { ReportAnswerButton } from "@/components/pvp/ReportAnswerButton";
 import { QuestionReportButton } from "@/components/pvp/QuestionReportButton";
 import { PixelMascot } from "@/components/pvp/PixelMascot";
 import type { MascotState } from "@/components/pvp/PixelMascotSprites";
+import { categoryLabel } from "@/lib/categories";
 import { ErrorBoundary } from "@/components/errors/ErrorBoundary";
 import { PageAuthGate } from "@/components/layout/PageAuthGate";
 import { logger } from "@/lib/logger";
@@ -94,12 +95,13 @@ function KnowledgeSessionPage() {
     return undefined;
   }, [store.messages]);
 
-  // PR-12: derive mascot mood from recent quiz state. Cheers on a streak,
-  // gets sad after consecutive wrongs, sleeps when idle for too long.
+  // PR-12 + PR-13: mascot mood from recent feedback. PR-13 fix: `partial`
+  // (yellow «почти») теперь даёт cheer (мягкий) — раньше падал в idle
+  // и лев молчал когда юзер был «близко».
   const quizMascotState = useMemo<MascotState>(() => {
     const last = store.messages.filter(m => m.type === "feedback").slice(-1)[0];
     if (!last) return "idle";
-    if (last.verdictLevel === "correct") return "cheer";
+    if (last.verdictLevel === "correct" || last.verdictLevel === "partial") return "cheer";
     if (last.verdictLevel === "wrong" || last.verdictLevel === "off_topic") return "sad";
     return "idle";
   }, [store.messages]);
@@ -1167,7 +1169,7 @@ function KnowledgeSessionPage() {
               </div>
               {store.category && (
                 <div className="font-pixel uppercase tracking-wider mt-1" style={{ color: "var(--text-muted)", fontSize: 14 }}>
-                  ● {store.category}
+                  ● {categoryLabel(store.category)}
                 </div>
               )}
             </div>
@@ -1541,6 +1543,31 @@ function KnowledgeSessionPage() {
             </div>
           )}
 
+          {/* PR-13 (2026-05-07): Report button + lion ABOVE the free-text
+              input bar. Раньше эти элементы жили только в MC-aside и
+              free-text юзеры (themed/free_dialog) их не видели. */}
+          <div
+            className="shrink-0 flex items-center justify-between gap-3 px-4 py-2"
+            style={{
+              background: "color-mix(in srgb, var(--accent) 4%, var(--bg-primary))",
+              borderTop: "1px dashed var(--border-color)",
+            }}
+          >
+            <div className="flex-1 max-w-[280px]">
+              <QuestionReportButton lastAnswerId={lastAnswerId} />
+            </div>
+            <div className="shrink-0">
+              <PixelMascot
+                state={quizMascotState}
+                size={48}
+                bordered
+                frameColor="var(--accent)"
+                background="var(--bg-panel)"
+                ariaLabel="Квиз-маскот"
+              />
+            </div>
+          </div>
+
           {/* Free-text input bar: hint + textarea + send */}
           <div
             className="shrink-0 relative"
@@ -1671,8 +1698,40 @@ function MessageBubble({ message }: { message: QuizMessage }) {
   // V2: Avatar emoji from personality
   const avatarEmoji = message.avatarEmoji;
 
-  // System messages
+  // System messages.
+  // PR-13 (2026-05-07): personality.greeting приходит сюда с
+  // `avatarEmoji = personality.avatar_emoji`. Раньше system-bubble его
+  // игнорировал → персонаж терял лицо на ВАЖНЕЙШЕМ экране (старт сессии).
+  // Теперь если есть emoji — рисуем его слева крупно + content справа,
+  // иначе — старый минималистичный pixel-pill.
   if (isSystem) {
+    if (avatarEmoji && message.content && message.content.length > 0) {
+      return (
+        <motion.div
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex justify-center"
+        >
+          <div
+            className="flex items-start gap-3 px-4 py-3 max-w-[90%]"
+            style={{
+              background: "color-mix(in srgb, var(--accent) 6%, var(--input-bg))",
+              borderLeft: "3px solid var(--accent)",
+              borderTop: "1px solid var(--accent-muted)",
+              borderRight: "1px solid var(--accent-muted)",
+              borderBottom: "1px solid var(--accent-muted)",
+              borderRadius: 0,
+              boxShadow: "3px 3px 0 0 rgba(0,0,0,0.15)",
+            }}
+          >
+            <div style={{ fontSize: 24, lineHeight: 1, flexShrink: 0 }}>{avatarEmoji}</div>
+            <div className="text-sm leading-relaxed italic" style={{ color: "var(--text-primary)" }}>
+              {message.content}
+            </div>
+          </div>
+        </motion.div>
+      );
+    }
     return (
       <motion.div
         initial={{ opacity: 0, y: 4 }}
@@ -2007,7 +2066,7 @@ function MessageBubble({ message }: { message: QuizMessage }) {
                 borderRadius: 0,
               }}
             >
-              ▸ {message.category}
+              ▸ {categoryLabel(message.category)}
             </div>
           )}
           <p className="text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>
