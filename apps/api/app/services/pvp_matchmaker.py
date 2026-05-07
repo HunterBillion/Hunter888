@@ -25,11 +25,12 @@ import uuid
 from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.redis_pool import get_redis as _redis
+from app.models.custom_character import CustomCharacter
 from app.models.pvp import (
     DuelDifficulty,
     DuelStatus,
@@ -142,8 +143,16 @@ async def join_queue(
     db: AsyncSession,
     *,
     create_invitation: bool = False,
+    character_id: uuid.UUID | None = None,
 ) -> dict:
     """Add player to matchmaking queue.
+
+    Args:
+        character_id: optional UUID of a CustomCharacter preset the player
+            picked in the FE «Расширенные настройки». Stored in the queue
+            meta hash so that when the matchmaker (or the PvE-fallback
+            timer) creates a duel, it can resolve the archetype from the
+            user's choice instead of `random.choice`. Issue #169.
 
     Returns:
         {"status": "queued", "rating": float, "rd": float, "position": int}
@@ -176,13 +185,16 @@ async def join_queue(
 
     # Store metadata (S3-05: include placement flag for priority matching)
     meta_key = QUEUE_META_KEY.format(user_id=user_id)
-    await r.hset(meta_key, mapping={
+    meta_payload: dict[str, str] = {
         "rating": str(rating.rating),
         "rd": str(rating.rd),
         "queued_at": str(time.time()),
         "status": MatchQueueStatus.waiting.value,
         "placement": "true" if not rating.placement_done else "false",
-    })
+    }
+    if character_id is not None:
+        meta_payload["character_id"] = str(character_id)
+    await r.hset(meta_key, mapping=meta_payload)
     await r.expire(meta_key, MATCH_TIMEOUT_SECONDS + 30)
 
     # Also persist in DB
@@ -478,11 +490,21 @@ async def find_match(
 async def create_pve_duel(
     user_id: uuid.UUID,
     db: AsyncSession,
+    *,
+    character_id: uuid.UUID | None = None,
 ) -> PvPDuel:
     """Create a PvE duel against AI bot when no PvP match found.
 
     Bot rating calibrated to player's rating ± small random offset.
     PvE duels give 50% rating points.
+
+    Args:
+        character_id: optional CustomCharacter UUID. If provided (and the
+            character belongs to the user or is_shared), its `archetype`
+            is written into ``duel.pve_metadata['archetype']`` so that
+            ``ws/pvp.py:_ensure_session`` picks it up instead of a random
+            choice. Falls back to the value stored in the queue meta hash
+            from ``join_queue`` if not given explicitly. Issue #169.
     """
     rating = await get_or_create_rating(user_id, db)
 
@@ -496,6 +518,48 @@ async def create_pve_duel(
     # in the lone-player PvE-fallback path (the most common pilot scenario).
     _template_id, _version_id = await _pick_published_scenario(db)
 
+    # Resolve character_id from queue meta as fallback (FE may have set it
+    # at queue.join time but the REST /pvp/accept-pve path doesn't carry it).
+    if character_id is None:
+        try:
+            r = _redis()
+            queued_cid = await r.hget(QUEUE_META_KEY.format(user_id=user_id), "character_id")
+            if queued_cid:
+                cid_str = queued_cid if isinstance(queued_cid, str) else queued_cid.decode()
+                character_id = uuid.UUID(cid_str)
+        except (ValueError, TypeError, AttributeError):
+            character_id = None
+
+    pve_meta: dict | None = None
+    if character_id is not None:
+        cc_row = await db.execute(
+            select(CustomCharacter).where(
+                CustomCharacter.id == character_id,
+                or_(
+                    CustomCharacter.user_id == user_id,
+                    CustomCharacter.is_shared.is_(True),
+                ),
+            ).limit(1),
+        )
+        cc = cc_row.scalar_one_or_none()
+        if cc is not None:
+            pve_meta = {
+                "archetype": cc.archetype,
+                "custom_character_id": str(cc.id),
+                "tone": cc.tone,
+                "profession": cc.profession,
+                "emotion_preset": cc.emotion_preset,
+            }
+            logger.info(
+                "PvE duel will use custom character: user=%s, char=%s, archetype=%s",
+                user_id, cc.id, cc.archetype,
+            )
+        else:
+            logger.warning(
+                "PvE duel character_id=%s not accessible for user=%s — random fallback",
+                character_id, user_id,
+            )
+
     duel = PvPDuel(
         player1_id=user_id,
         player2_id=bot_id,
@@ -504,6 +568,7 @@ async def create_pve_duel(
         is_pve=True,
         scenario_template_id=_template_id,
         scenario_version_id=_version_id,
+        pve_metadata=pve_meta,
     )
     db.add(duel)
     await db.flush()

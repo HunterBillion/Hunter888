@@ -2037,11 +2037,20 @@ async def _handle_duel_message(
 _matchmaking_tasks: dict[uuid.UUID, asyncio.Task] = {}
 
 
-async def _background_matchmaking(user_id: uuid.UUID) -> None:
+async def _background_matchmaking(
+    user_id: uuid.UUID,
+    *,
+    character_id: uuid.UUID | None = None,
+) -> None:
     """Background task: polls find_match() every 3s, sends results via _send_to_user.
 
     This runs as an asyncio.Task, NOT inside the main WS receive loop,
     so the main handler stays free to process duel.ready, duel.message, etc.
+
+    Args:
+        character_id: forwarded to ``create_pve_duel`` on PvE-fallback so
+            the user's CharacterPicker selection is honored even when the
+            queue times out into a PvE duel. Issue #169.
     """
     start_time = time.time()
     try:
@@ -2083,7 +2092,9 @@ async def _background_matchmaking(user_id: uuid.UUID) -> None:
                 # Auto-create PvE duel.
                 ARENA_QUEUE_WAIT.labels(mode="ranked", outcome="pve_fallback").observe(elapsed)
                 async with async_session() as db:
-                    duel = await matchmaker.create_pve_duel(user_id, db)
+                    duel = await matchmaker.create_pve_duel(
+                        user_id, db, character_id=character_id,
+                    )
                     await db.commit()
                     you_card = await _player_card(db, user_id)
                     bot_card = await _player_card(db, BOT_ID)
@@ -3218,6 +3229,17 @@ async def pvp_websocket(websocket: WebSocket) -> None:
                 # Cancel any existing matchmaking task first
                 _cancel_matchmaking_task(user_id)
 
+                # Issue #169 — pickup CharacterPicker selection from FE.
+                # Invalid UUIDs are silently dropped; matchmaker falls back
+                # to random archetype just like before.
+                character_id: uuid.UUID | None = None
+                raw_cid = msg.get("character_id")
+                if raw_cid:
+                    try:
+                        character_id = uuid.UUID(str(raw_cid))
+                    except (TypeError, ValueError):
+                        character_id = None
+
                 invitation_challenger_id = msg.get("invitation_challenger_id")
                 if invitation_challenger_id:
                     # Invitation flow — synchronous, fast
@@ -3243,12 +3265,16 @@ async def pvp_websocket(websocket: WebSocket) -> None:
 
                 # Regular queue join → background task (NON-BLOCKING)
                 async with async_session() as db:
-                    queue_result = await matchmaker.join_queue(user_id, db)
+                    queue_result = await matchmaker.join_queue(
+                        user_id, db, character_id=character_id,
+                    )
                     await db.commit()
                 await _send(websocket, "queue.joined", queue_result)
 
                 # Launch background matchmaking — main loop stays free!
-                task = asyncio.create_task(_background_matchmaking(user_id))
+                task = asyncio.create_task(
+                    _background_matchmaking(user_id, character_id=character_id),
+                )
                 _matchmaking_tasks[user_id] = task
                 continue
 
@@ -3265,8 +3291,18 @@ async def pvp_websocket(websocket: WebSocket) -> None:
 
             if msg_type == "pve.accept":
                 _cancel_matchmaking_task(user_id)
+                # Same pickup as queue.join (FE may send via either path).
+                pve_character_id: uuid.UUID | None = None
+                raw_cid = msg.get("character_id")
+                if raw_cid:
+                    try:
+                        pve_character_id = uuid.UUID(str(raw_cid))
+                    except (TypeError, ValueError):
+                        pve_character_id = None
                 async with async_session() as db:
-                    duel = await matchmaker.create_pve_duel(user_id, db)
+                    duel = await matchmaker.create_pve_duel(
+                        user_id, db, character_id=pve_character_id,
+                    )
                     await db.commit()
                     you_card = await _player_card(db, user_id)
                     bot_card = await _player_card(db, BOT_ID)

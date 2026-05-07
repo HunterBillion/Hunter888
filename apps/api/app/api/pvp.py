@@ -59,6 +59,7 @@ from app.schemas.pvp import (
 )
 from app.services.glicko2 import get_or_create_rating, apply_season_reset
 from app.services.pvp_matchmaker import (
+    QUEUE_META_KEY,
     check_gauntlet_cooldown,
     create_pve_duel,
     get_queue_size,
@@ -66,6 +67,7 @@ from app.services.pvp_matchmaker import (
     leave_queue,
     set_gauntlet_cooldown,
 )
+from app.core.redis_pool import get_redis as _redis
 from app.ws.notifications import notification_manager
 
 router = APIRouter()
@@ -344,8 +346,17 @@ async def accept_pve(
     db: AsyncSession = Depends(get_db),
 ):
     """Accept PvE duel (AI bot). Use when pve.offer was shown and user clicks «Играть с AI»."""
+    # Capture CharacterPicker selection from queue meta BEFORE
+    # leave_queue wipes it, so PvE-fallback respects user's choice.
+    cid: uuid.UUID | None = None
+    try:
+        raw_cid = await _redis().hget(QUEUE_META_KEY.format(user_id=user.id), "character_id")
+        if raw_cid:
+            cid = uuid.UUID(raw_cid if isinstance(raw_cid, str) else raw_cid.decode())
+    except (TypeError, ValueError, AttributeError):
+        cid = None
     await leave_queue(user.id)  # Ensure we're out of PvP queue
-    duel = await create_pve_duel(user.id, db)
+    duel = await create_pve_duel(user.id, db, character_id=cid)
     await db.commit()
     return {"duel_id": str(duel.id), "is_pve": True, "difficulty": duel.difficulty.value}
 
