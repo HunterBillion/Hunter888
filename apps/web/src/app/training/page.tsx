@@ -23,6 +23,7 @@ import {
   Target,
   Share2,
   RotateCcw,
+  Sparkles,
 } from "lucide-react";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import { PixelFaceIcon } from "@/components/pixel/PixelFaceIcon";
@@ -256,20 +257,28 @@ function TrainingPageContent() {
               </div>
             </div>
             <div className="flex gap-2">
-              {[3, 4, 5].map((calls) => (
-                <button
-                  key={calls}
-                  onClick={() => setStoryCalls(calls)}
-                  className="rounded-xl px-4 py-2 text-sm font-medium uppercase tracking-wide transition-all"
-                  style={{
-                    background: storyCalls === calls ? "var(--accent-muted)" : "var(--input-bg)",
-                    border: `1px solid ${storyCalls === calls ? "rgba(107,77,199,0.42)" : "var(--border-color)"}`,
-                    color: storyCalls === calls ? "var(--accent)" : "var(--text-muted)",
-                  }}
-                >
-                  x{calls}
-                </button>
-              ))}
+              {[3, 4, 5].map((calls) => {
+                const active = storyCalls === calls;
+                return (
+                  <button
+                    key={calls}
+                    onClick={() => setStoryCalls(calls)}
+                    className="rounded-xl px-4 py-2 text-sm font-bold uppercase tracking-wide transition-all"
+                    style={{
+                      // PR-E: active state was almost invisible (1px faint
+                      // border on a dim background). Now: solid accent border,
+                      // subtle outer glow, text in --accent. Inactive looks
+                      // unchanged so the choice remains low-stakes-feeling.
+                      background: active ? "var(--accent-muted)" : "var(--input-bg)",
+                      border: `2px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
+                      color: active ? "var(--accent)" : "var(--text-muted)",
+                      boxShadow: active ? "0 0 14px -4px var(--accent)" : "none",
+                    }}
+                  >
+                    x{calls}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -426,6 +435,12 @@ function ScenariosTab({
 
   return (
     <>
+      {/* AI Story Mode banner — PR-E polish: added Sparkles icon + violet
+          glow on the active call-count card so the active option pops
+          (was: barely-visible 1px border around active option). The
+          left-side description and right-side option grid are unchanged
+          structurally — pilot feedback was «чисто визуально можно
+          улучшить не сильно». */}
       <div
         className="mt-6 overflow-hidden rounded-2xl"
         style={{
@@ -436,8 +451,9 @@ function ScenariosTab({
       >
         <div className="grid gap-6 px-5 py-5 md:grid-cols-[1.1fr_0.9fr] md:px-6">
           <div>
-            <div className="text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
-              AI Story Mode
+            <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
+              <Sparkles size={14} />
+              <span>AI Story Mode</span>
             </div>
             <h2 className="mt-3 font-display text-2xl font-bold tracking-widest" style={{ color: "var(--text-primary)" }}>
               История клиента на несколько звонков
@@ -451,25 +467,28 @@ function ScenariosTab({
               { label: "3 звонка", calls: 3, text: "Базовая история с быстрым развитием клиента." },
               { label: "4 звонка", calls: 4, text: "Больше времени на ошибки, давление и разворот сценария." },
               { label: "5 звонков", calls: 5, text: "Полная дуга клиента с памятью и накопленными эффектами." },
-            ].map((item) => (
-              <button
-                key={item.calls}
-                onClick={() => onStoryCallsChange(item.calls)}
-                className="rounded-xl px-4 py-3 text-left transition-all"
-                style={{
-                  background: storyCalls === item.calls ? "var(--accent-muted)" : "rgba(255,255,255,0.03)",
-                  border: storyCalls === item.calls ? "1px solid rgba(107,77,199,0.42)" : "1px solid rgba(255,255,255,0.08)",
-                  boxShadow: storyCalls === item.calls ? "0 0 0 1px var(--accent-muted) inset" : "none",
-                }}
-              >
-                <div className="text-sm font-semibold" style={{ color: storyCalls === item.calls ? "var(--accent)" : "var(--text-primary)" }}>
-                  {item.label}
-                </div>
-                <div className="mt-1 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                  {item.text}
-                </div>
-              </button>
-            ))}
+            ].map((item) => {
+              const active = storyCalls === item.calls;
+              return (
+                <button
+                  key={item.calls}
+                  onClick={() => onStoryCallsChange(item.calls)}
+                  className="rounded-xl px-4 py-3 text-left transition-all"
+                  style={{
+                    background: active ? "var(--accent-muted)" : "rgba(255,255,255,0.03)",
+                    border: active ? "2px solid var(--accent)" : "1px solid rgba(255,255,255,0.08)",
+                    boxShadow: active ? "0 0 18px -4px var(--accent)" : "none",
+                  }}
+                >
+                  <div className="text-sm font-semibold" style={{ color: active ? "var(--accent)" : "var(--text-primary)" }}>
+                    {item.label}
+                  </div>
+                  <div className="mt-1 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                    {item.text}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
