@@ -858,6 +858,7 @@ async def create_chunk(
     # (line ~1718) — manually-created chunks waited until cold sweep,
     # which only runs at boot.
     await _enqueue_chunk_safely(chunk.id)
+    await _broadcast_chunk_change_safely(chunk.id, "created")
 
     return {"id": str(chunk.id), "message": "Chunk created"}
 
@@ -1014,6 +1015,7 @@ async def update_chunk(
     # cold sweep at API restart — i.e. for hours-to-days. Enqueue every
     # update; the worker's hash-check de-dups no-op edits cheaply.
     await _enqueue_chunk_safely(chunk.id)
+    await _broadcast_chunk_change_safely(chunk.id, "updated")
 
     return {
         "id": chunk_id_str,
@@ -1079,6 +1081,7 @@ async def delete_chunk(
         request=request,
     )
     await db.commit()
+    await _broadcast_chunk_change_safely(chunk.id, "deleted")
     return {"message": "Chunk deleted", "soft_delete": True}
 
 
@@ -1097,6 +1100,25 @@ async def _enqueue_chunk_safely(chunk_id: uuid.UUID) -> None:
         await enqueue_chunk(chunk_id)
     except Exception:  # pragma: no cover — best-effort; logged centrally
         logger.warning("arena: enqueue_chunk failed", exc_info=True)
+
+
+async def _broadcast_chunk_change_safely(
+    chunk_id: uuid.UUID,
+    action: str,
+) -> None:
+    """Best-effort RAG cache invalidation + WS broadcast (PR-8, 2026-05-07).
+
+    Notifies active quiz / PvP sessions that a chunk changed so their
+    next RAG retrieval reads fresh data instead of cached stale text.
+    Logs and swallows failures — invalidation is a nicety, not a hard
+    requirement (TTL eventually catches up).
+    """
+    try:
+        from app.services.rag_invalidation import invalidate_chunk
+
+        await invalidate_chunk(chunk_id, action=action)  # type: ignore[arg-type]
+    except Exception:  # pragma: no cover — best-effort
+        logger.warning("arena: broadcast_chunk_change failed", exc_info=True)
 
 
 @router.get("/arena/queue-status")
