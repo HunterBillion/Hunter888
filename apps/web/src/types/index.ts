@@ -1901,6 +1901,12 @@ export interface PvPLeaderboardResponse {
   total_players: number;
 }
 
+export interface PvPSeasonTopReward {
+  rank: number;
+  ap: number;
+  badge?: string | null;
+}
+
 export interface PvPSeason {
   id: string;
   name: string;
@@ -1908,6 +1914,7 @@ export interface PvPSeason {
   end_date: string;
   is_active: boolean;
   rewards: Record<string, unknown> | null;
+  top_rewards: PvPSeasonTopReward[] | null;
 }
 
 export interface CharacterBrief {

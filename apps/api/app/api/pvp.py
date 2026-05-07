@@ -599,10 +599,16 @@ async def create_season(
     start_date: datetime,
     end_date: datetime,
     rewards: dict | None = None,
+    top_rewards: list[dict] | None = None,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_role("admin")),
 ):
-    """Create a new PvP season (admin only)."""
+    """Create a new PvP season (admin only).
+
+    ``top_rewards`` (added 2026-05-07): list of ``{rank, ap, badge?}``
+    rewarding the leaderboard top-N at season end. Used by the /pvp slim
+    hero banner («Сезон до 31 мая · топ-1 = 100 AP»).
+    """
     # Deactivate previous season
     result = await db.execute(
         select(PvPSeason).where(PvPSeason.is_active.is_(True))
@@ -616,6 +622,7 @@ async def create_season(
         start_date=start_date,
         end_date=end_date,
         rewards=rewards,
+        top_rewards=top_rewards,
         is_active=True,
     )
     db.add(season)
@@ -631,6 +638,7 @@ async def create_season(
         end_date=season.end_date,
         is_active=season.is_active,
         rewards=season.rewards,
+        top_rewards=season.top_rewards,
     )
 
 
@@ -655,6 +663,7 @@ async def get_active_season(
         end_date=season.end_date,
         is_active=season.is_active,
         rewards=season.rewards,
+        top_rewards=season.top_rewards,
     )
 
 

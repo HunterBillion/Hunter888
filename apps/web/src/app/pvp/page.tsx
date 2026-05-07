@@ -335,33 +335,56 @@ function PvPLobbyContent() {
           </motion.div>
 
           {/* Season banner */}
-          {store.activeSeason && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.1 }}
-              className="mt-4 p-3 flex items-center gap-3"
-              style={{
-                background: "color-mix(in srgb, var(--gf-xp) 10%, var(--bg-panel))",
-                outline: "2px solid var(--gf-xp)",
-                outlineOffset: -2,
-                boxShadow: "3px 3px 0 0 var(--gf-xp)",
-                borderRadius: 0,
-              }}
-            >
-              <PixelIcon name="bolt" size={16} color="var(--gf-xp)" />
-              <span
-                className="font-pixel uppercase"
+          {store.activeSeason && (() => {
+            const s = store.activeSeason;
+            const end = new Date(s.end_date);
+            const now = Date.now();
+            const msLeft = end.getTime() - now;
+            const daysLeft = Math.max(0, Math.ceil(msLeft / 86_400_000));
+            const top1 = (s.top_rewards ?? []).find((t) => t.rank === 1);
+            const endLabel = end.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+            return (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.1 }}
+                className="mt-4 p-3 flex items-center flex-wrap gap-x-4 gap-y-2"
                 style={{
-                  color: "var(--gf-xp)",
-                  fontSize: 12,
-                  letterSpacing: "0.14em",
+                  background: "color-mix(in srgb, var(--gf-xp) 10%, var(--bg-panel))",
+                  outline: "2px solid var(--gf-xp)",
+                  outlineOffset: -2,
+                  boxShadow: "3px 3px 0 0 var(--gf-xp)",
+                  borderRadius: 0,
                 }}
               >
-                {store.activeSeason.name}
-              </span>
-            </motion.div>
-          )}
+                <span className="flex items-center gap-2">
+                  <PixelIcon name="bolt" size={16} color="var(--gf-xp)" />
+                  <span
+                    className="font-pixel uppercase"
+                    style={{ color: "var(--gf-xp)", fontSize: 12, letterSpacing: "0.14em" }}
+                  >
+                    {s.name}
+                  </span>
+                </span>
+                {msLeft > 0 && (
+                  <span
+                    className="font-pixel uppercase"
+                    style={{ color: "var(--text-muted)", fontSize: 11, letterSpacing: "0.14em" }}
+                  >
+                    · до {endLabel} ({daysLeft} {daysLeft === 1 ? "день" : daysLeft < 5 ? "дня" : "дней"})
+                  </span>
+                )}
+                {top1 && (
+                  <span
+                    className="font-pixel uppercase"
+                    style={{ color: "var(--gf-xp)", fontSize: 11, letterSpacing: "0.14em" }}
+                  >
+                    · топ-1 = {top1.ap} AP
+                  </span>
+                )}
+              </motion.div>
+            );
+          })()}
 
           {/* Rating loading state */}
           {store.ratingLoading && (
