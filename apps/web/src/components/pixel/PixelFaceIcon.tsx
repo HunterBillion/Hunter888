@@ -9,18 +9,22 @@ import { useRef, useEffect, memo } from "react";
 
 const SCALE = 2; // Each pixel = 2×2 CSS pixels → 32×32 display
 
-// Color palette
+// Color palette.
+// 2026-05-07 (PR-E): retuned to fit the violet theme. Pilot users said
+// the previous warm orange skin (#f0c8a0) clashed with the rest of the
+// dark-violet UI on /training. Same pixel-art sprites; cooler tones so
+// the icons read as "stylised character" not "stamp-imported clipart".
 const C = {
   _: null,       // transparent
-  S: "#f0c8a0", // skin
-  E: "#1a1530", // eyes
-  M: "#5a5478", // mouth/detail
-  H: "#6b4dc7", // accent (hair/accessory)
-  W: "#e8e4f0", // white
-  G: "#d4a84b", // gold
-  R: "#ff5f57", // red
-  N: "#28c840", // green
-  B: "#4a8ef0", // blue
+  S: "#c8b4d8", // skin — cool mauve, harmonises with the violet palette
+  E: "#1a1530", // eyes — deep violet (kept)
+  M: "#5a5478", // mouth/detail (kept)
+  H: "#8b6dff", // accent (hair/accessory) — brighter violet, matches --accent
+  W: "#e8e4f0", // white (kept)
+  G: "#d4a84b", // gold (kept — used as accent stamp)
+  R: "#ff5f57", // red (kept)
+  N: "#3ddc84", // green — matches --success
+  B: "#5db4ff", // blue — matches the cold scenario accent
 };
 
 type PX = keyof typeof C;
