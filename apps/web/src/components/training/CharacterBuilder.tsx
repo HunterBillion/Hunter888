@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { logger } from "@/lib/logger";
 import { AvatarPreview } from "./AvatarPreview";
 import { ImportWizard } from "@/components/methodology/ImportWizard";
-import { ImportHistory } from "@/components/methodology/ImportHistory";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import { useGamificationStore } from "@/stores/useGamificationStore";
 // 2026-04-21: dropped Save/CheckCircle2/SkipForward — autosave replaced the
@@ -497,16 +496,28 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
 
   return (
     <div className="mt-8">
-      {/* TZ-5 PR-2 — import button + history */}
+      {/* PR-15 (2026-05-07): «История импортов» панель убрана из
+          конструктора — пилот сказал «выше уже есть кнопка импорта,
+          этот блок дублирует». История теперь доступна в дашборде
+          методолога; в конструкторе остаётся только кнопка запуска
+          и сам wizard. Эмодзи кнопки 📤 → 📥 (импорт «к себе»).  */}
       <div className="flex justify-end mb-4">
-        <button
+        <motion.button
           onClick={() => setImportOpen(true)}
-          className="px-3 py-1.5 rounded-md text-xs font-medium"
-          style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+          whileHover={{ y: -1, scale: 1.02 }}
+          whileTap={{ scale: 0.97 }}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold"
+          style={{
+            background: "color-mix(in srgb, var(--accent) 14%, transparent)",
+            color: "var(--accent)",
+            border: "1.5px solid var(--accent)",
+            boxShadow: "0 0 12px color-mix(in srgb, var(--accent) 22%, transparent)",
+          }}
           title="Загрузить описание клиентского типажа — платформа создаст черновик персонажа."
         >
-          📤 Импорт типажа
-        </button>
+          <span style={{ fontSize: 18, lineHeight: 1 }} aria-hidden>📥</span>
+          Импорт типажа
+        </motion.button>
       </div>
       <ImportWizard
         open={importOpen}
@@ -514,7 +525,6 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
         presetRouteType="character"
         onApproved={() => setImportRefreshKey((k) => k + 1)}
       />
-      <ImportHistory routeType="character" refreshKey={importRefreshKey} />
       {/* Stepper — 8 steps. PR-G: Lego-style "what you picked" feedback.
           Each completed step shows a tiny one-word summary of the actual
           selection ("Скептик" under "Архетип", "Юрист" under

@@ -45,6 +45,7 @@ import { ARCHETYPE_GROUPS, getSkillLabel } from "@/lib/archetypes";
 import type { ArchetypeInfo } from "@/lib/archetypes";
 import type { Scenario } from "@/types";
 import { getDisplayV2 } from "@/lib/archetype_display_v2";
+import { AvatarPreview } from "./AvatarPreview";
 
 // ─── Type-driven palette ─────────────────────────────────────────────────────
 //
@@ -264,29 +265,52 @@ export function ScenarioCatalogCard({
       </div>
 
       <div className="flex flex-col gap-3.5 p-5 flex-1">
-        {/* Hero row — scenario-type icon (PR-G replaces the duplicate
-            archetype avatar). Pre-PR-G every card showed the same
-            archetype avatar twice (here + the actual archetype name
-            below), wasting visual space and making the type-driven
-            colour coding redundant. Now: a large type-specific glyph
-            in the type accent colour reads as the card's identity at
-            a glance. */}
+        {/* Hero row — pixel-art archetype avatar (PR-15 restored 2026-05-07).
+            PR-G ранее заменил avatar на generic TypeIcon — пилот-юзер
+            пожаловался: «в карточках были пиксельные картинки сейчас
+            их нет». Теперь pixel-avatar держит identity архетипа +
+            type-icon стампом снизу как scenario-type accent. Лучшее
+            из двух миров. */}
         <div className="flex items-start gap-3.5">
           <div
-            className="relative shrink-0 flex items-center justify-center rounded-xl"
+            className="relative shrink-0"
             style={{
               width: 72,
               height: 72,
-              background: `linear-gradient(135deg, ${ts.accent} 0%, color-mix(in srgb, ${ts.accent} 60%, #000) 100%)`,
-              boxShadow: `0 0 0 3px color-mix(in srgb, ${ts.accent} 18%, transparent), 0 6px 18px -6px ${ts.accent}aa`,
             }}
           >
-            <TypeIcon size={36} className="text-white" strokeWidth={2.2} />
+            <AvatarPreview
+              seed={arch.code}
+              size={72}
+              className="rounded-xl render-pixel"
+              style={{
+                border: `3px solid ${ts.accent}`,
+                background: `linear-gradient(135deg, color-mix(in srgb, ${ts.accent} 22%, transparent) 0%, color-mix(in srgb, ${ts.accent} 6%, transparent) 100%)`,
+                boxShadow: `0 0 0 3px color-mix(in srgb, ${ts.accent} 12%, transparent), 0 6px 18px -6px ${ts.accent}aa`,
+                width: 72,
+                height: 72,
+              }}
+            />
+            {/* Type-icon stamp — small accent badge bottom-right showing
+                scenario type (cold/warm/incoming/etc) without dominating
+                the avatar. */}
+            <div
+              className="absolute -bottom-1 -right-1 flex items-center justify-center rounded-md"
+              style={{
+                width: 26,
+                height: 26,
+                background: ts.accent,
+                boxShadow: `0 2px 6px -1px ${ts.accent}aa, 0 0 0 2px var(--bg-panel)`,
+              }}
+              title={ts.label || "Тип сценария"}
+            >
+              <TypeIcon size={14} className="text-white" strokeWidth={2.4} />
+            </div>
             {/* Tier crown stamp for boss-tier archetypes */}
             {arch.tier >= 4 && (
               <span
                 className="absolute -top-2 -right-2 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase"
-                style={{ background: "#ff0055", color: "#fff" }}
+                style={{ background: "#ff0055", color: "#fff", boxShadow: "0 0 0 1.5px var(--bg-panel)" }}
               >
                 BOSS
               </span>
