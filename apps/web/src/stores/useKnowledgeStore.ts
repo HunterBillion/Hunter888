@@ -27,6 +27,9 @@ export interface QuizMessage {
   personalityComment?: string;
   avatarEmoji?: string;
   speedBonus?: number;
+  // PR-6 (2026-05-07): backend KnowledgeAnswer.id so the verdict bubble
+  // can offer "Пожаловаться на ответ AI" → POST /knowledge/answers/{id}/report.
+  answerId?: string;
 }
 
 export interface AIPersonality {

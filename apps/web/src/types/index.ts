@@ -1264,15 +1264,32 @@ export interface SessionPersonaSnapshotView {
 
 /** TZ-4 §8 admin review queue row, returned by
  * `GET /admin/knowledge/queue`. Mirrors the backend
- * `ReviewQueueItemResponse` schema. */
+ * `ReviewQueueItemResponse` schema.
+ *
+ * PR-6 (2026-05-07) — extended with `source_kind` + user_report fields
+ * so the FE can render TTL items and user-filed AI-answer reports in
+ * the same widget. `source_kind="user_report"` items use a different
+ * action (resolve report) than the per-chunk review.
+ */
 export interface KnowledgeReviewQueueItem {
   id: string;
   title: string | null;
-  knowledge_status: "actual" | "disputed" | "outdated" | "needs_review";
+  knowledge_status: "actual" | "disputed" | "outdated" | "needs_review" | "user_report";
   expires_at: string | null;
   reviewed_at: string | null;
   reviewed_by: string | null;
   source_ref: string | null;
+  // PR-6
+  source_kind?: "ttl_expiry" | "user_report";
+  report_id?: string | null;
+  report_reason?: string | null;
+  reporter_id?: string | null;
+  answer_id?: string | null;
+  answer_question?: string | null;
+  answer_explanation?: string | null;
+  answer_user_text?: string | null;
+  linked_chunk_ids?: string[] | null;
+  reported_at?: string | null;
 }
 
 /** Response shape from `POST /admin/knowledge/{id}/review`. */
