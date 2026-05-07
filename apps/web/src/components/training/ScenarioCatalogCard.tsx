@@ -26,7 +26,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowRight,
   Loader2,
   BookOpen,
   Phone,
@@ -42,7 +41,6 @@ import {
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { AvatarPreview } from "./AvatarPreview";
 import { ARCHETYPE_GROUPS, getSkillLabel } from "@/lib/archetypes";
 import type { ArchetypeInfo } from "@/lib/archetypes";
 import type { Scenario } from "@/types";
@@ -266,18 +264,24 @@ export function ScenarioCatalogCard({
       </div>
 
       <div className="flex flex-col gap-3.5 p-5 flex-1">
-        {/* Hero row — bigger avatar, name, tagline */}
+        {/* Hero row — scenario-type icon (PR-G replaces the duplicate
+            archetype avatar). Pre-PR-G every card showed the same
+            archetype avatar twice (here + the actual archetype name
+            below), wasting visual space and making the type-driven
+            colour coding redundant. Now: a large type-specific glyph
+            in the type accent colour reads as the card's identity at
+            a glance. */}
         <div className="flex items-start gap-3.5">
-          <div className="relative shrink-0">
-            <AvatarPreview
-              seed={arch.code}
-              size={72}
-              className="rounded-xl render-pixel"
-              style={{
-                border: `2px solid ${ts.accent}`,
-                boxShadow: `0 0 0 3px color-mix(in srgb, ${ts.accent} 18%, transparent)`,
-              }}
-            />
+          <div
+            className="relative shrink-0 flex items-center justify-center rounded-xl"
+            style={{
+              width: 72,
+              height: 72,
+              background: `linear-gradient(135deg, ${ts.accent} 0%, color-mix(in srgb, ${ts.accent} 60%, #000) 100%)`,
+              boxShadow: `0 0 0 3px color-mix(in srgb, ${ts.accent} 18%, transparent), 0 6px 18px -6px ${ts.accent}aa`,
+            }}
+          >
+            <TypeIcon size={36} className="text-white" strokeWidth={2.2} />
             {/* Tier crown stamp for boss-tier archetypes */}
             {arch.tier >= 4 && (
               <span
@@ -389,76 +393,70 @@ export function ScenarioCatalogCard({
 
         <div className="flex-1" />
 
-        {/* Actions — clear hierarchy.
-            PR-D: bumped button height (py-2.5 → py-3) and the icon-only
-            secondary buttons now carry text labels («Звонок» / «×N»)
-            so they stop reading as decoration. The primary «Чат» button
-            still dominates via gradient + arrow + flex-1 — hierarchy
-            preserved, secondaries just no longer mute themselves into
-            invisibility. */}
-        <div className="flex items-stretch gap-2 pt-2">
+        {/* Arena segment control — PR-G full restructure.
+            Pre-PR-G: primary "Чат" + 2 secondary icon-buttons. The
+            hierarchy implied "Чат is the right answer, the others are
+            extras" — but pilot owners said all three options must read
+            as equal first-class choices. Now: a 3-segment control,
+            each cell equal in size and visual weight, separated by
+            subtle dividers. Hover/tap reveals the type accent,
+            and isStarting locks all three at once. */}
+        <div
+          className="flex items-stretch rounded-xl overflow-hidden mt-2"
+          style={{
+            border: `2px solid ${ts.accent}`,
+            background: `color-mix(in srgb, ${ts.accent} 12%, transparent)`,
+            opacity: isStarting ? 0.6 : 1,
+          }}
+        >
           <motion.button
             onClick={() => onStart(scenario.id)}
             disabled={isStarting}
             whileTap={{ scale: 0.97 }}
-            className="flex-1 min-w-0 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white"
+            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-3 text-sm font-bold text-white"
             style={{
               background: `linear-gradient(135deg, ${ts.accent} 0%, color-mix(in srgb, ${ts.accent} 70%, #000) 100%)`,
-              boxShadow: `0 4px 14px -4px ${ts.accent}80`,
-              opacity: isStarting ? 0.6 : 1,
             }}
+            aria-label="Текстовый чат"
           >
             {isStarting ? (
               <Loader2 size={16} className="animate-spin" />
             ) : (
               <>
-                <MessageCircle size={16} />
+                <MessageCircle size={15} />
                 <span>Чат</span>
-                <ArrowRight size={14} className="opacity-80" />
               </>
             )}
           </motion.button>
           {onStartCall && (
-            <motion.button
-              onClick={(e) => {
-                e.stopPropagation();
-                onStartCall(scenario.id);
-              }}
-              disabled={isStarting}
-              whileTap={{ scale: 0.97 }}
-              title="Голосовой звонок"
-              aria-label="Голосовой звонок"
-              className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-3 text-xs font-semibold"
-              style={{
-                background: "transparent",
-                border: `2px solid ${ts.accent}`,
-                color: ts.accent,
-                opacity: isStarting ? 0.4 : 1,
-              }}
-            >
-              <Phone size={15} />
-              <span className="hidden sm:inline">Звонок</span>
-            </motion.button>
+            <>
+              <span aria-hidden style={{ width: 2, background: `color-mix(in srgb, ${ts.accent} 50%, transparent)` }} />
+              <motion.button
+                onClick={(e) => { e.stopPropagation(); onStartCall(scenario.id); }}
+                disabled={isStarting}
+                whileTap={{ scale: 0.97 }}
+                title="Голосовой звонок"
+                aria-label="Голосовой звонок"
+                className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-3 text-sm font-bold"
+                style={{ color: ts.accent }}
+              >
+                <Phone size={15} />
+                <span>Звонок</span>
+              </motion.button>
+            </>
           )}
+          <span aria-hidden style={{ width: 2, background: `color-mix(in srgb, ${ts.accent} 50%, transparent)` }} />
           <motion.button
-            onClick={(e) => {
-              e.stopPropagation();
-              onStartStory(scenario.id, storyCalls);
-            }}
+            onClick={(e) => { e.stopPropagation(); onStartStory(scenario.id, storyCalls); }}
             disabled={isStarting}
             whileTap={{ scale: 0.97 }}
             title={`Сюжет из ${storyCalls} звонков подряд`}
             aria-label={`Сюжет из ${storyCalls} звонков`}
-            className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-3 text-xs font-semibold"
-            style={{
-              background: "transparent",
-              border: `2px solid ${ts.accent}`,
-              color: ts.accent,
-              opacity: isStarting ? 0.4 : 1,
-            }}
+            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-3 text-sm font-bold"
+            style={{ color: ts.accent }}
           >
             <BookOpen size={15} />
-            <span className="font-bold">×{storyCalls}</span>
+            <span>×{storyCalls}</span>
           </motion.button>
         </div>
       </div>

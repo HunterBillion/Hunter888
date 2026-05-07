@@ -247,40 +247,15 @@ function TrainingPageContent() {
             </div>
           </motion.div>
 
-          <div className="mt-5 flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 rounded-2xl px-4 py-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-color)" }}>
-            <div>
-              <div className="text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--accent)" }}>
-                Пресет истории
-              </div>
-              <div className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
-                Выбран режим AI-story на <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{storyCalls}</span> звонка(ов) для всех запусков из панели.
-              </div>
-            </div>
-            <div className="flex gap-2">
-              {[3, 4, 5].map((calls) => {
-                const active = storyCalls === calls;
-                return (
-                  <button
-                    key={calls}
-                    onClick={() => setStoryCalls(calls)}
-                    className="rounded-xl px-4 py-2 text-sm font-bold uppercase tracking-wide transition-all"
-                    style={{
-                      // PR-E: active state was almost invisible (1px faint
-                      // border on a dim background). Now: solid accent border,
-                      // subtle outer glow, text in --accent. Inactive looks
-                      // unchanged so the choice remains low-stakes-feeling.
-                      background: active ? "var(--accent-muted)" : "var(--input-bg)",
-                      border: `2px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
-                      color: active ? "var(--accent)" : "var(--text-muted)",
-                      boxShadow: active ? "0 0 14px -4px var(--accent)" : "none",
-                    }}
-                  >
-                    x{calls}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {/* PR-G: removed the "Пресет истории" duplicate.
+              Pre-PR-G the user saw TWO controls for the same
+              storyCalls value: this top bar AND the X3/X4/X5 cards
+              inside the AI Story Mode banner (rendered by
+              ScenariosTab). Pilot users said it read as inconsistency
+              ("which is the source of truth?"). The in-banner cards
+              already explain WHY each choice (3 звонка / 4 / 5),
+              so they win — this top bar just repeated the active
+              value. The banner stays the only place to change it. */}
 
           {/* Tabs */}
           <div className="mt-6 flex gap-1 rounded-xl p-1 overflow-x-auto" style={{ background: "var(--input-bg)" }}>

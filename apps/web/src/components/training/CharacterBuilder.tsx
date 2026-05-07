@@ -138,6 +138,54 @@ const FATIGUES: { code: ClientFatigue; label: string }[] = [
   { code: "tired", label: "Уставший" }, { code: "exhausted", label: "Измотанный" },
 ];
 
+// ─── Friendly autoname (PR-G) ───────────────────────────────────────────────
+// Placeholder name shown in "Имя в моих клиентах". Pre-PR-G it was
+// "Делегатор · Сельское хоз. · 9/10" — a machine-style label that read
+// like an internal id. Now: a deterministic Russian first name picked
+// from the archetype code, plus profession in lower case, plus an
+// archetype-correlated age. Determinism matters: two clones of the
+// same configuration must produce the same suggestion so saved
+// clients still scan visually.
+
+const _RU_NAMES_M = [
+  "Иван", "Сергей", "Андрей", "Дмитрий", "Алексей",
+  "Михаил", "Александр", "Николай", "Владимир", "Юрий",
+  "Олег", "Виктор", "Павел", "Артём", "Кирилл",
+];
+const _RU_NAMES_F = [
+  "Мария", "Елена", "Анна", "Ольга", "Татьяна",
+  "Ирина", "Светлана", "Наталья", "Алина", "Юлия",
+  "Екатерина", "Виктория", "Дарья", "Полина", "Кристина",
+];
+
+function _seedFromArchetype(code: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < code.length; i++) h = Math.imul(h ^ code.charCodeAt(i), 16777619);
+  return Math.abs(h);
+}
+
+function buildFriendlyAutoname(
+  archetypeCode: string | null,
+  archetypeName: string | null,
+  professionName: string | null,
+  difficulty: number,
+): string {
+  if (!archetypeCode || !archetypeName) return "Название персонажа";
+  const seed = _seedFromArchetype(archetypeCode);
+  // Gender bias purely deterministic — half archetypes resolve male,
+  // half female. Manager perceives variety in saved list.
+  const isMale = (seed & 1) === 0;
+  const pool = isMale ? _RU_NAMES_M : _RU_NAMES_F;
+  const first = pool[seed % pool.length];
+  // Age bands: difficulty 1..3 → 28..36, 4..6 → 37..48, 7..10 → 45..58.
+  const ageOffset = (seed >>> 4) % 9;
+  const age = difficulty <= 3 ? 28 + ageOffset
+            : difficulty <= 6 ? 37 + ageOffset
+            : 45 + ageOffset;
+  const profPart = professionName ? `, ${professionName.toLowerCase()}` : "";
+  return `${first}${profPart}, ${age} лет (${archetypeName})`;
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelProp }: CharacterBuilderProps) {
@@ -467,42 +515,88 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
         onApproved={() => setImportRefreshKey((k) => k + 1)}
       />
       <ImportHistory routeType="character" refreshKey={importRefreshKey} />
-      {/* Stepper — 8 steps */}
-      <div className="flex items-center justify-between mb-8 overflow-x-auto pb-2">
-        {STEPS.map((s, i) => {
-          const Icon = s.icon;
-          const done = i < step;
-          const active = i === step;
-          const locked = isStepLocked(i);
-          return (
-            <div key={i} className="flex items-center flex-1 min-w-0">
-              <button
-                onClick={() => !locked && i <= step && setStep(i as Step)}
-                className="flex items-center gap-1.5 flex-shrink-0"
-                disabled={locked || i > step}
-              >
-                <div className="w-7 h-7 rounded-full flex items-center justify-center transition-all"
-                  style={{
-                    background: locked ? "var(--input-bg)" : done ? "var(--accent)" : active ? "var(--accent-muted)" : "var(--input-bg)",
-                    border: active ? "2px solid var(--accent)" : "2px solid transparent",
-                    opacity: locked ? 0.4 : 1,
-                  }}>
-                  {locked ? <Lock size={10} style={{ color: "var(--text-muted)" }} />
-                    : done ? <Check size={12} className="text-white" />
-                    : <Icon size={12} style={{ color: active ? "var(--accent)" : "var(--text-muted)" }} />}
+      {/* Stepper — 8 steps. PR-G: Lego-style "what you picked" feedback.
+          Each completed step shows a tiny one-word summary of the actual
+          selection ("Скептик" under "Архетип", "Юрист" under
+          "Профессия", "Хол. база" under "Источник", "9/10" under
+          "Сложность", etc). Pre-PR-G the breadcrumb only said "this
+          step is done" without telling the user WHAT they had picked,
+          so the manager couldn't glance back at the wizard and verify
+          their build. Only renders at >=lg where labels are visible. */}
+      {(() => {
+        // Compute a tiny summary per step. Defined inside the render so
+        // the closure captures the current builder state without an
+        // extra useMemo allocation. Empty strings render as zero-height
+        // spans to keep the row alignment stable.
+        const _stepSummaries: string[] = [
+          /* 0 Архетип */    selectedArchetype?.name ?? "",
+          /* 1 Профессия */  selectedProfession?.name ?? "",
+          /* 2 Источник */   LEAD_SOURCES.find((l) => l.code === leadSource)?.name ?? "",
+          /* 3 Контекст */   [
+            familyPreset !== "random" ? FAMILY_PRESETS.find(f => f.code === familyPreset)?.label : "",
+            debtRange !== "random" ? DEBT_RANGES.find(d => d.code === debtRange)?.label : "",
+          ].filter(Boolean).slice(0, 1).join(" · ") || "Случайно",
+          /* 4 Настроение */ EMOTION_PRESETS.find((e) => e.code === emotionPreset)?.name ?? "Нейтр.",
+          /* 5 Сложность */  `${difficulty}/10`,
+          /* 6 Среда */      [
+            bgNoise !== "none" ? NOISES.find(n => n.code === bgNoise)?.label : "",
+            timeOfDay !== "afternoon" ? TIMES.find(t => t.code === timeOfDay)?.label : "",
+          ].filter(Boolean).slice(0, 1).join(" · ") || "Тишина · день",
+          /* 7 Превью */     "",
+        ];
+        return (
+          <div className="flex items-start justify-between mb-8 overflow-x-auto pb-2">
+            {STEPS.map((s, i) => {
+              const Icon = s.icon;
+              const done = i < step;
+              const active = i === step;
+              const locked = isStepLocked(i);
+              const summary = _stepSummaries[i];
+              return (
+                <div key={i} className="flex items-start flex-1 min-w-0 pt-0.5">
+                  <button
+                    onClick={() => !locked && i <= step && setStep(i as Step)}
+                    className="flex items-start gap-1.5 flex-shrink-0"
+                    disabled={locked || i > step}
+                  >
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center transition-all flex-shrink-0"
+                      style={{
+                        background: locked ? "var(--input-bg)" : done ? "var(--accent)" : active ? "var(--accent-muted)" : "var(--input-bg)",
+                        border: active ? "2px solid var(--accent)" : "2px solid transparent",
+                        opacity: locked ? 0.4 : 1,
+                      }}>
+                      {locked ? <Lock size={10} style={{ color: "var(--text-muted)" }} />
+                        : done ? <Check size={12} className="text-white" />
+                        : <Icon size={12} style={{ color: active ? "var(--accent)" : "var(--text-muted)" }} />}
+                    </div>
+                    <div className="hidden lg:flex flex-col items-start min-w-0">
+                      <span className="text-xs font-medium uppercase tracking-wide leading-none"
+                        style={{ color: locked ? "var(--text-muted)" : active ? "var(--text-primary)" : "var(--text-muted)", opacity: locked ? 0.4 : 1 }}>
+                        {s.label}
+                      </span>
+                      {/* PR-G Lego summary: what's actually picked at
+                          this step. Truncates so the breadcrumb stays
+                          single-row even with long profession names. */}
+                      {(done || (active && summary)) && summary && (
+                        <span
+                          className="mt-0.5 text-[10px] leading-tight truncate max-w-[110px]"
+                          style={{ color: done ? "var(--accent)" : "var(--text-muted)" }}
+                          title={summary}
+                        >
+                          {summary}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                  {i < STEPS.length - 1 && (
+                    <div className="flex-1 h-px mx-2 min-w-2 mt-3" style={{ background: done ? "var(--accent)" : "var(--border-color)" }} />
+                  )}
                 </div>
-                <span className="text-xs font-medium uppercase tracking-wide hidden lg:inline"
-                  style={{ color: locked ? "var(--text-muted)" : active ? "var(--text-primary)" : "var(--text-muted)", opacity: locked ? 0.4 : 1 }}>
-                  {s.label}
-                </span>
-              </button>
-              {i < STEPS.length - 1 && (
-                <div className="flex-1 h-px mx-2 min-w-2" style={{ background: done ? "var(--accent)" : "var(--border-color)" }} />
-              )}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Step content */}
       <AnimatePresence mode="wait">
@@ -595,6 +689,11 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
           </>)}
 
           {/* ═══ Step 2: Lead Source (20) ═══ */}
+          {/* PR-G: align step 2 cards with the glass-panel + Check
+              indicator + motion idiom used by steps 0/1/4 so the
+              wizard reads as one continuous design language. The
+              group sections (Холодные / Тёплые / Входящие) keep
+              their headers — they're structural, not decoration. */}
           {step === 2 && (<>
             <h3 className="font-display text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>Источник лида</h3>
             <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>Определяет уровень доверия, осведомлённость и ожидания клиента</p>
@@ -602,18 +701,20 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
               {Object.entries(LEAD_SOURCE_GROUPS).map(([key, group]) => (
                 <div key={key}>
                   <div className="text-sm font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>{group.label}</div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {LEAD_SOURCES.filter((s) => s.group === key).map((s) => {
                       const sel = leadSource === s.code;
                       return (
-                        <button key={s.code} onClick={() => setLeadSource(s.code)}
-                          className="rounded-xl px-3 py-2.5 text-left transition-all"
-                          style={{ background: sel ? "var(--accent-muted)" : "var(--input-bg)", border: `1px solid ${sel ? "var(--accent)" : "var(--border-color)"}`, color: sel ? "var(--accent)" : "var(--text-secondary)" }}>
-                          <div className="text-xs font-bold">{s.name}</div>
+                        <motion.button key={s.code} onClick={() => setLeadSource(s.code)}
+                          className="glass-panel p-3 text-left rounded-xl relative"
+                          style={{ borderColor: sel ? "var(--accent)60" : undefined, boxShadow: sel ? "0 0 16px var(--accent-muted)" : undefined }}
+                          whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
+                          {sel && <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "var(--accent)" }}><Check size={8} className="text-white" /></div>}
+                          <div className="text-xs font-bold" style={{ color: sel ? "var(--accent)" : "var(--text-primary)" }}>{s.name}</div>
                           <div className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
                             {s.trust >= 2 ? "Высокое доверие" : s.trust >= 1 ? "Открытый контакт" : s.trust === 0 ? "Нейтральный" : s.trust >= -1 ? "Настороженный" : "Холодный контакт"}
                           </div>
-                        </button>
+                        </motion.button>
                       );
                     })}
                   </div>
@@ -693,42 +794,82 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
             </div>
           </>)}
 
-          {/* ═══ Step 5: Difficulty (existing, enhanced) ═══ */}
+          {/* ═══ Step 5: Difficulty — PR-G full redesign ═══
+               Pre-PR-G: a single sparse 10-cell number row in a giant
+               glass-panel. Pilot users called this "пустая трата экрана".
+               Now: 4 difficulty band cards (Лёгкий 1-3, Средний 4-6,
+               Сложный 7-8, Эксперт 9-10) each carrying its own colour,
+               description, and an inline fine-tune slider that picks
+               the exact 1-10 value within the band. The band itself
+               highlights when its range is selected — Lego-style
+               feedback that the choice "landed" inside that band. */}
           {step === 5 && (<>
-            <div className="glass-panel p-6 rounded-2xl">
-              <div className="flex items-center justify-between mb-5">
-                <div>
-                  <h3 className="font-display text-base font-bold" style={{ color: "var(--text-primary)" }}>Уровень сложности</h3>
-                  <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>Влияет на агрессивность, ловушки и адаптивную сложность</p>
-                </div>
-                <div className="flex items-center gap-2 rounded-xl px-4 py-2.5" style={{ background: `${difficulty <= 3 ? "var(--success-muted)" : difficulty <= 6 ? "var(--warning-muted)" : "var(--danger-muted)"}` }}>
-                  <span className="font-display text-3xl font-black tabular-nums" style={{ color: difficulty <= 3 ? "var(--success)" : difficulty <= 6 ? "var(--warning)" : "var(--danger)" }}>{difficulty}</span>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>/10</span>
-                    <span className="text-xs font-bold" style={{ color: difficulty <= 3 ? "var(--success)" : difficulty <= 6 ? "var(--warning)" : "var(--danger)" }}>
-                      {difficulty <= 3 ? "Лёгкий" : difficulty <= 6 ? "Средний" : difficulty <= 8 ? "Сложный" : "Эксперт"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-1.5 mb-3">
-                {Array.from({ length: 10 }, (_, i) => i + 1).map((level) => {
-                  const active = level === difficulty; const filled = level <= difficulty;
-                  const cc = level <= 3 ? "var(--success)" : level <= 6 ? "var(--warning)" : level <= 8 ? "var(--danger)" : "var(--danger)";
-                  return (
-                    <motion.button key={level} onClick={() => setDifficulty(level)}
-                      className="relative flex-1 rounded-lg" style={{ height: active ? 40 : 32, background: filled ? `linear-gradient(180deg, ${cc}, ${cc}88)` : "var(--input-bg)", border: active ? `2px solid ${cc}` : "1px solid var(--border-color)", opacity: filled ? 1 : 0.35 }}
-                      whileHover={{ scale: 1.1, y: -2 }} whileTap={{ scale: 0.93 }}>
-                      <span className="absolute inset-0 flex items-center justify-center font-mono text-sm font-bold" style={{ color: filled ? "#fff" : "var(--text-muted)" }}>{level}</span>
-                    </motion.button>
-                  );
-                })}
-              </div>
-              <div className="flex justify-between text-xs" style={{ color: "var(--text-muted)" }}>
-                <span style={{ color: "var(--success)" }}>Лёгкий</span>
-                <span style={{ color: "var(--warning)" }}>Средний</span>
-                <span style={{ color: "var(--danger)" }}>Сложный</span>
-              </div>
+            <h3 className="font-display text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>Уровень сложности</h3>
+            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>Влияет на агрессивность, ловушки и адаптивную сложность. Подберите диапазон, затем — точный балл.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                { code: "easy",   range: [1, 3]  as [number, number], label: "Лёгкий",  color: "var(--success)", bg: "var(--success-muted)", desc: "Клиент лояльный, мало возражений. Для новичков." },
+                { code: "medium", range: [4, 6]  as [number, number], label: "Средний", color: "var(--warning)", bg: "var(--warning-muted)", desc: "Стандартные возражения и ловушки. Базовый рабочий уровень." },
+                { code: "hard",   range: [7, 8]  as [number, number], label: "Сложный", color: "var(--danger)",  bg: "var(--danger-muted)",  desc: "Агрессивный клиент, каскад ловушек. Закалка опытных." },
+                { code: "boss",   range: [9, 10] as [number, number], label: "Эксперт", color: "#ff0055",        bg: "rgba(255,0,85,0.10)",  desc: "Максимальная сложность, все ловушки сразу. Только для боссов." },
+              ].map((band) => {
+                const inBand = difficulty >= band.range[0] && difficulty <= band.range[1];
+                return (
+                  <motion.div
+                    key={band.code}
+                    onClick={() => setDifficulty(band.range[0])}
+                    className="glass-panel p-4 rounded-xl cursor-pointer relative"
+                    style={{
+                      background: inBand ? band.bg : undefined,
+                      borderColor: inBand ? band.color : undefined,
+                      boxShadow: inBand ? `0 0 18px -4px ${band.color}` : undefined,
+                    }}
+                    whileHover={{ y: -2 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    {inBand && (
+                      <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: band.color }}>
+                        <Check size={10} className="text-white" />
+                      </div>
+                    )}
+                    <div className="flex items-baseline gap-2 mb-1">
+                      <span className="font-display text-2xl font-black tabular-nums" style={{ color: inBand ? band.color : "var(--text-muted)" }}>
+                        {band.range[0]}–{band.range[1]}
+                      </span>
+                      <span className="text-sm font-bold uppercase tracking-wider" style={{ color: inBand ? band.color : "var(--text-secondary)" }}>
+                        {band.label}
+                      </span>
+                    </div>
+                    <p className="text-xs leading-relaxed mb-3" style={{ color: "var(--text-muted)" }}>{band.desc}</p>
+                    {/* Fine-tune row — only for the active band, otherwise it's noise. */}
+                    {inBand && (
+                      <div className="flex gap-1.5">
+                        {Array.from({ length: band.range[1] - band.range[0] + 1 }, (_, i) => band.range[0] + i).map((lvl) => {
+                          const exact = difficulty === lvl;
+                          return (
+                            <motion.button
+                              key={lvl}
+                              onClick={(e) => { e.stopPropagation(); setDifficulty(lvl); }}
+                              className="flex-1 rounded-md py-1.5 text-sm font-mono font-bold"
+                              style={{
+                                background: exact ? band.color : "var(--input-bg)",
+                                color: exact ? "#fff" : "var(--text-secondary)",
+                                border: `1px solid ${exact ? band.color : "var(--border-color)"}`,
+                              }}
+                              whileTap={{ scale: 0.95 }}
+                            >
+                              {lvl}
+                            </motion.button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </div>
+            <div className="mt-4 text-center text-xs" style={{ color: "var(--text-muted)" }}>
+              Текущий выбор: <span className="font-bold tabular-nums" style={{ color: "var(--text-primary)" }}>{difficulty}/10</span>
             </div>
           </>)}
 
@@ -830,11 +971,12 @@ export default function CharacterBuilder({ storyCalls = 3, userLevel: userLevelP
                   type="text"
                   value={customName}
                   onChange={(e) => setCustomName(e.target.value)}
-                  placeholder={
-                    selectedArchetype && selectedProfession
-                      ? `${selectedArchetype.name} \u00B7 ${selectedProfession.name} \u00B7 ${difficulty}/10`
-                      : "Название персонажа"
-                  }
+                  placeholder={buildFriendlyAutoname(
+                    selectedArchetype?.code ?? null,
+                    selectedArchetype?.name ?? null,
+                    selectedProfession?.name ?? null,
+                    difficulty,
+                  )}
                   maxLength={100}
                   className="w-full rounded-xl px-3 py-2 text-sm"
                   style={{
