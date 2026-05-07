@@ -6564,8 +6564,31 @@ async def _handle_story_start(
 
         archetype_code = (custom_params.get("archetype") or character.slug or "skeptic")
 
-        # Generate personality profile correlated with archetype
+        # Generate personality profile correlated with archetype.
+        # 2026-05-07 (PR-B2): apply tone-driven OCEAN shift on top of the
+        # archetype baseline so the persisted ClientStory.personality_profile
+        # reflects the user's tone pick. Without this the runtime
+        # ClientProfile honoured tone (via client_generator.generate_personality_profile)
+        # but the canonical OCEAN baseline persisted in ClientStory was
+        # toneless — a "skeptic + friendly" baseline drifted toward
+        # plain skeptic across reads. The shift is the same TONE_OCEAN_SHIFT
+        # (±0.05..±0.10) used at runtime, so values stay in [0,1] and
+        # archetype identity survives.
         personality_profile = generate_personality_profile(archetype_code)
+        _tone = (custom_params or {}).get("tone")
+        if _tone and isinstance(personality_profile, dict) and "ocean" in personality_profile:
+            try:
+                from app.services.adaptive_difficulty import apply_tone_ocean_shift
+                personality_profile["ocean"] = apply_tone_ocean_shift(
+                    personality_profile["ocean"], _tone,
+                )
+            except Exception:
+                # Tone shift is opportunistic — never block story creation
+                # over a missing weights table or unknown tone code.
+                logger.debug(
+                    "PR-B2: tone shift skipped (tone=%s, archetype=%s)",
+                    _tone, archetype_code, exc_info=True,
+                )
 
         # Resolve VRM avatar model from archetype
         from app.services.avatar_assignment import resolve_model_key
