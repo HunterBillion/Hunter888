@@ -104,6 +104,13 @@ async def invalidate_chunk(chunk_id: uuid.UUID, *, action: ChunkAction) -> None:
             "cache_keys_dropped": deleted,
         },
     }
+    # Broadcast to ALL connected users intentionally (not narrowed to a
+    # role/channel). Rationale: pilot is 15 testers and chunk updates
+    # are rare (~5/day). The toast «База знаний обновлена» is harmless
+    # for users not currently in a quiz, and it primes them that their
+    # NEXT quiz will see the new context. A channel-narrowed implementation
+    # (subscribe quiz sessions only) would gain ~zero in this audience and
+    # add a subscription-leak failure mode — not worth it.
     try:
         await notification_manager.broadcast(payload)
     except Exception as exc:

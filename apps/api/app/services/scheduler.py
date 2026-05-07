@@ -35,6 +35,18 @@ from app.models.client import (
 from app.models.user import User
 from app.services.client_domain import create_crm_interaction_with_event
 
+
+# PR-10 (2026-05-07): default top-3 AP leaderboard rewards stamped onto
+# every newly-rolled season. Methodologist can overwrite per-season via
+# POST /api/pvp/admin/season/create. Magnitudes calibrated for the
+# 15-pilot tester audience: enough to motivate an effort, not enough
+# to gate progression.
+DEFAULT_SEASON_TOP_REWARDS: list[dict] = [
+    {"rank": 1, "ap": 100, "badge": "champion-of-the-month"},
+    {"rank": 2, "ap": 60,  "badge": "silver-stand"},
+    {"rank": 3, "ap": 30,  "badge": "bronze-stand"},
+]
+
 logger = logging.getLogger(__name__)
 
 # Интервал проверки (минуты) — из конфига или дефолт
@@ -295,6 +307,10 @@ class ReminderScheduler:
                 start_date=month_start,
                 end_date=month_end,
                 is_active=True,
+                # PR-5/PR-10 (2026-05-07): default top-3 leaderboard
+                # rewards. Methodologist may overwrite via
+                # POST /api/pvp/admin/season/create later.
+                top_rewards=DEFAULT_SEASON_TOP_REWARDS,
             )
             db.add(season)
 
@@ -479,6 +495,7 @@ class ReminderScheduler:
                 start_date=month_start,
                 end_date=month_end,
                 is_active=True,
+                top_rewards=DEFAULT_SEASON_TOP_REWARDS,
             )
             db.add(new_season)
             await db.commit()
