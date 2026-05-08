@@ -198,13 +198,21 @@ export function TeamsTab() {
             </span>
           </div>
 
-          {/* Podium — flex centers 1/2/3 entries cleanly (no empty grid slots) */}
-          {podium.length > 0 && (
+          {/*
+            2026-05-08 (полировка по фидбеку): podium показываем
+            ТОЛЬКО если ≥ 3 команд. С 2-мя командами он визуально
+            «парит» по центру и ломает иерархию (period-switcher
+            слева, podium центрирован, tail снова слева — каша).
+            При < 3 командах все строки уходят во flat-list ниже —
+            аккуратно, выровнено по левому краю секции.
+          */}
+          {podium.length >= 3 && (
             <div className="flex items-end justify-center gap-3 md:gap-4 mb-5 flex-wrap">
-              {(podium.length >= 3
-                ? [podium.find((r) => r.rank === 2), podium.find((r) => r.rank === 1), podium.find((r) => r.rank === 3)]
-                : podium
-              )
+              {[
+                podium.find((r) => r.rank === 2),
+                podium.find((r) => r.rank === 1),
+                podium.find((r) => r.rank === 3),
+              ]
                 .filter(Boolean)
                 .map((row) => {
                   const r = row as TeamRow;
@@ -259,25 +267,33 @@ export function TeamsTab() {
             </div>
           )}
 
-          {/* Tail */}
-          {tail.length > 0 && (
-            <div
-              className="rounded-2xl overflow-hidden"
-              style={{
-                background: "var(--bg-panel)",
-                border: "1px solid var(--border-color)",
-              }}
-            >
-              {tail.map((row) => (
-                <TeamRowItem
-                  key={row.team_id}
-                  row={row}
-                  mine={myRow?.team_id === row.team_id}
-                  accent={accent}
-                />
-              ))}
-            </div>
-          )}
+          {/*
+            Flat-list. При < 3 командах сюда падает ВСЕ строки
+            (включая podium), а не только tail (rank > 3) — даём
+            пользователю увидеть всю таблицу в одном выровненном виде.
+          */}
+          {(() => {
+            const listRows = podium.length >= 3 ? tail : data.rows;
+            if (listRows.length === 0) return null;
+            return (
+              <div
+                className="rounded-2xl overflow-hidden"
+                style={{
+                  background: "var(--bg-panel)",
+                  border: "1px solid var(--border-color)",
+                }}
+              >
+                {listRows.map((row) => (
+                  <TeamRowItem
+                    key={row.team_id}
+                    row={row}
+                    mine={myRow?.team_id === row.team_id}
+                    accent={accent}
+                  />
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Pinned: my team if outside top-10 */}
           {myRow && (
