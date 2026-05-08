@@ -571,98 +571,228 @@ function DuelPage() {
     // загрузка» — теперь всегда есть escape hatch.
     return (
       <div
-        className="flex h-screen flex-col items-center justify-center px-6 gap-6"
+        className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 py-10 gap-3"
         style={{
           background: "var(--bg-primary)",
           backgroundImage: `
-            radial-gradient(ellipse 70% 50% at 50% 35%, color-mix(in srgb, var(--accent) 14%, transparent) 0%, transparent 60%),
-            repeating-linear-gradient(0deg, transparent 0, transparent 31px, rgba(107,77,199,0.025) 31px, rgba(107,77,199,0.025) 32px),
-            repeating-linear-gradient(90deg, transparent 0, transparent 31px, rgba(107,77,199,0.025) 31px, rgba(107,77,199,0.025) 32px)
+            radial-gradient(ellipse 70% 40% at 50% 0%, color-mix(in srgb, var(--accent) 18%, transparent) 0%, transparent 60%),
+            radial-gradient(ellipse 50% 50% at 100% 100%, rgba(107,77,199,0.06) 0%, transparent 60%),
+            repeating-linear-gradient(0deg, transparent 0, transparent 31px, rgba(107,77,199,0.022) 31px, rgba(107,77,199,0.022) 32px),
+            repeating-linear-gradient(90deg, transparent 0, transparent 31px, rgba(107,77,199,0.022) 31px, rgba(107,77,199,0.022) 32px)
           `,
           WebkitFontSmoothing: "antialiased",
           MozOsxFontSmoothing: "grayscale",
         } as React.CSSProperties}
       >
-        {/* Главный glass-card */}
+        {/* Status bar — спиннер + статус + back button (компактнее, не доминирует) */}
         <motion.div
-          initial={{ opacity: 0, y: 12, scale: 0.96 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ type: "spring", stiffness: 280, damping: 24 }}
-          className="rounded-3xl px-8 py-10 max-w-md w-full text-center"
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl px-5 py-3 flex items-center gap-4 max-w-3xl w-full"
           style={{
-            background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, rgba(15,15,20,0.92)) 0%, rgba(15,15,20,0.96) 100%)",
-            border: "1px solid color-mix(in srgb, var(--accent) 40%, transparent)",
-            boxShadow: "0 24px 64px color-mix(in srgb, var(--accent) 26%, transparent), 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent), inset 0 1px 0 rgba(255,255,255,0.08)",
-            backdropFilter: "blur(24px) saturate(1.4)",
+            background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, rgba(15,15,20,0.85)) 0%, rgba(15,15,20,0.92) 100%)",
+            border: "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
+            boxShadow: "0 6px 20px color-mix(in srgb, var(--accent) 14%, transparent), inset 0 1px 0 rgba(255,255,255,0.05)",
+            backdropFilter: "blur(24px) saturate(1.2)",
           }}
         >
-          {/* Огромный спиннер с glow */}
           <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 1.4, repeat: Infinity, ease: "linear" }}
-            className="rounded-full mx-auto mb-6"
+            className="rounded-full shrink-0"
             style={{
-              width: 80,
-              height: 80,
-              border: "5px solid color-mix(in srgb, var(--accent) 20%, transparent)",
+              width: 36,
+              height: 36,
+              border: "3px solid color-mix(in srgb, var(--accent) 22%, transparent)",
               borderTopColor: "var(--accent)",
-              boxShadow: "0 0 32px var(--accent-glow), inset 0 0 16px rgba(0,0,0,0.3)",
+              boxShadow: "0 0 14px var(--accent-glow)",
             }}
           />
-          <h1
-            className="font-display font-bold uppercase mb-2"
+          <div className="flex-1 min-w-0">
+            <div
+              className="font-display font-bold uppercase truncate"
+              style={{
+                color: "var(--accent)",
+                fontSize: 16,
+                letterSpacing: "0.14em",
+                textShadow: "0 0 14px var(--accent-glow)",
+              }}
+            >
+              Подключение к арене
+            </div>
+            <div
+              className="font-mono truncate"
+              style={{ color: "var(--text-secondary)", fontSize: 14, marginTop: 3 }}
+            >
+              Пока ждём — изучи правила дуэли ниже
+            </div>
+          </div>
+          <motion.button
+            whileHover={{ y: -1, backgroundColor: "rgba(255,255,255,0.09)" }}
+            whileTap={{ scale: 0.96 }}
+            onClick={() => router.push("/pvp")}
+            className="rounded-xl font-display font-bold uppercase shrink-0"
             style={{
-              color: "var(--accent)",
-              fontSize: 24,
-              letterSpacing: "0.12em",
-              textShadow: "0 0 24px var(--accent-glow)",
+              padding: "10px 16px",
+              background: "rgba(255,255,255,0.04)",
+              color: "var(--text-primary)",
+              border: "1px solid rgba(255,255,255,0.18)",
+              backdropFilter: "blur(20px)",
+              fontSize: 14,
+              letterSpacing: "0.14em",
+              cursor: "pointer",
             }}
           >
-            Подключение к арене
-          </h1>
-          <p
-            className="font-mono"
-            style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6 }}
-          >
-            Загружаем дуэль и соперника. Если зависло —
-            нажми кнопку ниже чтобы вернуться.
-          </p>
-
-          <div className="mt-5 flex gap-1.5 justify-center">
-            {[0, 1, 2, 3].map((i) => (
-              <motion.span
-                key={i}
-                className="rounded-full"
-                style={{ width: 8, height: 8, background: "var(--accent)", boxShadow: "0 0 6px var(--accent)" }}
-                animate={{ opacity: [0.2, 1, 0.2], scale: [1, 1.2, 1] }}
-                transition={{ duration: 1, repeat: Infinity, delay: i * 0.15 }}
-              />
-            ))}
-          </div>
+            ← На арену
+          </motion.button>
         </motion.div>
 
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          whileHover={{ y: -2 }}
-          whileTap={{ scale: 0.96 }}
-          onClick={() => router.push("/pvp")}
-          className="rounded-xl font-display font-bold uppercase"
+        {/* === ПРАВИЛА ДУЭЛИ === — focal panel, accent-tinted, сгруппирован по парам */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="rounded-3xl px-6 sm:px-8 py-7 max-w-3xl w-full"
           style={{
-            padding: "14px 28px",
-            background: "rgba(255,255,255,0.04)",
-            color: "var(--text-primary)",
-            border: "1px solid rgba(255,255,255,0.18)",
-            boxShadow: "0 6px 20px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.06)",
-            backdropFilter: "blur(20px)",
-            fontSize: 15,
-            letterSpacing: "0.16em",
-            cursor: "pointer",
+            background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 7%, rgba(15,15,20,0.85)) 0%, rgba(15,15,20,0.94) 100%)",
+            border: "1px solid color-mix(in srgb, var(--accent) 18%, rgba(255,255,255,0.06))",
+            boxShadow: "0 24px 64px rgba(0,0,0,0.32), 0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent), inset 0 1px 0 rgba(255,255,255,0.06)",
+            backdropFilter: "blur(24px) saturate(1.2)",
           }}
         >
-          ← Назад на арену
-        </motion.button>
+          <div
+            className="font-display font-bold uppercase mb-2"
+            style={{
+              color: "var(--text-primary)",
+              fontSize: "clamp(26px, 7.5vw, 34px)",
+              letterSpacing: "clamp(0.04em, 0.5vw, 0.08em)",
+              textShadow: "0 0 18px var(--accent-glow)",
+              lineHeight: 1.05,
+            }}
+          >
+            <span style={{ fontFamily: "system-ui, sans-serif", fontWeight: 400, opacity: 0.85, marginRight: 6 }}>★</span>
+            Правила дуэли
+            <span style={{ fontFamily: "system-ui, sans-serif", fontWeight: 400, opacity: 0.85, marginLeft: 6 }}>★</span>
+          </div>
+          <div
+            className="font-mono mb-7"
+            style={{
+              color: "var(--text-secondary)",
+              fontSize: 15,
+              fontWeight: 500,
+              letterSpacing: "0.08em",
+            }}
+          >
+            Бой умов · 2 раунда · AI-судья · Glicko-2 рейтинг
+          </div>
+
+          <ol className="space-y-5">
+            {[
+              // Группа 1 — структура (accent)
+              {
+                num: 1, color: "var(--accent)",
+                lead: "2 раунда + смена ролей",
+                body: "Раунд 1 ты — менеджер по банкротству. Раунд 2 — клиент. Учишься обеим сторонам разговора.",
+              },
+              {
+                num: 2, color: "var(--accent)",
+                lead: "Роль «менеджер»",
+                body: "Провести консультацию, обработать возражения «дорого», «боюсь суда», «не хочу публично». Цитировать статьи ФЗ-127.",
+              },
+              // Группа 2 — роли/лимит (magenta — для разделения с accent)
+              {
+                num: 3, color: "var(--magenta, #d946ef)",
+                lead: "Роль «клиент»",
+                body: "Отыграть реального должника. Возражения честные — не сдавайся с первой реплики менеджера.",
+                groupBreak: true,
+              },
+              {
+                num: 4, color: "var(--magenta, #d946ef)",
+                lead: "До 8 сообщений на раунд",
+                body: "Лимит. Будь лаконичным и убедительным. Длинные простыни режутся.",
+              },
+              // Группа 3 — оценка (success)
+              {
+                num: 5, color: "var(--success, #22c55e)",
+                lead: "AI-судья оценивает 4 критерия",
+                body: "Возражения · Убеждение · Структура диалога · Юридическая точность.",
+                groupBreak: true,
+              },
+              {
+                num: 6, color: "var(--success, #22c55e)",
+                lead: "Glicko-2 рейтинг",
+                body: "Полные очки против живого игрока. PvE (бот) даёт 50% — для тренировки. Первые 10 дуэлей калибровочные.",
+              },
+              // Группа 4 — мета (gold)
+              {
+                num: 7, color: "var(--gf-xp, #facc15)",
+                lead: "Lifelines",
+                body: "💡 RAG-подсказка по 127-ФЗ · ⏭ пропуск раунда · 🎤 голосовой ввод. Используй с умом — каждая снижает балл.",
+                groupBreak: true,
+              },
+              {
+                num: 8, color: "var(--gf-xp, #facc15)",
+                lead: "Тиры от Bronze до Grandmaster",
+                body: "Peak-tier не теряется. Отменённые / прерванные дуэли в рейтинг не идут.",
+              },
+            ].map((rule, i) => (
+              <motion.li
+                key={rule.num}
+                initial={{ opacity: 0, x: -16 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.08 + i * 0.035, type: "spring", stiffness: 320, damping: 26 }}
+                className="flex gap-4 items-start"
+                style={{
+                  // Group separator на началах групп 2/3/4 — opacity 10% для видимости
+                  ...(rule.groupBreak ? {
+                    borderTop: "1px solid rgba(255,255,255,0.10)",
+                    paddingTop: 12,
+                  } : {}),
+                }}
+              >
+                <span
+                  className="font-display font-bold tabular-nums shrink-0 flex items-center justify-center rounded-xl"
+                  style={{
+                    width: 38,
+                    height: 38,
+                    background: `linear-gradient(135deg, color-mix(in srgb, ${rule.color} 28%, transparent) 0%, color-mix(in srgb, ${rule.color} 8%, transparent) 100%)`,
+                    border: `1px solid color-mix(in srgb, ${rule.color} 50%, transparent)`,
+                    color: rule.color,
+                    fontSize: 18,
+                    boxShadow: `0 4px 12px color-mix(in srgb, ${rule.color} 26%, transparent), inset 0 1px 0 rgba(255,255,255,0.08)`,
+                    textShadow: `0 0 6px color-mix(in srgb, ${rule.color} 50%, transparent)`,
+                  }}
+                >
+                  {rule.num}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div
+                    className="font-display font-bold mb-2"
+                    style={{
+                      color: "var(--text-primary)",
+                      fontSize: 18,
+                      letterSpacing: "0.01em",
+                      textShadow: `0 0 8px ${rule.color}26`,
+                      lineHeight: 1.25,
+                    }}
+                  >
+                    {rule.lead}
+                  </div>
+                  <div
+                    style={{
+                      color: "var(--text-secondary)",
+                      fontSize: "clamp(15px, 4vw, 15.5px)",
+                      lineHeight: 1.6,
+                      fontWeight: 400,
+                    }}
+                  >
+                    {rule.body}
+                  </div>
+                </div>
+              </motion.li>
+            ))}
+          </ol>
+        </motion.div>
       </div>
     );
   }
@@ -773,45 +903,81 @@ function DuelPage() {
           (PVP/PVE) moves into the centre as a small subtitle so the
           screen real estate is dominated by the role contrast. */}
       <header
-        className="h-16 shrink-0 flex items-center justify-between px-4 sm:px-6 z-20"
-        style={{ background: "var(--glass-bg)", borderBottom: "1px solid var(--border-color)", backdropFilter: "blur(20px)" }}
+        className="shrink-0 flex items-center justify-between gap-3 px-4 sm:px-6 py-3 z-20"
+        style={{
+          background: "linear-gradient(180deg, rgba(15,15,20,0.85) 0%, rgba(15,15,20,0.65) 100%)",
+          borderBottom: "1px solid var(--glass-border, rgba(255,255,255,0.08))",
+          backdropFilter: "blur(24px) saturate(1.4)",
+          WebkitBackdropFilter: "blur(24px) saturate(1.4)",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.04)",
+          minHeight: 76,
+          WebkitFontSmoothing: "antialiased",
+          MozOsxFontSmoothing: "grayscale",
+        } as React.CSSProperties}
       >
         {/* Left — exit + you (role + name) */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          <button
+          <motion.button
             type="button"
             onClick={() => setShowExitConfirm(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0"
-            style={{ background: "var(--danger-muted)", color: "var(--danger)", border: "1px solid var(--danger-muted)" }}
+            whileHover={{ y: -1 }}
+            whileTap={{ scale: 0.96 }}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl font-display font-bold uppercase shrink-0"
+            style={{
+              background: "linear-gradient(135deg, rgba(239,68,68,0.18) 0%, rgba(239,68,68,0.06) 100%)",
+              color: "var(--danger)",
+              border: "1px solid rgba(239,68,68,0.4)",
+              boxShadow: "0 4px 12px rgba(239,68,68,0.16), inset 0 1px 0 rgba(255,255,255,0.06)",
+              fontSize: 13,
+              letterSpacing: "0.14em",
+              backdropFilter: "blur(20px)",
+              cursor: "pointer",
+            }}
             title="Выйти из дуэли"
           >
-            <LogOut size={14} />
+            <LogOut size={16} />
             Выйти
-          </button>
+          </motion.button>
           <div className="flex flex-col leading-tight min-w-0">
             <span
-              className="font-pixel text-[10px] sm:text-[11px] uppercase tracking-wider"
+              className="font-display font-bold uppercase tracking-widest"
               style={{
                 color: store.myRole === "seller" ? "var(--accent)" : "var(--magenta, #d946ef)",
-                textShadow: "1px 1px 0 #000",
+                fontSize: 13,
+                letterSpacing: "0.14em",
+                textShadow: `0 0 12px ${store.myRole === "seller" ? "var(--accent-glow)" : "rgba(217,70,239,0.5)"}`,
               }}
             >
               ВЫ · {myRoleLabel}
             </span>
-            <span className="font-mono text-[11px] truncate" style={{ color: "var(--text-primary)" }}>
+            <span
+              className="truncate"
+              style={{ color: "var(--text-primary)", fontSize: 16, fontWeight: 600, marginTop: 2 }}
+            >
               {myName}
             </span>
           </div>
         </div>
 
-        {/* Center — VS + mode pill */}
-        <div className="flex flex-col items-center shrink-0 px-2">
-          <Swords size={18} style={{ color: "var(--accent)" }} />
-          <span
-            className="font-pixel text-[9px] uppercase tracking-widest mt-0.5"
-            style={{ color: "var(--text-muted)" }}
+        {/* Center — VS + mode pill (only on md+) */}
+        <div className="hidden md:flex flex-col items-center shrink-0 px-3">
+          <div
+            className="flex items-center justify-center rounded-xl"
+            style={{
+              width: 44,
+              height: 44,
+              background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, transparent) 0%, color-mix(in srgb, var(--accent) 6%, transparent) 100%)",
+              border: "1px solid color-mix(in srgb, var(--accent) 45%, transparent)",
+              boxShadow: "0 4px 14px color-mix(in srgb, var(--accent) 28%, transparent), inset 0 1px 0 rgba(255,255,255,0.08)",
+            }}
           >
-            {store.duelBrief?.is_pve ? "PVE · БОТ" : "PVP · КЛАССИКА"}
+            <Swords size={22} style={{ color: "var(--accent)", filter: "drop-shadow(0 0 6px var(--accent-glow))" }} />
+          </div>
+          <span
+            className="font-display font-bold uppercase tracking-widest mt-1.5"
+            style={{ color: "var(--text-secondary)", fontSize: 11, letterSpacing: "0.18em" }}
+          >
+            {store.duelBrief?.is_pve ? "PVE · БОТ" : "PVP"}
           </span>
         </div>
 
@@ -819,23 +985,30 @@ function DuelPage() {
         <div className="flex items-center gap-3 min-w-0 flex-1 justify-end">
           <div className="flex flex-col leading-tight min-w-0 items-end">
             <span
-              className="font-pixel text-[10px] sm:text-[11px] uppercase tracking-wider"
+              className="font-display font-bold uppercase tracking-widest"
               style={{
                 color: store.myRole === "seller" ? "var(--magenta, #d946ef)" : "var(--accent)",
-                textShadow: "1px 1px 0 #000",
+                fontSize: 13,
+                letterSpacing: "0.14em",
+                textShadow: `0 0 12px ${store.myRole === "seller" ? "rgba(217,70,239,0.5)" : "var(--accent-glow)"}`,
               }}
             >
               {oppRoleLabel} · {store.duelBrief?.is_pve ? "AI" : "ИГРОК"}
             </span>
-            <span className="font-mono text-[11px] truncate flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
+            <span
+              className="truncate flex items-center gap-2"
+              style={{ color: "var(--text-primary)", fontSize: 16, fontWeight: 600, marginTop: 2 }}
+            >
               {store.duelBrief?.opponent?.name || "Подбор…"}
               {oppTier && (
                 <span
-                  className="px-1.5 py-0.5 text-[9px] uppercase tracking-widest rounded"
+                  className="px-2 py-0.5 uppercase tracking-widest rounded-md font-display font-bold"
                   style={{
-                    background: "var(--accent-muted)",
+                    background: "color-mix(in srgb, var(--accent) 18%, transparent)",
                     color: "var(--accent)",
-                    border: "1px solid var(--accent)",
+                    border: "1px solid color-mix(in srgb, var(--accent) 45%, transparent)",
+                    fontSize: 11,
+                    letterSpacing: "0.14em",
                   }}
                 >
                   {oppTier}
