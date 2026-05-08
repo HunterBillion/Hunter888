@@ -63,29 +63,29 @@ export function ArenaLivePanel() {
         className="font-pixel uppercase tracking-widest mb-3 flex items-center gap-2"
         style={{
           color: searching ? "var(--success)" : "var(--text-muted)",
-          fontSize: 11,
+          fontSize: 13,
           letterSpacing: "0.16em",
         }}
       >
         <Radio
-          size={13}
+          size={15}
           className={searching ? "animate-pulse" : ""}
         />
         АРЕНА СЕЙЧАС
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center justify-between text-[13px]">
           <span
             className="flex items-center gap-1.5"
             style={{ color: "var(--text-muted)" }}
           >
-            <Users size={12} />
+            <Users size={14} />
             В очереди
           </span>
           <span
             className="font-pixel tabular-nums"
-            style={{ color: "var(--text-primary)", fontSize: 14 }}
+            style={{ color: "var(--text-primary)", fontSize: 18 }}
           >
             {serverQueue !== null ? serverQueue : "—"}
           </span>
@@ -93,7 +93,7 @@ export function ArenaLivePanel() {
 
         {searching && (
           <>
-            <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center justify-between text-[13px]">
               <span
                 className="flex items-center gap-1.5"
                 style={{ color: "var(--text-muted)" }}
@@ -102,24 +102,24 @@ export function ArenaLivePanel() {
               </span>
               <span
                 className="font-pixel tabular-nums"
-                style={{ color: "var(--success)", fontSize: 14 }}
+                style={{ color: "var(--success)", fontSize: 18 }}
               >
                 {queuePosition || "?"}
               </span>
             </div>
 
             {estimatedWait > 0 && (
-              <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center justify-between text-[13px]">
                 <span
                   className="flex items-center gap-1.5"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  <Clock size={12} />
+                  <Clock size={14} />
                   Осталось
                 </span>
                 <span
                   className="font-pixel tabular-nums"
-                  style={{ color: "var(--success)", fontSize: 13 }}
+                  style={{ color: "var(--success)", fontSize: 15 }}
                 >
                   ~{estimatedWait}с
                 </span>
@@ -127,7 +127,7 @@ export function ArenaLivePanel() {
             )}
 
             <div
-              className="mt-2 flex items-center justify-center gap-2 px-2 py-1.5 font-pixel uppercase text-[10px]"
+              className="mt-2 flex items-center justify-center gap-2 px-2 py-2 font-pixel uppercase text-[12px]"
               style={{
                 background: "color-mix(in srgb, var(--success) 12%, transparent)",
                 color: "var(--success)",
@@ -135,7 +135,7 @@ export function ArenaLivePanel() {
                 letterSpacing: "0.16em",
               }}
             >
-              <Loader2 size={11} className="animate-spin" />
+              <Loader2 size={13} className="animate-spin" />
               ИЩЕМ СОПЕРНИКА
             </div>
           </>
@@ -143,7 +143,7 @@ export function ArenaLivePanel() {
 
         {matched && (
           <div
-            className="mt-2 flex items-center justify-center gap-2 px-2 py-1.5 font-pixel uppercase text-[10px]"
+            className="mt-2 flex items-center justify-center gap-2 px-2 py-2 font-pixel uppercase text-[12px]"
             style={{
               background: "color-mix(in srgb, var(--accent) 14%, transparent)",
               color: "var(--accent)",
@@ -157,7 +157,7 @@ export function ArenaLivePanel() {
 
         {queueStatus === "idle" && (
           <div
-            className="mt-1 font-pixel uppercase text-[10px] tracking-widest"
+            className="mt-1 font-pixel uppercase text-[12px] tracking-widest"
             style={{ color: "var(--text-muted)", letterSpacing: "0.16em" }}
           >
             Нажми «Дуэль» →

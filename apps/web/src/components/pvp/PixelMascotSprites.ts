@@ -28,7 +28,7 @@
  *   g  accent — заменяется на проп `accent` (sparkle / Z / tear / wave)
  */
 
-export type MascotState = "idle" | "walk" | "cheer" | "sad" | "sleep" | "wave";
+export type MascotState = "idle" | "walk" | "cheer" | "sad" | "sleep" | "wave" | "think" | "wink";
 
 export const PALETTE: Record<string, string> = {
   M: "#3a2410",
@@ -174,6 +174,86 @@ const sleep0: string[] = [
   ".....MM..MM.....",
 ];
 
+// v5 (2026-05-08) — think (для таба «Изучать»): один глаз прищурен,
+// рядом с правым ухом «искра мысли» (g-accent в 2 пикселя).
+const think0: string[] = [
+  "...MM......MM..g",
+  "...MFMMMMMMFM...",
+  "..MmmmmmmmmmmM.g",
+  ".MmmmmmmmmmmmmM.",
+  "MmmFFFFFFFFFFmmM",
+  "MmmFssssssssFmmM",
+  "MmmFssssssesFmmM",
+  "MmmFssssssssFmmM",
+  "MmmFsssnnsssFmmM",
+  "MmmFssssssssFmmM",
+  ".MmmFFFFFFFFmmM.",
+  "..MmmmmmmmmmmM..",
+  "....MMMMMMMM....",
+  ".....ffffff.....",
+  "....fff..fff....",
+  ".....MM..MM.....",
+];
+
+const think1: string[] = [
+  "...MM......MM...",
+  "...MFMMMMMMFM..g",
+  "..MmmmmmmmmmmM..",
+  ".MmmmmmmmmmmmmM.",
+  "MmmFFFFFFFFFFmmM",
+  "MmmFssssssssFmmM",
+  "MmmFssssssesFmmM",
+  "MmmFssssssssFmmM",
+  "MmmFsssnnsssFmmM",
+  "MmmFssssssssFmmM",
+  ".MmmFFFFFFFFmmM.",
+  "..MmmmmmmmmmmM..",
+  "....MMMMMMMM....",
+  ".....ffffff.....",
+  "....fff..fff....",
+  ".....MM..MM.....",
+];
+
+// v5 — wink (для таба «История»): подмигивает правым глазом,
+// сохраняет лёгкую улыбку.
+const wink0: string[] = [
+  "...MM......MM...",
+  "...MFMMMMMMFM...",
+  "..MmmmmmmmmmmM..",
+  ".MmmmmmmmmmmmmM.",
+  "MmmFFFFFFFFFFmmM",
+  "MmmFssssssssFmmM",
+  "MmmFsessssssFmmM",
+  "MmmFssssssssFmmM",
+  "MmmFsssnnsssFmmM",
+  "MmmFsssswsssFmmM",
+  ".MmmFFFFFFFFmmM.",
+  "..MmmmmmmmmmmM..",
+  "....MMMMMMMM....",
+  ".....ffffff.....",
+  "....fff..fff....",
+  ".....MM..MM.....",
+];
+
+const wink1: string[] = [
+  "...MM......MM...",
+  "...MFMMMMMMFM...",
+  "..MmmmmmmmmmmM..",
+  ".MmmmmmmmmmmmmM.",
+  "MmmFFFFFFFFFFmmM",
+  "MmmFssssssssFmmM",
+  "MmmFsessssesFmmM",
+  "MmmFssssssssFmmM",
+  "MmmFsssnnsssFmmM",
+  "MmmFsswwwwssFmmM",
+  ".MmmFFFFFFFFmmM.",
+  "..MmmmmmmmmmmM..",
+  "....MMMMMMMM....",
+  ".....ffffff.....",
+  "....fff..fff....",
+  ".....MM..MM.....",
+];
+
 // v4 NEW state — friendly hello wave (used on lobby first-load greeting).
 const wave0: string[] = [
   "...MM......MM...",
@@ -201,6 +281,10 @@ export const SPRITES: Record<MascotState, string[][]> = {
   sad: [sad0],
   sleep: [sleep0],
   wave: [wave0],
+  // think — искра мысли пульсирует (с искрой / без искры)
+  think: [think0, think1, think0, think1],
+  // wink — оба-открыты / правый-закрыт-улыбка (классический wink-loop)
+  wink: [wink1, wink1, wink0, wink0, wink0, wink1],
 };
 
 export const FRAME_INTERVAL_MS: Record<MascotState, number> = {
@@ -210,4 +294,6 @@ export const FRAME_INTERVAL_MS: Record<MascotState, number> = {
   sad: 0,
   sleep: 1500,
   wave: 0,
+  think: 600,   // средний ритм — «о чём бы подумать»
+  wink: 280,    // быстрый wink + длинная пауза с открытыми глазами
 };

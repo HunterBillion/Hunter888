@@ -15,7 +15,7 @@
  * overridden via the `forcedState` prop.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { PixelMascot } from "./PixelMascot";
 import type { MascotState } from "./PixelMascotSprites";
@@ -36,7 +36,14 @@ export function LobbyMascot({ forcedState, size = MASCOT_SIZE_DEFAULT, accent }:
   const target = useMascotAnchorStore((s) => s.target);
   const anchors = useMascotAnchorStore((s) => s.anchors);
   const reducedMotion = useReducedMotion();
-  const [vp, setVp] = useState({ w: 0, h: 0 });
+  // Lazy-init from window so the very first render already has correct
+  // home coords. Без этого vp={0,0} на первом рендере давал homeX/Y=-104
+  // (top-left), а useEffect замерял реальный размер на следующем тике —
+  // и Framer пружинно тянул льва из верхнего-левого угла в правый-нижний.
+  const [vp, setVp] = useState(() => {
+    if (typeof window === "undefined") return { w: 0, h: 0 };
+    return { w: window.innerWidth, h: window.innerHeight };
+  });
 
   // Track viewport size for the home position fallback.
   useEffect(() => {
@@ -73,15 +80,15 @@ export function LobbyMascot({ forcedState, size = MASCOT_SIZE_DEFAULT, accent }:
     ? { duration: 0 }
     : { type: "spring" as const, stiffness: 220, damping: 24, mass: 0.8 };
 
-  const initialRendered = useRef(false);
-  useEffect(() => { initialRendered.current = true; }, []);
-
+  // initial={false}: Framer mounts at `animate` values без tween-а, иначе
+  // первое появление выглядело как полёт из (0,0) в угол. SSR-безопасно
+  // потому что vp lazy-init из window.
   return (
     <motion.div
       className="pointer-events-none fixed z-40 hidden md:block"
       style={{ top: 0, left: 0 }}
-      initial={initialRendered.current ? false : { opacity: 0, x: targetXY.x, y: targetXY.y }}
-      animate={{ opacity: 1, x: targetXY.x, y: targetXY.y }}
+      initial={false}
+      animate={{ opacity: vp.w > 0 ? 1 : 0, x: targetXY.x, y: targetXY.y }}
       transition={transition}
     >
       <PixelMascot state={finalState} size={size} accent={accent} />
