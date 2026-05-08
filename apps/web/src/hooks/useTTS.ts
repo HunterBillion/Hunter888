@@ -550,6 +550,15 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     nextExpectedIndexRef.current = 0;
     playingChunkRef.current = false;
     chunkFailureStreakRef.current = 0;
+    // Phase D (2026-05-08, Bug 2 fix): also discard any audio that was
+    // stashed for a deferred autoplay-unlock. Previously stop() left
+    // pendingPlaybackRef populated, so a tts.unlock() that fired AFTER
+    // hangup (e.g., user tapped during the CallEndingTransition) would
+    // play the stashed audio out loud — voice continued past the visual
+    // hangup. Nulling it here is safe because stop() means "discard
+    // everything pending"; any genuine future audio comes via a fresh
+    // playAudioMessage call.
+    pendingPlaybackRef.current = null;
     // Stop animation + modulation
     stopAudioLevelSimulation();
     clearModulationState();
