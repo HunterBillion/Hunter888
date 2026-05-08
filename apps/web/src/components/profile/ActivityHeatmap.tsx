@@ -137,7 +137,17 @@ export function ActivityHeatmap({ days = 180, accent = "var(--accent)" }: Props)
     const totalCells = days + (7 - todayDow); // дотягиваем сегодня до конца недели
     const weeksCount = Math.ceil(totalCells / 7);
 
-    // Колонки = недели (старые слева, новые справа).
+    // Колонки = недели. GitHub-style: старые СЛЕВА, новые СПРАВА.
+    // Цикл идёт от старейшей недели (w=N-1) к текущей (w=0). Каждая
+    // неделя пушится в `cols` сразу в правильном хронологическом
+    // порядке: cols[0] = oldest, cols[last] = current.
+    //
+    // 2026-05-08 BUG-FIX (heatmap reverse direction): раньше в конце
+    // стоял `cols.reverse()` — что инвертировало готовый правильный
+    // порядок и делал «справа налево». Скриншот пользователя показал
+    // зелёные клетки в левом верхнем углу с лейблом «МАЙ АПР» (они
+    // ещё и наезжали друг на друга, потому что были в первой колонке).
+    // Удалили reverse — теперь как в GitHub.
     const cols: { iso: string; sessions: number; avg: number | null; level: 0 | 1 | 2 | 3 | 4 }[][] = [];
 
     for (let w = weeksCount - 1; w >= 0; w--) {
@@ -161,20 +171,33 @@ export function ActivityHeatmap({ days = 180, accent = "var(--accent)" }: Props)
       }
       cols.push(week);
     }
-    // cols сейчас в обратном порядке (текущая неделя последняя), нам и нужно
-    return cols.reverse();
+    return cols;
   }, [data, days]);
 
+  /**
+   * Лейблы месяцев над сеткой. Один лейбл на колонку, в которой
+   * начинается новый месяц (по понедельнику-первой-ячейке).
+   *
+   * 2026-05-08: добавлен min-gap 2 колонки (≥30 px) между лейблами,
+   * чтобы соседние короткие месяцы (например, конец недели в апреле +
+   * начало в мае) не наезжали друг на друга. На скриншоте пользователя
+   * «МАЙ» и «АПР» были склеены в первой колонке.
+   */
   const monthMarkers = useMemo(() => {
     if (!grid) return [];
     const markers: { col: number; label: string }[] = [];
     let lastMonth = -1;
+    let lastMarkerCol = -10;
+    const MIN_GAP = 2; // min-gap в колонках между соседними лейблами
     grid.forEach((week, col) => {
       const firstCell = week.find((c) => c.iso) ?? week[0];
       if (!firstCell.iso) return;
       const m = new Date(`${firstCell.iso}T00:00:00Z`).getUTCMonth();
       if (m !== lastMonth) {
-        markers.push({ col, label: MONTH_LABELS[m] });
+        if (col - lastMarkerCol >= MIN_GAP) {
+          markers.push({ col, label: MONTH_LABELS[m] });
+          lastMarkerCol = col;
+        }
         lastMonth = m;
       }
     });
