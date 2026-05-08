@@ -45,27 +45,102 @@ function LeaderboardPage() {
     <AuthLayout>
       <div className="panel-grid-bg min-h-screen">
         <div className="app-page max-w-6xl">
-          {/* ═══ ЗАЛ СЛАВЫ — главный логотип ═══ */}
+          {/*
+            ═══ ЗАЛ СЛАВЫ — главный логотип ═══
+
+            2026-05-08 (полировка): добавлен «сяящий» эффект — sweep
+            белого блика, проходящий по золотому градиенту слева направо
+            раз в 4 секунды (как огонёк на металлической вывеске
+            аркадного зала). Звёзды по бокам пульсируют в противофазе,
+            создавая ритм. Pulse glow меняет интенсивность тени, чтобы
+            казалось, будто весь логотип «дышит» неоном.
+          */}
+          <style jsx>{`
+            @keyframes vh-logo-shine {
+              0%   { background-position: -150% 0; }
+              60%  { background-position:  250% 0; }
+              100% { background-position:  250% 0; }
+            }
+            @keyframes vh-logo-pulse {
+              0%, 100% {
+                filter:
+                  drop-shadow(0 4px 0 rgba(0,0,0,0.45))
+                  drop-shadow(0 0 14px rgba(255,210,80,0.45))
+                  drop-shadow(0 0 28px rgba(167,139,250,0.35));
+              }
+              50% {
+                filter:
+                  drop-shadow(0 4px 0 rgba(0,0,0,0.45))
+                  drop-shadow(0 0 22px rgba(255,210,80,0.85))
+                  drop-shadow(0 0 44px rgba(167,139,250,0.65));
+              }
+            }
+            @keyframes vh-star-twinkle-a {
+              0%, 100% { opacity: 1; transform: scale(1) rotate(0deg); }
+              50%      { opacity: 0.55; transform: scale(0.85) rotate(15deg); }
+            }
+            @keyframes vh-star-twinkle-b {
+              0%, 100% { opacity: 0.6; transform: scale(0.9) rotate(0deg); }
+              50%      { opacity: 1; transform: scale(1.1) rotate(-15deg); }
+            }
+            .vh-logo-text {
+              background:
+                linear-gradient(
+                  120deg,
+                  transparent 0%,
+                  transparent 35%,
+                  rgba(255,255,255,0.85) 48%,
+                  rgba(255,255,255,1) 50%,
+                  rgba(255,255,255,0.85) 52%,
+                  transparent 65%,
+                  transparent 100%
+                ),
+                linear-gradient(180deg, #ffd650 0%, #facc15 35%, var(--accent) 100%);
+              background-size: 200% 100%, 100% 100%;
+              background-position: -150% 0, 0 0;
+              -webkit-background-clip: text;
+              background-clip: text;
+              -webkit-text-fill-color: transparent;
+              animation:
+                vh-logo-shine 4s ease-in-out infinite,
+                vh-logo-pulse 3s ease-in-out infinite;
+            }
+            .vh-logo-star-left  { animation: vh-star-twinkle-a 1.8s ease-in-out infinite; display: inline-block; }
+            .vh-logo-star-right { animation: vh-star-twinkle-b 1.8s ease-in-out infinite; display: inline-block; }
+            @media (prefers-reduced-motion: reduce) {
+              .vh-logo-text, .vh-logo-star-left, .vh-logo-star-right { animation: none !important; }
+            }
+          `}</style>
           <div className="text-center pt-2 pb-6 select-none">
             <div
-              className="font-pixel"
+              className="font-pixel vh-logo-text"
               style={{
                 fontSize: "clamp(36px, 6vw, 64px)",
                 lineHeight: 1.0,
                 letterSpacing: "0.06em",
-                background:
-                  "linear-gradient(180deg, #ffd650 0%, #facc15 35%, var(--accent) 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
-                textShadow:
-                  "0 0 18px rgba(167,139,250,0.45), 0 0 28px rgba(255,210,80,0.35)",
-                filter: "drop-shadow(0 4px 0 rgba(0,0,0,0.45))",
               }}
             >
-              <span aria-hidden style={{ marginRight: 12 }}>★</span>
+              <span
+                aria-hidden
+                className="vh-logo-star-left"
+                style={{
+                  marginRight: 12,
+                  color: "#ffd650",
+                  WebkitTextFillColor: "#ffd650",
+                  textShadow: "0 0 12px rgba(255,210,80,0.8)",
+                }}
+              >★</span>
               ЗАЛ СЛАВЫ
-              <span aria-hidden style={{ marginLeft: 12 }}>★</span>
+              <span
+                aria-hidden
+                className="vh-logo-star-right"
+                style={{
+                  marginLeft: 12,
+                  color: "#ffd650",
+                  WebkitTextFillColor: "#ffd650",
+                  textShadow: "0 0 12px rgba(255,210,80,0.8)",
+                }}
+              >★</span>
             </div>
             <div
               className="font-pixel uppercase tracking-widest mt-2"
