@@ -258,6 +258,20 @@ export default function TrainingCallPage() {
     }
   }, [tts.playbackError]);
 
+  // Phase B (2026-05-08) — authoritative "first audio actually played"
+  // signal. Watches `tts.speaking` and sets the watchdog-disarm flag
+  // ONLY when an Audio element actually started playback (useTTS sets
+  // speaking=true after the .play() promise resolves). Previously the
+  // flag was set on WS message RECEIPT, which made the watchdog
+  // self-disarm even when Brave/mobile Safari refused autoplay — so
+  // the recovery toast never appeared and pilot users sat in silence.
+  useEffect(() => {
+    if (tts.speaking && !firstTtsAudioReceivedRef.current) {
+      firstTtsAudioReceivedRef.current = true;
+      logger.log("[CALL] B7 watchdog disarmed — tts.speaking=true (audio actually playing)");
+    }
+  }, [tts.speaking]);
+
   // PR-H (B7) — no-audio watchdog. If session.started fires but no
   // tts.audio / tts.audio_chunk arrives in 6 seconds, surface a
   // recovery toast that re-runs tts.unlock(). The 3-vector unlock on
@@ -275,20 +289,39 @@ export default function TrainingCallPage() {
       if (ttsRecoveryFiredRef.current) return;
       ttsRecoveryFiredRef.current = true;
       logger.warn("[CALL] B7 watchdog: no tts.audio in 6s after session.started");
-      try {
-        tts.unlock();
-      } catch {
-        /* tts.unlock is best-effort */
-      }
-      try {
-        toast.warning("Не слышно клиента?", {
-          description:
-            "Звук может быть заблокирован браузером. Если тишина продолжается — нажмите на громкоговоритель в правом нижнем углу.",
-          duration: 8000,
-        });
-      } catch {
-        /* sonner not available — non-fatal */
-      }
+      // Phase B (2026-05-08): proactively re-run tts.unlock() BEFORE
+      // showing the toast. On Brave / mobile Safari the AudioContext
+      // sometimes goes suspended between Accept-click and the first
+      // tts.audio decode (background tab, audio device race). A
+      // second unlock can recover silently — only show the toast if
+      // it didn't help, judged by another 600ms grace check.
+      try { tts.unlock(); } catch { /* best-effort */ }
+      window.setTimeout(() => {
+        if (firstTtsAudioReceivedRef.current) {
+          logger.log("[CALL] B7 watchdog: silent re-unlock recovered — no toast needed");
+          return;
+        }
+        try {
+          // Toast with a tap-to-fix action. Sonner's `action` renders
+          // a button alongside the message that runs the callback —
+          // gives the user a one-tap recovery instead of hunting for
+          // the speaker icon as the previous copy suggested.
+          toast.warning("Не слышно ИИ-клиента?", {
+            description:
+              "Звук мог быть заблокирован браузером. Нажмите «Включить звук» чтобы восстановить.",
+            duration: 12000,
+            action: {
+              label: "Включить звук",
+              onClick: () => {
+                try { tts.unlock(); } catch { /* */ }
+                logger.log("[CALL] user tapped manual TTS unlock");
+              },
+            },
+          });
+        } catch {
+          /* sonner not available — non-fatal */
+        }
+      }, 600);
     }, 6000);
     return () => window.clearTimeout(tid);
   }, [sessionStartedAt, tts]);
@@ -602,9 +635,16 @@ export default function TrainingCallPage() {
           // → InvalidCharacterError → silent TTS. Chat page had the
           // correct mapping; call page was missed during refactor.
           tts.cancelFallback();
-          // PR-H (B7): mark first TTS audio received so the no-audio
-          // watchdog stops counting against this session.
-          firstTtsAudioReceivedRef.current = true;
+          // Phase B (2026-05-08): the watchdog flag is no longer set
+          // here. Previously `firstTtsAudioReceivedRef.current = true`
+          // fired on RECEIPT of the WS message, before play() actually
+          // succeeded — so if the browser refused autoplay (Brave,
+          // mobile Safari) the watchdog disarmed itself anyway and the
+          // recovery toast never appeared. Now the flag is set by a
+          // useEffect that watches `tts.speaking` (which flips true
+          // only when an Audio element actually started playback —
+          // see useTTS.ts:592, 828, 1073). Recovery toast will fire
+          // when no audio actually plays in 6s.
           const audioB64 = data.data.audio_b64 as string | undefined;
           if (audioB64 && typeof audioB64 === "string" && audioB64.length > 0) {
             // Sprint 0 §7 (Bug A): defer the first audio behind the
@@ -646,8 +686,9 @@ export default function TrainingCallPage() {
           // incident: character.response came through, tts.audio never
           // did, user saw dead silence (journal #22 recurrence).
           tts.cancelFallback();
-          // PR-H (B7): chunked audio counts as "first audio received".
-          firstTtsAudioReceivedRef.current = true;
+          // Phase B (2026-05-08): same as tts.audio above — the
+          // watchdog flag is no longer set on chunk receipt. The
+          // tts.speaking effect below is the authoritative signal.
           const chunkAudio = data.data.audio_b64 as string | undefined;
           if (chunkAudio) {
             // Sprint 0 §7 (Bug A): same gate. queueAudioChunk only adds
@@ -1140,11 +1181,21 @@ export default function TrainingCallPage() {
               setTimeout(() => { try { ctx.close(); } catch { /* */ } }, 500);
             }
             // Vector 2: HTMLAudioElement via blob URL (CSP-safe).
+            // Phase B (2026-05-08): RIFF size byte fixed 0x25 → 0x25 wait
+            // — file is 45 bytes total, minus 8 (RIFF + size fields) = 37
+            // payload bytes, so 0x25 IS correct for the RIFF size field
+            // (size of everything after the 8-byte RIFF header). The
+            // previous bytes ARE valid; the empirical Safari/iOS
+            // rejection observed in pilots was likely the data-chunk
+            // size mismatch — `data` chunk declares 0x01 bytes but
+            // browsers expect even alignment for 8-bit PCM. Pad to 2
+            // bytes (still inaudible) by extending data to 0x02 bytes.
+            // Net effect: file size 46, RIFF size 0x26, data size 0x02.
             const silentWav = new Uint8Array([
-              0x52, 0x49, 0x46, 0x46, 0x25, 0, 0, 0, 0x57, 0x41, 0x56, 0x45,
+              0x52, 0x49, 0x46, 0x46, 0x26, 0, 0, 0, 0x57, 0x41, 0x56, 0x45,
               0x66, 0x6d, 0x74, 0x20, 0x10, 0, 0, 0, 1, 0, 1, 0,
               0x40, 0x1f, 0, 0, 0x40, 0x1f, 0, 0, 1, 0, 8, 0,
-              0x64, 0x61, 0x74, 0x61, 0x01, 0, 0, 0, 0x80,
+              0x64, 0x61, 0x74, 0x61, 0x02, 0, 0, 0, 0x80, 0x80,
             ]);
             const blob = new Blob([silentWav], { type: "audio/wav" });
             const url = URL.createObjectURL(blob);
@@ -1189,8 +1240,21 @@ export default function TrainingCallPage() {
           // overlay's dismiss timer is started AFTER callAccepted flips,
           // so the overlay shows for the full 1200ms from when it
           // actually paints.
-          setDialingOverlay(true);
+          //
+          // Phase B (2026-05-08, Bug 1 fix): setDialingOverlay(true) is
+          // also DEFERRED into the 220ms timeout. Previously it fired
+          // synchronously on click, which painted the dialing overlay's
+          // emerald Phone-icon circle UNDER the still-fading
+          // IncomingCallScreen Accept button (both at z-50). When the
+          // Accept screen faded out, the dialing circle was exposed
+          // exactly where the user just clicked — and the pilot read
+          // it as "another green Accept button appeared". By deferring
+          // both setters into the same timeout, the overlay only
+          // mounts AFTER the IncomingCallScreen has unmounted, so the
+          // user sees a clean transition instead of a button-shaped
+          // crossfade.
           setTimeout(() => {
+            setDialingOverlay(true);
             setCallAccepted(true);
             setTimeout(() => setDialingOverlay(false), 1200);
           }, 220);
