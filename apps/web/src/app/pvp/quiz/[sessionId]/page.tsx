@@ -1046,13 +1046,51 @@ function KnowledgeSessionPage() {
 
               {connectionState !== "connected" && (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex items-center justify-center gap-2 py-8"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="rounded-2xl px-5 py-6 flex items-center justify-center gap-3"
+                  style={{
+                    background: connectionState === "error"
+                      ? "linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(255,255,255,0.02) 100%)"
+                      : "linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, rgba(255,255,255,0.04)) 0%, rgba(255,255,255,0.02) 100%)",
+                    border: connectionState === "error"
+                      ? "1px solid rgba(239,68,68,0.4)"
+                      : "1px solid color-mix(in srgb, var(--accent) 32%, transparent)",
+                    boxShadow: connectionState === "error"
+                      ? "0 6px 20px rgba(239,68,68,0.18), inset 0 1px 0 rgba(255,255,255,0.04)"
+                      : "0 6px 20px color-mix(in srgb, var(--accent) 18%, transparent), inset 0 1px 0 rgba(255,255,255,0.04)",
+                    backdropFilter: "blur(20px) saturate(1.2)",
+                  }}
                 >
-                  <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
-                  <span className="font-mono text-sm" style={{ color: "var(--text-muted)" }}>
-                    {connectionState === "connecting" ? "Подключение..." : "Переподключение..."}
+                  <motion.span
+                    className="flex items-center justify-center rounded-full"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      background: connectionState === "error" ? "rgba(239,68,68,0.18)" : "color-mix(in srgb, var(--accent) 22%, transparent)",
+                      border: `1px solid ${connectionState === "error" ? "rgba(239,68,68,0.5)" : "color-mix(in srgb, var(--accent) 50%, transparent)"}`,
+                    }}
+                  >
+                    <Loader2
+                      size={14}
+                      className="animate-spin"
+                      style={{ color: connectionState === "error" ? "var(--danger)" : "var(--accent)" }}
+                    />
+                  </motion.span>
+                  <span
+                    className="font-display font-bold uppercase"
+                    style={{
+                      color: connectionState === "error" ? "var(--danger)" : "var(--accent)",
+                      fontSize: 13,
+                      letterSpacing: "0.16em",
+                    }}
+                  >
+                    {connectionState === "connecting"
+                      ? "Подключение к арене…"
+                      : connectionState === "reconnecting"
+                        ? "Переподключаемся…"
+                        : "Ошибка соединения"}
                   </span>
                 </motion.div>
               )}
@@ -1085,13 +1123,51 @@ function KnowledgeSessionPage() {
             <div className="mx-auto max-w-3xl px-4 py-6 space-y-4 relative">
               {connectionState !== "connected" && (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex items-center justify-center gap-2 py-8"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="rounded-2xl px-5 py-6 flex items-center justify-center gap-3"
+                  style={{
+                    background: connectionState === "error"
+                      ? "linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(255,255,255,0.02) 100%)"
+                      : "linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, rgba(255,255,255,0.04)) 0%, rgba(255,255,255,0.02) 100%)",
+                    border: connectionState === "error"
+                      ? "1px solid rgba(239,68,68,0.4)"
+                      : "1px solid color-mix(in srgb, var(--accent) 32%, transparent)",
+                    boxShadow: connectionState === "error"
+                      ? "0 6px 20px rgba(239,68,68,0.18), inset 0 1px 0 rgba(255,255,255,0.04)"
+                      : "0 6px 20px color-mix(in srgb, var(--accent) 18%, transparent), inset 0 1px 0 rgba(255,255,255,0.04)",
+                    backdropFilter: "blur(20px) saturate(1.2)",
+                  }}
                 >
-                  <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
-                  <span className="font-mono text-sm" style={{ color: "var(--text-muted)" }}>
-                    {connectionState === "connecting" ? "Подключение..." : "Переподключение..."}
+                  <motion.span
+                    className="flex items-center justify-center rounded-full"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      background: connectionState === "error" ? "rgba(239,68,68,0.18)" : "color-mix(in srgb, var(--accent) 22%, transparent)",
+                      border: `1px solid ${connectionState === "error" ? "rgba(239,68,68,0.5)" : "color-mix(in srgb, var(--accent) 50%, transparent)"}`,
+                    }}
+                  >
+                    <Loader2
+                      size={14}
+                      className="animate-spin"
+                      style={{ color: connectionState === "error" ? "var(--danger)" : "var(--accent)" }}
+                    />
+                  </motion.span>
+                  <span
+                    className="font-display font-bold uppercase"
+                    style={{
+                      color: connectionState === "error" ? "var(--danger)" : "var(--accent)",
+                      fontSize: 13,
+                      letterSpacing: "0.16em",
+                    }}
+                  >
+                    {connectionState === "connecting"
+                      ? "Подключение к арене…"
+                      : connectionState === "reconnecting"
+                        ? "Переподключаемся…"
+                        : "Ошибка соединения"}
                   </span>
                 </motion.div>
               )}
