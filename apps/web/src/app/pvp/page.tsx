@@ -21,7 +21,6 @@ import { HonestNavigator } from "@/components/pvp/HonestNavigator";
 import { TopPlayersPanel } from "@/components/pvp/TopPlayersPanel";
 import { ArenaLivePanel } from "@/components/pvp/ArenaLivePanel";
 import { HistoryPanel } from "@/components/pvp/HistoryPanel";
-import { KnowledgeBasePanel } from "@/components/pvp/KnowledgeBasePanel";
 import { LobbyMascot } from "@/components/pvp/LobbyMascot";
 
 function PvPLobbyContent() {
@@ -253,7 +252,7 @@ function PvPLobbyContent() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
       >
-        <div className="app-page pb-24 md:pb-32">
+        <div className="app-page pb-36 md:pb-44">
           {/* Connection status banner — smooth slide-in */}
           <AnimatePresence>
             {connectionState !== "connected" && (
@@ -482,100 +481,131 @@ function PvPLobbyContent() {
             </div>
           )}
 
-          {/* PR-16 (2026-05-07): 3-column layout. Раньше центр был узкой
-              max-w-3xl колонкой с 250px воздуха слева и справа — теперь
-              боковые колонки заполнены живыми виджетами:
-                LEFT  — TopPlayersPanel (top-3) + ArenaLivePanel (live)
-                CENTER — HonestNavigator (3 mode plates)
-                RIGHT — HistoryPanel (5 last duels) + KnowledgeBasePanel
-              «Персонаж» переехал в icon-button на header (рядом с info).
-              Deep-link `?tab=knowledge_base` переключает центр на
-              full-screen RAG-browser (старый flow для admin/sharing). */}
-          {tab === "knowledge_base" ? (
-            <motion.div
-              key="rag-fullscreen"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.18 }}
-              className="mt-6 mx-auto max-w-5xl"
-            >
-              <button
-                type="button"
-                onClick={() => { setTab("history"); router.replace("/pvp", { scroll: false }); }}
-                className="mb-3 inline-flex items-center gap-2 font-pixel uppercase text-[11px] px-3 py-1.5"
+          {/* PR-17 (2026-05-08): «Командный центр» layout.
+              Левый сайдбар убран, KB-панель из правого сайдбара ушла —
+              КБ теперь второй таб центра, симметричный «Бой».
+                CENTER (1fr) — tab-bar [🎯 Бой | 📚 Изучать] + content
+                RIGHT (240/280px sticky) — Top-3 + ArenaLive + История
+              `?tab=knowledge_base` deep-link продолжает работать. */}
+          <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_240px] xl:grid-cols-[1fr_280px] lg:items-start">
+            {/* CENTER — tab-bar + active panel */}
+            <div className="order-1 flex flex-col gap-4 min-w-0">
+              <div
+                className="flex items-stretch gap-0 p-1"
                 style={{
-                  color: "var(--text-muted)",
-                  border: "1px solid var(--border-color)",
-                  background: "transparent",
-                  letterSpacing: "0.16em",
+                  background: "var(--bg-panel)",
+                  outline: "2px solid var(--border-color)",
+                  outlineOffset: -2,
+                  borderRadius: 0,
                 }}
+                role="tablist"
+                aria-label="Режим арены"
               >
-                ← К арене
-              </button>
-              <KnowledgeBaseBrowser />
-            </motion.div>
-          ) : (
-            <div className="mt-6 grid gap-4 lg:grid-cols-[240px_1fr_260px] xl:grid-cols-[260px_1fr_280px] lg:items-start">
-              {/* LEFT sidebar — desktop only, ниже плиток на mobile */}
-              <aside className="order-2 lg:order-1 flex flex-col gap-4 min-w-0">
-                <TopPlayersPanel />
-                <ArenaLivePanel />
-              </aside>
-
-              {/* CENTER — main interaction zone */}
-              <div className="order-1 lg:order-2 flex flex-col gap-6 min-w-0">
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.18, delay: 0.08 }}
-                >
-                  <HonestNavigator
-                    disabled={store.queueStatus !== "idle" || quizStarting}
-                    starting={quizStarting}
-                    onDuel={handleFindMatch}
-                    onQuiz={(mode, category) => startQuiz(mode, category)}
-                  />
-                </motion.div>
-
-                {/* Character picker — collapsed under center plates.
-                    На десктопе уехала иконка ⚙️ в header, но collapsible
-                    оставляем как fallback для мобильных и для тех, кто
-                    привык к старому flow. */}
-                <details className="group lg:hidden">
-                  <summary
-                    className="cursor-pointer select-none inline-flex items-center gap-2 px-3 py-1.5 font-pixel uppercase"
-                    style={{
-                      color: "var(--text-muted)",
-                      fontSize: 10,
-                      letterSpacing: "0.14em",
-                      background: "transparent",
-                      border: "1px dashed var(--border-color)",
-                      borderRadius: 0,
-                    }}
-                  >
-                    <PixelIcon name="robot" size={12} color="var(--text-muted)" />
-                    Персонаж
-                    {pickedCharacterId && (
-                      <span style={{ color: "var(--accent)", fontSize: 9 }}>● выбран</span>
-                    )}
-                  </summary>
-                  <div className="mt-3">
-                    <CharacterPicker
-                      selectedId={pickedCharacterId}
-                      onPick={setPickedCharacterId}
-                      disabled={store.queueStatus !== "idle"}
-                    />
-                  </div>
-                </details>
+                {([
+                  { id: "history", label: "🎯 Бой", accent: "var(--accent)" },
+                  { id: "knowledge_base", label: "📚 Изучать", accent: "var(--magenta, #d946ef)" },
+                ] as const).map((t) => {
+                  const active = tab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => {
+                        setTab(t.id);
+                        if (t.id === "knowledge_base") {
+                          router.replace("/pvp?tab=knowledge_base", { scroll: false });
+                        } else {
+                          router.replace("/pvp", { scroll: false });
+                        }
+                      }}
+                      className="flex-1 font-pixel uppercase py-2.5 transition-colors"
+                      style={{
+                        background: active
+                          ? `color-mix(in srgb, ${t.accent} 18%, transparent)`
+                          : "transparent",
+                        color: active ? t.accent : "var(--text-muted)",
+                        outline: active ? `2px solid ${t.accent}` : "none",
+                        outlineOffset: -2,
+                        fontSize: 14,
+                        letterSpacing: "0.16em",
+                        cursor: "pointer",
+                        boxShadow: active ? `2px 2px 0 0 ${t.accent}` : "none",
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* RIGHT sidebar — desktop only, ниже на mobile */}
-              <aside className="order-3 flex flex-col gap-4 min-w-0">
-                <HistoryPanel />
-                <KnowledgeBasePanel />
-              </aside>
+              <AnimatePresence mode="wait">
+                {tab === "history" ? (
+                  <motion.div
+                    key="combat-tab"
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 8 }}
+                    transition={{ duration: 0.18 }}
+                    className="flex flex-col gap-4"
+                  >
+                    <HonestNavigator
+                      disabled={store.queueStatus !== "idle" || quizStarting}
+                      starting={quizStarting}
+                      onDuel={handleFindMatch}
+                      onQuiz={(mode, category) => startQuiz(mode, category)}
+                    />
+
+                    {/* Mobile-only character picker (на lg+ ⚙️ в header). */}
+                    <details className="group lg:hidden">
+                      <summary
+                        className="cursor-pointer select-none inline-flex items-center gap-2 px-3 py-1.5 font-pixel uppercase"
+                        style={{
+                          color: "var(--text-muted)",
+                          fontSize: 10,
+                          letterSpacing: "0.14em",
+                          background: "transparent",
+                          border: "1px dashed var(--border-color)",
+                          borderRadius: 0,
+                        }}
+                      >
+                        <PixelIcon name="robot" size={12} color="var(--text-muted)" />
+                        Персонаж
+                        {pickedCharacterId && (
+                          <span style={{ color: "var(--accent)", fontSize: 9 }}>● выбран</span>
+                        )}
+                      </summary>
+                      <div className="mt-3">
+                        <CharacterPicker
+                          selectedId={pickedCharacterId}
+                          onPick={setPickedCharacterId}
+                          disabled={store.queueStatus !== "idle"}
+                        />
+                      </div>
+                    </details>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="knowledge-tab"
+                    initial={{ opacity: 0, x: 8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    <KnowledgeBaseBrowser />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          )}
+
+            {/* RIGHT sticky sidebar — «Сейчас» */}
+            <aside className="order-2 flex flex-col gap-4 min-w-0 lg:sticky lg:top-4 lg:self-start">
+              <TopPlayersPanel />
+              <ArenaLivePanel />
+              <HistoryPanel />
+            </aside>
+          </div>
         </div>
       </motion.div>
 
