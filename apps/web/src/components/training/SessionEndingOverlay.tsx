@@ -94,11 +94,16 @@ export default function SessionEndingOverlay({
   stats,
 }: SessionEndingOverlayProps) {
   const [phaseIdx, setPhaseIdx] = useState(0);
+  // Phase G (2026-05-08): show a "это занимает дольше обычного" hint
+  // if the overlay is still visible after 20s. Prevents pilots from
+  // thinking the app froze when scoring genuinely takes 15-25s.
+  const [showSlowHint, setShowSlowHint] = useState(false);
 
   // Phase auto-advance — same for both modes (honest backend timeline).
   useEffect(() => {
     if (!visible) {
       setPhaseIdx(0);
+      setShowSlowHint(false);
       return;
     }
     if (phaseIdx >= PHASES.length - 1) return;
@@ -109,6 +114,13 @@ export default function SessionEndingOverlay({
     );
     return () => window.clearTimeout(t);
   }, [visible, phaseIdx]);
+
+  // Phase G: 20s slow-hint timer, independent of phase progression.
+  useEffect(() => {
+    if (!visible) return;
+    const t = window.setTimeout(() => setShowSlowHint(true), 20000);
+    return () => window.clearTimeout(t);
+  }, [visible]);
 
   // Call-mode hangup-click on mount.
   useEffect(() => {
@@ -254,14 +266,20 @@ export default function SessionEndingOverlay({
             </motion.div>
           )}
 
-          {/* Bottom — flavour text */}
+          {/* Bottom — flavour text. Phase G: swap to slow-hint after 20s. */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 0.5 }}
             transition={{ delay: 0.6 }}
-            className="mt-12 text-xs text-white/50"
+            className="mt-12 text-center text-xs text-white/50"
           >
-            Это занимает обычно 10–15 секунд
+            {showSlowHint ? (
+              <span style={{ color: "rgba(255,200,140,0.85)" }}>
+                Подсчёт занимает дольше обычного. Подождите ещё немного…
+              </span>
+            ) : (
+              "Это занимает обычно 10–15 секунд"
+            )}
           </motion.div>
         </motion.div>
       )}

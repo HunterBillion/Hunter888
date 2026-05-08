@@ -2186,6 +2186,7 @@ def build_call_cognitive_modifier(
     interrupted_played_chars: int | None = None,
     user_silent_seconds: float | None = None,
     distraction_hint: str | None = None,
+    barge_reaction_sent: str | None = None,
 ) -> str:
     """PR-C cognitive-model modifier for **voice call** sessions only.
 
@@ -2233,7 +2234,22 @@ def build_call_cognitive_modifier(
     # 2. Barge-in awareness — only when actually interrupted
     if interrupted_last_turn:
         chars = interrupted_played_chars or 0
-        if chars > 0:
+        # Phase G (2026-05-08): if a short voice reaction was already
+        # emitted by `_handle_audio_interrupted` (e.g. "Что?!", "Дайте
+        # сказать!"), the LLM follow-up should NOT re-react textually
+        # — that would feel double ("Что?!" + then text "А что вы
+        # хотели?"). Switch the cue to "voice reaction was given,
+        # continue the conversation by responding to the manager".
+        if barge_reaction_sent:
+            reaction_quoted = barge_reaction_sent.strip().strip('".,!?')
+            parts.append(
+                f"[ПЕРЕБИЛИ_УЖЕ_ОТРЕАГИРОВАЛ] Менеджер перебил тебя; ты "
+                f"уже коротко отреагировал голосом («{reaction_quoted}»). "
+                "Не повторяй эту реакцию текстом и не задавай вопрос "
+                "«что вы хотели?» ещё раз. Просто продолжи диалог: "
+                "ответь по сути на то, что сказал менеджер."
+            )
+        elif chars > 0:
             parts.append(
                 f"[ПЕРЕБИЛИ] Менеджер перебил тебя. Ты успел сказать "
                 f"только ~{chars} символов твоей прошлой реплики — "
