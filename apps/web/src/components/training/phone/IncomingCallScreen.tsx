@@ -121,11 +121,19 @@ export default function IncomingCallScreen({
 
   const busy = accepting || declining;
 
+  // Phase A (2026-05-08): drive an exit animation off `busy`. Parent
+  // (call/page.tsx) defers setCallAccepted by 220ms after click, which
+  // gives the screen time to fade+shrink out before unmount instead
+  // of jump-cutting to the dialing overlay. Without this exit anim,
+  // users perceived a flash/stutter at the transition.
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
+      initial={{ opacity: 0, scale: 1 }}
+      animate={{
+        opacity: busy ? 0 : 1,
+        scale: busy ? 0.96 : 1,
+      }}
+      transition={{ duration: busy ? 0.2 : 0.3, ease: "easeOut" }}
       className="fixed inset-0 z-50 flex flex-col items-center overflow-y-auto text-white"
       style={{
         background:
