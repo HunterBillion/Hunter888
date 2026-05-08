@@ -51,27 +51,12 @@ export function QuizCaseIntro({
   const [isPlaying, setIsPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
 
+  // PR-26 (2026-05-08): TTS озвучка отключена по фидбэку юзера —
+  // «убери звук, не нужна озвучка сколько секунд и так далее».
+  // audioUrl игнорируется, кнопки play/pause не показываются.
   useEffect(() => {
-    if (!audioUrl) {
-      setAudioReady(false);
-      return;
-    }
-    // Build <audio> element; try autoplay (comes from user click on "Start" so
-    // browser usually allows it). Fall back to Play button if blocked.
-    const a = new Audio(audioUrl);
-    audioRef.current = a;
-    a.onended = () => setIsPlaying(false);
-    a.onplay = () => setIsPlaying(true);
-    a.onpause = () => setIsPlaying(false);
-    a.oncanplaythrough = () => setAudioReady(true);
-    a.play()
-      .then(() => setIsPlaying(true))
-      .catch(() => setIsPlaying(false));
-    return () => {
-      a.pause();
-      a.src = "";
-      audioRef.current = null;
-    };
+    setAudioReady(false);
+    setIsPlaying(false);
   }, [audioUrl]);
 
   const togglePlay = () => {
