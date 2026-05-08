@@ -21,7 +21,7 @@
  * Шрифты ≥ 14px везде (требование пользователя).
  */
 
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 import { Trophy } from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { HeroPanel } from "@/components/leaderboard/HeroPanel";
@@ -81,7 +81,17 @@ function LeaderboardPage() {
           {/* ═══ ВЫБОР АРЕНЫ (sticky) ═══ */}
           <StageSelect />
 
-          {/* ═══ STAGE I · ЛИГА ═══ */}
+          {/*
+            2026-05-08 (полировка): каждая секция теперь обёрнута в
+            <StageSection accent={...}>. Это даёт единую иерархию:
+              - StageDivider — пиксельная плашка с заголовком
+              - StageSection — рамка-«кабинет» для внутренностей
+                (border 2px solid accent×alpha, padding 5×4)
+            Без этой обёртки секции «плыли» — period-switcher слева,
+            podium центрирован, table снова слева — пользователь видел
+            ступенчатую кашу. Теперь весь контент секции живёт внутри
+            одной рамки с одинаковым left padding.
+          */}
           <StageDivider
             id="league"
             numeral="I"
@@ -89,9 +99,10 @@ function LeaderboardPage() {
             subtitle="Недельная когорта · топ-3 повышаются · низ-3 вылетают"
             accent="var(--accent)"
           />
-          <LeagueTab />
+          <StageSection accent="var(--accent)">
+            <LeagueTab />
+          </StageSection>
 
-          {/* ═══ STAGE II · КОМПАНИЯ ═══ */}
           <StageDivider
             id="company"
             numeral="II"
@@ -99,9 +110,10 @@ function LeaderboardPage() {
             subtitle="Рейтинг по всем игрокам · неделя · месяц · всё время"
             accent="#facc15"
           />
-          <CompanyTab />
+          <StageSection accent="#facc15">
+            <CompanyTab />
+          </StageSection>
 
-          {/* ═══ STAGE III · КОМАНДЫ ═══ */}
           <StageDivider
             id="teams"
             numeral="III"
@@ -109,9 +121,10 @@ function LeaderboardPage() {
             subtitle="Офисы продаж · ранг по skill-adjusted (Bayesian)"
             accent="#fb923c"
           />
-          <TeamsTab />
+          <StageSection accent="#fb923c">
+            <TeamsTab />
+          </StageSection>
 
-          {/* ═══ STAGE IV · ДУЭЛИ ═══ */}
           <StageDivider
             id="duels"
             numeral="IV"
@@ -119,8 +132,13 @@ function LeaderboardPage() {
             subtitle="ELO голосовых дуэлей · ELO квиза по 127-ФЗ"
             accent="#ff3ec8"
           />
-          <DuelsTab />
+          <StageSection accent="#ff3ec8">
+            <DuelsTab />
+          </StageSection>
 
+          {/*
+            Конец секций. Footer ниже — пиксельная подпись через всю ширину.
+          */}
           {/* Footer space — пиксельная подпись */}
           <div className="text-center mt-16 mb-8">
             <div
@@ -135,5 +153,46 @@ function LeaderboardPage() {
         </div>
       </div>
     </AuthLayout>
+  );
+}
+
+/**
+ * StageSection — единая рамка под каждой пиксельной плашкой StageDivider.
+ *
+ * 2026-05-08 (полировка): без этой обёртки контент секций «плыл» —
+ * period-switcher жил на одном left X, podium центрировался, table
+ * снова шёл от левого края, общая иерархия рассыпалась. Теперь:
+ *   - 2px пунктирная рамка цвета арены (accent с low alpha)
+ *   - единый padding p-5 (md:p-6)
+ *   - радиус 0 — пиксель-стиль, без скруглений
+ *   - mb-12 между секциями для дыхания
+ *
+ * Все таб-компоненты внутри получают одинаковый отступ от левого края,
+ * так что period-switcher / mode-toggle / table / podium выровнены по
+ * одной вертикальной оси.
+ */
+function StageSection({
+  children,
+  accent,
+}: {
+  children: ReactNode;
+  accent: string;
+}) {
+  return (
+    <section
+      className="relative mb-12"
+      style={{
+        // Пиксельная рамка с низкой непрозрачностью акцента — секцию
+        // видно, но она не «кричит» сильнее самой плашки-заголовка.
+        border: `2px solid ${accent}33`,
+        background: "rgba(8,5,18,0.35)",
+        boxShadow: `inset 0 0 24px rgba(0,0,0,0.35)`,
+      }}
+    >
+      {/* Внутренний padding одинаковый для всех 4 секций — устраняет
+          «ступеньку» между period-switcher (раньше прижатый к рамке)
+          и podium (раньше центрированный). */}
+      <div className="p-4 md:p-5">{children}</div>
+    </section>
   );
 }

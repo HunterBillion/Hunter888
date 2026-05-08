@@ -238,133 +238,82 @@ export function LeagueTab() {
 
   return (
     <div className="space-y-5">
-      {/* Hero */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl p-5 md:p-6"
-        style={{
-          background: `linear-gradient(135deg, ${palette.bg} 0%, rgba(16,12,28,0.85) 55%, rgba(16,12,28,0.95) 100%)`,
-          border: `1px solid ${palette.accent}33`,
-        }}
+      {/*
+        2026-05-08 (полировка): большой Hero-блок «Недельная лига /
+        Профессионал / #N / сброс» удалён — он визуально дублировал
+        HeroPanel наверху страницы. Оставили только полезное:
+          - zone meta strip (промо / безопасная / понижение)
+          - sparkline (XP по дням vs медиана когорты)
+          - bounds-строка (промо: топ-N · вылет: #M+)
+        Сама plate с тиром лиги, рангом и сбросом — она уже есть в
+        HeroPanel над всеми секциями.
+      */}
+      <div
+        className="flex flex-wrap items-center justify-between gap-4 px-2"
       >
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-14 w-14 items-center justify-center rounded-2xl"
-              style={{
-                background: `${palette.accent}22`,
-                border: `1px solid ${palette.accent}55`,
-                color: palette.accent,
-              }}
-            >
-              <Trophy size={26} />
-            </div>
-            <div>
-              <div
-                className="text-[14px] uppercase tracking-wider font-semibold"
-                style={{ color: palette.accent }}
-              >
-                Недельная лига
-              </div>
-              <div
-                className="text-2xl md:text-3xl font-bold"
-                style={{ color: "var(--text-primary)" }}
-              >
-                {data.tier_name}
-              </div>
-            </div>
+        <div className="flex items-center gap-3">
+          <div
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-pixel uppercase tracking-widest"
+            style={{
+              background: `${zone!.color}1f`,
+              color: zone!.color,
+              border: `1px solid ${zone!.color}55`,
+              fontSize: 14,
+            }}
+          >
+            <ZoneIcon size={14} />
+            {zone!.label}
           </div>
-          <div className="flex items-center gap-5">
-            <div className="text-center">
-              <div
-                className="text-[14px] uppercase tracking-wider"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Твоя позиция
-              </div>
-              <div
-                className="text-3xl md:text-4xl font-black tabular-nums"
-                style={{ color: palette.accent }}
-              >
-                #{data.rank}
-              </div>
-              <div className="text-sm" style={{ color: "var(--text-muted)" }}>
-                из {data.group_size} · {data.weekly_xp} XP
-              </div>
-            </div>
-            <div className="text-center">
-              <div
-                className="text-[14px] uppercase tracking-wider"
-                style={{ color: "var(--text-muted)" }}
-              >
-                <Clock size={10} className="inline -mt-0.5 mr-1" />
-                сброс
-              </div>
-              <div
-                className="text-xl md:text-2xl font-bold font-mono tabular-nums"
-                style={{ color: "var(--text-primary)" }}
-              >
-                {pluralizeDays(days)}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Sparkline + zones row */}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-semibold"
-              style={{ background: `${zone!.color}1f`, color: zone!.color }}
-            >
-              <ZoneIcon size={13} />
-              {zone!.label}
-            </div>
-            <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-              {zone!.sub}
-            </span>
-          </div>
-          {timeline && timeline.days.length > 0 && (
-            <div
-              className="flex items-center gap-2"
-              title="Накопленный XP за неделю — ты vs медиана когорты"
-            >
-              <Sparkline days={timeline.days} accent={palette.accent} />
-              <div className="leading-tight">
-                <div
-                  className="text-[14px] uppercase tracking-wider"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  vs медиана
-                </div>
-                <div
-                  className="text-sm font-mono font-semibold tabular-nums inline-flex items-center gap-1"
-                  style={{ color: deltaColor }}
-                >
-                  <TrendingUp size={12} />
-                  {deltaSign}
-                  {timeline.delta_vs_median} XP
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div
-          className="mt-3 flex items-center gap-5 text-[14px] uppercase tracking-widest"
-          style={{ color: "var(--text-muted)" }}
-        >
-          <span className="inline-flex items-center gap-1">
-            <ChevronUp size={12} style={{ color: "#4ade80" }} />
-            промо: топ-{data.promotion_zone}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <ChevronDown size={12} style={{ color: "#f87171" }} />
-            вылет: #{data.demotion_zone}+
+          <span
+            className="font-pixel uppercase tracking-widest"
+            style={{ color: "var(--text-muted)", fontSize: 14 }}
+          >
+            {zone!.sub}
           </span>
         </div>
-      </motion.div>
+        {timeline && timeline.days.length > 0 && (
+          <div
+            className="flex items-center gap-2"
+            title="Накопленный XP за неделю — ты vs медиана когорты"
+          >
+            <Sparkline days={timeline.days} accent={palette.accent} />
+            <div className="leading-tight">
+              <div
+                className="font-pixel uppercase tracking-widest"
+                style={{ color: "var(--text-muted)", fontSize: 14 }}
+              >
+                vs медиана
+              </div>
+              <div
+                className="font-mono font-semibold tabular-nums inline-flex items-center gap-1"
+                style={{ color: deltaColor, fontSize: 14 }}
+              >
+                <TrendingUp size={14} />
+                {deltaSign}
+                {timeline.delta_vs_median} XP
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div
+        className="flex flex-wrap items-center gap-5 px-2 font-pixel uppercase tracking-widest"
+        style={{ color: "var(--text-muted)", fontSize: 14 }}
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <ChevronUp size={14} style={{ color: "#4ade80" }} />
+          промо: топ-{data.promotion_zone}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <ChevronDown size={14} style={{ color: "#f87171" }} />
+          вылет: #{data.demotion_zone}+
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Clock size={14} />
+          сброс: {pluralizeDays(days)}
+        </span>
+      </div>
 
       {/* Podium — only when ≥3 in cohort, otherwise it looks empty */}
       {podium.length >= 3 && <PodiumCard top3={podium} title="Топ-3 когорты" />}
