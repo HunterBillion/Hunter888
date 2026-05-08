@@ -205,6 +205,15 @@ export default function TrainingCallPage() {
   // (callAccepted=true on mount) bypasses the gate entirely, which is
   // correct: there is no fresh pickup click on rehydration.
   const audioGateUntilRef = useRef<number>(Date.now());
+  // Phase D (2026-05-08, Bug 2 fix): track every deferred audio play so
+  // we can cancel them all on hangup. Without this set, a tts.audio_chunk
+  // arriving inside the gate window (now 1500ms post-Accept per Phase A)
+  // would defer via setTimeout — and that setTimeout had no cancel handle.
+  // After the user hangs up and tts.stop() is called, the deferred
+  // queueAudioChunk callback would still fire, repopulate the chunk queue,
+  // and play. The pilot's "voice continues after hangup" complaint traces
+  // to exactly this leak.
+  const pendingAudioTimeoutsRef = useRef<Set<number>>(new Set());
   const scheduleAudioPlayback = useCallback((play: () => void) => {
     const now = Date.now();
     const gate = audioGateUntilRef.current;
@@ -212,8 +221,32 @@ export default function TrainingCallPage() {
       play();
       return;
     }
-    setTimeout(play, gate - now);
+    const id = window.setTimeout(() => {
+      pendingAudioTimeoutsRef.current.delete(id);
+      play();
+    }, gate - now);
+    pendingAudioTimeoutsRef.current.add(id);
   }, []);
+
+  // Phase D (2026-05-08): single redirect helper. Previously THREE
+  // independent code paths (completeHangup, session.ended handler,
+  // client.hangup handler) each scheduled their own router.replace
+  // with their own setTimeout — so a manual hangup followed by a
+  // backend-initiated client.hangup race could fire two redirects,
+  // and a user saw a /results flash + reload. redirectFiredRef makes
+  // this idempotent: only the FIRST caller wins.
+  // (stopAllAudio is defined AFTER tts below since it captures it.)
+  const redirectFiredRef = useRef(false);
+  const goToResults = useCallback((delayMs: number = 0) => {
+    if (redirectFiredRef.current) return;
+    redirectFiredRef.current = true;
+    const sid = currentSessionIdRef.current || id;
+    if (delayMs > 0) {
+      window.setTimeout(() => router.replace(`/results/${sid}`), delayMs);
+    } else {
+      router.replace(`/results/${sid}`);
+    }
+  }, [id, router]);
 
   // --- TTS (plays backend mp3, exposes real audioLevel) -------------------
   // 2026-05-01 — phoneBandFilter ON for call page only. Routes every TTS
@@ -221,6 +254,17 @@ export default function TrainingCallPage() {
   // narrowband) so the AI client sounds unmistakably "по телефону" instead
   // of studio-clean. Chat / arena pages don't pass this prop, default false.
   const tts = useTTS({ lang: "ru-RU", rate: 0.95, pitch: 1.0, phoneBandFilter: true });
+
+  // Phase D (2026-05-08): single-source helper for "stop all audio NOW".
+  // Cancels every pending scheduleAudioPlayback timeout, then asks
+  // useTTS to tear down the active audio element + chunk queue +
+  // pendingPlaybackRef. Use this from EVERY hangup path so the user
+  // never hears audio after the visual call has ended.
+  const stopAllAudio = useCallback(() => {
+    pendingAudioTimeoutsRef.current.forEach((id) => clearTimeout(id));
+    pendingAudioTimeoutsRef.current.clear();
+    try { tts.stop(); } catch { /* noop */ }
+  }, [tts]);
 
   // Surface terminal TTS playback errors as toasts. Without this, decode
   // failures, media-element errors, and tts.fallback transitions were
@@ -838,14 +882,16 @@ export default function TrainingCallPage() {
           break;
 
         case "session.ended":
-          // 2026-04-22: dedupe with client.hangup. If client.hangup fired
-          // first, it scheduled a 3.5s timer to let farewell TTS play out
-          // THEN router.replace. session.ended arriving concurrently would
-          // cut the TTS short. Let the hangup path finish.
-          if (hangupInProgress) {
+          // Phase D (2026-05-08): unified hangup path. stopAllAudio()
+          // clears pending scheduleAudioPlayback timeouts AND tears
+          // down useTTS — guarantees no audio plays after this point,
+          // closing the "voice continues after hangup" leak. goToResults
+          // is idempotent so a concurrent client.hangup that fires the
+          // same path doesn't trigger a second redirect.
+          if (hangupInProgress || endInFlightRef.current) {
             break;
           }
-          tts.stop();
+          stopAllAudio();
           stt.stopListening();
           endInFlightRef.current = true;
           setHangupReason("Звонок завершён");
@@ -853,9 +899,7 @@ export default function TrainingCallPage() {
           // Phase 5+6 (2026-05-01): give CallEndingTransition its 2.2s
           // animated transition before the route swap so the user sees
           // "Анализирую → Считаю баллы → Готовлю отчёт".
-          setTimeout(() => {
-            router.replace(`/results/${currentSessionIdRef.current || id}`);
-          }, 2200);
+          goToResults(2200);
           break;
 
         case "client.hangup": {
@@ -865,21 +909,28 @@ export default function TrainingCallPage() {
             canContinue,
           });
           if (!canContinue) {
+            // Phase D (2026-05-08, Bug 2 fix): respect hangupInProgress.
+            // Without this guard, a manual hangup that already started
+            // the redirect timer would be re-armed by the backend's
+            // client.hangup arriving in parallel — TWO redirects
+            // (page flash) + TWO tts.stop calls (cuts farewell audio
+            // mid-stream).
+            if (hangupInProgress || endInFlightRef.current) {
+              break;
+            }
             endInFlightRef.current = true;
-            // 2026-04-22 (v2): set hangup overlay immediately so the user
-            // doesn't see a flash of chat UI / empty call state while the
-            // WS closes and /results loads. Previously: client.hangup →
-            // setTimeout redirect → in those 3.5s, session.ended fires AND
-            // WS disconnect re-triggers modeOk check → briefly rendered
-            // chat page → then /results. Now the overlay masks ALL of it.
+            // Phase D (2026-05-08, Bug 2 fix): stopAllAudio runs
+            // IMMEDIATELY now, not deferred 3500ms. The previous design
+            // ("let farewell TTS play") backfired: pilot users perceived
+            // post-hangup audio as a glitch — real phones go silent the
+            // moment they disconnect. The 3500ms delay only governs the
+            // navigation (so the CallEndingTransition gets its full
+            // animated arc); audio is silenced at t=0.
+            stopAllAudio();
+            stt.stopListening();
             setHangupReason((data.data.reason as string) || "Звонок завершён");
             setHangupInProgress(true);
-            // router.replace so back-button doesn't return to dead call.
-            setTimeout(() => {
-              tts.stop();
-              stt.stopListening();
-              router.replace(`/results/${currentSessionIdRef.current || id}`);
-            }, 3500);
+            goToResults(3500);
           }
           break;
         }
@@ -893,7 +944,12 @@ export default function TrainingCallPage() {
           if (code === "session_completed") {
             logger.log("[call] session already completed → /results");
             endInFlightRef.current = true;
-            router.push(`/results/${currentSessionIdRef.current || id}`);
+            // Phase D (2026-05-08): also stop audio on this path; if a
+            // tts chunk is still in the gate window, it would otherwise
+            // play after we land on /results.
+            stopAllAudio();
+            try { stt.stopListening(); } catch { /* */ }
+            goToResults(0);
             break;
           }
           // Hijack/conflict: do NOT auto-redirect to chat. The WS has
@@ -1032,16 +1088,36 @@ export default function TrainingCallPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modeOk, connectionState, muted]);
 
-  // Watchdog: if STT remains idle for ~3s after we asked to listen, retry
-  // once. Covers transient SpeechRecognition.start() races (Chrome will
-  // sometimes silently no-op if a previous instance hadn't fully torn down).
+  // Watchdog: if STT remains idle for ~3s after we asked to listen, retry.
+  // Covers transient SpeechRecognition.start() races (Chrome will sometimes
+  // silently no-op if a previous instance hadn't fully torn down).
+  //
+  // Phase D (2026-05-08): exponential backoff instead of fixed 3000ms. The
+  // previous fixed retry hammered the SpeechRecognition API every 3 seconds
+  // when it was permanently denied (Brave with Shields, denied microphone
+  // permission, language not supported) — the user saw the red mic banner
+  // blink on/off as start→error→idle→start cycled. Backoff caps at 24s and
+  // resets to 3s the moment STT successfully transitions out of idle.
+  const sttRetryAttemptRef = useRef(0);
   useEffect(() => {
     if (modeOk !== true) return;
     if (connectionState !== "connected") return;
     if (muted) return;
     if (!stt.isSupported) return;
-    if (stt.status !== "idle") return;
-    const t = setTimeout(() => stt.startListening(), 3000);
+    if (stt.status !== "idle") {
+      // Successful start (or any non-idle transition) resets the backoff.
+      sttRetryAttemptRef.current = 0;
+      return;
+    }
+    const attempt = sttRetryAttemptRef.current;
+    // 3s, 6s, 12s, 24s (cap). After 4 attempts on a permanently-denied
+    // browser the cycle settles to one retry every 24s — quiet enough not
+    // to thrash, frequent enough to recover if permission is later granted.
+    const delay = Math.min(3000 * 2 ** attempt, 24000);
+    const t = setTimeout(() => {
+      sttRetryAttemptRef.current = attempt + 1;
+      stt.startListening();
+    }, delay);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modeOk, connectionState, muted, stt.status]);
@@ -1064,10 +1140,14 @@ export default function TrainingCallPage() {
     // responsive feedback (red spinner in button + "Завершаем…" label +
     // full-screen "Сохраняем результаты" overlay). Previously router.push
     // happened in the same tick — user got an abrupt jump without seeing
-    // the button react. Now the click visibly commits → 250ms tick → /results.
+    // the button react. Now the click visibly commits → 2.2s transition.
     setHangupReason("Звонок завершён");
     setHangupInProgress(true);
-    try { tts.stop(); } catch { /* noop */ }
+    // Phase D (2026-05-08): stopAllAudio cancels deferred audio timeouts
+    // BEFORE useTTS.stop runs — so no chunk that's mid-flight in
+    // scheduleAudioPlayback can resurrect playback after the user
+    // clicked the red button.
+    stopAllAudio();
     try { stt.stopListening(); } catch { /* noop */ }
     // Fire-and-forget end POST in parallel so backend scoring starts NOW,
     // not after we land on /results.
@@ -1082,10 +1162,8 @@ export default function TrainingCallPage() {
     // (was 250ms — too quick to register as a transition; user perceived
     // the result page as "appearing instantly"). Replace not push so
     // back-button doesn't return to a dead call.
-    window.setTimeout(() => {
-      router.replace(`/results/${sid}`);
-    }, 2200);
-  }, [id, router, tts, stt]);
+    goToResults(2200);
+  }, [id, stopAllAudio, stt, goToResults]);
 
   const onHangup = useCallback(() => {
     if (sessionMode === "center") {
