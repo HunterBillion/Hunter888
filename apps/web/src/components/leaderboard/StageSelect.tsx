@@ -34,9 +34,45 @@ const STAGES: Stage[] = [
   { id: "duels", numeral: "IV", label: "ДУЭЛИ", icon: Swords, accent: "#ff3ec8" },
 ];
 
+/** Читаем hash при первом рендере, чтобы при заходе на
+ *  `/leaderboard#stage-duels` сразу подсветить Дуэли (а не Лигу).
+ *  Без этого пользователь видит «Лига» подсвеченной 1 кадр пока
+ *  IntersectionObserver не обновит state — некрасивая визуальная
+ *  заминка, особенно после редиректа с /pvp/leaderboard.
+ */
+function readInitialActive(): string {
+  if (typeof window === "undefined") return "league";
+  const hash = window.location.hash.replace(/^#stage-/, "");
+  if (["league", "company", "teams", "duels"].includes(hash)) return hash;
+  return "league";
+}
+
 export function StageSelect() {
-  const [active, setActive] = useState<string>("league");
+  const [active, setActive] = useState<string>(readInitialActive);
   const isProgrammaticScrollRef = useRef(false);
+
+  // 2026-05-08: при заходе с hash в URL (после редиректа с
+  // /pvp/leaderboard или из шара ссылки) — программно скроллим к
+  // секции на mount. Браузер обычно делает это автоматически, но не
+  // учитывает sticky-навбар и упирает якорь под него.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash.replace(/^#stage-/, "");
+    if (!["league", "company", "teams", "duels"].includes(hash)) return;
+    if (hash === "league") return; // дефолт — секция и так наверху
+    // Дать DOM время отрисовать секции, потом скроллим.
+    const t = window.setTimeout(() => {
+      const target = document.getElementById(`stage-${hash}`);
+      if (target) {
+        isProgrammaticScrollRef.current = true;
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        window.setTimeout(() => {
+          isProgrammaticScrollRef.current = false;
+        }, 800);
+      }
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     // IntersectionObserver: пометить активной секцию, чья
@@ -75,6 +111,19 @@ export function StageSelect() {
     isProgrammaticScrollRef.current = true;
     setActive(id);
     target.scrollIntoView({ behavior: "smooth", block: "start" });
+    // 2026-05-08: синхронизируем URL hash с активной секцией. Это даёт:
+    // (1) можно копировать ссылку — она откроется на нужной секции;
+    // (2) кнопка «назад» в браузере возвращает к предыдущей секции;
+    // (3) внешние редиректы (как с /pvp/leaderboard) попадают точно
+    //     в нужный таб без потери контекста.
+    // history.replaceState не вызывает scroll и не пингует роутер
+    // Next.js — это то что нужно.
+    if (typeof window !== "undefined") {
+      const newUrl = id === "league"
+        ? window.location.pathname
+        : `${window.location.pathname}#stage-${id}`;
+      window.history.replaceState(null, "", newUrl);
+    }
     // Снять флаг через 800ms — этого хватает для smooth-scroll до конца.
     window.setTimeout(() => {
       isProgrammaticScrollRef.current = false;

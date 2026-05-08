@@ -15,7 +15,6 @@
 import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { Crown, Trophy, Medal, Loader2 } from "lucide-react";
-import Link from "next/link";
 import { usePvPStore } from "@/stores/usePvPStore";
 
 export function TopPlayersPanel() {
@@ -103,8 +102,18 @@ export function TopPlayersPanel() {
         </ul>
       )}
 
-      <Link
-        href="/pvp/leaderboard"
+      {/*
+        2026-05-08: ссылка ведёт на новый «Зал Славы», конкретно на
+        АРЕНА IV · ДУЭЛИ (через якорь #stage-duels). Раньше указывала
+        на `/pvp/leaderboard` — отдельная страница, которая стала
+        дубликатом раздела «Дуэли» в /leaderboard и теперь
+        перенаправляется. Используем `<a>` (не `<Link>`), потому что
+        Next.js Link не реагирует на чистые hash-якоря, если pathname
+        меняется одновременно — браузерный native href справляется
+        надёжнее и сразу скроллит к секции.
+      */}
+      <a
+        href="/leaderboard#stage-duels"
         className="mt-3 block text-center font-pixel uppercase text-[12px] tracking-widest py-2 transition-colors hover:bg-[var(--input-bg)]"
         style={{
           color: "var(--text-muted)",
@@ -114,7 +123,7 @@ export function TopPlayersPanel() {
         }}
       >
         Полный лидерборд →
-      </Link>
+      </a>
     </section>
   );
 }
