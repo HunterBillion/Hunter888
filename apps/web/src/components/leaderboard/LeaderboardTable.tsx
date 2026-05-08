@@ -99,7 +99,7 @@ export function LeaderboardTable({
                   {row.full_name}
                   {row.is_me && (
                     <span
-                      className="ml-2 text-[10px] font-mono uppercase tracking-wider"
+                      className="ml-2 text-[14px] font-mono uppercase tracking-wider"
                       style={{ color: "var(--accent)" }}
                     >
                       · Вы
@@ -108,7 +108,7 @@ export function LeaderboardTable({
                 </div>
                 {row.subtitle && (
                   <div
-                    className="text-[11px] truncate"
+                    className="text-[14px] truncate"
                     style={{ color: "var(--text-muted)" }}
                   >
                     {row.subtitle}
@@ -120,7 +120,7 @@ export function LeaderboardTable({
             {/* Delta */}
             {row.delta !== undefined && row.delta !== null && (
               <div
-                className="shrink-0 flex items-center gap-1 text-[11px] font-mono tabular-nums"
+                className="shrink-0 flex items-center gap-1 text-[14px] font-mono tabular-nums"
                 style={{ color: deltaColor }}
                 title={`Изменение: ${delta > 0 ? "+" : ""}${delta}`}
               >
@@ -138,7 +138,7 @@ export function LeaderboardTable({
                 {Math.round(row.score)}
               </div>
               <div
-                className="text-[10px] font-mono uppercase tracking-wider"
+                className="text-[14px] font-mono uppercase tracking-wider"
                 style={{ color: "var(--text-muted)" }}
               >
                 {scoreUnit}

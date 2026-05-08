@@ -1,53 +1,36 @@
 "use client";
 
 /**
- * /leaderboard — unified leaderboard hub.
+ * /leaderboard — «ЗАЛ СЛАВЫ», аркадный редизайн (2026-05-08).
  *
- * 2026-05-04 v2: redesigned to 4 tabs (was 7). Old query params still
- * work via aliasing so existing bookmarks and the LeagueHeroCard CTA
- * keep working without redirect:
+ * Что изменилось vs прошлой версии:
+ *   - убран блок <h1>Лидерборд</h1> + описание (пользователь явно
+ *     попросил снести как «мусор»)
+ *   - убраны 4 pill-таба — теперь это единая страница со скроллом и
+ *     якорной навигацией StageSelect (sticky сверху)
+ *   - добавлена HeroPanel («карточка персонажа» в стиле файтинга)
+ *   - между секциями — пиксельные разделители StageDivider
+ *   - все 4 раздела (Лига / Компания / Команды / Дуэли) рисуются
+ *     одновременно, по очереди, как «STAGE 1 → 4»
+ *   - бэкенд НЕ трогался — каждая секция использует те же endpoints
  *
- *   ?tab=hunter|week|month  →  ?tab=company  (week/month also set period)
- *   ?tab=arena|knowledge    →  ?tab=duels    (sets mode)
- *   ?tab=teams              →  ?tab=teams    (unchanged)
- *   ?tab=league             →  ?tab=league   (unchanged)
+ * Старые ?tab=... query-параметры игнорируются — пользователь хотел
+ * единое полотно, и шеринг конкретного раздела теперь делается через
+ * якорь /leaderboard#stage-duels (отрабатывается StageSelect-ом).
  *
- * The 4 tabs are: Лига · Компания · Команды · Дуэли. Lega is the
- * default because it's the most-engaging gamified surface.
+ * Шрифты ≥ 14px везде (требование пользователя).
  */
 
-import { Suspense, useCallback, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { motion } from "framer-motion";
-import { Trophy, Building2, Crown, Swords } from "lucide-react";
+import { Suspense } from "react";
+import { Trophy } from "lucide-react";
 import AuthLayout from "@/components/layout/AuthLayout";
+import { HeroPanel } from "@/components/leaderboard/HeroPanel";
+import { StageSelect } from "@/components/leaderboard/StageSelect";
+import { StageDivider } from "@/components/leaderboard/StageDivider";
 import { LeagueTab } from "@/components/leaderboard/LeagueTab";
 import { CompanyTab } from "@/components/leaderboard/CompanyTab";
 import { TeamsTab } from "@/components/leaderboard/TeamsTab";
 import { DuelsTab } from "@/components/leaderboard/DuelsTab";
-import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
-
-type Tab = "league" | "company" | "teams" | "duels";
-
-const TABS: { key: Tab; label: string; icon: typeof Trophy }[] = [
-  { key: "league", label: "Лига", icon: Trophy },
-  { key: "company", label: "Компания", icon: Crown },
-  { key: "teams", label: "Команды", icon: Building2 },
-  { key: "duels", label: "Дуэли", icon: Swords },
-];
-
-const VALID_TABS: Tab[] = ["league", "company", "teams", "duels"];
-
-// Aliases from previous 7-tab structure → new 4-tab structure.
-// Returns canonical Tab + optional secondary URL hint we won't store
-// (handled inline by sub-tabs reading their own ?period= or ?mode=).
-function aliasTab(raw: string | null): Tab {
-  if (!raw) return "league";
-  if ((VALID_TABS as string[]).includes(raw)) return raw as Tab;
-  if (raw === "hunter" || raw === "week" || raw === "month") return "company";
-  if (raw === "arena" || raw === "knowledge") return "duels";
-  return "league";
-}
 
 export default function LeaderboardPageWrapper() {
   return (
@@ -58,126 +41,96 @@ export default function LeaderboardPageWrapper() {
 }
 
 function LeaderboardPage() {
-  const params = useSearchParams();
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState<Tab>(() =>
-    aliasTab(params?.get("tab") ?? null),
-  );
-
-  // Re-sync on browser back/forward.
-  useEffect(() => {
-    setActiveTab(aliasTab(params?.get("tab") ?? null));
-  }, [params]);
-
-  const switchTab = useCallback(
-    (next: Tab) => {
-      setActiveTab(next);
-      const url = next === "league" ? "/leaderboard" : `/leaderboard?tab=${next}`;
-      router.replace(url, { scroll: false });
-    },
-    [router],
-  );
-
   return (
     <AuthLayout>
       <div className="panel-grid-bg min-h-screen">
         <div className="app-page max-w-6xl">
-          {/* Header */}
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 flex items-start justify-between gap-3"
-          >
-            <div>
-              <h1
-                className="font-display text-2xl md:text-3xl font-bold tracking-tight"
-                style={{ color: "var(--text-primary)" }}
-              >
-                Лидерборд
-              </h1>
-              <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-                Лига недели, рейтинг компании, команды и дуэли — всё в одном
-                месте.
-              </p>
-            </div>
-            <PixelInfoButton
-              title="Лидерборд"
-              sections={[
-                {
-                  icon: Trophy,
-                  label: "Лига",
-                  text: "Твоя недельная когорта (~15 игроков). Топ-3 повышаются, низ-3 вылетают. Сброс — воскресенье 23:59 МСК.",
-                },
-                {
-                  icon: Crown,
-                  label: "Компания",
-                  text: "Рейтинг по всем игрокам. Переключай период: Неделя (TP), Месяц (турнир), Всё время (Hunter Score).",
-                },
-                {
-                  icon: Building2,
-                  label: "Команды",
-                  text: "Офисы продаж по среднему баллу (Bayesian). Видны все командам — внутренняя прозрачность.",
-                },
-                {
-                  icon: Swords,
-                  label: "Дуэли",
-                  text: "ELO двух режимов: голос (1×1 продажа) и знания (квиз по 127-ФЗ).",
-                },
-              ]}
-              footer="Подсказка: каждый таб помнится в URL — можно поделиться ссылкой"
-            />
-          </motion.div>
-
-          {/* Tabs — horizontally centered. 2026-05-04 polish: outer
-              wrapper centers; inner pill scrolls on overflow without
-              forcing a stretch on desktop. AnimatePresence removed —
-              the unmount/remount cycle was the visible "lag" the user
-              reported. Plain CSS opacity transition is enough. */}
-          <div className="flex justify-center mb-6">
+          {/* ═══ ЗАЛ СЛАВЫ — главный логотип ═══ */}
+          <div className="text-center pt-2 pb-6 select-none">
             <div
-              className="inline-flex gap-1 p-1 rounded-xl max-w-full overflow-x-auto"
+              className="font-pixel"
               style={{
-                background: "var(--input-bg)",
-                border: "1px solid var(--border-color)",
+                fontSize: "clamp(36px, 6vw, 64px)",
+                lineHeight: 1.0,
+                letterSpacing: "0.06em",
+                background:
+                  "linear-gradient(180deg, #ffd650 0%, #facc15 35%, var(--accent) 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+                textShadow:
+                  "0 0 18px rgba(167,139,250,0.45), 0 0 28px rgba(255,210,80,0.35)",
+                filter: "drop-shadow(0 4px 0 rgba(0,0,0,0.45))",
               }}
             >
-              {TABS.map((t) => {
-                const Icon = t.icon;
-                const active = activeTab === t.key;
-                return (
-                  <button
-                    key={t.key}
-                    onClick={() => switchTab(t.key)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0"
-                    style={{
-                      background: active ? "var(--accent)" : "transparent",
-                      color: active ? "#fff" : "var(--text-secondary)",
-                      boxShadow: active ? "0 2px 10px var(--accent-glow)" : "none",
-                    }}
-                  >
-                    <Icon size={14} />
-                    {t.label}
-                  </button>
-                );
-              })}
+              <span aria-hidden style={{ marginRight: 12 }}>★</span>
+              ЗАЛ СЛАВЫ
+              <span aria-hidden style={{ marginLeft: 12 }}>★</span>
+            </div>
+            <div
+              className="font-pixel uppercase tracking-widest mt-2"
+              style={{ color: "var(--text-muted)", fontSize: 16 }}
+            >
+              Сезон I · Май 2026
             </div>
           </div>
 
-          {/* Tab content. We keep `key={activeTab}` to bust the React
-              tree on tab switch (so nested useEffect cleanups fire
-              cleanly), but drop AnimatePresence — the entry-exit
-              dance was producing the perceptible jank on click. */}
-          <div key={activeTab} className="leaderboard-tab-content">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.12, ease: "linear" }}
+          {/* ═══ HERO ═══ */}
+          <HeroPanel />
+
+          {/* ═══ ВЫБОР АРЕНЫ (sticky) ═══ */}
+          <StageSelect />
+
+          {/* ═══ STAGE I · ЛИГА ═══ */}
+          <StageDivider
+            id="league"
+            numeral="I"
+            title="ЛИГА"
+            subtitle="Недельная когорта · топ-3 повышаются · низ-3 вылетают"
+            accent="var(--accent)"
+          />
+          <LeagueTab />
+
+          {/* ═══ STAGE II · КОМПАНИЯ ═══ */}
+          <StageDivider
+            id="company"
+            numeral="II"
+            title="КОМПАНИЯ"
+            subtitle="Рейтинг по всем игрокам · неделя · месяц · всё время"
+            accent="#facc15"
+          />
+          <CompanyTab />
+
+          {/* ═══ STAGE III · КОМАНДЫ ═══ */}
+          <StageDivider
+            id="teams"
+            numeral="III"
+            title="КОМАНДЫ"
+            subtitle="Офисы продаж · ранг по skill-adjusted (Bayesian)"
+            accent="#fb923c"
+          />
+          <TeamsTab />
+
+          {/* ═══ STAGE IV · ДУЭЛИ ═══ */}
+          <StageDivider
+            id="duels"
+            numeral="IV"
+            title="ДУЭЛИ"
+            subtitle="ELO голосовых дуэлей · ELO квиза по 127-ФЗ"
+            accent="#ff3ec8"
+          />
+          <DuelsTab />
+
+          {/* Footer space — пиксельная подпись */}
+          <div className="text-center mt-16 mb-8">
+            <div
+              className="font-pixel uppercase tracking-widest inline-flex items-center gap-2"
+              style={{ color: "var(--text-muted)", fontSize: 14 }}
             >
-              {activeTab === "league" && <LeagueTab />}
-              {activeTab === "company" && <CompanyTab />}
-              {activeTab === "teams" && <TeamsTab />}
-              {activeTab === "duels" && <DuelsTab />}
-            </motion.div>
+              <Trophy size={14} />
+              ★ КОНЕЦ ТАБЛИЦЫ ★
+              <Trophy size={14} />
+            </div>
           </div>
         </div>
       </div>

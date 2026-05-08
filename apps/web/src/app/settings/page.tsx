@@ -23,6 +23,7 @@ import { AvatarUpload } from "@/components/settings/AvatarUpload";
 // карточки в едином glass-panel стиле остальных секций.
 import { SoundSettings } from "@/components/settings/SoundSettings";
 import { AudioDevicesPanel } from "@/components/settings/AudioDevicesPanel";
+import { readCRTMode, writeCRTMode } from "@/components/leaderboard/CRTOverlay";
 import { toast } from "sonner";
 import { PIPELINE_STATUSES, CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/types";
 import type { ClientStatus } from "@/types";
@@ -169,6 +170,15 @@ export default function SettingsPage() {
   const [pipelineColumns, setPipelineColumns] = useState<string[]>(PIPELINE_STATUSES as string[]);
   const [compactMode, setCompactMode] = useState(false);
   const [accentColor, setAccentColor] = useState<string>("violet");
+  // 2026-05-08: CRT-эффект (сканлайны + flicker). Хранится в localStorage
+  // через readCRTMode/writeCRTMode (не в user.preferences — это
+  // визуальное предпочтение конкретного устройства, не профиля).
+  const [crtMode, setCrtModeState] = useState<"off" | "leaderboard" | "global">(
+    "leaderboard",
+  );
+  useEffect(() => {
+    setCrtModeState(readCRTMode());
+  }, []);
   // Audio device + voice prefs (2026-05-02). Persisted in user.preferences
   // alongside the rest. Defaults match getUserMedia "smart" defaults so a
   // pristine user gets normal behaviour without touching settings.
@@ -565,6 +575,46 @@ const triggerAutosave = useCallback(async () => {
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Компактный режим</span>
                 <Toggle on={compactMode} onChange={() => setCompactMode(!compactMode)} size="sm" />
+              </div>
+            </Card>
+
+            {/*
+              2026-05-08: CRT-эффект. Часть аркадного редизайна
+              /leaderboard. По дефолту видим только на странице
+              лидерборда. Пользователь может включить глобально или
+              выключить — выбор сохраняется в localStorage и подхватывается
+              без перезагрузки (через CustomEvent).
+            */}
+            <Card className="md:col-span-2">
+              <label
+                className="text-sm font-medium uppercase tracking-wide mb-3 block"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Ретро-эффект CRT
+              </label>
+              <p
+                className="text-sm mb-3"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Сканлайны + лёгкий flicker. На /leaderboard всегда вкл (редизайн «Зал Славы»).
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { key: "leaderboard", label: "Только лидерборд" },
+                  { key: "global", label: "На всём сайте" },
+                  { key: "off", label: "Выключить" },
+                ].map((opt) => (
+                  <Chip
+                    key={opt.key}
+                    active={crtMode === opt.key}
+                    label={opt.label}
+                    onClick={() => {
+                      const next = opt.key as "off" | "leaderboard" | "global";
+                      setCrtModeState(next);
+                      writeCRTMode(next);
+                    }}
+                  />
+                ))}
               </div>
             </Card>
 

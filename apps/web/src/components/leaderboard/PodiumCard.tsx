@@ -52,7 +52,7 @@ export function PodiumCard({ top3, title }: PodiumCardProps) {
   return (
     <div className="space-y-3">
       {title && (
-        <div className="text-xs font-mono uppercase tracking-widest text-center" style={{ color: "var(--text-muted)" }}>
+        <div className="text-sm font-mono uppercase tracking-widest text-center" style={{ color: "var(--text-muted)" }}>
           {title}
         </div>
       )}
@@ -118,7 +118,7 @@ export function PodiumCard({ top3, title }: PodiumCardProps) {
                   boxShadow: style.glow,
                 }}
               >
-                <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                <div className="font-mono text-[14px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
                   #{rank}
                 </div>
                 <div className="font-display font-bold tabular-nums mt-auto" style={{
@@ -128,12 +128,12 @@ export function PodiumCard({ top3, title }: PodiumCardProps) {
                 }}>
                   {Math.round(entry.score)}
                 </div>
-                <div className="text-[10px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>
+                <div className="text-[14px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>
                   {entry.scoreUnit ?? "TP"}
                 </div>
                 {entry.delta !== undefined && entry.delta !== null && entry.delta !== 0 && (
                   <div
-                    className="text-[10px] font-mono mt-1"
+                    className="text-[14px] font-mono mt-1"
                     style={{ color: entry.delta > 0 ? "var(--success, #22c55e)" : "var(--danger, #ef4444)" }}
                   >
                     {entry.delta > 0 ? "+" : ""}{entry.delta}

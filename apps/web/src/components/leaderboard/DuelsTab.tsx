@@ -159,7 +159,7 @@ export function DuelsTab() {
               key={m.key}
               type="button"
               onClick={() => setMode(m.key)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold uppercase tracking-wider transition-all"
               style={{
                 background: active ? "var(--accent)" : "transparent",
                 color: active ? "#fff" : "var(--text-muted)",

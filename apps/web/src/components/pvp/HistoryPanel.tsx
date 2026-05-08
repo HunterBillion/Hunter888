@@ -132,7 +132,12 @@ export function HistoryPanel() {
       {myDuels.length > 5 && (
         <button
           type="button"
-          onClick={() => router.push("/pvp/leaderboard?tab=history")}
+          // 2026-05-08: redirect to АРЕНА IV · ДУЭЛИ on the new
+          // unified «Зал Славы». Старая страница /pvp/leaderboard
+          // удалена и редиректит на /leaderboard#stage-duels —
+          // прокидываем сразу финальный якорь, чтобы избежать
+          // лишнего хопа.
+          onClick={() => router.push("/leaderboard#stage-duels")}
           className="mt-3 block w-full text-center font-pixel uppercase text-[10px] tracking-widest py-1.5"
           style={{
             color: "var(--text-muted)",

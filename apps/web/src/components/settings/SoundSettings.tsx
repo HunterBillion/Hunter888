@@ -22,7 +22,7 @@
 import * as React from "react";
 import { motion } from "framer-motion";
 import {
-  SpeakerHigh, SpeakerSimpleSlash, Headphones, GameController, Bell,
+  SpeakerHigh, SpeakerSimpleSlash, Headphones, GameController, Bell, Microphone,
 } from "@phosphor-icons/react";
 import {
   useSound,
@@ -35,7 +35,7 @@ import {
 } from "@/hooks/useSound";
 
 interface CategorySpec {
-  key: "master" | "sfx" | "ambient" | "ui";
+  key: "master" | "sfx" | "ambient" | "ui" | "voice";
   label: string;
   hint: string;
   icon: React.ComponentType<{ size?: number; weight?: "duotone" | "regular" | "fill" | "bold"; style?: React.CSSProperties }>;
@@ -61,6 +61,18 @@ const CATEGORIES: CategorySpec[] = [
     icon: GameController,
     preview: "hit",
     accent: "var(--danger)",
+  },
+  // 2026-05-08: новая категория «Голос» — управляет TTS-наставником и
+  // озвучкой раундов в PvP. До этой правки `<audio>` элементы не
+  // подчинялись слайдерам и игнорили mute. Превью через voiceTest —
+  // formant-based pseudo-голос, чтобы слайдер было слышно осмысленно.
+  {
+    key: "voice",
+    label: "Голос",
+    hint: "Наставник, озвучка раундов, TTS",
+    icon: Microphone,
+    preview: "voiceTest",
+    accent: "var(--success, #4ade80)",
   },
   {
     key: "ambient",
@@ -126,6 +138,7 @@ export function SoundSettings() {
     if (cat.key === "sfx") return volumes.sfx;
     if (cat.key === "ambient") return volumes.ambient;
     if (cat.key === "ui") return volumes.ui;
+    if (cat.key === "voice") return volumes.voice;
     return 0;
   };
 

@@ -37,11 +37,13 @@ type SoundName =
   // Gamification sounds
   | "click" | "xp" | "levelUp" | "notification"
   // UI sounds
-  | "hover";
+  | "hover"
+  // 2026-05-08: voice category preview (used by SoundSettings slider)
+  | "voiceTest";
 
 export type { SoundName };
 
-type SoundCategory = "sfx" | "ui" | "ambient" | "system";
+type SoundCategory = "sfx" | "ui" | "ambient" | "voice" | "system";
 
 /* ── Volume Storage Keys ─────────────────────────────────────────────── */
 export const VOL_KEYS = {
@@ -49,6 +51,12 @@ export const VOL_KEYS = {
   sfx: "vh-vol-sfx",
   ui: "vh-vol-ui",
   ambient: "vh-vol-ambient",
+  // 2026-05-08: separate slider for narrator/TTS/round-narration audio.
+  // Раньше TTS использовал свой внутренний volume (default 1.0) и игнорил
+  // настройки пользователя совсем. Новая категория «Голос» теперь
+  // управляет всеми `<audio>`-элементами (TTS наставника, ArenaAudioPlayer
+  // для озвучки раундов, диалоги PvP).
+  voice: "vh-vol-voice",
   // legacy mute toggles — keep both for back-compat
   legacyMuted: "vh-sounds-muted",
   legacyOff: "vh_sound",
@@ -60,6 +68,7 @@ const DEFAULT_VOLUMES = {
   sfx: 0.85,
   ui: 0.6,
   ambient: 0.4,
+  voice: 0.9,
 };
 
 /* ── Reactive volume store ───────────────────────────────────────────── */
@@ -110,11 +119,50 @@ export function useVolumes() {
       sfx: readVolume("sfx", DEFAULT_VOLUMES.sfx),
       ui: readVolume("ui", DEFAULT_VOLUMES.ui),
       ambient: readVolume("ambient", DEFAULT_VOLUMES.ambient),
+      voice: readVolume("voice", DEFAULT_VOLUMES.voice),
     }),
     () => JSON.stringify(DEFAULT_VOLUMES),
   );
-  const parsed = JSON.parse(snap) as { master: number; sfx: number; ui: number; ambient: number };
+  const parsed = JSON.parse(snap) as {
+    master: number;
+    sfx: number;
+    ui: number;
+    ambient: number;
+    voice: number;
+  };
   return parsed;
+}
+
+/** Non-hook accessor for the master×category multiplier — used inside
+ * `<audio>`-element-based players (TTS, ArenaAudioPlayer, useSFX) where
+ * the React hook would re-render too aggressively. Reads localStorage
+ * directly. Returns 0 when globally muted. */
+export function getEffectiveVolume(category: SoundCategory, perCallVolume = 1.0): number {
+  if (typeof window === "undefined") return perCallVolume;
+  if (isMutedGlobal()) return 0;
+  const master = readVolume("master", DEFAULT_VOLUMES.master);
+  if (master <= 0) return 0;
+  let cat = 1.0;
+  if (category === "sfx") cat = readVolume("sfx", DEFAULT_VOLUMES.sfx);
+  else if (category === "ui") cat = readVolume("ui", DEFAULT_VOLUMES.ui);
+  else if (category === "ambient") cat = readVolume("ambient", DEFAULT_VOLUMES.ambient);
+  else if (category === "voice") cat = readVolume("voice", DEFAULT_VOLUMES.voice);
+  // "system" — full master, no category gating
+  return Math.max(0, Math.min(1, master * cat * perCallVolume));
+}
+
+/** Subscribe to vh-volume-change events with a callback. Returns
+ * unsubscribe. Used by `<audio>` consumers that need to update
+ * `el.volume` whenever a slider moves. */
+export function subscribeVolume(cb: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const fn = () => cb();
+  window.addEventListener("vh-volume-change", fn);
+  window.addEventListener("storage", fn);
+  return () => {
+    window.removeEventListener("vh-volume-change", fn);
+    window.removeEventListener("storage", fn);
+  };
 }
 
 /** Set master volume (0..1). */
@@ -461,6 +509,26 @@ const SOUND_DESIGNS: Partial<Record<SoundName, SoundDesign>> = {
     layers: [
       { freq: 2000, type: "sine", gain: 0.05, dur: 0.02, attack: 0.001 },
     ],
+  },
+  // 2026-05-08: «voice» category preview. Лёгкая «глоттальная» формантная
+  // имитация (низкий + средний голосовой диапазон), чтобы пользователь
+  // в /settings услышал именно реакцию voice-слайдера, а не sfx.
+  voiceTest: {
+    totalDur: 0.7,
+    category: "voice",
+    normalize: 1.0,
+    layers: [
+      // F1 ~ 500 Hz (vowel-like first formant)
+      { freq: 500, type: "triangle", gain: 0.30, dur: 0.6, attack: 0.025, decayStart: 0.5 },
+      // F2 ~ 1500 Hz (second formant — gives «vowel» character)
+      { freq: 1500, type: "sine", gain: 0.15, dur: 0.55, attack: 0.025, decayStart: 0.5 },
+      // F3 ~ 2500 Hz (high formant — adds presence)
+      { freq: 2500, type: "sine", gain: 0.06, dur: 0.45, attack: 0.025, decayStart: 0.5 },
+      // Sub fundamental at ~110 Hz (chest voice)
+      { freq: 110, type: "sine", gain: 0.20, dur: 0.65, attack: 0.04, decayStart: 0.55 },
+    ],
+    noiseMix: 0.03,
+    noiseDur: 0.08,
   },
 };
 
