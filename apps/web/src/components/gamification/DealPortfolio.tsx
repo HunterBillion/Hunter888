@@ -77,13 +77,21 @@ export default function DealPortfolio({ compact = true, limit }: DealPortfolioPr
     fetchDeals();
   }, [fetchDeals]);
 
+  // 2026-05-08 graphics polish: rounded-xl + bg-secondary заменены на
+  // пиксельную рамку, шрифты ≥14px, square borders на каждой карточке.
+  const containerStyle: React.CSSProperties = {
+    background: "rgba(8,5,18,0.55)",
+    border: "2px solid rgba(167,139,250,0.28)",
+    boxShadow: "inset 0 0 18px rgba(0,0,0,0.4)",
+  };
+
   if (loading) {
     return (
-      <div className="rounded-xl bg-[var(--bg-secondary)] p-5 animate-pulse">
-        <div className="h-4 w-36 rounded bg-[var(--input-bg)] mb-3" />
+      <div className="rounded-sm p-5 animate-pulse" style={containerStyle}>
+        <div className="h-4 w-40 rounded-sm bg-[var(--input-bg)] mb-3" />
         <div className="grid grid-cols-3 gap-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 rounded-lg bg-[var(--input-bg)]" />
+            <div key={i} className="h-20 rounded-sm bg-[var(--input-bg)]" />
           ))}
         </div>
       </div>
@@ -92,51 +100,77 @@ export default function DealPortfolio({ compact = true, limit }: DealPortfolioPr
 
   if (deals.length === 0) {
     return (
-      <div className="rounded-xl bg-[var(--bg-secondary)] p-5">
+      <div className="rounded-sm p-5" style={containerStyle}>
         <div className="flex items-center gap-2 mb-2">
           <Briefcase size={18} className="text-[var(--text-muted)]" />
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Портфолио сделок</h3>
+          <h3
+            className="font-pixel uppercase tracking-widest"
+            style={{ color: "var(--text-primary)", fontSize: 14 }}
+          >
+            ▰ ПОРТФОЛИО СДЕЛОК ▰
+          </h3>
         </div>
-        <p className="text-xs text-[var(--text-muted)]">
-          Завершите тренировку с результатом &laquo;сделка&raquo; чтобы добавить первую карточку.
+        <p
+          className="font-pixel uppercase tracking-widest"
+          style={{ color: "var(--text-muted)", fontSize: 14 }}
+        >
+          Завершите тренировку с результатом «сделка» чтобы добавить первую карточку.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl bg-[var(--bg-secondary)] p-5">
+    <div className="rounded-sm p-5" style={containerStyle}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Briefcase size={18} className="text-[var(--accent)]" />
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-            Портфолио сделок
+          <h3
+            className="font-pixel uppercase tracking-widest"
+            style={{ color: "var(--text-primary)", fontSize: 14 }}
+          >
+            ▰ ПОРТФОЛИО СДЕЛОК ▰
           </h3>
         </div>
-        <span className="text-xs font-mono text-[var(--text-muted)]">
-          {total} {total === 1 ? "сделка" : total < 5 ? "сделки" : "сделок"}
+        <span
+          className="font-pixel uppercase tracking-widest tabular-nums"
+          style={{ color: "var(--text-muted)", fontSize: 14 }}
+        >
+          {total} {total === 1 ? "СДЕЛКА" : total < 5 ? "СДЕЛКИ" : "СДЕЛОК"}
         </span>
       </div>
 
       {/* Deal cards */}
-      <div className={compact ? "grid grid-cols-1 sm:grid-cols-3 gap-3" : "space-y-2"}>
+      <div className={compact ? "grid grid-cols-1 sm:grid-cols-3 gap-3" : "grid grid-cols-1 sm:grid-cols-2 gap-3"}>
         {deals.map((deal, i) => (
           <motion.div
             key={deal.id}
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
-            className="rounded-lg bg-[var(--input-bg)] p-3 flex flex-col gap-1.5"
+            whileHover={{ scale: 1.02 }}
+            className="rounded-sm p-3 flex flex-col gap-2"
+            style={{
+              background: "rgba(0,0,0,0.4)",
+              border: `2px solid ${scoreColor(deal.score)}55`,
+            }}
           >
             {/* Archetype + Score */}
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-[var(--text-primary)]">
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className="font-pixel uppercase tracking-widest truncate"
+                style={{
+                  color: "var(--text-primary)",
+                  fontSize: 14,
+                }}
+                title={ARCHETYPE_LABELS[deal.archetype] || deal.archetype}
+              >
                 {ARCHETYPE_LABELS[deal.archetype] || deal.archetype}
               </span>
               <span
-                className="text-sm font-bold font-mono"
-                style={{ color: scoreColor(deal.score) }}
+                className="font-pixel font-black tabular-nums shrink-0"
+                style={{ color: scoreColor(deal.score), fontSize: 22, lineHeight: 1.0 }}
               >
                 {deal.score}
               </span>
@@ -145,30 +179,50 @@ export default function DealPortfolio({ compact = true, limit }: DealPortfolioPr
             {/* Badges row */}
             <div className="flex items-center gap-1.5 flex-wrap">
               {deal.had_comeback && (
-                <span className="inline-flex items-center gap-0.5 rounded bg-[var(--warning-muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--warning)]">
-                  <RotateCcw size={9} /> Comeback
+                <span
+                  className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-pixel uppercase tracking-widest"
+                  style={{
+                    background: "rgba(250,204,21,0.18)",
+                    color: "#facc15",
+                    border: "1px solid rgba(250,204,21,0.5)",
+                    fontSize: 11,
+                  }}
+                >
+                  <RotateCcw size={10} /> COMEBACK
                 </span>
               )}
               {deal.chain_completed && (
-                <span className="inline-flex items-center gap-0.5 rounded bg-[var(--success-muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--success)]">
-                  <Zap size={9} /> Chain
+                <span
+                  className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-pixel uppercase tracking-widest"
+                  style={{
+                    background: "rgba(74,222,128,0.18)",
+                    color: "#4ade80",
+                    border: "1px solid rgba(74,222,128,0.5)",
+                    fontSize: 11,
+                  }}
+                >
+                  <Zap size={10} /> CHAIN
                 </span>
               )}
               {deal.score >= 90 && (
-                <span className="inline-flex items-center gap-0.5 rounded bg-[var(--warning-muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--warning)]">
-                  <Star size={9} /> Perfect
+                <span
+                  className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-pixel uppercase tracking-widest"
+                  style={{
+                    background: "rgba(255,210,80,0.22)",
+                    color: "#ffd650",
+                    border: "1px solid rgba(255,210,80,0.6)",
+                    fontSize: 11,
+                  }}
+                >
+                  <Star size={10} /> PERFECT
                 </span>
               )}
             </div>
 
             {/* Date + difficulty */}
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[var(--text-muted)]">
-                {formatDate(deal.created_at)}
-              </span>
-              <span className="text-[10px] text-[var(--text-muted)]">
-                D{deal.difficulty}
-              </span>
+            <div className="flex items-center justify-between font-pixel uppercase tracking-widest" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              <span>{formatDate(deal.created_at)}</span>
+              <span>D{deal.difficulty}</span>
             </div>
           </motion.div>
         ))}
@@ -178,9 +232,10 @@ export default function DealPortfolio({ compact = true, limit }: DealPortfolioPr
       {compact && total > 3 && (
         <a
           href="/profile"
-          className="mt-3 block text-center text-xs font-medium text-[var(--accent)] hover:underline"
+          className="mt-4 block text-center font-pixel uppercase tracking-widest hover:underline"
+          style={{ color: "var(--accent)", fontSize: 14 }}
         >
-          Все {total} сделок &rarr;
+          Все {total} сделок →
         </a>
       )}
     </div>

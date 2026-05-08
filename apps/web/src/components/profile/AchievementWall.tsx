@@ -1,5 +1,15 @@
 "use client";
 
+/**
+ * 2026-05-08 (графическая полировка): rounded-xl + glass-bg → пиксель.
+ *   - Крупные плитки с 3px sharp-corner border
+ *   - Большая иконка-медаль слева (44px) в square frame
+ *   - Заголовок 16px font-pixel, описание 14px (было 12-13)
+ *   - Hover: scale-up + усиленный glow по цвету категории
+ *   - Каждая категория — пиксельная плашка-заголовок с counter-чипом
+ *   - 2-колоночная сетка на desktop (было 4) — даём дыхание
+ */
+
 import { motion } from "framer-motion";
 import { Lock } from "lucide-react";
 import { Trophy, Sword, BookOpen, Star } from "@phosphor-icons/react";
@@ -43,10 +53,17 @@ export function AchievementWall({ achievements }: AchievementWallProps) {
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glass-panel p-8 text-center"
+        className="rounded-sm p-10 text-center"
+        style={{
+          background: "rgba(8,5,18,0.45)",
+          border: "2px dashed rgba(255,255,255,0.18)",
+        }}
       >
-        <Lock size={32} className="mx-auto animate-float-subtle" style={{ color: "var(--text-muted)", opacity: 0.4 }} />
-        <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
+        <Lock size={36} className="mx-auto" style={{ color: "var(--text-muted)", opacity: 0.5 }} />
+        <p
+          className="mt-4 font-pixel uppercase tracking-widest"
+          style={{ color: "var(--text-muted)", fontSize: 14 }}
+        >
           Пройдите несколько тренировок чтобы открыть достижения
         </p>
       </motion.div>
@@ -57,7 +74,7 @@ export function AchievementWall({ achievements }: AchievementWallProps) {
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
+      className="space-y-7"
     >
       {CATEGORIES.map((cat) => {
         const items = grouped[cat.key];
@@ -66,47 +83,97 @@ export function AchievementWall({ achievements }: AchievementWallProps) {
 
         return (
           <div key={cat.key}>
-            <div className="flex items-center gap-2 mb-3">
+            {/* Заголовок категории — пиксельная плашка с counter-чипом */}
+            <div
+              className="inline-flex items-center gap-2 mb-3 px-3 py-1.5 rounded-sm"
+              style={{
+                background: colorAlpha(cat.color, 12),
+                border: `2px solid ${cat.color}`,
+                boxShadow: `0 0 10px ${colorAlpha(cat.color, 12)}`,
+              }}
+            >
               <Icon size={16} weight="duotone" style={{ color: cat.color }} />
-              <span className="font-display text-sm font-bold tracking-widest uppercase" style={{ color: "var(--text-secondary)" }}>
+              <span
+                className="font-pixel uppercase tracking-widest"
+                style={{ color: cat.color, fontSize: 14 }}
+              >
                 {cat.label}
               </span>
               <span
-                className="rounded-full px-2 py-0.5 text-xs font-mono font-bold"
-                style={{ background: colorAlpha(cat.color, 9), color: cat.color }}
+                className="rounded-sm px-2 py-0.5 font-pixel font-bold tabular-nums"
+                style={{
+                  background: cat.color,
+                  color: "#0b0b14",
+                  fontSize: 14,
+                }}
               >
                 {items.length}
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {/* Сетка медалей — крупная, дыхание (2-3 колонки вместо 4) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
               {items.map((a, i) => (
                 <motion.div
                   key={a.id ?? `${cat.key}-${i}`}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
+                  initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{ delay: i * 0.04 }}
-                  className="relative overflow-hidden rounded-xl p-4"
-                  style={{
-                    background: "var(--glass-bg)",
-                    border: `1px solid ${colorAlpha(cat.color, 12)}`,
-                    backdropFilter: "blur(16px)",
+                  whileHover={{
+                    scale: 1.03,
+                    boxShadow: `0 0 22px ${colorAlpha(cat.color, 25)}`,
                   }}
-                  whileHover={{ borderColor: colorAlpha(cat.color, 25), boxShadow: `0 4px 20px ${colorAlpha(cat.color, 8)}` }}
+                  className="relative overflow-hidden rounded-sm p-4 flex items-start gap-3"
+                  style={{
+                    background: `linear-gradient(135deg, ${colorAlpha(cat.color, 8)} 0%, rgba(8,5,18,0.65) 100%)`,
+                    border: `3px solid ${colorAlpha(cat.color, 35)}`,
+                    cursor: "default",
+                  }}
+                  title={a.description}
                 >
-                  <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: cat.color }} />
-                  <div className="absolute -top-6 -right-6 w-16 h-16 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${colorAlpha(cat.color, 6)} 0%, transparent 70%)` }} />
-                  <div className="font-display text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                    {a.title}
+                  {/* Square pixel medal slot слева */}
+                  <div
+                    className="flex items-center justify-center rounded-sm shrink-0"
+                    style={{
+                      width: 44,
+                      height: 44,
+                      background: colorAlpha(cat.color, 18),
+                      border: `2px solid ${cat.color}`,
+                      boxShadow: `0 0 8px ${colorAlpha(cat.color, 25)}`,
+                    }}
+                  >
+                    <Icon size={22} weight="duotone" style={{ color: cat.color }} />
                   </div>
-                  <p className="text-xs mt-1.5 leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                    {a.description}
-                  </p>
-                  {a.earned_at && (
-                    <div className="font-mono text-xs mt-2.5 flex items-center gap-1" style={{ color: cat.color, opacity: 0.7 }}>
-                      {new Date(a.earned_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}
+
+                  {/* Текстовая часть */}
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className="font-pixel font-bold leading-tight"
+                      style={{
+                        color: "var(--text-primary)",
+                        fontSize: 16,
+                      }}
+                    >
+                      {a.title}
                     </div>
-                  )}
+                    <p
+                      className="mt-1.5 leading-snug"
+                      style={{
+                        color: "var(--text-muted)",
+                        fontSize: 14,
+                      }}
+                    >
+                      {a.description}
+                    </p>
+                    {a.earned_at && (
+                      <div
+                        className="font-pixel uppercase tracking-widest mt-2"
+                        style={{ color: cat.color, fontSize: 12, opacity: 0.85 }}
+                      >
+                        ★ {new Date(a.earned_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}
+                      </div>
+                    )}
+                  </div>
                 </motion.div>
               ))}
             </div>

@@ -139,29 +139,53 @@ export default function OfficeShelf({
   }
 
   // Full display (profile page)
+  // 2026-05-08 graphics polish: rounded-xl + bg-secondary заменены
+  // на пиксельную рамку с акцентом var(--accent). Шрифты ≥14px.
   return (
-    <div className="rounded-xl bg-[var(--bg-secondary)] p-5">
+    <div
+      className="rounded-sm p-5"
+      style={{
+        background: "rgba(8,5,18,0.55)",
+        border: "2px solid rgba(167,139,250,0.28)",
+        boxShadow: "inset 0 0 18px rgba(0,0,0,0.4)",
+      }}
+    >
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-          Кабинет менеджера
+        <h3
+          className="font-pixel uppercase tracking-widest"
+          style={{ color: "var(--text-primary)", fontSize: 14 }}
+        >
+          ▰ КАБИНЕТ МЕНЕДЖЕРА ▰
         </h3>
-        <span className="text-xs text-[var(--text-muted)]">
-          {unlockedItems.length}/{OFFICE_ITEMS.length} предметов
+        <span
+          className="font-pixel uppercase tracking-widest tabular-nums"
+          style={{ color: "var(--text-muted)", fontSize: 14 }}
+        >
+          {unlockedItems.length}/{OFFICE_ITEMS.length} ПРЕДМЕТОВ
         </span>
       </div>
 
-      {/* Progress bar */}
-      <div className="h-1.5 rounded-full overflow-hidden mb-4" style={{ background: "var(--input-bg)" }}>
+      {/* Progress bar — пиксельный outline + neon glow */}
+      <div
+        className="h-3 rounded-sm overflow-hidden mb-5"
+        style={{
+          background: "rgba(0,0,0,0.45)",
+          border: "2px solid rgba(167,139,250,0.4)",
+        }}
+      >
         <motion.div
-          className="h-full rounded-full"
-          style={{ background: "var(--accent)" }}
+          className="h-full"
+          style={{
+            background: "linear-gradient(90deg, var(--accent), rgba(255,210,80,0.9))",
+            boxShadow: "0 0 10px var(--accent-glow)",
+          }}
           initial={{ width: 0 }}
           animate={{ width: `${progress * 100}%` }}
           transition={{ duration: 0.8, ease: "easeOut" }}
         />
       </div>
 
-      {/* Items grid */}
+      {/* Items grid — крупнее, square pixel slots */}
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
         {OFFICE_ITEMS.map((item, i) => {
           const unlocked = level >= item.unlocksAt;
@@ -172,30 +196,47 @@ export default function OfficeShelf({
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.04 }}
-              className={`flex flex-col items-center gap-1.5 rounded-lg p-3 transition-all ${
+              whileHover={unlocked ? { scale: 1.04 } : {}}
+              className={`flex flex-col items-center gap-2 rounded-sm p-3 transition-all ${
                 unlocked ? "" : "opacity-40"
               }`}
               style={{
                 background: unlocked
-                  ? `color-mix(in srgb, ${item.color} 12%, var(--input-bg))`
-                  : "var(--input-bg)",
+                  ? `color-mix(in srgb, ${item.color} 14%, rgba(0,0,0,0.4))`
+                  : "rgba(0,0,0,0.3)",
+                border: unlocked
+                  ? `2px solid ${item.color}`
+                  : "2px dashed rgba(255,255,255,0.18)",
+                boxShadow: unlocked
+                  ? `0 0 10px color-mix(in srgb, ${item.color} 25%, transparent)`
+                  : "none",
               }}
             >
               {Icon ? (
                 <Icon
                   weight="duotone"
-                  size={26}
+                  size={32}
                   style={{ color: unlocked ? item.color : "var(--text-muted)" }}
                 />
               ) : (
-                <Lock size={22} style={{ color: "var(--text-muted)" }} />
+                <Lock size={26} style={{ color: "var(--text-muted)" }} />
               )}
-              <span className="text-[10px] text-center leading-tight text-[var(--text-secondary)]">
+              <span
+                className="font-pixel uppercase tracking-widest text-center leading-tight"
+                style={{
+                  color: "var(--text-secondary)",
+                  fontSize: 12,
+                  minHeight: "2.4em",
+                }}
+              >
                 {item.label}
               </span>
               {!unlocked && (
-                <span className="text-[9px] text-[var(--text-muted)]">
-                  Ур. {item.unlocksAt}
+                <span
+                  className="font-pixel uppercase tracking-widest"
+                  style={{ color: "var(--text-muted)", fontSize: 12 }}
+                >
+                  УР. {item.unlocksAt}
                 </span>
               )}
             </motion.div>
@@ -203,18 +244,33 @@ export default function OfficeShelf({
         })}
       </div>
 
-      {/* Stats row */}
-      <div className="mt-4 grid grid-cols-3 gap-3">
+      {/* Stats row — крупные тumbler'ы */}
+      <div className="mt-5 grid grid-cols-3 gap-3">
         {[
-          { label: "Сделок", value: totalDeals, color: "var(--success)" },
-          { label: "Тренировок", value: totalSessions, color: "var(--accent)" },
-          { label: "Достижений", value: achievementCount, color: "var(--warning)" },
+          { label: "СДЕЛОК", value: totalDeals, color: "var(--success, #4ade80)" },
+          { label: "ТРЕНИРОВОК", value: totalSessions, color: "var(--accent)" },
+          { label: "ДОСТИЖЕНИЙ", value: achievementCount, color: "var(--warning, #facc15)" },
         ].map((stat) => (
-          <div key={stat.label} className="text-center">
-            <span className="text-lg font-bold font-mono" style={{ color: stat.color }}>
+          <div
+            key={stat.label}
+            className="text-center rounded-sm py-2.5"
+            style={{
+              background: "rgba(0,0,0,0.35)",
+              border: `2px solid ${stat.color}55`,
+            }}
+          >
+            <div
+              className="font-pixel font-black tabular-nums"
+              style={{ color: stat.color, fontSize: 22, lineHeight: 1.0 }}
+            >
               {stat.value}
-            </span>
-            <p className="text-[10px] text-[var(--text-muted)]">{stat.label}</p>
+            </div>
+            <div
+              className="font-pixel uppercase tracking-widest mt-1"
+              style={{ color: "var(--text-muted)", fontSize: 12 }}
+            >
+              {stat.label}
+            </div>
           </div>
         ))}
       </div>
