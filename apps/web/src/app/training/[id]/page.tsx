@@ -744,6 +744,10 @@ export default function TrainingSessionPage() {
           break;
 
         case "silence.timeout":
+          // Phase H (2026-05-08): stop TTS so the modal isn't drowned
+          // out by lingering AI audio. Backend's silence-timeout
+          // typically fires while AI is mid-prompt waiting on the user.
+          try { tts.stop(); } catch { /* noop */ }
           s.setShowSilenceModal(true);
           break;
 
@@ -756,6 +760,10 @@ export default function TrainingSessionPage() {
           break;
 
         case "session.timeout":
+          // Phase H (2026-05-08): same Bug 2 mirror — stop any in-flight
+          // AI audio so the timeout state transition is clean (no
+          // farewell phrase trailing past the timeout boundary).
+          try { tts.stop(); } catch { /* noop */ }
           s.setSessionState("completed");
           if (timerRef.current) clearInterval(timerRef.current);
           break;
@@ -768,6 +776,14 @@ export default function TrainingSessionPage() {
 
         case "client.hangup": {
           const canContinue = Boolean(data.data.call_can_continue);
+          // Phase H (2026-05-08): mirror call-route Bug 2 fix. Pre-fix
+          // the chat handler set the modal but DID NOT stop TTS — so
+          // the AI's farewell phrase kept playing for several seconds
+          // through the modal, breaking the «AI hung up» illusion.
+          // tts.stop() now clears active audio + the playAudioMessage
+          // queue (Phase F) + pendingPlaybackRef (Phase D). If
+          // backend has more chunks in flight they'll be dropped.
+          try { tts.stop(); } catch { /* noop */ }
           s.setHangupData({
             reason: (data.data.reason as string) || "",
             hangupPhrase: (data.data.hangup_phrase as string) || "",
@@ -2696,6 +2712,10 @@ export default function TrainingSessionPage() {
         open={s.showHangupModal}
         data={s.hangupData}
         onRedial={() => {
+          // Phase H (2026-05-08): make sure no leftover farewell audio
+          // bleeds into the redial setup — clear playAudioMessage queue
+          // + active audio so the next call starts in clean state.
+          try { tts.stop(); } catch { /* noop */ }
           s.setShowHangupModal(false);
           s.setHangupData(null);
           // 2026-04-18 audit fix: if we're on the last call of the story,
@@ -2728,6 +2748,12 @@ export default function TrainingSessionPage() {
           //      stuck if session.ended is delayed/dropped.
           // The success path remains: session.ended → router.replace at
           // line ~556 fires <100ms after backend finishes scoring.
+          //
+          // Phase H (2026-05-08): also stop TTS — if backend's farewell
+          // audio is still mid-play (or a chunk is queued), the user
+          // shouldn't hear the AI continue talking after they tapped
+          // "К результатам". Mirrors the call-route Phase D fix.
+          try { tts.stop(); } catch { /* noop */ }
           s.setShowHangupModal(false);
           s.setHangupData(null);
           if (s.storyMode && s.storyId) {
