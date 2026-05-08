@@ -127,25 +127,30 @@ export function MatchmakingOverlay({
       aria-modal="true"
       aria-label={status === "searching" ? "Идёт поиск соперника" : "Соперник найден"}
       style={{
-        background: "rgba(0,0,0,0.92)",
+        background: "rgba(5,5,10,0.88)",
         backgroundImage: `
-          radial-gradient(ellipse at center, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.95) 100%),
-          repeating-linear-gradient(0deg, transparent 0, transparent 7px, rgba(255,255,255,0.025) 7px, rgba(255,255,255,0.025) 8px),
-          repeating-linear-gradient(90deg, transparent 0, transparent 7px, rgba(255,255,255,0.025) 7px, rgba(255,255,255,0.025) 8px)
+          radial-gradient(ellipse 60% 50% at 50% 30%, color-mix(in srgb, ${ringColor} 14%, transparent) 0%, transparent 70%),
+          radial-gradient(ellipse at center, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.92) 100%),
+          repeating-linear-gradient(0deg, transparent 0, transparent 31px, rgba(255,255,255,0.018) 31px, rgba(255,255,255,0.018) 32px),
+          repeating-linear-gradient(90deg, transparent 0, transparent 31px, rgba(255,255,255,0.018) 31px, rgba(255,255,255,0.018) 32px)
         `,
-      }}
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+        WebkitFontSmoothing: "antialiased",
+        MozOsxFontSmoothing: "grayscale",
+      } as React.CSSProperties}
     >
       <motion.div
         initial={{ scale: 0.94, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: "spring", damping: 22, stiffness: 280 }}
-        className="relative max-w-md w-full p-7 sm:p-8 text-center"
+        className="relative max-w-md w-full p-7 sm:p-8 text-center rounded-3xl"
         style={{
-          background: "var(--bg-panel)",
-          outline: `2px solid ${ringColor}`,
-          outlineOffset: -2,
-          boxShadow: `4px 4px 0 0 ${ringColor}, 0 0 32px color-mix(in srgb, ${ringColor} 30%, transparent)`,
-          borderRadius: 0,
+          background: `linear-gradient(135deg, color-mix(in srgb, ${ringColor} 10%, rgba(15,15,20,0.92)) 0%, rgba(15,15,20,0.96) 100%)`,
+          border: `1px solid color-mix(in srgb, ${ringColor} 45%, transparent)`,
+          boxShadow: `0 24px 64px color-mix(in srgb, ${ringColor} 30%, transparent), 0 0 0 1px color-mix(in srgb, ${ringColor} 18%, transparent), inset 0 1px 0 rgba(255,255,255,0.08)`,
+          backdropFilter: "blur(24px) saturate(1.4)",
+          WebkitBackdropFilter: "blur(24px) saturate(1.4)",
         }}
       >
         <AnimatePresence mode="wait">
@@ -168,38 +173,37 @@ export function MatchmakingOverlay({
               </div>
 
               <h2
-                className="font-pixel"
+                className="font-display font-bold uppercase"
                 style={{
                   color: "var(--text-primary)",
                   fontSize: 22,
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
+                  letterSpacing: "0.16em",
+                  textShadow: `0 0 18px ${ringColor}55`,
                 }}
               >
-                Ищем Соперника
+                Ищем соперника
               </h2>
 
               <div className="mt-5 space-y-3" aria-live="polite" aria-atomic="true">
-                <div className="flex items-end justify-center gap-2 font-pixel">
+                <div className="flex items-end justify-center gap-2">
                   <span
-                    className="tabular-nums"
+                    className="font-display font-bold tabular-nums"
                     style={{
                       color: ringColor,
-                      fontSize: 56,
-                      letterSpacing: "0.04em",
-                      textShadow: `3px 3px 0 #000, 0 0 18px ${ringColor}`,
+                      fontSize: 64,
+                      letterSpacing: "-0.02em",
+                      textShadow: `0 0 32px ${ringColor}88, 0 0 12px ${ringColor}`,
                       lineHeight: 1,
                     }}
                   >
                     {displayWait}
                   </span>
                   <span
-                    className="pb-2"
+                    className="pb-2 font-mono uppercase"
                     style={{
                       color: "var(--text-muted)",
                       fontSize: 12,
                       letterSpacing: "0.18em",
-                      textTransform: "uppercase",
                     }}
                   >
                     сек
@@ -215,19 +219,25 @@ export function MatchmakingOverlay({
 
                 {position > 0 && (
                   <div
-                    className="inline-flex items-center font-pixel"
+                    className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 font-display font-bold uppercase"
                     style={{
-                      padding: "3px 10px",
-                      background: "var(--bg-secondary)",
-                      outline: "2px solid var(--border-color)",
-                      outlineOffset: -2,
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.1)",
                       color: "var(--text-secondary)",
                       fontSize: 11,
                       letterSpacing: "0.16em",
-                      textTransform: "uppercase",
-                      boxShadow: "2px 2px 0 0 var(--border-color)",
+                      backdropFilter: "blur(20px)",
                     }}
                   >
+                    <span
+                      className="rounded-full"
+                      style={{
+                        width: 6,
+                        height: 6,
+                        background: ringColor,
+                        boxShadow: `0 0 8px ${ringColor}`,
+                      }}
+                    />
                     В очереди: {position}
                   </div>
                 )}
@@ -236,12 +246,11 @@ export function MatchmakingOverlay({
                   <motion.p
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="font-pixel"
+                    className="font-display font-bold uppercase"
                     style={{
                       color: "var(--warning)",
                       fontSize: 11,
                       letterSpacing: "0.18em",
-                      textTransform: "uppercase",
                     }}
                   >
                     Готовим PvE-соперника…
@@ -249,8 +258,8 @@ export function MatchmakingOverlay({
                 )}
               </div>
 
-              {/* Tips */}
-              <div className="mt-6 min-h-[44px] flex items-start justify-center">
+              {/* Tips — glass card */}
+              <div className="mt-6 min-h-[60px] flex items-start justify-center">
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={tipIndex}
@@ -258,9 +267,14 @@ export function MatchmakingOverlay({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ duration: 0.3 }}
-                    className="flex items-start gap-2 max-w-xs"
+                    className="rounded-xl px-3 py-2 flex items-start gap-2 max-w-xs"
+                    style={{
+                      background: "rgba(255,255,255,0.03)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      backdropFilter: "blur(20px)",
+                    }}
                   >
-                    <PixelIcon name="bolt" size={12} color="var(--accent)" />
+                    <PixelIcon name="bolt" size={12} color={ringColor} />
                     <p
                       className="leading-relaxed text-left"
                       style={{ color: "var(--text-muted)", fontSize: 12 }}
@@ -273,23 +287,21 @@ export function MatchmakingOverlay({
 
               <motion.button
                 onClick={onCancel}
-                whileHover={{ x: -1, y: -1 }}
-                whileTap={{ x: 2, y: 2 }}
-                className="mt-6 inline-flex items-center gap-2 font-pixel mx-auto"
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.96 }}
+                className="mt-6 inline-flex items-center gap-2 mx-auto rounded-xl font-display font-bold uppercase"
                 style={{
-                  padding: "8px 16px",
-                  background: "transparent",
-                  color: "var(--text-muted)",
-                  border: "2px solid var(--border-color)",
+                  padding: "10px 20px",
+                  background: "rgba(255,255,255,0.03)",
+                  color: "var(--text-secondary)",
+                  border: "1px solid rgba(255,255,255,0.12)",
                   fontSize: 12,
                   letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  boxShadow: "2px 2px 0 0 var(--border-color)",
+                  backdropFilter: "blur(20px)",
                   cursor: "pointer",
-                  borderRadius: 0,
                 }}
               >
-                <X size={12} /> Отмена
+                <X size={14} /> Отмена
               </motion.button>
             </motion.div>
           ) : (
@@ -304,13 +316,12 @@ export function MatchmakingOverlay({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="font-pixel"
+                className="font-display font-bold uppercase"
                 style={{
                   color: "var(--success)",
                   fontSize: 18,
-                  letterSpacing: "0.22em",
-                  textTransform: "uppercase",
-                  textShadow: "2px 2px 0 #000, 0 0 14px color-mix(in srgb, var(--success) 40%, transparent)",
+                  letterSpacing: "0.18em",
+                  textShadow: "0 0 24px color-mix(in srgb, var(--success) 60%, transparent)",
                 }}
                 aria-live="assertive"
               >
@@ -330,12 +341,12 @@ export function MatchmakingOverlay({
                   initial={{ scale: 0, rotate: -15 }}
                   animate={{ scale: 1, rotate: 0 }}
                   transition={{ delay: 0.5, type: "spring", stiffness: 360, damping: 18 }}
-                  className="font-pixel"
+                  className="font-display font-bold"
                   style={{
                     color: "var(--accent)",
-                    fontSize: 48,
-                    letterSpacing: "-0.05em",
-                    textShadow: "4px 4px 0 #000, 0 0 18px var(--accent-glow), 0 0 36px var(--accent)",
+                    fontSize: 56,
+                    letterSpacing: "-0.04em",
+                    textShadow: "0 0 32px var(--accent-glow), 0 0 64px var(--accent), 0 8px 24px rgba(0,0,0,0.6)",
                     lineHeight: 1,
                   }}
                 >
@@ -352,15 +363,15 @@ export function MatchmakingOverlay({
 
               {/* FIGHT! ribbon */}
               <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.9, duration: 0.3 }}
-                className="font-pixel mt-6"
+                initial={{ opacity: 0, y: 16, scale: 0.8 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ delay: 0.9, type: "spring", stiffness: 280, damping: 18 }}
+                className="font-display font-bold mt-6"
                 style={{
                   color: "var(--danger)",
-                  fontSize: 28,
-                  letterSpacing: "0.4em",
-                  textShadow: "3px 3px 0 #000, 0 0 18px var(--danger)",
+                  fontSize: 32,
+                  letterSpacing: "0.32em",
+                  textShadow: "0 0 24px var(--danger), 0 0 48px color-mix(in srgb, var(--danger) 50%, transparent)",
                 }}
               >
                 БОЙ!

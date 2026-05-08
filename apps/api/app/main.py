@@ -567,7 +567,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "img-src 'self' data: blob:; "
                 "connect-src 'self' wss: ws:; "
                 "font-src 'self' https://fonts.gstatic.com; "
-                "media-src 'self' blob:;"
+                "media-src 'self' data: blob:;"
             )
         return response
 
