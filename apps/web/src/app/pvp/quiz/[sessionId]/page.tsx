@@ -1107,13 +1107,19 @@ function KnowledgeSessionPage() {
       className="flex h-screen flex-col relative"
       style={{
         background: "var(--bg-primary)",
-        // 2026-04-18 fix: add pixel-arcade background (was blank/empty).
+        // PR-20 polish: smoother ambient gradient + subtle grid (вместо
+        // жёсткой 23px-сетки). Sub-pixel смотрится тоньше на ретине.
         backgroundImage: `
-          radial-gradient(ellipse at top, var(--accent-muted) 0%, transparent 60%),
-          repeating-linear-gradient(0deg, transparent 0, transparent 23px, rgba(107,77,199,0.035) 23px, rgba(107,77,199,0.035) 24px),
-          repeating-linear-gradient(90deg, transparent 0, transparent 23px, rgba(107,77,199,0.035) 23px, rgba(107,77,199,0.035) 24px)
+          radial-gradient(ellipse 80% 60% at 50% 0%, var(--accent-muted) 0%, transparent 55%),
+          radial-gradient(ellipse 60% 50% at 80% 100%, rgba(217,70,239,0.06) 0%, transparent 60%),
+          repeating-linear-gradient(0deg, transparent 0, transparent 31px, rgba(107,77,199,0.025) 31px, rgba(107,77,199,0.025) 32px),
+          repeating-linear-gradient(90deg, transparent 0, transparent 31px, rgba(107,77,199,0.025) 31px, rgba(107,77,199,0.025) 32px)
         `,
-      }}
+        // Анти-алиасинг шрифтов на всю страницу — глаз ловит разницу.
+        WebkitFontSmoothing: "antialiased",
+        MozOsxFontSmoothing: "grayscale",
+        textRendering: "optimizeLegibility",
+      } as React.CSSProperties}
     >
       {/* quiz_v2: case briefing overlay — pops in when backend emits case.intro */}
       {caseIntro && (
@@ -1263,19 +1269,39 @@ function KnowledgeSessionPage() {
                   ещё не было — disabled с tooltip'ом. */}
               <QuestionReportButton lastAnswerId={lastAnswerId} />
 
-              {/* PR-12: пиксельный лев на странице квиза, под панелью.
-                  Реагирует state-ом на консистентность стрика. */}
+              {/* PR-20: маскот в glass-рамке вместо пиксельной — мягче
+                  вписывается в Arcade-Stage. Размер чуть больше (64→72)
+                  чтобы не терялся между ответами и кнопкой подсказки. */}
               <div className="mt-4 flex justify-center">
-                <PixelMascot
-                  state={
-                    quizMascotState
+                <motion.div
+                  animate={
+                    quizMascotState === "cheer" ? { scale: [1, 1.08, 1] }
+                    : quizMascotState === "sad" ? { rotate: [-2, 2, -1, 0] }
+                    : {}
                   }
-                  size={64}
-                  bordered
-                  frameColor="var(--accent)"
-                  background="var(--bg-panel)"
-                  ariaLabel="Квиз-маскот"
-                />
+                  transition={{ duration: 0.6 }}
+                  className="rounded-2xl flex items-center justify-center"
+                  style={{
+                    padding: 8,
+                    background: "linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)",
+                    border: "1px solid var(--glass-border, rgba(255,255,255,0.08))",
+                    boxShadow:
+                      quizMascotState === "cheer"
+                        ? "0 0 24px color-mix(in srgb, var(--success) 40%, transparent), inset 0 1px 0 rgba(255,255,255,0.06)"
+                        : quizMascotState === "sad"
+                          ? "0 0 24px color-mix(in srgb, var(--danger) 40%, transparent), inset 0 1px 0 rgba(255,255,255,0.06)"
+                          : "0 4px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.06)",
+                    backdropFilter: "blur(20px)",
+                    transition: "box-shadow 320ms",
+                  }}
+                >
+                  <PixelMascot
+                    state={quizMascotState}
+                    size={72}
+                    background="transparent"
+                    ariaLabel="Квиз-маскот"
+                  />
+                </motion.div>
               </div>
 
             </div>
@@ -1560,15 +1586,13 @@ function MessageBubble({ message }: { message: QuizMessage }) {
           className="flex justify-center"
         >
           <div
-            className="flex items-start gap-3 px-4 py-3 max-w-[90%]"
+            className="flex items-start gap-3 px-4 py-3 max-w-[90%] rounded-2xl"
             style={{
-              background: "color-mix(in srgb, var(--accent) 6%, var(--input-bg))",
-              borderLeft: "3px solid var(--accent)",
-              borderTop: "1px solid var(--accent-muted)",
-              borderRight: "1px solid var(--accent-muted)",
-              borderBottom: "1px solid var(--accent-muted)",
-              borderRadius: 0,
-              boxShadow: "3px 3px 0 0 rgba(0,0,0,0.15)",
+              background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, rgba(255,255,255,0.04)) 0%, rgba(255,255,255,0.02) 100%)",
+              border: "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
+              boxShadow: "0 6px 20px color-mix(in srgb, var(--accent) 14%, transparent), inset 0 1px 0 rgba(255,255,255,0.05)",
+              backdropFilter: "blur(20px) saturate(1.2)",
+              WebkitBackdropFilter: "blur(20px) saturate(1.2)",
             }}
           >
             <div style={{ fontSize: 24, lineHeight: 1, flexShrink: 0 }}>{avatarEmoji}</div>
@@ -1586,16 +1610,17 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         className="flex justify-center"
       >
         <div
-          className="px-4 py-1.5 font-pixel text-sm uppercase tracking-widest"
+          className="px-4 py-2 font-display font-bold uppercase tracking-widest rounded-full"
           style={{
-            background: "var(--input-bg)",
+            fontSize: 12,
+            background: "var(--glass-bg, rgba(255,255,255,0.04))",
             color: "var(--text-muted)",
-            border: "2px solid var(--border-color)",
-            borderRadius: 0,
-            boxShadow: "2px 2px 0 0 rgba(0,0,0,0.15)",
+            border: "1px solid var(--glass-border, rgba(255,255,255,0.08))",
+            backdropFilter: "blur(20px)",
+            letterSpacing: "0.16em",
           }}
         >
-          ▌{message.content}
+          {message.content}
         </div>
       </motion.div>
     );
@@ -1610,30 +1635,31 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         className="flex items-start gap-3"
       >
         <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
           style={{
-            background: "rgba(245,158,11,0.1)",
-            border: "2px solid var(--warning)",
-            borderRadius: 0,
-            boxShadow: "2px 2px 0 0 var(--warning)",
+            background: "linear-gradient(135deg, rgba(245,158,11,0.16) 0%, rgba(245,158,11,0.04) 100%)",
+            border: "1px solid rgba(245,158,11,0.4)",
+            boxShadow: "0 4px 12px rgba(245,158,11,0.18), inset 0 1px 0 rgba(255,255,255,0.06)",
+            backdropFilter: "blur(20px)",
           }}
         >
-          <Lightbulb size={14} style={{ color: "var(--warning)" }} />
+          <Lightbulb size={16} style={{ color: "var(--warning)" }} />
         </div>
         <div
-          className="max-w-[90%] sm:max-w-[80%] px-4 py-3 relative"
+          className="max-w-[90%] sm:max-w-[80%] px-4 py-3 rounded-2xl"
           style={{
-            background: "rgba(245,158,11,0.06)",
-            border: "2px solid var(--warning)",
-            borderRadius: 0,
-            boxShadow: "3px 3px 0 0 rgba(245,158,11,0.35)",
+            background: "linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(245,158,11,0.02) 100%)",
+            border: "1px solid rgba(245,158,11,0.32)",
+            boxShadow: "0 6px 20px rgba(245,158,11,0.16), inset 0 1px 0 rgba(255,255,255,0.05)",
+            backdropFilter: "blur(20px) saturate(1.2)",
+            WebkitBackdropFilter: "blur(20px) saturate(1.2)",
           }}
         >
           <div
-            className="font-pixel text-[13px] uppercase tracking-widest mb-1"
-            style={{ color: "var(--warning)" }}
+            className="font-display font-bold text-[12px] uppercase tracking-widest mb-1.5"
+            style={{ color: "var(--warning)", letterSpacing: "0.16em" }}
           >
-            💡 ПОДСКАЗКА
+            💡 Подсказка
           </div>
           <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
             {message.content}
@@ -1709,28 +1735,29 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         className="flex items-start gap-3"
       >
         <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
           style={{
-            background: bgColor,
-            border: `2px solid ${color}`,
-            borderRadius: 0,
-            boxShadow: `2px 2px 0 0 ${color}`,
+            background: `linear-gradient(135deg, color-mix(in srgb, ${color} 22%, transparent) 0%, color-mix(in srgb, ${color} 6%, transparent) 100%)`,
+            border: `1px solid color-mix(in srgb, ${color} 45%, transparent)`,
+            boxShadow: `0 4px 14px color-mix(in srgb, ${color} 28%, transparent), inset 0 1px 0 rgba(255,255,255,0.08)`,
+            backdropFilter: "blur(20px)",
           }}
         >
-          <VerdictIcon size={14} style={{ color }} />
+          <VerdictIcon size={16} style={{ color, filter: `drop-shadow(0 0 4px ${color})` }} />
         </div>
         <div
-          className="max-w-[90%] sm:max-w-[80%] px-4 py-3"
+          className="max-w-[90%] sm:max-w-[80%] px-4 py-3 rounded-2xl"
           style={{
-            background: bgColor,
-            border: `2px solid ${color}`,
-            borderRadius: 0,
-            boxShadow: `3px 3px 0 0 ${color}`,
+            background: `linear-gradient(135deg, color-mix(in srgb, ${color} 10%, rgba(255,255,255,0.04)) 0%, rgba(255,255,255,0.02) 100%)`,
+            border: `1px solid color-mix(in srgb, ${color} 36%, transparent)`,
+            boxShadow: `0 8px 28px color-mix(in srgb, ${color} 22%, transparent), 0 0 0 1px color-mix(in srgb, ${color} 14%, transparent), inset 0 1px 0 rgba(255,255,255,0.05)`,
+            backdropFilter: "blur(20px) saturate(1.2)",
+            WebkitBackdropFilter: "blur(20px) saturate(1.2)",
           }}
         >
           <div
-            className="font-pixel text-[13px] uppercase tracking-widest mb-2"
-            style={{ color, textShadow: `0 0 6px ${color}` }}
+            className="font-display font-bold text-[13px] uppercase tracking-widest mb-2"
+            style={{ color, letterSpacing: "0.14em", textShadow: `0 0 12px ${color}55` }}
           >
             {verdictLabel}
             {typeof message.llmScore === "number" && (
@@ -1767,18 +1794,18 @@ function MessageBubble({ message }: { message: QuizMessage }) {
               sees what the right answer was, even when "почти". */}
           {level !== "correct" && rightAnswer && (
             <div
-              className="px-3 py-2 mb-2"
+              className="px-3 py-2.5 mb-2 rounded-xl"
               style={{
-                background: "rgba(34,197,94,0.08)",
-                border: "2px solid var(--success)",
-                borderRadius: 0,
+                background: "linear-gradient(135deg, rgba(34,197,94,0.12) 0%, rgba(34,197,94,0.04) 100%)",
+                border: "1px solid rgba(34,197,94,0.4)",
+                boxShadow: "0 4px 12px rgba(34,197,94,0.15), inset 0 1px 0 rgba(255,255,255,0.05)",
               }}
             >
               <div
-                className="font-pixel text-[12px] uppercase tracking-widest mb-1"
-                style={{ color: "var(--success)" }}
+                className="font-display font-bold text-[11px] uppercase tracking-widest mb-1"
+                style={{ color: "var(--success)", letterSpacing: "0.16em" }}
               >
-                Правильный ответ
+                ✓ Правильный ответ
               </div>
               <div className="text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>
                 {rightAnswer}
@@ -1802,12 +1829,13 @@ function MessageBubble({ message }: { message: QuizMessage }) {
           )}
           {message.articleRef && (
             <div
-              className="mt-2 inline-flex items-center gap-1.5 font-pixel text-[13px] uppercase tracking-wider px-2 py-1"
+              className="mt-2 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider px-2.5 py-1 rounded-lg"
               style={{
                 color: "var(--text-muted)",
-                background: "var(--input-bg)",
-                border: "1px solid var(--border-color)",
-                borderRadius: 0,
+                background: "var(--glass-bg, rgba(255,255,255,0.04))",
+                border: "1px solid var(--glass-border, rgba(255,255,255,0.08))",
+                letterSpacing: "0.06em",
+                fontWeight: 600,
               }}
             >
               <BookOpen size={11} />
@@ -1818,18 +1846,21 @@ function MessageBubble({ message }: { message: QuizMessage }) {
               when answerId missing (legacy events without backend wiring). */}
           {message.answerId && <ReportAnswerButton answerId={message.answerId} />}
           {message.speedBonus && message.speedBonus > 0 && (
-            <div
-              className="mt-2 inline-flex items-center gap-1 px-2 py-1 font-pixel text-[13px] uppercase tracking-wider"
+            <motion.div
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 320, damping: 18 }}
+              className="mt-2 ml-2 inline-flex items-center gap-1 px-2.5 py-1 font-display font-bold text-[11px] uppercase tracking-wider rounded-lg"
               style={{
-                background: "var(--warning)",
-                color: "#000",
-                border: "2px solid var(--warning)",
-                borderRadius: 0,
-                boxShadow: "2px 2px 0 0 #000",
+                background: "linear-gradient(135deg, rgba(245,158,11,0.95) 0%, rgba(245,158,11,0.75) 100%)",
+                color: "#1a0f00",
+                border: "1px solid rgba(245,158,11,0.6)",
+                boxShadow: "0 4px 12px rgba(245,158,11,0.35), inset 0 1px 0 rgba(255,255,255,0.32)",
+                letterSpacing: "0.1em",
               }}
             >
-              <Zap size={11} /> +{message.speedBonus} SPEED
-            </div>
+              <Zap size={12} /> +{message.speedBonus} SPEED
+            </motion.div>
           )}
         </div>
       </motion.div>
@@ -1845,27 +1876,28 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         className="flex items-start gap-3"
       >
         <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center text-lg"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
           style={{
-            background: "var(--accent-muted)",
-            border: "2px solid var(--accent)",
-            borderRadius: 0,
-            boxShadow: "2px 2px 0 0 var(--accent)",
+            background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, transparent) 0%, color-mix(in srgb, var(--accent) 8%, transparent) 100%)",
+            border: "1px solid color-mix(in srgb, var(--accent) 40%, transparent)",
+            boxShadow: "0 4px 12px color-mix(in srgb, var(--accent) 24%, transparent), inset 0 1px 0 rgba(255,255,255,0.06)",
+            backdropFilter: "blur(20px)",
           }}
         >
           {avatarEmoji ? <AppIcon emoji={avatarEmoji} size={18} /> : <AppIcon emoji={"\uD83D\uDCA1"} size={18} />}
         </div>
         <div
-          className="max-w-[90%] sm:max-w-[80%] px-4 py-3"
+          className="max-w-[90%] sm:max-w-[80%] px-4 py-3 rounded-2xl"
           style={{
-            background: "var(--accent-muted)",
-            border: "2px solid var(--accent)",
-            borderRadius: 0,
-            boxShadow: "3px 3px 0 0 var(--accent-muted), 3px 3px 0 2px rgba(0,0,0,0.15)",
+            background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, rgba(255,255,255,0.04)) 0%, rgba(255,255,255,0.02) 100%)",
+            border: "1px solid color-mix(in srgb, var(--accent) 32%, transparent)",
+            boxShadow: "0 6px 20px color-mix(in srgb, var(--accent) 16%, transparent), inset 0 1px 0 rgba(255,255,255,0.05)",
+            backdropFilter: "blur(20px) saturate(1.2)",
+            WebkitBackdropFilter: "blur(20px) saturate(1.2)",
           }}
         >
-          <div className="font-pixel text-[13px] uppercase tracking-widest mb-1" style={{ color: "var(--accent)" }}>
-            ▸ FOLLOW-UP (опц.)
+          <div className="font-display font-bold text-[12px] uppercase tracking-widest mb-1.5" style={{ color: "var(--accent)", letterSpacing: "0.16em" }}>
+            Уточнение
           </div>
           <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
             {message.content}
@@ -1884,33 +1916,34 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         className="flex items-start gap-3"
       >
         <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center text-lg"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
           style={{
-            background: "var(--accent-muted)",
-            border: "2px solid var(--accent)",
-            borderRadius: 0,
-            boxShadow: "2px 2px 0 0 var(--accent)",
+            background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, transparent) 0%, color-mix(in srgb, var(--accent) 8%, transparent) 100%)",
+            border: "1px solid color-mix(in srgb, var(--accent) 40%, transparent)",
+            boxShadow: "0 4px 12px color-mix(in srgb, var(--accent) 24%, transparent), inset 0 1px 0 rgba(255,255,255,0.06)",
+            backdropFilter: "blur(20px)",
           }}
         >
-          {avatarEmoji ? <AppIcon emoji={avatarEmoji} size={18} /> : <BookOpen size={14} style={{ color: "var(--accent)" }} />}
+          {avatarEmoji ? <AppIcon emoji={avatarEmoji} size={18} /> : <BookOpen size={16} style={{ color: "var(--accent)" }} />}
         </div>
         <div
-          className="max-w-[90%] sm:max-w-[80%] px-4 py-3"
+          className="max-w-[90%] sm:max-w-[80%] px-4 py-3 rounded-2xl"
           style={{
-            background: "var(--bg-panel)",
-            border: "2px solid var(--accent)",
-            borderRadius: 0,
-            boxShadow: "3px 3px 0 0 var(--accent-muted), 3px 3px 0 2px rgba(0,0,0,0.15)",
+            background: "linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)",
+            border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
+            boxShadow: "0 6px 22px color-mix(in srgb, var(--accent) 14%, transparent), inset 0 1px 0 rgba(255,255,255,0.05)",
+            backdropFilter: "blur(20px) saturate(1.2)",
+            WebkitBackdropFilter: "blur(20px) saturate(1.2)",
           }}
         >
           {message.category && (
             <div
-              className="inline-block font-pixel text-[13px] uppercase tracking-widest mb-2 px-2 py-0.5"
+              className="inline-flex items-center gap-1 font-display font-bold text-[11px] uppercase tracking-widest mb-2 px-2.5 py-1 rounded-lg"
               style={{
                 color: "#fff",
-                background: "var(--accent)",
-                border: "1px solid var(--accent)",
-                borderRadius: 0,
+                background: "linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 80%, black) 100%)",
+                boxShadow: "0 2px 8px color-mix(in srgb, var(--accent) 32%, transparent), inset 0 1px 0 rgba(255,255,255,0.18)",
+                letterSpacing: "0.14em",
               }}
             >
               ▸ {categoryLabel(message.category)}
@@ -1932,17 +1965,16 @@ function MessageBubble({ message }: { message: QuizMessage }) {
       className="flex justify-end"
     >
       <div
-        className="max-w-[90%] sm:max-w-[80%] px-4 py-3"
+        className="max-w-[90%] sm:max-w-[80%] px-4 py-3 rounded-2xl"
         style={{
-          background: "var(--accent)",
+          background: "linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 78%, black) 100%)",
           color: "#fff",
-          border: "2px solid var(--accent)",
-          borderRadius: 0,
-          boxShadow: "-3px 3px 0 0 #000, 0 0 10px var(--accent-glow)",
+          border: "1px solid color-mix(in srgb, var(--accent) 60%, white)",
+          boxShadow: "0 8px 24px color-mix(in srgb, var(--accent) 36%, transparent), inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -2px 6px rgba(0,0,0,0.2)",
         }}
       >
-        <div className="font-pixel text-[13px] uppercase tracking-widest mb-1 opacity-70">
-          ВЫ ▸
+        <div className="font-display font-bold text-[11px] uppercase tracking-widest mb-1 opacity-80" style={{ letterSpacing: "0.18em" }}>
+          ВЫ
         </div>
         <p className="text-sm leading-relaxed" style={{ color: "#fff" }}>
           {message.content}

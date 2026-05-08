@@ -61,14 +61,14 @@ export function QuizAnswerCard({
       style={{
         padding: "14px 16px",
         background: picked
-          ? `color-mix(in srgb, ${badgeColor} 14%, var(--glass-bg, rgba(255,255,255,0.04)))`
-          : "var(--glass-bg, rgba(255,255,255,0.04))",
+          ? `linear-gradient(135deg, color-mix(in srgb, ${badgeColor} 18%, var(--glass-bg, rgba(255,255,255,0.04))) 0%, color-mix(in srgb, ${badgeColor} 8%, var(--glass-bg, rgba(255,255,255,0.04))) 100%)`
+          : "linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)",
         border: `1px solid ${picked ? badgeColor : `color-mix(in srgb, ${badgeColor} 28%, transparent)`}`,
         boxShadow: picked
-          ? `0 0 0 3px color-mix(in srgb, ${badgeColor} 18%, transparent), 0 8px 24px color-mix(in srgb, ${badgeColor} 22%, transparent)`
-          : `0 2px 8px rgba(0,0,0,0.18)`,
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
+          ? `0 0 0 3px color-mix(in srgb, ${badgeColor} 18%, transparent), 0 12px 32px color-mix(in srgb, ${badgeColor} 26%, transparent), inset 0 1px 0 rgba(255,255,255,0.06)`
+          : `0 4px 14px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.05)`,
+        backdropFilter: "blur(20px) saturate(1.2)",
+        WebkitBackdropFilter: "blur(20px) saturate(1.2)",
         cursor: interactive ? "pointer" : "default",
         transition: "background 200ms, border-color 200ms, box-shadow 240ms, transform 160ms",
       }}
@@ -87,19 +87,22 @@ export function QuizAnswerCard({
         }}
       />
 
-      {/* letter badge — circular */}
+      {/* letter badge — circular с inset highlight для объёма */}
       <span
-        className="font-display font-bold shrink-0 flex items-center justify-center select-none"
+        className="font-display font-bold shrink-0 flex items-center justify-center select-none relative"
         style={{
-          width: 36,
-          height: 36,
+          width: 38,
+          height: 38,
           borderRadius: "50%",
-          background: badgeColor,
+          background: `radial-gradient(circle at 30% 25%, color-mix(in srgb, ${badgeColor} 100%, white 22%) 0%, ${badgeColor} 70%)`,
           color: "#0a0810",
           fontSize: 18,
           letterSpacing: "0.02em",
-          boxShadow: picked ? `0 0 12px ${badgeColor}` : "0 2px 8px rgba(0,0,0,0.4)",
-          transition: "box-shadow 220ms",
+          boxShadow: picked
+            ? `0 0 16px ${badgeColor}, inset 0 1px 0 rgba(255,255,255,0.4), inset 0 -2px 4px rgba(0,0,0,0.18)`
+            : `0 2px 6px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.32), inset 0 -1px 3px rgba(0,0,0,0.18)`,
+          transition: "box-shadow 220ms, transform 220ms",
+          textShadow: "0 1px 0 rgba(255,255,255,0.18)",
         }}
       >
         {letter}
