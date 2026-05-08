@@ -69,7 +69,11 @@ function buildCsp(nonce: string, requestHost?: string | null): string {
     `img-src 'self' data: blob: ${apiOrigin} https://cdn.jsdelivr.net https://*.ytimg.com https://*.vimeocdn.com`,
     "font-src 'self' data: https://fonts.gstatic.com",
     `connect-src 'self' ${apiUrl} ${wsUrl} https://met4citizen.github.io https://accounts.google.com`,
-    `media-src 'self' blob: ${apiOrigin} https://*.googlevideo.com`,
+    // PR-23 (2026-05-08): добавлен `data:` — личность-аватары и TTS
+    // от backend приходят base64-кодированные `data:audio/mpeg;base64,...`
+    // (greeting, follow-up audio). Без data: CSP блокировал воспроизведение
+    // и юзер слышал тишину на старте сессии.
+    `media-src 'self' data: blob: ${apiOrigin} https://*.googlevideo.com`,
     // Embedded video players — YouTube + Vimeo iframes allowed.
     // Expand here if you add other providers (Rutube, VK Video, etc.).
     "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://accounts.google.com https://oauth.yandex.ru",
