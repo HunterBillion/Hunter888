@@ -439,18 +439,20 @@ class VoiceProfileManager:
         # 3. Pick new voice
         assignment = VoiceProfileManager._pick_from_profiles(gender, archetype, age_range)
         if not assignment:
-            # Fallback to legacy env-based
-            voice_id = VoiceProfileManager._pick_legacy(gender)
+            # Fallback to legacy env-based.
+            # Phase C (2026-05-08): _pick_legacy returns (voice_id, source).
+            voice_id, source = VoiceProfileManager._pick_legacy(gender)
             base = _ARCHETYPE_BASE_PARAMS.get(archetype or "skeptic", _ARCHETYPE_BASE_PARAMS["skeptic"])
             assignment = {
                 "voice_id": voice_id,
-                "voice_code": f"env_{voice_id[:8]}",
+                "voice_code": f"{source}_{voice_id[:8]}",
                 "base_stability": base["stability"],
                 "base_similarity_boost": base["similarity_boost"],
                 "base_style": base["style"],
                 "base_speed": base["speed"],
                 "gender": gender or "unknown",
                 "archetype": archetype,
+                "source": source,
             }
 
         # Apply extraversion modulation to base_style
@@ -591,18 +593,42 @@ class VoiceProfileManager:
         }
 
     @staticmethod
-    def _pick_legacy(gender: str | None) -> str:
-        """Fallback: pick from env-based voice pools."""
-        if gender == "female" and settings.elevenlabs_female_voices:
-            voices = settings.elevenlabs_female_voices
-        elif gender == "male" and settings.elevenlabs_male_voices:
-            voices = settings.elevenlabs_male_voices
-        else:
-            voices = settings.elevenlabs_voice_list
+    def _pick_legacy(gender: str | None) -> tuple[str, str]:
+        """Fallback: pick from env-based voice pools.
 
-        if not voices:
+        Returns (voice_id, source) where source is one of:
+          'env_male'    — picked from ELEVENLABS_VOICE_IDS_MALE pool
+          'env_female'  — picked from ELEVENLABS_VOICE_IDS_FEMALE pool
+          'env_mixed'   — fell through to legacy mixed pool (Bug 3 marker)
+
+        Phase C (2026-05-08): the (voice_id, source) tuple lets callers
+        distinguish a clean gender-pool pick from a fall-through into
+        the mixed pool. The mixed-pool branch is the Bug 3 culprit:
+        when a male profile lands here, the random pick can return a
+        female-sounding voice, breaking immersion. Surfacing the source
+        on the assignment record + WS payload lets us audit prod and
+        prove gender consistency.
+        """
+        if gender == "female" and settings.elevenlabs_female_voices:
+            return random.choice(settings.elevenlabs_female_voices), "env_female"
+        if gender == "male" and settings.elevenlabs_male_voices:
+            return random.choice(settings.elevenlabs_male_voices), "env_male"
+
+        # Fall-through path. Log a WARNING so prod logs surface the
+        # cases where gender was either missing or the requested-gender
+        # pool was empty. Previously this was silent.
+        if not settings.elevenlabs_voice_list:
             raise TTSError("No ElevenLabs voices configured")
-        return random.choice(voices)
+        logger.warning(
+            "TTS fell back to mixed voice pool — gender=%r, male_pool=%d, female_pool=%d, mixed_pool=%d. "
+            "Voice may not match character gender. Populate ELEVENLABS_VOICE_IDS_%s to fix.",
+            gender,
+            len(settings.elevenlabs_male_voices),
+            len(settings.elevenlabs_female_voices),
+            len(settings.elevenlabs_voice_list),
+            (gender or "MALE/FEMALE").upper(),
+        )
+        return random.choice(settings.elevenlabs_voice_list), "env_mixed"
 
 
 # --- Legacy API compatibility ---
@@ -618,17 +644,24 @@ def pick_voice_for_session(
 
     assignment = VoiceProfileManager._pick_from_profiles(gender, archetype)
     if not assignment:
-        voice_id = VoiceProfileManager._pick_legacy(gender)
+        # Phase C (2026-05-08): _pick_legacy now returns (voice_id, source)
+        # so we can record WHICH pool the voice came from. The source
+        # tag flows into the assignment dict and is surfaced on the
+        # WS session.started payload — the FE can assert on it for
+        # audit (e.g. flag any session whose source is "env_mixed"
+        # since that's the gender-leak path).
+        voice_id, source = VoiceProfileManager._pick_legacy(gender)
         base = _ARCHETYPE_BASE_PARAMS.get(archetype or "skeptic", _ARCHETYPE_BASE_PARAMS["skeptic"])
         assignment = {
             "voice_id": voice_id,
-            "voice_code": f"env_{voice_id[:8]}",
+            "voice_code": f"{source}_{voice_id[:8]}",
             "base_stability": base["stability"],
             "base_similarity_boost": base["similarity_boost"],
             "base_style": base["style"],
             "base_speed": base["speed"],
             "gender": gender or "unknown",
             "archetype": archetype,
+            "source": source,  # env_male | env_female | env_mixed
         }
 
     _session_voices[session_id] = assignment

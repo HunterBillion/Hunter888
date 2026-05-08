@@ -2397,33 +2397,32 @@ export default function TrainingSessionPage() {
                   </motion.div>
                 </div>
                 {scoreHint ? (
-                  // Render ALL 8 layers from the score.hint payload.
-                  // Order matches the backend's logical flow:
-                  // script → objection → communication → anti-pattern
-                  // → result → chain → trap → human factor.
-                  // Each layer caps at 12.5 (=100/8) so width math
-                  // is value/12.5 * 100 — pre-fix used /18.75 which
-                  // assumed a 6-layer split that's no longer accurate.
+                  // Phase C (2026-05-08): consolidated to the canonical
+                  // 5 axes (script/objections/communication/anti-patterns/
+                  // result) — same set the post-call /results page
+                  // renders, with the SAME max caps (30/25/20/15/10).
+                  // Previously this rendered 8 layers with `value/12.5*100`
+                  // assuming equal weights, which under-rendered Скрипт
+                  // (cap 30 → bar would max at ~42% even when the user
+                  // scored full marks) and over-rendered Результат (cap
+                  // 10 → bar showed 80% for a perfect 10).
                   <div className="mt-3 space-y-2">
                     {([
-                      ["Скрипт", scoreHint.script_adherence, "var(--accent)"],
-                      ["Возражения", scoreHint.objection_handling, "var(--warning)"],
-                      ["Коммуникация", scoreHint.communication, "var(--info)"],
-                      ["Анти-паттерны", scoreHint.anti_patterns, "var(--danger)"],
-                      ["Результат", scoreHint.result, "#00FF94"],
-                      ["Сценарий", scoreHint.chain_traversal, "var(--magenta)"],
-                      ["Ловушки", scoreHint.trap_handling, "#F59E0B"],
-                      ["Человеч. фактор", scoreHint.human_factor, "#A78BFA"],
-                    ] as const).map(([label, value, color]) => (
+                      ["Скрипт", scoreHint.script_adherence, 30, "var(--accent)"],
+                      ["Возражения", scoreHint.objection_handling, 25, "var(--warning)"],
+                      ["Коммуникация", scoreHint.communication, 20, "var(--info)"],
+                      ["Анти-паттерны", Math.max(0, 15 + (scoreHint.anti_patterns ?? 0)), 15, "var(--danger)"],
+                      ["Результат", scoreHint.result, 10, "#00FF94"],
+                    ] as const).map(([label, value, max, color]) => (
                       <div key={label}>
                         <div className="mb-0.5 flex items-center justify-between text-[11px]" style={{ color: "var(--text-muted)" }}>
                           <span>{label}</span>
-                          <span className="tabular-nums font-mono" style={{ color }}>{Math.round(value)}</span>
+                          <span className="tabular-nums font-mono" style={{ color }}>{Math.round(value)}<span className="opacity-50">/{max}</span></span>
                         </div>
                         <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
                           <motion.div
                             className="h-full rounded-full"
-                            animate={{ width: `${Math.min(100, (value / 12.5) * 100)}%` }}
+                            animate={{ width: `${Math.min(100, (value / max) * 100)}%` }}
                             transition={{ duration: 0.5, ease: "easeOut" }}
                             style={{ background: color }}
                           />

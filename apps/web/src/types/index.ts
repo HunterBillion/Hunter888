@@ -389,6 +389,12 @@ export interface TrainingSession {
   // TZ-1: canonical client domain link. Null while legacy-only sessions
   // have not yet been backfilled by the foundation migration.
   lead_client_id?: string | null;
+  // Phase C (2026-05-08): canonical terminal-status fields. Used by the
+  // /results page to branch — error outcomes get CallDroppedCard
+  // instead of the score-verdict overlay.
+  terminal_outcome?: string | null;
+  terminal_reason?: string | null;
+  completed_via?: string | null;
 }
 
 export interface StoryCallSummary {

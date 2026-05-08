@@ -62,6 +62,7 @@ import MistakesBreakdown from "@/components/results/MistakesBreakdown";
 import ReplayModal from "@/components/results/ReplayModal";
 import { AchievementToast } from "@/components/gamification/AchievementToast";
 import { PostSessionVerdict } from "@/components/results/PostSessionVerdict";
+import CallDroppedCard, { type CallDroppedReason } from "@/components/results/CallDroppedCard";
 import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
@@ -285,10 +286,27 @@ export default function ResultsPage() {
   const totalScore = session.score_total ?? 0;
   const hasScores = session.score_total !== null;
   const totalScoreColor = getScoreColor(totalScore);
+
+  // Phase C (2026-05-08): branch on terminal_outcome. Sessions that
+  // ended due to system error / timeout / operator abort get the
+  // CallDroppedCard treatment instead of the verdict overlay — the
+  // user is NOT at fault and shouldn't be framed as such.
+  const errorOutcomes = new Set(["technical_failed", "timeout", "operator_aborted"]);
+  const isCallDropped = !!(session.terminal_outcome && errorOutcomes.has(session.terminal_outcome));
   const completeness = (result.score_breakdown as unknown as Record<string, number>)?._completeness ?? 1;
   const userMsgCount = (result.score_breakdown as unknown as Record<string, number>)?._user_message_count ?? 0;
 
-  // Layer-based score bars (original 5 categories)
+  // Layer-based score bars — the canonical 5 categories.
+  // Phase C (2026-05-08): consolidated to a single 5-axis truth source.
+  // Previously the page rendered THREE different category sets:
+  //   - 5 axes here (script/objections/comms/anti/result)
+  //   - 8 axes in the live "Балл" sidebar on /training/[id]
+  //   - 10 axes in the post-call pentagram from `_skill_radar`
+  // Pilots saw three different visualisations of the same call,
+  // with category drift (e.g. live preview's `(value/12.5)*100`
+  // assumed equal weights but `script_adherence` is /30 not /12.5).
+  // Product owner approved consolidation to the 5-axis canonical set;
+  // the 10-axis `_skill_radar` is no longer rendered as a pentagram.
   const scoreItems = [
     { label: "Скрипт", value: session.score_script_adherence ?? 0, max: 30 },
     { label: "Возражения", value: session.score_objection_handling ?? 0, max: 25 },
@@ -297,46 +315,27 @@ export default function ResultsPage() {
     { label: "Результат", value: session.score_result ?? 0, max: 10 },
   ];
 
-  // 6-axis Skill Radar from backend (computed from all 10 scoring layers)
-  const skillRadar = (result.score_breakdown as Record<string, unknown> | null)?._skill_radar as
-    Record<string, number> | undefined;
+  // Phase C: previous-session overlay extracted from `score_breakdown`
+  // for the same 5 axes. Falls back to absent overlay when the prior
+  // session has no comparable data (first session, error session, etc).
+  const prevScoreItems = previousSkillRadar
+    ? [
+        // _skill_radar from history may still carry older wider sets;
+        // we map the 5 canonical axes from whatever's present, falling
+        // back to 0 silently.
+        Math.min(100, Math.max(0, (previousSkillRadar.script_adherence ?? 0))),
+        Math.min(100, Math.max(0, (previousSkillRadar.objection_handling ?? 0))),
+        Math.min(100, Math.max(0, (previousSkillRadar.communication ?? 0))),
+        Math.min(100, Math.max(0, (previousSkillRadar.anti_patterns ?? 0))),
+        Math.min(100, Math.max(0, (previousSkillRadar.result ?? 0))),
+      ]
+    : undefined;
 
-  const pentagramData = skillRadar
-    ? {
-        labels: ["Эмпатия", "Знания", "Возражения", "Стрессоуст.", "Закрытие", "Квалификация", "Тайм-менедж.", "Адаптация", "Юрид. знания", "Раппорт"],
-        values: [
-          Math.min(100, Math.max(0, skillRadar.empathy ?? 0)),
-          Math.min(100, Math.max(0, skillRadar.knowledge ?? 0)),
-          Math.min(100, Math.max(0, skillRadar.objection_handling ?? 0)),
-          Math.min(100, Math.max(0, skillRadar.stress_resistance ?? 0)),
-          Math.min(100, Math.max(0, skillRadar.closing ?? 0)),
-          Math.min(100, Math.max(0, skillRadar.qualification ?? 0)),
-          Math.min(100, Math.max(0, skillRadar.time_management ?? 0)),
-          Math.min(100, Math.max(0, (skillRadar.adaptation ?? skillRadar.adaptability ?? 0))),
-          Math.min(100, Math.max(0, skillRadar.legal_knowledge ?? 0)),
-          Math.min(100, Math.max(0, (skillRadar.rapport_building ?? skillRadar.rapport ?? 0))),
-        ],
-        // Previous session overlay for progress comparison
-        previousValues: previousSkillRadar
-          ? [
-              Math.min(100, Math.max(0, previousSkillRadar.empathy ?? 0)),
-              Math.min(100, Math.max(0, previousSkillRadar.knowledge ?? 0)),
-              Math.min(100, Math.max(0, previousSkillRadar.objection_handling ?? 0)),
-              Math.min(100, Math.max(0, previousSkillRadar.stress_resistance ?? 0)),
-              Math.min(100, Math.max(0, previousSkillRadar.closing ?? 0)),
-              Math.min(100, Math.max(0, previousSkillRadar.qualification ?? 0)),
-              Math.min(100, Math.max(0, previousSkillRadar.time_management ?? 0)),
-              Math.min(100, Math.max(0, (previousSkillRadar.adaptation ?? previousSkillRadar.adaptability ?? 0))),
-              Math.min(100, Math.max(0, previousSkillRadar.legal_knowledge ?? 0)),
-              Math.min(100, Math.max(0, (previousSkillRadar.rapport_building ?? previousSkillRadar.rapport ?? 0))),
-            ]
-          : undefined,
-      }
-    : {
-        // Fallback to 5-axis if skill_radar not available
-        labels: scoreItems.map((s) => s.label),
-        values: scoreItems.map((s) => (s.max > 0 ? (s.value / s.max) * 100 : 0)),
-      };
+  const pentagramData = {
+    labels: scoreItems.map((s) => s.label),
+    values: scoreItems.map((s) => (s.max > 0 ? (s.value / s.max) * 100 : 0)),
+    previousValues: prevScoreItems,
+  };
 
   // Stage progress data (from stage tracker)
   const stageProgress = (result.score_breakdown as Record<string, unknown> | null)?._stage_progress as
@@ -384,8 +383,30 @@ export default function ResultsPage() {
     <AuthLayout>
       <AchievementToast achievement={achievement} onClose={() => setAchievement(null)} />
 
-      {/* Score verdict overlay — shows first, then fades into full report */}
-      {showVerdict && hasScores && (
+      {/* Phase C (2026-05-08): for error outcomes show CallDroppedCard
+          INSTEAD of the verdict overlay + main report. The user shouldn't
+          be told «ПОТЕРЯЛ КОНТРОЛЬ 0/100» when the system aborted them. */}
+      {isCallDropped && (
+        <div className="app-page flex min-h-screen flex-col items-center justify-center px-4">
+          <CallDroppedCard
+            reason={session.terminal_outcome as CallDroppedReason}
+            detail={session.terminal_reason || undefined}
+            onRetry={() => {
+              // Naive "redirect to /training to start fresh" — fast and
+              // avoids needing to know the exact scenario id format. The
+              // user can re-pick the same scenario in 2 taps.
+              window.location.href = "/training";
+            }}
+            onExit={() => {
+              window.location.href = "/training";
+            }}
+          />
+        </div>
+      )}
+
+      {/* Score verdict overlay — shows first, then fades into full report.
+          Skipped for error outcomes (CallDroppedCard owns the screen). */}
+      {!isCallDropped && showVerdict && hasScores && (
         <PostSessionVerdict
           score={totalScore}
           xpGained={result.xp_breakdown?.grand_total ?? result.xp_breakdown?.session_total ?? 0}
@@ -393,7 +414,7 @@ export default function ResultsPage() {
         />
       )}
 
-      <div className="app-page flex flex-col min-h-screen" style={{ display: showVerdict && hasScores ? "none" : undefined }}>
+      <div className="app-page flex flex-col min-h-screen" style={{ display: isCallDropped || (showVerdict && hasScores) ? "none" : undefined }}>
         <Breadcrumb items={[{ label: "История", href: "/history" }, { label: "Результат" }]} />
         <BackButton href="/training" label="К тренировкам" />
 
@@ -556,7 +577,7 @@ export default function ResultsPage() {
               <div className="absolute -top-20 -left-20 w-64 h-64 rounded-full opacity-20 blur-[100px] pointer-events-none" style={{ background: "var(--accent)" }} />
 
               <h2 className="font-display text-lg tracking-widest flex items-center gap-2 border-b pb-3 z-10 mb-6" style={{ color: "var(--text-primary)", borderColor: "var(--border-color)" }}>
-                <Crosshair size={18} style={{ color: "var(--accent)" }} /> {skillRadar ? "РАДАР НАВЫКОВ" : "ПЕНТАГРАММА НАВЫКОВ"}
+                <Crosshair size={18} style={{ color: "var(--accent)" }} /> ПЕНТАГРАММА НАВЫКОВ
               </h2>
 
               <div className="flex-1 relative z-10">
