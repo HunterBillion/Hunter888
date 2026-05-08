@@ -28,13 +28,19 @@ function PvPLobbyContent() {
   const searchParams = useSearchParams();
   const store = usePvPStore();
   const tabParam = searchParams.get("tab");
-  const [tab, setTab] = useState<"history" | "knowledge_base">(
-    tabParam === "knowledge_base" || tabParam === "rag" ? "knowledge_base" : "history"
-  );
+  // PR-19: 3 tabs — combat (бой), knowledge_base (изучать), history (история).
+  // «combat» — default; legacy ?tab=knowledge_base|rag → knowledge_base.
+  type LobbyTab = "combat" | "knowledge_base" | "history";
+  const initialTab: LobbyTab =
+    tabParam === "knowledge_base" || tabParam === "rag" ? "knowledge_base"
+    : tabParam === "history" ? "history"
+    : "combat";
+  const [tab, setTab] = useState<LobbyTab>(initialTab);
   // Reactively flip tab when ?tab= changes (e.g. KB-panel click on the same /pvp page).
   useEffect(() => {
     if (tabParam === "knowledge_base" || tabParam === "rag") setTab("knowledge_base");
-    else if (tabParam === null) setTab("history");
+    else if (tabParam === "history") setTab("history");
+    else if (tabParam === null) setTab("combat");
   }, [tabParam]);
   const [quizStarting, setQuizStarting] = useState(false);
   const [pickedCharacterId, setPickedCharacterId] = useState<string | null>(null);
@@ -502,9 +508,10 @@ function PvPLobbyContent() {
                 aria-label="Режим арены"
               >
                 {([
-                  { id: "history", label: "🎯 Бой", accent: "var(--accent)" },
-                  { id: "knowledge_base", label: "📚 Изучать", accent: "var(--magenta, #d946ef)" },
-                ] as const).map((t) => {
+                  { id: "combat" as const,         label: "🎯 Бой",     accent: "var(--accent)" },
+                  { id: "knowledge_base" as const, label: "📚 Изучать", accent: "var(--magenta, #d946ef)" },
+                  { id: "history" as const,        label: "📜 История", accent: "var(--gf-xp, #facc15)" },
+                ]).map((t) => {
                   const active = tab === t.id;
                   return (
                     <button
@@ -514,11 +521,8 @@ function PvPLobbyContent() {
                       aria-selected={active}
                       onClick={() => {
                         setTab(t.id);
-                        if (t.id === "knowledge_base") {
-                          router.replace("/pvp?tab=knowledge_base", { scroll: false });
-                        } else {
-                          router.replace("/pvp", { scroll: false });
-                        }
+                        if (t.id === "combat") router.replace("/pvp", { scroll: false });
+                        else router.replace(`/pvp?tab=${t.id}`, { scroll: false });
                       }}
                       className="flex-1 font-pixel uppercase py-2.5 transition-colors"
                       style={{
@@ -541,7 +545,7 @@ function PvPLobbyContent() {
               </div>
 
               <AnimatePresence mode="wait">
-                {tab === "history" ? (
+                {tab === "combat" && (
                   <motion.div
                     key="combat-tab"
                     initial={{ opacity: 0, x: -8 }}
@@ -585,7 +589,8 @@ function PvPLobbyContent() {
                       </div>
                     </details>
                   </motion.div>
-                ) : (
+                )}
+                {tab === "knowledge_base" && (
                   <motion.div
                     key="knowledge-tab"
                     initial={{ opacity: 0, x: 8 }}
@@ -596,14 +601,25 @@ function PvPLobbyContent() {
                     <KnowledgeBaseBrowser />
                   </motion.div>
                 )}
+                {tab === "history" && (
+                  <motion.div
+                    key="history-tab"
+                    initial={{ opacity: 0, x: 8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    <HistoryPanel />
+                  </motion.div>
+                )}
               </AnimatePresence>
             </div>
 
-            {/* RIGHT sticky sidebar — «Сейчас» */}
+            {/* RIGHT sticky sidebar — «Сейчас». История уехала в таб,
+                здесь только живые виджеты Top-3 + ArenaLive. */}
             <aside className="order-2 flex flex-col gap-4 min-w-0 lg:sticky lg:top-4 lg:self-start">
               <TopPlayersPanel />
               <ArenaLivePanel />
-              <HistoryPanel />
             </aside>
           </div>
         </div>
@@ -632,7 +648,11 @@ function PvPLobbyContent() {
             ? "cheer"
             : store.queueStatus === "searching"
               ? "walk"
-              : undefined  // let LobbyMascot auto-derive from anchor target
+              : tab === "knowledge_base"
+                ? "think"  // лев «думает» на табе Изучать
+                : tab === "history"
+                  ? "wink"  // лев подмигивает на табе История
+                  : undefined  // combat tab → auto-derive from anchor target
         }
       />
 

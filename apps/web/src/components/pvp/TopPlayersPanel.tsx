@@ -48,9 +48,9 @@ export function TopPlayersPanel() {
     >
       <div
         className="font-pixel uppercase tracking-widest mb-3 flex items-center gap-2"
-        style={{ color: "var(--accent)", fontSize: 11, letterSpacing: "0.16em" }}
+        style={{ color: "var(--accent)", fontSize: 13, letterSpacing: "0.16em" }}
       >
-        <Trophy size={13} />
+        <Trophy size={15} />
         ТОП-3 СЕЗОНА
       </div>
 
@@ -60,7 +60,7 @@ export function TopPlayersPanel() {
         </div>
       ) : top3.length === 0 ? (
         <div
-          className="font-pixel text-[10px] uppercase tracking-wider py-3 text-center"
+          className="font-pixel text-[12px] uppercase tracking-wider py-3 text-center"
           style={{ color: "var(--text-muted)", letterSpacing: "0.14em" }}
         >
           Сезон только начался
@@ -83,16 +83,16 @@ export function TopPlayersPanel() {
                   borderRadius: 0,
                 }}
               >
-                <Icon size={14} style={{ color, flexShrink: 0 }} />
+                <Icon size={16} style={{ color, flexShrink: 0 }} />
                 <span
-                  className="text-xs truncate flex-1"
+                  className="text-[13px] truncate flex-1"
                   style={{ color: "var(--text-primary)" }}
                   title={p.username || ""}
                 >
                   {p.username || `user-${p.user_id.slice(0, 6)}`}
                 </span>
                 <span
-                  className="font-pixel text-[11px] tabular-nums"
+                  className="font-pixel text-[13px] tabular-nums"
                   style={{ color, letterSpacing: "0.04em" }}
                 >
                   {Math.round(p.rating)}
@@ -105,7 +105,7 @@ export function TopPlayersPanel() {
 
       <Link
         href="/pvp/leaderboard"
-        className="mt-3 block text-center font-pixel uppercase text-[10px] tracking-widest py-1.5 transition-colors hover:bg-[var(--input-bg)]"
+        className="mt-3 block text-center font-pixel uppercase text-[12px] tracking-widest py-2 transition-colors hover:bg-[var(--input-bg)]"
         style={{
           color: "var(--text-muted)",
           border: "1px dashed var(--border-color)",
