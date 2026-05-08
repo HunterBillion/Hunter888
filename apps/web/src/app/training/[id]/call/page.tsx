@@ -701,14 +701,32 @@ export default function TrainingCallPage() {
               | { stability: number; similarity_boost: number; style: number; speed: number }
               | undefined;
             const durationMs = data.data.duration_ms as number | undefined;
-            scheduleAudioPlayback(() => {
-              tts.playAudioMessage({
-                audio: audioB64,
-                emotion,
-                voice_params: voiceParams,
-                duration_ms: durationMs,
+            // Phase F (2026-05-08): backend-flagged barge reactions
+            // (emit from _handle_audio_interrupted) bypass both the
+            // audio gate AND the playAudioMessage queue — the
+            // surprise/anger response must land within the perceptual
+            // window of the user's interrupt, not after a queued chunk.
+            const isBargeReaction = Boolean(data.data.interruption_reaction);
+            if (isBargeReaction) {
+              tts.playAudioMessage(
+                {
+                  audio: audioB64,
+                  emotion,
+                  voice_params: voiceParams,
+                  duration_ms: durationMs,
+                },
+                { interrupt: true },
+              );
+            } else {
+              scheduleAudioPlayback(() => {
+                tts.playAudioMessage({
+                  audio: audioB64,
+                  emotion,
+                  voice_params: voiceParams,
+                  duration_ms: durationMs,
+                });
               });
-            });
+            }
           } else {
             logger.warn("[CALL] tts.audio received but audio_b64 missing/empty", {
               has_field: "audio_b64" in (data.data as object),

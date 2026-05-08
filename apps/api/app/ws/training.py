@@ -5567,6 +5567,75 @@ async def _handle_audio_interrupted(
     except Exception:
         logger.debug("audio.interrupted: failed to truncate trailing assistant", exc_info=True)
 
+    # Phase F (2026-05-08): immediate lifelike barge reaction.
+    # Pre-fix: handler set a state flag and waited for the user's text.message
+    # to trigger an LLM reply containing the [ПЕРЕБИЛИ] cue — several seconds
+    # of silence between interruption and any audible response.
+    # Now: pick a SHORT archetype-driven reaction phrase (3-50 chars), TTS it
+    # immediately, and emit `tts.audio` with `interruption_reaction: true`
+    # so the FE plays it bypassing the audio gate. The LLM still sees the
+    # state flag for the follow-up reply — both layers compose.
+    try:
+        from app.services.barge_reactions import pick_barge_reaction
+        from app.services import tts as _tts_module
+        archetype_code = state.get("archetype_code")
+        active_factors = state.get("active_factors") or []
+        current_emotion = await get_emotion(session_id)
+        # Stage info — best-effort, falls back to None when tracker not ready.
+        current_stage_name: str | None = None
+        try:
+            from app.core.redis_pool import get_redis as _get_redis_barge
+            r_stage = _get_redis_barge()
+            if r_stage:
+                _stage_tracker = StageTracker(str(session_id), r_stage)
+                _stage_state = await _stage_tracker.get_state()
+                if _stage_state:
+                    current_stage_name = _stage_state.current_stage_name
+        except Exception:
+            pass
+        reaction_text = pick_barge_reaction(
+            archetype_code=archetype_code,
+            active_factors=active_factors,
+            played_chars=played_chars,
+            current_emotion=str(current_emotion) if current_emotion else None,
+            current_stage=current_stage_name,
+        )
+        if reaction_text:
+            voice_id = state.get("tts_voice_id")
+            if voice_id and getattr(_tts_module, "synthesize_speech", None):
+                # Synthesize at low latency — short text + cache hit on
+                # repeats. Wraps in best-effort try/except so a TTS hiccup
+                # never blocks the conversation.
+                try:
+                    tts_result = await _tts_module.synthesize_speech(
+                        text=reaction_text,
+                        voice_id=voice_id,
+                        emotion=str(current_emotion) if current_emotion else None,
+                        active_factors=_call_tts_factors(state),
+                    )
+                    import base64 as _b64
+                    audio_b64 = _b64.b64encode(tts_result.audio_bytes).decode("ascii")
+                    await _send(ws, "tts.audio", {
+                        "audio_b64": audio_b64,
+                        "format": tts_result.format,
+                        "emotion": str(current_emotion) if current_emotion else None,
+                        "duration_ms": tts_result.duration_estimate_ms,
+                        "text": reaction_text,
+                        # Phase F flag — FE bypasses the audio gate and
+                        # plays this immediately so the reaction lands
+                        # within the perceptual window of the interrupt.
+                        "interruption_reaction": True,
+                    })
+                    logger.info(
+                        "barge_reaction sent: session=%s archetype=%s played=%d text=%r",
+                        session_id, archetype_code, played_chars, reaction_text,
+                    )
+                except Exception:
+                    logger.debug("audio.interrupted: TTS synthesis failed for reaction", exc_info=True)
+    except Exception:
+        # Reaction is purely additive — never let it break the call.
+        logger.debug("audio.interrupted: barge reaction pipeline failed", exc_info=True)
+
 
 async def _handle_text_message(
     ws: WebSocket,
