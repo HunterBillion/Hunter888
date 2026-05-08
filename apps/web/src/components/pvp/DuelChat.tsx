@@ -537,29 +537,29 @@ export function DuelChat({
     <div
       className="flex h-full flex-col overflow-hidden"
       style={{
-        background: "var(--bg-secondary)",
-        outline: "2px solid var(--accent)",
-        outlineOffset: -2,
-        boxShadow: "4px 4px 0 0 var(--accent), 0 0 24px var(--accent-glow)",
+        background: "linear-gradient(180deg, rgba(15,15,20,0.55) 0%, rgba(15,15,20,0.32) 100%)",
+        border: "1px solid var(--glass-border, rgba(255,255,255,0.08))",
+        borderRadius: 16,
+        boxShadow: "0 12px 32px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.04)",
+        backdropFilter: "blur(20px) saturate(1.2)",
       }}
     >
       <div
-        className="flex items-center justify-between px-4 py-2.5 shrink-0"
+        className="flex items-center justify-between px-5 py-3 shrink-0"
         style={{
-          background: "var(--bg-panel)",
-          borderBottom: "2px solid var(--accent)",
+          background: "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 100%)",
+          borderBottom: "1px solid var(--glass-border, rgba(255,255,255,0.06))",
         }}
       >
         <span
-          className="font-pixel"
+          className="font-display font-bold uppercase"
           style={{
             color: "var(--text-primary)",
-            fontSize: 15,
+            fontSize: 14,
             letterSpacing: "0.18em",
-            textTransform: "uppercase",
           }}
         >
-          ДИАЛОГ ДУЭЛИ
+          Диалог дуэли
         </span>
         <PixelStatusChip status={opponentStatus} />
       </div>
@@ -585,27 +585,28 @@ export function DuelChat({
               return (
                 <div key={msg.id}>
                   {(index === 0 || previousRound !== msg.round) && (
-                    <div className="flex items-center gap-3 my-4">
+                    <div className="flex items-center gap-3 my-6">
                       <div
                         className="flex-1"
                         style={{
-                          height: 2,
+                          height: 1,
                           background:
-                            "repeating-linear-gradient(to right, var(--accent) 0 6px, transparent 6px 10px)",
+                            "linear-gradient(to right, transparent 0%, color-mix(in srgb, var(--accent) 40%, transparent) 50%, transparent 100%)",
                         }}
                       />
                       <span
-                        className="font-pixel"
+                        className="font-display font-bold rounded-xl"
                         style={{
                           color: "var(--accent)",
-                          background: "var(--bg-panel)",
-                          outline: "2px solid var(--accent)",
-                          outlineOffset: -2,
-                          boxShadow: "2px 2px 0 0 var(--accent)",
-                          padding: "3px 12px",
-                          fontSize: 14,
+                          background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, rgba(15,15,20,0.85)) 0%, rgba(15,15,20,0.92) 100%)",
+                          border: "1px solid color-mix(in srgb, var(--accent) 45%, transparent)",
+                          boxShadow: "0 6px 20px color-mix(in srgb, var(--accent) 24%, transparent), inset 0 1px 0 rgba(255,255,255,0.06)",
+                          backdropFilter: "blur(20px)",
+                          padding: "6px 18px",
+                          fontSize: 16,
                           letterSpacing: "0.18em",
                           textTransform: "uppercase",
+                          textShadow: "0 0 14px var(--accent-glow)",
                         }}
                       >
                         Раунд {msg.round}
@@ -613,9 +614,9 @@ export function DuelChat({
                       <div
                         className="flex-1"
                         style={{
-                          height: 2,
+                          height: 1,
                           background:
-                            "repeating-linear-gradient(to right, var(--accent) 0 6px, transparent 6px 10px)",
+                            "linear-gradient(to right, transparent 0%, color-mix(in srgb, var(--accent) 40%, transparent) 50%, transparent 100%)",
                         }}
                       />
                     </div>
