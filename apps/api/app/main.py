@@ -316,6 +316,21 @@ async def lifespan(application: FastAPI):
                 exc_info=True,
             )
 
+    # Phase I (2026-05-08): Whisper cold-start warmup. The first
+    # transcription request after container restart takes 6-10s while
+    # the remote model loads. Sending a tiny silent WAV at startup
+    # forces the load now, so the first real user audio chunk doesn't
+    # fall into the cold-start race with our internal STT timeout.
+    # Fire-and-forget — failures log a warning, never block startup.
+    try:
+        from app.services.whisper_warmup import warmup_whisper_background
+        application.state.whisper_warmup_task = asyncio.create_task(
+            warmup_whisper_background()
+        )
+        logger.info("Lifespan: whisper warmup task scheduled (background)")
+    except Exception:
+        logger.warning("Lifespan: failed to schedule whisper warmup", exc_info=True)
+
     logger.info("Lifespan: startup complete")
     yield
     # ── Shutdown ──
