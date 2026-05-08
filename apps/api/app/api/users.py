@@ -848,6 +848,112 @@ async def update_preferences(
     }
 
 
+class ActivityDay(BaseModel):
+    date: str  # ISO date "YYYY-MM-DD"
+    sessions: int
+    avg_score: float | None = None
+
+
+class ActivityResponse(BaseModel):
+    days: list[ActivityDay]
+    total_days_active: int
+    total_sessions: int
+    streak_current: int  # consecutive days with ≥1 session ending today
+    streak_best: int  # longest streak in the requested window
+
+
+@router.get("/me/activity", response_model=ActivityResponse)
+async def get_my_activity(
+    days: int = Query(180, ge=7, le=365),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Daily training-activity for the requesting user — feeds the
+    GitHub-style heatmap on /profile (added 2026-05-08).
+
+    Returns one entry per calendar day with at least one completed
+    training session. The frontend fills in zero-days client-side
+    (more efficient than shipping ~365 zeros over the wire).
+
+    Streak counters are computed in the same query window — anchored
+    to today's UTC date for `streak_current`, and the longest
+    consecutive run for `streak_best`.
+
+    Window is bounded to [7, 365] days to keep the SQL plan cheap;
+    queried on `idx_training_session_user_started` (already exists).
+    """
+    from app.models.training import SessionStatus
+
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=days)
+
+    rows = await db.execute(
+        select(
+            func.date(TrainingSession.started_at).label("day"),
+            func.count(TrainingSession.id).label("sessions"),
+            func.avg(TrainingSession.score_total).label("avg_score"),
+        )
+        .where(
+            TrainingSession.user_id == user.id,
+            TrainingSession.status == SessionStatus.completed,
+            TrainingSession.started_at >= since,
+        )
+        .group_by(func.date(TrainingSession.started_at))
+        .order_by(func.date(TrainingSession.started_at))
+    )
+
+    daily: list[ActivityDay] = []
+    by_date: dict[str, int] = {}
+    total_sessions = 0
+    for row in rows.all():
+        if row.day is None:
+            continue
+        iso = row.day.isoformat() if hasattr(row.day, "isoformat") else str(row.day)
+        sessions_n = int(row.sessions or 0)
+        avg = round(float(row.avg_score), 1) if row.avg_score is not None else None
+        daily.append(ActivityDay(date=iso, sessions=sessions_n, avg_score=avg))
+        by_date[iso] = sessions_n
+        total_sessions += sessions_n
+
+    # ── Streak computation ────────────────────────────────────────
+    # current streak: walk backwards from today; stop on first gap
+    today = now.date()
+    streak_current = 0
+    cursor = today
+    while cursor >= since.date():
+        if by_date.get(cursor.isoformat(), 0) > 0:
+            streak_current += 1
+            cursor -= timedelta(days=1)
+        else:
+            # Gap found — but if today itself has no activity yet, allow
+            # a 1-day grace (yesterday-ending streak still counts).
+            if cursor == today and streak_current == 0:
+                cursor -= timedelta(days=1)
+                continue
+            break
+
+    # best streak: scan all days in window, track longest run.
+    streak_best = 0
+    run = 0
+    d = since.date()
+    while d <= today:
+        if by_date.get(d.isoformat(), 0) > 0:
+            run += 1
+            if run > streak_best:
+                streak_best = run
+        else:
+            run = 0
+        d += timedelta(days=1)
+
+    return ActivityResponse(
+        days=daily,
+        total_days_active=len(daily),
+        total_sessions=total_sessions,
+        streak_current=streak_current,
+        streak_best=streak_best,
+    )
+
+
 @router.get("/me/team-stats", response_model=TeamStatsResponse)
 async def get_team_stats(
     user: User = Depends(require_role("rop", "admin")),
