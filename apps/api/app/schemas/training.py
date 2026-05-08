@@ -223,6 +223,14 @@ class SessionResponse(BaseModel):
     real_client_id: uuid.UUID | None = None
     custom_character_id: uuid.UUID | None = None
     source_session_id: uuid.UUID | None = None
+    # Phase C (2026-05-08): surface canonical terminal status fields so
+    # the FE /results page can branch on outcome (e.g. show
+    # CallDroppedCard for technical_failed/timeout/operator_aborted
+    # instead of the score-verdict overlay framing a system error
+    # as user failure).
+    terminal_outcome: str | None = None
+    terminal_reason: str | None = None
+    completed_via: str | None = None
 
     model_config = {"from_attributes": True}
 

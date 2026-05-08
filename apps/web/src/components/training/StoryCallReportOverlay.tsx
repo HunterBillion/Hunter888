@@ -54,12 +54,27 @@ export function StoryCallReportOverlay({
             </div>
           </div>
 
-          <div className="rounded-xl px-4 py-2 text-right" style={{ background: "var(--accent-muted)", border: "1px solid var(--accent-glow)" }}>
-            <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-              SCORE
-            </div>
-            <div className="font-display text-2xl font-bold" style={{ color: "var(--accent)" }}>
-              {Math.round(score)}
+          {/* Phase C (2026-05-08): unified score visual.
+              Was a 32px corner badge with bare `Math.round(score)` and
+              no /100. Now renders the same 96px ring style as the
+              canonical /results page header so users see ONE visual
+              language for "session score" everywhere in the app —
+              call result, story call, post-call. */}
+          <div
+            className="relative flex h-24 w-24 items-center justify-center rounded-full"
+            style={{
+              background: "var(--accent-muted)",
+              border: `3px solid var(--accent)`,
+              boxShadow: "0 0 24px var(--accent-glow)",
+            }}
+          >
+            <div className="text-center leading-none">
+              <div className="font-display text-3xl font-bold tabular-nums" style={{ color: "var(--accent)" }}>
+                {Math.round(score)}
+              </div>
+              <div className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                /100
+              </div>
             </div>
           </div>
         </div>

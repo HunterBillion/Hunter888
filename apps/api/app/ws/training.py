@@ -3012,13 +3012,31 @@ async def _generate_character_reply(
             logger.debug("v6 emotion extensions failed for session %s", session_id)
         await _send(ws, "emotion.update", _em_msg)
 
-    # ── Real-time score hint (L1-L8) — every 3rd message to avoid spam ──
+    # ── Real-time score hint (L1-L5 canonical) — every 3rd message to avoid spam ──
+    # Phase C (2026-05-08): payload slimmed to the canonical 5 axes
+    # (script_adherence / objection_handling / communication /
+    # anti_patterns / result). The FE live-sidebar renders exactly
+    # these 5 keys with the SAME max caps as the post-call /results
+    # page (30/25/20/15/10), eliminating the 5-vs-8-vs-10 axis drift
+    # pilots saw. Extra keys (chain_traversal/trap_handling/human_factor)
+    # are still computed for backend persistence but dropped from the
+    # WS hint payload to save bandwidth and prevent FE from rendering
+    # them with the wrong divisor.
     msg_count = state.get("message_count", 0)
     if msg_count > 0 and msg_count % 3 == 0:
         try:
             async with async_session() as db:
                 rt_scores = await calculate_realtime_scores(session_id, db)
-            await _send(ws, "score.hint", rt_scores)
+            _CANONICAL_HINT_KEYS = (
+                "script_adherence",
+                "objection_handling",
+                "communication",
+                "anti_patterns",
+                "result",
+                "total",  # kept so the 96px score-ring renders correctly
+            )
+            slim = {k: rt_scores[k] for k in _CANONICAL_HINT_KEYS if k in rt_scores}
+            await _send(ws, "score.hint", slim)
         except Exception:
             logger.debug("Real-time score hint failed for %s", session_id)
 
@@ -4472,7 +4490,22 @@ async def _handle_session_start(
                 archetype=session_archetype,
             )
             state["tts_voice_id"] = tts_voice_id
-            logger.info("TTS voice %s assigned to session %s (gender=%s, archetype=%s)", tts_voice_id, session.id, client_gender, session_archetype)
+            # Phase C (2026-05-08): also stash the full assignment so the
+            # session.started payload can surface gender + source for FE
+            # audit (e.g. flag any session whose source is "env_mixed"
+            # since that's the gender-leak path from Bug 3).
+            from app.services.tts import _session_voices
+            _voice_assignment = _session_voices.get(str(session.id))
+            if _voice_assignment:
+                state["tts_voice_assignment"] = {
+                    "voice_id": _voice_assignment.get("voice_id"),
+                    "gender": _voice_assignment.get("gender"),
+                    "source": _voice_assignment.get("source"),  # env_male | env_female | env_mixed | None (DB profile)
+                    "archetype": _voice_assignment.get("archetype"),
+                }
+            logger.info("TTS voice %s assigned to session %s (gender=%s, archetype=%s, source=%s)",
+                        tts_voice_id, session.id, client_gender, session_archetype,
+                        (_voice_assignment or {}).get("source", "db_profile"))
         except TTSError as e:
             logger.warning("TTS voice assignment failed: %s", e)
 
@@ -4491,6 +4524,13 @@ async def _handle_session_start(
         started_data["client_card"] = client_card
     if tts_voice_id:
         started_data["tts_enabled"] = True
+        # Phase C (2026-05-08): voice transparency — surface the picked
+        # voice's gender + source so the FE can warn on mismatch (e.g.
+        # if assigned source is "env_mixed", a male character may have
+        # gotten a female voice and the FE could surface a debug chip).
+        _va = state.get("tts_voice_assignment")
+        if _va:
+            started_data["tts_voice_assignment"] = _va
 
     # 2026-04-21 CRITICAL: acquire the WS lock now that we know the final
     # session.id. Previously omitted, causing every fresh call to die with
