@@ -140,34 +140,47 @@ export function KnowledgeBasePanel() {
       ) : (
         <AnimatePresence mode="popLayout">
           <ul className="flex flex-col gap-1.5">
-            {chunks.map((c, i) => (
-              <motion.li
-                key={c.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ delay: i * 0.04 }}
-                className="px-2 py-1.5 text-[11px] leading-snug"
-                style={{
-                  background: "var(--bg-secondary, rgba(0,0,0,0.2))",
-                  borderLeft: "2px solid var(--accent)",
-                  color: "var(--text-secondary)",
-                }}
-              >
-                <div
-                  className="font-pixel uppercase text-[9px] mb-0.5 flex items-center gap-1.5"
-                  style={{ color: "var(--accent)", letterSpacing: "0.12em" }}
+            {chunks.map((c, i) => {
+              const href = query.trim().length >= 2
+                ? `/pvp?tab=knowledge_base&search=${encodeURIComponent(query.trim())}`
+                : `/pvp?tab=knowledge_base&category=${encodeURIComponent(c.category)}`;
+              return (
+                <motion.li
+                  key={c.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ delay: i * 0.04 }}
                 >
-                  <span>{categoryLabel(c.category)}</span>
-                  {c.law_article && (
-                    <span style={{ color: "var(--text-muted)" }}>· {c.law_article}</span>
-                  )}
-                </div>
-                <div className="line-clamp-3" style={{ color: "var(--text-primary)" }}>
-                  {c.fact_text}
-                </div>
-              </motion.li>
-            ))}
+                  <button
+                    type="button"
+                    onClick={() => router.push(href)}
+                    className="w-full text-left px-2 py-1.5 text-[12px] leading-snug transition-colors hover:bg-[var(--input-bg)]"
+                    style={{
+                      background: "var(--bg-secondary, rgba(0,0,0,0.2))",
+                      borderLeft: "2px solid var(--accent)",
+                      color: "var(--text-secondary)",
+                      cursor: "pointer",
+                      borderRadius: 0,
+                    }}
+                    title="Открыть в полной базе"
+                  >
+                    <div
+                      className="font-pixel uppercase text-[10px] mb-0.5 flex items-center gap-1.5"
+                      style={{ color: "var(--accent)", letterSpacing: "0.12em" }}
+                    >
+                      <span>{categoryLabel(c.category)}</span>
+                      {c.law_article && (
+                        <span style={{ color: "var(--text-muted)" }}>· {c.law_article}</span>
+                      )}
+                    </div>
+                    <div className="line-clamp-3" style={{ color: "var(--text-primary)" }}>
+                      {c.fact_text}
+                    </div>
+                  </button>
+                </motion.li>
+              );
+            })}
           </ul>
         </AnimatePresence>
       )}

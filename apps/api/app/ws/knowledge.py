@@ -1539,76 +1539,88 @@ async def _finish_solo_quiz(ws: WebSocket, state: _SoloQuizState) -> None:
         results_data = asdict(results) if hasattr(results, '__dataclass_fields__') else (results if isinstance(results, dict) else {"score": 0})
 
         # --- Gamification: XP, streaks, achievements ---
-        try:
-            from app.services.arena_xp import (
-                calculate_arena_xp, update_arena_streak, apply_arena_xp_to_progress,
-            )
-            from app.services.gamification import check_arena_achievements
+        # 2026-05-08: skip XP block when user answered nothing — иначе
+        # блиц-«вошёл-и-вышел» давал базовое XP + ломал arena-streak.
+        if (state.correct + state.incorrect) == 0:
+            results_data["xp_earned"] = {"total": 0, "source": "abandoned_no_answers"}
+        else:
+            try:
+                from app.services.arena_xp import (
+                    calculate_arena_xp, update_arena_streak, apply_arena_xp_to_progress,
+                )
+                from app.services.gamification import check_arena_achievements
 
-            await update_arena_streak(
-                user_id=state.user_id,
-                correct_in_session=state.correct,
-                total_in_session=state.correct + state.incorrect + state.skipped,
-                answer_streak_at_end=getattr(state, "best_streak", 0),
-                db=db,
-            )
+                await update_arena_streak(
+                    user_id=state.user_id,
+                    correct_in_session=state.correct,
+                    total_in_session=state.correct + state.incorrect + state.skipped,
+                    answer_streak_at_end=getattr(state, "best_streak", 0),
+                    db=db,
+                )
 
-            from app.models.progress import ManagerProgress
-            prog_r = await db.execute(
-                select(ManagerProgress).where(ManagerProgress.user_id == state.user_id)
-            )
-            prog = prog_r.scalar_one_or_none()
-            streak_days = prog.arena_daily_streak if prog else 0
+                from app.models.progress import ManagerProgress
+                prog_r = await db.execute(
+                    select(ManagerProgress).where(ManagerProgress.user_id == state.user_id)
+                )
+                prog = prog_r.scalar_one_or_none()
+                streak_days = prog.arena_daily_streak if prog else 0
 
-            xp_info = calculate_arena_xp(
-                mode=state.mode,
-                score=state.score,
-                correct=state.correct,
-                total=max(1, state.correct + state.incorrect + state.skipped),
-                streak_days=streak_days,
-            )
-            await apply_arena_xp_to_progress(state.user_id, xp_info["total"], db)
+                xp_info = calculate_arena_xp(
+                    mode=state.mode,
+                    score=state.score,
+                    correct=state.correct,
+                    total=max(1, state.correct + state.incorrect + state.skipped),
+                    streak_days=streak_days,
+                )
+                await apply_arena_xp_to_progress(state.user_id, xp_info["total"], db)
 
-            # EventBus handles arena achievements + notifications
-            from app.services.event_bus import event_bus, GameEvent, EVENT_ARENA_COMPLETED
-            await event_bus.emit(GameEvent(
-                kind=EVENT_ARENA_COMPLETED,
-                user_id=state.user_id,
-                db=db,
-                payload={"mode": state.mode, "score": state.score, "xp": xp_info},
-            ))
-            await db.commit()
+                # EventBus handles arena achievements + notifications
+                from app.services.event_bus import event_bus, GameEvent, EVENT_ARENA_COMPLETED
+                await event_bus.emit(GameEvent(
+                    kind=EVENT_ARENA_COMPLETED,
+                    user_id=state.user_id,
+                    db=db,
+                    payload={"mode": state.mode, "score": state.score, "xp": xp_info},
+                ))
+                await db.commit()
 
-            results_data["xp_earned"] = xp_info
-        except Exception as e:
-            logger.warning("Gamification hook error in quiz completion: %s", e, exc_info=True)
+                results_data["xp_earned"] = xp_info
+            except Exception as e:
+                logger.warning("Gamification hook error in quiz completion: %s", e, exc_info=True)
 
     # --- Arena Points + Season Pass progression ---
-    try:
-        from app.services.arena_points import award_arena_points, AP_RATES
-        from app.services.season_pass import advance_season
+    # 2026-05-08: skip AP entirely if user answered nothing (entered & exited
+    # immediately). Без этого блиц давал ~knowledge_session_low за пустую
+    # сессию — фактический баг, замеченный пилотом.
+    answered_any = (state.correct + state.incorrect) > 0
+    if answered_any:
+        try:
+            from app.services.arena_points import award_arena_points, AP_RATES
+            from app.services.season_pass import advance_season
 
-        # Determine AP source based on quiz score
-        if state.score >= 80:
-            ap_source = "knowledge_session_high"
-        elif state.score >= 50:
-            ap_source = "knowledge_session_mid"
-        else:
-            ap_source = "knowledge_session_low"
+            # Determine AP source based on quiz score
+            if state.score >= 80:
+                ap_source = "knowledge_session_high"
+            elif state.score >= 50:
+                ap_source = "knowledge_session_mid"
+            else:
+                ap_source = "knowledge_session_low"
 
-        async with async_session() as ap_db:
-            ap_balance = await award_arena_points(ap_db, state.user_id, ap_source)
-            season_result = await advance_season(state.user_id, AP_RATES[ap_source], ap_db)
-            await ap_db.commit()
+            async with async_session() as ap_db:
+                ap_balance = await award_arena_points(ap_db, state.user_id, ap_source)
+                season_result = await advance_season(state.user_id, AP_RATES[ap_source], ap_db)
+                await ap_db.commit()
 
-        results_data["ap_earned"] = {
-            "amount": AP_RATES[ap_source],
-            "source": ap_source,
-            "balance": ap_balance,
-            "season": season_result,
-        }
-    except Exception as e:
-        logger.warning("AP/Season hook error in quiz completion: %s", e, exc_info=True)
+            results_data["ap_earned"] = {
+                "amount": AP_RATES[ap_source],
+                "source": ap_source,
+                "balance": ap_balance,
+                "season": season_result,
+            }
+        except Exception as e:
+            logger.warning("AP/Season hook error in quiz completion: %s", e, exc_info=True)
+    else:
+        results_data["ap_earned"] = {"amount": 0, "source": "abandoned_no_answers"}
 
     # --- Behavioral Intelligence: track behavior + update emotion profile ---
     try:

@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Loader2,
   Search,
@@ -405,10 +406,11 @@ function Section({
 }
 
 export function KnowledgeBaseBrowser() {
+  const searchParams = useSearchParams();
   const [data, setData] = useState<BrowseResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState<string>("");
-  const [search, setSearch] = useState<string>("");
+  const [category, setCategory] = useState<string>(() => searchParams.get("category") ?? "");
+  const [search, setSearch] = useState<string>(() => searchParams.get("search") ?? "");
   const [difficulty, setDifficulty] = useState<number | null>(null);
   const [offset, setOffset] = useState(0);
 
