@@ -70,8 +70,8 @@ export function QuizHistoryStrip({ messages, totalQuestions, variant = "compact"
   const slots = totalQuestions > 0 ? Math.max(totalQuestions, cells.length) : cells.length;
   if (slots === 0) return null;
 
-  const dotSize = variant === "wide" ? 16 : 12;
-  const gap = variant === "wide" ? 6 : 4;
+  const dotSize = variant === "wide" ? 20 : 16;
+  const gap = variant === "wide" ? 8 : 6;
 
   return (
     <div
@@ -85,11 +85,11 @@ export function QuizHistoryStrip({ messages, totalQuestions, variant = "compact"
       }}
     >
       <div
-        className="font-display font-bold uppercase tracking-widest mb-2 flex items-center justify-between"
-        style={{ color: "var(--text-muted)", fontSize: 10, letterSpacing: "0.18em" }}
+        className="font-display font-bold uppercase tracking-widest mb-3 flex items-center justify-between"
+        style={{ color: "var(--text-secondary)", fontSize: 13, letterSpacing: "0.16em" }}
       >
         <span>История</span>
-        <span className="font-mono tabular-nums" style={{ color: "var(--text-primary)" }}>
+        <span className="font-mono tabular-nums" style={{ color: "var(--text-primary)", fontSize: 14 }}>
           {cells.length}/{slots}
         </span>
       </div>

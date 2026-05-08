@@ -581,53 +581,98 @@ function DuelPage() {
     // загрузка» — теперь всегда есть escape hatch.
     return (
       <div
-        className="flex h-screen flex-col items-center justify-center px-6 gap-5"
+        className="flex h-screen flex-col items-center justify-center px-6 gap-6"
         style={{
           background: "var(--bg-primary)",
           backgroundImage: `
-            repeating-linear-gradient(0deg, transparent 0, transparent 23px, rgba(107,77,199,0.04) 23px, rgba(107,77,199,0.04) 24px),
-            repeating-linear-gradient(90deg, transparent 0, transparent 23px, rgba(107,77,199,0.04) 23px, rgba(107,77,199,0.04) 24px)
+            radial-gradient(ellipse 70% 50% at 50% 35%, color-mix(in srgb, var(--accent) 14%, transparent) 0%, transparent 60%),
+            repeating-linear-gradient(0deg, transparent 0, transparent 31px, rgba(107,77,199,0.025) 31px, rgba(107,77,199,0.025) 32px),
+            repeating-linear-gradient(90deg, transparent 0, transparent 31px, rgba(107,77,199,0.025) 31px, rgba(107,77,199,0.025) 32px)
           `,
-        }}
+          WebkitFontSmoothing: "antialiased",
+          MozOsxFontSmoothing: "grayscale",
+        } as React.CSSProperties}
       >
+        {/* Главный glass-card */}
         <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+          initial={{ opacity: 0, y: 12, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ type: "spring", stiffness: 280, damping: 24 }}
+          className="rounded-3xl px-8 py-10 max-w-md w-full text-center"
           style={{
-            width: 48,
-            height: 48,
-            border: "4px solid var(--accent)",
-            borderTopColor: "transparent",
-            borderRadius: 0,
+            background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, rgba(15,15,20,0.92)) 0%, rgba(15,15,20,0.96) 100%)",
+            border: "1px solid color-mix(in srgb, var(--accent) 40%, transparent)",
+            boxShadow: "0 24px 64px color-mix(in srgb, var(--accent) 26%, transparent), 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent), inset 0 1px 0 rgba(255,255,255,0.08)",
+            backdropFilter: "blur(24px) saturate(1.4)",
           }}
-        />
-        <span className="font-pixel text-sm uppercase tracking-widest text-center" style={{ color: "var(--accent)", textShadow: "0 0 6px var(--accent-glow)" }}>
-          ▶ ПОДКЛЮЧЕНИЕ К АРЕНЕ
-        </span>
-        <button
+        >
+          {/* Огромный спиннер с glow */}
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: "linear" }}
+            className="rounded-full mx-auto mb-6"
+            style={{
+              width: 80,
+              height: 80,
+              border: "5px solid color-mix(in srgb, var(--accent) 20%, transparent)",
+              borderTopColor: "var(--accent)",
+              boxShadow: "0 0 32px var(--accent-glow), inset 0 0 16px rgba(0,0,0,0.3)",
+            }}
+          />
+          <h1
+            className="font-display font-bold uppercase mb-2"
+            style={{
+              color: "var(--accent)",
+              fontSize: 24,
+              letterSpacing: "0.12em",
+              textShadow: "0 0 24px var(--accent-glow)",
+            }}
+          >
+            Подключение к арене
+          </h1>
+          <p
+            className="font-mono"
+            style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6 }}
+          >
+            Загружаем дуэль и соперника. Если зависло —
+            нажми кнопку ниже чтобы вернуться.
+          </p>
+
+          <div className="mt-5 flex gap-1.5 justify-center">
+            {[0, 1, 2, 3].map((i) => (
+              <motion.span
+                key={i}
+                className="rounded-full"
+                style={{ width: 8, height: 8, background: "var(--accent)", boxShadow: "0 0 6px var(--accent)" }}
+                animate={{ opacity: [0.2, 1, 0.2], scale: [1, 1.2, 1] }}
+                transition={{ duration: 1, repeat: Infinity, delay: i * 0.15 }}
+              />
+            ))}
+          </div>
+        </motion.div>
+
+        <motion.button
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+          whileHover={{ y: -2 }}
+          whileTap={{ scale: 0.96 }}
           onClick={() => router.push("/pvp")}
-          className="mt-4 px-5 py-2.5 font-pixel text-xs uppercase tracking-widest"
+          className="rounded-xl font-display font-bold uppercase"
           style={{
-            background: "transparent",
-            color: "var(--text-muted)",
-            border: "2px solid var(--border-color)",
-            borderRadius: 0,
-            boxShadow: "2px 2px 0 0 var(--border-color)",
+            padding: "14px 28px",
+            background: "rgba(255,255,255,0.04)",
+            color: "var(--text-primary)",
+            border: "1px solid rgba(255,255,255,0.18)",
+            boxShadow: "0 6px 20px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.06)",
+            backdropFilter: "blur(20px)",
+            fontSize: 15,
+            letterSpacing: "0.16em",
             cursor: "pointer",
           }}
         >
           ← Назад на арену
-        </button>
-        <div className="mt-2 flex gap-1">
-          {[0, 1, 2, 3].map((i) => (
-            <motion.span
-              key={i}
-              style={{ width: 6, height: 6, background: "var(--accent)", borderRadius: 0 }}
-              animate={{ opacity: [0.2, 1, 0.2] }}
-              transition={{ duration: 1, repeat: Infinity, delay: i * 0.15 }}
-            />
-          ))}
-        </div>
+        </motion.button>
       </div>
     );
   }

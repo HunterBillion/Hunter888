@@ -196,14 +196,14 @@ export function QuizVerdictOverlay({
               transition={{ type: "spring", stiffness: 320, damping: 18, delay: 0.05 }}
               className="flex items-center justify-center rounded-2xl shrink-0"
               style={{
-                width: 56,
-                height: 56,
+                width: 72,
+                height: 72,
                 background: `linear-gradient(135deg, ${bgGlow} 0%, rgba(0,0,0,0.2) 100%)`,
-                border: `1.5px solid ${color}`,
-                boxShadow: `0 0 24px ${color}88, inset 0 1px 0 rgba(255,255,255,0.12)`,
+                border: `2px solid ${color}`,
+                boxShadow: `0 0 32px ${color}, inset 0 1px 0 rgba(255,255,255,0.14)`,
               }}
             >
-              <Icon size={32} style={{ color, filter: `drop-shadow(0 0 6px ${color})` }} />
+              <Icon size={42} style={{ color, filter: `drop-shadow(0 0 8px ${color})` }} />
             </motion.div>
             <div className="flex-1 min-w-0">
               <motion.div
@@ -213,9 +213,9 @@ export function QuizVerdictOverlay({
                 className="font-display font-bold uppercase tracking-widest"
                 style={{
                   color,
-                  fontSize: 22,
-                  letterSpacing: "0.16em",
-                  textShadow: `0 0 16px ${color}66`,
+                  fontSize: 30,
+                  letterSpacing: "0.12em",
+                  textShadow: `0 0 24px ${color}88`,
                   lineHeight: 1.05,
                 }}
               >
@@ -223,8 +223,8 @@ export function QuizVerdictOverlay({
               </motion.div>
               {typeof verdict.llmScore === "number" && (
                 <div
-                  className="font-mono mt-0.5 tabular-nums"
-                  style={{ color: "var(--text-muted)", fontSize: 12 }}
+                  className="font-mono mt-1 tabular-nums"
+                  style={{ color: "var(--text-secondary)", fontSize: 14 }}
                 >
                   Оценка: {Math.round(verdict.llmScore)}/10
                 </div>
@@ -255,16 +255,16 @@ export function QuizVerdictOverlay({
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.12 }}
-              className="px-3 py-2 mb-3 rounded-xl italic"
+              className="px-4 py-3 mb-3 rounded-xl italic"
               style={{
                 background: "rgba(255,255,255,0.04)",
-                borderLeft: "3px solid var(--accent)",
+                borderLeft: "4px solid var(--accent)",
                 color: "var(--text-primary)",
-                fontSize: 13,
-                lineHeight: 1.5,
+                fontSize: 16,
+                lineHeight: 1.55,
               }}
             >
-              {verdict.avatarEmoji && <span style={{ marginRight: 6 }}>{verdict.avatarEmoji}</span>}
+              {verdict.avatarEmoji && <span style={{ marginRight: 8, fontSize: 18 }}>{verdict.avatarEmoji}</span>}
               {personalityComment}
             </motion.div>
           )}
@@ -275,20 +275,20 @@ export function QuizVerdictOverlay({
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.16 }}
-              className="px-3 py-2.5 mb-3 rounded-xl"
+              className="px-4 py-3 mb-3 rounded-xl"
               style={{
-                background: "linear-gradient(135deg, rgba(34,197,94,0.14) 0%, rgba(34,197,94,0.04) 100%)",
-                border: "1px solid rgba(34,197,94,0.45)",
-                boxShadow: "0 4px 14px rgba(34,197,94,0.16), inset 0 1px 0 rgba(255,255,255,0.06)",
+                background: "linear-gradient(135deg, rgba(34,197,94,0.16) 0%, rgba(34,197,94,0.05) 100%)",
+                border: "1px solid rgba(34,197,94,0.5)",
+                boxShadow: "0 4px 18px rgba(34,197,94,0.2), inset 0 1px 0 rgba(255,255,255,0.06)",
               }}
             >
               <div
-                className="font-display font-bold uppercase tracking-widest mb-1"
-                style={{ color: "var(--success)", fontSize: 11, letterSpacing: "0.16em" }}
+                className="font-display font-bold uppercase tracking-widest mb-2"
+                style={{ color: "var(--success)", fontSize: 13, letterSpacing: "0.16em" }}
               >
                 ✓ Правильный ответ
               </div>
-              <div style={{ color: "var(--text-primary)", fontSize: 14, lineHeight: 1.5 }}>
+              <div style={{ color: "var(--text-primary)", fontSize: 17, lineHeight: 1.55, fontWeight: 500 }}>
                 {rightAnswer}
               </div>
             </motion.div>
@@ -300,7 +300,7 @@ export function QuizVerdictOverlay({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.18 }}
-              style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 }}
+              style={{ color: "var(--text-secondary)", fontSize: 15, lineHeight: 1.55 }}
               className="mb-3"
             >
               {explanation}
@@ -311,16 +311,17 @@ export function QuizVerdictOverlay({
           <div className="flex items-center gap-3 mt-1">
             {articleRef && (
               <div
-                className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase px-2.5 py-1 rounded-lg shrink-0"
+                className="inline-flex items-center gap-1.5 font-mono uppercase px-3 py-1.5 rounded-lg shrink-0"
                 style={{
-                  color: "var(--text-muted)",
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  color: "var(--text-secondary)",
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  fontSize: 13,
                   letterSpacing: "0.06em",
                   fontWeight: 600,
                 }}
               >
-                <BookOpen size={11} />
+                <BookOpen size={14} />
                 {articleRef}
               </div>
             )}
@@ -329,15 +330,15 @@ export function QuizVerdictOverlay({
               onClick={onDismiss}
               whileHover={{ x: 2 }}
               whileTap={{ scale: 0.96 }}
-              className="ml-auto inline-flex items-center gap-2 rounded-xl font-display font-bold uppercase tracking-widest"
+              className="ml-auto inline-flex items-center gap-2.5 rounded-xl font-display font-bold uppercase tracking-widest"
               style={{
-                padding: "10px 18px",
+                padding: "14px 24px",
                 background: `linear-gradient(135deg, ${color} 0%, color-mix(in srgb, ${color} 78%, black) 100%)`,
                 color: "#0a0810",
                 border: `1px solid color-mix(in srgb, ${color} 60%, white)`,
-                boxShadow: `0 6px 20px ${color}55, inset 0 1px 0 rgba(255,255,255,0.22)`,
-                fontSize: 13,
-                letterSpacing: "0.16em",
+                boxShadow: `0 8px 24px ${color}66, inset 0 1px 0 rgba(255,255,255,0.22)`,
+                fontSize: 16,
+                letterSpacing: "0.14em",
                 cursor: "pointer",
               }}
             >
@@ -345,7 +346,7 @@ export function QuizVerdictOverlay({
                 <CountdownRing progress={progress} color="#0a0810" />
               )}
               Далее
-              <ArrowRight size={16} />
+              <ArrowRight size={20} />
             </motion.button>
           </div>
         </div>

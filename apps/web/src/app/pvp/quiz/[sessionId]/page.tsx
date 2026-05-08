@@ -1739,18 +1739,18 @@ function MessageBubble({ message }: { message: QuizMessage }) {
         >
           {message.category && (
             <div
-              className="inline-flex items-center gap-1 font-display font-bold text-[11px] uppercase tracking-widest mb-2 px-2.5 py-1 rounded-lg"
+              className="inline-flex items-center gap-1 font-display font-bold text-[12px] uppercase tracking-widest mb-3 px-3 py-1.5 rounded-lg"
               style={{
                 color: "#fff",
                 background: "linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 80%, black) 100%)",
-                boxShadow: "0 2px 8px color-mix(in srgb, var(--accent) 32%, transparent), inset 0 1px 0 rgba(255,255,255,0.18)",
+                boxShadow: "0 4px 12px color-mix(in srgb, var(--accent) 36%, transparent), inset 0 1px 0 rgba(255,255,255,0.2)",
                 letterSpacing: "0.14em",
               }}
             >
               ▸ {categoryLabel(message.category)}
             </div>
           )}
-          <p className="text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>
+          <p className="leading-relaxed" style={{ color: "var(--text-primary)", fontSize: 18, fontWeight: 500, lineHeight: 1.55 }}>
             {message.content}
           </p>
         </div>
@@ -1774,10 +1774,10 @@ function MessageBubble({ message }: { message: QuizMessage }) {
           boxShadow: "0 8px 24px color-mix(in srgb, var(--accent) 36%, transparent), inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -2px 6px rgba(0,0,0,0.2)",
         }}
       >
-        <div className="font-display font-bold text-[11px] uppercase tracking-widest mb-1 opacity-80" style={{ letterSpacing: "0.18em" }}>
+        <div className="font-display font-bold text-[12px] uppercase tracking-widest mb-1.5 opacity-85" style={{ letterSpacing: "0.18em" }}>
           ВЫ
         </div>
-        <p className="text-sm leading-relaxed" style={{ color: "#fff" }}>
+        <p className="leading-relaxed" style={{ color: "#fff", fontSize: 16, fontWeight: 500, lineHeight: 1.5 }}>
           {message.content}
         </p>
       </div>
