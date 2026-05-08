@@ -33,7 +33,7 @@ import { useSFX } from "@/components/arena/sfx/useSFX";
 //  • useSpeechRecognition gives a floating mic that appends to chat input
 //  (CountdownOverlay 3-2-1 removed 2026-05-03 per user feedback.)
 import { CoachingCard, type CoachingPayload } from "@/components/arena/reveal/CoachingCard";
-import { ArenaAudioPlayer } from "@/components/pvp/ArenaAudioPlayer";
+// PR-26: ArenaAudioPlayer удалён — юзер отключил TTS-озвучку.
 import { useLifelines } from "@/components/arena/hooks/useLifelines";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { themeFor } from "@/components/arena/themes";
@@ -42,7 +42,7 @@ import { Mic, MicOff, Lightbulb, SkipForward } from "lucide-react";
 // looking like a generic /training chat. User reported "ПвП выглядит
 // как тренировка" on duel 02bd9a42 — VsBanner + ArenaBackground +
 // explicit role badges close that gap without rewriting the page.
-import { VsBanner } from "@/components/pvp/VsBanner";
+// PR-26: VsBanner удалён по фидбэку юзера.
 import { ArenaBackground } from "@/components/pvp/ArenaBackground";
 
 export default function DuelPageWrapper() {
@@ -93,12 +93,10 @@ function DuelPage() {
   const [judgeDegraded, setJudgeDegraded] = useState<
     { round_number: number; reason: string } | null
   >(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  // PR-3 Phase A: VS-banner overlay shown for ~2.2s when duel.brief lands
-  // for the first time. Gives the player a clear "арена начинается" beat
-  // instead of dropping them into a chat that looks like /training.
-  const [vsOpen, setVsOpen] = useState(false);
-  const vsTriggeredRef = useRef(false);
+  // PR-26: audioUrl state удалён — TTS narration отключена.
+  // PR-26 (2026-05-08): VS-banner отключён — юзер на скрине жаловался,
+  // что эта pre-match анимация мешает зайти в дуэль («не могу посмотреть
+  // и зайти поиграть»). Стейт оставлен no-op для минимальной правки.
   const speech = useSpeechRecognition({
     lang: "ru-RU",
     onResult: (text) => setInput((prev) => (prev ? `${prev} ${text}`.trim() : text)),
@@ -149,14 +147,7 @@ function DuelPage() {
     return () => clearTimeout(t);
   }, [store.duelBrief, store.duelResult, earlyExit]);
 
-  // PR-3 Phase A: trigger VS-banner the first time duel.brief lands.
-  // ``vsTriggeredRef`` guards against re-trigger on reconnect (duel.state
-  // also surfaces brief data) so the banner doesn't pop up mid-round.
-  useEffect(() => {
-    if (!store.duelBrief || vsTriggeredRef.current || store.duelResult) return;
-    vsTriggeredRef.current = true;
-    setVsOpen(true);
-  }, [store.duelBrief, store.duelResult]);
+  // PR-26: VS-banner trigger удалён вместе со стейтом. Юзер заходит сразу в чат.
 
   // 2026-04-20: mountedRef — защита от зависших таймеров после unmount.
   // restartTimer может быть вызван асинхронно WS-сообщением (round.start),
@@ -212,9 +203,8 @@ function DuelPage() {
           sfx.play("round_start");
           break;
 
-        // Phase A — accept TTS narration URL and render ArenaAudioPlayer
+        // PR-26: pvp.audio_ready ignored — TTS отключена по фидбэку юзера.
         case "pvp.audio_ready":
-          if (typeof d.audio_url === "string") setAudioUrl(d.audio_url);
           break;
 
         case "round.swap":
@@ -744,17 +734,7 @@ function DuelPage() {
   return (
     <ArenaBackground tier={myTier} className="flex h-screen flex-col">
 
-      {/* PR-3 Phase A: VS-banner overlay on first duel.brief.
-          Auto-closes after 2.2s; user can still see the chat under it
-          (z-index 9000 covers everything but exit-confirm dialog). */}
-      <VsBanner
-        open={vsOpen}
-        leftName={myName.toUpperCase()}
-        rightName={oppName.toUpperCase()}
-        leftTier={myTier}
-        rightTier={oppTier}
-        onDone={() => setVsOpen(false)}
-      />
+      {/* PR-26: VS-banner удалён по фидбэку юзера. */}
 
       {/* Exit confirmation overlay */}
       {showExitConfirm && (
@@ -932,16 +912,8 @@ function DuelPage() {
         </div>
       )}
 
-      {/* Phase A — floating TTS narration player (pvp.audio_ready). */}
-      {audioUrl && (
-        <div className="mx-4 mt-1 flex justify-end z-20">
-          <ArenaAudioPlayer
-            audioUrl={audioUrl}
-            label={`РАУНД ${store.roundNumber}`}
-            autoplay={true}
-          />
-        </div>
-      )}
+      {/* PR-26: TTS narration player удалён по фидбэку юзера —
+          «убери звук, не нужна озвучка сколько секунд и так далее». */}
 
       {/* Phase A — lifelines bar + mic sit above the DuelChat. */}
       {store.myRole === "seller" && store.roundNumber > 0 && (
