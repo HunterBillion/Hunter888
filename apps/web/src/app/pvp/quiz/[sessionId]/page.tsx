@@ -8,7 +8,6 @@ import {
   BookOpen,
   Send,
   ChevronLeft,
-  Clock,
   CheckCircle2,
   XCircle,
   Lightbulb,
@@ -17,9 +16,7 @@ import {
   ArrowRight,
   Loader2,
   Flame,
-  Star,
   Zap,
-  Flag,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { AppIcon } from "@/components/ui/AppIcon";
@@ -29,6 +26,8 @@ import { QuizCaseIntro } from "@/components/pvp/QuizCaseIntro";
 import { useKnowledgeStore, type QuizMessage } from "@/stores/useKnowledgeStore";
 import { ReportAnswerButton } from "@/components/pvp/ReportAnswerButton";
 import { QuestionReportButton } from "@/components/pvp/QuestionReportButton";
+import { QuizHUD } from "@/components/pvp/QuizHUD";
+import { QuizAnswerCard } from "@/components/pvp/QuizAnswerCard";
 import { PixelMascot } from "@/components/pvp/PixelMascot";
 import type { MascotState } from "@/components/pvp/PixelMascotSprites";
 import { categoryLabel } from "@/lib/categories";
@@ -684,6 +683,38 @@ function KnowledgeSessionPage() {
     store.setIsTyping(true);
   }, [store, sendMessage]);
 
+  // PR-20 (2026-05-08): Arcade-Stage редизайн — extract exit handler
+  // и добавляем keyboard shortcuts A-E для выбора ответа.
+  const handleExit = useCallback(() => {
+    userExitedRef.current = true;
+    try {
+      if (store.status === "active") sendMessage({ type: "quiz.end" });
+    } catch { /* WS may be down */ }
+    store.reset();
+    router.push("/pvp");
+  }, [store, sendMessage, router]);
+
+  useEffect(() => {
+    if (store.status !== "active") return;
+    if (store.pickedChoiceIndex !== null) return;
+    const choices = store.currentChoices;
+    if (!choices || choices.length < 2) return;
+    const onKey = (e: KeyboardEvent) => {
+      // ignore if user is typing in an input/textarea
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const code = e.key.toUpperCase();
+      if (code.length !== 1) return;
+      const idx = code.charCodeAt(0) - 65;  // A→0, B→1, ...
+      if (idx >= 0 && idx < choices.length) {
+        e.preventDefault();
+        handleChoicePick(idx);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [store.status, store.pickedChoiceIndex, store.currentChoices, handleChoicePick]);
+
   // Request hint
   const handleHint = useCallback(() => {
     if (hintLoading) return;
@@ -699,17 +730,7 @@ function KnowledgeSessionPage() {
     }
   };
 
-  // Format time
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  };
-
-  const progressPct =
-    store.totalQuestions > 0
-      ? Math.round((store.currentQuestion / store.totalQuestions) * 100)
-      : 0;
+  // PR-20: formatTime + progressPct переехали в QuizHUD; сюда не нужны.
 
   // ─── Results Screen ────────────────────────────────
   if (showResults || store.status === "completed") {
@@ -1107,145 +1128,21 @@ function KnowledgeSessionPage() {
         />
       )}
 
-      {/* Top Bar — pixel arcade (2026-04-18: enlarged padding + min-height so components breathe) */}
-      <div
-        className="shrink-0 px-5 sm:px-6"
-        style={{
-          paddingTop: 14,
-          paddingBottom: 14,
-          minHeight: 72,
-          borderBottom: "2px solid var(--accent)",
-          background: "var(--bg-primary)",
-          boxShadow: "0 2px 0 0 rgba(0,0,0,0.15), 0 4px 0 0 var(--accent-muted)",
-          position: "relative",
-          zIndex: 10,
-        }}
-      >
-        <div className="mx-auto flex max-w-3xl items-center justify-between">
-          {/* Left: Back + Mode */}
-          <div className="flex items-center gap-3">
-            <motion.button
-              onClick={() => {
-                userExitedRef.current = true;
-                try {
-                  if (store.status === "active") {
-                    sendMessage({ type: "quiz.end" });
-                  }
-                } catch {
-                  /* WS may be down */
-                }
-                store.reset();
-                router.push("/pvp");
-              }}
-              whileHover={{ y: -1 }}
-              whileTap={{ y: 2 }}
-              className="flex items-center justify-center"
-              style={{
-                width: 44, height: 44,
-                background: "var(--input-bg)",
-                border: "2px solid var(--border-color)",
-                borderRadius: 0,
-                color: "var(--text-secondary)",
-                boxShadow: "2px 2px 0 0 var(--border-color)",
-                transition: "box-shadow 140ms ease-out, transform 140ms ease-out",
-              }}
-              title="Завершить квиз и выйти"
-              aria-label="Завершить квиз и выйти"
-            >
-              <ChevronLeft size={22} />
-            </motion.button>
-            <div>
-              <div
-                className="font-pixel uppercase tracking-wider"
-                style={{ color: "var(--accent)", textShadow: "0 0 6px var(--accent-glow)", fontSize: 16 }}
-              >
-                ▶ {store.mode === "blitz"
-                  ? "БЛИЦ"
-                  : store.mode === "themed"
-                    ? "ПО ТЕМЕ"
-                    : store.mode === "pvp"
-                      ? "PVP"
-                      : "ДИАЛОГ"}
-              </div>
-              {store.category && (
-                <div className="font-pixel uppercase tracking-wider mt-1" style={{ color: "var(--text-muted)", fontSize: 14 }}>
-                  ● {categoryLabel(store.category)}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Center: segmented pixel progress bar (arcade healthbar) */}
-          <div className="flex items-center gap-3">
-            {store.totalQuestions > 0 && (
-              <div className="flex items-center gap-2">
-                <div className="hidden sm:flex items-center gap-1" aria-label={`Прогресс ${store.currentQuestion}/${store.totalQuestions}`}>
-                  {Array.from({ length: Math.min(store.totalQuestions, 12) }).map((_, i) => {
-                    const filled = i < Math.round((store.currentQuestion / store.totalQuestions) * Math.min(store.totalQuestions, 12));
-                    return (
-                      <span
-                        key={i}
-                        style={{
-                          width: 14,
-                          height: 18,
-                          background: filled ? "var(--accent)" : "var(--input-bg)",
-                          border: `2px solid ${filled ? "var(--accent)" : "var(--border-color)"}`,
-                          borderRadius: 0,
-                          boxShadow: filled ? "0 0 6px var(--accent-glow)" : "none",
-                          transition: "background 180ms ease-out, border-color 180ms ease-out",
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-                <span className="font-pixel uppercase tracking-wider tabular-nums" style={{ color: "var(--text-primary)", fontSize: 16 }}>
-                  {store.currentQuestion}/{store.totalQuestions}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Right: Pixel scoreboard + timer */}
-          <div className="flex items-center gap-2">
-            {/* Score box — pixel retro (only shown in active quiz) */}
-            {(store.correct > 0 || store.incorrect > 0) && (
-              <div
-                className="flex items-center gap-2 px-3 py-1.5 font-pixel tabular-nums"
-                style={{
-                  background: "var(--input-bg)",
-                  border: "2px solid var(--accent)",
-                  borderRadius: 0,
-                  boxShadow: "2px 2px 0 0 var(--accent-muted)",
-                  fontSize: 16,
-                }}
-              >
-                <span style={{ color: "var(--success)" }}>✓{store.correct}</span>
-                <span style={{ color: "var(--text-muted)" }}>│</span>
-                <span style={{ color: "var(--danger)" }}>✖{store.incorrect}</span>
-              </div>
-            )}
-
-            {store.timeLeft !== null && (
-              <motion.div
-                className="flex items-center gap-2 px-3 py-1.5 font-pixel uppercase tracking-wider"
-                animate={store.timeLeft <= 10 ? { scale: [1, 1.08, 1] } : {}}
-                transition={{ duration: 0.6, repeat: store.timeLeft <= 10 ? Infinity : 0, ease: "easeInOut" }}
-                style={{
-                  background: store.timeLeft <= 30 ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.1)",
-                  color: store.timeLeft <= 30 ? "var(--danger)" : "var(--warning)",
-                  border: `2px solid ${store.timeLeft <= 30 ? "var(--danger)" : "var(--warning)"}`,
-                  borderRadius: 0,
-                  boxShadow: `2px 2px 0 0 ${store.timeLeft <= 30 ? "var(--danger)" : "var(--warning)"}`,
-                  fontSize: 15,
-                }}
-              >
-                <Clock size={14} />
-                <span className="tabular-nums">{formatTime(store.timeLeft)}</span>
-              </motion.div>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* PR-20 (2026-05-08): Arcade-Stage HUD заменил pixel-arcade top bar.
+          Стиль скопирован с /pvp/leaderboard: glass-card + blur(20px) +
+          soft tier-tints + 3-tier typography (font-display / font-mono /
+          sans). Таймер-циферблат circular SVG с 3 фазами цвета. */}
+      <QuizHUD
+        mode={store.mode}
+        category={store.category}
+        currentQuestion={store.currentQuestion}
+        totalQuestions={store.totalQuestions}
+        correct={store.correct}
+        incorrect={store.incorrect}
+        bestStreak={store.bestStreak ?? 0}
+        timeLeft={store.timeLeft}
+        onExit={handleExit}
+      />
 
       {/* ═══ Main Content: 2-column MC layout OR single-column free-text ═══
            PR-12 (2026-05-07): когда URL пометил MC-режим (?choices_format=1
@@ -1254,117 +1151,67 @@ function KnowledgeSessionPage() {
            юзер видел вспышку textarea на первом paint'е. */}
       {(store.currentChoices && store.currentChoices.length >= 2) || isMcByUrl ? (
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-          {/* ── LEFT: MC Choices Panel (1/3) ── */}
+          {/* ── LEFT: MC Choices Panel (1/3) ── PR-20: glass-arena style. */}
           <aside
-            className="order-2 lg:order-1 shrink-0 lg:w-[33.333%] overflow-y-auto"
+            className="order-2 lg:order-1 shrink-0 lg:w-[36%] overflow-y-auto"
             style={{
               background: "var(--bg-primary)",
-              borderRight: "2px solid var(--accent)",
-              boxShadow: "2px 0 0 0 rgba(0,0,0,0.15)",
+              borderRight: "1px solid var(--glass-border, rgba(255,255,255,0.08))",
             }}
           >
             <div className="flex flex-col h-full p-4 lg:p-5">
               <div
-                className="font-pixel uppercase tracking-widest mb-4 px-2 py-1.5 text-center"
+                className="font-display font-bold uppercase tracking-widest mb-4 px-3 py-2 text-center rounded-xl"
                 style={{
                   color: "var(--accent)",
                   fontSize: 13,
-                  textShadow: "0 0 8px var(--accent-glow)",
-                  background: "color-mix(in srgb, var(--accent) 10%, transparent)",
-                  border: "2px solid var(--accent)",
-                  borderRadius: 0,
-                  boxShadow: "3px 3px 0 0 var(--accent-muted)",
+                  letterSpacing: "0.18em",
+                  background: "var(--glass-bg, rgba(255,255,255,0.04))",
+                  border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
+                  backdropFilter: "blur(20px)",
+                  WebkitBackdropFilter: "blur(20px)",
+                  textShadow: "0 0 12px var(--accent-glow)",
                 }}
               >
                 ▸ ВЫБЕРИТЕ ОТВЕТ
               </div>
 
               <div className="flex flex-col gap-3 flex-1">
-                {/* PR-12 (2026-05-07): pre-question skeleton — иначе layout
-                    схлопывается на первый paint и hint-кнопка мигает наверх. */}
+                {/* Pre-question skeleton (glass) — иначе layout схлопывается. */}
                 {(!store.currentChoices || store.currentChoices.length < 2) && (
                   <>
                     {[0, 1, 2, 3, 4].map((i) => (
                       <div
                         key={`skeleton-${i}`}
-                        className="animate-pulse"
+                        className="animate-pulse rounded-xl"
                         style={{
-                          height: 60,
-                          background: "color-mix(in srgb, var(--accent) 6%, var(--bg-panel))",
-                          border: "2px dashed var(--border-color)",
-                          borderRadius: 0,
-                          opacity: 0.4,
+                          height: 64,
+                          background: "var(--glass-bg, rgba(255,255,255,0.04))",
+                          border: "1px solid var(--glass-border, rgba(255,255,255,0.08))",
+                          backdropFilter: "blur(20px)",
+                          opacity: 0.5,
                         }}
                       />
                     ))}
                     <div
-                      className="font-pixel uppercase text-center text-[11px] tracking-widest mt-2"
-                      style={{ color: "var(--text-muted)", letterSpacing: "0.16em" }}
+                      className="font-mono text-center text-[12px] mt-2 tracking-wider"
+                      style={{ color: "var(--text-muted)", letterSpacing: "0.12em" }}
                     >
-                      ▸ Загружаем варианты...
+                      Загружаем варианты…
                     </div>
                   </>
                 )}
-                {(store.currentChoices ?? []).map((choiceText, idx) => {
-                  const isPicked = store.pickedChoiceIndex === idx;
-                  const locked = store.pickedChoiceIndex !== null;
-                  const badgePalette = [
-                    "var(--accent)",
-                    "var(--success, #22c55e)",
-                    "var(--gf-xp, #facc15)",
-                    "var(--magenta, #d946ef)",
-                    "var(--warning, #f97316)",
-                  ];
-                  const badgeColor = isPicked
-                    ? "var(--accent)"
-                    : badgePalette[idx % badgePalette.length];
-                  return (
-                    <motion.button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleChoicePick(idx)}
-                      disabled={locked || store.status !== "active"}
-                      whileHover={!locked ? { x: -2, y: -2 } : undefined}
-                      whileTap={!locked ? { x: 2, y: 2 } : undefined}
-                      className="flex items-stretch gap-0 text-left font-mono w-full"
-                      style={{
-                        background: isPicked
-                          ? "color-mix(in srgb, var(--accent) 18%, var(--bg-panel))"
-                          : "var(--bg-panel)",
-                        color: "var(--text-primary)",
-                        border: `3px solid ${isPicked ? "var(--accent)" : badgeColor}`,
-                        borderRadius: 0,
-                        boxShadow: isPicked
-                          ? "5px 5px 0 0 var(--accent), 0 0 18px var(--accent-glow)"
-                          : `4px 4px 0 0 ${badgeColor}`,
-                        cursor: locked ? "not-allowed" : "pointer",
-                        opacity: locked && !isPicked ? 0.4 : 1,
-                        transition: "background 140ms, box-shadow 140ms, opacity 140ms",
-                        minHeight: 56,
-                      }}
-                    >
-                      <span
-                        className="font-pixel uppercase shrink-0 flex items-center justify-center"
-                        style={{
-                          color: "#fff",
-                          background: badgeColor,
-                          fontSize: 20,
-                          letterSpacing: "0.06em",
-                          width: 48,
-                          textShadow: "2px 2px 0 #000",
-                        }}
-                      >
-                        {String.fromCharCode(65 + idx)}
-                      </span>
-                      <span
-                        className="flex-1 px-3 py-2 leading-snug self-center"
-                        style={{ fontSize: 14, lineHeight: 1.4 }}
-                      >
-                        {choiceText}
-                      </span>
-                    </motion.button>
-                  );
-                })}
+                {(store.currentChoices ?? []).map((choiceText, idx) => (
+                  <QuizAnswerCard
+                    key={idx}
+                    index={idx}
+                    text={choiceText}
+                    picked={store.pickedChoiceIndex === idx}
+                    locked={store.pickedChoiceIndex !== null}
+                    disabled={store.status !== "active"}
+                    onPick={handleChoicePick}
+                  />
+                ))}
               </div>
 
               {/* Hint button at bottom of choices panel */}
@@ -1376,16 +1223,16 @@ function KnowledgeSessionPage() {
                     store.status !== "active" ||
                     (hintTiersRemaining !== null && hintTiersRemaining <= 0)
                   }
-                  whileHover={{ y: -1 }}
-                  whileTap={{ y: 2 }}
-                  className="mt-4 flex w-full items-center justify-center gap-2 py-3 px-3 disabled:opacity-40"
+                  whileHover={{ y: -2 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="mt-4 flex w-full items-center justify-center gap-2 py-3 px-3 rounded-xl disabled:opacity-40"
                   style={{
-                    background: "rgba(245,158,11,0.12)",
-                    border: "2px solid var(--warning)",
-                    borderRadius: 0,
+                    background: "rgba(245,158,11,0.1)",
+                    border: "1px solid rgba(245,158,11,0.4)",
                     color: "var(--warning)",
-                    boxShadow: "3px 3px 0 0 var(--warning)",
-                    transition: "box-shadow 120ms, transform 120ms",
+                    backdropFilter: "blur(20px)",
+                    boxShadow: "0 4px 16px rgba(245,158,11,0.16)",
+                    transition: "border-color 160ms, box-shadow 200ms",
                   }}
                   title={
                     hintTier !== null
@@ -1399,8 +1246,8 @@ function KnowledgeSessionPage() {
                   ) : (
                     <>
                       <Lightbulb size={16} />
-                      <span className="font-pixel text-[12px] uppercase tracking-widest">
-                        {hintTier !== null ? `ПОДСКАЗКА ${hintTier}/3` : "ПОДСКАЗКА"}
+                      <span className="font-display font-bold text-[12px] uppercase tracking-widest">
+                        {hintTier !== null ? `Подсказка ${hintTier}/3` : "Подсказка"}
                       </span>
                     </>
                   )}
