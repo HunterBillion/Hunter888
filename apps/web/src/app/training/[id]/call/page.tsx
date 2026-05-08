@@ -455,6 +455,15 @@ export default function TrainingCallPage() {
     let stopped = false;
     let timerId: ReturnType<typeof setTimeout> | null = null;
 
+    // Phase A (2026-05-08): only schedule audio when the context is
+    // actually running. Scheduling tones into a `suspended` timeline
+    // queues them in real-time-future; when the context unsuspends on
+    // the user's first gesture the queue flushes compressed into a few
+    // ms — that flush manifested as a brief screech/click bundle right
+    // at the Accept-click moment. By gating on `ctx.state === "running"`
+    // we either play immediately (already unlocked) or wait for the
+    // statechange event to fire, after which the queue is in sync with
+    // wall-clock again.
     const playOneCycle = () => {
       if (stopped) return;
       const t0 = ctx.currentTime + 0.02;
@@ -469,56 +478,64 @@ export default function TrainingCallPage() {
       ring.connect(ringGain).connect(ctx.destination);
       ring.start(t0);
       ring.stop(t0 + 0.7);
-      // 40ms «trying-to-pick-up» noise burst right after the tone.
-      const t1 = t0 + 0.78;
-      const clickBuf = ctx.createBuffer(1, ctx.sampleRate * 0.04, ctx.sampleRate);
-      const cd = clickBuf.getChannelData(0);
-      for (let i = 0; i < cd.length; i++) cd[i] = (Math.random() * 2 - 1) * (1 - i / cd.length) * 0.3;
-      const click = ctx.createBufferSource();
-      click.buffer = clickBuf;
-      const clickGain = ctx.createGain();
-      clickGain.gain.value = 0.08;
-      click.connect(clickGain).connect(ctx.destination);
-      click.start(t1);
-      // Schedule next cycle — 3s silence after this cycle's click.
+      // Schedule next cycle — 3s silence after this cycle's tone.
+      // Phase A (2026-05-08): the 40ms «trying-to-pick-up» random-PCM
+      // burst was removed. It had no DC blocking and no attack envelope
+      // (only release), so the very first sample was a hard step from
+      // 0 to ±0.024 — perceptible as an impulse click at low volumes
+      // and a hiss at higher ones. The 425 Hz pulsed gudok already
+      // conveys "phone ringing" — the noise burst was decorative
+      // overhead that contributed to the pre-pickup screech reports.
       timerId = setTimeout(playOneCycle, 3500);
     };
 
-    if (ctx.state === "suspended") ctx.resume().catch(() => {});
-    playOneCycle();
+    let stateHandler: (() => void) | null = null;
+    const startPlayback = () => {
+      if (stopped) return;
+      playOneCycle();
+    };
+    if (ctx.state === "running") {
+      startPlayback();
+    } else {
+      // Suspended: wait for unlock instead of scheduling into a frozen
+      // timeline. resume() is best-effort (returns rejected promise on
+      // some browsers without a gesture); the statechange handler is
+      // the authoritative trigger.
+      stateHandler = () => {
+        if (ctx.state === "running") startPlayback();
+      };
+      ctx.addEventListener("statechange", stateHandler);
+      ctx.resume().catch(() => { /* will retry via statechange */ });
+    }
 
-    const stop = (playPickupClick = false) => {
+    // Phase A (2026-05-08): the loud pickup-click variant of stop()
+    // was removed. It produced a 60ms random-PCM burst at amplitude
+    // 0.14 with no attack envelope — the impulse at sample 0 was the
+    // single most likely source of the user-reported screech, especially
+    // when stacked with the second AudioContext that the dialing
+    // overlay creates ~50ms later. The dialing overlay's ringback
+    // (1.0s pulsed 425 Hz) is now the sole audio cue for "receiver
+    // picked up", which matches a real-phone soundscape better than
+    // a noise click anyway.
+    const stop = () => {
       if (stopped) return;
       stopped = true;
       if (timerId) {
         clearTimeout(timerId);
         timerId = null;
       }
-      if (playPickupClick) {
-        // Final louder pickup click — as if the receiver lifts off hook.
-        try {
-          const t = ctx.currentTime + 0.02;
-          const buf = ctx.createBuffer(1, ctx.sampleRate * 0.06, ctx.sampleRate);
-          const d = buf.getChannelData(0);
-          for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
-          const src = ctx.createBufferSource();
-          src.buffer = buf;
-          const g = ctx.createGain();
-          g.gain.value = 0.14;
-          src.connect(g).connect(ctx.destination);
-          src.start(t);
-        } catch {
-          /* ignore */
-        }
+      if (stateHandler) {
+        try { ctx.removeEventListener("statechange", stateHandler); } catch { /* */ }
+        stateHandler = null;
       }
       setTimeout(() => {
         try { ctx.close(); } catch { /* ignore */ }
-      }, playPickupClick ? 250 : 50);
+      }, 50);
     };
-    ringbackStopRef.current = () => stop(true);
+    ringbackStopRef.current = stop;
 
     return () => {
-      stop(false);
+      stop();
       ringbackStopRef.current = null;
     };
   }, [modeOk, callAccepted]);
@@ -1154,20 +1171,29 @@ export default function TrainingCallPage() {
           } catch {
             /* storage quota / private mode — non-fatal, runtime Set covers it */
           }
-          // Sprint 0 §7 (Bug A): hold first TTS audio for 350ms so the
-          // pickup click (~60ms tone scheduled at +20ms) and the audio
-          // context close (+250ms) finish before any backend audio
-          // starts playing. See audioGateUntilRef definition for the
-          // budget breakdown.
-          audioGateUntilRef.current = Date.now() + 350;
+          // Phase A (2026-05-08): audio gate raised from 350ms to 1500ms.
+          // The previous 350ms only covered the pickup-click bundle but
+          // let the AI's "Алло?" land WHILE the dialing overlay (1200ms)
+          // was still showing — user heard speech under "Соединение..."
+          // text. 1500ms holds TTS until the dialing overlay has fully
+          // unmounted (220ms fade-out delay below + 1200ms overlay
+          // = 1420ms; +80ms safety margin = 1500ms).
+          audioGateUntilRef.current = Date.now() + 1500;
           // Phase 1 (2026-05-01): show "Соединение..." dialing overlay
           // for 1200ms over the active call so the transition feels like
           // a real phone connecting, not a teleport into an active call.
-          // The 350ms first-audio gate already held back AI audio enough
-          // to align with the overlay disappearing.
+          //
+          // Phase A (2026-05-08): defer setCallAccepted by 220ms so the
+          // IncomingCallScreen has time to fade out (animate via the
+          // `accepting` prop) instead of jump-cutting. The dialing
+          // overlay's dismiss timer is started AFTER callAccepted flips,
+          // so the overlay shows for the full 1200ms from when it
+          // actually paints.
           setDialingOverlay(true);
-          setTimeout(() => setDialingOverlay(false), 1200);
-          setCallAccepted(true);
+          setTimeout(() => {
+            setCallAccepted(true);
+            setTimeout(() => setDialingOverlay(false), 1200);
+          }, 220);
         }}
         onDecline={async () => {
           if (accepting || declining) return;
