@@ -71,14 +71,26 @@ function TimerDial({ seconds, max = 60 }: { seconds: number; max?: number }) {
       transition={{ duration: 0.6, repeat: phase === "danger" ? Infinity : 0 }}
       style={{ width: 44, height: 44 }}
     >
-      <svg width={44} height={44} className="absolute inset-0">
-        <circle cx={22} cy={22} r={r} stroke="var(--border-color)" strokeWidth={3} fill="none" opacity={0.4} />
+      <svg
+        width={44}
+        height={44}
+        className="absolute inset-0"
+        style={{ shapeRendering: "geometricPrecision" }}
+      >
+        <defs>
+          <radialGradient id="dial-bg" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.04)" />
+            <stop offset="100%" stopColor="rgba(0,0,0,0.18)" />
+          </radialGradient>
+        </defs>
+        <circle cx={22} cy={22} r={r + 2} fill="url(#dial-bg)" />
+        <circle cx={22} cy={22} r={r} stroke="var(--border-color)" strokeWidth={2.5} fill="none" opacity={0.3} />
         <circle
           cx={22}
           cy={22}
           r={r}
           stroke={color}
-          strokeWidth={3}
+          strokeWidth={2.5}
           fill="none"
           strokeDasharray={circ}
           strokeDashoffset={offset}
@@ -86,7 +98,7 @@ function TimerDial({ seconds, max = 60 }: { seconds: number; max?: number }) {
           transform="rotate(-90 22 22)"
           style={{
             transition: "stroke-dashoffset 800ms linear, stroke 200ms",
-            filter: phase !== "calm" ? `drop-shadow(0 0 4px ${color})` : undefined,
+            filter: phase !== "calm" ? `drop-shadow(0 0 6px ${color})` : `drop-shadow(0 0 2px ${color}88)`,
           }}
         />
       </svg>
@@ -120,10 +132,11 @@ export function QuizHUD({
     <div
       className="shrink-0 sticky top-0 z-20"
       style={{
-        background: "var(--glass-bg, rgba(15,15,20,0.72))",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
+        background: "linear-gradient(180deg, rgba(15,15,20,0.78) 0%, rgba(15,15,20,0.62) 100%)",
+        backdropFilter: "blur(24px) saturate(1.4)",
+        WebkitBackdropFilter: "blur(24px) saturate(1.4)",
         borderBottom: "1px solid var(--glass-border, rgba(255,255,255,0.08))",
+        boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.32)",
       }}
     >
       <div className="mx-auto max-w-6xl px-4 sm:px-6 py-3 flex items-center gap-4">
