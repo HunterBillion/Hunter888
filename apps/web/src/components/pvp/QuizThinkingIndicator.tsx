@@ -69,7 +69,7 @@ export function QuizThinkingIndicator() {
       <div
         className="flex shrink-0 items-center justify-center rounded-xl"
         style={{
-          width: 44, height: 44,
+          width: 52, height: 52,
           background: `linear-gradient(135deg, color-mix(in srgb, ${accent} 22%, transparent) 0%, color-mix(in srgb, ${accent} 6%, transparent) 100%)`,
           border: `1px solid color-mix(in srgb, ${accent} 45%, transparent)`,
           boxShadow: `0 4px 14px color-mix(in srgb, ${accent} 28%, transparent), inset 0 1px 0 rgba(255,255,255,0.08)`,
@@ -81,10 +81,10 @@ export function QuizThinkingIndicator() {
             animate={{ rotate: [0, -10, 10, -10, 10, 0] }}
             transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
           >
-            <Brain size={18} style={{ color: accent, filter: `drop-shadow(0 0 4px ${accent})` }} />
+            <Brain size={22} style={{ color: accent, filter: `drop-shadow(0 0 6px ${accent})` }} />
           </motion.div>
         ) : (
-          <Loader2 size={18} className="animate-spin" style={{ color: accent }} />
+          <Loader2 size={22} className="animate-spin" style={{ color: accent }} />
         )}
       </div>
 
@@ -101,7 +101,7 @@ export function QuizThinkingIndicator() {
       >
         <div
           className="flex gap-2 items-center font-display font-bold uppercase"
-          style={{ color: accent, fontSize: 12, letterSpacing: "0.14em" }}
+          style={{ color: accent, fontSize: 15, letterSpacing: "0.12em" }}
         >
           <motion.span
             key={idx}

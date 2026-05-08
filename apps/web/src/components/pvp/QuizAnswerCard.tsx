@@ -59,7 +59,7 @@ export function QuizAnswerCard({
       whileTap={interactive ? { scale: 0.98 } : undefined}
       className="group relative w-full flex items-center gap-3 text-left rounded-xl overflow-hidden"
       style={{
-        padding: "14px 16px",
+        padding: "18px 20px",
         background: picked
           ? `linear-gradient(135deg, color-mix(in srgb, ${badgeColor} 18%, var(--glass-bg, rgba(255,255,255,0.04))) 0%, color-mix(in srgb, ${badgeColor} 8%, var(--glass-bg, rgba(255,255,255,0.04))) 100%)`
           : "linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)",
@@ -91,16 +91,16 @@ export function QuizAnswerCard({
       <span
         className="font-display font-bold shrink-0 flex items-center justify-center select-none relative"
         style={{
-          width: 38,
-          height: 38,
+          width: 48,
+          height: 48,
           borderRadius: "50%",
           background: `radial-gradient(circle at 30% 25%, color-mix(in srgb, ${badgeColor} 100%, white 22%) 0%, ${badgeColor} 70%)`,
           color: "#0a0810",
-          fontSize: 18,
+          fontSize: 24,
           letterSpacing: "0.02em",
           boxShadow: picked
-            ? `0 0 16px ${badgeColor}, inset 0 1px 0 rgba(255,255,255,0.4), inset 0 -2px 4px rgba(0,0,0,0.18)`
-            : `0 2px 6px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.32), inset 0 -1px 3px rgba(0,0,0,0.18)`,
+            ? `0 0 20px ${badgeColor}, inset 0 1px 0 rgba(255,255,255,0.4), inset 0 -2px 4px rgba(0,0,0,0.18)`
+            : `0 4px 10px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.32), inset 0 -1px 4px rgba(0,0,0,0.2)`,
           transition: "box-shadow 220ms, transform 220ms",
           textShadow: "0 1px 0 rgba(255,255,255,0.18)",
         }}
@@ -113,7 +113,7 @@ export function QuizAnswerCard({
         className="flex-1 leading-snug"
         style={{
           color: "var(--text-primary)",
-          fontSize: 14,
+          fontSize: 17,
           fontWeight: 500,
           lineHeight: 1.45,
         }}
@@ -126,15 +126,15 @@ export function QuizAnswerCard({
         <kbd
           className="hidden md:inline-flex items-center justify-center font-mono shrink-0 select-none"
           style={{
-            minWidth: 24,
-            height: 24,
-            padding: "0 6px",
-            borderRadius: 6,
+            minWidth: 32,
+            height: 32,
+            padding: "0 8px",
+            borderRadius: 8,
             background: "var(--input-bg)",
             border: "1px solid var(--border-color)",
-            color: "var(--text-muted)",
-            fontSize: 11,
-            fontWeight: 600,
+            color: "var(--text-secondary)",
+            fontSize: 14,
+            fontWeight: 700,
             letterSpacing: "0.02em",
           }}
         >
@@ -150,16 +150,16 @@ export function QuizAnswerCard({
           transition={{ type: "spring", stiffness: 360, damping: 18 }}
           className="shrink-0 flex items-center justify-center"
           style={{
-            width: 24,
-            height: 24,
+            width: 32,
+            height: 32,
             borderRadius: "50%",
             background: badgeColor,
             color: "#0a0810",
-            boxShadow: `0 0 10px ${badgeColor}`,
+            boxShadow: `0 0 14px ${badgeColor}`,
           }}
           aria-hidden
         >
-          <Check size={14} strokeWidth={3} />
+          <Check size={18} strokeWidth={3} />
         </motion.span>
       )}
     </motion.button>

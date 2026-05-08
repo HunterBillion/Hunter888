@@ -54,7 +54,7 @@ function formatTime(s: number) {
 
 /** Circular timer ring — SVG conic via stroke-dashoffset. */
 function TimerDial({ seconds, max = 60 }: { seconds: number; max?: number }) {
-  const r = 16;
+  const r = 22;
   const circ = 2 * Math.PI * r;
   const ratio = Math.max(0, Math.min(1, seconds / max));
   const offset = circ * (1 - ratio);
@@ -69,11 +69,11 @@ function TimerDial({ seconds, max = 60 }: { seconds: number; max?: number }) {
       className="relative flex items-center justify-center"
       animate={phase === "danger" ? { scale: [1, 1.06, 1] } : {}}
       transition={{ duration: 0.6, repeat: phase === "danger" ? Infinity : 0 }}
-      style={{ width: 44, height: 44 }}
+      style={{ width: 56, height: 56 }}
     >
       <svg
-        width={44}
-        height={44}
+        width={56}
+        height={56}
         className="absolute inset-0"
         style={{ shapeRendering: "geometricPrecision" }}
       >
@@ -83,19 +83,19 @@ function TimerDial({ seconds, max = 60 }: { seconds: number; max?: number }) {
             <stop offset="100%" stopColor="rgba(0,0,0,0.18)" />
           </radialGradient>
         </defs>
-        <circle cx={22} cy={22} r={r + 2} fill="url(#dial-bg)" />
-        <circle cx={22} cy={22} r={r} stroke="var(--border-color)" strokeWidth={2.5} fill="none" opacity={0.3} />
+        <circle cx={28} cy={28} r={r + 3} fill="url(#dial-bg)" />
+        <circle cx={28} cy={28} r={r} stroke="var(--border-color)" strokeWidth={3} fill="none" opacity={0.3} />
         <circle
-          cx={22}
-          cy={22}
+          cx={28}
+          cy={28}
           r={r}
           stroke={color}
-          strokeWidth={2.5}
+          strokeWidth={3}
           fill="none"
           strokeDasharray={circ}
           strokeDashoffset={offset}
           strokeLinecap="round"
-          transform="rotate(-90 22 22)"
+          transform="rotate(-90 28 28)"
           style={{
             transition: "stroke-dashoffset 800ms linear, stroke 200ms",
             filter: phase !== "calm" ? `drop-shadow(0 0 6px ${color})` : `drop-shadow(0 0 2px ${color}88)`,
@@ -103,8 +103,8 @@ function TimerDial({ seconds, max = 60 }: { seconds: number; max?: number }) {
         />
       </svg>
       <span
-        className="font-mono tabular-nums"
-        style={{ color, fontSize: 11, fontWeight: 700, letterSpacing: "0.02em" }}
+        className="font-display tabular-nums"
+        style={{ color, fontSize: 14, fontWeight: 800, letterSpacing: "0.02em", textShadow: `0 0 6px ${color}` }}
       >
         {formatTime(seconds)}
       </span>
@@ -163,20 +163,21 @@ export function QuizHUD({
           </motion.button>
           <div className="min-w-0">
             <div
-              className="font-display font-bold tracking-widest truncate"
+              className="font-display font-bold tracking-widest truncate uppercase"
               style={{
                 color: accent,
-                fontSize: 18,
-                textShadow: `0 0 12px ${accent}66`,
+                fontSize: 22,
+                textShadow: `0 0 16px ${accent}88`,
                 lineHeight: 1.1,
+                letterSpacing: "0.06em",
               }}
             >
               ▶ {modeLabel}
             </div>
             {category && (
               <div
-                className="font-mono uppercase tracking-wider truncate mt-0.5"
-                style={{ color: "var(--text-muted)", fontSize: 11, letterSpacing: "0.12em" }}
+                className="font-mono uppercase tracking-wider truncate mt-1"
+                style={{ color: "var(--text-secondary)", fontSize: 13, letterSpacing: "0.12em" }}
               >
                 · {categoryLabel(category)}
               </div>
@@ -190,7 +191,7 @@ export function QuizHUD({
             <>
               <span
                 className="font-display font-bold tabular-nums shrink-0"
-                style={{ color: "var(--text-primary)", fontSize: 16, letterSpacing: "0.04em" }}
+                style={{ color: "var(--text-primary)", fontSize: 22, letterSpacing: "0.04em", textShadow: `0 0 14px ${accent}55` }}
               >
                 Q {currentQuestion}/{totalQuestions}
               </span>
@@ -208,11 +209,11 @@ export function QuizHUD({
                     <span
                       key={i}
                       style={{
-                        width: 6,
-                        height: 12,
+                        width: 8,
+                        height: 16,
                         background: filled ? accent : "var(--input-bg)",
                         borderRadius: 2,
-                        boxShadow: filled ? `0 0 6px ${accent}88` : "none",
+                        boxShadow: filled ? `0 0 8px ${accent}` : "none",
                         transition: "background 220ms, box-shadow 220ms",
                       }}
                     />
@@ -226,16 +227,17 @@ export function QuizHUD({
               key={bestStreak}
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
               style={{
-                background: "rgba(245,158,11,0.1)",
-                border: "1px solid rgba(245,158,11,0.3)",
+                background: "rgba(245,158,11,0.14)",
+                border: "1px solid rgba(245,158,11,0.4)",
                 color: "var(--warning)",
+                boxShadow: "0 4px 12px rgba(245,158,11,0.2), inset 0 1px 0 rgba(255,255,255,0.06)",
               }}
               title={`Лучшая серия: ${bestStreak}`}
             >
-              <Zap size={12} />
-              <span className="font-mono font-bold tabular-nums" style={{ fontSize: 12 }}>
+              <Zap size={16} />
+              <span className="font-display font-bold tabular-nums" style={{ fontSize: 16 }}>
                 ×{bestStreak}
               </span>
             </motion.div>
@@ -246,20 +248,20 @@ export function QuizHUD({
         <div className="flex items-center gap-2 ml-auto">
           {(correct > 0 || incorrect > 0) && (
             <div
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl font-mono tabular-nums"
+              className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl font-display font-bold tabular-nums"
               style={{
                 background: "var(--glass-bg, rgba(255,255,255,0.04))",
-                border: "1px solid var(--glass-border, rgba(255,255,255,0.08))",
-                fontSize: 14,
-                fontWeight: 600,
+                border: "1px solid var(--glass-border, rgba(255,255,255,0.1))",
+                fontSize: 18,
                 backdropFilter: "blur(20px)",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.05)",
               }}
             >
-              <span style={{ color: "var(--success)", textShadow: "0 0 6px rgba(34,197,94,0.5)" }}>
+              <span style={{ color: "var(--success)", textShadow: "0 0 8px rgba(34,197,94,0.6)" }}>
                 ✓{correct}
               </span>
-              <span style={{ color: "var(--text-muted)" }}>·</span>
-              <span style={{ color: "var(--danger)", textShadow: "0 0 6px rgba(239,68,68,0.5)" }}>
+              <span style={{ color: "var(--text-muted)", fontSize: 14 }}>·</span>
+              <span style={{ color: "var(--danger)", textShadow: "0 0 8px rgba(239,68,68,0.6)" }}>
                 ✗{incorrect}
               </span>
             </div>
