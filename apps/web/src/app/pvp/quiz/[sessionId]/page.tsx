@@ -1,21 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen,
   Send,
-  ChevronLeft,
   CheckCircle2,
   XCircle,
   Lightbulb,
-  Trophy,
-  Target,
-  ArrowRight,
   Loader2,
-  Flame,
   Zap,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -28,6 +22,9 @@ import { ReportAnswerButton } from "@/components/pvp/ReportAnswerButton";
 import { QuestionReportButton } from "@/components/pvp/QuestionReportButton";
 import { QuizHUD } from "@/components/pvp/QuizHUD";
 import { QuizAnswerCard } from "@/components/pvp/QuizAnswerCard";
+import { QuizVerdictOverlay } from "@/components/pvp/QuizVerdictOverlay";
+import { QuizHistoryStrip } from "@/components/pvp/QuizHistoryStrip";
+import { QuizResultsScreen } from "@/components/pvp/QuizResultsScreen";
 import { PixelMascot } from "@/components/pvp/PixelMascot";
 import type { MascotState } from "@/components/pvp/PixelMascotSprites";
 import { categoryLabel } from "@/lib/categories";
@@ -104,6 +101,37 @@ function KnowledgeSessionPage() {
     if (last.verdictLevel === "wrong" || last.verdictLevel === "off_topic") return "sad";
     return "idle";
   }, [store.messages]);
+
+  // PR-22 (Phase 2): latest verdict + dismiss tracking для VerdictOverlay.
+  // Overlay показывается когда есть feedback с id'ом которого нет в
+  // dismissedVerdicts. Auto-advance в блице через 2s clears + ставит next.
+  const [dismissedVerdicts, setDismissedVerdicts] = useState<Set<string>>(new Set());
+  const latestVerdict = useMemo(() => {
+    const fbs = store.messages.filter((m) => m.type === "feedback");
+    const last = fbs[fbs.length - 1];
+    if (!last) return null;
+    if (dismissedVerdicts.has(last.id)) return null;
+    return last;
+  }, [store.messages, dismissedVerdicts]);
+  // Auto-dismiss верить когда currentQuestion инкрементировался
+  // (новый вопрос пришёл от backend).
+  const lastQuestionIdxRef = useRef(store.currentQuestion);
+  useEffect(() => {
+    if (store.currentQuestion !== lastQuestionIdxRef.current) {
+      lastQuestionIdxRef.current = store.currentQuestion;
+      // не вызываем setDismissedVerdicts — overlay сам исчезнет когда
+      // приедет новый feedback. Если новый feedback не пришёл а вопрос
+      // уже сменился — закрываем principle через id.
+      if (latestVerdict) {
+        setDismissedVerdicts((prev) => new Set(prev).add(latestVerdict.id));
+      }
+    }
+  }, [store.currentQuestion, latestVerdict]);
+  const dismissVerdict = useCallback(() => {
+    if (latestVerdict) {
+      setDismissedVerdicts((prev) => new Set(prev).add(latestVerdict.id));
+    }
+  }, [latestVerdict]);
 
   const [showResults, setShowResults] = useState(false);
   const [hintLoading, setHintLoading] = useState(false);
@@ -735,368 +763,35 @@ function KnowledgeSessionPage() {
   // ─── Results Screen ────────────────────────────────
   if (showResults || store.status === "completed") {
     const results = store.results || {};
-    const accuracy =
-      store.correct + store.incorrect > 0
-        ? Math.round((store.correct / (store.correct + store.incorrect)) * 100)
+    const durationSeconds =
+      typeof results.duration_seconds === "number"
+        ? results.duration_seconds
         : 0;
-
     return (
-      <div
-        className="flex min-h-screen flex-col"
-        style={{ background: "var(--bg-primary)" }}
-      >
-        <div className="flex-1 flex items-center justify-center p-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="glass-panel max-w-lg w-full p-8 relative overflow-hidden"
-          >
-            <div
-              className="absolute top-0 left-0 right-0 h-[2px]"
-              style={{
-                background:
-                  "linear-gradient(90deg, transparent, #6366F1, transparent)",
-              }}
-            />
-
-            <div className="text-center">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-                className="mx-auto flex h-20 w-20 items-center justify-center rounded-full"
-                style={{
-                  background:
-                    accuracy >= 75
-                      ? "rgba(61,220,132,0.1)"
-                      : accuracy >= 50
-                        ? "rgba(245,158,11,0.1)"
-                        : "var(--danger-muted)",
-                  border: `2px solid ${accuracy >= 75 ? "#00FF6640" : accuracy >= 50 ? "#F59E0B40" : "#FF333340"}`,
-                }}
-              >
-                <Trophy
-                  size={36}
-                  style={{
-                    color:
-                      accuracy >= 75
-                        ? "var(--success)"
-                        : accuracy >= 50
-                          ? "var(--warning)"
-                          : "var(--danger)",
-                  }}
-                />
-              </motion.div>
-
-              <h2
-                className="mt-5 font-display text-2xl font-bold"
-                style={{ color: "var(--text-primary)" }}
-              >
-                Квиз завершён!
-              </h2>
-              <p
-                className="mt-1 text-sm"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                {accuracy >= 75
-                  ? "Отличный результат!"
-                  : accuracy >= 50
-                    ? "Хороший результат, но есть куда расти"
-                    : "Стоит повторить материал"}
-              </p>
-            </div>
-
-            <div className="mt-8 grid grid-cols-2 gap-3">
-              <div
-                className="rounded-xl p-4 text-center"
-                style={{
-                  background: "rgba(61,220,132,0.06)",
-                  border: "1px solid rgba(61,220,132,0.15)",
-                }}
-              >
-                <div
-                  className="font-display text-3xl font-bold"
-                  style={{ color: "var(--success)" }}
-                >
-                  {store.correct}
-                </div>
-                <div
-                  className="mt-1 font-mono text-sm uppercase tracking-widest"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Верно
-                </div>
-              </div>
-              <div
-                className="rounded-xl p-4 text-center"
-                style={{
-                  background: "var(--danger-muted)",
-                  border: "1px solid var(--danger-muted)",
-                }}
-              >
-                <div
-                  className="font-display text-3xl font-bold"
-                  style={{ color: "var(--danger)" }}
-                >
-                  {store.incorrect}
-                </div>
-                <div
-                  className="mt-1 font-mono text-sm uppercase tracking-widest"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Неверно
-                </div>
-              </div>
-              <div
-                className="rounded-xl p-4 text-center"
-                style={{
-                  background: "var(--accent-muted)",
-                  border: "1px solid var(--accent-muted)",
-                }}
-              >
-                <div
-                  className="font-display text-3xl font-bold"
-                  style={{ color: "var(--accent)" }}
-                >
-                  {accuracy}%
-                </div>
-                <div
-                  className="mt-1 font-mono text-sm uppercase tracking-widest"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Точность
-                </div>
-              </div>
-              <div
-                className="rounded-xl p-4 text-center"
-                style={{
-                  background: "rgba(245,158,11,0.06)",
-                  border: "1px solid rgba(245,158,11,0.15)",
-                }}
-              >
-                <div
-                  className="font-display text-3xl font-bold"
-                  style={{ color: "var(--warning)" }}
-                >
-                  {store.score}
-                </div>
-                <div
-                  className="mt-1 font-mono text-sm uppercase tracking-widest"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Очки
-                </div>
-              </div>
-            </div>
-
-            {/* V2: Streak counter with animation */}
-            <AnimatePresence>
-              {store.streak >= 2 && (
-                <motion.div
-                  key={`streak-${store.streak}`}
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: [1, 1.15, 1] }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  transition={{ duration: 0.4 }}
-                  className="mt-3 flex items-center justify-center gap-1 rounded-lg py-1.5 px-3"
-                  style={{
-                    background: store.streak >= 5
-                      ? "rgba(249,115,22,0.2)"
-                      : "rgba(249,115,22,0.1)",
-                    border: `1px solid rgba(249,115,22,${store.streak >= 5 ? 0.4 : 0.2})`,
-                    boxShadow: store.streak >= 5
-                      ? "0 0 12px rgba(249,115,22,0.3)"
-                      : "none",
-                  }}
-                >
-                  <motion.span
-                    className="text-orange-500 text-sm"
-                    animate={store.streak >= 5 ? { scale: [1, 1.3, 1] } : {}}
-                    transition={{ repeat: Infinity, duration: 1.5 }}
-                  >
-                    <Flame size={16} style={{ color: "var(--warning)" }} />
-                  </motion.span>
-                  <span className="font-mono text-sm font-bold" style={{ color: "var(--warning)" }}>
-                    {store.streak}
-                  </span>
-                  {store.streak >= 5 && (
-                    <motion.span
-                      className="text-sm font-mono text-orange-400 ml-1"
-                      animate={{ opacity: [0.6, 1, 0.6] }}
-                      transition={{ repeat: Infinity, duration: 1.2 }}
-                    >
-                      В УДАРЕ!
-                    </motion.span>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* V2: Difficulty indicator — single line, no star-row.
-                User flagged "звёзды в ряд = плохо" 2026-05-04. */}
-            {store.currentDifficulty > 0 && (
-              <div className="mt-2 text-center">
-                <span
-                  className="font-mono text-xs uppercase tracking-widest"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Достигнутая сложность:{" "}
-                  <span style={{ color: "var(--warning)" }}>
-                    {store.currentDifficulty}/5
-                  </span>
-                </span>
-              </div>
-            )}
-
-            {store.skipped > 0 && (
-              <div
-                className="mt-3 text-center font-mono text-sm"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Пропущено: {store.skipped}
-              </div>
-            )}
-
-            {/* #5 fix: Category progress from server results */}
-            {Array.isArray(results.category_progress) && (results.category_progress as Array<{ category: string; correct: number; total: number }>).length > 0 && (
-              <div className="mt-6">
-                <h3 className="font-mono text-sm uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>
-                  По категориям
-                </h3>
-                <div className="space-y-2">
-                  {(results.category_progress as Array<{ category: string; correct: number; total: number }>).map((cat) => {
-                    const pct = cat.total > 0 ? Math.round((cat.correct / cat.total) * 100) : 0;
-                    return (
-                      <div key={cat.category}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm" style={{ color: "var(--text-secondary)" }}>{cat.category}</span>
-                          <span className="font-mono text-sm" style={{ color: pct >= 75 ? "var(--success)" : pct >= 50 ? "var(--warning)" : "var(--danger)" }}>
-                            {cat.correct}/{cat.total} ({pct}%)
-                          </span>
-                        </div>
-                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{
-                              width: `${pct}%`,
-                              background: pct >= 75 ? "var(--success)" : pct >= 50 ? "var(--warning)" : "var(--danger)",
-                            }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* "Разбор полётов" — weak categories with direct CTA to
-                drill that category. 2026-05-04: this is the new headline
-                of the completion card per user feedback ("звёзды в ряд
-                = плохо, нужен разбор полётов"). Hidden if everything
-                is ≥60% — no point showing an empty alarm. */}
-            {Array.isArray(results.category_progress) && (() => {
-              const weak = (results.category_progress as Array<{ category: string; correct: number; total: number }>)
-                .filter(c => c.total > 0 && (c.correct / c.total) < 0.6)
-                .sort((a, b) => (a.correct / a.total) - (b.correct / b.total));
-              if (weak.length === 0) return null;
-              return (
-                <div
-                  className="mt-6 rounded-xl p-4"
-                  style={{
-                    background: "color-mix(in srgb, var(--warning) 8%, transparent)",
-                    border: "1px solid color-mix(in srgb, var(--warning) 28%, transparent)",
-                  }}
-                >
-                  <div className="flex items-center gap-2 mb-3">
-                    <Target size={14} style={{ color: "var(--warning)" }} />
-                    <span
-                      className="font-mono text-sm uppercase tracking-widest font-bold"
-                      style={{ color: "var(--warning)" }}
-                    >
-                      Разбор полётов
-                    </span>
-                  </div>
-                  <ul className="space-y-2">
-                    {weak.map(c => {
-                      const pct = Math.round((c.correct / c.total) * 100);
-                      const drillHref = `/pvp/quiz?mode=blitz&category=${encodeURIComponent(c.category)}`;
-                      return (
-                        <li
-                          key={c.category}
-                          className="flex items-center justify-between gap-3 text-sm"
-                          style={{ color: "var(--text-secondary)" }}
-                        >
-                          <div className="min-w-0">
-                            <div className="truncate">
-                              <strong>{c.category}</strong>{" "}
-                              <span style={{ color: "var(--text-muted)" }}>
-                                — {c.correct}/{c.total} ({pct}%)
-                              </span>
-                            </div>
-                          </div>
-                          <Link
-                            href={drillHref}
-                            className="shrink-0 inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold uppercase tracking-widest"
-                            style={{
-                              background: "var(--warning)",
-                              color: "#0b0b14",
-                            }}
-                          >
-                            Подтянуть
-                            <ArrowRight size={11} />
-                          </Link>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              );
-            })()}
-
-            {/* Server summary */}
-            {typeof results.summary === "string" && results.summary && (
-              <div
-                className="mt-4 rounded-xl p-3 text-sm leading-relaxed"
-                style={{ background: "var(--accent-muted)", border: "1px solid var(--accent-muted)", color: "var(--text-secondary)" }}
-              >
-                {results.summary as string}
-              </div>
-            )}
-
-            <div className="mt-8 flex gap-3">
-              <motion.button
-                onClick={() => {
-                  store.reset();
-                  router.push("/pvp");
-                }}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 font-mono text-sm tracking-wider transition-all"
-                style={{
-                  borderColor: "rgba(255,255,255,0.08)",
-                  background: "rgba(255,255,255,0.03)",
-                  color: "var(--text-secondary)",
-                }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <ChevronLeft size={14} />
-                К выбору режима
-              </motion.button>
-              <motion.button
-                onClick={() => {
-                  store.reset();
-                  store.init(store.mode, store.category ?? undefined);
-                  // Would create new session
-                  router.push("/pvp");
-                }}
-                className="btn-neon flex flex-1 items-center justify-center gap-2"
-                whileTap={{ scale: 0.98 }}
-              >
-                Ещё раз
-                <ArrowRight size={14} />
-              </motion.button>
-            </div>
-          </motion.div>
-        </div>
+      <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-primary)" }}>
+        <QuizResultsScreen
+          mode={store.mode}
+          category={store.category}
+          score={store.score}
+          correct={store.correct}
+          incorrect={store.incorrect}
+          bestStreak={store.bestStreak ?? 0}
+          totalQuestions={store.totalQuestions || (store.correct + store.incorrect)}
+          durationSeconds={durationSeconds}
+          results={results}
+          messages={store.messages}
+          onPlayAgain={() => {
+            const m = store.mode;
+            const c = store.category ?? undefined;
+            store.reset();
+            store.init(m, c);
+            router.push("/pvp");
+          }}
+          onBackToArena={() => {
+            store.reset();
+            router.push("/pvp");
+          }}
+        />
       </div>
     );
   }
@@ -1269,17 +964,34 @@ function KnowledgeSessionPage() {
                   ещё не было — disabled с tooltip'ом. */}
               <QuestionReportButton lastAnswerId={lastAnswerId} />
 
-              {/* PR-20: маскот в glass-рамке вместо пиксельной — мягче
-                  вписывается в Arcade-Stage. Размер чуть больше (64→72)
-                  чтобы не терялся между ответами и кнопкой подсказки. */}
+              {/* PR-22 (Phase 2): HistoryStrip — компактные ✓/✗ за все
+                  отвеченные вопросы с tooltip-preview на hover. */}
+              {(store.totalQuestions > 0 || store.messages.some((m) => m.type === "feedback")) && (
+                <div className="mt-4">
+                  <QuizHistoryStrip
+                    messages={store.messages}
+                    totalQuestions={store.totalQuestions}
+                    variant="compact"
+                  />
+                </div>
+              )}
+
+              {/* PR-22 (Phase 2): reactive scale — на cheer лев растёт до
+                  1.15 spring, на sad сжимается 0.92 + shake. Лёгкий, но
+                  заметный feedback для каждого вердикта. */}
               <div className="mt-4 flex justify-center">
                 <motion.div
+                  key={quizMascotState}
                   animate={
-                    quizMascotState === "cheer" ? { scale: [1, 1.08, 1] }
-                    : quizMascotState === "sad" ? { rotate: [-2, 2, -1, 0] }
-                    : {}
+                    quizMascotState === "cheer" ? { scale: [1, 1.18, 1.08] }
+                    : quizMascotState === "sad" ? { scale: [1, 0.92, 0.96], rotate: [-3, 3, -2, 0] }
+                    : { scale: 1 }
                   }
-                  transition={{ duration: 0.6 }}
+                  transition={
+                    quizMascotState === "cheer"
+                      ? { duration: 0.5, type: "spring", stiffness: 280, damping: 16 }
+                      : { duration: 0.6 }
+                  }
                   className="rounded-2xl flex items-center justify-center"
                   style={{
                     padding: 8,
@@ -1319,6 +1031,19 @@ function KnowledgeSessionPage() {
             }}
           >
             <div className="px-4 py-6 space-y-4 relative">
+              {/* PR-22 (Phase 2): VerdictOverlay sticky-top — большая
+                  карточка вердикта с particle-burst, авто-адванс в блице. */}
+              {latestVerdict && (
+                <div className="sticky top-2 z-30">
+                  <QuizVerdictOverlay
+                    verdict={latestVerdict}
+                    autoAdvance={store.mode === "blitz" || urlMode === "rapid_blitz"}
+                    autoAdvanceMs={2200}
+                    onDismiss={dismissVerdict}
+                  />
+                </div>
+              )}
+
               {connectionState !== "connected" && (
                 <motion.div
                   initial={{ opacity: 0 }}
