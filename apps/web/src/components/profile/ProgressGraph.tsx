@@ -150,10 +150,17 @@ export function ProgressGraph({ data }: ProgressGraphProps) {
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glass-panel p-8 text-center"
+        className="rounded-sm p-10 text-center"
+        style={{
+          background: "rgba(8,5,18,0.45)",
+          border: "2px dashed rgba(255,255,255,0.18)",
+        }}
       >
-        <ChartBar weight="duotone" size={32} className="mx-auto animate-float-subtle" style={{ color: "var(--text-muted)", opacity: 0.4 }} />
-        <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
+        <ChartBar weight="duotone" size={36} className="mx-auto" style={{ color: "var(--text-muted)", opacity: 0.5 }} />
+        <p
+          className="mt-4 font-pixel uppercase tracking-widest"
+          style={{ color: "var(--text-muted)", fontSize: 14 }}
+        >
           Пройдите несколько тренировок для отображения прогресса
         </p>
       </motion.div>
@@ -164,12 +171,22 @@ export function ProgressGraph({ data }: ProgressGraphProps) {
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="glass-panel p-6"
+      className="rounded-sm p-5 md:p-6"
+      style={{
+        // 2026-05-08 graphics polish: glass-panel заменён на пиксельную
+        // рамку — синхронно с остальной /profile-эстетикой.
+        background: "rgba(8,5,18,0.55)",
+        border: "2px solid rgba(167,139,250,0.28)",
+        boxShadow: "inset 0 0 18px rgba(0,0,0,0.4)",
+      }}
     >
       <div className="flex items-center gap-2 mb-4">
         <TrendUp weight="duotone" size={18} style={{ color: "var(--accent)" }} />
-        <span className="font-display text-base font-bold tracking-widest uppercase" style={{ color: "var(--text-secondary)" }}>
-          Прогресс
+        <span
+          className="font-pixel uppercase tracking-widest"
+          style={{ color: "var(--text-secondary)", fontSize: 14 }}
+        >
+          ▰ ГРАФИК ПО НЕДЕЛЯМ ▰
         </span>
       </div>
 
