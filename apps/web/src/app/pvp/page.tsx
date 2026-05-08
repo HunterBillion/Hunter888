@@ -32,6 +32,11 @@ function PvPLobbyContent() {
   const [tab, setTab] = useState<"history" | "knowledge_base">(
     tabParam === "knowledge_base" || tabParam === "rag" ? "knowledge_base" : "history"
   );
+  // Reactively flip tab when ?tab= changes (e.g. KB-panel click on the same /pvp page).
+  useEffect(() => {
+    if (tabParam === "knowledge_base" || tabParam === "rag") setTab("knowledge_base");
+    else if (tabParam === null) setTab("history");
+  }, [tabParam]);
   const [quizStarting, setQuizStarting] = useState(false);
   const [pickedCharacterId, setPickedCharacterId] = useState<string | null>(null);
   const [arenaPoints, setArenaPoints] = useState<number>(0);
@@ -510,7 +515,7 @@ function PvPLobbyContent() {
               <KnowledgeBaseBrowser />
             </motion.div>
           ) : (
-            <div className="mt-6 grid gap-4 lg:grid-cols-[220px_1fr_220px] xl:grid-cols-[240px_1fr_240px]">
+            <div className="mt-6 grid gap-4 lg:grid-cols-[240px_1fr_260px] xl:grid-cols-[260px_1fr_280px] lg:items-start">
               {/* LEFT sidebar — desktop only, ниже плиток на mobile */}
               <aside className="order-2 lg:order-1 flex flex-col gap-4 min-w-0">
                 <TopPlayersPanel />

@@ -146,7 +146,7 @@ export function HonestNavigator({ disabled, starting, onDuel, onQuiz }: Props) {
             <div className="mt-3 pt-3 border-t border-dashed" style={{ borderColor: "var(--border-color)" }}>
               <div
                 className="font-pixel uppercase mb-2"
-                style={{ color: "var(--text-muted)", fontSize: 10, letterSpacing: "0.14em" }}
+                style={{ color: "var(--text-muted)", fontSize: 12, letterSpacing: "0.14em" }}
               >
                 Выбери тему
               </div>
@@ -161,7 +161,7 @@ export function HonestNavigator({ disabled, starting, onDuel, onQuiz }: Props) {
                       disabled={isBusy}
                       whileHover={!isBusy && !active ? { x: -1, y: -1 } : undefined}
                       whileTap={!isBusy ? { x: 2, y: 2 } : undefined}
-                      className="flex items-center gap-2 px-2.5 py-2"
+                      className="flex items-center gap-2 px-3 py-2.5"
                       style={{
                         background: active
                           ? "color-mix(in srgb, var(--success) 14%, var(--bg-panel))"
@@ -173,14 +173,14 @@ export function HonestNavigator({ disabled, starting, onDuel, onQuiz }: Props) {
                         cursor: isBusy ? "not-allowed" : "pointer",
                       }}
                     >
-                      <PixelIcon name={cat.icon} size={14} color={active ? "var(--success)" : "var(--text-muted)"} />
+                      <PixelIcon name={cat.icon} size={16} color={active ? "var(--success)" : "var(--text-muted)"} />
                       <span
                         className="font-pixel uppercase"
                         style={{
                           color: active ? "var(--success)" : "var(--text-primary)",
-                          fontSize: 10,
+                          fontSize: 13,
                           letterSpacing: "0.08em",
-                          lineHeight: 1.1,
+                          lineHeight: 1.15,
                         }}
                       >
                         {cat.label}
@@ -204,13 +204,13 @@ export function HonestNavigator({ disabled, starting, onDuel, onQuiz }: Props) {
                   outlineOffset: -2,
                   borderRadius: 0,
                   boxShadow: category ? "3px 3px 0 0 #000, 0 0 12px var(--accent-glow)" : "1px 1px 0 0 var(--border-color)",
-                  fontSize: 13,
-                  letterSpacing: "0.16em",
+                  fontSize: 16,
+                  letterSpacing: "0.18em",
                   cursor: !isBusy && category ? "pointer" : "not-allowed",
                   opacity: isBusy ? 0.6 : 1,
                 }}
               >
-                {starting ? <Loader2 size={16} className="animate-spin" /> : "▶ Начать"}
+                {starting ? <Loader2 size={18} className="animate-spin" /> : "▶ Начать"}
               </motion.button>
             </div>
           </motion.div>
