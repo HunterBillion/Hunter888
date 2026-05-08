@@ -1,0 +1,164 @@
+"use client";
+
+/**
+ * QuizAnswerCard — Arcade-Stage answer chip (Phase 1).
+ *
+ * Заменяет inline answer-chip render в quiz/[sessionId]/page.tsx.
+ * Стиль: glass-tile rounded-xl + circular letter-badge цветной + текст
+ * (sans 14px) + keyboard-shortcut hint (font-mono kbd-style).
+ *
+ * States:
+ *   default     — glass background, soft border (badge color × 25%)
+ *   hover       — y: -2 lift + boxShadow tier-color glow
+ *   picked      — accent bg + accent border + checkmark badge + scale 0.99
+ *   locked-out  — opacity 0.35 + blur(0.5px), pointer-events: none
+ */
+
+import { motion } from "framer-motion";
+import { Check } from "lucide-react";
+
+const BADGE_COLORS = [
+  "var(--accent)",                    // A — фиолетовый
+  "var(--success, #22c55e)",          // B — зелёный
+  "var(--gf-xp, #facc15)",            // C — золотой
+  "var(--magenta, #d946ef)",          // D — мажента
+  "var(--warning, #f97316)",          // E — оранжевый
+];
+
+interface QuizAnswerCardProps {
+  index: number;          // 0..4
+  text: string;
+  picked: boolean;
+  locked: boolean;        // any choice is picked → disable others
+  disabled?: boolean;     // store.status !== "active"
+  onPick: (idx: number) => void;
+}
+
+export function QuizAnswerCard({
+  index,
+  text,
+  picked,
+  locked,
+  disabled,
+  onPick,
+}: QuizAnswerCardProps) {
+  const badgeColor = BADGE_COLORS[index % BADGE_COLORS.length];
+  const letter = String.fromCharCode(65 + index);
+  const dim = locked && !picked;
+  const interactive = !locked && !disabled;
+
+  return (
+    <motion.button
+      type="button"
+      onClick={() => interactive && onPick(index)}
+      disabled={!interactive}
+      initial={{ opacity: 0, x: -16 }}
+      animate={{ opacity: dim ? 0.35 : 1, x: 0 }}
+      transition={{ delay: index * 0.04, duration: 0.22 }}
+      whileHover={interactive ? { y: -2 } : undefined}
+      whileTap={interactive ? { scale: 0.98 } : undefined}
+      className="group relative w-full flex items-center gap-3 text-left rounded-xl overflow-hidden"
+      style={{
+        padding: "14px 16px",
+        background: picked
+          ? `color-mix(in srgb, ${badgeColor} 14%, var(--glass-bg, rgba(255,255,255,0.04)))`
+          : "var(--glass-bg, rgba(255,255,255,0.04))",
+        border: `1px solid ${picked ? badgeColor : `color-mix(in srgb, ${badgeColor} 28%, transparent)`}`,
+        boxShadow: picked
+          ? `0 0 0 3px color-mix(in srgb, ${badgeColor} 18%, transparent), 0 8px 24px color-mix(in srgb, ${badgeColor} 22%, transparent)`
+          : `0 2px 8px rgba(0,0,0,0.18)`,
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        cursor: interactive ? "pointer" : "default",
+        transition: "background 200ms, border-color 200ms, box-shadow 240ms, transform 160ms",
+      }}
+      aria-pressed={picked}
+      aria-label={`Вариант ${letter}: ${text}`}
+    >
+      {/* hover-glow stripe (left edge) */}
+      <span
+        aria-hidden
+        className="absolute left-0 top-0 bottom-0 transition-all"
+        style={{
+          width: picked ? 4 : 3,
+          background: badgeColor,
+          opacity: picked ? 1 : 0.55,
+          boxShadow: picked ? `0 0 12px ${badgeColor}` : "none",
+        }}
+      />
+
+      {/* letter badge — circular */}
+      <span
+        className="font-display font-bold shrink-0 flex items-center justify-center select-none"
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: "50%",
+          background: badgeColor,
+          color: "#0a0810",
+          fontSize: 18,
+          letterSpacing: "0.02em",
+          boxShadow: picked ? `0 0 12px ${badgeColor}` : "0 2px 8px rgba(0,0,0,0.4)",
+          transition: "box-shadow 220ms",
+        }}
+      >
+        {letter}
+      </span>
+
+      {/* answer text */}
+      <span
+        className="flex-1 leading-snug"
+        style={{
+          color: "var(--text-primary)",
+          fontSize: 14,
+          fontWeight: 500,
+          lineHeight: 1.45,
+        }}
+      >
+        {text}
+      </span>
+
+      {/* keyboard hint (md+) — kbd-style */}
+      {interactive && (
+        <kbd
+          className="hidden md:inline-flex items-center justify-center font-mono shrink-0 select-none"
+          style={{
+            minWidth: 24,
+            height: 24,
+            padding: "0 6px",
+            borderRadius: 6,
+            background: "var(--input-bg)",
+            border: "1px solid var(--border-color)",
+            color: "var(--text-muted)",
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.02em",
+          }}
+        >
+          {letter}
+        </kbd>
+      )}
+
+      {/* picked checkmark */}
+      {picked && (
+        <motion.span
+          initial={{ scale: 0, rotate: -90 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: "spring", stiffness: 360, damping: 18 }}
+          className="shrink-0 flex items-center justify-center"
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: "50%",
+            background: badgeColor,
+            color: "#0a0810",
+            boxShadow: `0 0 10px ${badgeColor}`,
+          }}
+          aria-hidden
+        >
+          <Check size={14} strokeWidth={3} />
+        </motion.span>
+      )}
+    </motion.button>
+  );
+}
