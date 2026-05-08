@@ -262,7 +262,7 @@ export function LeagueTab() {
             </div>
             <div>
               <div
-                className="text-[10px] uppercase tracking-wider font-semibold"
+                className="text-[14px] uppercase tracking-wider font-semibold"
                 style={{ color: palette.accent }}
               >
                 Недельная лига
@@ -278,7 +278,7 @@ export function LeagueTab() {
           <div className="flex items-center gap-5">
             <div className="text-center">
               <div
-                className="text-[10px] uppercase tracking-wider"
+                className="text-[14px] uppercase tracking-wider"
                 style={{ color: "var(--text-muted)" }}
               >
                 Твоя позиция
@@ -289,13 +289,13 @@ export function LeagueTab() {
               >
                 #{data.rank}
               </div>
-              <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+              <div className="text-sm" style={{ color: "var(--text-muted)" }}>
                 из {data.group_size} · {data.weekly_xp} XP
               </div>
             </div>
             <div className="text-center">
               <div
-                className="text-[10px] uppercase tracking-wider"
+                className="text-[14px] uppercase tracking-wider"
                 style={{ color: "var(--text-muted)" }}
               >
                 <Clock size={10} className="inline -mt-0.5 mr-1" />
@@ -315,13 +315,13 @@ export function LeagueTab() {
         <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-semibold"
               style={{ background: `${zone!.color}1f`, color: zone!.color }}
             >
               <ZoneIcon size={13} />
               {zone!.label}
             </div>
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            <span className="text-sm" style={{ color: "var(--text-muted)" }}>
               {zone!.sub}
             </span>
           </div>
@@ -333,7 +333,7 @@ export function LeagueTab() {
               <Sparkline days={timeline.days} accent={palette.accent} />
               <div className="leading-tight">
                 <div
-                  className="text-[10px] uppercase tracking-wider"
+                  className="text-[14px] uppercase tracking-wider"
                   style={{ color: "var(--text-muted)" }}
                 >
                   vs медиана
@@ -352,7 +352,7 @@ export function LeagueTab() {
         </div>
 
         <div
-          className="mt-3 flex items-center gap-5 text-[11px] uppercase tracking-widest"
+          className="mt-3 flex items-center gap-5 text-[14px] uppercase tracking-widest"
           style={{ color: "var(--text-muted)" }}
         >
           <span className="inline-flex items-center gap-1">
@@ -389,7 +389,7 @@ export function LeagueTab() {
               {crossedPromo && (
                 <div className="relative h-0 border-t-2 border-dashed flex items-center" style={{ borderColor: "#4ade8044" }}>
                   <span
-                    className="absolute left-4 -translate-y-1/2 px-2 text-[10px] font-semibold uppercase tracking-widest"
+                    className="absolute left-4 -translate-y-1/2 px-2 text-[14px] font-semibold uppercase tracking-widest"
                     style={{ background: "var(--bg-panel)", color: "#4ade80" }}
                   >
                     ▲ зона повышения
@@ -399,7 +399,7 @@ export function LeagueTab() {
               {crossedDemo && (
                 <div className="relative h-0 border-t-2 border-dashed flex items-center" style={{ borderColor: "#f8717144" }}>
                   <span
-                    className="absolute left-4 -translate-y-1/2 px-2 text-[10px] font-semibold uppercase tracking-widest"
+                    className="absolute left-4 -translate-y-1/2 px-2 text-[14px] font-semibold uppercase tracking-widest"
                     style={{ background: "var(--bg-panel)", color: "#f87171" }}
                   >
                     ▼ зона понижения
@@ -445,7 +445,7 @@ export function LeagueTab() {
                     {s.full_name}
                     {s.is_me && (
                       <span
-                        className="ml-2 text-[10px] font-semibold uppercase tracking-widest"
+                        className="ml-2 text-[14px] font-semibold uppercase tracking-widest"
                         style={{ color: palette.accent }}
                       >
                         вы
@@ -459,7 +459,7 @@ export function LeagueTab() {
                 >
                   {s.weekly_xp}
                 </div>
-                <div className="text-[11px] uppercase tracking-wider" style={{ color: zoneColor }}>
+                <div className="text-[14px] uppercase tracking-wider" style={{ color: zoneColor }}>
                   {isPromo ? <ChevronUp size={14} /> : isDemo ? <ChevronDown size={14} /> : <ShieldCheck size={14} />}
                 </div>
               </motion.div>

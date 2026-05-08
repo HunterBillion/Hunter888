@@ -16,6 +16,11 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, Volume2, VolumeX } from "lucide-react";
+import {
+  getEffectiveVolume,
+  isMutedGlobal,
+  subscribeVolume,
+} from "@/hooks/useSound";
 
 interface Props {
   /** data-URL or regular URL of the audio, null when no audio yet. */
@@ -29,14 +34,36 @@ interface Props {
 export function ArenaAudioPlayer({ audioUrl, label, autoplay = true }: Props) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
+  // 2026-05-08: локальный mute снят — теперь используем глобальный из
+  // `/settings`. Локальная кнопка теперь только меняет per-element muted,
+  // но не «отключает звук вообще». Если пользователь поставил Master=0
+  // или нажал Mute в /settings — этот плеер тоже молчит.
+  const [muted, setMuted] = useState(() =>
+    typeof window === "undefined" ? false : isMutedGlobal(),
+  );
   const [autoplayFailed, setAutoplayFailed] = useState(false);
+
+  // Re-sync local muted state on global volume change. Reapply el.volume
+  // so the user hears slider movement immediately, not on next round.
+  useEffect(() => {
+    const sync = () => {
+      const globallyMuted = isMutedGlobal();
+      setMuted(globallyMuted);
+      if (audioRef.current) {
+        audioRef.current.volume = getEffectiveVolume("voice");
+        audioRef.current.muted = globallyMuted;
+      }
+    };
+    sync();
+    return subscribeVolume(sync);
+  }, []);
 
   // When a new audio URL arrives, reset and attempt to play.
   useEffect(() => {
     if (!audioUrl || !audioRef.current) return;
     const el = audioRef.current;
     el.src = audioUrl;
+    el.volume = getEffectiveVolume("voice");
     el.muted = muted;
     if (!autoplay) return;
     el.play()

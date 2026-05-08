@@ -3,6 +3,7 @@
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { NotificationWSProvider } from "@/providers/NotificationWSProvider";
 import { Toaster } from "@/components/ui/Toaster";
+import { CRTOverlay } from "@/components/leaderboard/CRTOverlay";
 
 // Suppress THREE.js console noise (Clock deprecation + Color CSS var parsing)
 if (typeof window !== "undefined") {
@@ -42,6 +43,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
           rendered. Mount here so it's available on every page.
         */}
         <Toaster />
+        {/*
+          CRT scanline + flicker overlay. Default mode "leaderboard"
+          shows it only on /leaderboard; user can switch to "global" in
+          /settings → «Ретро-эффект CRT». Read details in CRTOverlay.tsx.
+          Must mount inside ThemeProvider so portal-z layout is correct.
+        */}
+        <CRTOverlay />
       </NotificationWSProvider>
     </NextThemesProvider>
   );

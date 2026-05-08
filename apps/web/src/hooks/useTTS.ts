@@ -14,6 +14,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { logger } from "@/lib/logger";
+import {
+  getEffectiveVolume,
+  subscribeVolume,
+} from "@/hooks/useSound";
 
 /**
  * TTS hook with dual mode + voice modulation support (ТЗ-04):
@@ -324,19 +328,44 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     | null
   >(null);
 
-  // Volume control (0..1). Applied to every audio element we create and
-  // to the currently-playing element on setVolume(). Default 1.0 = max.
+  // Volume control (0..1).
+  //
+  // 2026-05-08: финальная громкость = (per-call volume) × master × voice.
+  // - per-call volume — то, что эта компонента контролирует сама
+  //   (`setVolume(v)`, ducking при мини-играх, и т. п.).
+  // - master × voice читается из глобальных `/settings`-слайдеров.
+  // До этой правки TTS использовал только локальный volume и игнорил
+  // настройки пользователя — пользователь жал «выключить» в /settings,
+  // а наставник продолжал говорить. Теперь подписываемся на
+  // vh-volume-change и пересчитываем .volume на каждом изменении.
   const [volume, setVolumeState] = useState<number>(1);
   const volumeRef = useRef<number>(1);
+
+  /** Live multiplier read from global sliders (recomputed on every change). */
+  const computeEffective = useCallback(
+    () => getEffectiveVolume("voice", volumeRef.current),
+    [],
+  );
+
   const setVolume = useCallback((v: number) => {
     const clamped = Math.max(0, Math.min(1, v));
     volumeRef.current = clamped;
     setVolumeState(clamped);
     // Apply to currently-playing element so the change is heard instantly.
     if (audioRef.current) {
-      audioRef.current.volume = clamped;
+      audioRef.current.volume = computeEffective();
     }
-  }, []);
+  }, [computeEffective]);
+
+  // Subscribe to global slider changes — propagate to currently playing
+  // audio so the user hears slider movement without restarting playback.
+  useEffect(() => {
+    return subscribeVolume(() => {
+      if (audioRef.current) {
+        audioRef.current.volume = computeEffective();
+      }
+    });
+  }, [computeEffective]);
 
   // --- Refs ---
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -553,7 +582,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
         objectUrlRef.current = url;
 
         const audio = new Audio(url);
-        audio.volume = volumeRef.current;
+        audio.volume = computeEffective();
         audioRef.current = audio;
 
         // Deferred-revoke bookkeeping (see top-of-file comment).
@@ -978,7 +1007,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     );
     const url = URL.createObjectURL(blob);
     let audio = new Audio(url);
-    audio.volume = volumeRef.current;
+    audio.volume = computeEffective();
     audioRef.current = audio;
 
     // Deferred-revoke bookkeeping (see top-of-file comment). The flag and
@@ -1051,7 +1080,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
         retried = true;
         console.warn("[TTS] ↻ chunk", chunk.index, "retry (code 1)");
         audio = new Audio(url);
-        audio.volume = volumeRef.current;
+        audio.volume = computeEffective();
         audioRef.current = audio;
         audio.onloadeddata = () => {
           loaded = true;

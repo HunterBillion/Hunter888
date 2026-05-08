@@ -27,7 +27,7 @@ export function TPBreakdown({ data, loading }: TPBreakdownProps) {
   if (loading || !data) {
     return (
       <div className="glass-panel p-5">
-        <div className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>
+        <div className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>
           Мои очки недели
         </div>
         <div className="text-sm" style={{ color: "var(--text-muted)" }}>
@@ -42,11 +42,11 @@ export function TPBreakdown({ data, loading }: TPBreakdownProps) {
   return (
     <div className="glass-panel p-5">
       <div className="flex items-baseline justify-between mb-4">
-        <div className="text-xs font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+        <div className="text-sm font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
           Мои очки недели
         </div>
         <div className="font-display font-bold text-2xl tabular-nums" style={{ color: "var(--accent)" }}>
-          {data.total} <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>TP</span>
+          {data.total} <span className="text-sm font-mono" style={{ color: "var(--text-muted)" }}>TP</span>
         </div>
       </div>
 
@@ -65,7 +65,7 @@ export function TPBreakdown({ data, loading }: TPBreakdownProps) {
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
                   <Icon size={12} style={{ color: src.color }} />
-                  <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
                     {src.label}
                   </span>
                 </div>
@@ -76,7 +76,7 @@ export function TPBreakdown({ data, loading }: TPBreakdownProps) {
                   >
                     {value}
                   </span>
-                  <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                  <span className="text-[14px] font-mono" style={{ color: "var(--text-muted)" }}>
                     TP
                   </span>
                 </div>

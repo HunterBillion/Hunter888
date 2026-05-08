@@ -21,6 +21,7 @@
  */
 
 import { useCallback, useMemo } from "react";
+import { getEffectiveVolume } from "@/hooks/useSound";
 
 export type SFXName =
   | "correct"
@@ -47,6 +48,18 @@ const STORAGE_KEY = "hunter888:sfx_muted";
 // — звук не играет.
 const GLOBAL_MUTE_KEYS = ["vh-sounds-muted", "vh_sound", STORAGE_KEY] as const;
 
+// 2026-05-08: per-sound base volume (нормализация громкости между файлами,
+// чтобы tick не оглушал, а correct звучал заметно). Финальная громкость
+// перевычисляется на каждом play(): master × sfx × baseVolume.
+const BASE_VOLUMES: Record<SFXName, number> = {
+  correct: 0.85,
+  wrong: 0.85,
+  round_start: 0.9,
+  round_end: 0.9,
+  tick: 0.5,
+  hint: 0.7,
+};
+
 // Module-scoped audio cache — shared across all useSFX() callers.
 const cache: Partial<Record<SFXName, HTMLAudioElement>> = {};
 
@@ -55,7 +68,9 @@ function getOrCreate(name: SFXName): HTMLAudioElement | null {
   if (cache[name]) return cache[name] as HTMLAudioElement;
   const el = new Audio(SFX_URLS[name]);
   el.preload = "auto";
-  el.volume = name === "tick" ? 0.5 : 0.8;
+  // Initial volume — overwritten on every play() with the live
+  // master × sfx × base computation.
+  el.volume = BASE_VOLUMES[name];
   cache[name] = el;
   return el;
 }
@@ -94,6 +109,11 @@ export function useSFX(): SFXApi {
         if (readMuted()) return;
         const el = getOrCreate(name);
         if (!el) return;
+        // 2026-05-08: расчитываем громкость на каждом play() — пользователь
+        // мог сдвинуть слайдер «Master» или «Эффекты» в /settings прямо
+        // во время матча. До этой правки громкость была захардкожена
+        // (0.5 / 0.8) и слайдеры на неё не действовали.
+        el.volume = getEffectiveVolume("sfx", BASE_VOLUMES[name]);
         try {
           el.currentTime = 0;
           const p = el.play();
@@ -132,6 +152,7 @@ export const sfx = {
     if (readMuted()) return;
     const el = getOrCreate(name);
     if (!el) return;
+    el.volume = getEffectiveVolume("sfx", BASE_VOLUMES[name]);
     try {
       el.currentTime = 0;
       const p = el.play();

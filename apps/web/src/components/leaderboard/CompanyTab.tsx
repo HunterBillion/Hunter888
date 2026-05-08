@@ -234,7 +234,7 @@ export function CompanyTab() {
               key={p}
               type="button"
               onClick={() => setPeriod(p)}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all"
+              className="px-3 py-1.5 rounded-lg text-sm font-semibold uppercase tracking-wider transition-all"
               style={{
                 background: period === p ? "var(--accent)" : "transparent",
                 color: period === p ? "#fff" : "var(--text-muted)",

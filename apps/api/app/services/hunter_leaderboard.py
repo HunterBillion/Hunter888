@@ -160,11 +160,20 @@ async def get_hunter_leaderboard(
     if viewer.id in user_ids and not any(e.is_me for e in entries):
         for idx, (u, p, cur_tp, prev_tp) in enumerate(rows, start=1):
             if u.id == viewer.id:
+                # 2026-05-08: BUG-FIX (FE leaderboard 500). The fallback path
+                # «ensure viewer visible» был обнаружен через прод-аудит:
+                # methodologist (role=rop, team=B2B) → scope=company&limit=5
+                # → 500. Причина — HunterRankEntry.avatar_url помечен
+                # обязательным (строка 28 dataclass-а), а здесь конструктор
+                # его не передавал → TypeError. limit=50 не падал, потому
+                # что сам juzer попадал в top-50 и эта ветка не вызывалась.
+                # Регрессия закрыта в test_hunter_leaderboard_avatar_fallback.
                 entries.append(
                     HunterRankEntry(
                         rank=idx,
                         user_id=str(u.id),
                         full_name=u.full_name or u.email,
+                        avatar_url=u.avatar_url,
                         hunter_score=round(float(p.hunter_score) if p and p.hunter_score else 0.0, 1),
                         current_level=int(p.current_level) if p else 1,
                         week_tp=cur_tp,

@@ -111,7 +111,7 @@ export function TeamsTab() {
               key={p}
               type="button"
               onClick={() => setPeriod(p)}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all"
+              className="px-3 py-1.5 rounded-lg text-sm font-semibold uppercase tracking-wider transition-all"
               style={{
                 background: period === p ? accent : "transparent",
                 color: period === p ? "#0b0b14" : "var(--text-muted)",
@@ -124,7 +124,7 @@ export function TeamsTab() {
         <button
           type="button"
           onClick={() => load(period)}
-          className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-widest px-2 py-1 rounded-md"
+          className="inline-flex items-center gap-1.5 text-[14px] uppercase tracking-widest px-2 py-1 rounded-md"
           style={{
             color: "var(--text-muted)",
             border: "1px solid var(--border-color)",
@@ -179,7 +179,7 @@ export function TeamsTab() {
         <>
           {/* Context strip */}
           <div
-            className="flex flex-wrap items-center gap-4 mb-4 px-4 py-2.5 rounded-xl text-xs"
+            className="flex flex-wrap items-center gap-4 mb-4 px-4 py-2.5 rounded-xl text-sm"
             style={{
               background: "var(--bg-panel)",
               border: "1px solid var(--border-color)",
@@ -248,7 +248,7 @@ export function TeamsTab() {
                         {r.score.toFixed(1)}
                       </div>
                       <div
-                        className="text-[10px] uppercase tracking-wider"
+                        className="text-[14px] uppercase tracking-wider"
                         style={{ color: "var(--text-muted)" }}
                       >
                         adj · raw {r.avg_score.toFixed(1)}
@@ -289,7 +289,7 @@ export function TeamsTab() {
               }}
             >
               <div
-                className="px-4 py-1.5 text-[10px] uppercase tracking-widest font-semibold"
+                className="px-4 py-1.5 text-[14px] uppercase tracking-widest font-semibold"
                 style={{ color: accent }}
               >
                 Твоя команда
@@ -335,7 +335,7 @@ function TeamRowItem({
           {row.team_name}
           {mine && (
             <span
-              className="ml-2 text-[10px] font-semibold uppercase tracking-widest"
+              className="ml-2 text-[14px] font-semibold uppercase tracking-widest"
               style={{ color: accent }}
             >
               твоя
@@ -343,7 +343,7 @@ function TeamRowItem({
           )}
         </div>
         <div
-          className="text-[11px] font-mono mt-0.5"
+          className="text-[14px] font-mono mt-0.5"
           style={{ color: "var(--text-muted)" }}
         >
           {row.active_members} игроков · {row.total_sessions} сессий
@@ -357,7 +357,7 @@ function TeamRowItem({
         {row.score.toFixed(1)}
       </div>
       <div
-        className="text-[11px] font-mono tabular-nums hidden sm:block"
+        className="text-[14px] font-mono tabular-nums hidden sm:block"
         style={{ color: "var(--text-muted)" }}
       >
         raw {row.avg_score.toFixed(1)}

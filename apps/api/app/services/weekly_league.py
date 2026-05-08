@@ -290,7 +290,32 @@ async def get_my_league_timeline(
             median_xp = 0
         days.append({"date": d, "my_xp": my_xp, "median_xp": int(median_xp)})
 
-    my_total = sum(p["my_xp"] for p in days)
+    # 2026-05-08: BUG-FIX (sparkline showed flat zero while weekly_xp != 0).
+    # Прод-аудит обнаружил расхождение для admin: /league/me даёт
+    # weekly_xp=167, а timeline.my_total=0. Корень — два разных источника:
+    # /league/me читает WeeklyLeagueMembership.weekly_xp (счётчик
+    # инкрементируется в add_weekly_xp() из EVENT_TRAINING_COMPLETED),
+    # а timeline читает SessionHistory.xp_earned (колонка может быть
+    # 0/NULL для старых сессий, а также не отражает PvP/drill XP).
+    # Reconcile: если membership.weekly_xp > sum(daily) — добавляем
+    # недостающую дельту в «сегодня» и подменяем my_total на
+    # авторитетное значение. Это не «врёт» даты с реальной активностью
+    # (там my_xp совпадает), а недостающее показывает на сегодняшнем
+    # столбике вместо плоской ноль-линии.
+    raw_my_total = sum(p["my_xp"] for p in days)
+    canonical_total = int(getattr(membership, "weekly_xp", 0) or 0)
+    if canonical_total > raw_my_total:
+        delta = canonical_total - raw_my_total
+        today_iso = datetime.now(timezone.utc).date().isoformat()
+        # Find today's bucket inside the 7-day window; fall back to last day.
+        target_idx = next(
+            (i for i, p in enumerate(days) if p["date"] == today_iso),
+            len(days) - 1,
+        )
+        days[target_idx]["my_xp"] = days[target_idx]["my_xp"] + delta
+        my_total = canonical_total
+    else:
+        my_total = raw_my_total
     median_total = sum(p["median_xp"] for p in days)
 
     return {
