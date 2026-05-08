@@ -1,31 +1,38 @@
 "use client";
 
 /**
- * SessionEndingOverlay (2026-04-23)
+ * SessionEndingOverlay — UNIFIED loader for both call and chat hangup paths.
  *
- * Full-screen overlay shown between «Завершить» click and arrival on
- * /results page. Replaces the old «session.ended → setTimeout(500ms)»
- * dead air where users saw an unresponsive chat panel for up to 15
- * seconds while backend ran scoring + AI-coach + RAG enrichment.
+ * Phase E (2026-05-08): merged with the previous CallEndingTransition
+ * component. Pre-merge state had TWO separate overlays:
+ *   - CallEndingTransition (call route, 2.2s, phone-themed, 4 frames:
+ *     "Звонок завершён → Анализирую → Считаю баллы → Готовлю отчёт")
+ *   - SessionEndingOverlay (chat route, ~13s, generic, 4 phases:
+ *     "Сохраняем → Считаем → Готовим разбор → XP")
+ * Same WS event (`session.ended`), two completely different UX experiences,
+ * different copy, different phase counts. Pilot users on call route saw
+ * fake-fast 2.2s anim while chat users saw honest 13s backend timeline.
  *
- * Visual: brand-purple radial gradient, animated phases timeline,
- * spinner + estimated remaining time. Phases match the backend's
- * actual session-end pipeline so the messaging feels honest:
- *   1. Saving conversation       (~50ms)  — db.commit
- *   2. Scoring 5 layers          (~3-8s)  — calculate_scores
- *   3. AI coach analysis         (~5-12s) — narrative + legal layers
- *   4. Achievements / XP         (~1s)    — awards + level-up
- *   5. Готово                    — redirect happens
+ * Now: ONE component, ONE phase list, mode-driven cosmetics.
  *
- * Each phase auto-advances on a timer (ESTIMATES below). When parent
- * receives session.ended event from backend, it just unmounts this
- * component (router.replace to /results). If a phase is over-estimated,
- * the spinner stays on the last shown phase rather than skipping.
+ * mode='call' (route /training/[id]/call):
+ *   - Phone-themed: PhoneOff icon flash + 300Hz hangup-click on mount
+ *   - Shows `reason` (e.g. "клиент бросил трубку") + `stats` chips
+ *   - Pulsing rose ring around the icon
+ *
+ * mode='chat' (route /training/[id]):
+ *   - Generic Sparkles icon, no audio cue
+ *   - Standard checkmark timeline list, "10–15 секунд" footer
+ *
+ * Both modes:
+ *   - Same 4 phases anchored to real backend pipeline
+ *   - Same auto-advance timing (PHASES[i].etaMs)
+ *   - Same purple radial gradient background
  */
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Sparkles } from "lucide-react";
+import { Check, Sparkles, PhoneOff } from "lucide-react";
 
 const PHASES: { label: string; etaMs: number }[] = [
   { label: "Сохраняем разговор", etaMs: 600 },
@@ -35,22 +42,60 @@ const PHASES: { label: string; etaMs: number }[] = [
   { label: "Готово", etaMs: 0 },
 ];
 
+export type SessionEndingMode = "call" | "chat";
+
 export interface SessionEndingOverlayProps {
-  /** Title shown at the top of the overlay (e.g. "Звонок завершён"). */
-  title?: string;
-  /** Subtitle (e.g. character name). */
-  subtitle?: string;
-  /** Visible from the moment user clicks «Завершить». */
+  /** Visibility gate. Both routes pass true when entering ending state. */
   visible: boolean;
+  /** Visual flavor. 'call' = phone-themed, 'chat' = generic. Default 'chat'. */
+  mode?: SessionEndingMode;
+  /** Title at the top. Defaults differ by mode. */
+  title?: string;
+  /** Subtitle (e.g. character name). Optional. */
+  subtitle?: string;
+  /** Call-mode only: optional hangup reason (e.g. "клиент бросил трубку"). */
+  reason?: string;
+  /** Call-mode only: optional stats chips ([{label, value}]). */
+  stats?: Array<{ label: string; value: string }>;
+}
+
+/** Single soft hangup-click tone — call mode only. */
+function playHangupClick(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const AC = (window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext) as typeof AudioContext | undefined;
+    if (!AC) return;
+    const ctx = new AC();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 300;
+    const now = ctx.currentTime;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.18, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.18);
+    setTimeout(() => { try { ctx.close(); } catch { /* */ } }, 250);
+  } catch {
+    /* ignore */
+  }
 }
 
 export default function SessionEndingOverlay({
-  title = "Завершаем тренировку",
-  subtitle,
   visible,
+  mode = "chat",
+  title,
+  subtitle,
+  reason,
+  stats,
 }: SessionEndingOverlayProps) {
   const [phaseIdx, setPhaseIdx] = useState(0);
 
+  // Phase auto-advance — same for both modes (honest backend timeline).
   useEffect(() => {
     if (!visible) {
       setPhaseIdx(0);
@@ -58,9 +103,23 @@ export default function SessionEndingOverlay({
     }
     if (phaseIdx >= PHASES.length - 1) return;
     const eta = PHASES[phaseIdx].etaMs;
-    const t = window.setTimeout(() => setPhaseIdx((i) => Math.min(i + 1, PHASES.length - 1)), eta);
+    const t = window.setTimeout(
+      () => setPhaseIdx((i) => Math.min(i + 1, PHASES.length - 1)),
+      eta,
+    );
     return () => window.clearTimeout(t);
   }, [visible, phaseIdx]);
+
+  // Call-mode hangup-click on mount.
+  useEffect(() => {
+    if (visible && mode === "call") {
+      playHangupClick();
+    }
+  }, [visible, mode]);
+
+  // Mode-driven defaults that don't fit nicely into prop defaults.
+  const effectiveTitle =
+    title ?? (mode === "call" ? "Звонок завершён" : "Завершаем тренировку");
 
   return (
     <AnimatePresence>
@@ -79,22 +138,48 @@ export default function SessionEndingOverlay({
           role="status"
           aria-live="polite"
           aria-busy="true"
+          aria-label={mode === "call" ? "Звонок завершён, готовим результаты" : "Завершаем тренировку"}
         >
-          {/* Top — title + subtitle */}
+          {/* Top — icon + title + subtitle */}
           <motion.div
             initial={{ y: -20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.1 }}
-            className="mb-12 px-8 text-center"
+            className="mb-10 flex flex-col items-center px-8 text-center"
           >
-            <Sparkles
-              size={36}
-              className="mx-auto mb-4 text-white/70"
-              aria-hidden
-            />
-            <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
+            {/* Phase E (2026-05-08): mode-driven icon. Call mode shows
+                a pulsing rose ring with PhoneOff (matches the previous
+                CallEndingTransition aesthetic). Chat mode shows a soft
+                Sparkles glyph (matches previous SessionEndingOverlay). */}
+            {mode === "call" ? (
+              <div className="relative mb-5 flex h-20 w-20 items-center justify-center">
+                <motion.span
+                  className="absolute h-full w-full rounded-full bg-rose-500/15 ring-1 ring-rose-400/30"
+                  animate={{ scale: [1, 1.4, 1.4], opacity: [0.6, 0, 0] }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut" }}
+                />
+                <motion.div
+                  className="relative flex h-14 w-14 items-center justify-center rounded-full bg-rose-500/20 ring-2 ring-rose-300/60"
+                  animate={{ scale: [1, 1.04, 1] }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  <PhoneOff className="h-7 w-7 text-rose-100" strokeWidth={2} />
+                </motion.div>
+              </div>
+            ) : (
+              <Sparkles
+                size={36}
+                className="mb-4 text-white/70"
+                aria-hidden
+              />
+            )}
+            <h2 className="text-2xl font-semibold tracking-tight">{effectiveTitle}</h2>
             {subtitle && (
               <p className="mt-2 text-sm text-white/60">{subtitle}</p>
+            )}
+            {/* Call-mode reason text (e.g. "клиент бросил трубку") */}
+            {mode === "call" && reason && (
+              <p className="mt-3 max-w-sm text-sm text-white/55">{reason}</p>
             )}
           </motion.div>
 
@@ -148,6 +233,26 @@ export default function SessionEndingOverlay({
               );
             })}
           </div>
+
+          {/* Call-mode stats chips */}
+          {mode === "call" && stats && stats.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4, duration: 0.4 }}
+              className="mt-8 flex flex-wrap justify-center gap-2 px-6"
+            >
+              {stats.map((s) => (
+                <div
+                  key={s.label}
+                  className="rounded-full bg-white/5 px-3 py-1.5 text-xs ring-1 ring-white/10 backdrop-blur-sm"
+                >
+                  <span className="text-white/50">{s.label}:</span>{" "}
+                  <span className="font-medium text-white/90">{s.value}</span>
+                </div>
+              ))}
+            </motion.div>
+          )}
 
           {/* Bottom — flavour text */}
           <motion.div

@@ -33,7 +33,9 @@ import { usePolicyStore } from "@/stores/usePolicyStore";
 import { useShallow } from "zustand/react/shallow";
 import IncomingCallScreen from "@/components/training/phone/IncomingCallScreen";
 import CallDialingOverlay from "@/components/training/phone/CallDialingOverlay";
-import CallEndingTransition from "@/components/training/phone/CallEndingTransition";
+// Phase E (2026-05-08): unified loader — same component as the chat
+// route, mode='call' adds phone-themed icon + 300Hz click + reason/stats.
+import SessionEndingOverlay from "@/components/training/SessionEndingOverlay";
 import ScriptDrawer from "@/components/training/ScriptDrawer";
 import { LinkClientButton } from "@/components/training/LinkClientButton";
 // NEW-6/7 (2026-05-04): same kebab pattern as the chat view — paperclip
@@ -1401,13 +1403,14 @@ export default function TrainingCallPage() {
   // loading spinner on /results) is invisible to the user. The farewell
   // TTS still plays because it was queued before this render.
   if (hangupInProgress) {
-    // Phase 5+6 of call-flow lifecycle redesign (2026-05-01): rich animated
-    // transition between hangup and /results — replaces the static
-    // "📞 Звонок завершён / Сохраняем результаты..." screen with a
-    // 2.2s sequence that cycles "Звонок завершён → Анализирую разговор
-    // → Считаю баллы → Готовлю отчёт" + hangup-click sound + progress bar.
-    // The actual router.replace call is delayed at each call site below
-    // (see scheduleHangupRedirect) so the user sees the full transition.
+    // Phase E (2026-05-08): unified loader. Was a separate
+    // CallEndingTransition (2.2s phone-themed anim) — now uses the
+    // same SessionEndingOverlay as the chat route with mode='call'.
+    // mode='call' brings back the phone-flavor (PhoneOff icon flash,
+    // 300Hz hangup click on mount, reason + stats display) on top of
+    // the unified 4-phase backend timeline. The redirect timing is
+    // still governed by goToResults(2200|3500) at each hangup call
+    // site — the overlay paints continuously until the route changes.
     const callStats: Array<{ label: string; value: string }> = [];
     if (s.elapsed && s.elapsed > 0) {
       const m = Math.floor(s.elapsed / 60);
@@ -1417,7 +1420,14 @@ export default function TrainingCallPage() {
     if (s.stagesCompleted && s.stagesCompleted.length > 0) {
       callStats.push({ label: "Этапов пройдено", value: String(s.stagesCompleted.length) });
     }
-    return <CallEndingTransition reason={hangupReason} stats={callStats} />;
+    return (
+      <SessionEndingOverlay
+        visible
+        mode="call"
+        reason={hangupReason}
+        stats={callStats}
+      />
+    );
   }
 
   return (
