@@ -390,8 +390,16 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
   // one starts after the current `onEnded` fires. Barge-reactions
   // (and any caller with intent to interrupt) pass `interrupt: true`
   // to bypass the queue and play immediately.
+  // Phase G (2026-05-08): added watchdog ref + max-queue cap so a
+  // stuck `onEnded` callback (autoplay reject, decode failure, codec
+  // hiccup) never leaves the queue frozen, and a runaway backend
+  // can't grow the queue without bound.
   const audioMessageQueueRef = useRef<TTSAudioMessage[]>([]);
   const playingMessageRef = useRef(false);
+  const queueWatchdogRef = useRef<number | null>(null);
+  /** Max queued playAudioMessage items. Backend never sends > 4 sentences
+   *  per reply; 8 leaves headroom but bounds runaway state. */
+  const AUDIO_QUEUE_MAX = 8;
 
   // Stable callback refs (avoid stale closures)
   const onEmotionChangeRef = useRef(onEmotionChange);
@@ -580,6 +588,13 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     // stale messages waiting to fire on next play.
     audioMessageQueueRef.current = [];
     playingMessageRef.current = false;
+    // Phase G (2026-05-08): also kill the queue watchdog timer or it
+    // would force-advance an already-cleared queue and recurse into
+    // an empty pop.
+    if (queueWatchdogRef.current) {
+      clearTimeout(queueWatchdogRef.current);
+      queueWatchdogRef.current = null;
+    }
     // Stop animation + modulation
     stopAudioLevelSimulation();
     clearModulationState();
@@ -788,8 +803,41 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
       // Phase F (2026-05-08): inner play helper — wraps decodeAndPlay
       // and chains the next queued message via onEnded. Defined inline
       // so we can recurse without naming a top-level function.
+      // Phase G (2026-05-08): added safety watchdog. If onEnded never
+      // fires (autoplay reject silently, MediaError 4 codec mismatch,
+      // suspended AudioContext after tab switch) the queue would
+      // freeze forever and the AI would seem mute. Watchdog computes
+      // an expected wall-time (durationMs + 1500ms slack) and force-
+      // pops the queue if onEnded hasn't run by then.
+      const advanceQueue = () => {
+        if (queueWatchdogRef.current) {
+          clearTimeout(queueWatchdogRef.current);
+          queueWatchdogRef.current = null;
+        }
+        const next = audioMessageQueueRef.current.shift();
+        if (next) {
+          playMessage(next);
+          return;
+        }
+        playingMessageRef.current = false;
+        setTimeout(() => {
+          if (!couplePlayingRef.current && !playingMessageRef.current) {
+            clearModulationState();
+          }
+        }, 500);
+      };
       const playMessage = (m: TTSAudioMessage) => {
         playingMessageRef.current = true;
+        // Arm the watchdog. If duration_ms is unknown, give 8s default
+        // (enough for a typical 3-4 sentence reply at ~14 chars/s).
+        const expectedMs = (m.duration_ms ?? 8000) + 1500;
+        if (queueWatchdogRef.current) clearTimeout(queueWatchdogRef.current);
+        queueWatchdogRef.current = window.setTimeout(() => {
+          console.warn(
+            `[TTS] queue watchdog fired — onEnded did not fire within ${expectedMs}ms; force-advancing`,
+          );
+          advanceQueue();
+        }, expectedMs);
         decodeAndPlay(m.audio, {
           emotion: m.emotion,
           voiceParams: m.voice_params,
@@ -798,19 +846,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
           onEnded: () => {
             // Pop the next queued message and play it. If queue is
             // empty, mark idle and let modulation fade out.
-            const next = audioMessageQueueRef.current.shift();
-            if (next) {
-              playMessage(next);
-              return;
-            }
-            playingMessageRef.current = false;
-            // Keep emotion visible briefly after audio ends (smooth
-            // Avatar3D transition).
-            setTimeout(() => {
-              if (!couplePlayingRef.current && !playingMessageRef.current) {
-                clearModulationState();
-              }
-            }, 500);
+            advanceQueue();
           },
         });
       };
@@ -820,6 +856,10 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
         // through: clear the queue, stop the active audio, and play
         // the new message immediately. This is the SAME behavior as
         // pre-Phase-F default but now opt-in.
+        if (queueWatchdogRef.current) {
+          clearTimeout(queueWatchdogRef.current);
+          queueWatchdogRef.current = null;
+        }
         audioMessageQueueRef.current = [];
         playingMessageRef.current = false;
         stop();
@@ -831,7 +871,17 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
       // This fixes the «ИИ сам обрывает себе фразы» bug — backend
       // multi-sentence replies arriving as N separate `tts.audio`
       // events no longer cut each other off.
+      // Phase G (2026-05-08): cap the queue at AUDIO_QUEUE_MAX. If
+      // backend goes runaway and pushes more, drop the OLDEST queued
+      // item (FIFO) to keep latency bounded — losing the start of an
+      // overlong reply is preferable to compounding 30s of audio.
       if (playingMessageRef.current) {
+        if (audioMessageQueueRef.current.length >= AUDIO_QUEUE_MAX) {
+          const dropped = audioMessageQueueRef.current.shift();
+          console.warn(
+            `[TTS] audio queue at cap (${AUDIO_QUEUE_MAX}) — dropping oldest (b64_len=${dropped?.audio?.length || 0})`,
+          );
+        }
         audioMessageQueueRef.current.push(msg);
         return;
       }

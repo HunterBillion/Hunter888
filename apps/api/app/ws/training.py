@@ -1174,6 +1174,13 @@ def _build_call_cognitive_cues(state: dict, session_mode: str) -> dict | None:
     if state.pop("_was_interrupted_last_turn", False):
         cues["interrupted_last_turn"] = True
         cues["interrupted_played_chars"] = state.pop("_interrupted_played_chars", 0)
+        # Phase G (2026-05-08): forward the barge-reaction text so the
+        # LLM cue can switch to "voice reaction was given, continue"
+        # mode and avoid double-reacting in text. POPS so a follow-up
+        # turn after the LLM reply doesn't keep using the stale flag.
+        _br = state.pop("_barge_reaction_sent", None)
+        if _br:
+            cues["barge_reaction_sent"] = str(_br)
     silent = state.pop("_proactive_silence_seconds", None)
     if silent is not None:
         try:
@@ -5575,7 +5582,25 @@ async def _handle_audio_interrupted(
     # immediately, and emit `tts.audio` with `interruption_reaction: true`
     # so the FE plays it bypassing the audio gate. The LLM still sees the
     # state flag for the follow-up reply — both layers compose.
+    #
+    # Phase G (2026-05-08): added cooldown (1500ms) so rapid repeated
+    # interrupts don't spam reactions on top of each other; sharper
+    # voice params (speed +0.10, style +0.15) so reactions sound more
+    # like a quick snap than the steady-state archetype baseline; and
+    # state["_barge_reaction_sent"] handoff so the LLM follow-up cue
+    # in build_call_cognitive_modifier doesn't re-react textually
+    # (would feel double — voice "Что?!" + then text "А что вы хотели?").
     try:
+        import time as _time
+        # Phase G.2: cooldown — silence rapid double-fires.
+        last_reaction_at = state.get("_last_barge_reaction_at") or 0.0
+        if (_time.monotonic() - last_reaction_at) < 1.5:
+            logger.debug(
+                "audio.interrupted: skipping reaction (cooldown active, "
+                "%.2fs since last)", _time.monotonic() - last_reaction_at,
+            )
+            return
+
         from app.services.barge_reactions import pick_barge_reaction
         from app.services import tts as _tts_module
         archetype_code = state.get("archetype_code")
@@ -5603,6 +5628,21 @@ async def _handle_audio_interrupted(
         if reaction_text:
             voice_id = state.get("tts_voice_id")
             if voice_id and getattr(_tts_module, "synthesize_speech", None):
+                # Phase G.4: sharper voice params for reactions. The
+                # archetype baseline (set in pick_voice_for_session) is
+                # tuned for normal speech; barge reactions should feel
+                # like a quick verbal snap — boost style + speed,
+                # reduce stability slightly. Keeps the SAME voice_id
+                # (same character) but shifts delivery cadence.
+                from app.services.tts import VoiceParams as _VParams
+                # Conservative deltas — large enough to feel different,
+                # small enough not to break voice identity.
+                reaction_voice_params = _VParams(
+                    stability=0.40,         # baseline ~0.50, less stable = more reactive
+                    similarity_boost=0.75,
+                    style=0.55,             # baseline ~0.40, more expressive
+                    speed=1.10,             # 10% faster — quick verbal reflex
+                )
                 # Synthesize at low latency — short text + cache hit on
                 # repeats. Wraps in best-effort try/except so a TTS hiccup
                 # never blocks the conversation.
@@ -5612,6 +5652,7 @@ async def _handle_audio_interrupted(
                         voice_id=voice_id,
                         emotion=str(current_emotion) if current_emotion else None,
                         active_factors=_call_tts_factors(state),
+                        voice_params=reaction_voice_params,
                     )
                     import base64 as _b64
                     audio_b64 = _b64.b64encode(tts_result.audio_bytes).decode("ascii")
@@ -5626,6 +5667,14 @@ async def _handle_audio_interrupted(
                         # within the perceptual window of the interrupt.
                         "interruption_reaction": True,
                     })
+                    # Phase G.2: stamp cooldown timestamp.
+                    state["_last_barge_reaction_at"] = _time.monotonic()
+                    # Phase G.3: hand-off to LLM follow-up cue.
+                    # build_call_cognitive_modifier will see this and
+                    # switch the [ПЕРЕБИЛИ] prompt instructions to
+                    # "voice reaction was already given — continue the
+                    # conversation" instead of "react to the interrupt".
+                    state["_barge_reaction_sent"] = reaction_text
                     logger.info(
                         "barge_reaction sent: session=%s archetype=%s played=%d text=%r",
                         session_id, archetype_code, played_chars, reaction_text,
