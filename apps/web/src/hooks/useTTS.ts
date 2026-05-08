@@ -126,8 +126,13 @@ interface UseTTSReturn {
   /** Play mp3 audio from base64 (legacy — still works). */
   playAudio: (audioB64: string) => void;
 
-  /** Play full TTS message with emotion/params (preferred for ТЗ-04). */
-  playAudioMessage: (msg: TTSAudioMessage) => void;
+  /** Play full TTS message with emotion/params (preferred for ТЗ-04).
+   *  Phase F (2026-05-08): default behavior is now QUEUE — successive
+   *  calls play sequentially instead of cutting each other off. Pass
+   *  `{ interrupt: true }` for immediate-play (used by barge-reactions
+   *  in /training/[id]/call where the AI's surprise/anger reaction
+   *  must land within the perceptual window). */
+  playAudioMessage: (msg: TTSAudioMessage, opts?: { interrupt?: boolean }) => void;
 
   /** Play couple-mode utterances sequentially. */
   playCoupleAudio: (msg: TTSCoupleMessage) => void;
@@ -377,6 +382,17 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
   const coupleQueueRef = useRef<CoupleUtterance[]>([]);
   const couplePlayingRef = useRef(false);
 
+  // Phase F (2026-05-08): playAudioMessage queue. Pre-fix, every
+  // playAudioMessage call ran `stop()` first → if the backend sent a
+  // multi-sentence reply as N separate `tts.audio` events, each one
+  // cut off the previous (pilot complaint: «ИИ сам обрывает себе
+  // фразы»). Now successive playAudioMessage calls QUEUE; the next
+  // one starts after the current `onEnded` fires. Barge-reactions
+  // (and any caller with intent to interrupt) pass `interrupt: true`
+  // to bypass the queue and play immediately.
+  const audioMessageQueueRef = useRef<TTSAudioMessage[]>([]);
+  const playingMessageRef = useRef(false);
+
   // Stable callback refs (avoid stale closures)
   const onEmotionChangeRef = useRef(onEmotionChange);
   const onVoiceParamsChangeRef = useRef(onVoiceParamsChange);
@@ -559,6 +575,11 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     // everything pending"; any genuine future audio comes via a fresh
     // playAudioMessage call.
     pendingPlaybackRef.current = null;
+    // Phase F (2026-05-08): also clear the new playAudioMessage queue
+    // and reset the playing flag so a hangup mid-queue doesn't leave
+    // stale messages waiting to fire on next play.
+    audioMessageQueueRef.current = [];
+    playingMessageRef.current = false;
     // Stop animation + modulation
     stopAudioLevelSimulation();
     clearModulationState();
@@ -753,30 +774,68 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
   // Play full TTS message with emotion + params (ТЗ-04 API)
   // ---------------------------------------------------------------------------
   const playAudioMessage = useCallback(
-    (msg: TTSAudioMessage) => {
+    (msg: TTSAudioMessage, opts?: { interrupt?: boolean }) => {
       // 2026-04-22: console (not logger) so prod users can diagnose silence.
+      const isInterrupt = !!opts?.interrupt;
       console.log(
-        `[TTS] ► playAudioMessage | enabled=${enabled} | emotion=${msg.emotion} | duration=${msg.duration_ms}ms | b64_len=${msg.audio?.length || 0}`
+        `[TTS] ► playAudioMessage | enabled=${enabled} | emotion=${msg.emotion} | duration=${msg.duration_ms}ms | b64_len=${msg.audio?.length || 0} | interrupt=${isInterrupt}`
       );
       if (!enabled) {
         console.warn("[TTS] playAudioMessage skipped — TTS disabled");
         return;
       }
-      stop();
-      decodeAndPlay(msg.audio, {
-        emotion: msg.emotion,
-        voiceParams: msg.voice_params,
-        durationMs: msg.duration_ms,
-        activeFactors: msg.active_factors,
-        onEnded: () => {
-          // Keep emotion visible briefly after audio ends (for smooth Avatar3D transition)
-          setTimeout(() => {
-            if (!couplePlayingRef.current) {
-              clearModulationState();
+
+      // Phase F (2026-05-08): inner play helper — wraps decodeAndPlay
+      // and chains the next queued message via onEnded. Defined inline
+      // so we can recurse without naming a top-level function.
+      const playMessage = (m: TTSAudioMessage) => {
+        playingMessageRef.current = true;
+        decodeAndPlay(m.audio, {
+          emotion: m.emotion,
+          voiceParams: m.voice_params,
+          durationMs: m.duration_ms,
+          activeFactors: m.active_factors,
+          onEnded: () => {
+            // Pop the next queued message and play it. If queue is
+            // empty, mark idle and let modulation fade out.
+            const next = audioMessageQueueRef.current.shift();
+            if (next) {
+              playMessage(next);
+              return;
             }
-          }, 500);
-        },
-      });
+            playingMessageRef.current = false;
+            // Keep emotion visible briefly after audio ends (smooth
+            // Avatar3D transition).
+            setTimeout(() => {
+              if (!couplePlayingRef.current && !playingMessageRef.current) {
+                clearModulationState();
+              }
+            }, 500);
+          },
+        });
+      };
+
+      if (isInterrupt) {
+        // Barge-reactions and any caller with `interrupt: true` cut
+        // through: clear the queue, stop the active audio, and play
+        // the new message immediately. This is the SAME behavior as
+        // pre-Phase-F default but now opt-in.
+        audioMessageQueueRef.current = [];
+        playingMessageRef.current = false;
+        stop();
+        playMessage(msg);
+        return;
+      }
+
+      // Default: QUEUE if a message is currently playing, else play.
+      // This fixes the «ИИ сам обрывает себе фразы» bug — backend
+      // multi-sentence replies arriving as N separate `tts.audio`
+      // events no longer cut each other off.
+      if (playingMessageRef.current) {
+        audioMessageQueueRef.current.push(msg);
+        return;
+      }
+      playMessage(msg);
     },
     [enabled, stop, decodeAndPlay, clearModulationState]
   );
