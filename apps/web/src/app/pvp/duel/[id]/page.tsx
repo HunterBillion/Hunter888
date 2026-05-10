@@ -899,18 +899,31 @@ function DuelPage() {
         </div>
       )}
 
-      {/* Connection status */}
+      {/*
+        2026-05-10 (cross-page polish): connection-status и statusNotice
+        переведены на пиксельный стиль — square 2px borders, font-pixel
+        14px, чтобы не выбиваться из остальной шапки/lifelines.
+      */}
       {connectionState !== "connected" && (
         <div className="px-4 pt-3 z-20">
           <div
-            className="rounded-xl px-4 py-2 text-xs font-mono flex items-center gap-2"
+            className="rounded-sm px-3 py-2 font-pixel uppercase tracking-widest flex items-center gap-2"
             style={{
-              background: connectionState === "reconnecting" ? "var(--warning-muted)" : "var(--danger-muted)",
+              background: connectionState === "reconnecting" ? "rgba(245,158,11,0.18)" : "rgba(239,68,68,0.18)",
               color: connectionState === "reconnecting" ? "var(--warning)" : "var(--danger)",
-              border: `1px solid ${connectionState === "reconnecting" ? "var(--warning-muted)" : "var(--danger-muted)"}`,
+              border: `2px solid ${connectionState === "reconnecting" ? "var(--warning)" : "var(--danger)"}`,
+              fontSize: 14,
+              letterSpacing: "0.18em",
             }}
           >
-            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: connectionState === "reconnecting" ? "var(--warning)" : "var(--danger)" }} />
+            <div
+              className="rounded-sm animate-pulse"
+              style={{
+                width: 8,
+                height: 8,
+                background: connectionState === "reconnecting" ? "var(--warning)" : "var(--danger)",
+              }}
+            />
             {connectionState === "reconnecting" ? "Переподключение..." : "Нет связи с сервером"}
           </div>
         </div>
@@ -919,8 +932,14 @@ function DuelPage() {
       {statusNotice && (
         <div className="px-4 pt-3 z-20">
           <div
-            className="rounded-xl px-4 py-2 text-xs font-mono"
-            style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-secondary)", border: "1px solid rgba(255,255,255,0.08)" }}
+            className="rounded-sm px-3 py-2 font-pixel uppercase tracking-widest"
+            style={{
+              background: "rgba(255,255,255,0.06)",
+              color: "var(--text-secondary)",
+              border: "2px solid rgba(255,255,255,0.18)",
+              fontSize: 14,
+              letterSpacing: "0.18em",
+            }}
           >
             {statusNotice}
           </div>
@@ -936,7 +955,10 @@ function DuelPage() {
             <span className="status-badge status-badge--online" style={{ fontSize: "14px" }}>
               ВАША РОЛЬ
             </span>
-            <span className="text-xs font-mono font-bold" style={{ color: "var(--accent)" }}>
+            <span
+              className="font-pixel uppercase tracking-widest"
+              style={{ color: "var(--accent)", fontSize: 14, letterSpacing: "0.18em" }}
+            >
               {sanitizeText(store.duelBrief.character_brief.name)}
             </span>
           </div>
@@ -944,10 +966,10 @@ function DuelPage() {
               character_brief приходит из WS сообщения duel.brief — если
               бэк (или скомпрометированный opponent) пришлёт
               <img onerror=...> — без санитизации это XSS. */}
-          <p className="text-xs leading-relaxed mb-1" style={{ color: "var(--text-secondary)" }}>
+          <p className="text-sm leading-relaxed mb-1.5" style={{ color: "var(--text-secondary)" }}>
             {sanitizeText(store.duelBrief.character_brief.brief)}
           </p>
-          <p className="text-xs italic" style={{ color: "var(--text-muted)" }}>
+          <p className="text-sm italic" style={{ color: "var(--text-muted)" }}>
             {sanitizeText(store.duelBrief.character_brief.behavior)}
           </p>
         </div>
