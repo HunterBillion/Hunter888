@@ -1,33 +1,36 @@
-"""LLM abstraction — navy.api ONLY (2026-05-10 cleanup).
+"""LLM abstraction — navy.api ONLY (2026-05-10 cleanup, phase 2).
 
 Архитектурное решение продакшена: единственный внешний LLM-провайдер —
-**navy.api** (OpenAI-совместимый proxy: gpt-5.4 + gemini-embedding-001
-доступны через одну endpoint).
+**navy.api** (OpenAI-совместимый proxy: gpt-5.4 + claude-opus-4.7 +
+embeddings через одну endpoint).
 
-Раньше код описывал 5-уровневую цепь (Gemini Direct → Local LLM
-→ Claude → OpenAI → Scripted), но на проде в `.env` ключи
-GEMINI_API_KEY / CLAUDE_API_KEY / OPENAI_API_KEY были **пусты**, и
-весь трафик шёл через `LOCAL_LLM_URL=https://api.navy/v1`.
-Multi-provider docstring вводил в заблуждение.
+История очистки:
+* phase 1 (PR #348): orchestration упростили до navy-only, но dead-
+  функции `_call_gemini` / `_call_openai` / `_stream_gemini` /
+  `_call_claude` оставались для AST-shape тестов.
+* phase 2 (текущий PR): функции и helpers вырезаны полностью вместе
+  с env-vars `gemini_api_key` / `gemini_model` / `gemini_rpm_limit` /
+  `gemini_embedding_*` / `openai_api_key`.
 
 Текущая модель:
-1. **navy.api** через OpenAI-compatible client (`_get_local_client`).
-   Используется для всего: chat/judge/coach/report/scenario/wiki +
-   embeddings (`/v1/embeddings`).
+1. **navy.api** через OpenAI-compatible client (`_get_local_client` →
+   `_call_local_llm` / `_stream_openai_compat`). Используется для всего:
+   chat / judge / coach / report / scenario / wiki + embeddings (`/v1/embeddings`).
 2. **Scripted dialog phrases** — last-resort если navy.api падает.
    Не диалоговый, просто 5-10 фраз вроде «Дайте подумать» — даёт
-   тренировке не улечь полностью.
+   тренировке не упасть полностью.
 
-`_call_gemini`, `_call_claude`, `_call_openai` (direct) оставлены
-только для backward-compat импорта; внутри теперь no-op + warning
-(возвращают scripted phrase). `_resolve_provider` всегда даёт
-"local" (=navy). `_gemini_has_quota` всегда False.
+`_get_claude_client` оставлен — используется ТОЛЬКО
+`persona_fact_extractor.py` (lazy Anthropic SDK для извлечения фактов
+о клиенте). Если key пуст → фича silently disabled. Миграция этой
+фичи на navy запланирована отдельным PR.
 
 Concurrency: два semaphore'а — realtime (10 slots) + background (5).
 Output filtering: profanity, PII, role breaks.
 """
 
 import asyncio
+import json
 import logging
 import random
 import re
@@ -44,9 +47,10 @@ from app.services.conversation_policy_engine import render_prompt as _render_pol
 logger = logging.getLogger(__name__)
 
 _local_client: openai.AsyncOpenAI | None = None
+# 2026-05-10: claude_client used ONLY by persona_fact_extractor (lazy
+# anthropic SDK + direct Anthropic API). Other Claude/OpenAI/Gemini
+# direct clients removed as dead-code (navy.api ONLY for chat/embed).
 _claude_client = None  # anthropic.AsyncAnthropic | None
-_openai_client: openai.AsyncOpenAI | None = None
-_gemini_http_client: httpx.AsyncClient | None = None
 
 # Q11 fix: Two semaphores — realtime (user waiting) + background (can wait)
 _llm_sem_realtime: asyncio.Semaphore | None = None
@@ -119,10 +123,9 @@ class _ProviderHealth:
 
 
 _provider_health: dict[str, _ProviderHealth] = {
-    "gemini": _ProviderHealth(),
+    # 2026-05-10 navy-only: единственный circuit-breaker; gemini/claude/
+    # openai entries удалены вместе с direct provider функциями.
     "local": _ProviderHealth(),
-    "claude": _ProviderHealth(),
-    "openai": _ProviderHealth(),
 }
 
 # S1-02 2.2.2: asyncio.Lock protects _provider_health from concurrent modification
@@ -390,16 +393,6 @@ def _filter_output(text: str, task_type: str = "default") -> tuple[str, list[str
     return filtered, []
 
 
-def _get_gemini_client() -> httpx.AsyncClient | None:
-    """Get HTTP client for Gemini Direct API."""
-    global _gemini_http_client
-    if _gemini_http_client is None and settings.gemini_api_key:
-        _gemini_http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(settings.llm_timeout_seconds + 5, connect=5.0),
-        )
-    return _gemini_http_client
-
-
 def _build_keepalive_http_client() -> httpx.AsyncClient:
     """Shared httpx client tuned for navy.api / OpenAI-compat traffic.
 
@@ -458,16 +451,6 @@ def _get_claude_client():
         except ImportError:
             logger.info("anthropic package not installed, Claude API disabled")
     return _claude_client
-
-
-def _get_openai_client() -> openai.AsyncOpenAI | None:
-    global _openai_client
-    if _openai_client is None and settings.openai_api_key:
-        _openai_client = openai.AsyncOpenAI(
-            api_key=settings.openai_api_key,
-            http_client=_build_keepalive_http_client(),
-        )
-    return _openai_client
 
 
 @dataclass
@@ -546,21 +529,6 @@ def _get_constitution() -> str:
 # пусты). Все ветки теперь возвращают "local" — синоним navy в текущей
 # конфигурации. Параметры prefer/task_type/tokens сохранены для backward-
 # compat вызовов; они игнорируются.
-
-_gemini_call_times: list[float] = []  # legacy, не используется
-
-
-def _gemini_has_quota() -> bool:
-    """Legacy stub — Gemini Direct отключён, всегда False.
-
-    Раньше отслеживал sliding-60s-RPM окно для Gemini free tier.
-    После 2026-05-10 cleanup'а Gemini direct API не используется
-    (трафик идёт через navy.api), и эта функция всегда возвращает
-    False. Оставлена для backward-compat вызовов (`_resolve_provider`,
-    `_call_with_backoff`).
-    """
-    return False
-
 
 def _resolve_provider(
     prefer: str,
@@ -695,16 +663,14 @@ async def get_embeddings_batch(texts: list[str]) -> list[list[float]] | None:
 async def close_llm_clients() -> None:
     """Close all LLM and embedding HTTP clients on shutdown.
 
-    2026-05-04 (Plan A critic-fix #2): the new ``_local_client`` and
-    ``_openai_client`` wrap a custom ``httpx.AsyncClient`` (HTTP/2
-    keepalive pool). Without explicit shutdown, dev hot-reload + prod
-    lifespan stop leak the connection pool every reload — exactly the
-    pool this PR introduced.
+    2026-05-04 (Plan A critic-fix #2): the ``_local_client`` wraps a
+    custom ``httpx.AsyncClient`` (HTTP/2 keepalive pool). Without
+    explicit shutdown, dev hot-reload + prod lifespan stop leak the
+    connection pool every reload.
+
+    2026-05-10 navy-cleanup: Gemini/OpenAI direct clients removed.
     """
-    global _gemini_http_client, _embedding_http_client, _local_client, _openai_client
-    if _gemini_http_client is not None:
-        await _gemini_http_client.aclose()
-        _gemini_http_client = None
+    global _embedding_http_client, _local_client
     if _embedding_http_client is not None:
         await _embedding_http_client.aclose()
         _embedding_http_client = None
@@ -714,12 +680,6 @@ async def close_llm_clients() -> None:
         except Exception:
             logger.debug("local LLM client close failed (non-fatal)", exc_info=True)
         _local_client = None
-    if _openai_client is not None:
-        try:
-            await _openai_client.close()
-        except Exception:
-            logger.debug("OpenAI client close failed (non-fatal)", exc_info=True)
-        _openai_client = None
 
 
 def _render_stage_awareness_block(info: dict) -> str:
@@ -1664,116 +1624,6 @@ def _trim_history(messages: list[dict], max_messages: int) -> list[dict]:
     return merged
 
 
-async def _call_gemini(
-    system_prompt: str,
-    messages: list[dict],
-    timeout: float,
-    max_tokens: int | None = None,
-    temperature: float | None = None,
-    *,
-    tools: list[dict] | None = None,
-) -> LLMResponse:
-    """Call Gemini API directly via REST (no SDK dependency).
-
-    Uses the generateContent endpoint with system_instruction.
-    Free tier: 15 RPM, 1500 req/day, 1M tokens/min.
-    Docs: https://ai.google.dev/gemini-api/docs/text-generation
-
-    ``tools`` is accepted for signature parity with the OpenAI-style
-    branches (so ``_call_with_backoff`` can pass it uniformly) but is
-    silently ignored — Gemini's tool-calling REST shape is incompatible
-    with the OpenAI spec we use elsewhere. The end_call signal will fall
-    through to the ``[END_CALL]`` substring fallback when this branch
-    answers the call.
-    """
-    client = _get_gemini_client()
-    if client is None:
-        raise LLMError("Gemini API key not configured")
-
-    model = settings.gemini_model
-    # FIX: Use x-goog-api-key header instead of URL query param.
-    # API key in URL leaks into access logs, proxy logs, and error messages.
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/"
-        f"models/{model}:generateContent"
-    )
-
-    # Build contents array (Gemini format)
-    contents = []
-    for msg in messages:
-        role = "user" if msg["role"] == "user" else "model"
-        contents.append({
-            "role": role,
-            "parts": [{"text": msg["content"]}],
-        })
-
-    payload = {
-        "system_instruction": {
-            "parts": [{"text": system_prompt}],
-        },
-        "contents": contents,
-        "generationConfig": {
-            # When max_tokens is None we keep the historical 1200 cap exactly,
-            # so flag-off behaviour is bit-for-bit identical (Sprint 0).
-            "maxOutputTokens": max_tokens if max_tokens is not None else 1200,
-            # PR E: callers like pvp_judge pass temperature=0.2 for less
-            # variance in scoring. None preserves historical 0.85 default.
-            "temperature": temperature if temperature is not None else 0.85,
-        },
-        "safetySettings": [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-        ],
-    }
-
-    start = time.monotonic()
-    try:
-        resp = await client.post(
-            url,
-            json=payload,
-            headers={"x-goog-api-key": settings.gemini_api_key},
-        )
-        resp.raise_for_status()
-    except httpx.TimeoutException:
-        raise LLMError("Gemini API timeout")
-    except httpx.HTTPStatusError as e:
-        raise LLMError(f"Gemini API error {e.response.status_code}: {e.response.text[:200]}")
-    except httpx.HTTPError as e:
-        raise LLMError(f"Gemini API connection error: {e}")
-
-    latency_ms = int((time.monotonic() - start) * 1000)
-    data = resp.json()
-
-    # Extract text from response
-    try:
-        content = data["candidates"][0]["content"]["parts"][0]["text"]
-    except (KeyError, IndexError):
-        # Safety block or empty response
-        block_reason = data.get("promptFeedback", {}).get("blockReason", "unknown")
-        logger.warning("Gemini blocked response: %s", block_reason)
-        raise LLMError(f"Gemini response blocked: {block_reason}")
-
-    # Guard against empty string responses (Gemini can return "" without raising KeyError)
-    if not content or not content.strip():
-        logger.warning("Gemini returned empty content for model %s", model)
-        raise LLMError("Gemini returned empty response")
-
-    # Extract token counts
-    usage = data.get("usageMetadata", {})
-    input_tokens = usage.get("promptTokenCount", 0)
-    output_tokens = usage.get("candidatesTokenCount", 0)
-
-    return LLMResponse(
-        content=content,
-        model=f"gemini:{model}",
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        latency_ms=latency_ms,
-    )
-
-
 async def _call_local_llm(
     system_prompt: str,
     messages: list[dict],
@@ -1910,125 +1760,6 @@ async def _call_local_llm(
     )
 
 
-async def _call_claude(
-    system_prompt: str,
-    messages: list[dict],
-    timeout: float,
-    max_tokens: int | None = None,
-    temperature: float | None = None,
-    *,
-    tools: list[dict] | None = None,
-) -> LLMResponse:
-    """Call Claude API. Raises LLMError on failure.
-
-    ``tools`` is accepted for signature parity with the OpenAI-style
-    branches; Claude's native tool-calling shape differs from the OpenAI
-    spec our pipeline uses, so this branch silently ignores it. The
-    end_call signal then falls through to ``[END_CALL]`` substring
-    detection downstream.
-    """
-    client = _get_claude_client()
-    if client is None:
-        raise LLMError("Claude API key not configured")
-
-    import anthropic
-
-    start = time.monotonic()
-    try:
-        response = await client.messages.create(
-            model=settings.claude_model,
-            # max_tokens=None preserves the historical 800 cap.
-            max_tokens=max_tokens if max_tokens is not None else 800,
-            # PR E: temperature=None preserves historical 1.0 default.
-            temperature=temperature if temperature is not None else 1.0,
-            system=system_prompt,
-            messages=messages,
-            timeout=timeout,
-        )
-    except anthropic.APITimeoutError:
-        raise LLMError("Claude API timeout")
-    except anthropic.APIError as e:
-        raise LLMError(f"Claude API error: {e}")
-
-    latency_ms = int((time.monotonic() - start) * 1000)
-    content = response.content[0].text if response.content else ""
-
-    return LLMResponse(
-        content=content,
-        model=response.model,
-        input_tokens=response.usage.input_tokens,
-        output_tokens=response.usage.output_tokens,
-        latency_ms=latency_ms,
-    )
-
-
-async def _call_openai(
-    system_prompt: str,
-    messages: list[dict],
-    timeout: float,
-    max_tokens: int | None = None,
-    temperature: float | None = None,
-    *,
-    tools: list[dict] | None = None,
-    raw_messages: list[dict] | None = None,
-) -> LLMResponse:
-    """Call OpenAI API as fallback. Raises LLMError on failure.
-
-    Optional parameters (Phase 1.6, 2026-04-18):
-      - ``tools``: OpenAI tools spec (from ``ToolRegistry.openai_tools_spec``).
-        When provided, streaming is disabled for this call so ``tool_calls``
-        come back in the non-streamed response shape.
-      - ``raw_messages``: if set, overrides the default ``role|content``
-        flattening. Used by the tool-dispatch second round-trip where we
-        need to preserve ``tool_call_id`` and ``name`` on ``role="tool"``
-        messages.
-    """
-    client = _get_openai_client()
-    if client is None:
-        raise LLMError("OpenAI API key not configured")
-
-    if raw_messages is not None:
-        oai_messages = [{"role": "system", "content": system_prompt}, *raw_messages]
-    else:
-        oai_messages = [{"role": "system", "content": system_prompt}]
-        for msg in messages:
-            oai_messages.append({"role": msg["role"], "content": msg["content"]})
-
-    start = time.monotonic()
-    kwargs: dict = {
-        "model": settings.llm_fallback_model,
-        "messages": oai_messages,
-        # max_tokens=None preserves the historical 800 cap.
-        "max_tokens": max_tokens if max_tokens is not None else 800,
-        # PR E: temperature=None preserves historical 1.0 default.
-        "temperature": temperature if temperature is not None else 1.0,
-        "timeout": timeout,
-    }
-    if tools:
-        kwargs["tools"] = tools
-        kwargs["tool_choice"] = "auto"
-    try:
-        response = await client.chat.completions.create(**kwargs)
-    except openai.APITimeoutError:
-        raise LLMError("OpenAI API timeout")
-    except openai.APIError as e:
-        raise LLMError(f"OpenAI API error: {e}")
-
-    latency_ms = int((time.monotonic() - start) * 1000)
-    msg = response.choices[0].message
-    content = msg.content or ""
-    tool_calls = _parse_openai_tool_calls(getattr(msg, "tool_calls", None))
-
-    return LLMResponse(
-        content=content,
-        model=response.model or settings.llm_fallback_model,
-        input_tokens=response.usage.prompt_tokens if response.usage else 0,
-        output_tokens=response.usage.completion_tokens if response.usage else 0,
-        latency_ms=latency_ms,
-        tool_calls=tool_calls,
-    )
-
-
 def _parse_openai_tool_calls(raw) -> list[dict] | None:
     """Normalize OpenAI SDK ``ChatCompletionMessageToolCall[]`` into a plain
     list of dicts — the shape our executor/WS layers consume.
@@ -2041,7 +1772,6 @@ def _parse_openai_tool_calls(raw) -> list[dict] | None:
 
     if not raw:
         return None
-    import json as _json
 
     parsed: list[dict] = []
     for tc in raw:
@@ -2050,7 +1780,7 @@ def _parse_openai_tool_calls(raw) -> list[dict] | None:
             name = fn.name
             args_str = fn.arguments or "{}"
             try:
-                args = _json.loads(args_str)
+                args = json.loads(args_str)
             except Exception:
                 args = {"_raw": args_str}
             parsed.append({"id": tc.id, "name": name, "arguments": args})
@@ -3066,72 +2796,6 @@ async def _stream_openai_compat(
         # Surface as LLMError so the caller can fall back to blocking
         # path or another provider, instead of the WS handler crashing.
         raise LLMError(f"Local LLM stream error: {e}")
-
-
-async def _stream_gemini(
-    system_prompt: str,
-    messages: list[dict],
-    timeout: float,
-    max_tokens: int | None = None,
-    temperature: float | None = None,
-) -> AsyncGenerator[str, None]:
-    """Stream tokens from Gemini API via SSE."""
-    client = _get_gemini_client()
-    if client is None:
-        raise LLMError("Gemini API key not configured")
-
-    model = settings.gemini_model
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/"
-        f"models/{model}:streamGenerateContent?alt=sse"
-    )
-
-    contents = []
-    for msg in messages:
-        role = "user" if msg["role"] == "user" else "model"
-        contents.append({"role": role, "parts": [{"text": msg["content"]}]})
-
-    payload = {
-        "system_instruction": {"parts": [{"text": system_prompt}]},
-        "contents": contents,
-        "generationConfig": {
-            # max_tokens=None preserves the historical 1200 cap.
-            "maxOutputTokens": max_tokens if max_tokens is not None else 1200,
-            "temperature": temperature if temperature is not None else 0.85,
-        },
-        "safetySettings": [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-        ],
-    }
-
-    try:
-        async with client.stream(
-            "POST", url, json=payload,
-            headers={"x-goog-api-key": settings.gemini_api_key},
-        ) as resp:
-            if resp.status_code != 200:
-                raise LLMError(f"Gemini stream HTTP {resp.status_code}")
-            async for line in resp.aiter_lines():
-                if not line.startswith("data: "):
-                    continue
-                try:
-                    chunk = json.loads(line[6:])
-                    parts = (
-                        chunk.get("candidates", [{}])[0]
-                        .get("content", {})
-                        .get("parts", [])
-                    )
-                    for part in parts:
-                        token = part.get("text", "")
-                        if token:
-                            yield token
-                except (json.JSONDecodeError, IndexError, KeyError):
-                    continue
-    except httpx.TimeoutException:
-        raise LLMError("Gemini stream timeout")
 
 
 async def generate_response_stream(

@@ -528,7 +528,10 @@ async def retrieve_legal_context(
             return cached
 
     # Parallel retrieval
-    use_emb = prefer_embedding and bool(settings.gemini_embedding_api_key)
+    # 2026-05-10 navy-only: embeddings теперь идут через navy
+    # (`get_embeddings_batch` → `local_llm_url`/v1/embeddings). Gate на
+    # `local_llm_enabled` чтобы при не-настроенной navy fallback на keyword.
+    use_emb = prefer_embedding and bool(settings.local_llm_enabled)
     if use_emb:
         emb_r, kw_r = await asyncio.gather(
             _retrieve_by_embedding(query, db, config),
@@ -590,7 +593,7 @@ async def validate_legal_claim(claim: str, db: AsyncSession) -> dict:
 
 async def verify_embeddings_health(db: AsyncSession) -> dict:
     """Check embedding population and model compatibility."""
-    current_model = settings.gemini_embedding_model
+    current_model = settings.embedding_model
     try:
         total = await db.scalar(select(func.count()).select_from(LegalKnowledgeChunk)
             .where(LegalKnowledgeChunk.is_active.is_(True))) or 0
@@ -625,7 +628,7 @@ async def check_embeddings_populated(db: AsyncSession) -> bool:
 
 async def populate_embeddings(db: AsyncSession, batch_size: int = 10) -> int:
     """Populate embedding vectors for chunks that need them."""
-    current_model = settings.gemini_embedding_model
+    current_model = settings.embedding_model
     try:
         result = await db.execute(sa_text(
             "SELECT id, fact_text FROM legal_knowledge_chunks "

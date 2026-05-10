@@ -1972,7 +1972,10 @@ async def _generate_character_reply(
                 # Build LLMResponse-compatible object for rest of pipeline
                 llm_result = LLMResponse(
                     content=_streamed_text,
-                    model=settings.local_llm_model if _prefer == "local" else settings.gemini_model,
+                    # 2026-05-10 navy-only: только local (=navy.api) ветка
+                    # реально достижима. _prefer всегда резолвится в "local"
+                    # (см. llm._resolve_provider).
+                    model=settings.local_llm_model,
                     input_tokens=_est_tokens,
                     output_tokens=len(_streamed_text) // 2,
                     latency_ms=_stream_latency,

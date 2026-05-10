@@ -44,38 +44,32 @@ class Settings(BaseSettings):
     # CSRF
     csrf_secret: str = ""
 
-    # LLM
+    # LLM — navy.api ONLY (2026-05-10 cleanup).
+    # Единственный внешний провайдер: navy.api (OpenAI-compatible),
+    # настройки ниже как `local_llm_*`. Direct Gemini/OpenAI ключи
+    # удалены как dead-code (на проде были пусты годами, ветки
+    # никогда не выполнялись). См. apps/api/app/services/llm.py
+    # docstring.
+    #
+    # `claude_api_key` оставлен — используется только
+    # `persona_fact_extractor` (lazy-загруженный Anthropic SDK через
+    # `_get_claude_client` в llm.py). Если key пуст — фича silently
+    # disabled (legacy Claude Haiku для извлечения фактов о клиенте);
+    # миграция на navy запланирована отдельным PR.
     claude_api_key: str = ""
-    # 2026-04-21 unified LLM policy (owner directive):
-    #   primary   = gpt-5.4           (fast, reliable, default route)
-    #   secondary = claude-opus-4.7   (best fallback on navy.api — the
-    #                                  highest-tier 4.7 Anthropic model
-    #                                  reachable; sonnet-4.7 does NOT
-    #                                  exist on navy, only sonnet-4.6)
-    # All mini/nano/older models are banned ("остальное мусор").
-    # Both routed through navy.api proxy (LOCAL_LLM_URL); direct
-    # Anthropic/OpenAI/Gemini keys stay off.
-    # Note navy dot-notation: "claude-opus-4.7" not "claude-opus-4-7".
-    claude_model: str = "claude-opus-4.7"
-    openai_api_key: str = ""
-    # 2026-04-21 unified LLM policy — see claude_model docstring.
+    claude_model: str = "claude-opus-4.7"  # only used as default by persona extractor
     llm_primary_model: str = "gpt-5.4"
     llm_fallback_model: str = "claude-opus-4.7"
 
     # TZ-5 input funnel models (PR #102 + owner override 2026-04-29).
-    # Both routed via the navy proxy (`local_llm_url`). Same precedence
-    # rules as the rest of the platform — fallback to heuristic when the
-    # navy provider is unreachable, NOT to Anthropic/OpenAI direct keys.
+    # Both routed via the navy proxy (`local_llm_url`).
     tz5_extractor_model: str = "gpt-5.4"
     tz5_classifier_model: str = "gemini-3.1-pro-preview"
-    llm_timeout_seconds: int = 60  # Gemma 4 on Ollama: first request ~30s (model swap), then ~10-15s
+    llm_timeout_seconds: int = 60
     llm_max_history_messages: int = 20
 
-    # Gemini Direct API (primary for pilot — free 1500 req/day)
-    gemini_api_key: str = ""  # Get free: https://aistudio.google.com/apikey
-    gemini_model: str = "gemini-2.5-flash"
-
-    # Local LLM (Ollama / LM Studio / CLIProxyAPI — OpenAI-compatible API)
+    # navy.api credentials (variables retain `local_llm_*` prefix for
+    # backward-compat; rename to `navy_api_*` planned in separate PR).
     local_llm_url: str = "http://localhost:11434/v1"
     local_llm_model: str = "gemma4:e2b"
     local_llm_enabled: bool = False  # Disabled by default; enable for local dev
@@ -154,9 +148,8 @@ class Settings(BaseSettings):
     # Hybrid LLM Router
     constitution_enabled: bool = True  # Inject constitution.md into every system prompt
     constitution_path: str = "constitution.md"  # Path relative to prompts/ dir
-    llm_auto_cloud_threshold_tokens: int = 5000  # system_prompt > this → prefer cloud
-    llm_local_max_tokens_simple: int = 400  # max_tokens for simple/structured tasks on local
-    gemini_rpm_limit: int = 15  # Free tier limit, used by RPM counter to avoid 429
+    llm_auto_cloud_threshold_tokens: int = 5000  # legacy, retained for back-compat
+    llm_local_max_tokens_simple: int = 400  # max_tokens for simple/structured tasks
 
     # Lorebook (personality RAG — replaces monolithic character prompts)
     use_lorebook: bool = True  # Feature flag: True=lorebook+RAG (dynamic context), False=old 25K prompts
@@ -381,10 +374,12 @@ class Settings(BaseSettings):
     rag_min_similarity: float = 0.40  # Min cosine similarity for RAG retrieval (standard mode)
     rag_min_similarity_blitz: float = 0.35  # Min cosine similarity for blitz mode
 
-    # Embeddings
+    # Embeddings — navy.api `/v1/embeddings` (OpenAI-compatible).
+    # Direct Gemini Embedding REST fallback убран как dead-code.
+    # `embedding_model` соответствует тегу из navy /v1/models, используется
+    # script_checker и rag_legal для verify_embeddings_health.
     embeddings_service_url: str = "http://localhost:8002"  # Legacy local service
-    gemini_embedding_api_key: str = ""  # Free Gemini API key for embeddings
-    gemini_embedding_model: str = "gemini-embedding-001"
+    embedding_model: str = "gemini-embedding-001"
 
     # ElevenLabs TTS (natural AI voice for client character)
     elevenlabs_api_key: str = ""  # Get key: https://elevenlabs.io/app/settings/api-keys
@@ -835,16 +830,11 @@ class Settings(BaseSettings):
                 "configure uvicorn --forwarded-allow-ips and nginx X-Real-IP header"
             )
 
-        # Always warn about missing LLM keys — accept navy.api (local_llm_api_key) as valid
-        # since platform routes all LLM/embedding/STT/TTS through navy by default.
-        _has_any_llm = any([
-            self.gemini_api_key,
-            self.claude_api_key,
-            self.openai_api_key,
-            self.local_llm_api_key and self.local_llm_enabled,
-        ])
-        if not _has_any_llm:
-            issues.append("WARNING: No LLM API key configured — AI features will not work")
+        # 2026-05-10 navy-only: единственный обязательный LLM-канал —
+        # `local_llm_*` (=navy.api). `claude_api_key` опциональный
+        # (используется только persona_fact_extractor).
+        if not (self.local_llm_api_key and self.local_llm_enabled):
+            issues.append("WARNING: navy.api LLM not configured (LOCAL_LLM_API_KEY/ENABLED) — AI features will not work")
 
         for issue in issues:
             if issue.startswith("CRITICAL"):

@@ -74,7 +74,7 @@ async def generate_with_tool_dispatch(
     system_prompt: str,
     messages: list[dict],
     ctx: ToolContext,
-    provider: Literal["local", "openai"] = "local",
+    provider: Literal["local"] = "local",
     timeout: float = 60.0,
     scope: Literal["session", "user", "global"] = "session",
     emit: EmitFn | None = None,
@@ -82,28 +82,25 @@ async def generate_with_tool_dispatch(
     """Return the final ``LLMResponse`` for a turn that may invoke MCP tools.
 
     If ``settings.mcp_enabled`` is False, degenerates into a plain
-    ``_call_local_llm`` / ``_call_openai`` call with no ``tools`` arg.
+    ``_call_local_llm`` call with no ``tools`` arg.
 
-    ``provider="local"`` targets the OpenAI-compatible branch of
-    ``_call_local_llm`` (e.g. navy.api). Private-network Ollama rejects this
-    path up-stream; callers should use ``provider="openai"`` as a fallback.
+    2026-05-10 navy-cleanup: единственный provider — ``"local"`` (= navy.api
+    через OpenAI-compatible client). Параметр сохранён в сигнатуре для
+    backward-compat callers, но другие значения теперь не принимаются.
     """
 
     # Late import to avoid circular dep during llm.py loading.
-    from app.services.llm import (
-        LLMResponse,
-        _call_local_llm,
-        _call_openai,
-    )
+    from app.services.llm import LLMResponse, _call_local_llm
+
+    if provider != "local":
+        raise ValueError(
+            f"generate_with_tool_dispatch: provider={provider!r} больше не "
+            "поддерживается (navy-only с 2026-05-10). Используй 'local'."
+        )
 
     def _call(
         *, raw_messages=None, tools=None,
     ) -> Awaitable[LLMResponse]:
-        if provider == "openai":
-            return _call_openai(
-                system_prompt, messages, timeout,
-                tools=tools, raw_messages=raw_messages,
-            )
         return _call_local_llm(
             system_prompt, messages, timeout,
             tools=tools, raw_messages=raw_messages,
@@ -228,10 +225,10 @@ async def _call_final_text_turn(
     """Make one last LLM call with tools disabled — used when we bail out
     of the loop (fatal tool error or iteration cap)."""
 
-    from app.services.llm import _call_local_llm, _call_openai
+    from app.services.llm import _call_local_llm
 
-    if provider == "openai":
-        return await _call_openai(system_prompt, messages, timeout, tools=None)
+    # 2026-05-10 navy-only: provider param ignored (только navy.api).
+    _ = provider
     return await _call_local_llm(system_prompt, messages, timeout, tools=None)
 
 
