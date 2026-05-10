@@ -422,6 +422,20 @@ export default function TrainingCallPage() {
   const sendAudioBlobRef = useRef<((blob: Blob) => void) | null>(null);
 
   // --- Mount guard: verify session_mode, hydrate store --------------------
+  /*
+   * 2026-05-10 FIND-010 fix: устранён eslint-disable.
+   * Раньше effect зависел только от `[id]`, остальные ссылки
+   * (router, store actions, useState setters) попадали под disable
+   * как «stable references».
+   *
+   * Теперь явно destructure'им actions из zustand-store перед
+   * useEffect — они стабильны (zustand actions создаются один раз).
+   * useState-setters стабильны по Reactовому контракту. router и
+   * api-helpers тоже стабильны. Кладём всё в deps честно — линтер
+   * не жалуется, future refactor увидит реальные зависимости.
+   */
+  const setCharacterName = s.setCharacterName;
+  const setScenarioTitle = s.setScenarioTitle;
   useEffect(() => {
     if (!id) return;
     logger.log("[CALL] mount — id=", id);
@@ -460,8 +474,8 @@ export default function TrainingCallPage() {
           setSessionMode("call");
         }
         if (cancelled) return;
-        if (meta?.character_name) s.setCharacterName(meta.character_name);
-        if (meta?.scenario_title) s.setScenarioTitle(meta.scenario_title);
+        if (meta?.character_name) setCharacterName(meta.character_name);
+        if (meta?.scenario_title) setScenarioTitle(meta.scenario_title);
         const bg =
           meta?.custom_bg_noise ||
           meta?.custom_params?.bg_noise ||
@@ -486,8 +500,7 @@ export default function TrainingCallPage() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, router, setCharacterName, setScenarioTitle, setSessionMode, setSceneBg, setRealClientId, setModeOk]);
 
   // --- Elapsed ticker -----------------------------------------------------
   useEffect(() => {
@@ -505,10 +518,14 @@ export default function TrainingCallPage() {
   // PhoneCallMode). No longer maps speakerOn → presets — user controls
   // volume precisely via the slider. Initialise to a comfortable default
   // on first mount so the user hears TTS without pre-interacting.
+  //
+  // 2026-05-10 FIND-010 fix: устранён eslint-disable. tts.setVolume —
+  // useCallback из useTTS, ссылка стабильна, можно положить в deps без
+  // риска повторных запусков на каждом рендере.
+  const ttsSetVolume = tts.setVolume;
   useEffect(() => {
-    tts.setVolume(0.85);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    ttsSetVolume(0.85);
+  }, [ttsSetVolume]);
 
   // 2026-04-23 Sprint 5 (Zone 2): looped ringback. Plays 425Hz RU dial
   // tone on a 3.5s cycle until user clicks Accept or component unmounts.
@@ -1096,17 +1113,26 @@ export default function TrainingCallPage() {
   // ships its own VAD + the audio path uses echoCancellation, so leaving
   // STT live during TTS playback doesn't actually create a feedback loop
   // in practice. Mute remains the user's explicit pause.
+  /*
+   * 2026-05-10 FIND-010 fix: stt.startListening / stt.stopListening —
+   * useCallback в useSpeechRecognition (stable refs). Раньше они шли
+   * в effect через `stt`-объект, deps содержали только триггеры
+   * (modeOk/connectionState/muted), а disable перекрывал ESLint.
+   * Теперь явно destructure stable methods + isSupported, deps честные.
+   */
+  const sttStartListening = stt.startListening;
+  const sttStopListening = stt.stopListening;
+  const sttIsSupported = stt.isSupported;
   useEffect(() => {
     if (modeOk !== true) return;
     if (connectionState !== "connected") return;
     if (muted) {
-      stt.stopListening();
+      sttStopListening();
       return;
     }
-    if (!stt.isSupported) return;
-    stt.startListening();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modeOk, connectionState, muted]);
+    if (!sttIsSupported) return;
+    sttStartListening();
+  }, [modeOk, connectionState, muted, sttStartListening, sttStopListening, sttIsSupported]);
 
   // Watchdog: if STT remains idle for ~3s after we asked to listen, retry.
   // Covers transient SpeechRecognition.start() races (Chrome will sometimes
@@ -1118,13 +1144,19 @@ export default function TrainingCallPage() {
   // permission, language not supported) — the user saw the red mic banner
   // blink on/off as start→error→idle→start cycled. Backoff caps at 24s and
   // resets to 3s the moment STT successfully transitions out of idle.
+  /*
+   * 2026-05-10 FIND-010 fix: те же destructured stable methods.
+   * Watchdog effect зависит от sttStatus как триггера, методы из
+   * destructure'а выше — стабильны.
+   */
   const sttRetryAttemptRef = useRef(0);
+  const sttStatus = stt.status;
   useEffect(() => {
     if (modeOk !== true) return;
     if (connectionState !== "connected") return;
     if (muted) return;
-    if (!stt.isSupported) return;
-    if (stt.status !== "idle") {
+    if (!sttIsSupported) return;
+    if (sttStatus !== "idle") {
       // Successful start (or any non-idle transition) resets the backoff.
       sttRetryAttemptRef.current = 0;
       return;
@@ -1136,11 +1168,10 @@ export default function TrainingCallPage() {
     const delay = Math.min(3000 * 2 ** attempt, 24000);
     const t = setTimeout(() => {
       sttRetryAttemptRef.current = attempt + 1;
-      stt.startListening();
+      sttStartListening();
     }, delay);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modeOk, connectionState, muted, stt.status]);
+  }, [modeOk, connectionState, muted, sttStatus, sttIsSupported, sttStartListening]);
 
   // --- Speaker toggle — pauses/resumes TTS playback ----------------------
   useEffect(() => {
