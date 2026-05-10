@@ -185,17 +185,32 @@ async def get_proactive_tip(user_id: uuid.UUID, db: AsyncSession) -> str | None:
         return "Привет! Ты ещё не проходил тренировки. Давай начнём с простого сценария — cold_ad, сложность 4?"
 
     # Recent stats (last 5 sessions)
-    recent = await db.execute(
-        select(
-            func.count().label("cnt"),
-            func.avg(TrainingSession.score_total).label("avg"),
-        )
+    #
+    # 2026-05-10 BUG-FIX (FIND-005, P1): прежняя версия ронялась с
+    # `column "training_sessions.ended_at" must appear in the GROUP BY
+    # clause or be used in an aggregate function` — `func.count()` +
+    # `func.avg()` без GROUP BY и одновременным `order_by(ended_at)` +
+    # `limit(5)` это невалидный SQL в Postgres, и /api/training/coach/tip
+    # отвечал 500 каждому залогиненому пользователю.
+    #
+    # Правильный путь — subquery на топ-5 последних завершённых сессий,
+    # затем агрегаты по этой выборке. Так сохраняется намерение «среднее
+    # по последним 5 сессиям» (как было задумано в комменте).
+    recent_subq = (
+        select(TrainingSession.score_total)
         .where(
             TrainingSession.user_id == user_id,
             TrainingSession.status == SessionStatus.completed,
         )
         .order_by(desc(TrainingSession.ended_at))
         .limit(5)
+        .subquery()
+    )
+    recent = await db.execute(
+        select(
+            func.count().label("cnt"),
+            func.avg(recent_subq.c.score_total).label("avg"),
+        ).select_from(recent_subq)
     )
     row = recent.one_or_none()
     count = row.cnt if row else 0
