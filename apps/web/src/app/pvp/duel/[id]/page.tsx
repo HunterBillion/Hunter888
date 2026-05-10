@@ -10,6 +10,7 @@ import { useAuthBootstrap } from "@/hooks/useAuthBootstrap";
 import { usePvPStore } from "@/stores/usePvPStore";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import { DuelChat } from "@/components/pvp/DuelChat";
+import { DuelRulesCarousel } from "@/components/pvp/DuelRulesCarousel";
 // 2026-05-01: 12-portrait avatar library
 import {
   usePlayerAvatar,
@@ -584,215 +585,77 @@ function DuelPage() {
           MozOsxFontSmoothing: "grayscale",
         } as React.CSSProperties}
       >
-        {/* Status bar — спиннер + статус + back button (компактнее, не доминирует) */}
+        {/*
+          2026-05-10 (Clash Royale карусель): раньше тут был
+          status-bar + полноэкранная панель «★ Правила дуэли ★» с 8
+          пунктами в группах. Пользователь обозначил её как «не
+          понятный артефакт» — слишком много текста, нечитабельно.
+          Теперь — компактный countdown + карусель из 4 коротких
+          правил, которые сами листаются раз в 5 секунд.
+        */}
         <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl px-5 py-3 flex items-center gap-4 max-w-3xl w-full"
-          style={{
-            background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, rgba(15,15,20,0.85)) 0%, rgba(15,15,20,0.92) 100%)",
-            border: "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
-            boxShadow: "0 6px 20px color-mix(in srgb, var(--accent) 14%, transparent), inset 0 1px 0 rgba(255,255,255,0.05)",
-            backdropFilter: "blur(24px) saturate(1.2)",
-          }}
+          initial={{ opacity: 0, scale: 0.92 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="flex flex-col items-center gap-3 max-w-[480px] w-full"
         >
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1.4, repeat: Infinity, ease: "linear" }}
-            className="rounded-full shrink-0"
+          {/* Square pixel countdown — спиннер с пиксельной обводкой */}
+          <div
+            className="relative flex items-center justify-center rounded-sm"
             style={{
-              width: 36,
-              height: 36,
-              border: "3px solid color-mix(in srgb, var(--accent) 22%, transparent)",
-              borderTopColor: "var(--accent)",
-              boxShadow: "0 0 14px var(--accent-glow)",
+              width: 92,
+              height: 92,
+              background: "rgba(167,139,250,0.08)",
+              border: "3px solid var(--accent)",
+              boxShadow: "0 0 18px var(--accent-glow), inset 0 0 12px rgba(0,0,0,0.4)",
             }}
-          />
-          <div className="flex-1 min-w-0">
-            <div
-              className="font-display font-bold uppercase truncate"
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1.4, repeat: Infinity, ease: "linear" }}
+              className="rounded-full"
               style={{
-                color: "var(--accent)",
-                fontSize: 16,
-                letterSpacing: "0.14em",
-                textShadow: "0 0 14px var(--accent-glow)",
+                width: 56,
+                height: 56,
+                border: "4px solid color-mix(in srgb, var(--accent) 22%, transparent)",
+                borderTopColor: "var(--accent)",
+                boxShadow: "0 0 14px var(--accent-glow)",
               }}
-            >
-              Подключение к арене
-            </div>
-            <div
-              className="font-mono truncate"
-              style={{ color: "var(--text-secondary)", fontSize: 14, marginTop: 3 }}
-            >
-              Пока ждём — изучи правила дуэли ниже
-            </div>
+            />
           </div>
-          <motion.button
-            whileHover={{ y: -1, backgroundColor: "rgba(255,255,255,0.09)" }}
-            whileTap={{ scale: 0.96 }}
-            onClick={() => router.push("/pvp")}
-            className="rounded-xl font-display font-bold uppercase shrink-0"
+
+          <div
+            className="font-pixel uppercase tracking-widest text-center"
             style={{
-              padding: "10px 16px",
+              color: "var(--accent)",
+              fontSize: 18,
+              letterSpacing: "0.18em",
+              textShadow: "0 0 12px var(--accent-glow)",
+            }}
+          >
+            ▰ ПОДКЛЮЧЕНИЕ К АРЕНЕ ▰
+          </div>
+
+          <button
+            type="button"
+            onClick={() => router.push("/pvp")}
+            className="font-pixel uppercase tracking-widest rounded-sm transition-colors"
+            style={{
+              padding: "8px 16px",
               background: "rgba(255,255,255,0.04)",
-              color: "var(--text-primary)",
-              border: "1px solid rgba(255,255,255,0.18)",
-              backdropFilter: "blur(20px)",
+              color: "var(--text-secondary)",
+              border: "2px solid rgba(255,255,255,0.18)",
               fontSize: 14,
-              letterSpacing: "0.14em",
+              letterSpacing: "0.18em",
               cursor: "pointer",
             }}
           >
-            ← На арену
-          </motion.button>
+            ← НА АРЕНУ
+          </button>
         </motion.div>
 
-        {/* === ПРАВИЛА ДУЭЛИ === — focal panel, accent-tinted, сгруппирован по парам */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="rounded-3xl px-6 sm:px-8 py-7 max-w-3xl w-full"
-          style={{
-            background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 7%, rgba(15,15,20,0.85)) 0%, rgba(15,15,20,0.94) 100%)",
-            border: "1px solid color-mix(in srgb, var(--accent) 18%, rgba(255,255,255,0.06))",
-            boxShadow: "0 24px 64px rgba(0,0,0,0.32), 0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent), inset 0 1px 0 rgba(255,255,255,0.06)",
-            backdropFilter: "blur(24px) saturate(1.2)",
-          }}
-        >
-          <div
-            className="font-display font-bold uppercase mb-2"
-            style={{
-              color: "var(--text-primary)",
-              fontSize: "clamp(26px, 7.5vw, 34px)",
-              letterSpacing: "clamp(0.04em, 0.5vw, 0.08em)",
-              textShadow: "0 0 18px var(--accent-glow)",
-              lineHeight: 1.05,
-            }}
-          >
-            <span style={{ fontFamily: "system-ui, sans-serif", fontWeight: 400, opacity: 0.85, marginRight: 6 }}>★</span>
-            Правила дуэли
-            <span style={{ fontFamily: "system-ui, sans-serif", fontWeight: 400, opacity: 0.85, marginLeft: 6 }}>★</span>
-          </div>
-          <div
-            className="font-mono mb-7"
-            style={{
-              color: "var(--text-secondary)",
-              fontSize: 15,
-              fontWeight: 500,
-              letterSpacing: "0.08em",
-            }}
-          >
-            Бой умов · 2 раунда · AI-судья · Glicko-2 рейтинг
-          </div>
-
-          <ol className="space-y-5">
-            {[
-              // Группа 1 — структура (accent)
-              {
-                num: 1, color: "var(--accent)",
-                lead: "2 раунда + смена ролей",
-                body: "Раунд 1 ты — менеджер по банкротству. Раунд 2 — клиент. Учишься обеим сторонам разговора.",
-              },
-              {
-                num: 2, color: "var(--accent)",
-                lead: "Роль «менеджер»",
-                body: "Провести консультацию, обработать возражения «дорого», «боюсь суда», «не хочу публично». Цитировать статьи ФЗ-127.",
-              },
-              // Группа 2 — роли/лимит (magenta — для разделения с accent)
-              {
-                num: 3, color: "var(--magenta, #d946ef)",
-                lead: "Роль «клиент»",
-                body: "Отыграть реального должника. Возражения честные — не сдавайся с первой реплики менеджера.",
-                groupBreak: true,
-              },
-              {
-                num: 4, color: "var(--magenta, #d946ef)",
-                lead: "До 8 сообщений на раунд",
-                body: "Лимит. Будь лаконичным и убедительным. Длинные простыни режутся.",
-              },
-              // Группа 3 — оценка (success)
-              {
-                num: 5, color: "var(--success, #22c55e)",
-                lead: "AI-судья оценивает 4 критерия",
-                body: "Возражения · Убеждение · Структура диалога · Юридическая точность.",
-                groupBreak: true,
-              },
-              {
-                num: 6, color: "var(--success, #22c55e)",
-                lead: "Glicko-2 рейтинг",
-                body: "Полные очки против живого игрока. PvE (бот) даёт 50% — для тренировки. Первые 10 дуэлей калибровочные.",
-              },
-              // Группа 4 — мета (gold)
-              {
-                num: 7, color: "var(--gf-xp, #facc15)",
-                lead: "Lifelines",
-                body: "💡 RAG-подсказка по 127-ФЗ · ⏭ пропуск раунда · 🎤 голосовой ввод. Используй с умом — каждая снижает балл.",
-                groupBreak: true,
-              },
-              {
-                num: 8, color: "var(--gf-xp, #facc15)",
-                lead: "Тиры от Bronze до Grandmaster",
-                body: "Peak-tier не теряется. Отменённые / прерванные дуэли в рейтинг не идут.",
-              },
-            ].map((rule, i) => (
-              <motion.li
-                key={rule.num}
-                initial={{ opacity: 0, x: -16 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.08 + i * 0.035, type: "spring", stiffness: 320, damping: 26 }}
-                className="flex gap-4 items-start"
-                style={{
-                  // Group separator на началах групп 2/3/4 — opacity 10% для видимости
-                  ...(rule.groupBreak ? {
-                    borderTop: "1px solid rgba(255,255,255,0.10)",
-                    paddingTop: 12,
-                  } : {}),
-                }}
-              >
-                <span
-                  className="font-display font-bold tabular-nums shrink-0 flex items-center justify-center rounded-xl"
-                  style={{
-                    width: 38,
-                    height: 38,
-                    background: `linear-gradient(135deg, color-mix(in srgb, ${rule.color} 28%, transparent) 0%, color-mix(in srgb, ${rule.color} 8%, transparent) 100%)`,
-                    border: `1px solid color-mix(in srgb, ${rule.color} 50%, transparent)`,
-                    color: rule.color,
-                    fontSize: 18,
-                    boxShadow: `0 4px 12px color-mix(in srgb, ${rule.color} 26%, transparent), inset 0 1px 0 rgba(255,255,255,0.08)`,
-                    textShadow: `0 0 6px color-mix(in srgb, ${rule.color} 50%, transparent)`,
-                  }}
-                >
-                  {rule.num}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div
-                    className="font-display font-bold mb-2"
-                    style={{
-                      color: "var(--text-primary)",
-                      fontSize: 18,
-                      letterSpacing: "0.01em",
-                      textShadow: `0 0 8px ${rule.color}26`,
-                      lineHeight: 1.25,
-                    }}
-                  >
-                    {rule.lead}
-                  </div>
-                  <div
-                    style={{
-                      color: "var(--text-secondary)",
-                      fontSize: "clamp(15px, 4vw, 15.5px)",
-                      lineHeight: 1.6,
-                      fontWeight: 400,
-                    }}
-                  >
-                    {rule.body}
-                  </div>
-                </div>
-              </motion.li>
-            ))}
-          </ol>
-        </motion.div>
+        {/* Карусель правил — Clash-Royale-style, auto-rotate 5 сек */}
+        <DuelRulesCarousel caption="Готовься к арене" />
       </div>
     );
   }
@@ -915,67 +778,72 @@ function DuelPage() {
           MozOsxFontSmoothing: "grayscale",
         } as React.CSSProperties}
       >
+        {/*
+          2026-05-10 (header polish): унификация трёх стилей font-display
+          + font-pixel + font-mono в один пиксельный. Кнопки rounded-xl
+          с blur/shadow → rounded-sm 2px solid border. Mode-pill «PVP»
+          переписан на font-pixel. Все элементы шапки теперь говорят
+          одним визуальным языком.
+        */}
+
         {/* Left — exit + you (role + name) */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <motion.button
             type="button"
             onClick={() => setShowExitConfirm(true)}
-            whileHover={{ y: -1 }}
             whileTap={{ scale: 0.96 }}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl font-display font-bold uppercase shrink-0"
+            className="flex items-center gap-2 px-3 py-2 rounded-sm font-pixel uppercase tracking-widest shrink-0 transition-colors"
             style={{
-              background: "linear-gradient(135deg, rgba(239,68,68,0.18) 0%, rgba(239,68,68,0.06) 100%)",
+              background: "rgba(239,68,68,0.15)",
               color: "var(--danger)",
-              border: "1px solid rgba(239,68,68,0.4)",
-              boxShadow: "0 4px 12px rgba(239,68,68,0.16), inset 0 1px 0 rgba(255,255,255,0.06)",
-              fontSize: 13,
-              letterSpacing: "0.14em",
-              backdropFilter: "blur(20px)",
+              border: "2px solid var(--danger)",
+              fontSize: 14,
+              letterSpacing: "0.18em",
               cursor: "pointer",
             }}
             title="Выйти из дуэли"
           >
-            <LogOut size={16} />
+            <LogOut size={14} />
             Выйти
           </motion.button>
           <div className="flex flex-col leading-tight min-w-0">
             <span
-              className="font-display font-bold uppercase tracking-widest"
+              className="font-pixel uppercase tracking-widest"
               style={{
                 color: store.myRole === "seller" ? "var(--accent)" : "var(--magenta, #d946ef)",
-                fontSize: 13,
-                letterSpacing: "0.14em",
-                textShadow: `0 0 12px ${store.myRole === "seller" ? "var(--accent-glow)" : "rgba(217,70,239,0.5)"}`,
+                fontSize: 14,
+                letterSpacing: "0.18em",
+                textShadow: `0 0 10px ${store.myRole === "seller" ? "var(--accent-glow)" : "rgba(217,70,239,0.5)"}`,
               }}
             >
               ВЫ · {myRoleLabel}
             </span>
             <span
-              className="truncate"
-              style={{ color: "var(--text-primary)", fontSize: 16, fontWeight: 600, marginTop: 2 }}
+              className="font-pixel truncate"
+              style={{ color: "var(--text-primary)", fontSize: 16, marginTop: 2 }}
             >
               {myName}
             </span>
           </div>
         </div>
 
-        {/* Center — VS + mode pill (only on md+) */}
+        {/* Center — VS + mode pill (только md+) */}
         <div className="hidden md:flex flex-col items-center shrink-0 px-3">
           <div
-            className="flex items-center justify-center rounded-xl"
+            className="flex items-center justify-center rounded-sm"
             style={{
               width: 44,
               height: 44,
-              background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, transparent) 0%, color-mix(in srgb, var(--accent) 6%, transparent) 100%)",
-              border: "1px solid color-mix(in srgb, var(--accent) 45%, transparent)",
-              boxShadow: "0 4px 14px color-mix(in srgb, var(--accent) 28%, transparent), inset 0 1px 0 rgba(255,255,255,0.08)",
+              background: "rgba(167,139,250,0.18)",
+              border: "2px solid var(--accent)",
+              boxShadow: "0 0 12px var(--accent-glow)",
             }}
           >
             <Swords size={22} style={{ color: "var(--accent)", filter: "drop-shadow(0 0 6px var(--accent-glow))" }} />
           </div>
           <span
-            className="font-display font-bold uppercase tracking-widest mt-1.5"
-            style={{ color: "var(--text-secondary)", fontSize: 11, letterSpacing: "0.18em" }}
+            className="font-pixel uppercase tracking-widest mt-1.5"
+            style={{ color: "var(--text-secondary)", fontSize: 14, letterSpacing: "0.22em" }}
           >
             {store.duelBrief?.is_pve ? "PVE · БОТ" : "PVP"}
           </span>
@@ -985,30 +853,30 @@ function DuelPage() {
         <div className="flex items-center gap-3 min-w-0 flex-1 justify-end">
           <div className="flex flex-col leading-tight min-w-0 items-end">
             <span
-              className="font-display font-bold uppercase tracking-widest"
+              className="font-pixel uppercase tracking-widest"
               style={{
                 color: store.myRole === "seller" ? "var(--magenta, #d946ef)" : "var(--accent)",
-                fontSize: 13,
-                letterSpacing: "0.14em",
-                textShadow: `0 0 12px ${store.myRole === "seller" ? "rgba(217,70,239,0.5)" : "var(--accent-glow)"}`,
+                fontSize: 14,
+                letterSpacing: "0.18em",
+                textShadow: `0 0 10px ${store.myRole === "seller" ? "rgba(217,70,239,0.5)" : "var(--accent-glow)"}`,
               }}
             >
               {oppRoleLabel} · {store.duelBrief?.is_pve ? "AI" : "ИГРОК"}
             </span>
             <span
-              className="truncate flex items-center gap-2"
-              style={{ color: "var(--text-primary)", fontSize: 16, fontWeight: 600, marginTop: 2 }}
+              className="font-pixel truncate flex items-center gap-2"
+              style={{ color: "var(--text-primary)", fontSize: 16, marginTop: 2 }}
             >
               {store.duelBrief?.opponent?.name || "Подбор…"}
               {oppTier && (
                 <span
-                  className="px-2 py-0.5 uppercase tracking-widest rounded-md font-display font-bold"
+                  className="px-2 py-0.5 uppercase tracking-widest rounded-sm font-pixel"
                   style={{
-                    background: "color-mix(in srgb, var(--accent) 18%, transparent)",
+                    background: "rgba(167,139,250,0.18)",
                     color: "var(--accent)",
-                    border: "1px solid color-mix(in srgb, var(--accent) 45%, transparent)",
-                    fontSize: 11,
-                    letterSpacing: "0.14em",
+                    border: "1px solid var(--accent)",
+                    fontSize: 12,
+                    letterSpacing: "0.18em",
                   }}
                 >
                   {oppTier}
@@ -1091,21 +959,28 @@ function DuelPage() {
       {/* Phase A — lifelines bar + mic sit above the DuelChat. */}
       {store.myRole === "seller" && store.roundNumber > 0 && (
         <div className="mx-4 mt-2 flex items-center gap-2 flex-wrap z-20">
+          {/*
+            2026-05-10 (lifelines polish): унифицированы под пиксельный
+            стиль шапки — rounded-sm 2px solid borders, font-pixel
+            uppercase 14px, цвет варьируется по типу (yellow/grey/accent).
+          */}
           {lifelines.counts.hints > 0 && (
             <button
               type="button"
               onClick={() => lifelines.useHint(input || "Помоги с ответом")}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold uppercase tracking-wider transition-all"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-pixel uppercase tracking-widest transition-colors"
               style={{
-                background: "#facc1518",
+                background: "rgba(250,204,21,0.18)",
                 color: "#facc15",
-                border: "1px solid #facc1533",
+                border: "2px solid #facc15",
+                fontSize: 14,
+                letterSpacing: "0.18em",
               }}
               title="Подсказка — RAG-грунт по 127-ФЗ"
             >
-              <Lightbulb size={12} />
+              <Lightbulb size={14} />
               Подсказка
-              <span className="font-mono opacity-80">×{lifelines.counts.hints}</span>
+              <span className="tabular-nums opacity-80">×{lifelines.counts.hints}</span>
             </button>
           )}
           {lifelines.counts.skips > 0 && (
@@ -1118,17 +993,19 @@ function DuelPage() {
                   sendMessage({ type: "duel.message", text: "__skip__" });
                 }
               }}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold uppercase tracking-wider transition-all"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-pixel uppercase tracking-widest transition-colors"
               style={{
-                background: "#94a3b818",
+                background: "rgba(148,163,184,0.18)",
                 color: "#94a3b8",
-                border: "1px solid #94a3b833",
+                border: "2px solid #94a3b8",
+                fontSize: 14,
+                letterSpacing: "0.18em",
               }}
               title="Пропустить ход"
             >
-              <SkipForward size={12} />
+              <SkipForward size={14} />
               Пропустить
-              <span className="font-mono opacity-80">×{lifelines.counts.skips}</span>
+              <span className="tabular-nums opacity-80">×{lifelines.counts.skips}</span>
             </button>
           )}
           {/* 2026-04-20: микрофон ВСЕГДА видим. Если API недоступен —
@@ -1138,11 +1015,14 @@ function DuelPage() {
             type="button"
             onClick={() => (micActive ? speech.stopListening() : speech.startListening())}
             disabled={!speech.isSupported}
-            className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold uppercase tracking-wider transition-all disabled:opacity-40"
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-pixel uppercase tracking-widest transition-colors disabled:opacity-40"
             style={{
-              background: micActive ? theme.accent : "transparent",
+              background: micActive ? theme.accent : "rgba(167,139,250,0.12)",
               color: micActive ? "#0b0b14" : theme.accent,
-              border: `1px solid ${theme.accent}55`,
+              border: `2px solid ${theme.accent}`,
+              fontSize: 14,
+              letterSpacing: "0.18em",
+              boxShadow: micActive ? `0 0 10px ${theme.accent}` : "none",
             }}
             title={
               !speech.isSupported
@@ -1151,7 +1031,7 @@ function DuelPage() {
             }
             aria-label={micActive ? "Остановить микрофон" : "Включить микрофон"}
           >
-            {micActive ? <MicOff size={12} /> : <Mic size={12} />}
+            {micActive ? <MicOff size={14} /> : <Mic size={14} />}
             {micActive ? "слушаю…" : "голос"}
           </button>
         </div>
