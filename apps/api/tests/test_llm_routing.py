@@ -36,10 +36,15 @@ class TestResolveProviderArgOrder:
         result = _resolve_provider(prefer="auto", system_prompt_tokens=100, task_type="simple")
         assert result == "local"
 
-    def test_resolve_provider_explicit_preference(self):
+    def test_resolve_provider_always_local_after_navy_cleanup(self):
+        """2026-05-10: navy.api — единственный провайдер, поэтому
+        _resolve_provider всегда возвращает "local" (=navy), невзирая
+        на prefer/task_type/tokens. Это closed-set inverse от старой
+        мульти-провайдерной логики."""
         from app.services.llm import _resolve_provider
         assert _resolve_provider("local", 100, "default") == "local"
-        assert _resolve_provider("cloud", 100, "default") == "cloud"
+        assert _resolve_provider("cloud", 100, "default") == "local"
+        assert _resolve_provider("auto", 999_999, "judge") == "local"
 
     def test_streaming_uses_int_tokens_not_string(self):
         """Verify the streaming path computes prompt_tokens as int, not passes full_system string."""
@@ -183,42 +188,32 @@ class TestClaudeModelConfig:
 
 
 class TestGeminiRPMBoundary:
-    """Verify _gemini_has_quota handles low RPM limits."""
+    """2026-05-10 navy-cleanup: Gemini Direct отключён, `_gemini_has_quota`
+    стал legacy-stub'ом, всегда False. Тесты переписаны под новую семантику.
+    """
 
-    def test_rpm_limit_1_still_allows_calls(self):
+    def test_gemini_quota_always_false_after_navy_cleanup(self):
+        """Gemini Direct API больше не используется — quota всегда False."""
+        from app.services.llm import _gemini_has_quota, _gemini_call_times
+        _gemini_call_times.clear()
+        assert _gemini_has_quota() is False
+
+    def test_gemini_quota_ignores_rpm_setting(self):
+        """Раньше функция читала settings.gemini_rpm_limit; теперь нет."""
         from app.services.llm import _gemini_has_quota, _gemini_call_times
         _gemini_call_times.clear()
         with patch("app.services.llm.settings") as mock_settings:
-            mock_settings.gemini_rpm_limit = 1
-            # max(1, 1-2) = max(1, -1) = 1 → 0 < 1 is True
-            assert _gemini_has_quota() is True
+            mock_settings.gemini_rpm_limit = 999
+            assert _gemini_has_quota() is False
 
-    def test_rpm_limit_0_still_allows_one(self):
-        from app.services.llm import _gemini_has_quota, _gemini_call_times
-        _gemini_call_times.clear()
-        with patch("app.services.llm.settings") as mock_settings:
-            mock_settings.gemini_rpm_limit = 0
-            # max(1, 0-2) = max(1, -2) = 1 → 0 < 1 is True
-            assert _gemini_has_quota() is True
-
-    def test_rpm_limit_15_normal_behavior(self):
-        from app.services.llm import _gemini_has_quota, _gemini_call_times
-        _gemini_call_times.clear()
-        with patch("app.services.llm.settings") as mock_settings:
-            mock_settings.gemini_rpm_limit = 15
-            # max(1, 15-2) = 13 → 0 < 13 is True
-            assert _gemini_has_quota() is True
-
-    def test_rpm_exhausted(self):
+    def test_gemini_quota_ignores_call_times_history(self):
+        """Список call_times оставлен для backward-compat; не используется."""
         from app.services.llm import _gemini_has_quota, _gemini_call_times
         import time
         now = time.monotonic()
         _gemini_call_times.clear()
-        _gemini_call_times.extend([now] * 15)  # Fill with recent calls
-        with patch("app.services.llm.settings") as mock_settings:
-            mock_settings.gemini_rpm_limit = 15
-            # 15 < max(1, 13) → 15 < 13 is False
-            assert _gemini_has_quota() is False
+        _gemini_call_times.extend([now] * 100)
+        assert _gemini_has_quota() is False
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

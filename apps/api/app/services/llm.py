@@ -1,13 +1,29 @@
-"""LLM abstraction: Gemini Direct (primary), Local LLM / Claude / OpenAI (fallbacks).
+"""LLM abstraction — navy.api ONLY (2026-05-10 cleanup).
 
-Priority chain:
-1. Gemini Direct API (free tier: 15 RPM, 1500 req/day — ideal for pilot)
-2. Local LLM via OpenAI-compatible API (LM Studio / Ollama / CLIProxyAPI)
-3. Claude API (if key configured)
-4. OpenAI API (if key configured)
-5. Scripted dialog fallback (no LLM needed)
+Архитектурное решение продакшена: единственный внешний LLM-провайдер —
+**navy.api** (OpenAI-совместимый proxy: gpt-5.4 + gemini-embedding-001
+доступны через одну endpoint).
 
-Concurrency: global semaphore limits parallel LLM calls (prevents API rate limit hits).
+Раньше код описывал 5-уровневую цепь (Gemini Direct → Local LLM
+→ Claude → OpenAI → Scripted), но на проде в `.env` ключи
+GEMINI_API_KEY / CLAUDE_API_KEY / OPENAI_API_KEY были **пусты**, и
+весь трафик шёл через `LOCAL_LLM_URL=https://api.navy/v1`.
+Multi-provider docstring вводил в заблуждение.
+
+Текущая модель:
+1. **navy.api** через OpenAI-compatible client (`_get_local_client`).
+   Используется для всего: chat/judge/coach/report/scenario/wiki +
+   embeddings (`/v1/embeddings`).
+2. **Scripted dialog phrases** — last-resort если navy.api падает.
+   Не диалоговый, просто 5-10 фраз вроде «Дайте подумать» — даёт
+   тренировке не улечь полностью.
+
+`_call_gemini`, `_call_claude`, `_call_openai` (direct) оставлены
+только для backward-compat импорта; внутри теперь no-op + warning
+(возвращают scripted phrase). `_resolve_provider` всегда даёт
+"local" (=navy). `_gemini_has_quota` всегда False.
+
+Concurrency: два semaphore'а — realtime (10 slots) + background (5).
 Output filtering: profanity, PII, role breaks.
 """
 
@@ -523,16 +539,27 @@ def _get_constitution() -> str:
     return _constitution_cache
 
 
-# ─── Hybrid LLM Router ──────────────────────────────────────────────────────
+# ─── LLM Router — navy.api ONLY (2026-05-10 cleanup) ────────────────────────
+#
+# Раньше это был «Hybrid Router» с правилами Gemini-cloud / local-Mac-Mini,
+# но на проде задействован только navy.api (env GEMINI_API_KEY/CLAUDE/OPENAI
+# пусты). Все ветки теперь возвращают "local" — синоним navy в текущей
+# конфигурации. Параметры prefer/task_type/tokens сохранены для backward-
+# compat вызовов; они игнорируются.
 
-_gemini_call_times: list[float] = []
+_gemini_call_times: list[float] = []  # legacy, не используется
 
 
 def _gemini_has_quota() -> bool:
-    """Check if Gemini free tier has RPM budget remaining (sliding 60s window)."""
-    now = time.monotonic()
-    _gemini_call_times[:] = [t for t in _gemini_call_times if t > now - 60]
-    return len(_gemini_call_times) < max(1, settings.gemini_rpm_limit - 2)  # safety margin, always allow ≥1 RPM
+    """Legacy stub — Gemini Direct отключён, всегда False.
+
+    Раньше отслеживал sliding-60s-RPM окно для Gemini free tier.
+    После 2026-05-10 cleanup'а Gemini direct API не используется
+    (трафик идёт через navy.api), и эта функция всегда возвращает
+    False. Оставлена для backward-compat вызовов (`_resolve_provider`,
+    `_call_with_backoff`).
+    """
+    return False
 
 
 def _resolve_provider(
@@ -540,46 +567,19 @@ def _resolve_provider(
     system_prompt_tokens: int,
     task_type: str,
 ) -> str:
-    """Resolve 'auto' into 'local' or 'cloud' based on task and prompt size.
+    """Always returns "local" (= navy.api).
 
-    Rules:
-    - Explicit 'local' or 'cloud' → return as-is
-    - task_type in (judge, coach, report) → cloud (needs quality)
-    - task_type in (simple, structured) → local (fast, cheap)
-    - system_prompt > threshold → cloud (needs context window)
-    - Gemini RPM exhausted → fallback to local
-    - Default → local
+    2026-05-10: на проде используется только navy.api (env keys для
+    Gemini/Claude/OpenAI direct — пусты). Все task_type / prompt size
+    routing'и теперь выдают "local". Параметры сохранены для
+    backward-compat callers; внутрь больше не смотрим.
+
+    Если в будущем понадобится мульти-провайдер — добавлять с явным
+    feature-flag, не молчаливым `if api_key`.
     """
-    if prefer in ("local", "cloud"):
-        # Explicit preference — but override "local" if prompt exceeds configured context window.
-        # Default 128K fits Claude/GPT-4/Gemini Pro via navy.api. Set LOCAL_LLM_CONTEXT_WINDOW=6000
-        # in .env if using Gemma 4 locally (limited context → must push to cloud).
-        if prefer == "local" and system_prompt_tokens > settings.local_llm_context_window:
-            if _gemini_has_quota() and settings.gemini_api_key:
-                logger.info(
-                    "Overriding local→cloud: prompt %d > local_llm_context_window=%d",
-                    system_prompt_tokens, settings.local_llm_context_window,
-                )
-                return "cloud"
-        if prefer == "cloud" and not _gemini_has_quota() and not settings.gemini_api_key:
-            logger.debug("Cloud requested but no Gemini quota, falling back to local")
-            return "local"
-        return prefer
-
-    # Auto-routing logic
-    if task_type in ("judge", "coach", "report"):
-        if _gemini_has_quota() and settings.gemini_api_key:
-            return "cloud"
-        return "local"  # Graceful: local is better than nothing
-
-    if task_type in ("simple", "structured"):
-        return "local"
-
-    if system_prompt_tokens > settings.llm_auto_cloud_threshold_tokens:
-        if _gemini_has_quota() and settings.gemini_api_key:
-            return "cloud"
-        return "local"
-
+    # Параметры сохранены для совместимости с существующими callers.
+    # Игнорируем их — всё идёт через navy (=local).
+    _ = (prefer, system_prompt_tokens, task_type)
     return "local"
 
 
@@ -624,11 +624,10 @@ def _get_embedding_lock():
 async def get_embedding(text: str) -> list[float] | None:
     """Get embedding vector for a single text.
 
-    Priority chain:
-    1. Local LLM on Mac Mini (OpenAI-compatible /v1/embeddings)
-    2. Gemini Embedding API (cloud fallback)
-
-    Returns None on complete failure.
+    2026-05-10 navy-cleanup: используется только navy.api
+    (OpenAI-compatible `/v1/embeddings`, model `gemini-embedding-001` или
+    `text-embedding-3-large`). Direct Gemini fallback убран как dead-code
+    (env GEMINI_EMBEDDING_API_KEY на проде пуст). Returns None on failure.
     """
     result = await get_embeddings_batch([text])
     if result and len(result) > 0 and len(result[0]) > 0:
@@ -637,21 +636,22 @@ async def get_embedding(text: str) -> list[float] | None:
 
 
 async def get_embeddings_batch(texts: list[str]) -> list[list[float]] | None:
-    """Get embeddings for a batch of texts.
+    """Get embeddings for a batch of texts via navy.api.
 
-    Priority chain:
-    1. Local LLM on Mac Mini (OpenAI-compatible /v1/embeddings)
-    2. Gemini Embedding API (cloud fallback)
+    2026-05-10 navy-cleanup: единственный путь — OpenAI-compatible
+    `/v1/embeddings` через `LOCAL_EMBEDDING_URL` или `LOCAL_LLM_URL`
+    (оба в проде указывают на `https://api.navy/v1`). Раньше был
+    fallback на direct Gemini Embedding REST API, но env-ключ
+    `GEMINI_EMBEDDING_API_KEY` на проде пуст — ветка была мёртвой.
 
-    Returns None on complete failure.
+    Returns None if navy.api unreachable or returns non-200.
     """
     client = _get_embedding_http_client()
 
-    # ── 1. Try Local embedding endpoint (independent of LLM settings) ──
-    # Priority:
-    #   (a) LOCAL_EMBEDDING_URL — separate Ollama for embeddings (e.g. localhost with nomic-embed-text)
-    #   (b) LOCAL_LLM_URL if local_llm_enabled — shared endpoint (legacy behavior)
-    # This split lets embeddings run locally while LLM chat uses cloud (Gemini) or remote Ollama.
+    # ── navy.api OpenAI-compatible /v1/embeddings ──
+    # Priority of base URL:
+    #   (a) LOCAL_EMBEDDING_URL — separate proxy if configured
+    #   (b) LOCAL_LLM_URL — shared endpoint (default for navy.api)
     _embed_base = settings.local_embedding_url or (
         settings.local_llm_url if settings.local_llm_enabled else ""
     )
@@ -685,41 +685,11 @@ async def get_embeddings_batch(texts: list[str]) -> list[list[float]] | None:
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             logger.debug("Local embedding unavailable: %s", e)
 
-    # ── 2. Try Gemini Embedding API (cloud fallback) ──
-    api_key = settings.gemini_embedding_api_key
-    if not api_key:
-        return None
-
-    model = settings.gemini_embedding_model
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents"
-
-    # FIX: outputDimensionality=768 — Gemini по умолчанию возвращает 3072-dim (ломает схему vector(768)).
-    # Matryoshka reducing до 768 совместимо со схемой БД и с nomic-embed-text (primary source).
-    requests_body = [
-        {
-            "model": f"models/{model}",
-            "content": {"parts": [{"text": t}]},
-            "outputDimensionality": 768,
-        }
-        for t in texts
-    ]
-
-    try:
-        resp = await client.post(
-            url,
-            params={"key": api_key},
-            json={"requests": requests_body},
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            embeddings = data.get("embeddings", [])
-            return [e.get("values", []) for e in embeddings]
-        else:
-            logger.warning("Gemini embedding API error %d: %s", resp.status_code, resp.text[:200])
-            return None
-    except (httpx.ConnectError, httpx.TimeoutException) as e:
-        logger.warning("Gemini embedding API unreachable: %s", e)
-        return None
+    # 2026-05-10: direct Gemini Embedding REST fallback removed
+    # (env GEMINI_EMBEDDING_API_KEY пуст на проде). Если navy.api
+    # недоступен, возвращаем None — caller (search/RAG) решает, что
+    # делать (как правило, retry в воркере или скрытие фичи).
+    return None
 
 
 async def close_llm_clients() -> None:
@@ -2862,86 +2832,26 @@ async def generate_response(
         return resp
 
     async with semaphore:
-        if resolved_provider == "cloud":
-            # ── Cloud-first: Gemini → Local → Claude → OpenAI ──
-            if settings.gemini_api_key:
-                _gemini_call_times.append(time.monotonic())
-                resp = await _call_with_backoff(
-                    "gemini", _call_gemini, full_system, trimmed, timeout,
-                    max_attempts=3, retry_on_timeout_only=False,
-                    max_tokens=_forwarded_max_tokens,
-                    temperature=temperature,
-                    tools=tools,
-                )
-                if resp is not None:
-                    return await _apply_filter(resp)
-
-            if settings.local_llm_enabled:
-                resp = await _call_with_backoff(
-                    "local", _call_local_llm, full_system, trimmed, timeout,
-                    max_attempts=3, retry_on_timeout_only=False,
-                    max_tokens=_forwarded_max_tokens,
-                    temperature=temperature,
-                    tools=tools,
-                    model_override=_persona_model_override,
-                )
-                if resp is not None:
-                    resp.is_fallback = True
-                    return await _apply_filter(resp)
-        else:
-            # ── Local-first: Gemma → Gemini → Claude → OpenAI ──
-            if settings.local_llm_enabled:
-                resp = await _call_with_backoff(
-                    "local", _call_local_llm, full_system, trimmed, timeout,
-                    max_attempts=3, retry_on_timeout_only=False,
-                    max_tokens=_forwarded_max_tokens,
-                    temperature=temperature,
-                    tools=tools,
-                    model_override=_persona_model_override,
-                )
-                if resp is not None:
-                    return await _apply_filter(resp)
-
-            if settings.gemini_api_key:
-                _gemini_call_times.append(time.monotonic())
-                resp = await _call_with_backoff(
-                    "gemini", _call_gemini, full_system, trimmed, timeout,
-                    max_attempts=3, retry_on_timeout_only=False,
-                    max_tokens=_forwarded_max_tokens,
-                    temperature=temperature,
-                    tools=tools,
-                )
-                if resp is not None:
-                    resp.is_fallback = True
-                    return await _apply_filter(resp)
-
-        # ── Shared fallbacks: Claude → OpenAI ──
-        if settings.claude_api_key:
+        # ── navy.api ONLY (2026-05-10 cleanup) ──
+        # Раньше тут было 4 ветки (Gemini → Local → Claude → OpenAI),
+        # но на проде только LOCAL_LLM_URL=https://api.navy/v1 настроен,
+        # остальные ключи пусты. Убрали dead branches; если navy упал
+        # → scripted fallback ниже. resolved_provider игнорируется
+        # (всегда "local" из _resolve_provider).
+        if settings.local_llm_enabled:
             resp = await _call_with_backoff(
-                "claude", _call_claude, full_system, trimmed, timeout,
+                "local", _call_local_llm, full_system, trimmed, timeout,
                 max_attempts=3, retry_on_timeout_only=False,
                 max_tokens=_forwarded_max_tokens,
                 temperature=temperature,
                 tools=tools,
+                model_override=_persona_model_override,
             )
             if resp is not None:
-                resp.is_fallback = True
                 return await _apply_filter(resp)
 
-        if settings.openai_api_key:
-            resp = await _call_with_backoff(
-                "openai", _call_openai, full_system, trimmed, timeout * 2,
-                max_attempts=2,
-                max_tokens=_forwarded_max_tokens,
-                temperature=temperature,
-                tools=tools,
-            )
-            if resp is not None:
-                resp.is_fallback = True
-                return await _apply_filter(resp)
-
-    # ── Scripted fallback (no LLM needed, outside semaphore) ──
-    logger.warning("SCRIPTED FALLBACK: All providers failed for emotion=%s", emotion_state)
+    # ── Scripted fallback (navy.api unreachable, outside semaphore) ──
+    logger.warning("SCRIPTED FALLBACK: navy.api unreachable for emotion=%s", emotion_state)
     response = _scripted_response(emotion_state, trimmed)
     await _log_token_usage(response, user_id)
     return response
@@ -3497,21 +3407,10 @@ async def generate_response_stream(
                         yield token
                     streamed = True
         except LLMError as e:
-            logger.debug("Local streaming failed (%s), trying Gemini", e)
-
-        if not streamed:
-            try:
-                if settings.gemini_api_key:
-                    async for token in _stream_gemini(
-                        full_system, trimmed, 30.0,
-                        max_tokens=_stream_max_tokens,
-                        temperature=_stream_temperature,
-                    ):
-                        full_response_buf.append(token)
-                        yield token
-                    streamed = True
-            except LLMError:
-                logger.debug("Gemini streaming failed, falling back to blocking")
+            # 2026-05-10: navy.api-only — Gemini stream fallback removed
+            # (env GEMINI_API_KEY пуст на проде). Если navy упал → пойдём
+            # в blocking fallback ниже, где scripted-фразы.
+            logger.debug("navy.api streaming failed (%s), falling back to blocking", e)
 
         # ── S1-02 BUG3 fix: Post-stream output filter (profanity/PII/role break) ──
         if streamed and full_response_buf:

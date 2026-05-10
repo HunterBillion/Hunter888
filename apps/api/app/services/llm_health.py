@@ -1,11 +1,17 @@
 """LLM health monitoring service.
 
-Periodically checks Mac Mini (Local LLM) availability and maintains
-Redis flags for frontend degradation banners. Sends WS notifications
-when AI server goes up/down.
+Periodically pings **navy.api** (`LOCAL_LLM_URL=https://api.navy/v1`)
+and maintains Redis flags for frontend degradation banners. Sends WS
+notifications when the AI provider goes up/down.
+
+2026-05-10 cleanup: переменные/комментарии раньше говорили про
+"Mac Mini" — это исторический артефакт раннего пилота на локальном
+LM Studio. На проде уже давно используется navy.api как единственный
+external LLM-провайдер; Redis ключи `llm:local:*` сохранены для
+backward-compat (они читаются фронтом через `/api/monitoring/llm-status`).
 
 Designed for graceful degradation:
-- Mac Mini offline → circuit breaker in llm.py auto-fallbacks to Gemini
+- navy.api offline → llm.py circuit breaker уйдёт в scripted-фразы
 - This service additionally notifies users via WebSocket
 - Frontend reads Redis flag to show/hide degradation banner
 """
@@ -34,7 +40,7 @@ _monitor_task: asyncio.Task | None = None
 
 
 async def check_local_llm() -> dict:
-    """Ping Mac Mini's LM Studio /v1/models endpoint.
+    """Ping navy.api's `/v1/models` endpoint (OpenAI-compatible).
 
     Returns dict with:
       status: "ok" | "offline" | "disabled"
@@ -98,24 +104,26 @@ async def _broadcast_status_change(is_online: bool) -> None:
                 "type": "system.llm_restored",
                 "message": "AI-сервер восстановлен. Все функции доступны.",
             })
-            logger.info("LLM status: Mac Mini ONLINE — notified users")
+            logger.info("LLM status: navy.api ONLINE — notified users")
         else:
             await broadcast_system_message({
                 "type": "system.llm_degraded",
-                "message": "AI-сервер временно недоступен. Работаем в облачном режиме.",
+                "message": "AI-сервер временно недоступен. Часть функций ограничена.",
                 "affected": ["training", "pvp", "knowledge", "game_crm"],
             })
-            logger.warning("LLM status: Mac Mini OFFLINE — notified users, falling back to cloud")
+            logger.warning("LLM status: navy.api OFFLINE — notified users, scripted-fallback active")
     except Exception as e:
         logger.debug("Failed to broadcast LLM status change: %s", e)
 
 
 async def warm_up_model() -> None:
-    """Pre-warm the chat model so it stays in Ollama's RAM.
+    """Pre-warm the chat model on navy.api.
 
-    On M2 8GB, Ollama can only hold one model at a time.
-    This dummy request ensures gemma4 is loaded BEFORE any user session.
-    Also serves as keep-alive to prevent Ollama from unloading (default: 5min idle).
+    Раньше эта функция нужна была для Ollama на Mac Mini (8GB RAM,
+    модель выгружалась через 5 мин idle). На navy.api warm-up
+    дешёвый, но всё равно отправляем — это и health-проверка, и
+    отправляет первый ping для прогрева DNS/TLS-handshake перед
+    первой пользовательской сессией.
     """
     if not settings.local_llm_enabled or not settings.local_llm_url:
         return
@@ -145,7 +153,7 @@ _KEEP_ALIVE_INTERVAL = 240  # seconds
 
 
 async def _monitor_loop() -> None:
-    """Background loop: check Mac Mini every CHECK_INTERVAL seconds + keep-alive ping."""
+    """Background loop: check navy.api every CHECK_INTERVAL seconds + keep-alive ping."""
     global _last_known_status
     logger.info("LLM health monitor started (interval=%ds, keep-alive=%ds)", CHECK_INTERVAL, _KEEP_ALIVE_INTERVAL)
 
