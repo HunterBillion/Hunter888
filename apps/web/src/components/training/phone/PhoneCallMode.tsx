@@ -339,29 +339,43 @@ export function PhoneCallMode({
         }}
       />
 
-      {/* Top meta row. */}
+      {/*
+        Top meta row.
+        2026-05-10 (pixel polish): font-mono+sans → font-pixel uppercase
+        14-22px, rounded-full emotion pill → square 2px solid pixel,
+        чтобы консистентно с остальным аркадным UI.
+      */}
       <div className="relative z-10 flex items-start justify-between px-6 pt-5">
         <div className="flex flex-col">
-          <span className="text-xs uppercase tracking-wider opacity-70">
+          <span
+            className="font-pixel uppercase tracking-widest"
+            style={{ color: "rgba(255,255,255,0.7)", fontSize: 14, letterSpacing: "0.22em" }}
+          >
             {sceneLabel}
           </span>
-          <span className="font-mono text-xl mt-0.5" style={{ color: ec.color }}>
+          <span
+            className="font-pixel mt-1 tabular-nums"
+            style={{ color: ec.color, fontSize: 22, textShadow: `0 0 10px ${ec.glow}` }}
+          >
             {formatElapsed(elapsed)}
           </span>
         </div>
         <div className="flex flex-col items-end">
-          <span className="text-xs uppercase tracking-wider opacity-70">
+          <span
+            className="font-pixel uppercase tracking-widest"
+            style={{ color: "rgba(255,255,255,0.7)", fontSize: 14, letterSpacing: "0.22em" }}
+          >
             {statusLine}
           </span>
           <span
-            className="mt-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider"
+            className="mt-1.5 rounded-sm px-2.5 py-1 font-pixel uppercase tracking-widest"
             style={{
-              // `EmotionConfig` doesn't have `bg`/`border` — derive from
-              // the base `color` with alpha so callers don't need an
-              // extra helper module.
               background: `${ec.color}22`,
               color: ec.color,
-              border: `1px solid ${ec.color}55`,
+              border: `2px solid ${ec.color}`,
+              fontSize: 14,
+              letterSpacing: "0.18em",
+              boxShadow: `0 0 8px ${ec.glow}`,
             }}
           >
             {ec.label}
@@ -387,9 +401,13 @@ export function PhoneCallMode({
           aria-valuemax={stage.total}
           aria-valuenow={stage.current}
           aria-valuetext={`Этап ${stage.current} из ${stage.total}${stage.label ? `: ${stage.label}` : ""}`}
-          className="relative z-10 mx-auto mt-3 flex w-[min(560px,calc(100vw-48px))] items-center gap-3 rounded-full bg-black/30 px-4 py-1.5 text-xs backdrop-blur-sm ring-1 ring-white/5 lg:hidden"
+          className="relative z-10 mx-auto mt-3 flex w-[min(560px,calc(100vw-48px))] items-center gap-3 rounded-sm bg-black/40 px-4 py-2 backdrop-blur-sm lg:hidden"
+          style={{ border: "2px solid rgba(255,255,255,0.18)" }}
         >
-          <span className="font-mono tabular-nums text-white/70">
+          <span
+            className="font-pixel tabular-nums uppercase tracking-widest"
+            style={{ color: "rgba(255,255,255,0.85)", fontSize: 14, letterSpacing: "0.18em" }}
+          >
             {stage.current}/{stage.total}
           </span>
           <div className="flex flex-1 items-center gap-1">
@@ -692,6 +710,11 @@ type CallButtonState =
   | "accent-open"
   | "neutral";
 
+/*
+ * 2026-05-10 (pixel polish): rounded-full → rounded-sm 2px solid borders,
+ * font-pixel uppercase 14px (вместо text-[10px]) для лейблов. Логика
+ * STATE_PALETTE и aria-pressed без изменений.
+ */
 function CallButton({
   children,
   onClick,
@@ -712,30 +735,29 @@ function CallButton({
       onClick={onClick}
       aria-label={label}
       aria-pressed={state === "accent-on" || state === "success-on"}
-      className="flex flex-col items-center gap-1.5"
+      className="flex flex-col items-center gap-2"
     >
       <span
-        className="flex h-16 w-16 items-center justify-center rounded-full transition-all duration-200 active:scale-95"
+        className="flex h-16 w-16 items-center justify-center rounded-sm transition-all duration-200 active:scale-95"
         style={{
           background: palette.bg,
           color: palette.fg,
-          border: `1px solid ${palette.border}`,
+          border: `2px solid ${palette.border}`,
           boxShadow: palette.shadow,
-          backdropFilter: "blur(8px)",
         }}
       >
         {children}
       </span>
       <span
-        className="text-[10px] uppercase tracking-wider"
-        style={{ color: palette.labelFg, opacity: 0.85 }}
+        className="font-pixel uppercase tracking-widest"
+        style={{ color: palette.labelFg, opacity: 0.92, fontSize: 14, letterSpacing: "0.22em" }}
       >
         {label}
       </span>
       {subtitle && (
         <span
-          className="text-[9px] font-semibold tracking-wider"
-          style={{ color: palette.subtitleFg }}
+          className="font-pixel uppercase tracking-widest"
+          style={{ color: palette.subtitleFg, fontSize: 12, letterSpacing: "0.22em" }}
         >
           {subtitle.toUpperCase()}
         </span>
@@ -803,6 +825,11 @@ const STATE_PALETTE: Record<
   },
 };
 
+/*
+ * 2026-05-10 (pixel polish): rounded-full → rounded-sm 3px solid red,
+ * font-pixel uppercase 14px вместо text-[10px]. Логика loading + aria
+ * + animate boxShadow на pulsing — без изменений.
+ */
 function CallHangup({
   onClick,
   loading = false,
@@ -819,7 +846,7 @@ function CallHangup({
       disabled={loading}
       aria-label="Завершить звонок"
       aria-busy={loading}
-      className="flex flex-col items-center gap-1.5 disabled:cursor-wait"
+      className="flex flex-col items-center gap-2 disabled:cursor-wait"
     >
       <motion.span
         whileTap={loading ? undefined : { scale: 0.9 }}
@@ -827,35 +854,40 @@ function CallHangup({
           loading
             ? {
                 boxShadow: [
-                  "0 8px 28px rgba(255,51,85,0.5)",
-                  "0 8px 36px rgba(255,51,85,0.85)",
-                  "0 8px 28px rgba(255,51,85,0.5)",
+                  "0 0 18px rgba(248,113,113,0.55)",
+                  "0 0 36px rgba(248,113,113,0.95)",
+                  "0 0 18px rgba(248,113,113,0.55)",
                 ],
               }
             : undefined
         }
         transition={loading ? { duration: 1.2, repeat: Infinity, ease: "easeInOut" } : undefined}
-        className="flex h-16 w-16 items-center justify-center rounded-full"
+        className="flex h-16 w-16 items-center justify-center rounded-sm"
         style={{
           background: loading
-            ? "linear-gradient(135deg, #ff6a7f 0%, #ff3355 100%)"
-            : "#ff3355",
-          color: "#fff",
-          boxShadow: "0 8px 28px rgba(255,51,85,0.5)",
+            ? "linear-gradient(135deg, #fb7185 0%, #f87171 100%)"
+            : "#f87171",
+          color: "#0b0b14",
+          border: "3px solid #fff",
+          boxShadow: "0 0 18px rgba(248,113,113,0.6)",
         }}
       >
         {loading ? (
           <motion.span
             animate={{ rotate: 360 }}
             transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
-            className="inline-block h-5 w-5 rounded-full border-2 border-white/30 border-t-white"
+            className="inline-block rounded-sm border-[3px] border-[#0b0b14]/30 border-t-[#0b0b14]"
+            style={{ width: 22, height: 22 }}
           />
         ) : (
-          <PhoneOff size={26} />
+          <PhoneOff size={28} strokeWidth={2.4} />
         )}
       </motion.span>
-      <span className="text-[10px] uppercase tracking-wider text-red-300/90">
-        {loading ? "Завершаем…" : "Завершить"}
+      <span
+        className="font-pixel uppercase tracking-widest"
+        style={{ color: "#fca5a5", fontSize: 14, letterSpacing: "0.22em" }}
+      >
+        {loading ? "ЗАВЕРШАЕМ…" : "ЗАВЕРШИТЬ"}
       </span>
     </button>
   );
