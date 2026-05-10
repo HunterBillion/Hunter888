@@ -121,11 +121,17 @@ export default function IncomingCallScreen({
 
   const busy = accepting || declining;
 
-  // Phase A (2026-05-08): drive an exit animation off `busy`. Parent
-  // (call/page.tsx) defers setCallAccepted by 220ms after click, which
-  // gives the screen time to fade+shrink out before unmount instead
-  // of jump-cutting to the dialing overlay. Without this exit anim,
-  // users perceived a flash/stutter at the transition.
+  /*
+   * 2026-05-10 (pixel redesign): iPhone-style rounded-full → square pixel.
+   * Сохранены ВСЕ анимации (pulse outer ring, breathing scale, stagger
+   * entry), ВСЯ логика accepting/declining/busy, callbacks (onAccept,
+   * onDecline). Поменял только rounded → rounded-sm + 3px solid borders,
+   * font-display/sans → font-pixel uppercase tracking-widest, размер
+   * шрифтов поднят до ≥14px по консистентности с остальным сайтом.
+   *
+   * Phase A (2026-05-08): exit animation off `busy` сохранена — parent
+   * defer'ит setCallAccepted на 220ms, экран успевает fade+shrink.
+   */
   return (
     <motion.div
       initial={{ opacity: 0, scale: 1 }}
@@ -134,28 +140,37 @@ export default function IncomingCallScreen({
         scale: busy ? 0.96 : 1,
       }}
       transition={{ duration: busy ? 0.2 : 0.3, ease: "easeOut" }}
-      className="fixed inset-0 z-50 flex flex-col items-center overflow-y-auto text-white"
+      className="fixed inset-0 z-50 flex flex-col items-center overflow-y-auto"
       style={{
         background:
-          "radial-gradient(ellipse at center, #2a1a4a 0%, #14091e 55%, #06030c 100%)",
+          "radial-gradient(ellipse at center, rgba(42,26,74,0.96) 0%, rgba(20,9,30,0.98) 55%, rgba(6,3,12,1) 100%)",
+        color: "var(--text-primary)",
       }}
     >
-      {/* Top strip — "Входящий звонок" + scene hint */}
+      {/* Top strip — «▰ ВХОДЯЩИЙ ЗВОНОК ▰» + scene hint, font-pixel 14px */}
       <motion.div
         initial={{ y: -12, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.1, duration: 0.4 }}
         className="flex w-full items-center justify-between px-6 pt-8 md:pt-10"
       >
-        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-white/55">
-          Входящий звонок
+        <span
+          className="font-pixel uppercase tracking-widest"
+          style={{ color: "rgba(255,255,255,0.6)", fontSize: 14, letterSpacing: "0.22em" }}
+        >
+          ▰ ВХОДЯЩИЙ ЗВОНОК ▰
         </span>
-        <span className="text-xs font-medium text-white/45">{sceneLabel}</span>
+        <span
+          className="font-pixel uppercase tracking-widest"
+          style={{ color: "rgba(255,255,255,0.5)", fontSize: 14 }}
+        >
+          {sceneLabel}
+        </span>
       </motion.div>
 
       {/* Flex spacer + avatar block */}
       <div className="flex flex-1 flex-col items-center justify-center px-6 pt-6 md:pt-0">
-        {/* Avatar + outer pulse ring */}
+        {/* Avatar + outer pulse — square pixel вместо rounded-full */}
         <motion.div
           className="relative flex items-center justify-center"
           animate={{ scale: [1, 1.04, 1] }}
@@ -165,9 +180,10 @@ export default function IncomingCallScreen({
             ease: "easeInOut",
           }}
         >
+          {/* Outer pulse ring — square pixel */}
           <motion.div
             aria-hidden
-            className="absolute rounded-full"
+            className="absolute rounded-sm"
             animate={{
               scale: [1, 1.12, 1],
               opacity: [0.4, 0.7, 0.4],
@@ -180,16 +196,35 @@ export default function IncomingCallScreen({
               boxShadow: `0 0 60px ${ec.glow}`,
             }}
           />
+          {/* Inner pulse — даём двойной ring для аркадного «таргета» */}
+          <motion.div
+            aria-hidden
+            className="absolute rounded-sm"
+            animate={{
+              scale: [1, 1.06, 1],
+              opacity: [0.25, 0.55, 0.25],
+            }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+            style={{
+              width: 250,
+              height: 250,
+              border: `1px dashed ${ec.color}`,
+            }}
+          />
+          {/* Avatar square с пиксельными инициалами */}
           <div
-            className="flex items-center justify-center rounded-full text-[88px] font-bold leading-none"
+            className="flex items-center justify-center rounded-sm font-pixel"
             style={{
               width: 220,
               height: 220,
               background: "rgba(255,255,255,0.04)",
-              border: `3px solid ${ec.color}`,
-              boxShadow: `inset 0 0 30px ${ec.glow}`,
+              border: `4px solid ${ec.color}`,
+              boxShadow: `inset 0 0 30px ${ec.glow}, 0 0 24px ${ec.glow}`,
               color: ec.color,
-              letterSpacing: "-0.02em",
+              fontSize: 92,
+              lineHeight: 1,
+              letterSpacing: "0.02em",
+              textShadow: `0 0 16px ${ec.glow}`,
             }}
             aria-hidden
           >
@@ -197,23 +232,29 @@ export default function IncomingCallScreen({
           </div>
         </motion.div>
 
-        {/* Name */}
+        {/* Name — font-pixel large */}
         <motion.h1
           initial={{ y: 12, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.25, duration: 0.35 }}
-          className="mt-8 text-center text-3xl font-semibold tracking-tight"
+          className="mt-8 text-center font-pixel"
+          style={{
+            fontSize: "clamp(28px, 5vw, 38px)",
+            letterSpacing: "0.04em",
+            textShadow: "0 0 14px rgba(167,139,250,0.4)",
+          }}
         >
           {displayName}
         </motion.h1>
 
-        {/* Age + city */}
+        {/* Age + city — font-pixel 14px */}
         {ageCity && (
           <motion.div
             initial={{ y: 8, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.33, duration: 0.35 }}
-            className="mt-2 flex items-center gap-1.5 text-sm text-white/70"
+            className="mt-3 flex items-center gap-2 font-pixel uppercase tracking-widest"
+            style={{ color: "rgba(255,255,255,0.7)", fontSize: 14, letterSpacing: "0.18em" }}
           >
             <MapPin size={14} className="opacity-60" aria-hidden />
             <span>{ageCity}</span>
@@ -226,14 +267,15 @@ export default function IncomingCallScreen({
             initial={{ y: 8, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.41, duration: 0.35 }}
-            className="mt-1 flex items-center gap-1.5 text-sm text-white/70"
+            className="mt-1.5 flex items-center gap-2 font-pixel uppercase tracking-widest"
+            style={{ color: "rgba(255,255,255,0.7)", fontSize: 14, letterSpacing: "0.18em" }}
           >
             <Briefcase size={14} className="opacity-60" aria-hidden />
             <span>{profession}</span>
           </motion.div>
         )}
 
-        {/* Lead-source badge + debt chip */}
+        {/* Lead-source badge + debt chip — square pixel 2px solid */}
         <motion.div
           initial={{ y: 8, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -242,11 +284,13 @@ export default function IncomingCallScreen({
         >
           {leadSource && (
             <span
-              className="inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium uppercase tracking-wider"
+              className="inline-flex items-center rounded-sm px-3 py-1.5 font-pixel uppercase tracking-widest"
               style={{
-                background: "rgba(120,92,220,0.18)",
-                color: "rgba(200,180,255,0.95)",
-                border: "1px solid rgba(120,92,220,0.4)",
+                background: "rgba(167,139,250,0.18)",
+                color: "rgba(220,210,255,0.95)",
+                border: "2px solid rgba(167,139,250,0.5)",
+                fontSize: 14,
+                letterSpacing: "0.18em",
               }}
             >
               {leadSource}
@@ -254,15 +298,17 @@ export default function IncomingCallScreen({
           )}
           {debtStr && (
             <span
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold"
+              className="inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 font-pixel uppercase tracking-widest"
               style={{
-                background: "rgba(255,200,100,0.12)",
-                color: "rgba(255,220,140,0.95)",
-                border: "1px solid rgba(255,200,100,0.28)",
+                background: "rgba(255,200,100,0.14)",
+                color: "rgba(255,220,140,0.98)",
+                border: "2px solid rgba(255,200,100,0.45)",
+                fontSize: 14,
+                letterSpacing: "0.18em",
               }}
             >
-              <Wallet size={11} className="opacity-80" aria-hidden />
-              Долг: {debtStr}
+              <Wallet size={13} className="opacity-90" aria-hidden />
+              ДОЛГ: {debtStr}
             </span>
           )}
         </motion.div>
@@ -273,7 +319,8 @@ export default function IncomingCallScreen({
             initial={{ opacity: 0 }}
             animate={{ opacity: 0.55 }}
             transition={{ delay: 0.6 }}
-            className="mt-4 text-xs text-white/45"
+            className="mt-4 font-pixel uppercase tracking-widest"
+            style={{ color: "rgba(255,255,255,0.45)", fontSize: 14 }}
           >
             Подключаем детали клиента…
           </motion.div>
@@ -288,7 +335,7 @@ export default function IncomingCallScreen({
         className="w-full pb-10 md:pb-14"
       >
         <div className="mx-auto flex max-w-md items-center justify-around gap-6 px-6 md:gap-10">
-          {/* Decline (red outline) */}
+          {/* Decline — square pixel 3px solid red */}
           <button
             type="button"
             onClick={busy ? undefined : onDecline}
@@ -299,26 +346,31 @@ export default function IncomingCallScreen({
             <motion.span
               whileTap={busy ? undefined : { scale: 0.92 }}
               whileHover={busy ? undefined : { scale: 1.04 }}
-              className="flex h-18 w-18 items-center justify-center rounded-full md:h-20 md:w-20"
+              className="flex items-center justify-center rounded-sm"
               style={{
-                width: 72,
-                height: 72,
+                width: 76,
+                height: 76,
                 background: declining
-                  ? "rgba(255,59,89,0.85)"
-                  : "rgba(255,59,89,0.08)",
-                border: "2px solid rgba(255,59,89,0.65)",
-                color: declining ? "#fff" : "rgba(255,100,125,0.95)",
-                boxShadow: "inset 0 0 0 1px rgba(255,59,89,0.15)",
+                  ? "rgba(248,113,113,0.92)"
+                  : "rgba(248,113,113,0.12)",
+                border: "3px solid #f87171",
+                color: declining ? "#0b0b14" : "#fca5a5",
+                boxShadow: declining
+                  ? "0 0 22px rgba(248,113,113,0.7)"
+                  : "0 0 14px rgba(248,113,113,0.35)",
               }}
             >
-              <PhoneOff size={28} />
+              <PhoneOff size={30} strokeWidth={2.4} />
             </motion.span>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-red-300/90">
-              {declining ? "Отменяем…" : "Отклонить"}
+            <span
+              className="font-pixel uppercase tracking-widest"
+              style={{ color: "#fca5a5", fontSize: 14, letterSpacing: "0.22em" }}
+            >
+              {declining ? "ОТМЕНЯЕМ…" : "ОТКЛОНИТЬ"}
             </span>
           </button>
 
-          {/* Accept (green gradient, pulsing glow) */}
+          {/* Accept — square pixel green с pulsing glow */}
           <button
             type="button"
             onClick={busy ? undefined : onAccept}
@@ -336,9 +388,9 @@ export default function IncomingCallScreen({
                   ? undefined
                   : {
                       boxShadow: [
-                        "0 6px 24px rgba(61,220,132,0.35)",
-                        "0 6px 36px rgba(61,220,132,0.75)",
-                        "0 6px 24px rgba(61,220,132,0.35)",
+                        "0 0 18px rgba(74,222,128,0.45)",
+                        "0 0 38px rgba(74,222,128,0.85)",
+                        "0 0 18px rgba(74,222,128,0.45)",
                       ],
                     }
               }
@@ -351,12 +403,13 @@ export default function IncomingCallScreen({
                       ease: "easeInOut",
                     }
               }
-              className="flex items-center justify-center rounded-full"
+              className="flex items-center justify-center rounded-sm"
               style={{
-                width: 72,
-                height: 72,
+                width: 76,
+                height: 76,
                 background:
-                  "linear-gradient(135deg, rgba(61,220,132,0.95) 0%, rgba(40,175,100,0.95) 100%)",
+                  "linear-gradient(135deg, #4ade80 0%, #22c55e 100%)",
+                border: "3px solid #062a13",
                 color: "#062a13",
               }}
             >
@@ -364,24 +417,27 @@ export default function IncomingCallScreen({
                 <motion.span
                   animate={{ rotate: 360 }}
                   transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
-                  className="inline-block h-5 w-5 rounded-full border-2 border-[#062a13]/30 border-t-[#062a13]"
+                  className="inline-block rounded-sm border-[3px] border-[#062a13]/30 border-t-[#062a13]"
+                  style={{ width: 22, height: 22 }}
                 />
               ) : (
-                <Phone size={28} />
+                <Phone size={30} strokeWidth={2.4} />
               )}
             </motion.span>
             <span
-              className="text-[11px] font-semibold uppercase tracking-wider"
-              style={{ color: "rgba(180,255,210,0.95)" }}
+              className="font-pixel uppercase tracking-widest"
+              style={{ color: "rgba(180,255,210,0.95)", fontSize: 14, letterSpacing: "0.22em" }}
             >
-              {accepting ? "Соединяем…" : "Принять"}
+              {accepting ? "СОЕДИНЯЕМ…" : "ПРИНЯТЬ"}
             </span>
           </button>
         </div>
 
-        <div className="mx-auto mt-5 max-w-xs text-center text-[11px] text-white/40">
-          Нажмите «Принять» чтобы подключить звук —
-          <br />
+        <div
+          className="mx-auto mt-5 max-w-md text-center font-pixel uppercase tracking-widest"
+          style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, letterSpacing: "0.18em", lineHeight: 1.4 }}
+        >
+          Нажмите «Принять» чтобы подключить звук —<br />
           браузер требует жест пользователя
         </div>
       </motion.div>
