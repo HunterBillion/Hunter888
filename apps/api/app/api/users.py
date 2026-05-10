@@ -577,18 +577,43 @@ async def get_user_stats(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get stats for a user. Accessible by the user themselves, or by ROP/admin."""
-    # Permission check: self or elevated role
-    if current_user.id != user_id and current_user.role.value not in ("rop", "admin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=err.OWN_STATS_ONLY,
-        )
+    """Get stats for a user.
 
-    # Verify target user exists
-    target = await db.execute(select(User).where(User.id == user_id))
-    if target.scalar_one_or_none() is None:
+    Visibility rules:
+      - Self: всегда OK
+      - admin: видит все команды
+      - rop: видит ТОЛЬКО свою команду (FIND-001 audit fix 2026-05-10)
+      - manager и ниже: только себя
+
+    2026-05-10 BUG-FIX (FIND-001 P2 — cross-team scope leakage): до
+    этого фикса любой `rop` мог прочитать stats `rop`-а из другой
+    команды. rop2 (Отдел B2B) видел KPI rop1/manager1 в Отдел продаж
+    и наоборот. Privacy-leak между командами руководителей.
+    """
+    # ── Verify target user exists (нужен team_id для проверки ниже) ──
+    target_result = await db.execute(select(User).where(User.id == user_id))
+    target = target_result.scalar_one_or_none()
+    if target is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err.USER_NOT_FOUND)
+
+    # ── Permission check: self / admin / same-team-rop ──
+    if current_user.id != user_id:
+        role_value = current_user.role.value
+        if role_value == "admin":
+            pass  # admin sees all teams
+        elif role_value == "rop":
+            # rop ограничен своей командой — FIND-001 fix
+            if target.team_id is None or target.team_id != current_user.team_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=err.OWN_STATS_ONLY,
+                )
+        else:
+            # manager и ниже — только свои stats
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=err.OWN_STATS_ONLY,
+            )
 
     # Aggregate session stats
     stats_result = await db.execute(

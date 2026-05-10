@@ -1,6 +1,24 @@
+"""Scenario catalog endpoints.
+
+2026-05-10 (FIND-006/007/008 audit fixes):
+  - Добавлен Redis-кеш на список сценариев (5 минут TTL). Сценарии
+    меняются методологами раз в дни — раньше каждый visit
+    /home, /center, /clients/[id], /training, /training/[id]
+    дёргал 2 SQL-запроса (templates + legacy join). Теперь fast path
+    ~5 ms из Redis vs ~700 ms cold.
+  - Добавлены реальные ?limit=&offset= параметры (FIND-006). До этого
+    фронт мог передать `?limit=5` — параметр молча игнорировался,
+    отдавалось всё (72 сценария, 27 KB). Теперь — настоящая пагинация.
+  - Сортировка по «sweet spot» (близость difficulty к уровню юзера)
+    осталась — она и определяет порядок выдачи; limit/offset режут
+    хвост. Total-count в response для фронта.
+"""
+
+import json
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -14,6 +32,7 @@ from app.models.script import Script
 from app.models.user import User
 from app.schemas.training import ScenarioResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -24,32 +43,100 @@ _DIFFICULTY_SWEET_SPOT = {
     "advanced": 7,
 }
 
+_SCENARIOS_CACHE_TTL_SEC = 300  # 5 минут — сценарии редко меняются
+_SCENARIOS_CACHE_KEY_PREFIX = "scenarios:list:v1"
+
+
+async def _scenarios_cache_get(sweet: int) -> list[dict] | None:
+    """Try Redis cache. Return parsed list or None on miss/error.
+    fail-open: при недоступности Redis возвращаем None, не валим запрос.
+    """
+    try:
+        from app.core.redis_pool import get_redis
+        r = get_redis()
+        if r is None:
+            return None
+        cached = await r.get(f"{_SCENARIOS_CACHE_KEY_PREFIX}:sweet={sweet}")
+        if not cached:
+            return None
+        return json.loads(cached)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("scenarios cache read failed: %s", exc)
+        return None
+
+
+async def _scenarios_cache_set(sweet: int, data: list[dict]) -> None:
+    """Write to cache. fail-open."""
+    try:
+        from app.core.redis_pool import get_redis
+        r = get_redis()
+        if r is None:
+            return
+        await r.setex(
+            f"{_SCENARIOS_CACHE_KEY_PREFIX}:sweet={sweet}",
+            _SCENARIOS_CACHE_TTL_SEC,
+            json.dumps(data),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("scenarios cache write failed: %s", exc)
+
 
 @router.get("", response_model=list[ScenarioResponse])
 @router.get("/", response_model=list[ScenarioResponse], include_in_schema=False)
 async def list_scenarios(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    limit: int | None = Query(None, ge=1, le=200, description="Сколько сценариев вернуть (default: все)"),
+    offset: int = Query(0, ge=0, description="Сколько пропустить (для пагинации)"),
 ):
-    """List all active scenarios from scenario_templates (60 scenarios, 8 groups).
+    """List active scenarios from `scenario_templates` (60 records, DOC_05 8 groups).
 
-    Falls back to legacy `scenarios` table rows as well so nothing is lost.
-    Sorted by closeness to user's experience level sweet spot (if set),
-    so recommended scenarios appear first. All scenarios are always returned.
+    Falls back to legacy `scenarios` table for any rows not linked to
+    a template. Sorted by closeness to user's experience-level sweet spot.
+
+    2026-05-10:
+      - Redis cache 5 min на полный список per-user-sweet-spot.
+      - ?limit=&offset= — реальная пагинация. До фикса `limit` молча
+        игнорировался (FIND-006).
     """
     prefs = user.preferences or {}
     exp_level = prefs.get("experience_level")
     sweet = _DIFFICULTY_SWEET_SPOT.get(exp_level, 5) if exp_level else 5  # type: ignore[arg-type]
 
+    # ── Fast path: cache hit ──
+    cached = await _scenarios_cache_get(sweet)
+    if cached is not None:
+        items = [ScenarioResponse(**row) for row in cached]
+    else:
+        items = await _build_scenarios_list(db, sweet)
+        # Cache stores serialised dicts (Pydantic → dict for json.dumps)
+        try:
+            await _scenarios_cache_set(sweet, [s.model_dump(mode="json") for s in items])
+        except AttributeError:
+            # Pydantic v1 fallback
+            await _scenarios_cache_set(sweet, [s.dict() for s in items])
+
+    # Apply pagination AFTER sorting (sort is cached; pagination is per-request)
+    if offset:
+        items = items[offset:]
+    if limit is not None:
+        items = items[:limit]
+    return items
+
+
+async def _build_scenarios_list(db: AsyncSession, sweet: int) -> list[ScenarioResponse]:
+    """Cold-path scenario builder — runs when Redis cache misses.
+    Two queries: scenario_templates + legacy scenarios fallback.
+    Sort: closest to sweet-spot first.
+    """
     items: list[ScenarioResponse] = []
     seen_ids: set[uuid.UUID] = set()
 
-    # ── Primary source: scenario_templates (60 records, DOC_05 8 groups) ──
+    # ── Primary: scenario_templates ──
     tpl_result = await db.execute(
         select(ScenarioTemplate).where(ScenarioTemplate.is_active.is_(True))
     )
     templates = tpl_result.scalars().all()
-
     for tpl in templates:
         items.append(ScenarioResponse(
             id=tpl.id,
@@ -62,7 +149,7 @@ async def list_scenarios(
         ))
         seen_ids.add(tpl.id)
 
-    # ── Fallback: legacy scenarios table (for any rows NOT linked to templates) ──
+    # ── Fallback: legacy scenarios not linked to templates ──
     legacy_query = (
         select(Scenario, Character.name.label("character_name"))
         .outerjoin(Character, Scenario.character_id == Character.id)
@@ -70,9 +157,7 @@ async def list_scenarios(
     )
     legacy_result = await db.execute(legacy_query)
     legacy_rows = legacy_result.all()
-
     for row in legacy_rows:
-        # Skip if we already have a template with the same id or if linked
         if row.Scenario.id in seen_ids:
             continue
         if row.Scenario.template_id and row.Scenario.template_id in seen_ids:
@@ -87,9 +172,7 @@ async def list_scenarios(
             character_name=row.character_name,
         ))
 
-    # Sort: closest to sweet spot first, then by difficulty ascending
     items.sort(key=lambda s: (abs(s.difficulty - sweet), s.difficulty))
-
     return items
 
 
