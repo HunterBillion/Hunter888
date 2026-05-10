@@ -145,6 +145,11 @@ export default function CallDialingOverlay({
     }
   }, [visible]);
 
+  /*
+   * 2026-05-10 (pixel redesign): rounded-full + emerald → square pixel
+   * рамки + accent-цвет из общей палитры. Аудио (425 Hz русский гудок)
+   * НЕ ТРОНУТО — функция playRussianRingback осталась как была.
+   */
   return (
     <AnimatePresence>
       {visible && (
@@ -154,24 +159,44 @@ export default function CallDialingOverlay({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.25 }}
-          className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-b from-black/95 via-zinc-950/95 to-black/95 backdrop-blur-md"
+          className="absolute inset-0 z-50 flex flex-col items-center justify-center"
+          style={{
+            background: "linear-gradient(180deg, rgba(8,5,18,0.96), rgba(16,12,28,0.98), rgba(8,5,18,0.96))",
+            backdropFilter: "blur(8px)",
+          }}
           aria-live="polite"
           aria-label="Соединение"
         >
-          {/* Pulsing concentric rings around the phone icon */}
+          {/* Pulsing square pixel rings around the phone icon (rounded-full → rounded-sm) */}
           <div className="relative flex h-44 w-44 items-center justify-center">
             <motion.span
-              className="absolute h-full w-full rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30"
+              aria-hidden
+              className="absolute h-full w-full rounded-sm"
+              style={{
+                background: "rgba(74,222,128,0.12)",
+                border: "2px solid rgba(74,222,128,0.45)",
+                boxShadow: "0 0 18px rgba(74,222,128,0.25)",
+              }}
               animate={{ scale: [1, 1.6, 1.6], opacity: [0.6, 0, 0] }}
               transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut" }}
             />
             <motion.span
-              className="absolute h-full w-full rounded-full bg-emerald-500/10 ring-1 ring-emerald-400/20"
+              aria-hidden
+              className="absolute h-full w-full rounded-sm"
+              style={{
+                background: "rgba(74,222,128,0.08)",
+                border: "2px solid rgba(74,222,128,0.3)",
+              }}
               animate={{ scale: [1, 1.8, 1.8], opacity: [0.5, 0, 0] }}
               transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut", delay: 0.4 }}
             />
             <motion.div
-              className="relative flex h-24 w-24 items-center justify-center rounded-full bg-emerald-500/20 ring-2 ring-emerald-300/60"
+              className="relative flex h-24 w-24 items-center justify-center rounded-sm"
+              style={{
+                background: "rgba(74,222,128,0.22)",
+                border: "3px solid #4ade80",
+                boxShadow: "0 0 22px rgba(74,222,128,0.5), inset 0 0 10px rgba(0,0,0,0.4)",
+              }}
               animate={{
                 rotate: [0, -8, 8, -4, 4, 0],
                 scale: [1, 1.05, 1, 1.05, 1],
@@ -182,29 +207,42 @@ export default function CallDialingOverlay({
                 ease: "easeInOut",
               }}
             >
-              <Phone className="h-10 w-10 text-emerald-200" strokeWidth={2.2} />
+              <Phone className="h-10 w-10" strokeWidth={2.5} style={{ color: "#4ade80", filter: "drop-shadow(0 0 6px rgba(74,222,128,0.8))" }} />
             </motion.div>
           </div>
 
-          {/* Status text */}
+          {/* Status text — pixel-style, минимум 14px */}
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1, duration: 0.3 }}
-            className="mt-8 flex flex-col items-center gap-1"
+            className="mt-8 flex flex-col items-center gap-2"
           >
             {calleeName && (
-              <div className="text-2xl font-semibold tracking-tight text-white">
+              <div
+                className="font-pixel uppercase tracking-widest"
+                style={{
+                  color: "var(--text-primary)",
+                  fontSize: "clamp(20px, 3vw, 28px)",
+                  letterSpacing: "0.08em",
+                  textShadow: "0 0 12px rgba(74,222,128,0.55)",
+                }}
+              >
                 {calleeName}
               </div>
             )}
             <DialingStatusText />
           </motion.div>
 
-          {/* Scanline effect — subtle, suggests a line being established */}
+          {/* Scanline effect — pixel-style: bright dashed line, ползёт сверху вниз */}
           <motion.div
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 h-[1px] bg-emerald-300/20"
+            className="pointer-events-none absolute inset-x-0"
+            style={{
+              height: 0,
+              borderTop: "1px dashed rgba(74,222,128,0.55)",
+              boxShadow: "0 0 8px rgba(74,222,128,0.6)",
+            }}
             initial={{ y: "0%" }}
             animate={{ y: "100%" }}
             transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
@@ -215,22 +253,23 @@ export default function CallDialingOverlay({
   );
 }
 
-/** Cycles "Соединение..." → "Гудки идут..." every ~600ms. */
+/** Cycles "Соединение..." → "Гудки идут..." каждые ~700ms. */
 function DialingStatusText() {
-  const messages = ["Соединение", "Гудки идут"];
+  const messages = ["▰ СОЕДИНЕНИЕ ▰", "▰ ГУДКИ ИДУТ ▰"];
   return (
-    <div className="text-sm uppercase tracking-[0.2em] text-emerald-300/80">
+    <div
+      className="font-pixel uppercase tracking-widest"
+      style={{
+        color: "rgba(74,222,128,0.95)",
+        fontSize: 14,
+        letterSpacing: "0.22em",
+      }}
+    >
       <motion.span
         animate={{ opacity: [0.6, 1, 0.6] }}
         transition={{ duration: 1.6, repeat: Infinity }}
       >
         <CycleText messages={messages} intervalMs={700} />
-        <motion.span
-          animate={{ opacity: [0, 1, 0] }}
-          transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-        >
-          ...
-        </motion.span>
       </motion.span>
     </div>
   );
