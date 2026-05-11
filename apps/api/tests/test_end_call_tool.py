@@ -99,7 +99,7 @@ def _make_llm_response_with_tool_call(
     *, content: str = "", reason: str = "insulted", phrase: str = "",
 ):
     """Construct an ``LLMResponse`` shape that mirrors what
-    ``_call_local_llm`` returns when the model invoked ``end_call``."""
+    ``_call_navy`` returns when the model invoked ``end_call``."""
 
     from app.services.llm import LLMResponse
 

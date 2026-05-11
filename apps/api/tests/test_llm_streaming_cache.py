@@ -120,9 +120,9 @@ def test_is_private_local_url(monkeypatch, url, expected) -> None:
 # ── Function existence ──────────────────────────────────────────────────────
 
 
-def test_stream_openai_compat_exists() -> None:
-    assert hasattr(llm_mod, "_stream_openai_compat")
-    assert callable(llm_mod._stream_openai_compat)
+def test_stream_navy_exists() -> None:
+    assert hasattr(llm_mod, "_stream_navy")
+    assert callable(llm_mod._stream_navy)
 
 
 def test_build_keepalive_http_client_constructible() -> None:
@@ -186,10 +186,10 @@ class _StubClient:
 
 
 @pytest.mark.asyncio
-async def test_stream_openai_compat_yields_tokens(monkeypatch) -> None:
+async def test_stream_navy_yields_tokens(monkeypatch) -> None:
     """End-to-end: monkeypatch _get_local_client to return a stub whose
     chat.completions.create returns an async iterator of fake chunks.
-    Verify _stream_openai_compat yields the concatenated tokens.
+    Verify _stream_navy yields the concatenated tokens.
 
     A regression that breaks the `async for chunk in stream` body or the
     `delta.content` access path will fail this test.
@@ -210,7 +210,7 @@ async def test_stream_openai_compat_yields_tokens(monkeypatch) -> None:
     monkeypatch.setattr(llm_mod.settings, "local_llm_model", "gpt-5.4")
 
     tokens = []
-    async for tok in llm_mod._stream_openai_compat(
+    async for tok in llm_mod._stream_navy(
         system_prompt="SYS",
         messages=[{"role": "user", "content": "привет"}],
         timeout=10.0,

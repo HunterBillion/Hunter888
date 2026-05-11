@@ -3,7 +3,7 @@
 #
 # One-shot настройщик env на prod-сервере, который:
 #   1. Prompt'ит новый (rotated) navy.api API key — БЕЗ эхо, без утечек.
-#   2. Пишет правильный набор LOCAL_LLM_* + NAVY_TTS_* + LOCAL_EMBEDDING_*
+#   2. Пишет правильный набор NAVY_LLM_* + NAVY_TTS_* + LOCAL_EMBEDDING_*
 #      в .env.production (с бэкапом предыдущего .env.production).
 #   3. Делает ключ общим: один и тот же navy key для LLM + TTS + embeddings.
 #   4. Перезапускает api контейнер, чтобы подхватить новые env.
@@ -82,9 +82,11 @@ key = os.environ["NAVY_KEY"]
 # in-place. If a key is missing entirely, we append it at the end.
 targets = {
     # LLM via navy — unified gpt-5.4 (primary) + claude-opus-4.7 (fallback)
-    "LOCAL_LLM_URL":         "https://api.navy/v1",
-    "LOCAL_LLM_API_KEY":     key,
-    "LOCAL_LLM_MODEL":       "gpt-5.4",
+    # 2026-05-11 rename: env-vars LOCAL_LLM_* → NAVY_LLM_* (legacy
+    # имена тоже принимаются через pydantic AliasChoices).
+    "NAVY_LLM_URL":          "https://api.navy/v1",
+    "NAVY_LLM_API_KEY":      key,
+    "NAVY_LLM_MODEL":        "gpt-5.4",
     "LLM_PRIMARY_MODEL":     "gpt-5.4",
     "LLM_FALLBACK_MODEL":    "claude-opus-4.7",
     "CLAUDE_MODEL":          "claude-opus-4.7",
@@ -123,7 +125,7 @@ PYEOF
 
 echo ""
 echo "--- .env.production (secrets masked) ---"
-grep -E "^(LOCAL_LLM_|NAVY_TTS_|ELEVENLABS_ENABLED|LOCAL_EMBEDDING_)" .env.production | \
+grep -E "^(NAVY_LLM_|NAVY_TTS_|ELEVENLABS_ENABLED|LOCAL_EMBEDDING_)" .env.production | \
     sed -E 's/(KEY=)[^ ]+/\1****MASKED****/'
 echo "----------------------------------------"
 

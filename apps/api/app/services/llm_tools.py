@@ -82,7 +82,7 @@ async def generate_with_tool_dispatch(
     """Return the final ``LLMResponse`` for a turn that may invoke MCP tools.
 
     If ``settings.mcp_enabled`` is False, degenerates into a plain
-    ``_call_local_llm`` call with no ``tools`` arg.
+    ``_call_navy`` call with no ``tools`` arg.
 
     2026-05-10 navy-cleanup: единственный provider — ``"local"`` (= navy.api
     через OpenAI-compatible client). Параметр сохранён в сигнатуре для
@@ -90,7 +90,7 @@ async def generate_with_tool_dispatch(
     """
 
     # Late import to avoid circular dep during llm.py loading.
-    from app.services.llm import LLMResponse, _call_local_llm
+    from app.services.llm import LLMResponse, _call_navy
 
     if provider != "local":
         raise ValueError(
@@ -101,7 +101,7 @@ async def generate_with_tool_dispatch(
     def _call(
         *, raw_messages=None, tools=None,
     ) -> Awaitable[LLMResponse]:
-        return _call_local_llm(
+        return _call_navy(
             system_prompt, messages, timeout,
             tools=tools, raw_messages=raw_messages,
         )
@@ -225,11 +225,11 @@ async def _call_final_text_turn(
     """Make one last LLM call with tools disabled — used when we bail out
     of the loop (fatal tool error or iteration cap)."""
 
-    from app.services.llm import _call_local_llm
+    from app.services.llm import _call_navy
 
     # 2026-05-10 navy-only: provider param ignored (только navy.api).
     _ = provider
-    return await _call_local_llm(system_prompt, messages, timeout, tools=None)
+    return await _call_navy(system_prompt, messages, timeout, tools=None)
 
 
 async def _safe_emit(emit: EmitFn, event_type: str, payload: dict) -> None:
