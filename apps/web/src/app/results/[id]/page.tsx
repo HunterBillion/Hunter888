@@ -452,69 +452,154 @@ export default function ResultsPage() {
           </div>
         )}
 
-        {/* Header */}
+        {/* Header.
+            2026-05-11 redesign-B: CRM CTA подтянули из самого низа страницы
+            в hero (выше сгиба). Раньше «Добавить в CRM» жил на строке 1219
+            под пентаграммой / эмоциями / трапами / soft skills / score layers
+            / weak legal / promise / score bars / checkpoint progress /
+            stages / script report / AI coach / recommendations — юзеры
+            физически не доскролливали. Плюс убрали гейт на `hasScores`:
+            кнопка показывалась только если score насчитан, но добавление
+            клиента в CRM — независимая от скоринга фича. */}
         <motion.header
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-10 border-b pb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-6"
+          className="mb-10 border-b pb-6 flex flex-col gap-6"
           style={{ borderColor: "var(--border-color)" }}
         >
-          <div>
-            <div className="font-mono text-sm tracking-widest mb-2 uppercase" style={{ color: "var(--accent)" }}>
-              Сессия завершена
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+            <div>
+              <div className="font-mono text-sm tracking-widest mb-2 uppercase" style={{ color: "var(--accent)" }}>
+                Сессия завершена
+              </div>
+              <h1 className="font-display font-bold text-3xl md:text-4xl tracking-wide uppercase " style={{ color: "var(--text-primary)" }}>
+                Отчёт по сессии
+              </h1>
             </div>
-            <h1 className="font-display font-bold text-3xl md:text-4xl tracking-wide uppercase " style={{ color: "var(--text-primary)" }}>
-              Отчёт по сессии
-            </h1>
-          </div>
-          <div className="flex items-end gap-8">
-            {hasScores && (
-              <div className="text-right flex flex-col items-center">
-                <div className="font-mono text-sm tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>ОБЩИЙ БАЛЛ</div>
-                <div className="score-ring relative" style={{ "--ring-color": totalScoreColor } as React.CSSProperties}>
-                  <svg width="96" height="96" viewBox="0 0 96 96">
-                    <circle cx="48" cy="48" r="42" fill="none" stroke="var(--border-color)" strokeWidth="4" opacity="0.3" />
-                    <circle
-                      cx="48" cy="48" r="42" fill="none"
-                      stroke={totalScoreColor}
-                      strokeWidth="4"
-                      strokeLinecap="round"
-                      strokeDasharray={`${2 * Math.PI * 42 * (totalScore / 100)} ${2 * Math.PI * 42}`}
-                      transform="rotate(-90 48 48)"
-                      style={{ filter: `drop-shadow(0 0 6px ${totalScoreColor})`, transition: "stroke-dasharray 1s ease-out" }}
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="font-display text-3xl font-bold" style={{ color: totalScoreColor, textShadow: `0 0 10px ${totalScoreColor}` }}>
-                      {Math.round(totalScore)}
-                    </span>
+            <div className="flex items-end gap-8">
+              {hasScores && (
+                <div className="text-right flex flex-col items-center">
+                  <div className="font-mono text-sm tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>ОБЩИЙ БАЛЛ</div>
+                  <div className="score-ring relative" style={{ "--ring-color": totalScoreColor } as React.CSSProperties}>
+                    <svg width="96" height="96" viewBox="0 0 96 96">
+                      <circle cx="48" cy="48" r="42" fill="none" stroke="var(--border-color)" strokeWidth="4" opacity="0.3" />
+                      <circle
+                        cx="48" cy="48" r="42" fill="none"
+                        stroke={totalScoreColor}
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                        strokeDasharray={`${2 * Math.PI * 42 * (totalScore / 100)} ${2 * Math.PI * 42}`}
+                        transform="rotate(-90 48 48)"
+                        style={{ filter: `drop-shadow(0 0 6px ${totalScoreColor})`, transition: "stroke-dasharray 1s ease-out" }}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="font-display text-3xl font-bold" style={{ color: totalScoreColor, textShadow: `0 0 10px ${totalScoreColor}` }}>
+                        {Math.round(totalScore)}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-            {story && (
-              <Link href={`/stories/${story.id}`}>
+              )}
+              {story && (
+                <Link href={`/stories/${story.id}`}>
+                  <motion.span
+                    className="flex items-center gap-2 rounded-lg px-4 py-3 font-mono text-xs tracking-widest transition-colors backdrop-blur"
+                    style={{ background: "var(--accent-muted)", border: "1px solid var(--accent-glow)", color: "var(--accent)" }}
+                    whileHover={{ background: "var(--accent-glow)" }}
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    <Layers3 size={14} /> ИСТОРИЯ CRM
+                  </motion.span>
+                </Link>
+              )}
+              <Link href="/training">
                 <motion.span
-                  className="flex items-center gap-2 rounded-lg px-4 py-3 font-mono text-xs tracking-widest transition-colors backdrop-blur"
-                  style={{ background: "var(--accent-muted)", border: "1px solid var(--accent-glow)", color: "var(--accent)" }}
-                  whileHover={{ background: "var(--accent-glow)" }}
+                  className="flex items-center gap-2 rounded-lg px-6 py-3 font-mono text-xs tracking-widest transition-colors backdrop-blur"
+                  style={{ background: "var(--accent-muted)", border: "1px solid var(--accent)", color: "var(--accent)" }}
+                  whileHover={{ background: "var(--accent)", color: "white" }}
                   whileTap={{ scale: 0.97 }}
                 >
-                  <Layers3 size={14} /> ИСТОРИЯ CRM
+                  <RotateCcw size={14} /> НОВАЯ ТРЕНИРОВКА
                 </motion.span>
               </Link>
-            )}
-            <Link href="/training">
-              <motion.span
-                className="flex items-center gap-2 rounded-lg px-6 py-3 font-mono text-xs tracking-widest transition-colors backdrop-blur"
-                style={{ background: "var(--accent-muted)", border: "1px solid var(--accent)", color: "var(--accent)" }}
-                whileHover={{ background: "var(--accent)", color: "white" }}
-                whileTap={{ scale: 0.97 }}
-              >
-                <RotateCcw size={14} /> НОВАЯ ТРЕНИРОВКА
-              </motion.span>
-            </Link>
+            </div>
           </div>
+
+          {/* CRM CTA row — независимая от score, видна всегда. */}
+          {(() => {
+            const realClientId = (session as unknown as { real_client_id?: string | null }).real_client_id;
+            // Если сессия уже привязана к существующему клиенту в CRM —
+            // показываем «Перейти к клиенту». Иначе — «Добавить в CRM»
+            // создаёт новую CRM-карточку из данных тренировки.
+            const linkedClientId = realClientId || createdClientId;
+            return (
+              <div className="flex flex-wrap items-center gap-3 rounded-2xl border p-4"
+                style={{
+                  background: linkedClientId || addedToCRM
+                    ? "rgba(61,220,132,0.06)"
+                    : "var(--accent-muted)",
+                  borderColor: linkedClientId || addedToCRM
+                    ? "rgba(61,220,132,0.3)"
+                    : "var(--accent)",
+                }}
+              >
+                <Users size={18} style={{
+                  color: linkedClientId || addedToCRM ? "var(--success)" : "var(--accent)",
+                  flexShrink: 0,
+                }} />
+                <div className="flex-1 min-w-[200px]">
+                  <div className="font-mono text-xs uppercase tracking-widest mb-1"
+                    style={{ color: linkedClientId || addedToCRM ? "var(--success)" : "var(--accent)" }}
+                  >
+                    {linkedClientId || addedToCRM ? "Клиент в CRM" : "CRM-карточка"}
+                  </div>
+                  <div className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                    {linkedClientId || addedToCRM
+                      ? "Этот разговор записан в карточку клиента — история звонков, обещания, факты подтянутся."
+                      : "Сохраните клиента из этой тренировки в CRM с реальными данными (долг, кредиторы, архетип)."}
+                  </div>
+                </div>
+                {!linkedClientId && !addedToCRM && (
+                  <motion.button
+                    onClick={async () => {
+                      if (addedToCRM) return;
+                      try {
+                        const res = await api.post<{ id: string }>(
+                          `/clients/from-session/${session.id}`,
+                          {},
+                        );
+                        setAddedToCRM(true);
+                        setCreatedClientId(res.id);
+                      } catch {
+                        // Idempotent on backend — silently ignore.
+                      }
+                    }}
+                    className="inline-flex items-center justify-center gap-2 font-bold tracking-wide uppercase rounded-xl px-4 py-2.5 text-xs transition-all"
+                    style={{
+                      background: "var(--accent)",
+                      color: "white",
+                      border: "1px solid var(--accent)",
+                    }}
+                    whileTap={{ scale: 0.97 }}
+                    whileHover={{ background: "var(--accent-glow)" }}
+                  >
+                    <Users size={14} />
+                    Добавить в CRM
+                  </motion.button>
+                )}
+                {(linkedClientId || addedToCRM) && (
+                  <Button
+                    href={linkedClientId ? `/clients/${linkedClientId}` : "/clients"}
+                    size="sm"
+                    iconRight={<ArrowRight size={14} />}
+                  >
+                    {linkedClientId ? "Открыть карточку" : "Открыть CRM"}
+                  </Button>
+                )}
+              </div>
+            );
+          })()}
         </motion.header>
 
         {/*
@@ -701,6 +786,118 @@ export default function ResultsPage() {
         <div className="mt-6">
           <MistakesBreakdown items={result.score_breakdown?.anti_patterns?.detected ?? []} />
         </div>
+
+        {/* Transcript — moved here (2026-05-11 redesign-B) от позиции
+            под всеми 20+ блоками к позиции сразу после verdict + mistakes.
+            Юзер видит свой диалог на 2-м экране вместо 20-го. */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }} className="glass-panel mt-6 p-6 rounded-2xl">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageSquare size={14} style={{ color: "var(--text-muted)" }} />
+              <p className="font-mono text-sm uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                ДИАЛОГ ({messages.length} сообщ.)
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <motion.button
+                onClick={async () => {
+                  const meta = {
+                    sessionId: session.id,
+                    scenarioTitle: undefined,
+                    date: session.started_at ? new Date(session.started_at).toLocaleDateString("ru-RU") : new Date().toLocaleDateString("ru-RU"),
+                    score: session.score_total,
+                    emotion: timeline.length > 0 ? emotionLabelRu(timeline[timeline.length - 1].state) : undefined,
+                    duration: session.duration_seconds ? formatDuration(session.duration_seconds) : undefined,
+                  };
+                  const msgs = messages.map((m) => ({
+                    role: m.role as "user" | "assistant" | "system",
+                    text: m.content,
+                    timestamp: m.created_at ? new Date(m.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : undefined,
+                  }));
+                  const ok = await copyTranscript(meta, msgs);
+                  if (ok) {
+                    setTranscriptCopied(true);
+                    setTimeout(() => setTranscriptCopied(false), 2000);
+                  }
+                }}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs uppercase tracking-widest transition-colors"
+                style={{ background: "var(--input-bg)", color: transcriptCopied ? "var(--success)" : "var(--text-muted)", border: "1px solid var(--border-color)" }}
+                whileTap={{ scale: 0.95 }}
+                title="Скопировать транскрипт"
+              >
+                {transcriptCopied ? <ClipboardCheck size={12} /> : <Copy size={12} />}
+                {transcriptCopied ? "Скопировано" : "Копировать"}
+              </motion.button>
+              <motion.button
+                onClick={() => {
+                  const meta = {
+                    sessionId: session.id,
+                    scenarioTitle: undefined,
+                    date: session.started_at ? new Date(session.started_at).toLocaleDateString("ru-RU") : new Date().toLocaleDateString("ru-RU"),
+                    score: session.score_total,
+                    emotion: timeline.length > 0 ? emotionLabelRu(timeline[timeline.length - 1].state) : undefined,
+                    duration: session.duration_seconds ? formatDuration(session.duration_seconds) : undefined,
+                  };
+                  const msgs = messages.map((m) => ({
+                    role: m.role as "user" | "assistant" | "system",
+                    text: m.content,
+                    timestamp: m.created_at ? new Date(m.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : undefined,
+                  }));
+                  downloadTranscript(meta, msgs);
+                }}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs uppercase tracking-widest transition-colors"
+                style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--border-color)" }}
+                whileTap={{ scale: 0.95 }}
+                title="Скачать транскрипт (.md)"
+              >
+                <Download size={12} />
+                Скачать
+              </motion.button>
+            </div>
+          </div>
+          <div className="max-h-[500px] space-y-2 overflow-y-auto">
+            {messages.map((msg, idx) => (
+              <div
+                key={msg.id}
+                data-msg-id={String(msg.id)}
+                className={`flex gap-3 rounded-lg p-2 transition-colors ${msg.role === "user" ? "cursor-pointer hover:ring-1 hover:ring-[var(--accent)]" : ""}`}
+                style={{ background: msg.role !== "user" ? "var(--input-bg)" : "transparent" }}
+                onClick={() => {
+                  if (msg.role === "user") {
+                    setReplayMessage({ msg, index: idx });
+                  }
+                }}
+                title={msg.role === "user" ? "Нажмите для идеального ответа" : undefined}
+              >
+                <span
+                  className="w-20 shrink-0 font-mono text-sm uppercase"
+                  style={{ color: msg.role === "user" ? "var(--accent)" : emotionColor(msg.emotion_state || "") }}
+                >
+                  {msg.role === "user" ? "ВЫ" : "КЛИЕНТ"}
+                </span>
+                <div className="flex-1">
+                  <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{msg.content}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    {msg.emotion_state && (
+                      <span className="inline-block rounded-full px-2 py-0.5 text-xs"
+                        style={{ background: "var(--accent-muted)", color: emotionColor(msg.emotion_state) }}
+                      >
+                        {emotionLabelRu(msg.emotion_state)}
+                      </span>
+                    )}
+                    {msg.role === "user" && (
+                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs opacity-50 hover:opacity-100 transition-opacity"
+                        style={{ background: "rgba(138,43,226,0.15)", color: "var(--accent)" }}
+                      >
+                        <Sparkles size={13} /> Разбор
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
 
         {story && (
           <motion.div
@@ -966,15 +1163,17 @@ export default function ResultsPage() {
           />
         </div>
 
-        {/* AI Recommendations (markdown) — fallback/complement */}
-        <div className="mt-6">
-          <AIRecommendations
-            text={
-              session.feedback_text ||
-              "Анализ сессии завершён. Детальные рекомендации от AI будут доступны после обработки — обычно это занимает несколько минут. Попробуйте обновить страницу позже."
-            }
-          />
-        </div>
+        {/* AI Recommendations (markdown) — рендерим только если реальный
+            feedback_text есть. 2026-05-11 redesign-B: убрали fallback-текст
+            «попробуйте обновить страницу позже» — он рендерился пустым
+            серым блоком на каждой сессии до того как джадж дописывал
+            feedback, и юзер видел его постоянно. AICoachSection выше уже
+            держит этот use case с polling-ом. */}
+        {session.feedback_text && session.feedback_text.trim().length > 0 && (
+          <div className="mt-6">
+            <AIRecommendations text={session.feedback_text} />
+          </div>
+        )}
 
         {/* Tournament Submit Banner */}
         {tournament?.tournament && tournament.tournament.scenario_id === session.scenario_id && hasScores && (
@@ -1106,118 +1305,14 @@ export default function ResultsPage() {
           );
         })()}
 
-        {/* Transcript */}
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="glass-panel mt-6 p-6 rounded-2xl">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <MessageSquare size={14} style={{ color: "var(--text-muted)" }} />
-              <p className="font-mono text-sm uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-                ДИАЛОГ ({messages.length} сообщ.)
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <motion.button
-                onClick={async () => {
-                  const meta = {
-                    sessionId: session.id,
-                    scenarioTitle: undefined,
-                    date: session.started_at ? new Date(session.started_at).toLocaleDateString("ru-RU") : new Date().toLocaleDateString("ru-RU"),
-                    score: session.score_total,
-                    emotion: timeline.length > 0 ? emotionLabelRu(timeline[timeline.length - 1].state) : undefined,
-                    duration: session.duration_seconds ? formatDuration(session.duration_seconds) : undefined,
-                  };
-                  const msgs = messages.map((m) => ({
-                    role: m.role as "user" | "assistant" | "system",
-                    text: m.content,
-                    timestamp: m.created_at ? new Date(m.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : undefined,
-                  }));
-                  const ok = await copyTranscript(meta, msgs);
-                  if (ok) {
-                    setTranscriptCopied(true);
-                    setTimeout(() => setTranscriptCopied(false), 2000);
-                  }
-                }}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs uppercase tracking-widest transition-colors"
-                style={{ background: "var(--input-bg)", color: transcriptCopied ? "var(--success)" : "var(--text-muted)", border: "1px solid var(--border-color)" }}
-                whileTap={{ scale: 0.95 }}
-                title="Скопировать транскрипт"
-              >
-                {transcriptCopied ? <ClipboardCheck size={12} /> : <Copy size={12} />}
-                {transcriptCopied ? "Скопировано" : "Копировать"}
-              </motion.button>
-              <motion.button
-                onClick={() => {
-                  const meta = {
-                    sessionId: session.id,
-                    scenarioTitle: undefined,
-                    date: session.started_at ? new Date(session.started_at).toLocaleDateString("ru-RU") : new Date().toLocaleDateString("ru-RU"),
-                    score: session.score_total,
-                    emotion: timeline.length > 0 ? emotionLabelRu(timeline[timeline.length - 1].state) : undefined,
-                    duration: session.duration_seconds ? formatDuration(session.duration_seconds) : undefined,
-                  };
-                  const msgs = messages.map((m) => ({
-                    role: m.role as "user" | "assistant" | "system",
-                    text: m.content,
-                    timestamp: m.created_at ? new Date(m.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : undefined,
-                  }));
-                  downloadTranscript(meta, msgs);
-                }}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs uppercase tracking-widest transition-colors"
-                style={{ background: "var(--input-bg)", color: "var(--text-muted)", border: "1px solid var(--border-color)" }}
-                whileTap={{ scale: 0.95 }}
-                title="Скачать транскрипт (.md)"
-              >
-                <Download size={12} />
-                Скачать
-              </motion.button>
-            </div>
-          </div>
-          <div className="max-h-[500px] space-y-2 overflow-y-auto">
-            {messages.map((msg, idx) => (
-              <div
-                key={msg.id}
-                data-msg-id={String(msg.id)}
-                className={`flex gap-3 rounded-lg p-2 transition-colors ${msg.role === "user" ? "cursor-pointer hover:ring-1 hover:ring-[var(--accent)]" : ""}`}
-                style={{ background: msg.role !== "user" ? "var(--input-bg)" : "transparent" }}
-                onClick={() => {
-                  if (msg.role === "user") {
-                    setReplayMessage({ msg, index: idx });
-                  }
-                }}
-                title={msg.role === "user" ? "Нажмите для идеального ответа" : undefined}
-              >
-                <span
-                  className="w-20 shrink-0 font-mono text-sm uppercase"
-                  style={{ color: msg.role === "user" ? "var(--accent)" : emotionColor(msg.emotion_state || "") }}
-                >
-                  {msg.role === "user" ? "ВЫ" : "КЛИЕНТ"}
-                </span>
-                <div className="flex-1">
-                  <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{msg.content}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    {msg.emotion_state && (
-                      <span className="inline-block rounded-full px-2 py-0.5 text-xs"
-                        style={{ background: "var(--accent-muted)", color: emotionColor(msg.emotion_state) }}
-                      >
-                        {emotionLabelRu(msg.emotion_state)}
-                      </span>
-                    )}
-                    {msg.role === "user" && (
-                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs opacity-50 hover:opacity-100 transition-opacity"
-                        style={{ background: "rgba(138,43,226,0.15)", color: "var(--accent)" }}
-                      >
-                        <Sparkles size={13} /> Разбор
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </motion.div>
+        {/* Transcript moved up (after MistakesBreakdown) per 2026-05-11
+            redesign-B — это центральный артефакт сессии, должен быть на
+            1-м экране, а не двадцатом. */}
 
-        {/* Recommendations + CRM */}
-        {hasScores && (
+        {/* «Что дальше?» — score-based hints. CRM CTA уехал в hero
+            (см. редизайн-B 2026-05-11). Этот блок остаётся только для
+            подсказок по баллам и больше не дублирует кнопку CRM. */}
+        {hasScores && (totalScore < 70 || totalScore >= 85) && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1237,45 +1332,6 @@ export default function ResultsPage() {
                 <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(61,220,132,0.08)", color: "var(--success)", border: "1px solid rgba(61,220,132,0.2)" }}>
                   Отличный результат! Попробуйте более сложный сценарий
                 </div>
-              )}
-              <motion.button
-                onClick={async () => {
-                  if (addedToCRM) return;
-                  try {
-                    // BUG NEW-4 fix: was POST /clients with 4 lossy fields
-                    // ("Клиент из тренировки, 47 лет"). Now uses the dedicated
-                    // bridge that reads ClientProfile + session and builds a
-                    // populated CRM card (debt, creditors, archetype, story).
-                    const res = await api.post<{ id: string }>(
-                      `/clients/from-session/${session.id}`,
-                      {},
-                    );
-                    setAddedToCRM(true);
-                    setCreatedClientId(res.id);
-                  } catch {
-                    // Idempotent on backend — silently ignore duplicate / network blip.
-                  }
-                }}
-                className="inline-flex items-center justify-center gap-2 font-bold tracking-wide uppercase rounded-xl px-3 py-1.5 text-xs transition-all duration-200"
-                style={addedToCRM ? { background: "rgba(61,220,132,0.15)", borderColor: "rgba(61,220,132,0.3)", border: "1px solid rgba(61,220,132,0.3)", color: "var(--success)" } : { background: "var(--glass-bg)", color: "var(--text-primary)", border: "1px solid var(--accent)" }}
-                whileTap={{ scale: 0.97 }}
-              >
-                <Users size={14} />
-                {addedToCRM ? "Добавлен в CRM" : "Добавить клиента в CRM"}
-              </motion.button>
-              {addedToCRM && (
-                <Button
-                  href={createdClientId ? `/clients/${createdClientId}` : "/clients"}
-                  size="sm"
-                  iconRight={<ArrowRight size={14} />}
-                >
-                  {createdClientId ? "Перейти к клиенту" : "Открыть CRM"}
-                </Button>
-              )}
-              {addedToCRM && (
-                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  Клиент создан в CRM с реальными данными из звонка
-                </p>
               )}
             </div>
           </motion.div>
