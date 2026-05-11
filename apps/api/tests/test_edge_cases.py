@@ -34,13 +34,14 @@ class TestConfigValidation:
         from app.config import Settings
         s = Settings()
         assert hasattr(s, "embeddings_service_url")
-        assert hasattr(s, "gemini_embedding_api_key")
 
     def test_settings_have_llm_config(self):
+        # 2026-05-10 navy-only: gemini_*/openai_api_key removed; navy.api
+        # настраивается через local_llm_*. claude_api_key оставлен только
+        # для persona_fact_extractor.
         from app.config import Settings
         s = Settings()
         assert hasattr(s, "claude_api_key")
-        assert hasattr(s, "openai_api_key")
         assert hasattr(s, "llm_primary_model")
         assert hasattr(s, "local_llm_url")
         assert hasattr(s, "local_llm_enabled")

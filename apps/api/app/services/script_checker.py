@@ -124,15 +124,20 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-async def _get_gemini_embeddings(texts: list[str]) -> list[list[float]] | None:
-    """Get embeddings via centralized LLM layer.
+async def _get_navy_embeddings(texts: list[str]) -> list[list[float]] | None:
+    """Get embeddings via navy.api (`/v1/embeddings`).
 
-    Delegates to llm.get_embeddings_batch() which handles:
-    1. Local LLM on Mac Mini (OpenAI-compatible /v1/embeddings)
-    2. Gemini Embedding API (cloud fallback)
+    2026-05-10 navy-only: переименовали из `_get_gemini_embeddings`
+    (misnomer — функция всегда шла через `get_embeddings_batch`,
+    который теперь только navy). Имя теперь честное.
     """
     from app.services.llm import get_embeddings_batch
     return await get_embeddings_batch(texts)
+
+
+# Backward-compat alias for callers still using the old name (will warn
+# in logs at import time once we rename the call sites internally).
+_get_gemini_embeddings = _get_navy_embeddings
 
 
 async def _get_embedding(text: str) -> list[float] | None:
@@ -230,7 +235,7 @@ async def _embedding_batch_similarity(
     try:
         # Embed everything in one batch — `get_embeddings_batch` handles
         # the local/Gemini fallback internally.
-        all_vecs = await _get_gemini_embeddings([text, *references])
+        all_vecs = await _get_navy_embeddings([text, *references])
     except Exception:
         logger.debug("embedding batch fetch failed", exc_info=True)
         return None
@@ -311,18 +316,21 @@ async def _get_similarity(text1: str, text2: str) -> float | None:
     3. Local embeddings service (if configured)
     4. Returns None → caller falls back to keyword matching
     """
-    # 1. LLM-as-judge (most reliable, works through CLIProxyAPI)
+    # 1. LLM-as-judge (most reliable, works through navy.api)
     score = await _llm_similarity(text1, text2)
     if score is not None:
         return score
 
-    # 2. Try embedding-based similarity
-    if settings.gemini_embedding_api_key:
-        results = await _get_gemini_embeddings([text1, text2])
+    # 2. Embedding-based similarity via navy (`/v1/embeddings`).
+    # 2026-05-10 navy-only: убрали отдельный gate на gemini_embedding_api_key
+    # — embeddings теперь идут через navy (`get_embeddings_batch`),
+    # gate сместили на local_llm_enabled.
+    if settings.local_llm_enabled:
+        results = await _get_navy_embeddings([text1, text2])
         if results and len(results) == 2 and results[0] and results[1]:
             return _cosine_similarity(results[0], results[1])
 
-    # 3. Fallback: local embeddings service
+    # 3. Fallback: cached single-embedding path (also via navy внутри).
     emb1 = await _get_embedding(text1)
     emb2 = await _get_embedding(text2)
     if emb1 and emb2:
@@ -680,11 +688,11 @@ async def get_session_checkpoint_progress(
     references = [cp.description for cp in script.checkpoints]
     batch_scores = await _llm_batch_similarity(combined_text, references)
 
-    # Fallback: try batch embeddings
+    # Fallback: try batch embeddings via navy.
     embeddings = None
     if batch_scores is None:
         all_texts = [combined_text] + references
-        embeddings = await _get_gemini_embeddings(all_texts) if settings.gemini_embedding_api_key else None
+        embeddings = await _get_navy_embeddings(all_texts) if settings.local_llm_enabled else None
 
     checkpoints_results = []
     total_weighted = 0.0

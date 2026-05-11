@@ -158,21 +158,19 @@ class TestLLMStatsLock:
 
 
 class TestClaudeModelConfig:
-    """Verify Claude model is read from settings, not hardcoded."""
+    """Verify Claude model setting is still readable.
+
+    2026-05-10: `_call_claude` removed (navy-only). `claude_model` setting
+    still exists — used as default by `persona_fact_extractor`. Checks
+    relaxed accordingly.
+    """
 
     def test_settings_has_claude_model(self):
         from app.config import Settings
         s = Settings()
         assert hasattr(s, "claude_model")
-        assert s.claude_model == "claude-sonnet-4-6"
-
-    def test_claude_model_not_hardcoded_in_llm(self):
-        """Verify no hardcoded 'claude-sonnet' string in the Claude call."""
-        from pathlib import Path
-        source = (Path(__file__).parent.parent / "app" / "services" / "llm.py").read_text()
-        # Should use settings.claude_model, not a hardcoded string
-        assert 'model="claude-sonnet' not in source
-        assert "settings.claude_model" in source
+        # Default updated to the unified-policy value (claude-opus-4.7).
+        assert s.claude_model.startswith("claude-")
 
     def test_claude_model_configurable(self):
         """Settings should allow overriding claude_model via env."""
@@ -187,33 +185,8 @@ class TestClaudeModelConfig:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-class TestGeminiRPMBoundary:
-    """2026-05-10 navy-cleanup: Gemini Direct отключён, `_gemini_has_quota`
-    стал legacy-stub'ом, всегда False. Тесты переписаны под новую семантику.
-    """
-
-    def test_gemini_quota_always_false_after_navy_cleanup(self):
-        """Gemini Direct API больше не используется — quota всегда False."""
-        from app.services.llm import _gemini_has_quota, _gemini_call_times
-        _gemini_call_times.clear()
-        assert _gemini_has_quota() is False
-
-    def test_gemini_quota_ignores_rpm_setting(self):
-        """Раньше функция читала settings.gemini_rpm_limit; теперь нет."""
-        from app.services.llm import _gemini_has_quota, _gemini_call_times
-        _gemini_call_times.clear()
-        with patch("app.services.llm.settings") as mock_settings:
-            mock_settings.gemini_rpm_limit = 999
-            assert _gemini_has_quota() is False
-
-    def test_gemini_quota_ignores_call_times_history(self):
-        """Список call_times оставлен для backward-compat; не используется."""
-        from app.services.llm import _gemini_has_quota, _gemini_call_times
-        import time
-        now = time.monotonic()
-        _gemini_call_times.clear()
-        _gemini_call_times.extend([now] * 100)
-        assert _gemini_has_quota() is False
+# 2026-05-10 phase-2: TestGeminiRPMBoundary удалён вместе с
+# `_gemini_has_quota` / `_gemini_call_times` (navy-only cleanup).
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -345,12 +318,8 @@ class TestFilterOutputAllViolations:
 class TestMaxTokensPlumbing:
     """Pin the max_tokens routing contract introduced in Sprint 0."""
 
-    def test_call_gemini_accepts_max_tokens(self):
-        from app.services.llm import _call_gemini
-        import inspect
-        sig = inspect.signature(_call_gemini)
-        assert "max_tokens" in sig.parameters
-        assert sig.parameters["max_tokens"].default is None
+    # 2026-05-10 phase-2: test_call_{gemini,claude,openai}_accepts_max_tokens
+    # удалены вместе с соответствующими функциями (navy-only).
 
     def test_call_local_llm_accepts_max_tokens(self):
         from app.services.llm import _call_local_llm
@@ -364,31 +333,10 @@ class TestMaxTokensPlumbing:
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
         )
 
-    def test_call_claude_accepts_max_tokens(self):
-        from app.services.llm import _call_claude
-        import inspect
-        sig = inspect.signature(_call_claude)
-        assert "max_tokens" in sig.parameters
-        assert sig.parameters["max_tokens"].default is None
-
-    def test_call_openai_accepts_max_tokens(self):
-        from app.services.llm import _call_openai
-        import inspect
-        sig = inspect.signature(_call_openai)
-        assert "max_tokens" in sig.parameters
-        assert sig.parameters["max_tokens"].default is None
-
     def test_stream_ollama_accepts_max_tokens(self):
         from app.services.llm import _stream_ollama
         import inspect
         sig = inspect.signature(_stream_ollama)
-        assert "max_tokens" in sig.parameters
-        assert sig.parameters["max_tokens"].default is None
-
-    def test_stream_gemini_accepts_max_tokens(self):
-        from app.services.llm import _stream_gemini
-        import inspect
-        sig = inspect.signature(_stream_gemini)
         assert "max_tokens" in sig.parameters
         assert sig.parameters["max_tokens"].default is None
 
@@ -462,28 +410,14 @@ class TestMaxTokensPlumbing:
 
 
 class TestMaxTokensProviderFallback:
-    """When max_tokens is None, every provider must use its historical literal.
+    """When max_tokens is None, every navy-bound provider must use its
+    historical literal.
 
-    This pins the behaviour-preserving leg of the Sprint 0 change. The numbers
-    in the asserts are the literals each provider used pre-Sprint-0:
-      Gemini blocking + stream: 1200
-      Ollama / OpenAI-compat / Claude / OpenAI-fallback: 800
+    2026-05-10 phase-2 navy-only: проверяем только живые функции —
+    `_call_local_llm` и `_stream_ollama`. Тесты для удалённых
+    `_call_gemini` / `_call_claude` / `_call_openai` / `_stream_gemini`
+    выпилены вместе с самими функциями.
     """
-
-    def test_gemini_blocking_payload_uses_1200_when_none(self):
-        """Inspect the Gemini blocking payload via AST: when max_tokens is
-        None the literal 1200 must appear in the conditional fallback.
-        """
-        import ast
-        from pathlib import Path
-        src = (Path(__file__).parent.parent / "app" / "services" / "llm.py").read_text()
-        tree = ast.parse(src)
-        gemini_fn = next(
-            n for n in ast.walk(tree)
-            if isinstance(n, ast.AsyncFunctionDef) and n.name == "_call_gemini"
-        )
-        gemini_body = ast.dump(gemini_fn)
-        assert "1200" in gemini_body, "Gemini blocking lost its 1200 fallback"
 
     def test_ollama_native_payload_uses_800_when_none(self):
         import ast
@@ -497,28 +431,6 @@ class TestMaxTokensProviderFallback:
         body = ast.dump(local_fn)
         assert "800" in body, "Ollama / OpenAI-compat lost their 800 fallback"
 
-    def test_claude_uses_800_when_none(self):
-        import ast
-        from pathlib import Path
-        src = (Path(__file__).parent.parent / "app" / "services" / "llm.py").read_text()
-        tree = ast.parse(src)
-        fn = next(
-            n for n in ast.walk(tree)
-            if isinstance(n, ast.AsyncFunctionDef) and n.name == "_call_claude"
-        )
-        assert "800" in ast.dump(fn), "Claude lost its 800 fallback"
-
-    def test_openai_fallback_uses_800_when_none(self):
-        import ast
-        from pathlib import Path
-        src = (Path(__file__).parent.parent / "app" / "services" / "llm.py").read_text()
-        tree = ast.parse(src)
-        fn = next(
-            n for n in ast.walk(tree)
-            if isinstance(n, ast.AsyncFunctionDef) and n.name == "_call_openai"
-        )
-        assert "800" in ast.dump(fn), "OpenAI fallback lost its 800 fallback"
-
     def test_stream_ollama_uses_800_when_none(self):
         import ast
         from pathlib import Path
@@ -529,17 +441,6 @@ class TestMaxTokensProviderFallback:
             if isinstance(n, ast.AsyncFunctionDef) and n.name == "_stream_ollama"
         )
         assert "800" in ast.dump(fn), "Ollama stream lost its 800 fallback"
-
-    def test_stream_gemini_uses_1200_when_none(self):
-        import ast
-        from pathlib import Path
-        src = (Path(__file__).parent.parent / "app" / "services" / "llm.py").read_text()
-        tree = ast.parse(src)
-        fn = next(
-            n for n in ast.walk(tree)
-            if isinstance(n, ast.AsyncFunctionDef) and n.name == "_stream_gemini"
-        )
-        assert "1200" in ast.dump(fn), "Gemini stream lost its 1200 fallback"
 
 
 class TestCallHumanizedV2DispatcherGate:
