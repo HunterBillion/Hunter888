@@ -14,7 +14,7 @@ embeddings через одну endpoint).
 
 Текущая модель:
 1. **navy.api** через OpenAI-compatible client (`_get_local_client` →
-   `_call_local_llm` / `_stream_openai_compat`). Используется для всего:
+   `_call_navy` / `_stream_navy`). Используется для всего:
    chat / judge / coach / report / scenario / wiki + embeddings (`/v1/embeddings`).
 2. **Scripted dialog phrases** — last-resort если navy.api падает.
    Не диалоговый, просто 5-10 фраз вроде «Дайте подумать» — даёт
@@ -1624,7 +1624,7 @@ def _trim_history(messages: list[dict], max_messages: int) -> list[dict]:
     return merged
 
 
-async def _call_local_llm(
+async def _call_navy(
     system_prompt: str,
     messages: list[dict],
     timeout: float,
@@ -2570,7 +2570,7 @@ async def generate_response(
         # (всегда "local" из _resolve_provider).
         if settings.local_llm_enabled:
             resp = await _call_with_backoff(
-                "local", _call_local_llm, full_system, trimmed, timeout,
+                "local", _call_navy, full_system, trimmed, timeout,
                 max_attempts=3, retry_on_timeout_only=False,
                 max_tokens=_forwarded_max_tokens,
                 temperature=temperature,
@@ -2709,7 +2709,7 @@ def _is_private_local_url() -> bool:
     """Heuristic: are we pointing at a private-network Ollama (Mac Mini)
     or at a public OpenAI-compatible endpoint (navy.api / cloud)?
 
-    Mirrors the detection in `_call_local_llm` so streaming behaviour
+    Mirrors the detection in `_call_navy` so streaming behaviour
     matches blocking behaviour. Public URLs use the OpenAI SDK streaming
     path; private URLs use the Ollama-native /api/chat streaming path.
     """
@@ -2721,7 +2721,7 @@ def _is_private_local_url() -> bool:
     ))
 
 
-async def _stream_openai_compat(
+async def _stream_navy(
     system_prompt: str,
     messages: list[dict],
     timeout: float,
@@ -3050,7 +3050,7 @@ async def generate_response_stream(
                         _streamer = _stream_ollama
                         _stream_kwargs: dict[str, Any] = {}
                     else:
-                        _streamer = _stream_openai_compat
+                        _streamer = _stream_navy
                         # 2026-05-04 (latency-fix): persona model override.
                         # Streaming path mirrors the blocking path: when
                         # task_type=="roleplay" AND local_llm_persona_model

@@ -2,7 +2,7 @@ import os
 import secrets
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings
 
 # Resolve .env paths relative to THIS file, not CWD
@@ -68,12 +68,31 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = 60
     llm_max_history_messages: int = 20
 
-    # navy.api credentials (variables retain `local_llm_*` prefix for
-    # backward-compat; rename to `navy_api_*` planned in separate PR).
-    local_llm_url: str = "http://localhost:11434/v1"
-    local_llm_model: str = "gemma4:e2b"
-    local_llm_enabled: bool = False  # Disabled by default; enable for local dev
-    local_llm_api_key: str = "ollama"  # Ollama doesn't require key; LM Studio may
+    # navy.api credentials.
+    # 2026-05-11 rename: env-vars теперь honest names — NAVY_LLM_URL /
+    # NAVY_LLM_MODEL / NAVY_LLM_ENABLED / NAVY_LLM_API_KEY. Старые
+    # имена LOCAL_LLM_* (исторический артефакт раннего пилота на
+    # локальном LM Studio) принимаются как deprecation aliases —
+    # production deploy не требует немедленной миграции `.env` на сервере.
+    # Python-имена полей остаются `local_llm_*` чтобы не делать
+    # rename в 168 call sites; имена видны только в коде, для аудитора
+    # есть docstring + комментарии.
+    local_llm_url: str = Field(
+        default="http://localhost:11434/v1",
+        validation_alias=AliasChoices("NAVY_LLM_URL", "LOCAL_LLM_URL"),
+    )
+    local_llm_model: str = Field(
+        default="gemma4:e2b",
+        validation_alias=AliasChoices("NAVY_LLM_MODEL", "LOCAL_LLM_MODEL"),
+    )
+    local_llm_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("NAVY_LLM_ENABLED", "LOCAL_LLM_ENABLED"),
+    )
+    local_llm_api_key: str = Field(
+        default="ollama",
+        validation_alias=AliasChoices("NAVY_LLM_API_KEY", "LOCAL_LLM_API_KEY"),
+    )
     # 2026-05-04 (latency-fix): faster model for the persona / character role.
     # User reported >1.5s response is too slow. The persona role doesn't need
     # Opus-grade reasoning — natural Russian dialog is enough. When set,
@@ -97,7 +116,7 @@ class Settings(BaseSettings):
     # 2026-05-04 (Plan A — perf audit). Three knobs added together:
     #
     # local_llm_streaming_enabled
-    #   Routes character-reply traffic through `_stream_openai_compat`
+    #   Routes character-reply traffic through `_stream_navy`
     #   (navy.api / cloud) or `_stream_ollama` (private). When False, the
     #   blocking `generate_response` path runs — slower (full-response
     #   wait), used as a safety toggle if streaming regresses.

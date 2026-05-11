@@ -321,10 +321,10 @@ class TestMaxTokensPlumbing:
     # 2026-05-10 phase-2: test_call_{gemini,claude,openai}_accepts_max_tokens
     # удалены вместе с соответствующими функциями (navy-only).
 
-    def test_call_local_llm_accepts_max_tokens(self):
-        from app.services.llm import _call_local_llm
+    def test_call_navy_accepts_max_tokens(self):
+        from app.services.llm import _call_navy
         import inspect
-        sig = inspect.signature(_call_local_llm)
+        sig = inspect.signature(_call_navy)
         assert "max_tokens" in sig.parameters
         assert sig.parameters["max_tokens"].default is None
         # Must remain positional (between timeout and the keyword-only *).
@@ -414,7 +414,7 @@ class TestMaxTokensProviderFallback:
     historical literal.
 
     2026-05-10 phase-2 navy-only: проверяем только живые функции —
-    `_call_local_llm` и `_stream_ollama`. Тесты для удалённых
+    `_call_navy` и `_stream_ollama`. Тесты для удалённых
     `_call_gemini` / `_call_claude` / `_call_openai` / `_stream_gemini`
     выпилены вместе с самими функциями.
     """
@@ -426,7 +426,7 @@ class TestMaxTokensProviderFallback:
         tree = ast.parse(src)
         local_fn = next(
             n for n in ast.walk(tree)
-            if isinstance(n, ast.AsyncFunctionDef) and n.name == "_call_local_llm"
+            if isinstance(n, ast.AsyncFunctionDef) and n.name == "_call_navy"
         )
         body = ast.dump(local_fn)
         assert "800" in body, "Ollama / OpenAI-compat lost their 800 fallback"
