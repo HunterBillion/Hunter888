@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -94,7 +94,7 @@ export default function HomePage() {
   const [waitingClientLoaded, setWaitingClientLoaded] = useState(false);
 
 
-  const fetchDashboard = () => {
+  const fetchDashboard = useCallback(() => {
     if (!user) return;
     api
       .get("/dashboard/manager")
@@ -130,11 +130,11 @@ export default function HomePage() {
     api.get<{ completed_today: boolean }>("/morning-drill/streak")
       .then((s) => setWarmupDoneToday(!!s.completed_today))
       .catch(() => { /* non-blocking badge */ });
-  };
+  }, [user]);
 
   useEffect(() => {
     fetchDashboard();
-  }, [user]);
+  }, [fetchDashboard]);
 
   // Refetch gamification & stats when user returns to the tab
   useEffect(() => {
@@ -145,7 +145,7 @@ export default function HomePage() {
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [user]);
+  }, [fetchDashboard]);
 
   // 2026-04-20: targeted goal refresh after warm-up / other micro-actions.
   // MorningWarmupCard dispatches `goals:refresh` on /complete success. We
@@ -188,7 +188,7 @@ export default function HomePage() {
       }
     }, 60_000);
     return () => clearInterval(intervalId);
-  }, [user]);
+  }, [user, fetchDashboard]);
 
 
   const recommendations = dashboard?.recommendations ?? [];

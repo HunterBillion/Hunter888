@@ -91,8 +91,8 @@ class KnowledgeQuizSession(Base):
     ai_personality: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Relationships
-    answers: Mapped[list["KnowledgeAnswer"]] = relationship(back_populates="session", lazy="selectin")
-    participants: Mapped[list["QuizParticipant"]] = relationship(back_populates="session", lazy="selectin")
+    answers: Mapped[list["KnowledgeAnswer"]] = relationship(back_populates="session", lazy="noload")
+    participants: Mapped[list["QuizParticipant"]] = relationship(back_populates="session", lazy="noload")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -173,6 +173,9 @@ class UserAnswerHistory(Base):
     how well a user recalls specific legal concepts over time.
     """
     __tablename__ = "user_answer_history"
+    __table_args__ = (
+        sa.UniqueConstraint("user_id", "question_hash", "question_category", name="uq_user_answer_history_user_q"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(

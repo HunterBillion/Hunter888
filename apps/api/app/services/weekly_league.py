@@ -87,9 +87,14 @@ async def add_weekly_xp(user_id: uuid.UUID, xp: int, db: AsyncSession) -> None:
     membership.weekly_xp += xp
 
     # Update standings in group if assigned
+    # with_for_update() prevents concurrent add_weekly_xp calls from doing
+    # read-modify-write on the same JSONB standings column without seeing
+    # each other's changes (lost update anomaly).
     if membership.group_id:
         result = await db.execute(
-            select(WeeklyLeagueGroup).where(WeeklyLeagueGroup.id == membership.group_id)
+            select(WeeklyLeagueGroup)
+            .where(WeeklyLeagueGroup.id == membership.group_id)
+            .with_for_update()
         )
         group = result.scalar_one_or_none()
         if group and group.standings:

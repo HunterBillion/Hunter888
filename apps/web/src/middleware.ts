@@ -104,11 +104,9 @@ const PUBLIC_ROUTES = [
 
 function isPublicRoute(pathname: string): boolean {
   // 2026-04-29: /dev/* — pixel-UI demo routes (DuelChat preview etc.).
-  // Открыты без auth и в dev, и в prod — нужны для визуального ревью
-  // редизайна арены до того, как UI попадёт в боевой /pvp/duel флоу.
-  // TODO(после Фазы 7): закрыть гейт обратно `process.env.NODE_ENV !== "production"`,
-  // когда новый чат будет интегрирован в боевую дуэль.
-  if (pathname.startsWith("/dev/")) {
+  // Open without auth ONLY in development — in production these routes
+  // require authentication like any other protected route.
+  if (pathname.startsWith("/dev/") && process.env.NODE_ENV !== "production") {
     return true;
   }
   return PUBLIC_ROUTES.some((route) => {
@@ -146,12 +144,23 @@ const ROLE_PROTECTED_ROUTES: Record<string, UserRole[]> = {
 };
 
 /**
- * Extract user role from JWT access_token without verifying signature.
+ * Extract user role from JWT access_token WITHOUT verifying the signature.
  *
- * This is safe in middleware because:
- * 1. The token was issued by our backend and is verified on every API call
- * 2. Middleware role check is a UX guard (prevents loading unauthorized pages)
- * 3. The real authorization happens server-side on data access
+ * ⚠ WARNING — UNVERIFIED CLAIM: The role returned here is read from an
+ * unverified JWT payload. An attacker who can set cookies could forge a
+ * token with `role: "admin"` and this function would return "admin".
+ *
+ * This is acceptable ONLY because:
+ * 1. This value is used exclusively for UX routing hints (which page shell
+ *    to load) — it is NEVER used for authorization decisions.
+ * 2. Every API call independently verifies the JWT signature + expiry +
+ *    role on the server. A forged token grants access to an empty admin
+ *    page shell that fails on every data fetch.
+ * 3. The access_token cookie is httpOnly and set by the server, so under
+ *    normal operation it cannot be forged from client-side JS.
+ *
+ * DO NOT use the return value of this function for any authorization
+ * decision. It is a UX hint only.
  *
  * If the token is malformed or missing role, returns null → access denied.
  */
@@ -218,10 +227,22 @@ export function middleware(request: NextRequest) {
   }
 
   // ── 3. Auth guard ────────────────────────────────────────────────────
+  //
+  // SECURITY NOTE: This middleware is a UX guard only — it prevents
+  // unauthenticated users from loading protected page shells. Real
+  // authorization happens server-side: every API call validates the
+  // access_token signature + expiry + role. An attacker who forges
+  // cookies here sees an empty page that fails on every data fetch.
+  //
+  // We require BOTH cookies: the `access_token` (httpOnly, set by the
+  // server) proves a real login occurred; the `vh_authenticated` marker
+  // (JS-writable) is a fast-path hint only. Requiring the marker alone
+  // would let any script set `document.cookie = "vh_authenticated=1"`
+  // and bypass this guard.
   const hasAccessToken = request.cookies.get("access_token");
   const hasMarker = request.cookies.get("vh_authenticated");
 
-  if (!hasAccessToken && !hasMarker) {
+  if (!hasAccessToken || !hasMarker) {
     // GUARD: Prevent infinite redirect loops.
     const redirectTarget = searchParams.get("redirect");
     if (redirectTarget === "/login" || pathname === "/login") {

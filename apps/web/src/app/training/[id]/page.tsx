@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
@@ -77,6 +77,7 @@ import DifficultyIndicator from "@/components/training/DifficultyIndicator";
 import { StoryCallReportOverlay } from "@/components/training/StoryCallReportOverlay";
 import { BetweenCallsOverlay } from "@/components/training/BetweenCallsOverlay";
 import { useSessionStore } from "@/stores/useSessionStore";
+import { useShallow } from "zustand/react/shallow";
 import { TrainingErrorBoundary } from "@/components/training/TrainingErrorBoundary";
 import { TTSUnlockOverlay } from "@/components/training/TTSUnlockOverlay";
 import { toast } from "sonner";
@@ -202,9 +203,18 @@ export default function TrainingSessionPage() {
   ]);
 
   // ── Zustand store (replaces 30+ useState) ──
-  // Full subscription for render — but NEVER put `s` in useEffect deps!
+  // useShallow prevents re-renders when unrelated fields change.
+  // `elapsed` is excluded from the main selector and subscribed separately
+  // so the 1-second timer tick only re-renders the 2 JSX spots that read
+  // it, not the entire 2700-line component through the main `s` reference.
+  // Actions are stable references in Zustand and never trigger re-renders.
   // Use useSessionStore.getState() for actions inside effects/callbacks.
-  const s = useSessionStore();
+  const s = useSessionStore(useShallow((state) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { elapsed: _elapsed, ...rest } = state;
+    return rest;
+  }));
+  const elapsed = useSessionStore((state) => state.elapsed);
 
   // Initialize store on mount
   useEffect(() => {
@@ -222,6 +232,10 @@ export default function TrainingSessionPage() {
       useSessionStore.getState().reset();
       wsTimersRef.current.forEach(clearTimeout);
       wsTimersRef.current = [];
+      if (sttWatchdogRef.current) {
+        clearTimeout(sttWatchdogRef.current);
+        sttWatchdogRef.current = null;
+      }
       cancelFallbackImpl(hangupRef.current, { reason: "unmount" });
     };
   }, [routeId]);
@@ -230,6 +244,7 @@ export default function TrainingSessionPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wsTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const sttWatchdogRef = useRef<number | null>(null);
   const sessionEndedRef = useRef<{ score: number | null; xp: number | null; levelUp: boolean }>({ score: null, xp: null, levelUp: false });
   // 2026-05-04 (v2): hangup coordinator — owns the dedupe slate +
   // fallback timer for the post-hangup race. See @/lib/hangupCoordinator
@@ -1497,7 +1512,10 @@ export default function TrainingSessionPage() {
           // crashed/loading/network blip) the transcription.result event
           // never arrives and the "Распознаю: речь..." bar sits forever.
           // 45s timeout covers Whisper cold-start (6-10s) + slow backend.
-          window.setTimeout(() => {
+          // Store in ref so it can be cleared on unmount (prevents leak).
+          if (sttWatchdogRef.current) clearTimeout(sttWatchdogRef.current);
+          sttWatchdogRef.current = window.setTimeout(() => {
+            sttWatchdogRef.current = null;
             const cur = useSessionStore.getState().transcription;
             if (cur.status === "transcribing") {
               logger.warn("[training] STT watchdog: no result in 45s — resetting");
@@ -1671,10 +1689,10 @@ export default function TrainingSessionPage() {
         {/* Center: timer — pixel game style */}
         <div className="flex items-center gap-2">
           <div
-            className={`font-pixel text-xl font-bold tabular-nums pixel-glow ${s.elapsed >= 1500 ? "animate-pulse" : ""}`}
-            style={{ color: s.elapsed >= 1500 ? "var(--warning)" : "var(--accent)" }}
+            className={`font-pixel text-xl font-bold tabular-nums pixel-glow ${elapsed >= 1500 ? "animate-pulse" : ""}`}
+            style={{ color: elapsed >= 1500 ? "var(--warning)" : "var(--accent)" }}
           >
-            {formatTime(s.elapsed)}
+            {formatTime(elapsed)}
           </div>
         </div>
 
@@ -2552,7 +2570,7 @@ export default function TrainingSessionPage() {
         objectionHint={s.objectionHint}
         checkpointHint={s.checkpointHint}
         silenceWarning={s.silenceWarning}
-        elapsed={s.elapsed}
+        elapsed={elapsed}
         sessionState={s.sessionState}
         formatTime={formatTime}
       />

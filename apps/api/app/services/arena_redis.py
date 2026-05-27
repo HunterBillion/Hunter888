@@ -382,19 +382,27 @@ class ArenaRedis:
             ))
         return players
 
+    # Lua script for atomic player score update — runs entirely inside Redis,
+    # preventing read-modify-write races when concurrent answers arrive.
+    _LUA_UPDATE_SCORE = """
+    local raw = redis.call('HGET', KEYS[1], ARGV[1])
+    if not raw then return nil end
+    local data = cjson.decode(raw)
+    data['score'] = data['score'] + tonumber(ARGV[2])
+    if tonumber(ARGV[3]) == 1 then
+        data['correct'] = data['correct'] + 1
+    end
+    redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(data))
+    return 1
+    """
+
     async def update_player_score(
         self, session_id: str, user_id: str, score_delta: float, is_correct: bool,
     ) -> None:
-        """Atomically update player score and correct count."""
+        """Atomically update player score and correct count via Lua script."""
         key = MATCH_PLAYERS_KEY.format(session_id=session_id)
-        raw = await self._redis.hget(key, user_id)
-        if not raw:
-            return
-        data = json.loads(raw)
-        data["score"] = data["score"] + score_delta
-        if is_correct:
-            data["correct"] = data["correct"] + 1
-        await self._redis.hset(key, user_id, json.dumps(data))
+        update_script = self._redis.register_script(self._LUA_UPDATE_SCORE)
+        await update_script(keys=[key], args=[user_id, score_delta, 1 if is_correct else 0])
 
     async def set_player_connected(
         self, session_id: str, user_id: str, connected: bool,

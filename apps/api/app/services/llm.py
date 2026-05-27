@@ -30,10 +30,12 @@ Output filtering: profanity, PII, role breaks.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import random
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1828,13 +1830,16 @@ _token_logger = logging.getLogger("token_usage")
 # ─── Fallback rate counter (Phase 0 monitoring) ──────────────────────────────
 _llm_stats: dict[str, int] = {"total": 0, "fallback": 0, "by_provider": {}}
 _llm_stats_lock: asyncio.Lock | None = None
+_llm_stats_lock_init = threading.Lock()
 
 
 def _get_stats_lock() -> asyncio.Lock:
     """Lazy-init asyncio.Lock for _llm_stats (S1-02 2.2.3)."""
     global _llm_stats_lock
     if _llm_stats_lock is None:
-        _llm_stats_lock = asyncio.Lock()
+        with _llm_stats_lock_init:
+            if _llm_stats_lock is None:
+                _llm_stats_lock = asyncio.Lock()
     return _llm_stats_lock
 
 
@@ -2270,7 +2275,7 @@ async def generate_response(
     _lorebook_ab_enabled = settings.use_lorebook or _force_lorebook_for_local
     if not _lorebook_ab_enabled and user_id:
         # If use_lorebook=False but A/B test active: enable for ~50% based on user_id
-        _uid_hash = hash(str(user_id)) % 100
+        _uid_hash = int(hashlib.md5(str(user_id).encode()).hexdigest(), 16) % 100
         _lorebook_ab_enabled = _uid_hash < 50  # 50% get lorebook
         if _lorebook_ab_enabled:
             logger.info("LOREBOOK A/B: enabled for user %s (hash=%d)", user_id, _uid_hash)
@@ -2843,7 +2848,7 @@ async def generate_response_stream(
     full_system = system_prompt
     _lorebook_ab_stream = settings.use_lorebook
     if not _lorebook_ab_stream and user_id:
-        _uid_hash = hash(str(user_id)) % 100
+        _uid_hash = int(hashlib.md5(str(user_id).encode()).hexdigest(), 16) % 100
         _lorebook_ab_stream = _uid_hash < 50
     if character_prompt_path and _lorebook_ab_stream:
         try:
@@ -2900,8 +2905,8 @@ async def generate_response_stream(
     if scenario_prompt:
         full_system = full_system + "\n\n" + scenario_prompt
 
-    # Constitution injection for quality-critical tasks
-    if task_type in ("judge", "coach", "report", "structured"):
+    # Constitution injection for quality-critical tasks (match blocking path — no "coach")
+    if task_type in ("judge", "report", "structured"):
         constitution = _get_constitution()
         if constitution:
             full_system = full_system + "\n\n" + constitution
@@ -3006,7 +3011,7 @@ async def generate_response_stream(
                 msg["content"] = filtered_input
 
     # Provider resolution (args: prefer, system_prompt_tokens, task_type)
-    prompt_tokens = len(full_system) / 2  # Russian: ~2 chars/token
+    prompt_tokens = len(full_system) // 2  # Russian: ~2 chars/token
     resolved = _resolve_provider(prefer_provider, prompt_tokens, task_type)
 
     # ── Sprint 0: gate stream max_tokens override on flag + mode (parity

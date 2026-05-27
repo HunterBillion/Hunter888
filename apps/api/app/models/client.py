@@ -239,7 +239,7 @@ class RealClient(Base):
         "User", foreign_keys=[manager_id], lazy="selectin"
     )
     consents: Mapped[list["ClientConsent"]] = relationship(
-        back_populates="client", lazy="selectin",
+        back_populates="client", lazy="noload",
         order_by="ClientConsent.created_at.desc()"
     )
     interactions: Mapped[list["ClientInteraction"]] = relationship(

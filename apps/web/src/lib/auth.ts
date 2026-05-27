@@ -52,14 +52,18 @@ export function setTokens(accessToken: string, refreshToken: string, csrfToken?:
   // Set marker cookie so Next.js middleware knows user is authenticated.
   // This is NOT the auth token — just a presence flag (not httpOnly so middleware can read it).
   if (typeof window !== "undefined") {
+    // Add Secure flag in production (non-localhost) so the cookie is only
+    // sent over HTTPS, preventing interception on plain HTTP connections.
+    const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    const secureSuffix = isLocalhost ? "" : "; secure";
     try {
-      document.cookie = "vh_authenticated=1; path=/; max-age=604800; samesite=lax";
+      document.cookie = `vh_authenticated=1; path=/; max-age=604800; samesite=lax${secureSuffix}`;
     } catch {}
     // Set CSRF token cookie via JS — cross-origin Set-Cookie from API (port 8000)
     // is silently dropped by browsers when the page is on port 3000.
     if (csrfToken) {
       try {
-        document.cookie = `csrf_token=${encodeURIComponent(csrfToken)}; path=/; max-age=604800; samesite=lax`;
+        document.cookie = `csrf_token=${encodeURIComponent(csrfToken)}; path=/; max-age=604800; samesite=lax${secureSuffix}`;
       } catch {}
     }
   }

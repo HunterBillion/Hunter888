@@ -3322,7 +3322,7 @@ async def get_leaderboard_extended(
       - "streak" — current streak days
       - "combined" — weighted: 40% avg_score + 30% XP + 20% streak + 10% sessions
     """
-    from app.models.user import User
+    from app.models.user import User, UserRole
     from app.models.progress import ManagerProgress
 
     if period == "week":
@@ -3332,7 +3332,7 @@ async def get_leaderboard_extended(
     else:
         since = datetime.min.replace(tzinfo=timezone.utc)
 
-    # Base query: sessions in period
+    # Base query: sessions in period (manager-only — match get_leaderboard filter)
     base_query = (
         select(
             TrainingSession.user_id,
@@ -3346,6 +3346,7 @@ async def get_leaderboard_extended(
         .where(
             TrainingSession.status == SessionStatus.completed,
             TrainingSession.started_at >= since,
+            User.role == UserRole.manager,
         )
         .group_by(TrainingSession.user_id, User.full_name, User.avatar_url)
         .limit(limit)
