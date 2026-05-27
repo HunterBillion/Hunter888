@@ -630,7 +630,10 @@ class StageTracker:
                 _started_ts = state.stage_started_at_ts.get(_stage_idx)
                 if _started_ts is not None:
                     state.stage_durations_sec[_stage_idx] = round(_now - _started_ts, 1)
-                state.stage_message_counts[_stage_idx] = message_index
+                _started_msg = state.stage_started_at_msg.get(_stage_idx)
+                state.stage_message_counts[_stage_idx] = max(
+                    0, message_index - (_started_msg or 0),
+                )
 
                 state.stages_completed.append(_stage_idx)
                 if _stage_idx not in state.stage_scores:

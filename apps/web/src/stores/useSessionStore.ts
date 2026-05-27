@@ -339,7 +339,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   ...INITIAL_STATE,
 
   init: (sessionId) => set({ ...INITIAL_STATE, sessionId }),
-  reset: () => set(INITIAL_STATE),
+  reset: () => {
+    // Clear module-scope debounce timer to prevent leak on unmount
+    if (_stageUpdateTimer !== null) {
+      clearTimeout(_stageUpdateTimer);
+      _stageUpdateTimer = null;
+    }
+    set(INITIAL_STATE);
+  },
   nextMsgId: () => {
     const counter = get()._msgCounter + 1;
     set({ _msgCounter: counter });

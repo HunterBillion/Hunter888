@@ -152,7 +152,12 @@ async def submit_entry(
         if user_messages:
             ac_result = await run_anti_cheat(user_id, session_id, user_messages, db, run_llm_check=True)
             await save_anti_cheat_result(ac_result, db)
-            if ac_result.recommended_action in (AntiCheatAction.rating_freeze,):
+            if ac_result.recommended_action in (
+                AntiCheatAction.rating_freeze,
+                AntiCheatAction.temp_ban_24h,
+                AntiCheatAction.disqualification,
+                AntiCheatAction.rating_penalty,
+            ):
                 logger.warning(
                     "Tournament entry rejected by anti-cheat: user=%s session=%s flags=%d",
                     user_id, session_id, len(ac_result.flagged_signals),

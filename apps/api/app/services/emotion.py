@@ -17,6 +17,7 @@ Architecture:
 from __future__ import annotations
 
 import asyncio
+import collections
 import json
 import logging
 import uuid
@@ -789,7 +790,7 @@ async def transition_emotion(session_id: uuid.UUID, response_quality: str) -> st
 # V3 Engine: Per-Session Lock (prevents concurrent emotion updates)
 # ============================================================================
 
-_session_locks: dict[str, asyncio.Lock] = {}
+_session_locks: collections.OrderedDict[str, asyncio.Lock] = collections.OrderedDict()
 _session_locks_guard = asyncio.Lock()
 
 _MAX_SESSION_LOCKS = 10000  # Prevent unbounded growth
@@ -800,19 +801,26 @@ async def _get_session_lock(session_id: uuid.UUID) -> asyncio.Lock:
 
     Emotion updates do GET→mutate→SET on Redis. Without locking, concurrent
     WebSocket messages can interleave and lose each other's state changes.
+
+    Uses an LRU OrderedDict so that recently-accessed sessions are never evicted
+    while still active — only the least-recently-used locks get pruned.
     """
     key = str(session_id)
     if key in _session_locks:
+        # Move to end (most recently used) on every access
+        _session_locks.move_to_end(key)
         return _session_locks[key]
     async with _session_locks_guard:
         if key not in _session_locks:
-            # Evict oldest if too many locks (stale sessions)
+            # Evict least-recently-used if too many locks
             if len(_session_locks) >= _MAX_SESSION_LOCKS:
-                # Remove first 20% of keys (FIFO approximation)
-                to_remove = list(_session_locks.keys())[: _MAX_SESSION_LOCKS // 5]
-                for k in to_remove:
-                    _session_locks.pop(k, None)
+                evict_count = _MAX_SESSION_LOCKS // 5
+                for _ in range(evict_count):
+                    if _session_locks:
+                        _session_locks.popitem(last=False)  # pop oldest (LRU)
             _session_locks[key] = asyncio.Lock()
+        else:
+            _session_locks.move_to_end(key)
         return _session_locks[key]
 
 
@@ -1395,10 +1403,7 @@ async def _transition_emotion_v3_inner(
         # which combined with trigger_detector substring false-positives
         # ("дурацкий" matching "дура") ended sessions after a single message.
         _prior_memory_for_escalation = await _get_memory(session_id)
-        _total_bad_turns = (
-            _prior_memory_for_escalation.rollback_count
-            + _prior_memory_for_escalation.consecutive_rollbacks
-        )
+        _total_bad_turns = _prior_memory_for_escalation.rollback_count
         _ESCALATION_MIN_BAD_TURNS = 3
 
         # Handle special triggers

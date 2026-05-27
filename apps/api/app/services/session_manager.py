@@ -265,14 +265,22 @@ async def add_message(
     try:
         seq = await r.incr(counter_key)
         await r.expire(counter_key, _KEY_TTL)
-        # Update last_activity in session state
+        # Atomically update message_count and last_activity in session state
+        # Uses a Lua script to prevent race conditions when concurrent
+        # WebSocket messages modify the same session state simultaneously.
         state_key = _SESSION_KEY.format(session_id=session_id)
-        raw = await r.get(state_key)
-        if raw:
-            state = json.loads(raw)
-            state["message_count"] = seq
-            state["last_activity"] = time.time()
-            await r.set(state_key, json.dumps(state), ex=_KEY_TTL)
+        _lua_update_session = r.register_script(
+            """
+            local raw = redis.call('GET', KEYS[1])
+            if not raw then return nil end
+            local state = cjson.decode(raw)
+            state['message_count'] = tonumber(ARGV[1])
+            state['last_activity'] = tonumber(ARGV[2])
+            redis.call('SET', KEYS[1], cjson.encode(state), 'EX', tonumber(ARGV[3]))
+            return 1
+            """
+        )
+        await _lua_update_session(keys=[state_key], args=[seq, time.time(), _KEY_TTL])
     except Exception:
         logger.warning("Failed to update message count in Redis for session %s", session_id)
         seq = 1

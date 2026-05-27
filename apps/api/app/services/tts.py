@@ -533,7 +533,7 @@ class VoiceProfileManager:
                 voice_params_snapshot=snapshot,
             )
         )
-        await db_session.commit()
+        await db_session.flush()
         logger.info("TTS voice persisted to DB for story %s", story_id)
 
     @staticmethod
