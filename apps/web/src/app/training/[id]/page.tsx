@@ -967,17 +967,7 @@ export default function TrainingSessionPage() {
           break;
         }
 
-        case "tts.couple_audio":
-          tts.cancelFallback();
-          if (data.data?.utterances) {
-            tts.playCoupleAudio({
-              utterances: (data.data.utterances as Array<{ speaker: string; audio_b64: string; text: string }>).map((u) => ({
-                speaker: u.speaker as "A" | "B" | "AB",
-                audio: u.audio_b64,
-              })),
-            });
-          }
-          break;
+        // tts.couple_audio handler removed (2026-05-28) — couple mode unused
 
         // ── Story-mode messages ──
         case "story.started":
@@ -1210,6 +1200,15 @@ export default function TrainingSessionPage() {
   const speech = useSpeechRecognition({
     lang: "ru-RU",
     onResult: (text) => {
+      // 2026-05-28: Guard against sending while AI is still generating.
+      // Without this, STT barge-in fires text.message while llm_busy=true
+      // on the server, causing parallel LLM calls and scrambled chat order.
+      // In call mode barge-in is handled server-side by audio.interrupted;
+      // the backend llm_busy guard (also added 2026-05-28) will serialize
+      // the LLM calls, so this log helps trace timing in prod.
+      if (s.isTyping) {
+        logger.log("[STT] AI is typing — barge-in message, server will queue");
+      }
       s.addMessage({ id: s.nextMsgId(), role: "user", content: text, timestamp: new Date().toISOString() });
       sendMessage({ type: "text.message", data: { content: text } });
       s.setTalkTime(s.talkTime + 1);

@@ -1202,6 +1202,33 @@ async def _generate_character_reply(
 
     v3: Uses V3 emotion engine with trigger detection and fake transition prompts.
     """
+    # 2026-05-28: Prevent parallel LLM calls. If the model is already
+    # generating a reply (e.g. user sent two messages in quick succession
+    # via STT barge-in), wait for the current generation to finish before
+    # starting a new one. Without this, two character.response events
+    # arrive in unpredictable order and the chat gets scrambled.
+    _wait_start = 0.0
+    if state.get("llm_busy"):
+        import time as _time_guard
+        _wait_start = _time_guard.monotonic()
+        logger.info(
+            "LLM_GUARD session=%s — waiting for previous generation to finish",
+            session_id,
+        )
+        # Poll with short sleeps; cap at 45s to prevent infinite hang
+        for _ in range(90):  # 90 * 0.5s = 45s max
+            await asyncio.sleep(0.5)
+            if not state.get("llm_busy"):
+                break
+        else:
+            logger.warning(
+                "LLM_GUARD session=%s — timed out after 45s, proceeding anyway",
+                session_id,
+            )
+        _guard_ms = int((_time_guard.monotonic() - _wait_start) * 1000)
+        if _guard_ms > 100:
+            logger.info("LLM_GUARD session=%s — waited %dms", session_id, _guard_ms)
+
     # Send avatar.typing indicator + mark LLM as busy so the silence watchdog
     # pauses while the model is generating (slow local LLMs can take 20–40s).
     state["llm_busy"] = True
