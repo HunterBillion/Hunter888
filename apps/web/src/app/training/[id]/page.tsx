@@ -526,13 +526,22 @@ export default function TrainingSessionPage() {
               if (streamingInRecent) {
                 s.appendToLastAssistantMessage(chunkText + " ");
               } else {
-                s.addMessage({
-                  id: s.nextMsgId(),
-                  role: "assistant",
-                  content: chunkText + " ",
-                  timestamp: new Date().toISOString(),
-                  isStreaming: true,
-                });
+                // 2026-05-27 FIX: prevent late TTS chunks from creating new
+                // assistant bubbles after user messages. If the most recent
+                // message is from the user, this chunk is a straggler from the
+                // previous AI turn — drop it (audio still plays via queue below).
+                const lastMsg = s.messages[s.messages.length - 1];
+                const isLateChunk = lastMsg && lastMsg.role === "user";
+                if (!isLateChunk) {
+                  s.addMessage({
+                    id: s.nextMsgId(),
+                    role: "assistant",
+                    content: chunkText + " ",
+                    timestamp: new Date().toISOString(),
+                    isStreaming: true,
+                  });
+                }
+                // else: late chunk after user msg — text dropped, audio still plays
               }
             }
           }

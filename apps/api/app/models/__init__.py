@@ -430,3 +430,5 @@ __all__ = [
     # Quiz Arena v2 — Path A grader storage (alembic 20260503_001)
     "QuizV2AnswerKey",
 ]
+
+from app.models.exam import ExamAttempt, Certificate  # noqa: F401

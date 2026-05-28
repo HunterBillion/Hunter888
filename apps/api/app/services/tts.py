@@ -73,7 +73,7 @@ _FACTOR_HESITATIONS = {
     "fatigue": ["*вздох*", "...", "..."],
     "anxiety": ["...", "*вдох*"],
     "anger": [],  # anger doesn't hesitate — it accelerates
-    "sarcasm": ["...", "хм..."],  # "хм" is paralinguistic, kept; "ну-у" dropped
+    "sarcasm": ["...", "..."],  # 2026-05-28: removed "хм" — sanitizer strips it, causing mismatch
 }
 
 _FACTOR_BREATHING = {
@@ -1098,14 +1098,29 @@ def _is_configured() -> bool:
     )
 
 
-async def _synthesize_navy(text: str, voice: str | None = None, speed: float = 1.0) -> bytes:
-    """Fallback TTS via navy.api OpenAI-compatible endpoint.
+async def _synthesize_navy(
+    text: str,
+    voice: str | None = None,
+    speed: float = 1.0,
+    voice_settings: dict | None = None,
+) -> bytes:
+    """TTS via navy.api OpenAI-compatible endpoint (proxies ElevenLabs).
 
-    Called when ElevenLabs is unavailable. Returns raw mp3 audio bytes.
+    Returns raw mp3 audio bytes.
     Raises TTSError on failure — caller should fall back to browser Web Speech.
+
+    2026-05-28: accepts voice_settings dict for ElevenLabs models.
+    Navy.api forwards stability/similarity_boost/style when model is eleven_*.
     """
     if not (settings.navy_tts_enabled and settings.local_llm_url and settings.local_llm_api_key):
         raise TTSError("Navy TTS not configured")
+
+    # Strip SSML tags — Navy OpenAI-compat endpoint does not support SSML.
+    # Without this, <break time="500ms"/> is spoken as literal text.
+    text = re.sub(r"<[^>]+>", "", text)
+    text = text.strip()
+    if not text:
+        raise TTSError("Empty text after SSML strip")
 
     # Ensure /v1/ prefix for OpenAI-compat endpoint
     _tts_base = settings.local_llm_url.rstrip("/")
@@ -1119,6 +1134,9 @@ async def _synthesize_navy(text: str, voice: str | None = None, speed: float = 1
         "speed": max(0.25, min(4.0, speed)),
         "response_format": "mp3",
     }
+    # Pass voice_settings for ElevenLabs models (eleven_turbo_v2_5, eleven_v3)
+    if voice_settings and settings.navy_tts_model.startswith("eleven"):
+        payload["voice_settings"] = voice_settings
     headers = {
         "Authorization": f"Bearer {settings.local_llm_api_key}",
         "Content-Type": "application/json",
@@ -1207,7 +1225,16 @@ async def synthesize_speech(
             # voice_ids in the `voice` field directly when model is an
             # eleven_* model.
             _navy_voice = voice_id if voice_id else settings.navy_tts_voice
-            audio_bytes = await _synthesize_navy(text, voice=_navy_voice, speed=speed)
+            # 2026-05-28: forward voice_settings so emotion modulation
+            # actually reaches ElevenLabs through Navy proxy.
+            _vs = None
+            if voice_params and settings.navy_tts_model.startswith("eleven"):
+                _vs = {
+                    "stability": voice_params.stability,
+                    "similarity_boost": voice_params.similarity_boost,
+                    "style": voice_params.style,
+                }
+            audio_bytes = await _synthesize_navy(text, voice=_navy_voice, speed=speed, voice_settings=_vs)
             latency_ms = int((time.monotonic() - start_ts) * 1000)
             return TTSResult(
                 audio_bytes=audio_bytes,
@@ -1299,7 +1326,14 @@ async def synthesize_speech(
             return None
         try:
             logger.warning("ElevenLabs fallback → navy TTS (%s)", reason)
-            return await _synthesize_navy(text, speed=speed)
+            _fb_vs = None
+            if voice_params and settings.navy_tts_model.startswith("eleven"):
+                _fb_vs = {
+                    "stability": voice_params.stability,
+                    "similarity_boost": voice_params.similarity_boost,
+                    "style": voice_params.style,
+                }
+            return await _synthesize_navy(text, voice=voice_id, speed=speed, voice_settings=_fb_vs)
         except TTSError as e:
             logger.error("Navy TTS fallback also failed: %s", e)
             return None

@@ -126,9 +126,18 @@ async def synth_question_audio(text: str) -> Optional[str]:
     try:
         from app.services.tts import _synthesize_navy
 
-        audio_bytes = await _synthesize_navy(
-            clean, voice=_arena_voice(), speed=_ARENA_SPEED,
-        )
+        # 2026-05-28: arena uses settings.navy_tts_voice which is now an
+        # ElevenLabs voice ID. For arena narration, use tts-1 with "alloy"
+        # voice (game-show vibe), not the per-session ElevenLabs voice.
+        import app.config as _cfg
+        _saved_model = _cfg.settings.navy_tts_model
+        _cfg.settings.navy_tts_model = "tts-1"
+        try:
+            audio_bytes = await _synthesize_navy(
+                clean, voice="alloy", speed=_ARENA_SPEED,
+            )
+        finally:
+            _cfg.settings.navy_tts_model = _saved_model
     except Exception as exc:  # noqa: BLE001
         logger.warning("arena.audio synth failed: %s", exc)
         return None
