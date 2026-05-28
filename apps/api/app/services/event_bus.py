@@ -917,6 +917,67 @@ async def _handle_story_to_tp(event: GameEvent) -> None:
         logger.warning("TP handler (story) failed", exc_info=True)
 
 
+
+
+# ── Telegram post-session feedback ───────────────────────────────────────
+
+async def _handle_telegram_feedback(event: "GameEvent", db: AsyncSession) -> None:
+    """Send Telegram feedback after training session completes (10s delay)."""
+    try:
+        payload = event.payload or {}
+        user_id = event.user_id
+        session_id = payload.get("session_id")
+        session_type = payload.get("session_type", "training")
+        if not session_id:
+            return
+        # Delay to let scoring finalize
+        await asyncio.sleep(10)
+        from app.services.session_feedback_tg import generate_and_send_feedback
+        import uuid as _uuid
+        await generate_and_send_feedback(
+            user_id=user_id if isinstance(user_id, _uuid.UUID) else _uuid.UUID(str(user_id)),
+            session_id=_uuid.UUID(str(session_id)),
+            session_type=session_type,
+            db=db,
+        )
+    except Exception as exc:
+        logger.warning("TG feedback handler failed: %s", exc)
+
+
+async def _handle_telegram_level_up(event: "GameEvent", db: AsyncSession) -> None:
+    """Send Telegram notification on level up."""
+    try:
+        payload = event.payload or {}
+        new_level = payload.get("new_level")
+        level_name = payload.get("level_name", "")
+        user_id = event.user_id
+        if not new_level:
+            return
+        from app.models.user import User
+        import uuid as _uuid
+        uid = user_id if isinstance(user_id, _uuid.UUID) else _uuid.UUID(str(user_id))
+        user = await db.get(User, uid)
+        if not user or not user.telegram_chat_id:
+            return
+        from app.services.telegram_bot import telegram_bot
+        await telegram_bot.send_level_up(
+            chat_id=user.telegram_chat_id,
+            user_name=user.full_name or "бро",
+            new_level=new_level,
+            level_name=level_name,
+        )
+        # Check if exam is required for this level
+        from app.services.exam_service import needs_exam
+        if needs_exam(new_level):
+            await telegram_bot.send_exam_required(
+                chat_id=user.telegram_chat_id,
+                user_name=user.full_name or "бро",
+                level=new_level,
+            )
+    except Exception as exc:
+        logger.warning("TG level-up handler failed: %s", exc)
+
+
 # ─── Registration ────────────────────────────────────────────────────────────
 
 def setup_default_handlers() -> None:
@@ -955,6 +1016,15 @@ def setup_default_handlers() -> None:
     event_bus.on(EVENT_PVP_COMPLETED, _handle_pvp_to_tp)
     event_bus.on(EVENT_KNOWLEDGE_QUIZ_COMPLETED, _handle_knowledge_to_tp)
     event_bus.on(EVENT_STORY_COMPLETED, _handle_story_to_tp)
+
+    # Telegram feedback after sessions
+    event_bus.on(EVENT_TRAINING_COMPLETED, _handle_telegram_feedback)
+    event_bus.on(EVENT_ARENA_COMPLETED, _handle_telegram_feedback)
+    event_bus.on(EVENT_PVP_COMPLETED, _handle_telegram_feedback)
+    event_bus.on(EVENT_KNOWLEDGE_QUIZ_COMPLETED, _handle_telegram_feedback)
+
+    # Telegram level-up notifications
+    event_bus.on(EVENT_LEVEL_UP, _handle_telegram_level_up)
 
     logger.info("EventBus: registered %d default handlers", sum(
         len(h) for h in event_bus._handlers.values()

@@ -34,6 +34,7 @@ import MorningWarmupCard from "@/components/gamification/MorningWarmupCard";
 import WeeklyLeague from "@/components/gamification/WeeklyLeague";
 import OfficeShelf from "@/components/gamification/OfficeShelf";
 import SeasonBanner from "@/components/gamification/SeasonBanner";
+import TelegramLinkWidget from "@/components/gamification/TelegramLinkWidget";
 import ChapterProgress from "@/components/gamification/ChapterProgress";
 import { PixelGridBackground } from "@/components/landing/PixelGridBackground";
 // useTiltEffect kept in hooks/ for future use on non-motion elements
@@ -891,6 +892,11 @@ export default function HomePage() {
 
               {/* Story arc progress (Путь Охотника) */}
               <ChapterProgress />
+
+              {/* Book of Knowledge */}
+
+              {/* Telegram Bot linking */}
+              <TelegramLinkWidget />
 
               {/* Two-column: Drill (left) + Goals (right) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">

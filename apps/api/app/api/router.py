@@ -177,3 +177,13 @@ api_router.include_router(team_router, prefix="/team", tags=["team"])
 from app.api.team_kpi import router as team_kpi_router
 
 api_router.include_router(team_kpi_router, prefix="/team", tags=["team", "kpi"])
+
+# Book, Telegram, Exam routers
+from app.api.book import router as book_router
+api_router.include_router(book_router, tags=["book"])
+
+from app.api.telegram import router as telegram_router
+api_router.include_router(telegram_router, tags=["telegram"])
+
+from app.api.exam import router as exam_router
+api_router.include_router(exam_router, tags=["exams"])

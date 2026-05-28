@@ -63,7 +63,15 @@ async def synth_case_intro_audio(
 
     try:
         from app.services.tts import _synthesize_navy  # private but stable path
-        audio_bytes = await _synthesize_navy(text, voice=voice, speed=speed)
+        # 2026-05-28: quiz uses OpenAI voice names (onyx/echo/shimmer) which
+        # only work with tts-1, not eleven_* models. Override model temporarily.
+        import app.config as _cfg
+        _saved_model = _cfg.settings.navy_tts_model
+        _cfg.settings.navy_tts_model = "tts-1"
+        try:
+            audio_bytes = await _synthesize_navy(text, voice=voice, speed=speed)
+        finally:
+            _cfg.settings.navy_tts_model = _saved_model
         if not audio_bytes or len(audio_bytes) < 200:
             return None
         b64 = base64.b64encode(audio_bytes).decode("ascii")
