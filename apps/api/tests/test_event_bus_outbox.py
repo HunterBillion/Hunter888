@@ -222,8 +222,8 @@ class TestHandlerSetup:
             assert len(bus._handlers.get(EVENT_ACHIEVEMENT_EARNED, [])) == 1
             # Goal completed → notification
             assert len(bus._handlers.get(EVENT_GOAL_COMPLETED, [])) == 1
-            # Level up → notification
-            assert len(bus._handlers.get(EVENT_LEVEL_UP, [])) == 1
+            # Level up → in-app notification + Telegram level-up push
+            assert len(bus._handlers.get(EVENT_LEVEL_UP, [])) == 2
         finally:
             eb_module.event_bus = original
 
