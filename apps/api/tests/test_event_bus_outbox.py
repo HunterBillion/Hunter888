@@ -216,8 +216,8 @@ class TestHandlerSetup:
         try:
             setup_default_handlers()
             # Training now fans out into achievements, goals, SRS, league XP,
-            # home-session CRM sync and tournament points.
-            assert len(bus._handlers.get(EVENT_TRAINING_COMPLETED, [])) == 6
+            # home-session CRM sync, tournament points and Telegram feedback.
+            assert len(bus._handlers.get(EVENT_TRAINING_COMPLETED, [])) == 7
             # Achievement earned → notification
             assert len(bus._handlers.get(EVENT_ACHIEVEMENT_EARNED, [])) == 1
             # Goal completed → notification
