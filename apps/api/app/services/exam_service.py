@@ -106,7 +106,19 @@ async def submit_exam(
     attempt_id: uuid.UUID, answers: list[dict], db: AsyncSession
 ) -> dict[str, Any]:
     """Grade exam and issue certificate if passed."""
-    attempt = await db.get(ExamAttempt, attempt_id)
+    # 2026-05-29 (BUG#4 fix): lock the attempt row FOR UPDATE before the
+    # status guard. Previously `db.get` issued an unlocked read, so two
+    # concurrent submits for the same attempt both saw status="in_progress",
+    # both passed the guard, and both ran _issue_certificate — which has no
+    # dedup and no unique constraint — producing duplicate certificates and
+    # duplicate "passed" Telegram notifications. With FOR UPDATE the second
+    # submit blocks until the first commits, then reads the terminal status
+    # and returns the "already finished" message.
+    attempt = (
+        await db.execute(
+            select(ExamAttempt).where(ExamAttempt.id == attempt_id).with_for_update()
+        )
+    ).scalar_one_or_none()
     if not attempt:
         return {"error": "Экзамен не найден"}
     if attempt.status != "in_progress":

@@ -1311,6 +1311,19 @@ async def _advance_round(duel_id: uuid.UUID) -> None:
         if not session or session["completed"]:
             return
         round_number = session["round"]
+        # 2026-05-29 (audit): both the round timer (_finish_round_after_timeout)
+        # and the message-limit trigger (_maybe_finish_round) can call
+        # _advance_round for the SAME round concurrently. The completed/round
+        # checks above don't stop the second caller, because this function
+        # neither increments the round nor marks "advancing" before releasing
+        # the lock for the slow judge_round LLM call — so both judged the round
+        # and emitted duplicate judge.score to players (plus double LLM cost).
+        # Claim the round here, under the lock, so the second caller bails.
+        # The flag is per-round (value == round_number), so round 1→2
+        # progression is unaffected (1 != 2 on the next advance).
+        if session.get("_advancing_round") == round_number:
+            return
+        session["_advancing_round"] = round_number
         _snap_p1 = session["player1_id"]
         _snap_p2 = session["player2_id"]
         _snap_names = dict(session.get("player_names", {}))
@@ -1791,6 +1804,17 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
             await _send_to_user(user_id, "duel.result", result_data)
 
     # ── 3.4b: Arena Points + Season Pass progression ──
+    # Idempotency note (2026-05-29 audit): award_arena_points has no per-duel
+    # key, so at-most-once is guaranteed solely by the two upstream guards in
+    # this function — the in-memory `session["completed"]` flag (set under
+    # _duel_sessions_lock at the top) and the DB `with_for_update()` status
+    # check, BOTH of which precede this block and `return` early for an
+    # already-finalized duel. A re-entry (worker restart / rolling deploy)
+    # blocks on the FOR-UPDATE row lock and then returns before reaching here,
+    # so AP cannot be double-credited. The remaining exposure is the reverse:
+    # this award runs in a SEPARATE session after the main duel commit, so a
+    # crash in this window LOSES the award (under-credit). Surface failures at
+    # WARNING — a swallowed debug log made lost awards invisible in prod.
     try:
         from app.services.arena_points import award_arena_points, AP_RATES
         from app.services.season_pass import advance_season
@@ -1816,7 +1840,7 @@ async def _finalize_duel(duel_id: uuid.UUID) -> None:
                 })
             await ap_db.commit()
     except Exception:
-        logger.debug("AP/Season award failed for duel %s", duel_id, exc_info=True)
+        logger.warning("AP/Season award failed for duel %s — award lost", duel_id, exc_info=True)
 
     # ── 3.5: Cross-module PvP notifications ──
     try:

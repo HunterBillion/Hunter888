@@ -369,6 +369,23 @@ def _filter_output(text: str, task_type: str = "default") -> tuple[str, list[str
     Delegates profanity/role-break/PII detection to content_filter.py
     (single source of truth), then applies LLM-specific length logic.
     """
+    # 2026-05-29 (BUG#1 fix — dead wiki/RAG pipeline): the content_filter
+    # guardrails below (the 2000-char length cap, the ```json / "Answer:"
+    # reasoning-leak stripper, role-break detection, and the FALLBACK_PHRASES
+    # substitution) are built for SHORT in-character roleplay replies shown to
+    # the user. They are actively destructive to structured/analytical task
+    # types (wiki ingest, judge scoring, coaching reports, narrator,
+    # anti-cheat) whose output is long-form or JSON consumed internally:
+    #   * a valid >2000-char JSON tripped `length_exceeded`, and the violation
+    #     branch then REPLACED the whole payload with a conversational filler
+    #     ("Дайте мне минуту..."), so JSON parsing always failed;
+    #   * the ```json leak-marker truncates fenced JSON to nothing.
+    # In prod this silently killed 100% of wiki/RAG ingest (168 parse-fails in
+    # 7 days, total_chunk_retrievals=0). Only `roleplay` and `default` are
+    # user-facing conversational turns; every other task type returns raw.
+    if task_type not in ("roleplay", "default"):
+        return text, []
+
     # Delegate to unified content_filter (catches profanity, role_break, pii_leak)
     filtered, violations = _cf_filter_ai_output(text)
 

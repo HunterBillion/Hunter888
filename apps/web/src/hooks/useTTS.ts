@@ -1105,18 +1105,64 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
   // successful play. When >= 3 we treat streaming as broken and surface
   // playbackError (audit Pattern 4 #10).
   const chunkFailureStreakRef = useRef(0);
+  // BUG#7 (2026-05-29): gap-skip watchdog. The backend now emits chunks on a
+  // contiguous index, so a hole should never originate server-side — but a
+  // dropped/reordered WS frame could still leave the queue waiting forever on
+  // an index that never arrives while strictly-higher chunks sit ready. If we
+  // detect that situation (a chunk past the expected index is pending but the
+  // expected one isn't), we wait GAP_SKIP_MS for the straggler, then skip it.
+  const gapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const GAP_SKIP_MS = 2500;
 
   const resetChunkQueue = useCallback(() => {
     pendingChunksRef.current.clear();
     nextExpectedIndexRef.current = 0;
     playingChunkRef.current = false;
     chunkFailureStreakRef.current = 0;
+    if (gapTimerRef.current !== null) {
+      clearTimeout(gapTimerRef.current);
+      gapTimerRef.current = null;
+    }
   }, []);
 
   const playNextChunk = useCallback(() => {
     if (playingChunkRef.current) return;
     const chunk = pendingChunksRef.current.get(nextExpectedIndexRef.current);
-    if (!chunk) return;
+    if (!chunk) {
+      // Expected index not here. If a LATER chunk has already arrived, the
+      // expected one was likely dropped — arm a one-shot skip so playback
+      // can recover instead of stalling silently.
+      const hasLaterChunk = [...pendingChunksRef.current.keys()].some(
+        (k) => k > nextExpectedIndexRef.current,
+      );
+      if (hasLaterChunk && gapTimerRef.current === null) {
+        gapTimerRef.current = setTimeout(() => {
+          gapTimerRef.current = null;
+          // Re-check: the straggler may have arrived during the wait.
+          if (
+            !playingChunkRef.current &&
+            !pendingChunksRef.current.has(nextExpectedIndexRef.current) &&
+            [...pendingChunksRef.current.keys()].some(
+              (k) => k > nextExpectedIndexRef.current,
+            )
+          ) {
+            console.warn(
+              "[TTS] gap-skip: chunk",
+              nextExpectedIndexRef.current,
+              "never arrived — skipping",
+            );
+            nextExpectedIndexRef.current += 1;
+            playNextChunk();
+          }
+        }, GAP_SKIP_MS);
+      }
+      return;
+    }
+    // Expected chunk is here — cancel any pending gap timer.
+    if (gapTimerRef.current !== null) {
+      clearTimeout(gapTimerRef.current);
+      gapTimerRef.current = null;
+    }
     pendingChunksRef.current.delete(nextExpectedIndexRef.current);
     playingChunkRef.current = true;
     const blob = new Blob(

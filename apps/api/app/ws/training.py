@@ -1193,6 +1193,23 @@ def _build_call_cognitive_cues(state: dict, session_mode: str) -> dict | None:
     return cues  # may be {} — modifier still produces working-memory line
 
 
+# 2026-05-29 (BUG#8 fix): fire-and-forget tasks created inside
+# _generate_character_reply (e.g. the auto-end-after-AI-farewell timer) must
+# keep a live reference. CPython holds only a WEAK reference to a running task,
+# so an unstored `asyncio.create_task(...)` can be garbage-collected mid-`await`
+# — the farewell auto-end would then never fire, the session never finalizes
+# (no follow-up / CRM / XP), and the UI hangs waiting for session.ended. We keep
+# a strong reference in this module-level set and discard it on completion.
+_DETACHED_REPLY_TASKS: set[asyncio.Task] = set()
+
+
+def _track_detached_task(task: asyncio.Task) -> asyncio.Task:
+    """Hold a strong reference to a fire-and-forget task until it completes."""
+    _DETACHED_REPLY_TASKS.add(task)
+    task.add_done_callback(_DETACHED_REPLY_TASKS.discard)
+    return task
+
+
 async def _generate_character_reply(
     ws: WebSocket,
     session_id: uuid.UUID,
@@ -1729,7 +1746,9 @@ async def _generate_character_reply(
             _tts_sentence_buffer = ""      # accumulates clean text for TTS
             _tts_sent_indices: list[int] = []  # sentence indices dispatched
             _tts_tasks: dict[int, asyncio.Task] = {}  # idx -> TTS task
-            _tts_next_to_send = 0
+            _tts_next_to_send = 0          # input cursor over _tts_tasks
+            _tts_emit_idx = 0              # contiguous output index sent to FE
+            _tts_buffered: dict | None = None  # one-chunk lookahead (see flush)
             _tts_disabled_due_to_error = False
             _start_stream = time.monotonic()
 
@@ -1737,9 +1756,25 @@ async def _generate_character_reply(
             import re as _re_stream
             _STAGE_DIR_RE = _re_stream.compile(r"\[[^\]]*\]|\*[^*]*\*")
 
-            async def _flush_ordered_tts_chunks(*, last_idx: int | None = None) -> None:
-                """Send any completed TTS tasks in order, non-blocking for pending ones."""
-                nonlocal _tts_next_to_send, _tts_disabled_due_to_error
+            async def _flush_ordered_tts_chunks(*, final: bool = False) -> None:
+                """Send completed TTS tasks in order; non-blocking for pending ones.
+
+                2026-05-29 (BUG#7 + BUG#10): the previous version used the raw
+                input cursor as the FE `sentence_index` and set
+                is_last == (cursor == last_idx). When a sentence's synth failed
+                or returned empty audio, two things broke:
+                  - BUG#7: the emitted index sequence had a hole (the FE drains
+                    strictly on its expected index and stalled forever); and
+                  - BUG#10: if the LAST sentence failed, no emitted chunk ever
+                    carried is_last=True so the FE queue never reset.
+                Fix: emit on a CONTIGUOUS counter (`_tts_emit_idx`) so failed
+                sentences never leave a hole, and hold the most-recent chunk in
+                a one-chunk lookahead buffer (`_tts_buffered`). The chunk still
+                buffered on the `final` flush is the genuine last audio chunk
+                and is the only one marked is_last=True.
+                """
+                nonlocal _tts_next_to_send, _tts_emit_idx, _tts_buffered
+                nonlocal _tts_disabled_due_to_error
                 while _tts_next_to_send in _tts_tasks:
                     task = _tts_tasks[_tts_next_to_send]
                     if not task.done():
@@ -1749,6 +1784,18 @@ async def _generate_character_reply(
                     except TTSQuotaExhausted:
                         _tts_disabled_due_to_error = True
                         await _send(ws, "tts.fallback", {"reason": "quota_exhausted"})
+                        _tts_next_to_send += 1
+                        continue
+                    except asyncio.CancelledError:
+                        # Tail-timeout cancelled this sentence's task. It's a
+                        # dropped sentence, not cancellation of THIS coroutine —
+                        # skip its (non-existent) audio and keep the FE index
+                        # contiguous. (Catching another task's CancelledError is
+                        # safe; it does not suppress our own cancellation.)
+                        logger.warning(
+                            "Stream TTS task %d cancelled (tail timeout, sentence dropped), session=%s",
+                            _tts_next_to_send, session_id,
+                        )
                         _tts_next_to_send += 1
                         continue
                     except Exception as _tts_err:
@@ -1764,15 +1811,25 @@ async def _generate_character_reply(
                         _tts_next_to_send += 1
                         continue
                     if result and result.get("audio"):
-                        is_last = (last_idx is not None and _tts_next_to_send == last_idx)
-                        await _send(ws, "tts.audio_chunk", {
+                        _payload = {
                             "audio_b64": result["audio"],
                             "format": result.get("format", "mp3"),
-                            "sentence_index": _tts_next_to_send,
-                            "is_last": is_last,
+                            "sentence_index": _tts_emit_idx,
+                            "is_last": False,
                             "text": result.get("text", ""),
-                        })
+                        }
+                        _tts_emit_idx += 1
+                        # Release the previously-held chunk (it's not last).
+                        if _tts_buffered is not None:
+                            await _send(ws, "tts.audio_chunk", _tts_buffered)
+                        _tts_buffered = _payload
                     _tts_next_to_send += 1
+                # On the terminal flush, whatever is still buffered is the
+                # genuine last audio chunk — emit it marked is_last=True.
+                if final and _tts_buffered is not None:
+                    _tts_buffered["is_last"] = True
+                    await _send(ws, "tts.audio_chunk", _tts_buffered)
+                    _tts_buffered = None
 
             async def _synth_for_stream(_text: str, _idx: int) -> dict | None:
                 """Synthesize one sentence for streaming TTS. Returns dict with `audio` or None.
@@ -1964,7 +2021,6 @@ async def _generate_character_reply(
             # Wait for all TTS tasks to finish, emitting in-order as they complete.
             # Hard timeout prevents hanging the session if TTS provider is slow.
             if _stream_tts_used:
-                _last_idx = len(_tts_sent_indices) - 1 if _tts_sent_indices else None
                 if _tts_tasks:
                     pending = [t for t in _tts_tasks.values() if not t.done()]
                     if pending:
@@ -1991,7 +2047,7 @@ async def _generate_character_reply(
                                 )
                             except asyncio.TimeoutError:
                                 pass
-                await _flush_ordered_tts_chunks(last_idx=_last_idx)
+                await _flush_ordered_tts_chunks(final=True)
 
             _stream_latency = int((time.monotonic() - _start_stream) * 1000)
             if _streamed_text.strip():
@@ -2697,7 +2753,7 @@ async def _generate_character_reply(
                 state["_should_stop"] = True
             except Exception:
                 logger.exception("auto session.end after AI farewell failed (session=%s)", session_id)
-        asyncio.create_task(_auto_end_after_ai_farewell())
+        _track_detached_task(asyncio.create_task(_auto_end_after_ai_farewell()))
 
     # Check for fake transition prompt and inject into NEXT LLM call
     try:
@@ -2944,26 +3000,58 @@ async def _generate_character_reply(
                     asyncio.create_task(_synth_sentence(s, i))
                     for i, s in enumerate(_merged)
                 ]
-                # Send audio chunks as they complete, but IN ORDER
+                # Send audio chunks as they complete, but IN ORDER.
+                #
+                # 2026-05-29 (BUG#10 + BUG#7 fix): the old loop set
+                #   is_last = (idx == len(_merged) - 1)
+                # and used the raw sentence index as `sentence_index`. Two
+                # failure modes followed when synth returned None for a sentence:
+                #   (a) BUG#10 — if the LAST sentence failed, no emitted chunk
+                #       ever carried is_last=True, so the FE queue never reset
+                #       its expected-index for the next turn.
+                #   (b) BUG#7  — if a MIDDLE sentence failed, the emitted
+                #       sentence_index sequence had a hole (0,2,3). The FE
+                #       drains strictly in order on `nextExpectedIndex`, so it
+                #       stalled forever waiting for the missing index.
+                #
+                # Fix: (1) a contiguous emit counter (`_emit_idx`) so the FE
+                # never sees a gap regardless of which sentences failed; and
+                # (2) a one-chunk lookahead buffer (`_buffered`) — we hold the
+                # most recent audio chunk and only flush it once we know whether
+                # another follows. The chunk still buffered when the stream ends
+                # is the genuine last audio chunk and is the ONLY one marked
+                # is_last=True. Cost: the final chunk is held until the next is
+                # ready (or all synth completes) — negligible.
                 _results: dict[int, dict | None] = {}
                 _next_to_send = 0
+                _emit_idx = 0
+                _buffered: dict | None = None
                 _sent_any = False
                 for coro in asyncio.as_completed(_tasks):
                     idx, result = await coro
                     _results[idx] = result
-                    # Send any consecutive ready chunks
+                    # Flush any consecutive ready chunks (through the buffer).
                     while _next_to_send in _results:
                         _r = _results[_next_to_send]
                         if _r and _r.get("audio"):
-                            await _send(ws, "tts.audio_chunk", {
+                            _payload = {
                                 "audio_b64": _r["audio"],
                                 "format": _r.get("format", "mp3"),
-                                "sentence_index": _next_to_send,
-                                "is_last": _next_to_send == len(_merged) - 1,
+                                "sentence_index": _emit_idx,
+                                "is_last": False,
                                 "text": _merged[_next_to_send],
-                            })
+                            }
+                            _emit_idx += 1
+                            # Release the previously-held chunk (it's not last).
+                            if _buffered is not None:
+                                await _send(ws, "tts.audio_chunk", _buffered)
+                            _buffered = _payload
                             _sent_any = True
                         _next_to_send += 1
+                # Whatever is still buffered is the genuine last audio chunk.
+                if _buffered is not None:
+                    _buffered["is_last"] = True
+                    await _send(ws, "tts.audio_chunk", _buffered)
                 if not _sent_any:
                     # None of the N sentences produced audio — nothing reached UI.
                     logger.warning(
@@ -3298,15 +3386,38 @@ async def _silence_watchdog(
             _silence_count = state.get("_silence_count", 0)
             phrase = _pick_silence_phrase(str(_cur_emotion), _silence_count)
             state["_silence_count"] = _silence_count + 1
-            # Send both silence.warning (for UI indicator) and character.response (for chat)
+            # Send silence.warning (UI indicator) immediately.
             await _send(ws, "silence.warning", {
                 "content": phrase,
                 "seconds_silent": int(elapsed),
             })
+            # 2026-05-29 (BUG#5 fix): persist the silence prompt FIRST so we can
+            # attach its DB sequence_number to the character.response, exactly
+            # like the main reply path (see ~line 2840). Previously this prompt
+            # was sent without a sequence_number, so the frontend's
+            # sortMessagesBySequence fell back to `?? 0` and the bubble jumped to
+            # the wrong slot in the chat — the same regression the main path was
+            # fixed for. Also keep state["message_count"] in step with the DB.
+            async with async_session() as db:
+                _saved_msg = await add_message(
+                    session_id=session_id,
+                    role=MessageRole.assistant,
+                    content=phrase,
+                    db=db,
+                    emotion_state="cold",
+                )
+                await db.commit()
+                _silence_seq = _saved_msg.sequence_number
+            if state_lock:
+                async with state_lock:
+                    state["message_count"] = _silence_seq
+            else:
+                state["message_count"] = _silence_seq
             await _send(ws, "character.response", {
                 "content": phrase,
                 "emotion": str(_cur_emotion),
                 "is_silence_prompt": True,
+                "sequence_number": _silence_seq,
             })
             # TTS for silence prompt
             if is_tts_available():
@@ -3323,16 +3434,6 @@ async def _silence_watchdog(
                         })
                 except TTSError as e:
                     logger.debug("TTS failed for hangup phrase, session %s: %s", session_id, e)
-            # Save as assistant message
-            async with async_session() as db:
-                await add_message(
-                    session_id=session_id,
-                    role=MessageRole.assistant,
-                    content=phrase,
-                    db=db,
-                    emotion_state="cold",
-                )
-                await db.commit()
             warned = True
 
         elif elapsed < SILENCE_WARNING_SEC:
@@ -6683,7 +6784,10 @@ async def _handle_session_end(
                         await wiki_ingest(session_id, wiki_db)
                 except Exception as _we:
                     logger.debug("Wiki ingest failed for session %s: %s", session_id, _we)
-            asyncio.create_task(_wiki_ingest_task())
+            # 2026-05-29 (BUG#8): same GC-safety as the farewell task — without a
+            # strong ref this fire-and-forget wiki ingest can be collected before
+            # it runs, silently skipping RAG ingest for the session.
+            _track_detached_task(asyncio.create_task(_wiki_ingest_task()))
     except Exception:
         logger.debug("Failed to schedule wiki ingest for session %s", session_id)
 

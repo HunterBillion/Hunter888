@@ -426,9 +426,17 @@ export default function TrainingSessionPage() {
 
         case "character.response": {
           s.setIsTyping(false);
+          // 2026-05-29 (BUG#2 fix): read messages LIVE from the store, not from
+          // the render-time `s` snapshot. This onMessage closure is stored in a
+          // ref and invoked for every WS event; during a burst (character.response
+          // + tts.audio_chunk + message.replay in one tick) the closed-over
+          // `s.messages` is stale across invocations, so dedup/streaming-search
+          // decisions ran on an out-of-date array → duplicate bubbles. Actions
+          // (s.addMessage etc.) are stable Zustand refs and stay on `s`.
+          const liveMessages = useSessionStore.getState().messages;
           // Deduplicate by sequence_number (may overlap with message.replay)
           const seq = data.data?.sequence_number as number | undefined;
-          if (seq != null && s.messages.some(m => m.sequenceNumber === seq)) break;
+          if (seq != null && liveMessages.some(m => m.sequenceNumber === seq)) break;
           const rawContent = (data.data?.content as string) || "";
           const content = stripStageDirections(rawContent);
           // 2026-04-18: dup-fix. Previous logic finalized only if the IMMEDIATELY
@@ -440,7 +448,7 @@ export default function TrainingSessionPage() {
           //   2. If found — finalize it with the full content.
           //   3. If not found but same content already exists in last 5 — no-op.
           //   4. Otherwise — add as new message.
-          const recentMsgs = s.messages.slice(-5);
+          const recentMsgs = liveMessages.slice(-5);
           const streamingAssistant = [...recentMsgs].reverse()
             .find((m) => m.role === "assistant" && m.isStreaming);
           // Fuzzy match: any recent assistant msg whose content contains or
@@ -509,7 +517,9 @@ export default function TrainingSessionPage() {
           //           → final msg exists; chunks' text is SUBSTRING of final
           //           → we must SKIP chunks (don't create dup streaming bubble)
           if (chunkText) {
-            const recent = s.messages.slice(-5);
+            // 2026-05-29 (BUG#2 fix): live store read, not the stale `s` snapshot.
+            const liveMessages = useSessionStore.getState().messages;
+            const recent = liveMessages.slice(-5);
             const trimmedChunk = chunkText.trim();
             // Case B: chunk text already present inside a recent assistant msg → skip
             const alreadyPresent = recent.some(
@@ -530,7 +540,7 @@ export default function TrainingSessionPage() {
                 // assistant bubbles after user messages. If the most recent
                 // message is from the user, this chunk is a straggler from the
                 // previous AI turn — drop it (audio still plays via queue below).
-                const lastMsg = s.messages[s.messages.length - 1];
+                const lastMsg = liveMessages[liveMessages.length - 1];
                 const isLateChunk = lastMsg && lastMsg.role === "user";
                 if (!isLateChunk) {
                   s.addMessage({
@@ -1115,8 +1125,11 @@ export default function TrainingSessionPage() {
 
         case "message.replay": {
           // Add replayed message if not already in store (dedupe by sequence_number)
+          // 2026-05-29 (BUG#2 fix): replays arrive as a rapid burst on reconnect —
+          // read LIVE store state so each dedup check sees prior replays in the
+          // same tick, not the stale render-time snapshot.
           const seq = data.data.sequence_number as number | undefined;
-          const alreadyExists = seq != null && s.messages.some((m) => m.sequenceNumber === seq);
+          const alreadyExists = seq != null && useSessionStore.getState().messages.some((m) => m.sequenceNumber === seq);
           if (!alreadyExists) {
             s.addMessage({
               id: s.nextMsgId(),
