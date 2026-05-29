@@ -345,6 +345,26 @@ async def ingest_session(session_id: uuid.UUID, db: AsyncSession) -> dict:
         logger.info("Wiki ingest: no messages for session %s, skipping", session_id)
         return {"status": "skipped", "reason": "no_messages"}
 
+    # 2a. Skip trivially-empty sessions before creating a wiki or spending an
+    # LLM call. Abandoned calls ("Алло, да?" / "Слушаю вас." — the trainee
+    # picked up, said a greeting, and the session ended) carry no coaching
+    # signal. Asked to summarise them the local model drifts out of JSON and
+    # just echoes the greeting, producing a noisy "parse_failed (len=9..13)"
+    # WARNING for a session that genuinely has nothing to ingest. The threshold
+    # sits far below any real exchange (a single substantive turn already
+    # exceeds it), so this cannot skip a legitimate session.
+    _MIN_INGEST_CHARS = 80
+    _dialogue_chars = sum(len((m.content or "").strip()) for m in messages)
+    if _dialogue_chars < _MIN_INGEST_CHARS:
+        logger.info(
+            "Wiki ingest: session %s has insufficient content "
+            "(%d chars across %d messages), skipping",
+            session_id,
+            _dialogue_chars,
+            len(messages),
+        )
+        return {"status": "skipped", "reason": "insufficient_content"}
+
     # 3. Get or create wiki
     wiki = await _get_or_create_wiki(session.user_id, db)
 
