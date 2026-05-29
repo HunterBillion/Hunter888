@@ -113,11 +113,19 @@ async def _llm_structured_json(
     user_prompt: str,
     user_id: str,
     required_fields: list[str] | None = None,
+    max_tokens: int = 4096,
 ) -> tuple[dict | None, int, str | None]:
     """Call LLM expecting JSON; retry once with stricter instruction on failure.
 
     Returns: (parsed_dict_or_None, tokens_used, error_msg_or_None).
     If required_fields provided, dict is only accepted if all keys present.
+
+    ``max_tokens`` is forwarded explicitly to the wire. Without it, the LLM
+    layer applies a hardcoded 800-token default for ``task_type="structured"``
+    (the computed ``_default_max_tokens`` is logging-only and never reaches the
+    wire), which truncates long session-summary JSON mid-object and makes it
+    unparseable. Wiki-ingest summaries routinely exceed 800 tokens, so we lift
+    the cap to a value that still completes within ``llm_timeout_seconds``.
     """
     from app.services.llm import generate_response
 
@@ -143,6 +151,7 @@ async def _llm_structured_json(
                 user_id=user_id,
                 task_type="structured",
                 prefer_provider="local",
+                max_tokens=max_tokens,
             )
             tokens_total += (resp.input_tokens or 0) + (resp.output_tokens or 0)
             parsed = _parse_json_safe(resp.content)
