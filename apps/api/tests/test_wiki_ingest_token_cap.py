@@ -106,3 +106,101 @@ def test_synthesis_call_sites_pass_max_tokens():
         f"generate_response at line(s) {offenders} in wiki_synthesis_service "
         f"lack an explicit max_tokens — risks 800-token truncation (BUG#11)."
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Residual class: abandoned "Алло, да?" calls — skip before the LLM call.
+#
+# After the token-cap fix the only remaining wiki parse_failed in prod were
+# tiny greeting echoes (len=9..13) from near-empty sessions. ingest_session now
+# short-circuits those before creating a wiki or calling the LLM, so they no
+# longer produce noisy WARNING logs.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class _FakeMsg:
+    def __init__(self, content: str):
+        self.content = content
+
+
+class _FakeScalars:
+    def __init__(self, items):
+        self._items = items
+
+    def all(self):
+        return self._items
+
+
+class _FakeResult:
+    def __init__(self, items):
+        self._items = items
+
+    def scalars(self):
+        return _FakeScalars(self._items)
+
+
+class _FakeSession:
+    user_id = "u-abandoned"
+    custom_params = {}
+    score_total = None
+    duration_seconds = 3
+
+
+def _make_db(messages):
+    """AsyncMock db whose .get returns a session and .execute returns messages."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    db = MagicMock()
+    db.get = AsyncMock(return_value=_FakeSession())
+    db.execute = AsyncMock(return_value=_FakeResult(messages))
+    return db
+
+
+@pytest.mark.asyncio
+async def test_abandoned_call_skipped_without_llm():
+    """A near-empty transcript is skipped before any LLM call."""
+    import uuid
+
+    from app.services import wiki_ingest_service
+
+    db = _make_db([_FakeMsg("Алло, да?"), _FakeMsg("Слушаю вас.")])
+
+    # If the guard fails, _get_or_create_wiki / generate_response would run and
+    # blow up against the MagicMock db — patch them so a regression is a clean
+    # assertion failure, not a noisy traceback.
+    with patch.object(
+        wiki_ingest_service, "_get_or_create_wiki", new=AsyncMock()
+    ) as woc, patch(
+        "app.services.llm.generate_response", new=AsyncMock()
+    ) as gr:
+        result = await wiki_ingest_service.ingest_session(uuid.uuid4(), db)
+
+    assert result == {"status": "skipped", "reason": "insufficient_content"}, result
+    woc.assert_not_called()  # no wiki created for an empty session
+    gr.assert_not_called()  # no LLM spent on a greeting-only call
+
+
+@pytest.mark.asyncio
+async def test_substantive_session_passes_guard():
+    """A real exchange clears the threshold and proceeds past the guard."""
+    import uuid
+
+    from app.services import wiki_ingest_service
+
+    long_turn = (
+        "Здравствуйте, меня зовут Дмитрий, я звоню по поводу процедуры "
+        "банкротства физических лиц, у вас есть пара минут обсудить вашу "
+        "ситуацию с задолженностью?"
+    )
+    db = _make_db([_FakeMsg(long_turn), _FakeMsg("Да, конечно, слушаю.")])
+
+    # Stop execution right after the guard: _get_or_create_wiki raises a marker
+    # so we prove the guard let us through without standing up the whole path.
+    class _Pass(Exception):
+        pass
+
+    with patch.object(
+        wiki_ingest_service, "_get_or_create_wiki", new=AsyncMock(side_effect=_Pass)
+    ):
+        with pytest.raises(_Pass):
+            await wiki_ingest_service.ingest_session(uuid.uuid4(), db)
