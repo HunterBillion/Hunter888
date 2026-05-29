@@ -176,6 +176,10 @@ async def _daily_synthesis_for_manager(
             user_id=f"wiki:daily:{wiki.manager_id}",
             task_type="structured",
             prefer_provider="local",
+            # Without an explicit cap the wire applies a hardcoded 800-token
+            # default for structured tasks, truncating long analysis JSON into
+            # unparseable form (see wiki_ingest_service._llm_structured_json).
+            max_tokens=4096,
         )
         analysis = _parse_json_safe(resp.content)
         log.tokens_used = (resp.input_tokens or 0) + (resp.output_tokens or 0)
@@ -340,6 +344,10 @@ async def _weekly_synthesis_for_manager(
             user_id=f"wiki:weekly:{wiki.manager_id}",
             task_type="structured",
             prefer_provider="local",
+            # Without an explicit cap the wire applies a hardcoded 800-token
+            # default for structured tasks, truncating long analysis JSON into
+            # unparseable form (see wiki_ingest_service._llm_structured_json).
+            max_tokens=4096,
         )
         analysis = _parse_json_safe(resp.content)
         log.tokens_used = (resp.input_tokens or 0) + (resp.output_tokens or 0)
