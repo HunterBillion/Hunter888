@@ -372,12 +372,16 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     messages: s.messages.map((m) => m.id === id ? { ...m, pinned: !m.pinned } : m),
   })),
   appendToLastAssistantMessage: (text) => set((s) => {
-    // 2026-04-18 dup-fix: find the most recent streaming assistant in the last
-    // 8 messages. Previously only checked [length-1], which broke streaming
-    // when a user reply was interleaved with TTS audio chunks.
+    // 2026-04-18 dup-fix: find the most recent streaming assistant message.
+    // Previously only checked [length-1], which broke streaming when a user
+    // reply was interleaved with TTS audio chunks.
+    // 2026-05-29 (BUG#6): scan ALL messages, not just the last 8. There is
+    // only ever one streaming assistant bubble at a time; if enough events
+    // (whispers, trap hints, late TTS chunks) landed after it, the last-8
+    // window missed it and the chunk text was silently dropped. The list is
+    // capped at 500, so a full reverse scan is negligible.
     const msgs = [...s.messages];
-    const searchFrom = Math.max(0, msgs.length - 8);
-    for (let i = msgs.length - 1; i >= searchFrom; i--) {
+    for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i];
       if (m.role === "assistant" && m.isStreaming) {
         msgs[i] = { ...m, content: m.content + text };
@@ -387,14 +391,16 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     return s;
   }),
   finalizeStreamingMessage: (fullContent, emotion, seq) => set((s) => {
-    // 2026-04-18 dup-fix: scan the last 8 messages for a streaming assistant
-    // message (not just the very last). User replies or trap hints could
-    // land between streaming chunks and the final character.response event
-    // — previous "last-only" check missed them and the message stayed
-    // frozen as isStreaming:true, causing a duplicate bubble later.
+    // 2026-04-18 dup-fix: scan for a streaming assistant message (not just the
+    // very last). User replies or trap hints could land between streaming
+    // chunks and the final character.response event — previous "last-only"
+    // check missed them and the message stayed frozen as isStreaming:true,
+    // causing a duplicate bubble later.
+    // 2026-05-29 (BUG#6): scan ALL messages, not just the last 8 — same
+    // root cause as appendToLastAssistantMessage above. A stuck
+    // isStreaming:true bubble beyond the window produced a duplicate reply.
     const msgs = [...s.messages];
-    const searchFrom = Math.max(0, msgs.length - 8);
-    for (let i = msgs.length - 1; i >= searchFrom; i--) {
+    for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i];
       if (m.role === "assistant" && m.isStreaming) {
         msgs[i] = {

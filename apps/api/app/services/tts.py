@@ -73,7 +73,7 @@ _FACTOR_HESITATIONS = {
     "fatigue": ["*вздох*", "...", "..."],
     "anxiety": ["...", "*вдох*"],
     "anger": [],  # anger doesn't hesitate — it accelerates
-    "sarcasm": ["...", "хм..."],  # "хм" is paralinguistic, kept; "ну-у" dropped
+    "sarcasm": ["...", "..."],  # 2026-05-28: removed "хм" — sanitizer strips it, causing mismatch
 }
 
 _FACTOR_BREATHING = {
@@ -164,11 +164,7 @@ class TTSResult:
 
 
 @dataclass
-class CoupleUtterance:
-    """Single utterance in couple mode."""
-    speaker: str  # "A" | "B" | "AB"
-    text: str
-    whisper: bool = False
+# CoupleUtterance removed (2026-05-28) — couple mode unused
 
 
 class TTSError(Exception):
@@ -267,7 +263,7 @@ _ARCHETYPE_VOICE_TYPE: dict[str, str] = {
     "skeptic": "firm", "anxious": "soft", "aggressive": "aggressive",
     "passive": "soft", "paranoid": "firm", "manipulator": "warm",
     "desperate": "soft", "know_it_all": "firm", "sarcastic": "neutral",
-    "hostile": "aggressive", "couple": "mixed", "blamer": "aggressive",
+    "hostile": "aggressive", "blamer": "aggressive",
     "delegator": "neutral", "returner": "neutral", "pragmatic": "firm",
     "negotiator": "warm", "ashamed": "soft", "shopper": "firm",
     "rushed": "firm", "grateful": "warm", "avoidant": "neutral",
@@ -1018,29 +1014,8 @@ def inject_pauses(text: str, emotion: str, active_factors: list[HumanFactor] | N
 
 
 # =============================================================================
-# Couple mode — [A]/[B] parsing with per-speaker factors
-# =============================================================================
+# Couple mode code removed (2026-05-28) — feature unused, no backend caller
 
-_COUPLE_PATTERN = re.compile(
-    r'\[(A|B|AB)(?:\s+шёпот)?\]\s*(.+?)(?=\[(?:A|B|AB)|$)',
-    re.DOTALL,
-)
-
-
-def parse_couple_response(text: str) -> list[CoupleUtterance]:
-    """Parse LLM couple-mode response into individual utterances."""
-    if not re.search(r'\[(A|B|AB)', text):
-        return [CoupleUtterance(speaker="A", text=text.strip())]
-
-    utterances = []
-    for match in re.finditer(r'\[(A|B|AB)(\s+шёпот)?\]\s*(.+?)(?=\[(?:A|B|AB)|$)', text, re.DOTALL):
-        speaker = match.group(1)
-        whisper = bool(match.group(2))
-        utt_text = match.group(3).strip()
-        if utt_text:
-            utterances.append(CoupleUtterance(speaker=speaker, text=utt_text, whisper=whisper))
-
-    return utterances or [CoupleUtterance(speaker="A", text=text.strip())]
 
 
 # =============================================================================
@@ -1098,14 +1073,29 @@ def _is_configured() -> bool:
     )
 
 
-async def _synthesize_navy(text: str, voice: str | None = None, speed: float = 1.0) -> bytes:
-    """Fallback TTS via navy.api OpenAI-compatible endpoint.
+async def _synthesize_navy(
+    text: str,
+    voice: str | None = None,
+    speed: float = 1.0,
+    voice_settings: dict | None = None,
+) -> bytes:
+    """TTS via navy.api OpenAI-compatible endpoint (proxies ElevenLabs).
 
-    Called when ElevenLabs is unavailable. Returns raw mp3 audio bytes.
+    Returns raw mp3 audio bytes.
     Raises TTSError on failure — caller should fall back to browser Web Speech.
+
+    2026-05-28: accepts voice_settings dict for ElevenLabs models.
+    Navy.api forwards stability/similarity_boost/style when model is eleven_*.
     """
     if not (settings.navy_tts_enabled and settings.local_llm_url and settings.local_llm_api_key):
         raise TTSError("Navy TTS not configured")
+
+    # Strip SSML tags — Navy OpenAI-compat endpoint does not support SSML.
+    # Without this, <break time="500ms"/> is spoken as literal text.
+    text = re.sub(r"<[^>]+>", "", text)
+    text = text.strip()
+    if not text:
+        raise TTSError("Empty text after SSML strip")
 
     # Ensure /v1/ prefix for OpenAI-compat endpoint
     _tts_base = settings.local_llm_url.rstrip("/")
@@ -1119,6 +1109,9 @@ async def _synthesize_navy(text: str, voice: str | None = None, speed: float = 1
         "speed": max(0.25, min(4.0, speed)),
         "response_format": "mp3",
     }
+    # Pass voice_settings for ElevenLabs models (eleven_turbo_v2_5, eleven_v3)
+    if voice_settings and settings.navy_tts_model.startswith("eleven"):
+        payload["voice_settings"] = voice_settings
     headers = {
         "Authorization": f"Bearer {settings.local_llm_api_key}",
         "Content-Type": "application/json",
@@ -1207,7 +1200,16 @@ async def synthesize_speech(
             # voice_ids in the `voice` field directly when model is an
             # eleven_* model.
             _navy_voice = voice_id if voice_id else settings.navy_tts_voice
-            audio_bytes = await _synthesize_navy(text, voice=_navy_voice, speed=speed)
+            # 2026-05-28: forward voice_settings so emotion modulation
+            # actually reaches ElevenLabs through Navy proxy.
+            _vs = None
+            if voice_params and settings.navy_tts_model.startswith("eleven"):
+                _vs = {
+                    "stability": voice_params.stability,
+                    "similarity_boost": voice_params.similarity_boost,
+                    "style": voice_params.style,
+                }
+            audio_bytes = await _synthesize_navy(text, voice=_navy_voice, speed=speed, voice_settings=_vs)
             latency_ms = int((time.monotonic() - start_ts) * 1000)
             return TTSResult(
                 audio_bytes=audio_bytes,
@@ -1299,7 +1301,14 @@ async def synthesize_speech(
             return None
         try:
             logger.warning("ElevenLabs fallback → navy TTS (%s)", reason)
-            return await _synthesize_navy(text, speed=speed)
+            _fb_vs = None
+            if voice_params and settings.navy_tts_model.startswith("eleven"):
+                _fb_vs = {
+                    "stability": voice_params.stability,
+                    "similarity_boost": voice_params.similarity_boost,
+                    "style": voice_params.style,
+                }
+            return await _synthesize_navy(text, voice=voice_id, speed=speed, voice_settings=_fb_vs)
         except TTSError as e:
             logger.error("Navy TTS fallback also failed: %s", e)
             return None
@@ -1494,100 +1503,7 @@ async def get_tts_audio_b64(
         return None
 
 
-async def get_tts_couple_audio(
-    text: str,
-    session_id: str,
-    emotion_a: str = "cold",
-    emotion_b: str = "cold",
-    factors_a: list[dict] | None = None,
-    factors_b: list[dict] | None = None,
-    pad_a: dict | None = None,
-    pad_b: dict | None = None,
-    client_story_id: str | None = None,
-) -> dict[str, Any] | None:
-    """Couple mode: synthesize [A]/[B] utterances with two voices + per-speaker factors.
-
-    Returns dict with keys: couple_mode, utterances[], partner_a_emotion, partner_b_emotion.
-    """
-    if not _is_configured():
-        return None
-
-    hf_a = [HumanFactor.from_dict(f) for f in (factors_a or [])]
-    hf_b = [HumanFactor.from_dict(f) for f in (factors_b or [])]
-    pad_state_a = PADState.from_dict(pad_a)
-    pad_state_b = PADState.from_dict(pad_b)
-
-    utterances = parse_couple_response(text)
-    results = []
-
-    # Get voice assignment for couple
-    couple_config = None
-    if client_story_id:
-        story_cache = _story_voice_cache.get(str(client_story_id), {})
-        couple_config = story_cache.get("couple_voice_config")
-
-    for utt in utterances:
-        is_a = utt.speaker in ("A", "AB")
-        emotion = emotion_a if is_a else emotion_b
-        factors = hf_a if is_a else hf_b
-        pad_st = pad_state_a if is_a else pad_state_b
-
-        # Determine voice_id per speaker
-        voice_id = get_session_voice(session_id)
-        if couple_config:
-            speaker_key = "partner_a" if is_a else "partner_b"
-            voice_id = couple_config.get(speaker_key, {}).get("voice_id", voice_id)
-
-        if not voice_id:
-            continue
-
-        assignment = get_session_assignment(session_id)
-        if not assignment:
-            continue
-
-        base = {
-            "stability": assignment.get("base_stability", 0.5),
-            "similarity_boost": assignment.get("base_similarity_boost", 0.75),
-            "style": assignment.get("base_style", 0.3),
-            "speed": assignment.get("base_speed", 1.0),
-        }
-
-        # Pipeline per speaker
-        after_emotion = calculate_voice_params(base, emotion)
-        after_factors = modulate_by_human_factors(after_emotion, factors, pad_st)
-        params = _clamp_params(after_factors)
-
-        processed = inject_hesitations(utt.text, factors, pad_st)
-        processed = inject_pauses(processed, emotion, factors)
-
-        try:
-            result = await synthesize_speech(
-                processed, voice_id, voice_params=params, emotion=emotion,
-                active_factors=factors,
-            )
-            results.append({
-                "speaker": utt.speaker,
-                "audio": base64.b64encode(result.audio_bytes).decode("ascii"),
-                "format": result.format,
-                "duration_ms": result.duration_estimate_ms,
-                "emotion": emotion,
-                "whisper": utt.whisper,
-                "voice_params": params.to_dict(),
-                "active_factors": [f.factor for f in factors],
-            })
-        except TTSError:
-            continue
-
-    if not results:
-        return None
-
-    return {
-        "couple_mode": True,
-        "utterances": results,
-        "partner_a_emotion": emotion_a,
-        "partner_b_emotion": emotion_b,
-        "pause_between_ms": 300,
-    }
+# get_tts_couple_audio removed (2026-05-28) — couple mode unused
 
 
 # =============================================================================

@@ -24,6 +24,7 @@ import {
   Share2,
   RotateCcw,
   Sparkles,
+  Award,
 } from "lucide-react";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import Link from "next/link";
@@ -37,11 +38,12 @@ import { ScenarioCatalogCard } from "@/components/training/ScenarioCatalogCard";
 import { PixelInfoButton } from "@/components/ui/PixelInfoButton";
 import type { Scenario } from "@/types";
 import { Skeleton } from "@/components/ui/Skeleton";
+import ExamsTab from "@/components/training/ExamsTab";
 
 // 2026-04-18: вкладка "Рекомендуемые" убрана из /training — она сбивала
 // пользователя с главного flow. Из /home кнопка "Рекомендуемые" теперь
 // ведёт в /training?tab=scenarios (та же логика подбора работает там же).
-type Tab = "scenarios" | "assigned" | "builder" | "saved";
+type Tab = "scenarios" | "assigned" | "builder" | "saved" | "exams";
 
 type PixelFace = "mask" | "check" | "gear" | "briefcase";
 
@@ -58,10 +60,11 @@ const TABS: {
   emoji: string;
   hue: string;
 }[] = [
-  { id: "scenarios", label: "Сценарии",   icon: BookOpen,       pixelFace: "mask",      emoji: "🎭", hue: "var(--accent)" },
-  { id: "assigned",  label: "Назначенные", icon: ClipboardList,  pixelFace: "check",     emoji: "📋", hue: "var(--warning)" },
-  { id: "builder",   label: "Конструктор", icon: Puzzle,         pixelFace: "gear",      emoji: "🧩", hue: "var(--success)" },
-  { id: "saved",     label: "Мои клиенты", icon: Users,          pixelFace: "briefcase", emoji: "👥", hue: "var(--info)" },
+  { id: "scenarios", label: "Сценарии",   icon: BookOpen,       pixelFace: "mask",      emoji: "🎯", hue: "var(--accent)" },
+  { id: "assigned",  label: "Назначенные", icon: ClipboardList,  pixelFace: "check",     emoji: "📌", hue: "var(--warning)" },
+  { id: "builder",   label: "Конструктор", icon: Puzzle,         pixelFace: "gear",      emoji: "⚡", hue: "var(--success)" },
+  { id: "saved",     label: "Мои клиенты", icon: Users,          pixelFace: "briefcase", emoji: "💼", hue: "var(--info)" },
+  { id: "exams",     label: "Экзамены",    icon: Award,          pixelFace: "check",     emoji: "📝", hue: "var(--warning)" },
 ];
 
 const TYPE_FILTERS = [
@@ -393,6 +396,12 @@ function TrainingPageContent() {
             {tab === "saved" && (
               <motion.div key="saved" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
                 <SavedTab storyCalls={storyCalls} />
+              </motion.div>
+            )}
+
+            {tab === "exams" && (
+              <motion.div key="exams" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
+                <ExamsTab />
               </motion.div>
             )}
           </AnimatePresence>

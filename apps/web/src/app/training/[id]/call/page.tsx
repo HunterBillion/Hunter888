@@ -789,15 +789,7 @@ export default function TrainingCallPage() {
           break;
         }
 
-        case "tts.couple_audio":
-          // Sprint 0 §7 (Bug A): also gate the couple-audio path.
-          {
-            const couple = data.data as unknown as Parameters<typeof tts.playCoupleAudio>[0];
-            scheduleAudioPlayback(() => {
-              tts.playCoupleAudio(couple);
-            });
-          }
-          break;
+        // tts.couple_audio handler removed (2026-05-28) — couple mode unused
 
         case "character.response": {
           const text = (data.data.text as string) || "";

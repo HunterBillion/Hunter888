@@ -22,6 +22,7 @@ import { TopPlayersPanel } from "@/components/pvp/TopPlayersPanel";
 import { ArenaLivePanel } from "@/components/pvp/ArenaLivePanel";
 import { HistoryPanel } from "@/components/pvp/HistoryPanel";
 import { LobbyMascot } from "@/components/pvp/LobbyMascot";
+import CasesTab from "@/components/pvp/CasesTab";
 
 function PvPLobbyContent() {
   const router = useRouter();
@@ -30,7 +31,7 @@ function PvPLobbyContent() {
   const tabParam = searchParams.get("tab");
   // PR-19: 3 tabs — combat (бой), knowledge_base (изучать), history (история).
   // «combat» — default; legacy ?tab=knowledge_base|rag → knowledge_base.
-  type LobbyTab = "combat" | "knowledge_base" | "history";
+  type LobbyTab = "combat" | "cases" | "knowledge_base" | "history";
   const initialTab: LobbyTab =
     tabParam === "knowledge_base" || tabParam === "rag" ? "knowledge_base"
     : tabParam === "history" ? "history"
@@ -509,6 +510,7 @@ function PvPLobbyContent() {
               >
                 {([
                   { id: "combat" as const,         label: "🎯 Бой",     accent: "var(--accent)" },
+                  { id: "cases" as const,          label: "📋 Кейсы",   accent: "var(--success)" },
                   { id: "knowledge_base" as const, label: "📚 Изучать", accent: "var(--magenta, #d946ef)" },
                   { id: "history" as const,        label: "📜 История", accent: "var(--gf-xp, #facc15)" },
                 ]).map((t) => {
@@ -588,6 +590,17 @@ function PvPLobbyContent() {
                         />
                       </div>
                     </details>
+                  </motion.div>
+                )}
+                {tab === "cases" && (
+                  <motion.div
+                    key="cases-tab"
+                    initial={{ opacity: 0, x: 8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    <CasesTab />
                   </motion.div>
                 )}
                 {tab === "knowledge_base" && (

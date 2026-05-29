@@ -803,6 +803,12 @@ class Settings(BaseSettings):
             return secrets.token_hex(32)
         return v
 
+
+    # Telegram Bot
+    telegram_bot_token: str = ""
+    telegram_webhook_secret: str = ""
+    telegram_bot_username: str = ""
+
     model_config = {"env_file": _ENV_FILES or [".env", "../../.env"], "env_file_encoding": "utf-8", "extra": "ignore"}
 
     def validate_production_readiness(self) -> list[str]:
