@@ -364,6 +364,25 @@ class Settings(BaseSettings):
     # call/center session_mode and only when CALL_HUMANIZED_V2 is also on.
     call_filler_v1: bool = False
 
+    # ── (2026-05-30) Phase 2 — cross-browser barge-in via client VAD ──────
+    # Barge-in (the manager talking over the AI) relies on the browser's Web
+    # Speech API, which only Chrome exposes. In Safari/Firefox/Brave the call
+    # page falls back to push-to-talk (hold a button) — no real interruption.
+    #
+    # When ON, this advertises `vad_barge: true` in session.ready. The call
+    # client then, in browsers WITHOUT Web Speech, opens the mic continuously
+    # and runs a client-side voice-activity detector (energy/dB based, zero
+    # extra cost, no streaming-STT service): the instant the manager starts
+    # speaking it fires the barge-in interrupt; when they stop it ships the
+    # captured utterance to the existing backend Whisper path (audio.end) for
+    # the transcript. Chrome is unaffected (keeps using Web Speech).
+    #
+    # Default OFF: session.ready omits the flag as false ⇒ the client keeps
+    # today's push-to-talk fallback, bit-for-bit unchanged. Pure client-side
+    # feature — no backend audio-path change, the transcript still flows
+    # through the same audio.end → Whisper handler.
+    call_vad_barge_v1: bool = False
+
     # ── P0 (2026-04-29) Call Arc — decouple AI from manager script ────────
     # Two-axis architecture: AI gets per-call role (CallArcStep), not per-stage
     # behaviour directives. StageTracker keeps running for scoring/UI.
