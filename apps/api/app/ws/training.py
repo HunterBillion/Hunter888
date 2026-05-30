@@ -35,6 +35,7 @@ Edge cases (TZ 3.1.3):
 
 import asyncio
 import base64
+import contextvars
 import html
 import json
 import logging
@@ -407,10 +408,34 @@ def _strip_stage_directions(text: str) -> str:
 
 _WS_OUTGOING_MAX = 100  # Safety net: max queued messages per connection
 
+# ── (2026-05-30) Barge-in orphan suppression: per-turn TTS epoch ──────────
+# Set at the top of each _generate_character_reply / auto-opener turn (only
+# when settings.call_barge_suppress_v1 is on). _send() stamps the live value
+# onto every tts.audio / tts.audio_chunk so the call client can drop audio that
+# belongs to a turn the manager already barged over. A ContextVar (not a plain
+# global) so concurrent sessions on the same worker never cross-contaminate:
+# each WS coroutine — and every asyncio.create_task it spawns — gets its own
+# copy. Default None ⇒ nothing is stamped ⇒ feature fully dormant.
+_current_turn_seq: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+    "_current_turn_seq", default=None
+)
+
+
 async def _send(ws: WebSocket, msg_type: str, data: dict) -> None:
     """Helper to send a typed JSON message to the client.
     Includes backpressure safety: drops if outgoing queue exceeds limit.
     """
+    # Barge-in orphan suppression (2026-05-30): stamp the current turn epoch on
+    # streaming TTS so the client can discard leftovers from an interrupted
+    # turn. Barge *reactions* must never be suppressed (they're the desired
+    # post-interrupt sound), so they're left unstamped. No-op when the turn seq
+    # is unset (feature off / non-call paths).
+    if msg_type in ("tts.audio", "tts.audio_chunk") and not data.get(
+        "interruption_reaction"
+    ):
+        _ts = _current_turn_seq.get()
+        if _ts is not None and "turn_seq" not in data:
+            data = {**data, "turn_seq": _ts}
     try:
         # Starlette WebSocket doesn't expose queue size directly,
         # but we can use a simple counter per-connection via ws.state
@@ -1249,6 +1274,17 @@ async def _generate_character_reply(
     # Send avatar.typing indicator + mark LLM as busy so the silence watchdog
     # pauses while the model is generating (slow local LLMs can take 20–40s).
     state["llm_busy"] = True
+
+    # Barge-in orphan suppression (2026-05-30): bump the per-turn TTS epoch so
+    # every tts.audio* this turn emits carries it. The client drops audio whose
+    # turn_seq it already barged over; the NEXT reply's strictly-higher seq
+    # plays. Gated — when the flag is off the ContextVar stays None and _send
+    # stamps nothing, so behaviour is unchanged.
+    if settings.call_barge_suppress_v1:
+        _turn_seq = int(state.get("_turn_seq", 0)) + 1
+        state["_turn_seq"] = _turn_seq
+        _current_turn_seq.set(_turn_seq)
+
     await _send(ws, "avatar.typing", {"is_typing": True})
 
     current_emotion = await get_emotion(session_id)
@@ -4834,6 +4870,14 @@ async def _send_call_auto_opener(ws, session_id, state: dict) -> None:
     Real humans don't pick up at zero ms — the variation is what makes
     the call sound human.
     """
+    # Barge-in orphan suppression (2026-05-30): the opener is turn 1 of the
+    # call. Stamp it so barging the opener drops its leftover audio just like
+    # any other turn. Gated; no-op when the flag is off.
+    if settings.call_barge_suppress_v1:
+        _opener_seq = int(state.get("_turn_seq", 0)) + 1
+        state["_turn_seq"] = _opener_seq
+        _current_turn_seq.set(_opener_seq)
+
     _opener_persona_aware = bool(getattr(settings, "call_opener_persona_aware", False))
     if _opener_persona_aware:
         try:
@@ -7813,6 +7857,11 @@ async def training_websocket(websocket: WebSocket) -> None:
             "tts_available": is_tts_available(),
             "stt_available": stt_ok,
             "llm_provider": "local" if settings.local_llm_enabled else "cloud",
+            # Barge-in orphan suppression (2026-05-30): tells the call client
+            # whether the backend stamps tts.audio* with turn_seq so it should
+            # drop leftover audio from a barged-over turn. Off ⇒ client does
+            # nothing new.
+            "barge_suppress": settings.call_barge_suppress_v1,
         })
 
         while True:

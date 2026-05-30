@@ -364,6 +364,30 @@ class Settings(BaseSettings):
     # call/center session_mode and only when CALL_HUMANIZED_V2 is also on.
     call_filler_v1: bool = False
 
+    # ── (2026-05-30) Barge-in orphan-audio suppression ───────────────────
+    # Symptom the user hears as "garbage / artefacts": when the manager barges
+    # in (starts speaking over the AI), the client calls tts.stop() and flushes
+    # its queue — but the WS receive loop is still blocked awaiting the in-flight
+    # _generate_character_reply, so the backend keeps streaming the *interrupted*
+    # turn's TTS chunks. Those arrive AFTER the flush and the client's gap-skip
+    # logic forces them through → orphaned sentences play on top of the manager.
+    #
+    # Fix (this flag, default OFF): the backend stamps every tts.audio /
+    # tts.audio_chunk with a monotonic per-turn ``turn_seq``; the call client
+    # records the seq it was playing when the barge happened and DROPS any audio
+    # whose turn_seq <= that — i.e. leftovers from the dead turn — while the next
+    # reply (a strictly higher seq) plays normally. Barge *reactions*
+    # (interruption_reaction=true) are never stamped/suppressed. When OFF: no
+    # turn_seq is emitted and the client suppresses nothing — bit-for-bit
+    # identical to today.
+    #
+    # NOTE: this kills the audible artefact only; the backend still wastes the
+    # remainder of the interrupted generation because the receive loop stays
+    # blocked. Truly cancelling generation server-side requires backgrounding
+    # _generate_character_reply off the receive loop — deferred to a follow-up
+    # (it's a hot-path concurrency refactor that needs §4.1 race coverage).
+    call_barge_suppress_v1: bool = False
+
     # ── P0 (2026-04-29) Call Arc — decouple AI from manager script ────────
     # Two-axis architecture: AI gets per-call role (CallArcStep), not per-stage
     # behaviour directives. StageTracker keeps running for scoring/UI.

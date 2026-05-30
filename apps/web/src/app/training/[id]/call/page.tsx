@@ -381,6 +381,27 @@ export default function TrainingCallPage() {
   // gives a rough char count that's good enough for the prompt cue —
   // the LLM only needs to know "got cut early" vs "got most of it".
   const interruptSendRef = useRef<((playedChars: number) => void) | null>(null);
+
+  // ── Barge-in orphan suppression (2026-05-30) ──────────────────────────
+  // Backend (when call_barge_suppress_v1 is on) stamps every tts.audio* with a
+  // monotonic `turn_seq`. The receive loop is blocked during generation, so
+  // after a barge the server keeps streaming the *interrupted* turn's chunks;
+  // they arrive AFTER tts.stop() flushed the queue and the gap-skip logic
+  // forces them through → orphaned audio plays over the manager. We fix that
+  // client-side: remember the highest turn_seq seen, and on barge mark
+  // everything up to it as dead. Incoming audio with turn_seq <= the barged
+  // value is dropped; the next reply (a strictly higher seq) plays normally.
+  const bargeSuppressEnabledRef = useRef(false);   // set from session.ready
+  const maxSeenTurnSeqRef = useRef(-1);            // highest turn_seq observed
+  const bargedTurnSeqRef = useRef(-1);             // turns <= this are dead
+  /** True when this tts.audio* belongs to a turn the manager barged over. */
+  const isOrphanedTurn = (turnSeq: unknown): boolean => {
+    if (!bargeSuppressEnabledRef.current) return false;
+    if (typeof turnSeq !== "number") return false;  // unstamped ⇒ never drop
+    if (turnSeq > maxSeenTurnSeqRef.current) maxSeenTurnSeqRef.current = turnSeq;
+    return turnSeq <= bargedTurnSeqRef.current;
+  };
+
   const stt = useSpeechRecognition({
     lang: "ru-RU",
     onResult: (text) => {
@@ -395,6 +416,10 @@ export default function TrainingCallPage() {
         } catch {
           /* non-blocking */
         }
+        // Mark the current turn (and anything older) dead so orphan chunks
+        // that arrive after this flush — from the still-blocked backend — are
+        // dropped instead of played over the manager.
+        bargedTurnSeqRef.current = maxSeenTurnSeqRef.current;
         try { tts.stop(); } catch { /* noop */ }
       }
       sttSendRef.current?.(trimmed);
@@ -663,7 +688,12 @@ export default function TrainingCallPage() {
       logger.log("[CALL]", data.type, data.data);
       switch (data.type) {
         case "auth.success":
+          break;
+
         case "session.ready":
+          // Barge-in orphan suppression (2026-05-30): only act on turn_seq if
+          // the backend says it's stamping it. Off ⇒ stay bit-for-bit current.
+          bargeSuppressEnabledRef.current = Boolean(data.data.barge_suppress);
           break;
 
         case "session.started": {
@@ -724,7 +754,16 @@ export default function TrainingCallPage() {
             // surprise/anger response must land within the perceptual
             // window of the user's interrupt, not after a queued chunk.
             const isBargeReaction = Boolean(data.data.interruption_reaction);
-            if (isBargeReaction) {
+            // Barge-in orphan suppression: track the turn epoch (reactions are
+            // unstamped so this is a no-op for them) and drop audio from a turn
+            // the manager already barged over.
+            const orphaned = !isBargeReaction && isOrphanedTurn(data.data.turn_seq);
+            if (orphaned) {
+              logger.log("[CALL] dropping orphaned tts.audio (barged turn)", {
+                turn_seq: data.data.turn_seq,
+                barged: bargedTurnSeqRef.current,
+              });
+            } else if (isBargeReaction) {
               tts.playAudioMessage(
                 {
                   audio: audioB64,
@@ -771,7 +810,16 @@ export default function TrainingCallPage() {
           // watchdog flag is no longer set on chunk receipt. The
           // tts.speaking effect below is the authoritative signal.
           const chunkAudio = data.data.audio_b64 as string | undefined;
-          if (chunkAudio) {
+          // Barge-in orphan suppression: drop chunks from a barged-over turn
+          // (these are the prime "garbage" — the gap-skip logic would otherwise
+          // force the dead turn's leftover sentences through after the flush).
+          if (chunkAudio && isOrphanedTurn(data.data.turn_seq)) {
+            logger.log("[CALL] dropping orphaned tts.audio_chunk (barged turn)", {
+              turn_seq: data.data.turn_seq,
+              sentence_index: data.data.sentence_index,
+              barged: bargedTurnSeqRef.current,
+            });
+          } else if (chunkAudio) {
             // Sprint 0 §7 (Bug A): same gate. queueAudioChunk only adds
             // to the internal sentence queue — useTTS plays them in
             // index order regardless of when they were queued, so the
