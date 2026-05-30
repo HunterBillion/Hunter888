@@ -381,22 +381,32 @@ export default function TrainingCallPage() {
   // gives a rough char count that's good enough for the prompt cue —
   // the LLM only needs to know "got cut early" vs "got most of it".
   const interruptSendRef = useRef<((playedChars: number) => void) | null>(null);
+
+  // Barge-in: the manager started talking while the AI is mid-reply. Tell the
+  // backend how much of the reply was actually heard (chars ≈ currentTime ×
+  // ~14 chars/sec of Russian TTS) and stop local playback. Shared by the Web
+  // Speech path (fires on recognised text) and the Phase-2 client-VAD path
+  // (fires on speech onset, before any transcript exists) so both interrupt
+  // identically. No-op when the AI isn't speaking.
+  const bargeInIfSpeaking = useCallback(() => {
+    if (!tts.speaking) return;
+    const ct = tts.audioRef?.current?.currentTime ?? 0;
+    const playedChars = Math.max(0, Math.round(ct * 14));
+    try {
+      interruptSendRef.current?.(playedChars);
+    } catch {
+      /* non-blocking */
+    }
+    try { tts.stop(); } catch { /* noop */ }
+  }, [tts]);
+
   const stt = useSpeechRecognition({
     lang: "ru-RU",
     onResult: (text) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       // Barge-in detection: TTS still speaking when user-speech text arrives.
-      if (tts.speaking) {
-        const ct = tts.audioRef?.current?.currentTime ?? 0;
-        const playedChars = Math.max(0, Math.round(ct * 14));
-        try {
-          interruptSendRef.current?.(playedChars);
-        } catch {
-          /* non-blocking */
-        }
-        try { tts.stop(); } catch { /* noop */ }
-      }
+      bargeInIfSpeaking();
       sttSendRef.current?.(trimmed);
     },
   });
@@ -417,9 +427,27 @@ export default function TrainingCallPage() {
     stt.errorCode === "network" ||
     stt.errorCode === "service-not-allowed" ||
     stt.errorCode === "language-not-supported";
-  const microphoneFallback = useMicrophone({});
-  const [pushTalkActive, setPushTalkActive] = useState(false);
   const sendAudioBlobRef = useRef<((blob: Blob) => void) | null>(null);
+  // Phase 2 (2026-05-30): advertised by session.ready (call_vad_barge_v1). When
+  // on AND the browser lacks Web Speech, we drive the mic with a client-side
+  // voice-activity detector so barge-in works everywhere — no push-to-talk.
+  const [vadBargeEnabled, setVadBargeEnabled] = useState(false);
+  const microphoneFallback = useMicrophone({
+    vad: {
+      // Speech onset → interrupt the AI immediately (no transcript needed —
+      // barge-in is a voice-activity event, not a recognition event).
+      onSpeechStart: () => bargeInIfSpeaking(),
+      // Speech end → ship the captured utterance through the existing
+      // audio.end → backend Whisper path, which STTs it and generates the
+      // next reply (identical end-to-end behaviour to push-to-talk).
+      onSpeechEnd: (blob) => sendAudioBlobRef.current?.(blob),
+    },
+  });
+  const [pushTalkActive, setPushTalkActive] = useState(false);
+  // Continuous-VAD mode is only active in browsers that fall back from Web
+  // Speech (sttBlocked) AND when the backend enabled it AND the mic is usable.
+  const vadMode =
+    sttBlocked && vadBargeEnabled && microphoneFallback.isSupported;
 
   // --- Mount guard: verify session_mode, hydrate store --------------------
   /*
@@ -663,7 +691,13 @@ export default function TrainingCallPage() {
       logger.log("[CALL]", data.type, data.data);
       switch (data.type) {
         case "auth.success":
+          break;
+
         case "session.ready":
+          // Phase 2 (2026-05-30): enable client-side VAD barge-in only if the
+          // backend advertises it. Off ⇒ keep the push-to-talk fallback,
+          // bit-for-bit unchanged.
+          setVadBargeEnabled(Boolean(data.data.vad_barge));
           break;
 
         case "session.started": {
@@ -1072,6 +1106,35 @@ export default function TrainingCallPage() {
     const blob = await microphoneFallback.stopRecording();
     if (blob) sendAudioBlobRef.current?.(blob);
   }, [microphoneFallback, pushTalkActive]);
+
+  // Phase 2: drive continuous VAD listening in non-Chrome browsers (vadMode).
+  // Mirror the Web Speech start/stop effect: listen only while the call is
+  // live, accepted and unmuted. startVadListening is idempotent; stop is safe
+  // when not listening. Destructure stable methods so deps stay honest
+  // (FIND-010 pattern).
+  const startVadListening = microphoneFallback.startVadListening;
+  const stopVadListening = microphoneFallback.stopVadListening;
+  useEffect(() => {
+    const active =
+      modeOk === true &&
+      connectionState === "connected" &&
+      callAccepted &&
+      vadMode &&
+      !muted;
+    if (active) {
+      void startVadListening();
+    } else {
+      stopVadListening();
+    }
+  }, [
+    modeOk,
+    connectionState,
+    callAccepted,
+    vadMode,
+    muted,
+    startVadListening,
+    stopVadListening,
+  ]);
 
   // Kick-start the session on WS ready. The chat flow sends
   // session.start with the REST-created session_id; backend resumes
@@ -1741,7 +1804,44 @@ export default function TrainingCallPage() {
           sits above the text input so the user can choose: voice (PTT)
           or keyboard. The pre-existing text input below still works
           regardless. */}
-      {sttBlocked && microphoneFallback.isSupported && callAccepted && (
+      {/* Phase 2: continuous-VAD mode — mic is always listening, no button.
+          A passive indicator reassures the user that voice + barge-in work. */}
+      {vadMode && callAccepted && (
+        <div
+          className="fixed bottom-[88px] left-1/2 z-30 -translate-x-1/2 flex flex-col items-center gap-2"
+          aria-live="polite"
+        >
+          <div
+            className="flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white"
+            style={{
+              background: microphoneFallback.vadListening
+                ? "linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)"
+                : "rgba(124,58,237,0.4)",
+              boxShadow: microphoneFallback.vadListening
+                ? `0 0 ${12 + microphoneFallback.audioLevel * 0.4}px rgba(124,58,237,0.6)`
+                : "none",
+              opacity: connectionState === "connected" ? 1 : 0.5,
+            }}
+            title="Микрофон слушает постоянно — просто говорите, можно перебивать. Распознавание через сервер (Whisper)."
+          >
+            <Mic size={18} />
+            <span>Слушаю — говорите свободно</span>
+          </div>
+          <div
+            className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+            style={{
+              background: "rgba(124,58,237,0.18)",
+              color: "#c4b5fd",
+              border: "1px solid rgba(124,58,237,0.4)",
+            }}
+            title="Можно перебивать ИИ голосом в любом браузере — детекция речи работает на устройстве."
+          >
+            🎤 Можно перебивать · Whisper
+          </div>
+        </div>
+      )}
+
+      {sttBlocked && microphoneFallback.isSupported && callAccepted && !vadMode && (
         <div
           className="fixed bottom-[88px] left-1/2 z-30 -translate-x-1/2 flex flex-col items-center gap-2"
           aria-live="polite"

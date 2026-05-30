@@ -2,7 +2,33 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { logger } from "@/lib/logger";
+import {
+  DEFAULT_VAD_CONFIG,
+  vadInit,
+  vadStep,
+  type VadConfig,
+  type VadState,
+} from "@/lib/vad";
 import type { MicErrorReason, MicrophonePermissionState, RecordingState } from "@/types";
+
+/**
+ * Pick the best MediaRecorder mime type the browser actually supports.
+ * Safari has no webm/opus → fall back to mp4/aac, then to the browser
+ * default. Shared by the push-to-talk recorder and the VAD per-utterance
+ * recorder so both behave identically across browsers.
+ */
+function pickMimeType(): string {
+  if (typeof MediaRecorder === "undefined") return "";
+  return MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+    ? "audio/webm;codecs=opus"
+    : MediaRecorder.isTypeSupported("audio/webm")
+      ? "audio/webm"
+      : MediaRecorder.isTypeSupported("audio/mp4;codecs=mp4a.40.2")
+        ? "audio/mp4;codecs=mp4a.40.2"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
+          : "";
+}
 
 // Map a getUserMedia rejection (or pre-flight failure) to a specific
 // MicErrorReason. Using the DOMException.name keeps us forward-compatible
@@ -40,6 +66,23 @@ const ANALYSER_FFT_SIZE = 256;
 interface UseMicrophoneOptions {
   onChunk?: (chunk: Blob) => void;
   onSilenceTimeout?: () => void;
+  /**
+   * Continuous voice-activity mode (Phase 2 — cross-browser barge-in). When
+   * you call `startVadListening()` the mic stays open and the hook watches the
+   * audio energy: it fires `onSpeechStart` the instant the manager begins
+   * talking (used to barge in over the AI) and `onSpeechEnd` with the captured
+   * utterance blob once they stop (shipped to backend Whisper for the
+   * transcript). This is the always-listening alternative to push-to-talk for
+   * browsers without the Web Speech API (Safari/Firefox/Brave).
+   */
+  vad?: {
+    /** Fired on speech onset — wire this to the barge-in interrupt. */
+    onSpeechStart?: () => void;
+    /** Fired on speech end with the recorded utterance (may be discarded if tiny). */
+    onSpeechEnd?: (blob: Blob) => void;
+    /** Override the default dB thresholds / timings. */
+    config?: Partial<VadConfig>;
+  };
 }
 
 interface UseMicrophoneReturn {
@@ -51,6 +94,12 @@ interface UseMicrophoneReturn {
   startRecording: () => Promise<boolean>;
   stopRecording: () => Promise<Blob | null>;
   requestPermission: () => Promise<boolean>;
+  /** True while continuous VAD listening is active. */
+  vadListening: boolean;
+  /** Open the mic and start always-on voice-activity detection. */
+  startVadListening: () => Promise<boolean>;
+  /** Stop VAD listening and release the mic. */
+  stopVadListening: () => void;
 }
 
 export function useMicrophone(
@@ -61,6 +110,7 @@ export function useMicrophone(
     useState<MicrophonePermissionState>("prompt");
   const [errorReason, setErrorReason] = useState<MicErrorReason | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [vadListening, setVadListening] = useState(false);
   const isSupported =
     typeof window !== "undefined" &&
     typeof navigator !== "undefined" &&
@@ -81,6 +131,22 @@ export function useMicrophone(
   const animFrameRef = useRef<number>(0);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSoundTimeRef = useRef<number>(Date.now());
+
+  // ── VAD continuous-listening state (Phase 2) ──────────────────────────────
+  // Separate from the push-to-talk recorder above so the two modes never share
+  // a half-torn-down MediaRecorder. The stream/analyser stay open for the whole
+  // listening session; a *fresh* MediaRecorder is spun up per utterance so each
+  // emitted blob is a standalone-decodable file (you can't slice a webm mid
+  // stream — only the first chunk carries the header).
+  const vadStateRef = useRef<VadState>(vadInit());
+  const vadAnimRef = useRef<number>(0);
+  const vadRecorderRef = useRef<MediaRecorder | null>(null);
+  const vadChunksRef = useRef<Blob[]>([]);
+  // The recorder starts the moment any energy appears (so we don't clip the
+  // first phoneme), but the utterance is only "committed" once VAD confirms a
+  // real onset. An uncommitted recorder that fizzles (a transient) is discarded.
+  const vadCommittedRef = useRef(false);
+  const vadListeningRef = useRef(false);
 
   // Check permission state on mount & clean up listener on unmount
   const permStatusRef = useRef<PermissionStatus | null>(null);
@@ -126,10 +192,16 @@ export function useMicrophone(
     return () => {
       mountedRef.current = false;
       cancelAnimationFrame(animFrameRef.current);
+      cancelAnimationFrame(vadAnimRef.current);
+      vadListeningRef.current = false;
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
         mediaRecorderRef.current.stop();
         mediaRecorderRef.current = null;
+      }
+      if (vadRecorderRef.current && vadRecorderRef.current.state !== "inactive") {
+        try { vadRecorderRef.current.stop(); } catch { /* noop */ }
+        vadRecorderRef.current = null;
       }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
@@ -283,15 +355,7 @@ export function useMicrophone(
 
       // Set up MediaRecorder. Safari doesn't support webm/opus —
       // fall back to mp4/aac and finally to default (browser-chosen).
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : MediaRecorder.isTypeSupported("audio/mp4;codecs=mp4a.40.2")
-            ? "audio/mp4;codecs=mp4a.40.2"
-            : MediaRecorder.isTypeSupported("audio/mp4")
-              ? "audio/mp4"
-              : "";
+      const mimeType = pickMimeType();
 
       const mediaRecorder = mimeType
         ? new MediaRecorder(stream, { mimeType })
@@ -386,6 +450,188 @@ export function useMicrophone(
     });
   }, []);
 
+  // ── VAD continuous listening (Phase 2: cross-browser barge-in) ────────────
+
+  // Tear down any in-flight per-utterance recorder without emitting a blob.
+  // Used for transients (energy that never became a real onset) and on stop.
+  const discardVadUtterance = useCallback(() => {
+    const mr = vadRecorderRef.current;
+    vadRecorderRef.current = null;
+    vadCommittedRef.current = false;
+    vadChunksRef.current = [];
+    if (mr && mr.state !== "inactive") {
+      try { mr.stop(); } catch { /* already stopping */ }
+    }
+  }, []);
+
+  // Start a fresh recorder for the current utterance. Begins at first energy so
+  // the leading phoneme isn't clipped; the blob is only delivered if the
+  // utterance is committed (see monitorVad).
+  const startVadUtterance = useCallback(() => {
+    const stream = streamRef.current;
+    if (!stream || vadRecorderRef.current) return;
+    const mimeType = pickMimeType();
+    let mr: MediaRecorder;
+    try {
+      mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    } catch {
+      return; // recorder unavailable — VAD onset/end events still fire for barge-in
+    }
+    vadChunksRef.current = [];
+    mr.ondataavailable = (event) => {
+      if (event.data.size > 0) vadChunksRef.current.push(event.data);
+    };
+    try {
+      mr.start();
+    } catch {
+      return;
+    }
+    vadRecorderRef.current = mr;
+  }, []);
+
+  // Stop the current utterance recorder and, if committed, hand the assembled
+  // blob to onSpeechEnd. Listening continues for the next utterance.
+  const finishVadUtterance = useCallback(() => {
+    const mr = vadRecorderRef.current;
+    const committed = vadCommittedRef.current;
+    vadRecorderRef.current = null;
+    vadCommittedRef.current = false;
+    if (!mr || mr.state === "inactive") {
+      vadChunksRef.current = [];
+      return;
+    }
+    mr.addEventListener(
+      "stop",
+      () => {
+        const blob = new Blob(vadChunksRef.current, {
+          type: mr.mimeType || "audio/webm",
+        });
+        vadChunksRef.current = [];
+        if (committed && blob.size > 0) {
+          optionsRef.current.vad?.onSpeechEnd?.(blob);
+        }
+      },
+      { once: true },
+    );
+    try { mr.stop(); } catch { /* already stopping */ }
+  }, []);
+
+  const monitorVad = useCallback(() => {
+    if (!vadListeningRef.current || !mountedRef.current) return;
+    const cfg: VadConfig = { ...DEFAULT_VAD_CONFIG, ...optionsRef.current.vad?.config };
+    const result = computeAudioLevel();
+    if (result) {
+      const now =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      const above = result.dB >= cfg.onsetThresholdDb;
+
+      // Begin capturing at the first hint of energy so the onset isn't clipped.
+      if (above && !vadRecorderRef.current) startVadUtterance();
+
+      const { next, event } = vadStep(vadStateRef.current, result.dB, now, cfg);
+      vadStateRef.current = next;
+
+      if (event === "onset") {
+        vadCommittedRef.current = true;
+        optionsRef.current.vad?.onSpeechStart?.();
+      } else if (event === "end") {
+        finishVadUtterance();
+      } else if (
+        // A candidate recorder that never reached onset (transient) — drop it.
+        vadRecorderRef.current &&
+        !vadCommittedRef.current &&
+        next.phase === "silence" &&
+        next.aboveSinceTs === null
+      ) {
+        discardVadUtterance();
+      }
+    }
+    vadAnimRef.current = requestAnimationFrame(monitorVad);
+  }, [computeAudioLevel, startVadUtterance, finishVadUtterance, discardVadUtterance]);
+
+  const startVadListening = useCallback(async (): Promise<boolean> => {
+    if (!isSupported) {
+      setErrorReason("unsupported");
+      return false;
+    }
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setErrorReason("insecure");
+      return false;
+    }
+    if (vadListeningRef.current) return true; // idempotent
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      streamRef.current = stream;
+      setPermissionState("granted");
+      setErrorReason(null);
+
+      stream.getTracks().forEach((track) => {
+        track.onended = () => {
+          logger.warn("[useMicrophone] VAD track ended (unplug/revoke)");
+          if (mountedRef.current) {
+            setErrorReason("not_found");
+          }
+        };
+      });
+
+      const Ctor: typeof AudioContext =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext ||
+        AudioContext;
+      const audioContext = new Ctor();
+      if (audioContext.state === "suspended") {
+        audioContext.resume().catch(() => {});
+      }
+      audioContextRef.current = audioContext;
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = ANALYSER_FFT_SIZE;
+      analyser.smoothingTimeConstant = 0.8;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      vadStateRef.current = vadInit();
+      vadCommittedRef.current = false;
+      vadChunksRef.current = [];
+      vadListeningRef.current = true;
+      setVadListening(true);
+      vadAnimRef.current = requestAnimationFrame(monitorVad);
+      return true;
+    } catch (err) {
+      const reason = classifyMicError(err);
+      logger.error("[useMicrophone] startVadListening failed:", { reason, err });
+      setPermissionState(reason === "denied" ? "denied" : "error");
+      setErrorReason(reason);
+      vadListeningRef.current = false;
+      setVadListening(false);
+      return false;
+    }
+  }, [isSupported, monitorVad]);
+
+  const stopVadListening = useCallback(() => {
+    vadListeningRef.current = false;
+    cancelAnimationFrame(vadAnimRef.current);
+    discardVadUtterance();
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+    vadStateRef.current = vadInit();
+    setAudioLevel(0);
+    setVadListening(false);
+  }, [discardVadUtterance]);
+
   return {
     recordingState,
     permissionState,
@@ -395,5 +641,8 @@ export function useMicrophone(
     startRecording,
     stopRecording,
     requestPermission,
+    vadListening,
+    startVadListening,
+    stopVadListening,
   };
 }

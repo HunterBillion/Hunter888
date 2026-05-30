@@ -7813,6 +7813,10 @@ async def training_websocket(websocket: WebSocket) -> None:
             "tts_available": is_tts_available(),
             "stt_available": stt_ok,
             "llm_provider": "local" if settings.local_llm_enabled else "cloud",
+            # Phase 2 (2026-05-30): tells the call client it may use client-side
+            # VAD for cross-browser barge-in (Safari/Firefox/Brave) instead of
+            # push-to-talk. Off ⇒ client keeps the push-to-talk fallback.
+            "vad_barge": settings.call_vad_barge_v1,
         })
 
         while True:
